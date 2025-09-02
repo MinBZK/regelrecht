@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page.title }} - RegelRecht Blog</title>
+    <link rel="stylesheet" href="{{ 'stylesheets/extra.css' | url }}">
+    <link href="https://unpkg.com/@nl-rvo/design-tokens/dist/index.css" rel="stylesheet">
+    <link href="https://unpkg.com/@nl-rvo/component-library-css/dist/index.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=RO+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <a href="{{ config.site_url or '/' }}" style="text-decoration: none; color: inherit;">
+                    <h1 class="logo-text">Regelrecht</h1>
+                    <span class="logo-subtitle">Ministerie van Binnenlandse Zaken en Koninkrijksrelaties</span>
+                </a>
+            </div>
+            <div class="nav-links">
+                <a href="{{ config.site_url or '/' }}#tools">Tools</a>
+                <a href="{{ config.site_url or '/blog/' }}">Blog</a>
+                <a href="{{ config.site_url or '/' }}#team">Team</a>
+                <a href="{{ config.site_url or '/' }}#newsletter">Nieuwsbrief</a>
+                <a href="https://github.com/MinBZK/poc-machine-law" class="nav-cta">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Blog Post Header -->
+    <section class="blog-post-header">
+        <div class="blog-post-container">
+            <div class="blog-breadcrumb">
+                <a href="{{ config.site_url or '/' }}">Home</a> / 
+                <a href="{{ config.site_url or '/blog/' }}">Blog</a> / 
+                <span>{{ page.title }}</span>
+            </div>
+            
+            {% if page.meta.date %}
+            <div class="blog-post-meta">
+                <span class="blog-date">{{ page.meta.date.strftime('%d %B %Y') }}</span>
+                {% if page.meta.categories %}
+                    {% for category in page.meta.categories %}
+                        <span class="blog-category">{{ category }}</span>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <h1 class="blog-post-title">{{ page.title }}</h1>
+        </div>
+    </section>
+
+    <!-- Blog Post Content -->
+    <article class="blog-post-content">
+        <div class="blog-post-container">
+            <div class="blog-post-body">
+                {{ page.content }}
+            </div>
+            
+            <!-- Back to Blog -->
+            <div class="blog-post-navigation">
+                <a href="{{ config.site_url or '/blog/' }}" class="btn-secondary">← Terug naar Blog</a>
+            </div>
+        </div>
+    </article>
+
+    <!-- Newsletter Section -->
+    <section class="newsletter">
+        <div class="newsletter-container">
+            <div class="newsletter-content">
+                <h2>Blijf op de Hoogte</h2>
+                <p>Ontvang updates over de ontwikkeling van een digitaal legal system in Nederland.</p>
+                <form class="newsletter-form">
+                    <div class="form-row">
+                        <input type="email" placeholder="je@email.nl" class="newsletter-input" required>
+                        <button type="submit" class="btn-primary newsletter-btn">Abonneren</button>
+                    </div>
+                    <p class="newsletter-privacy">
+                        Door je aan te melden ga je akkoord met onze 
+                        <a href="#">privacyverklaring</a>. Je kunt je altijd uitschrijven.
+                    </p>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>Regelrecht</h3>
+                    <p>Een project van het Ministerie van Binnenlandse Zaken voor transparante, uitvoerbare wetgeving.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Links</h4>
+                    <ul>
+                        <li><a href="https://github.com/MinBZK/poc-machine-law">GitHub Repository</a></li>
+                        <li><a href="#documentation">Documentatie</a></li>
+                        <li><a href="#how-it-works">Hoe het werkt</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact</h4>
+                    <ul>
+                        <li><a href="mailto:info@regelrecht.nl">info@regelrecht.nl</a></li>
+                        <li><a href="https://www.rijksoverheid.nl">Rijksoverheid.nl</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Onderdeel van</h4>
+                    <ul>
+                        <li>Ministerie BZK</li>
+                        <li>Digitale Overheid</li>
+                        <li>NL Design System</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Ministerie van Binnenlandse Zaken en Koninkrijksrelaties. Alle rechten voorbehouden.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="{{ 'javascript/extra.js' | url }}"></script>
+</body>
+</html>
