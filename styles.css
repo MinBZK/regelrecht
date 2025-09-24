@@ -357,6 +357,14 @@ body {
   line-height: 1.6;
 }
 
+.innovation-partner {
+  font-size: var(--font-size-sm);
+  color: var(--rvo-orange);
+  font-weight: 600;
+  font-style: italic;
+  margin-bottom: var(--spacing-sm) !important;
+}
+
 /* How it Works Section */
 .how-it-works {
   padding: var(--spacing-4xl) var(--spacing-lg);
