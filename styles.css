@@ -381,6 +381,18 @@ body {
   color: var(--white);
 }
 
+.process-intro {
+  text-align: center;
+  max-width: 800px;
+  margin: 0 auto var(--spacing-3xl);
+}
+
+.process-intro p {
+  font-size: var(--font-size-lg);
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.6;
+}
+
 .process-steps {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
