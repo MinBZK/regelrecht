@@ -342,7 +342,7 @@ body {
 /* Innovation Section */
 .innovation {
   padding: var(--spacing-4xl) var(--spacing-lg);
-  background: var(--white);
+  background: var(--light-gray);
 }
 
 .innovation-container {
@@ -919,6 +919,7 @@ body {
 /* Example Section */
 .example {
   padding: var(--spacing-4xl) var(--spacing-lg);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
 .example-container {
