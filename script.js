@@ -1,5 +1,44 @@
 // Regelrecht Landing Page JavaScript
 
+// Handle navigation and URL anchors
+document.addEventListener('DOMContentLoaded', function() {
+    // Get all navigation links
+    const navLinks = document.querySelectorAll('nav a[href^="#"]');
+
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('href');
+            const targetElement = document.querySelector(targetId);
+
+            if (targetElement) {
+                // Smooth scroll to element
+                targetElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+
+                // Update URL with hash
+                history.pushState(null, null, targetId);
+            }
+        });
+    });
+
+    // Handle direct hash navigation (when someone visits a #section URL)
+    if (window.location.hash) {
+        const targetElement = document.querySelector(window.location.hash);
+        if (targetElement) {
+            // Small delay to ensure page is fully loaded
+            setTimeout(() => {
+                targetElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }, 100);
+        }
+    }
+});
+
 // Demo functionality
 function executeRule() {
     const birthdateInput = document.getElementById('birthdate');
