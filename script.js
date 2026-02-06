@@ -305,59 +305,32 @@ document.addEventListener('DOMContentLoaded', function() {
 // Export functions for global access
 window.executeRule = executeRule;
 
-// Signup form submission (aanmelden.html)
+// Signup form (aanmelden.html)
 document.addEventListener('DOMContentLoaded', function() {
     var signupForm = document.getElementById('signup-form');
     if (!signupForm) return;
 
     var successEl = document.getElementById('signup-success');
-    var errorEl = document.getElementById('signup-error');
+    var nextUrlInput = document.getElementById('form-next-url');
 
-    signupForm.addEventListener('submit', function(e) {
-        e.preventDefault();
+    // Set redirect URL dynamically (works on any domain)
+    nextUrlInput.value = window.location.origin + window.location.pathname + '?success=true';
 
-        var formData = new FormData(signupForm);
-        var submitBtn = signupForm.querySelector('.signup-submit');
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Bezig met versturen...';
-
-        fetch(signupForm.action, {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'Accept': 'application/json'
-            }
-        })
-        .then(function(response) {
-            if (response.ok) {
-                signupForm.hidden = true;
-                successEl.hidden = false;
-                errorEl.hidden = true;
-            } else {
-                throw new Error('Formulier kon niet worden verstuurd');
-            }
-        })
-        .catch(function() {
-            signupForm.hidden = true;
-            errorEl.hidden = false;
-            successEl.hidden = true;
-        })
-        .finally(function() {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Aanmelden';
-        });
-    });
+    // Check if returning from successful submission
+    if (new URLSearchParams(window.location.search).get('success') === 'true') {
+        signupForm.hidden = true;
+        successEl.hidden = false;
+    }
 });
 
 function resetForm() {
+    // Clear URL and reset form state
+    history.replaceState(null, '', window.location.pathname);
     var signupForm = document.getElementById('signup-form');
-    var successEl = document.getElementById('signup-success');
-    var errorEl = document.getElementById('signup-error');
-
     signupForm.reset();
     signupForm.hidden = false;
-    successEl.hidden = true;
-    errorEl.hidden = true;
+    document.getElementById('signup-success').hidden = true;
+    document.getElementById('signup-error').hidden = true;
 }
 
 window.resetForm = resetForm;

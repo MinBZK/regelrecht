@@ -1555,31 +1555,11 @@ body {
   flex-shrink: 0;
 }
 
-/* Submit Button */
+/* Submit Button - extends .btn-primary pattern */
 .signup-submit {
   display: block;
   width: 100%;
-  padding: var(--spacing-md) var(--spacing-xl);
-  background: var(--rvo-orange);
-  color: var(--white);
-  border: none;
-  border-radius: var(--radius-lg);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  font-family: var(--font-family);
-  cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
   margin-top: var(--spacing-xl);
-}
-
-.signup-submit:hover {
-  background: #c96000;
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.signup-submit:active {
-  transform: translateY(0);
 }
 
 /* Success / Error Messages */
@@ -1627,15 +1607,6 @@ body {
 .signup-error a {
   color: #991b1b;
   font-weight: 600;
-}
-
-/* Nav CTA Signup (orange variant) */
-.nav-cta-signup {
-  background: var(--rvo-orange) !important;
-}
-
-.nav-cta-signup:hover {
-  background: #c96000 !important;
 }
 
 /* Responsive - Signup Page */

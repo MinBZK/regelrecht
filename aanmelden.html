@@ -42,6 +42,8 @@
                 <input type="hidden" name="_subject" value="Nieuwe aanmelding: RegelRecht">
                 <!-- Template -->
                 <input type="hidden" name="_template" value="table">
+                <!-- Redirect after success -->
+                <input type="hidden" name="_next" id="form-next-url">
 
                 <div class="form-group">
                     <label for="naam" class="form-label">Naam <span aria-hidden="true">*</span></label>
@@ -77,21 +79,21 @@
                     </label>
                 </div>
 
-                <button type="submit" class="signup-submit">Aanmelden</button>
+                <button type="submit" class="btn-primary signup-submit">Aanmelden</button>
             </form>
 
             <!-- Success message -->
             <div id="signup-success" class="signup-success" hidden>
                 <h3>Bedankt voor je aanmelding!</h3>
                 <p>We hebben je aanmelding ontvangen. Je ontvangt een bevestiging op het opgegeven e-mailadres.</p>
-                <button onclick="resetForm()" class="signup-submit" style="margin-top: var(--spacing-lg);">Nog iemand aanmelden</button>
+                <button onclick="resetForm()" class="btn-primary signup-submit">Nog iemand aanmelden</button>
             </div>
 
             <!-- Error message -->
             <div id="signup-error" class="signup-error" hidden>
                 <h3>Er ging iets mis</h3>
                 <p>Het versturen van het formulier is niet gelukt. Probeer het opnieuw of stuur een e-mail naar <a href="mailto:bureau.architectuur@minbzk.nl">bureau.architectuur@minbzk.nl</a>.</p>
-                <button onclick="resetForm()" class="signup-submit" style="margin-top: var(--spacing-lg);">Opnieuw proberen</button>
+                <button onclick="resetForm()" class="btn-primary signup-submit">Opnieuw proberen</button>
             </div>
         </div>
     </section>
