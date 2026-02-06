@@ -1445,9 +1445,214 @@ body {
   .hero-cta {
     flex-direction: column;
   }
-  
+
   .partners-logos {
     flex-direction: column;
     gap: var(--spacing-md);
+  }
+}
+
+/* ==============================
+   Signup Page (aanmelden.html)
+   ============================== */
+
+/* Signup Hero */
+.signup-hero {
+  background: var(--gradient-hero);
+  padding: calc(var(--spacing-4xl) + 60px) var(--spacing-lg) var(--spacing-3xl);
+  display: flex;
+  align-items: center;
+}
+
+/* Signup Form Section */
+.signup-form-section {
+  padding: var(--spacing-4xl) var(--spacing-lg);
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.signup-form-container {
+  max-width: 600px;
+  margin: 0 auto;
+  background: var(--white);
+  padding: var(--spacing-3xl);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.signup-form-section--no-hero {
+  padding-top: calc(var(--spacing-4xl) + 80px);
+}
+
+.signup-form-container .section-title {
+  font-size: var(--font-size-3xl);
+  margin-bottom: var(--spacing-md);
+}
+
+.signup-intro {
+  text-align: center;
+  color: var(--dark-gray);
+  font-size: var(--font-size-lg);
+  line-height: 1.6;
+  margin-bottom: var(--spacing-2xl);
+}
+
+/* Form Elements */
+.form-group {
+  margin-bottom: var(--spacing-lg);
+}
+
+.form-label {
+  display: block;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--near-black);
+  margin-bottom: var(--spacing-sm);
+}
+
+.form-label span {
+  color: var(--rvo-red);
+}
+
+.form-input {
+  width: 100%;
+  padding: var(--spacing-md);
+  border: 2px solid #e2e8f0;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  font-family: var(--font-family);
+  color: var(--near-black);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: var(--white);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--gov-primary);
+  box-shadow: 0 0 0 3px rgba(1, 104, 155, 0.15);
+}
+
+.form-input::placeholder {
+  color: var(--gray);
+}
+
+/* Checkbox Styling */
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  color: var(--dark-gray);
+  line-height: 1.5;
+}
+
+.form-checkbox {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.15rem;
+  accent-color: var(--gov-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Submit Button */
+.signup-submit {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-xl);
+  background: var(--rvo-orange);
+  color: var(--white);
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  margin-top: var(--spacing-xl);
+}
+
+.signup-submit:hover {
+  background: #c96000;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.signup-submit:active {
+  transform: translateY(0);
+}
+
+/* Success / Error Messages */
+.signup-success,
+.signup-error {
+  text-align: center;
+  padding: var(--spacing-2xl);
+  border-radius: var(--radius-xl);
+}
+
+.signup-success {
+  background: #f0fdf4;
+  border: 2px solid var(--rvo-green);
+}
+
+.signup-success h3 {
+  color: #166534;
+  font-size: var(--font-size-2xl);
+  margin-bottom: var(--spacing-md);
+}
+
+.signup-success p {
+  color: #15803d;
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+}
+
+.signup-error {
+  background: #fef2f2;
+  border: 2px solid var(--rvo-red);
+}
+
+.signup-error h3 {
+  color: #991b1b;
+  font-size: var(--font-size-2xl);
+  margin-bottom: var(--spacing-md);
+}
+
+.signup-error p {
+  color: #b91c1c;
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+}
+
+.signup-error a {
+  color: #991b1b;
+  font-weight: 600;
+}
+
+/* Nav CTA Signup (orange variant) */
+.nav-cta-signup {
+  background: var(--rvo-orange) !important;
+}
+
+.nav-cta-signup:hover {
+  background: #c96000 !important;
+}
+
+/* Responsive - Signup Page */
+@media (max-width: 768px) {
+  .signup-hero {
+    padding: calc(var(--spacing-3xl) + 60px) var(--spacing-md) var(--spacing-2xl);
+  }
+
+  .signup-form-section {
+    padding: var(--spacing-2xl) var(--spacing-md);
+  }
+
+  .signup-form-container {
+    padding: var(--spacing-xl);
+  }
+
+  .signup-form-container .section-title {
+    font-size: var(--font-size-2xl);
   }
 }

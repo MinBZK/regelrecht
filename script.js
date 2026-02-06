@@ -304,3 +304,60 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Export functions for global access
 window.executeRule = executeRule;
+
+// Signup form submission (aanmelden.html)
+document.addEventListener('DOMContentLoaded', function() {
+    var signupForm = document.getElementById('signup-form');
+    if (!signupForm) return;
+
+    var successEl = document.getElementById('signup-success');
+    var errorEl = document.getElementById('signup-error');
+
+    signupForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        var formData = new FormData(signupForm);
+        var submitBtn = signupForm.querySelector('.signup-submit');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Bezig met versturen...';
+
+        fetch(signupForm.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Accept': 'application/json'
+            }
+        })
+        .then(function(response) {
+            if (response.ok) {
+                signupForm.hidden = true;
+                successEl.hidden = false;
+                errorEl.hidden = true;
+            } else {
+                throw new Error('Formulier kon niet worden verstuurd');
+            }
+        })
+        .catch(function() {
+            signupForm.hidden = true;
+            errorEl.hidden = false;
+            successEl.hidden = true;
+        })
+        .finally(function() {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Aanmelden';
+        });
+    });
+});
+
+function resetForm() {
+    var signupForm = document.getElementById('signup-form');
+    var successEl = document.getElementById('signup-success');
+    var errorEl = document.getElementById('signup-error');
+
+    signupForm.reset();
+    signupForm.hidden = false;
+    successEl.hidden = true;
+    errorEl.hidden = true;
+}
+
+window.resetForm = resetForm;
