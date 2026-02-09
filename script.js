@@ -304,3 +304,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Export functions for global access
 window.executeRule = executeRule;
+
+// Signup form (aanmelden.html)
+document.addEventListener('DOMContentLoaded', function() {
+    var signupForm = document.getElementById('signup-form');
+    if (!signupForm) return;
+
+    var successEl = document.getElementById('signup-success');
+    var nextUrlInput = document.getElementById('form-next-url');
+
+    // Set redirect URL dynamically (works on any domain)
+    nextUrlInput.value = window.location.origin + window.location.pathname + '?success=true';
+
+    // Check if returning from successful submission
+    if (new URLSearchParams(window.location.search).get('success') === 'true') {
+        signupForm.hidden = true;
+        successEl.hidden = false;
+    }
+});
+
+function resetForm() {
+    // Clear URL and reset form state
+    history.replaceState(null, '', window.location.pathname);
+    var signupForm = document.getElementById('signup-form');
+    signupForm.reset();
+    signupForm.hidden = false;
+    document.getElementById('signup-success').hidden = true;
+    document.getElementById('signup-error').hidden = true;
+}
+
+window.resetForm = resetForm;
