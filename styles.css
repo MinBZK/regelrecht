@@ -1555,6 +1555,37 @@ body {
   flex-shrink: 0;
 }
 
+/* Radio Group Styling */
+.radio-group {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.radio-legend {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--near-black);
+  margin-bottom: var(--spacing-sm);
+}
+
+.radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  color: var(--dark-gray);
+  line-height: 1.5;
+}
+
+.form-radio {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--gov-primary);
+  cursor: pointer;
+}
+
 /* Submit Button - extends .btn-primary pattern */
 .signup-submit {
   display: block;
