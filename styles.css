@@ -1570,13 +1570,13 @@ body {
 }
 
 .radio-label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
   cursor: pointer;
   font-size: var(--font-size-base);
   color: var(--dark-gray);
-  margin-right: var(--spacing-lg);
+  line-height: 1.5;
 }
 
 .form-radio {

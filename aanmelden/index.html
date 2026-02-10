@@ -30,8 +30,7 @@
     <!-- Signup Form Section -->
     <section class="signup-form-section signup-form-section--no-hero">
         <div class="signup-form-container">
-            <h2 class="section-title">Meedoen met RegelRecht</h2>
-            <p class="signup-intro">Geïnteresseerd in de ontwikkelingen rondom RegelRecht? Meld je aan en we houden je op de hoogte.<br></p>
+            <h2 class="section-title">Op de hoogte blijven of bijdragen aan RegelRecht?</h2>
 
             <form id="signup-form" action="https://formsubmit.co/447aa38589a9527b16eb215b8efccd47" method="POST">
                 <!-- Honeypot spam protection -->
@@ -47,43 +46,42 @@
 
                 <div class="form-group">
                     <fieldset class="radio-group">
-                        <legend class="radio-legend">Ik wil bijdragen aan de (juridische) validatie van RegelRecht</legend>
                         <label class="radio-label">
-                            <input type="radio" name="Bijdragen aan validatie" value="Wel bijdragen" class="form-radio">
-                            <span>Wel bijdragen</span>
+                            <input type="radio" name="Bijdragen aan validatie" value="Ja" class="form-radio" checked>
+                            <span>Ik wil bijdragen aan de (juridische) validatie van RegelRecht</span>
                         </label>
                         <label class="radio-label">
-                            <input type="radio" name="Bijdragen aan validatie" value="Niet bijdragen" class="form-radio" checked>
-                            <span>Niet bijdragen</span>
+                            <input type="radio" name="Bijdragen aan validatie" value="Nee" class="form-radio">
+                            <span>Ik wil niet bijdragen</span>
                         </label>
                     </fieldset>
                 </div>
 
                 <div class="form-group">
-                    <label for="naam" class="form-label">Volledige naam <span aria-hidden="true">*</span></label>
-                    <input type="text" id="naam" name="Volledige naam" class="form-input" required>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="Op de hoogte blijven" value="Ja" class="form-checkbox" checked>
+                        <span>Ik wil daarnaast updates ontvangen over de ontwikkelingen van RegelRecht</span>
+                    </label>
                 </div>
 
                 <div class="form-group">
-                    <label for="email" class="form-label">E-mailadres <span aria-hidden="true">*</span></label>
+                    <label for="email" class="form-label">E-mailadres</label>
                     <input type="email" id="email" name="E-mailadres" class="form-input" required>
                 </div>
 
                 <div class="form-group">
-                    <label for="organisatie" class="form-label">Organisatie <span aria-hidden="true">*</span></label>
-                    <input type="text" id="organisatie" name="Organisatie" class="form-input" required placeholder="Bijv. Ministerie van BZK, Gemeente Amsterdam">
+                    <label for="naam" class="form-label">Volledige naam</label>
+                    <input type="text" id="naam" name="Volledige naam" class="form-input" required>
                 </div>
 
                 <div class="form-group">
-                    <label for="functie" class="form-label">Functie</label>
+                    <label for="organisatie" class="form-label">Organisatie</label>
+                    <input type="text" id="organisatie" name="Organisatie" class="form-input" placeholder="Bijv. Ministerie van BZK, Gemeente Amsterdam">
+                </div>
+
+                <div class="form-group">
+                    <label for="functie" class="form-label">Functie (optioneel)</label>
                     <input type="text" id="functie" name="Functie" class="form-input" placeholder="Bijv. jurist, beleidsmedewerker, wetgevingsjurist">
-                </div>
-
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" name="Op de hoogte blijven" value="Ja" class="form-checkbox" checked>
-                        <span>Ik wil op de hoogte blijven van RegelRecht</span>
-                    </label>
                 </div>
 
                 <button type="submit" class="btn-primary signup-submit">Meld me aan</button>
