@@ -30,7 +30,7 @@
     <!-- Signup Form Section -->
     <section class="signup-form-section signup-form-section--no-hero">
         <div class="signup-form-container">
-            <h2 class="section-title">Blijf op de hoogte van RegelRecht</h2>
+            <h2 class="section-title">Meedoen met RegelRecht</h2>
             <p class="signup-intro">Geïnteresseerd in de ontwikkelingen rondom RegelRecht? Meld je aan en we houden je op de hoogte.<br></p>
 
             <form id="signup-form" action="https://formsubmit.co/447aa38589a9527b16eb215b8efccd47" method="POST">
@@ -46,13 +46,27 @@
                 <input type="hidden" name="_next" id="form-next-url">
 
                 <div class="form-group">
-                    <label for="naam" class="form-label">Naam <span aria-hidden="true">*</span></label>
-                    <input type="text" id="naam" name="Naam" class="form-input" required placeholder="Uw volledige naam">
+                    <fieldset class="radio-group">
+                        <legend class="radio-legend">Ik wil bijdragen aan de (juridische) validatie van RegelRecht</legend>
+                        <label class="radio-label">
+                            <input type="radio" name="Bijdragen aan validatie" value="Wel bijdragen" class="form-radio">
+                            <span>Wel bijdragen</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="Bijdragen aan validatie" value="Niet bijdragen" class="form-radio" checked>
+                            <span>Niet bijdragen</span>
+                        </label>
+                    </fieldset>
+                </div>
+
+                <div class="form-group">
+                    <label for="naam" class="form-label">Volledige naam <span aria-hidden="true">*</span></label>
+                    <input type="text" id="naam" name="Volledige naam" class="form-input" required>
                 </div>
 
                 <div class="form-group">
                     <label for="email" class="form-label">E-mailadres <span aria-hidden="true">*</span></label>
-                    <input type="email" id="email" name="E-mailadres" class="form-input" required placeholder="uw.naam@voorbeeld.nl">
+                    <input type="email" id="email" name="E-mailadres" class="form-input" required>
                 </div>
 
                 <div class="form-group">
@@ -72,14 +86,7 @@
                     </label>
                 </div>
 
-                <div class="form-group">
-                    <label class="checkbox-label">
-                        <input type="checkbox" name="Bijdragen aan validatie" value="Ja" class="form-checkbox">
-                        <span>Ik wil bijdragen aan de (juridische) validatie van RegelRecht</span>
-                    </label>
-                </div>
-
-                <button type="submit" class="btn-primary signup-submit">Aanmelden</button>
+                <button type="submit" class="btn-primary signup-submit">Meld me aan</button>
             </form>
 
             <!-- Success message -->
