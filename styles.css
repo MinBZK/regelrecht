@@ -1408,12 +1408,12 @@ body {
   .hero-title {
     font-size: var(--font-size-3xl);
   }
-  
+
   .hero-cta {
     flex-direction: column;
     align-items: center;
   }
-  
+
   .nav-container {
     flex-direction: column;
     gap: var(--spacing-md);
@@ -1642,12 +1642,20 @@ body {
 
 /* Responsive - Signup Page */
 @media (max-width: 768px) {
+  .page-aanmelden .nav {
+    position: relative;
+  }
+
   .signup-hero {
-    padding: calc(var(--spacing-3xl) + 60px) var(--spacing-md) var(--spacing-2xl);
+    padding: var(--spacing-3xl) var(--spacing-md) var(--spacing-2xl);
   }
 
   .signup-form-section {
     padding: var(--spacing-2xl) var(--spacing-md);
+  }
+
+  .signup-form-section--no-hero {
+    padding-top: var(--spacing-2xl);
   }
 
   .signup-form-container {
