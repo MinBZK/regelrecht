@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: algemene_wet_inkomensafhankelijke_regelingen
 regulatory_layer: WET
 publication_date: '2022-12-27'
@@ -209,10 +209,11 @@ articles:
               unit: eurocent
         actions:
           - output: toetsingsinkomen
-            operation: ADD
-            values:
-              - $verzamelinkomen
-              - 0
+            value:
+              operation: ADD
+              values:
+                - $verzamelinkomen
+                - 0
   - number: Artikel 9
     text: |-
       Artikel 9. Wijziging status vreemdelingen; partner of medebewoner is vreemdeling 1. Indien aan een vreemdeling

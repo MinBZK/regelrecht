@@ -1,9 +1,9 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: wet_inkomstenbelasting_2001
 regulatory_layer: WET
 publication_date: '2001-12-15'
-valid_from: '2025-01-01'
+valid_from: '2024-01-01'
 bwb_id: BWBR0011353
 url: https://wetten.overheid.nl/BWBR0011353/2025-01-01
 name: Wet inkomstenbelasting 2001
@@ -45,13 +45,14 @@ articles:
               unit: eurocent
         actions:
           - output: box1_inkomen
-            operation: ADD
-            values:
-              - $loon_uit_dienstbetrekking
-              - $uitkeringen_en_pensioenen
-              - $winst_uit_onderneming
-              - $resultaat_overige_werkzaamheden
-              - $eigen_woning
+            value:
+              operation: ADD
+              values:
+                - $loon_uit_dienstbetrekking
+                - $uitkeringen_en_pensioenen
+                - $winst_uit_onderneming
+                - $resultaat_overige_werkzaamheden
+                - $eigen_woning
 
   - number: '4.12'
     text: |-
@@ -78,10 +79,11 @@ articles:
               unit: eurocent
         actions:
           - output: box2_inkomen
-            operation: ADD
-            values:
-              - $reguliere_voordelen
-              - $vervreemdingsvoordelen
+            value:
+              operation: ADD
+              values:
+                - $reguliere_voordelen
+                - $vervreemdingsvoordelen
 
   - number: '5.2'
     text: |-
@@ -89,6 +91,13 @@ articles:
       rendementsgrondslag aan het begin van het kalenderjaar (peildatum 1 januari) wordt als uitgangspunt genomen.
     url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel5.2
     machine_readable:
+      definitions:
+        heffingsvrije_voet_alleenstaand:
+          value: 5772900
+        heffingsvrije_voet_partners:
+          value: 11545800
+        forfaitair_rendement:
+          value: 0.06
       execution:
         parameters:
           - name: bsn
@@ -107,21 +116,63 @@ articles:
           - name: schulden
             type: number
             source: {}
+          - name: heeft_toeslagpartner
+            type: boolean
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: heeft_toeslagpartner
+              parameters:
+                bsn: $bsn
         output:
           - name: rendementsgrondslag
             type: amount
             type_spec:
               unit: eurocent
+          - name: box3_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: box3_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
         actions:
           - output: rendementsgrondslag
-            operation: SUBTRACT
-            values:
-              - operation: ADD
-                values:
-                  - $spaargeld
-                  - $beleggingen
-                  - $onroerend_goed
-              - $schulden
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: ADD
+                  values:
+                    - $spaargeld
+                    - $beleggingen
+                    - $onroerend_goed
+                - $schulden
+          - output: box3_bezittingen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - operation: ADD
+                      values:
+                        - $spaargeld
+                        - $beleggingen
+                        - $onroerend_goed
+                    - $schulden
+                    - operation: IF
+                      when:
+                        operation: EQUALS
+                        subject: $heeft_toeslagpartner
+                        value: true
+                      then: $heffingsvrije_voet_partners
+                      else: $heffingsvrije_voet_alleenstaand
+          - output: box3_inkomen
+            value:
+              operation: MULTIPLY
+              values:
+                - $box3_bezittingen
+                - $forfaitair_rendement
 
   - number: '2.18'
     text: |-
@@ -149,6 +200,13 @@ articles:
               output: box2_inkomen
               parameters:
                 bsn: $bsn
+          - name: box3_inkomen
+            type: number
+            source:
+              regulation: wet_inkomstenbelasting_2001
+              output: box3_inkomen
+              parameters:
+                bsn: $bsn
         output:
           - name: toetsingsinkomen
             type: amount
@@ -156,7 +214,9 @@ articles:
               unit: eurocent
         actions:
           - output: toetsingsinkomen
-            operation: ADD
-            values:
-              - $box1_inkomen
-              - $box2_inkomen
+            value:
+              operation: ADD
+              values:
+                - $box1_inkomen
+                - $box2_inkomen
+                - $box3_inkomen

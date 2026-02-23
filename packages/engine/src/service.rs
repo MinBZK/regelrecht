@@ -523,16 +523,42 @@ impl LawExecutionService {
         }
 
         // Use traced evaluation if trace is available
-        if let Some(ref tb) = res_ctx.trace {
+        let mut result = if let Some(ref tb) = res_ctx.trace {
             engine.evaluate_with_trace(
                 combined_params,
                 res_ctx.calculation_date,
                 requested_output,
                 Rc::clone(tb),
-            )
+            )?
         } else {
-            engine.evaluate_with_output(combined_params, res_ctx.calculation_date, requested_output)
+            engine.evaluate_with_output(
+                combined_params,
+                res_ctx.calculation_date,
+                requested_output,
+            )?
+        };
+
+        // Enforce TypeSpec: round eurocent outputs to integer
+        if let Some(exec) = article.get_execution_spec() {
+            if let Some(outputs) = &exec.output {
+                for output_spec in outputs {
+                    let is_eurocent = output_spec
+                        .type_spec
+                        .as_ref()
+                        .and_then(|ts| ts.unit.as_deref())
+                        == Some("eurocent");
+                    if is_eurocent {
+                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
+                            result
+                                .outputs
+                                .insert(output_spec.name.clone(), Value::Int(f.round() as i64));
+                        }
+                    }
+                }
+            }
         }
+
+        Ok(result)
     }
 
     /// Pre-resolve all resolve actions in an article.

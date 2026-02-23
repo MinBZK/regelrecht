@@ -2,10 +2,10 @@
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: regeling_standaardpremie
 regulatory_layer: MINISTERIELE_REGELING
-publication_date: '2024-11-19'
-valid_from: '2025-01-01'
-bwb_id: BWBR0050536
-url: https://wetten.overheid.nl/BWBR0050536/2025-01-01
+publication_date: '2023-11-20'
+valid_from: '2024-01-01'
+bwb_id: BWBR0049005
+url: https://wetten.overheid.nl/BWBR0049005/2024-01-01
 name: '#wet_naam'
 competent_authority:
   name: Minister van Volksgezondheid, Welzijn en Sport
@@ -20,9 +20,9 @@ articles:
   - number: '1'
     text: |-
       De standaardpremie, bedoeld in [artikel 4 van de Wet op de
-      zorgtoeslag](https://wetten.overheid.nl/BWBR0018451/2025-01-01#Artikel4), bedraagt voor het berekeningsjaar 2025: €
-      2.112,–.
-    url: https://wetten.overheid.nl/BWBR0050536/2025-01-01#Artikel1
+      zorgtoeslag](https://wetten.overheid.nl/BWBR0018451/2024-01-01#Artikel4), bedraagt voor het berekeningsjaar 2024: €
+      1.987,–.
+    url: https://wetten.overheid.nl/BWBR0049005/2024-01-01#Artikel1
     machine_readable:
       execution:
         output:
@@ -34,17 +34,17 @@ articles:
             type: number
         actions:
           - output: standaardpremie
-            value: 211200
+            value: 198700
           - output: berekeningsjaar
-            value: 2025
+            value: 2024
   - number: '2'
     text: |-
       [Red: Wijzigt de Regeling zorgverzekering.]
-    url: https://wetten.overheid.nl/BWBR0050536/2025-01-01#Artikel2
+    url: https://wetten.overheid.nl/BWBR0049005/2024-01-01#Artikel2
   - number: '3'
     text: |-
-      Deze regeling treedt in werking met ingang van 1 januari 2025.
-    url: https://wetten.overheid.nl/BWBR0050536/2025-01-01#Artikel3
+      Deze regeling treedt in werking met ingang van 1 januari 2024.
+    url: https://wetten.overheid.nl/BWBR0049005/2024-01-01#Artikel3
     machine_readable:
       execution:
         output:
@@ -52,11 +52,11 @@ articles:
             type: string
         actions:
           - output: datum_inwerkingtreding
-            value: '2025-01-01'
+            value: '2024-01-01'
   - number: '4'
     text: |-
-      Deze regeling wordt aangehaald als: Regeling vaststelling standaardpremie en bestuursrechtelijke premies 2025.
-    url: https://wetten.overheid.nl/BWBR0050536/2025-01-01#Artikel4
+      Deze regeling wordt aangehaald als: Regeling vaststelling standaardpremie en bestuursrechtelijke premies 2024.
+    url: https://wetten.overheid.nl/BWBR0049005/2024-01-01#Artikel4
     machine_readable:
       execution:
         output:
@@ -64,4 +64,4 @@ articles:
             type: string
         actions:
           - output: wet_naam
-            value: Regeling vaststelling standaardpremie en bestuursrechtelijke premies 2025
+            value: Regeling vaststelling standaardpremie en bestuursrechtelijke premies 2024

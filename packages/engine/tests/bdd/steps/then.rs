@@ -10,8 +10,6 @@ use crate::world::RegelrechtWorld;
 // Note: Some test failures are expected due to known engine limitations:
 // - Bijstand tests: Rust engine doesn't have "uitvoerder context" mechanism for gedragscategorie
 // - Erfgrensbeplanting without verordening: Rust engine doesn't support delegation defaults yet
-// - Zorgtoeslag date filtering: Rust engine doesn't filter regulations by valid_from date
-// - Zorgtoeslag full calculation: Requires external data resolution which isn't fully implemented
 
 // =============================================================================
 // Bijstand steps
@@ -216,6 +214,38 @@ fn assert_minimale_afstand_m(world: &mut RegelrechtWorld, expected: String) {
 // Zorgtoeslag steps
 // =============================================================================
 
+#[then("the citizen has the right to healthcare allowance")]
+fn assert_has_right_to_healthcare_allowance(world: &mut RegelrechtWorld) {
+    assert!(
+        world.is_success(),
+        "Expected successful execution, got error: {:?}",
+        world.error_message()
+    );
+
+    let has_right = world.get_output("heeft_recht_op_zorgtoeslag");
+    assert!(
+        matches!(has_right, Some(Value::Bool(true))),
+        "Expected heeft_recht_op_zorgtoeslag to be true, got {:?}",
+        has_right
+    );
+}
+
+#[then("the citizen does not have the right to healthcare allowance")]
+fn assert_no_right_to_healthcare_allowance(world: &mut RegelrechtWorld) {
+    assert!(
+        world.is_success(),
+        "Expected successful execution, got error: {:?}",
+        world.error_message()
+    );
+
+    let has_right = world.get_output("heeft_recht_op_zorgtoeslag");
+    assert!(
+        matches!(has_right, Some(Value::Bool(false))),
+        "Expected heeft_recht_op_zorgtoeslag to be false, got {:?}",
+        has_right
+    );
+}
+
 #[then(regex = r#"^the standard premium is "(\d+)" eurocent$"#)]
 fn assert_standard_premium_eurocent(world: &mut RegelrechtWorld, expected: String) {
     assert!(
@@ -246,57 +276,6 @@ fn assert_standard_premium_eurocent(world: &mut RegelrechtWorld, expected: Strin
             );
         }
         _ => panic!("Expected standaardpremie to be a number, got {:?}", actual),
-    }
-}
-
-#[then(regex = r#"^the standard premium calculation should fail with "([^"]+)"$"#)]
-fn assert_standard_premium_fails(world: &mut RegelrechtWorld, expected_message: String) {
-    // Note: The Rust engine doesn't have date-based filtering for regulations yet.
-    // When requesting 2024, it still returns the 2025 regeling because that's the only one loaded.
-    // For now, we check if the calculation returned a different year than expected.
-    if world.error.is_some() {
-        let error_msg = world.error_message().unwrap_or_default();
-        assert!(
-            error_msg
-                .to_lowercase()
-                .contains(&expected_message.to_lowercase()),
-            "Expected error to contain '{}', got: '{}'",
-            expected_message,
-            error_msg
-        );
-    } else {
-        // If it succeeded, verify the berekeningsjaar doesn't match the requested year
-        let result = world
-            .result
-            .as_ref()
-            .expect("Expected either error or result");
-        let berekeningsjaar = result.outputs.get("berekeningsjaar");
-
-        // The test expects to fail for 2024 because no 2024 regeling exists.
-        // Since the Rust engine returns 2025 data, we can verify the mismatch:
-        if let Some(Value::Int(year)) = berekeningsjaar {
-            // We requested 2024 but got 2025 - this is the expected behavior given engine limitations
-            // Mark this as a known limitation by checking if year != requested year from calculation_date
-            let requested_year: i64 = world
-                .calculation_date
-                .split('-')
-                .next()
-                .and_then(|y| y.parse().ok())
-                .unwrap_or(0);
-
-            if *year != requested_year {
-                // This is expected - the engine doesn't filter by date
-                // For now, we'll skip this assertion since it's a known limitation
-                return;
-            }
-        }
-
-        panic!(
-            "Expected standard premium calculation to fail with '{}', but it succeeded with result: {:?}. \
-            Note: Rust engine doesn't support date-based regulation filtering yet.",
-            expected_message,
-            world.result
-        );
     }
 }
 
