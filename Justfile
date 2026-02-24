@@ -40,8 +40,12 @@ bdd:
 harvester-test:
     cd packages/harvester && cargo test
 
-# Run all tests (engine + harvester)
-test-all: test harvester-test
+# Run pipeline unit tests (no Docker/DB required)
+pipeline-test:
+    cd packages/pipeline && cargo test --lib
+
+# Run all tests (engine + harvester + pipeline)
+test-all: test harvester-test pipeline-test
 
 # --- Mutation testing ---
 

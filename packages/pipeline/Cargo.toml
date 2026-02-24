@@ -1,0 +1,40 @@
+[package]
+name = "regelrecht-pipeline"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "RegelRecht pipeline - Job queue and law status tracking for the processing pipeline"
+license = "MIT"
+repository = "https://github.com/MinBZK/regelrecht-mvp"
+homepage = "https://github.com/MinBZK/regelrecht-mvp"
+keywords = ["law", "legal", "pipeline", "dutch", "regelrecht"]
+categories = ["database"]
+
+[[bin]]
+name = "regelrecht-harvest-worker"
+path = "src/bin/harvest_worker.rs"
+
+[dependencies]
+regelrecht-harvester = { path = "../harvester" }
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml_ng = "0.10"
+thiserror = "2.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+pretty_assertions = "1.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
+tempfile = "3"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
