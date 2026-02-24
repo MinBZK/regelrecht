@@ -37,17 +37,17 @@ articles:
       percentage van het toetsingsinkomen van de verzekerde. Ingeval de verzekerde een toeslagpartner heeft, wordt het
       gezamenlijk toetsingsinkomen van de verzekerde en de toeslagpartner in aanmerking genomen.
 
-      3. De percentages, bedoeld in het tweede lid, bedragen voor een verzekerde met een toeslagpartner 4,860 procent van
+      3. De percentages, bedoeld in het tweede lid, bedragen voor een verzekerde met een toeslagpartner 4,256 procent van
       het drempelinkomen, vermeerderd met 13,670 procent van het toetsingsinkomen, en voor een verzekerde zonder
-      toeslagpartner 4,860 procent van het drempelinkomen, vermeerderd met 13,670 procent van het toetsingsinkomen. Bij
-      ministeriele regeling kunnen deze percentages worden gewijzigd.
+      toeslagpartner 1,879 procent van het drempelinkomen, vermeerderd met 13,670 procent van het toetsingsinkomen. Bij
+      ministeriële regeling kunnen deze percentages worden gewijzigd.
 
       4. In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een verzekerde met een partner die
       geen verzekerde is, vijftig procent van het op grond van het eerste lid berekende bedrag.
 
       5. De aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk bepaald.
 
-      6. Bij ministeriele regeling kunnen nadere regels worden gesteld.
+      6. Bij ministeriële regeling kunnen nadere regels worden gesteld.
 
       7. Onze Minister zendt een voornemen tot wijziging van de percentages, bedoeld in het derde lid, ten minste twee
       weken voor de vaststelling aan beide kamers der Staten-Generaal.
@@ -59,9 +59,9 @@ articles:
         drempelinkomen_aanvrager_met_toeslagpartner:
           value: 4821800
         percentage_drempelinkomen_alleenstaande:
-          value: 0.0486
+          value: 0.01879
         percentage_drempelinkomen_partner:
-          value: 0.0486
+          value: 0.04256
         percentage_toetsingsinkomen:
           value: 0.1367
       execution:
@@ -129,7 +129,17 @@ articles:
                 - 0
                 - operation: SUBTRACT
                   values:
-                    - $standaardpremie
+                    - operation: IF
+                      when:
+                        operation: EQUALS
+                        subject: $heeft_toeslagpartner
+                        value: true
+                      then:
+                        operation: MULTIPLY
+                        values:
+                          - 2
+                          - $standaardpremie
+                      else: $standaardpremie
                     - operation: ADD
                       values:
                         - operation: MULTIPLY

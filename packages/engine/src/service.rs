@@ -549,9 +549,10 @@ impl LawExecutionService {
                         == Some("eurocent");
                     if is_eurocent {
                         if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
+                            let rounded = crate::operations::f64_to_i64_safe(f.round())?;
                             result
                                 .outputs
-                                .insert(output_spec.name.clone(), Value::Int(f.round() as i64));
+                                .insert(output_spec.name.clone(), Value::Int(rounded));
                         }
                     }
                 }

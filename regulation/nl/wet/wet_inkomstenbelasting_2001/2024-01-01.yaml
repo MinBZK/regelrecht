@@ -3,9 +3,9 @@ $schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main
 $id: wet_inkomstenbelasting_2001
 regulatory_layer: WET
 publication_date: '2001-12-15'
-valid_from: '2025-01-01'
+valid_from: '2024-01-01'
 bwb_id: BWBR0011353
-url: https://wetten.overheid.nl/BWBR0011353/2025-01-01
+url: https://wetten.overheid.nl/BWBR0011353/2024-01-01
 name: Wet inkomstenbelasting 2001
 competent_authority:
   name: Belastingdienst
@@ -15,7 +15,7 @@ articles:
     text: |-
       Belastbaar inkomen uit werk en woning is het inkomen uit werk en woning verminderd met de te verrekenen
       verliezen uit werk en woning.
-    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel3.1
+    url: https://wetten.overheid.nl/BWBR0011353/2024-01-01#Artikel3.1
     machine_readable:
       execution:
         parameters:
@@ -58,7 +58,7 @@ articles:
     text: |-
       Inkomen uit aanmerkelijk belang is het gezamenlijke bedrag van de reguliere voordelen en de
       vervreemdingsvoordelen verminderd met de te verrekenen verliezen uit aanmerkelijk belang.
-    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel4.12
+    url: https://wetten.overheid.nl/BWBR0011353/2024-01-01#Artikel4.12
     machine_readable:
       execution:
         parameters:
@@ -89,13 +89,13 @@ articles:
     text: |-
       Rendementsgrondslag is de waarde van de bezittingen verminderd met de waarde van de schulden. De
       rendementsgrondslag aan het begin van het kalenderjaar (peildatum 1 januari) wordt als uitgangspunt genomen.
-    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel5.2
+    url: https://wetten.overheid.nl/BWBR0011353/2024-01-01#Artikel5.2
     machine_readable:
       definitions:
         heffingsvrije_voet_alleenstaand:
-          value: 5768400
+          value: 5700000
         heffingsvrije_voet_partners:
-          value: 11536800
+          value: 11400000
         forfaitair_rendement:
           value: 0.06
       execution:
@@ -178,7 +178,7 @@ articles:
     text: |-
       Verzamelinkomen is het gezamenlijke bedrag van het inkomen uit werk en woning, het inkomen uit aanmerkelijk
       belang en het belastbaar inkomen uit sparen en beleggen.
-    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel2.18
+    url: https://wetten.overheid.nl/BWBR0011353/2024-01-01#Artikel2.18
     machine_readable:
       execution:
         parameters:

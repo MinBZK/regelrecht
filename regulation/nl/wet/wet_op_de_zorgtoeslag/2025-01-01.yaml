@@ -131,7 +131,17 @@ articles:
                 - 0
                 - operation: SUBTRACT
                   values:
-                    - $standaardpremie
+                    - operation: IF
+                      when:
+                        operation: EQUALS
+                        subject: $heeft_toeslagpartner
+                        value: true
+                      then:
+                        operation: MULTIPLY
+                        values:
+                          - 2
+                          - $standaardpremie
+                      else: $standaardpremie
                     - operation: ADD
                       values:
                         - operation: MULTIPLY

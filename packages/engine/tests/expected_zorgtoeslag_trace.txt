@@ -130,7 +130,7 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   ║   ├──Result of rendementsgrondslag: 0
 ║   ║   ║   ║   ├──Computing box3_bezittingen
 ║   ║   ║   ║   │   ├──Compute MAX(...) = 0
-║   ║   ║   ║   │   │   ├──Compute SUBTRACT(...) = -5772900
+║   ║   ║   ║   │   │   ├──Compute SUBTRACT(...) = -5768400
 ║   ║   ║   ║   │   │   │   ├──Compute ADD(...) = 0
 ║   ║   ║   ║   │   │   │   │   ├──Resolving $SPAARGELD
 ║   ║   ║   ║   │   │   │   │   │   ├──Resolving from PARAMETERS: 0
@@ -140,12 +140,12 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   ║   │   │   │   │   │   ├──Resolving from PARAMETERS: 0
 ║   ║   ║   ║   │   │   │   ├──Resolving $SCHULDEN
 ║   ║   ║   ║   │   │   │   │   ├──Resolving from PARAMETERS: 0
-║   ║   ║   ║   │   │   │   ├──Compute IF(...) = 5772900
+║   ║   ║   ║   │   │   │   ├──Compute IF(...) = 5768400
 ║   ║   ║   ║   │   │   │   │   ├──Compute EQUALS(...) = False
 ║   ║   ║   ║   │   │   │   │   │   ├──Resolving $HEEFT_TOESLAGPARTNER
 ║   ║   ║   ║   │   │   │   │   │   │   ├──Resolving from PARAMETERS: False
 ║   ║   ║   ║   │   │   │   │   ├──Resolving $HEFFINGSVRIJE_VOET_ALLEENSTAAND
-║   ║   ║   ║   │   │   │   │   │   ├──Resolving from DEFINITION: 5772900
+║   ║   ║   ║   │   │   │   │   │   ├──Resolving from DEFINITION: 5768400
 ║   ║   ║   ║   ├──Result of box3_bezittingen: 0
 ║   ║   ║   ║   ├──Computing box3_inkomen
 ║   ║   ║   ║   │   ├──Compute MULTIPLY(...) = 0
@@ -202,7 +202,7 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ├──Result of rendementsgrondslag: 0
 ║   ║   ├──Computing box3_bezittingen
 ║   ║   │   ├──Compute MAX(...) = 0
-║   ║   │   │   ├──Compute SUBTRACT(...) = -5772900
+║   ║   │   │   ├──Compute SUBTRACT(...) = -5768400
 ║   ║   │   │   │   ├──Compute ADD(...) = 0
 ║   ║   │   │   │   │   ├──Resolving $SPAARGELD
 ║   ║   │   │   │   │   │   ├──Resolving from PARAMETERS: 0
@@ -212,12 +212,12 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │   │   │   │   │   ├──Resolving from PARAMETERS: 0
 ║   ║   │   │   │   ├──Resolving $SCHULDEN
 ║   ║   │   │   │   │   ├──Resolving from PARAMETERS: 0
-║   ║   │   │   │   ├──Compute IF(...) = 5772900
+║   ║   │   │   │   ├──Compute IF(...) = 5768400
 ║   ║   │   │   │   │   ├──Compute EQUALS(...) = False
 ║   ║   │   │   │   │   │   ├──Resolving $HEEFT_TOESLAGPARTNER
 ║   ║   │   │   │   │   │   │   ├──Resolving from PARAMETERS: False
 ║   ║   │   │   │   │   ├──Resolving $HEFFINGSVRIJE_VOET_ALLEENSTAAND
-║   ║   │   │   │   │   │   ├──Resolving from DEFINITION: 5772900
+║   ║   │   │   │   │   │   ├──Resolving from DEFINITION: 5768400
 ║   ║   ├──Result of box3_bezittingen: 0
 ║   ║   ├──Computing box3_inkomen
 ║   ║   │   ├──Compute MULTIPLY(...) = 0
@@ -244,8 +244,12 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ├──Computing hoogte_zorgtoeslag
 ║   │   ├──Compute MAX(...) = 209691.78888
 ║   │   │   ├──Compute SUBTRACT(...) = 209691.78888
-║   │   │   │   ├──Resolving $STANDAARDPREMIE
-║   │   │   │   │   ├──Resolving from PARAMETERS: 211200
+║   │   │   │   ├──Compute IF(...) = 211200
+║   │   │   │   │   ├──Compute EQUALS(...) = False
+║   │   │   │   │   │   ├──Resolving $HEEFT_TOESLAGPARTNER
+║   │   │   │   │   │   │   ├──Resolving from PARAMETERS: False
+║   │   │   │   │   ├──Resolving $STANDAARDPREMIE
+║   │   │   │   │   │   ├──Resolving from PARAMETERS: 211200
 ║   │   │   │   ├──Compute ADD(...) = 1508.2111200000002
 ║   │   │   │   │   ├──Compute MULTIPLY(...) = 1508.2111200000002
 ║   │   │   │   │   │   ├──Compute IF(...) = 0.01896
