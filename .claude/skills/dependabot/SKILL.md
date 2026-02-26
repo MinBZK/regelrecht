@@ -2,7 +2,7 @@
 name: dependabot
 description: Processes all open Dependabot PRs sequentially — rebases if needed, analyzes for breaking changes and security issues, then merges or requests changes. Use when you want to handle pending Dependabot dependency updates.
 user-invocable: true
-allowed-tools: Bash, Read, Grep, Glob, WebSearch, WebFetch, Task
+allowed-tools: Bash, Read, Grep, Glob, WebSearch, WebFetch, Task, AskUserQuestion
 ---
 
 # Dependabot PR Processor
