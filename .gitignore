@@ -33,6 +33,12 @@ __pycache__/
 # Mutation testing
 mutants.out/
 
+# Environment
+.env
+
 # Gemini CLI
 .gemini/*
 !.gemini/prompts/
+
+# Beads
+.beads/
