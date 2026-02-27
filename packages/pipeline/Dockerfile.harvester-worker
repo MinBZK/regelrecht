@@ -12,7 +12,7 @@ RUN cargo build --release --bin regelrecht-harvest-worker
 
 # Stage 2: Runtime
 FROM alpine:3.23
-RUN apk add --no-cache ca-certificates git && \
+RUN apk add --no-cache ca-certificates && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/packages/pipeline/target/release/regelrecht-harvest-worker /usr/local/bin/
@@ -24,7 +24,6 @@ RUN mkdir -p /data/regulation-repo && chown app:app /data/regulation-repo
 USER app
 EXPOSE 8000
 
-ENV REGULATION_REPO_URL=https://github.com/MinBZK/regelrecht-mvp.git
 ENV REGULATION_REPO_PATH=/data/regulation-repo
 ENV REGULATION_OUTPUT_BASE=regulation/nl
 

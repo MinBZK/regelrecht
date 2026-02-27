@@ -1,7 +1,6 @@
 pub mod config;
 pub mod db;
 pub mod error;
-pub mod git_ops;
 pub mod harvest;
 pub mod job_queue;
 pub mod law_status;

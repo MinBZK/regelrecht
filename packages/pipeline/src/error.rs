@@ -29,9 +29,6 @@ pub enum PipelineError {
     #[error("harvester error: {0}")]
     Harvester(#[from] regelrecht_harvester::HarvesterError),
 
-    #[error("git error: {message}")]
-    Git { message: String, stderr: String },
-
     #[error("worker error: {0}")]
     Worker(String),
 

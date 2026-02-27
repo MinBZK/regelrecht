@@ -78,7 +78,11 @@ pub async fn execute_harvest(
     let law_for_save = law;
     let date_for_save = effective_date.clone();
     let yaml_path = tokio::task::spawn_blocking(move || {
-        regelrecht_harvester::yaml::save_yaml(&law_for_save, &date_for_save, Some(&output_base_path))
+        regelrecht_harvester::yaml::save_yaml(
+            &law_for_save,
+            &date_for_save,
+            Some(&output_base_path),
+        )
     })
     .await??;
 

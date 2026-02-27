@@ -33,9 +33,11 @@ async fn main() {
         loop {
             if let Ok((mut stream, _)) = listener.accept().await {
                 use tokio::io::AsyncWriteExt;
-                let _ = stream.write_all(
-                    b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\nOK"
-                ).await;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\nOK",
+                    )
+                    .await;
             }
         }
     });
