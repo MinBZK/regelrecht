@@ -1,6 +1,6 @@
 # POC to MVP Corrections: Zorgtoeslag
 
-This document records the discrepancies found in the POC (poc-machine-law) zorgtoeslag implementation and how they were corrected in the MVP (regelrecht-mvp). Findings are based on a side-by-side trace comparison of all 8 shared scenarios (4x 2025, 4x 2024).
+During the conversion of the zorgtoeslag from POC (poc-machine-law) to MVP (regelrecht-mvp), the execution traces of both systems were compared side-by-side for all 8 shared scenarios (4x 2025, 4x 2024). This document exists to record the differences found and to explain *why* the POC and MVP produce different results in certain cases. Each difference is either a correction of an error in the POC, or a deliberate architectural improvement in the MVP.
 
 ## 1. Age Calculation: Wrong Reference Date
 
