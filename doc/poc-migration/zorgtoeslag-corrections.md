@@ -121,11 +121,26 @@ The 2025 version combined insurance and detention into a single `IS_VERZEKERDE` 
 
 **MVP correction**: Corrected to `valid_from: 2025-01-01` and `competent_authority: Belastingdienst`.
 
-## Open Items
+## 11. Buitenlands inkomen in toetsingsinkomen
 
-The following POC features are not yet modelled in the MVP:
+**POC behaviour**: The POC included `buitenlands_inkomen` as a component of toetsingsinkomen (AWIR art. 8 lid 3).
 
-1. **Missing 2024 scenarios**: The POC has 4 scenarios per year; the MVP only has 2 for 2024 (over-18 and under-18). The low-income and student 2024 scenarios should be added.
-2. **Buitenlands inkomen**: The POC includes `buitenlands_inkomen` as a component of toetsingsinkomen. The MVP does not model this.
-3. **Forensische zorg check**: The POC 2024 checks `IS_FORENSISCH` via `DJI.wet_forensische_zorg`. The MVP does not include this requirement.
-4. **Verdragsinschrijving**: The POC `is_verzekerde` check includes a path for `VERDRAGSINSCHRIJVING` (foreign treaty registration). The MVP does not model this.
+**MVP correction**: Added `buitenlands_inkomen` as input (with empty source) to AWIR article 8. The toetsingsinkomen calculation is now: `verzamelinkomen + buitenlands_inkomen` instead of `verzamelinkomen + 0`.
+
+**Impact on results**: None for current test scenarios (no foreign income in test data), but correctly models the legal requirement.
+
+## 12. Forensische zorg check in zorgverzekeringswet
+
+**POC behaviour**: The POC 2024 checks `IS_FORENSISCH` via `DJI.wet_forensische_zorg` in the zorgtoeslag requirements.
+
+**MVP correction**: Added `wet_forensische_zorg` regulation (`regulation/nl/wet/wet_forensische_zorg/2025-01-01.yaml`) with `is_forensisch` output based on zorgtype and juridische grondslag. Extended `zorgverzekeringswet` article 2 `is_verzekerd` logic to include `AND NOT(is_forensisch)`.
+
+**Impact on results**: None for current test scenarios (no forensic care in test data), but correctly excludes persons receiving forensische zorg from insurance status.
+
+## 13. Verdragsinschrijving in zorgverzekeringswet
+
+**POC behaviour**: The POC `is_verzekerde` check included a path for `VERDRAGSINSCHRIJVING` (treaty-based insurance for people living abroad, ZVW art. 69).
+
+**MVP correction**: Added `verdragsinschrijving` as input (with empty source) to `zorgverzekeringswet` article 2. The `is_verzekerd` logic is now: `(IN(polis_status, actief) OR verdragsinschrijving = true) AND NOT(is_gedetineerd) AND NOT(is_forensisch)`.
+
+**Impact on results**: None for current test scenarios (no treaty registrations in test data), but correctly models the legal requirement for persons insured via international treaties.

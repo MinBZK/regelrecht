@@ -68,6 +68,7 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
     let insurance = record(vec![
         ("bsn", Value::String("999993653".to_string())),
         ("polis_status", Value::String("ACTIEF".to_string())),
+        ("verdragsinschrijving", Value::Bool(false)),
     ]);
     let box1 = record(vec![
         ("bsn", Value::String("999993653".to_string())),
@@ -76,6 +77,7 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
         ("winst_uit_onderneming", Value::Int(0)),
         ("resultaat_overige_werkzaamheden", Value::Int(0)),
         ("eigen_woning", Value::Int(0)),
+        ("buitenlands_inkomen", Value::Int(0)),
     ]);
     let box2 = record(vec![
         ("bsn", Value::String("999993653".to_string())),
@@ -93,6 +95,8 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
         ("bsn", Value::String("999993653".to_string())),
         ("detentiestatus", Value::Null),
         ("inrichting_type", Value::Null),
+        ("zorgtype", Value::Null),
+        ("juridische_grondslag", Value::Null),
     ]);
 
     service

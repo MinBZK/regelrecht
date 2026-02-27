@@ -202,6 +202,11 @@ articles:
               output: toetsingsinkomen
               parameters:
                 bsn: $bsn
+          - name: buitenlands_inkomen
+            type: amount
+            source: {}
+            type_spec:
+              unit: eurocent
         output:
           - name: toetsingsinkomen
             type: amount
@@ -213,7 +218,7 @@ articles:
               operation: ADD
               values:
                 - $verzamelinkomen
-                - 0
+                - $buitenlands_inkomen
   - number: Artikel 9
     text: |-
       Artikel 9. Wijziging status vreemdelingen; partner of medebewoner is vreemdeling 1. Indien aan een vreemdeling

@@ -1,0 +1,89 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
+$id: wet_forensische_zorg
+regulatory_layer: WET
+publication_date: '2019-01-01'
+bwb_id: BWBR0040634
+url: https://wetten.overheid.nl/BWBR0040634/2025-01-01
+name: '#wet_naam'
+articles:
+  - number: Artikel 1.1
+    text: |-
+      Artikel 1.1 1. In deze wet en de daarop berustende bepalingen wordt verstaan onder:
+
+      forensische zorg: geestelijke gezondheidszorg, verslavingszorg en de zorg voor verstandelijk
+      gehandicapten, die onderdeel is van, dan wel aansluit bij een (voorwaardelijke) straf of maatregel
+      of die voortvloeit uit een last tot plaatsing als bedoeld in artikel 2.3.
+
+      2. Onder forensische zorg als bedoeld in het eerste lid wordt verstaan:
+
+      a. geestelijke gezondheidszorg als omschreven bij of krachtens de Wet verplichte geestelijke
+      gezondheidszorg;
+
+      b. verslavingszorg;
+
+      c. zorg voor verstandelijk gehandicapten als omschreven bij of krachtens de Wet zorg en dwang
+      psychogeriatrische en verstandelijk gehandicapte clienten.
+    url: https://wetten.overheid.nl/BWBR0040634/2025-01-01#Hoofdstuk1_Artikel1.1
+    machine_readable:
+      definitions:
+        forensische_zorgtypen:
+          value:
+            - GGZ
+            - VERSLAVINGSZORG
+            - VG_ZORG
+        geldige_juridische_titels:
+          value:
+            - VOORWAARDELIJKE_VEROORDELING
+            - TBS
+            - PIJ_MAATREGEL
+            - ISD_MAATREGEL
+            - VOORWAARDELIJKE_INVRIJHEIDSTELLING
+            - OVERPLAATSING
+            - ZORGMACHTIGING
+            - VOORLOPIGE_HECHTENIS
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: zorgtype
+            type: string
+            source: {}
+          - name: juridische_grondslag
+            type: string
+            source: {}
+        output:
+          - name: is_forensisch
+            type: boolean
+        actions:
+          - output: is_forensisch
+            value:
+              operation: AND
+              conditions:
+                - operation: IN
+                  subject: $zorgtype
+                  value: $forensische_zorgtypen
+                - operation: IN
+                  subject: $juridische_grondslag
+                  value: $geldige_juridische_titels
+  - number: Artikel 2.1
+    text: |-
+      Artikel 2.1 De tenuitvoerlegging van een vrijheidsbenemende straf of maatregel wordt zo veel
+      mogelijk dienstbaar gemaakt aan de voorbereiding van de terugkeer van de forensische patient in
+      de maatschappij en de vermindering van de kans op recidive, met inachtneming van de veiligheid
+      van de samenleving.
+    url: https://wetten.overheid.nl/BWBR0040634/2025-01-01#Hoofdstuk2_Artikel2.1
+  - number: Artikel 10.3
+    text: |-
+      Artikel 10.3 Deze wet wordt aangehaald als: Wet forensische zorg.
+    url: https://wetten.overheid.nl/BWBR0040634/2025-01-01#Hoofdstuk10_Artikel10.3
+    machine_readable:
+      execution:
+        output:
+          - name: wet_naam
+            type: string
+        actions:
+          - output: wet_naam
+            value: Wet forensische zorg

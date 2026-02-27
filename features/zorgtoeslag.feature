@@ -20,11 +20,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | GEEN              | null        |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -32,8 +32,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 0         | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen has the right to healthcare allowance
     And the allowance amount is "2096.92" euro
@@ -47,11 +47,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | GEEN              | null        |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -59,8 +59,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 0         | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen does not have the right to healthcare allowance
 
@@ -73,11 +73,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | GEEN              | null        |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -85,8 +85,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 10000     | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen has the right to healthcare allowance
     And the allowance amount is "2108.21" euro
@@ -100,11 +100,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | GEEN              | null        |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -112,8 +112,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 0         | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     And the following DUO "inschrijvingen" data:
       | bsn       | onderwijstype |
       | 999993653 | WO            |
@@ -133,11 +133,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | GEEN              | null        |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 79547                     | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -145,8 +145,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 0         | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen has the right to healthcare allowance
     And the allowance amount is "1972.05" euro
@@ -160,11 +160,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | GEEN              | null        |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 0                         | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -172,8 +172,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 0         | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen does not have the right to healthcare allowance
 
@@ -186,11 +186,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | HUWELIJK          | 999993654   |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 3500000                   | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 3500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -198,8 +198,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 0         | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen has the right to healthcare allowance
     And the allowance amount is "2728.45" euro
@@ -213,11 +213,11 @@ Feature: Healthcare allowance calculation
       | bsn       | partnerschap_type | partner_bsn |
       | 999993653 | GEEN              | null        |
     And the following RVZ "insurance" data:
-      | bsn       | polis_status |
-      | 999993653 | ACTIEF       |
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
     And the following BELASTINGDIENST "box1" data:
-      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
-      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
@@ -225,8 +225,8 @@ Feature: Healthcare allowance calculation
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 7000000   | 0           | 0              | 0        |
     And the following DJI "detenties" data:
-      | bsn       | detentiestatus | inrichting_type |
-      | 999993653 | null           | null            |
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen has the right to healthcare allowance
     And the allowance amount is "1718.79" euro

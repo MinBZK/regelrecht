@@ -118,11 +118,21 @@ articles:
           - name: polis_status
             type: string
             source: {}
+          - name: verdragsinschrijving
+            type: boolean
+            source: {}
           - name: is_gedetineerd
             type: boolean
             source:
               regulation: penitentiaire_beginselenwet
               output: is_gedetineerd
+              parameters:
+                bsn: $bsn
+          - name: is_forensisch
+            type: boolean
+            source:
+              regulation: wet_forensische_zorg
+              output: is_forensisch
               parameters:
                 bsn: $bsn
         output:
@@ -133,11 +143,19 @@ articles:
             value:
               operation: AND
               conditions:
-                - operation: IN
-                  subject: $polis_status
-                  value: $actieve_polis_statussen
+                - operation: OR
+                  conditions:
+                    - operation: IN
+                      subject: $polis_status
+                      value: $actieve_polis_statussen
+                    - operation: EQUALS
+                      subject: $verdragsinschrijving
+                      value: true
                 - operation: NOT_EQUALS
                   subject: $is_gedetineerd
+                  value: true
+                - operation: NOT_EQUALS
+                  subject: $is_forensisch
                   value: true
   - number: Artikel 3
     text: |-

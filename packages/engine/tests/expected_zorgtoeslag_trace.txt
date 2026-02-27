@@ -17,6 +17,8 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │   ├──Resolving from PARAMETERS: '999993653'
 ║   ║   ├──Resolving $POLIS_STATUS
 ║   ║   │   ├──Resolving from DATA_SOURCE: 'ACTIEF'
+║   ║   ├──Resolving $VERDRAGSINSCHRIJVING
+║   ║   │   ├──Resolving from DATA_SOURCE: False
 ║   ║   ├──URI call: penitentiaire_beginselenwet#is_gedetineerd
 ║   ║   ║   ├──Resolving $BSN
 ║   ║   ║   │   ├──Resolving from PARAMETERS: '999993653'
@@ -32,15 +34,34 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   │   │   │   ├──Resolving $GELDIGE_INRICHTINGSTYPEN
 ║   ║   ║   │   │   │   │   ├──Resolving from DEFINITION: ['PENITENTIAIRE_INRICHTING', 'HUIS_VAN_BEWARING']
 ║   ║   ║   ├──Result of is_gedetineerd: False
+║   ║   ├──URI call: wet_forensische_zorg#is_forensisch
+║   ║   ║   ├──Resolving $BSN
+║   ║   ║   │   ├──Resolving from PARAMETERS: '999993653'
+║   ║   ║   ├──Resolving $ZORGTYPE
+║   ║   ║   │   ├──Resolving from DATA_SOURCE: None
+║   ║   ║   ├──Resolving $JURIDISCHE_GRONDSLAG
+║   ║   ║   │   ├──Resolving from DATA_SOURCE: None
+║   ║   ║   ├──Computing is_forensisch
+║   ║   ║   │   ├──Compute AND(...) = False
+║   ║   ║   │   │   ├──Compute IN(...) = False
+║   ║   ║   │   │   │   ├──Resolving $ZORGTYPE
+║   ║   ║   │   │   │   │   ├──Resolving from PARAMETERS: None
+║   ║   ║   │   │   │   ├──Resolving $FORENSISCHE_ZORGTYPEN
+║   ║   ║   │   │   │   │   ├──Resolving from DEFINITION: ['GGZ', 'VERSLAVINGSZORG', 'VG_ZORG']
+║   ║   ║   ├──Result of is_forensisch: False
 ║   ║   ├──Computing is_verzekerd
 ║   ║   │   ├──Compute AND(...) = True
-║   ║   │   │   ├──Compute IN(...) = True
-║   ║   │   │   │   ├──Resolving $POLIS_STATUS
-║   ║   │   │   │   │   ├──Resolving from PARAMETERS: 'ACTIEF'
-║   ║   │   │   │   ├──Resolving $ACTIEVE_POLIS_STATUSSEN
-║   ║   │   │   │   │   ├──Resolving from DEFINITION: ['ACTIEF', 'GESCHORST_MET_TERUGWERKENDE_KRACHT']
+║   ║   │   │   ├──Compute OR(...) = True
+║   ║   │   │   │   ├──Compute IN(...) = True
+║   ║   │   │   │   │   ├──Resolving $POLIS_STATUS
+║   ║   │   │   │   │   │   ├──Resolving from PARAMETERS: 'ACTIEF'
+║   ║   │   │   │   │   ├──Resolving $ACTIEVE_POLIS_STATUSSEN
+║   ║   │   │   │   │   │   ├──Resolving from DEFINITION: ['ACTIEF', 'GESCHORST_MET_TERUGWERKENDE_KRACHT']
 ║   ║   │   │   ├──Compute NOTEQUALS(...) = True
 ║   ║   │   │   │   ├──Resolving $IS_GEDETINEERD
+║   ║   │   │   │   │   ├──Resolving from PARAMETERS: False
+║   ║   │   │   ├──Compute NOTEQUALS(...) = True
+║   ║   │   │   │   ├──Resolving $IS_FORENSISCH
 ║   ║   │   │   │   │   ├──Resolving from PARAMETERS: False
 ║   ║   ├──Result of is_verzekerd: True
 ║   ├──URI call: algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner
@@ -163,10 +184,14 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   │   │   ├──Resolving $BOX3_INKOMEN
 ║   ║   ║   │   │   │   ├──Resolving from PARAMETERS: 0
 ║   ║   ║   ├──Result of toetsingsinkomen: 79547
+║   ║   ├──Resolving $BUITENLANDS_INKOMEN
+║   ║   │   ├──Resolving from DATA_SOURCE: 0
 ║   ║   ├──Computing toetsingsinkomen
 ║   ║   │   ├──Compute ADD(...) = 79547
 ║   ║   │   │   ├──Resolving $VERZAMELINKOMEN
 ║   ║   │   │   │   ├──Resolving from PARAMETERS: 79547
+║   ║   │   │   ├──Resolving $BUITENLANDS_INKOMEN
+║   ║   │   │   │   ├──Resolving from PARAMETERS: 0
 ║   ║   ├──Result of toetsingsinkomen: 79547
 ║   ├──URI call: regeling_standaardpremie#standaardpremie
 ║   ║   ├──Computing standaardpremie
