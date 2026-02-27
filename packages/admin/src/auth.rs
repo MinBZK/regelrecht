@@ -453,9 +453,19 @@ fn extract_realm_roles(jwt: &str) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::oidc::ConfiguredClient;
+    use axum::body::Body;
     use axum::http::HeaderValue;
+    use axum::routing::get;
+    use axum::Router;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
+    use openidconnect::{ClientId, ClientSecret, ProviderMetadataWithLogout, TokenUrl};
+    use sqlx::postgres::PgPoolOptions;
+    use std::sync::Arc;
+    use tower::ServiceExt;
+    use tower_sessions::SessionManagerLayer;
+    use tower_sessions_memory_store::MemoryStore;
 
     fn fake_jwt(payload_json: &str) -> String {
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256"}"#);
@@ -695,5 +705,861 @@ mod tests {
         let config = config_dynamic("https://admin.rig.example.nl");
         let result = validate_derived_url("https://localhost", &config);
         assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Integration test helpers
+    // =========================================================================
+
+    use std::sync::LazyLock;
+
+    /// Shared RSA key pair generated once for all tests.
+    static TEST_RSA_KEY: LazyLock<rsa::RsaPrivateKey> = LazyLock::new(|| {
+        use rsa::pkcs1::DecodeRsaPrivateKey;
+        rsa::RsaPrivateKey::from_pkcs1_pem(TEST_RSA_PEM).expect("valid test RSA key")
+    });
+
+    const TEST_RSA_PEM: &str = "\
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAtwt6Yii90rabfWrceTMAb6/lIkDXWywJZW5CGJBnm6ePnxdi
+yeAJM3I4CGLXJb5mYN/ACLAWjrsac6M2PyBEIdPdwnJ1PcvwkVGOeqomT7GUKtCL
+UwWshGP0wTIjFeY7RIyOmCd7I2rO5kMYuEOq+XfOBWXpWIhOSeFgyCOxjK0UC6Lq
+aszFIPIg5CJdWmBKIJnqOvPfl7KJSgxdcEK/ETzutBP61VVOGC+3oOGQu3UYr91x
+xHpvrebZ8G0InPrfPbfAB3jvXqK6qwIqbYs/9buKX5OQzKna5fp4725iYi6a0Eeg
+qMuD3rESaE1EG0gMRUYEF3ECvdrSe8cSziHyKwIDAQABAoIBAAy4vf/oz/np722X
+NI0x3RO7ba6PQ3MWi5f37Ue9cDinu891SyGNB2atcgqB1W0jSgSX7cX3eGHhdsms
+Vr6qv0F7SEbVjfjGXfO474ZD9sIELVrlFUHRu6Hp5olaMt5jRXboA+28P2PV7lz0
+3djJ+diObzb91GrER8NSaC0QxKwU/vN/BWWsKvkM/IJKvYCWOPbiuFNC/JbWzKaS
+SP8DUf3X1Qwepwt6sQiLjZSz5qrd5Qr4GafBCNhnlBaXIILpKTPiiFr62jOej42A
+VW3kgAgf0QdDHNDztxb1yb4rDrIg+FD9QdTrhzIx0VI4blI6xLUa/u24HXu8UjA5
+8jm7D0kCgYEA+5uTAslPkE+wlzCDyFef37gR5+ERgzGoVj0vAMB1oPwxPZOES4Jy
+vT0cc/WL0iE0O4DXjCXN0er6zePCy8TL6JrcfaQmqKRa6oerwy2jCmsQUFCcQioX
+MS7iYhk4eQ3DjT8cBE86ZVLIS2f5exZbLFLEMKQ5i8hyS5k0RxVwhlkCgYEAuj1/
+sPYlvqLaPauH4yAWPICV6s16d3+s1fI33ZCGTz4ADfEFKShHSGLXMaHT/taMJR+F
+e4PJ6WWP5D9eH1EFlN3d6l8rWqm2tAq5/cxT00ylmQnyVCYWrKzAA/Rk3kGnyz0+
+hircHfjSk2wtktH2QUpXtWDRFkb/3Es1WZRxtCMCgYEAlUlAl+WkHKb7yykQ9/zt
+sgsALMoA3wvGqqyQx+xpnsQj3zo4w6i5tYid6jul416qJCgVPGVt0oCOoTzjZo30
+wqWn77BG88bY3tDy29KnK1ZNDqpVnHhm3FrKHZSDSmgdQCBS2ke8CURt7Tfa8epY
+3FqbZ5T5Q/QBxNM5DngtFLkCgYBUIhAbOzdV5W+9yE181zP0ZQpUpjqa3TyQ8fk2
+yGFETvfrVGRGcYGyO6SHMVn5l6Z75r+ASsrd+xmDvPSiJRHmbEwh4phNPrngn6/h
+7Xo4zDlK52lnhkVcADZGExO2K+bHM4WZSqdhitRl8MqtttgOKq1wrKoH7E8Nj5Qs
+QZkUDQKBgQDuX3YCnHbbyk1fgJXX678uLuf7MvdpKgh7AdIeV0pKgJNGXFIg7h+Y
+xDLWfAIUr3n54YRTUYWRFrzg60H3RWCBST5KE+oTtpljuRprs5Z6gOYxGLOCgwqY
+FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
+-----END RSA PRIVATE KEY-----";
+
+    /// Build a JWKS JSON object from the test RSA public key.
+    fn test_jwks_json() -> serde_json::Value {
+        use rsa::traits::PublicKeyParts;
+        let pub_key = TEST_RSA_KEY.to_public_key();
+        let n = URL_SAFE_NO_PAD.encode(pub_key.n().to_bytes_be());
+        let e = URL_SAFE_NO_PAD.encode(pub_key.e().to_bytes_be());
+        serde_json::json!({
+            "keys": [{
+                "kty": "RSA",
+                "use": "sig",
+                "alg": "RS256",
+                "kid": "test-key",
+                "n": n,
+                "e": e
+            }]
+        })
+    }
+
+    /// Build an OIDC client for tests. `base_url` should be the wiremock
+    /// server URI (or any URL — token and JWKS paths are appended).
+    fn test_oidc_client(base_url: &str) -> ConfiguredClient {
+        let token_url = &format!("{base_url}/token");
+        let jwks_url = &format!("{base_url}/jwks");
+        test_oidc_client_urls(token_url, jwks_url)
+    }
+
+    fn test_oidc_client_urls(token_url: &str, jwks_url: &str) -> ConfiguredClient {
+        use openidconnect::core::CoreJsonWebKeySet;
+
+        let token = TokenUrl::new(token_url.into()).expect("valid token URL");
+
+        // Build provider metadata JSON and deserialize as ProviderMetadataWithLogout.
+        // This avoids fighting the complex generic type parameters.
+        let metadata_json = serde_json::json!({
+            "issuer": "https://idp.test.example/realms/test",
+            "authorization_endpoint": "https://idp.test.example/realms/test/protocol/openid-connect/auth",
+            "token_endpoint": token_url,
+            "jwks_uri": jwks_url,
+            "response_types_supported": ["code"],
+            "subject_types_supported": ["public"],
+            "id_token_signing_alg_values_supported": ["RS256"]
+        });
+
+        let mut provider_with_logout: ProviderMetadataWithLogout =
+            serde_json::from_value(metadata_json)
+                .expect("deserialize as ProviderMetadataWithLogout");
+
+        // The JWKS field is #[serde(skip)] so we must set it manually.
+        // Without this, ID token signature verification would fail.
+        let jwks: CoreJsonWebKeySet =
+            serde_json::from_value(test_jwks_json()).expect("deserialize JWKS");
+        provider_with_logout = provider_with_logout.set_jwks(jwks);
+
+        openidconnect::core::CoreClient::from_provider_metadata(
+            provider_with_logout,
+            ClientId::new("test-client".into()),
+            Some(ClientSecret::new("test-secret".into())),
+        )
+        .set_token_uri(token)
+    }
+
+    fn test_state_with_oidc(client: ConfiguredClient, end_session_url: Option<&str>) -> AppState {
+        let config = AppConfig {
+            oidc: Some(crate::config::OidcConfig {
+                client_id: "test-client".into(),
+                client_secret: "test-secret".into(),
+                issuer_url: "https://idp.test.example/realms/test".into(),
+                required_role: "allowed-user".into(),
+            }),
+            base_url: Some("https://admin.test.example".into()),
+            base_url_allow_dynamic: false,
+        };
+
+        #[allow(clippy::expect_used)]
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://test@localhost/test")
+            .expect("lazy pool");
+
+        AppState {
+            pool,
+            oidc_client: Some(Arc::new(client)),
+            end_session_url: end_session_url.map(String::from),
+            config: Arc::new(config),
+        }
+    }
+
+    fn test_state_no_oidc() -> AppState {
+        let config = AppConfig {
+            oidc: None,
+            base_url: None,
+            base_url_allow_dynamic: false,
+        };
+
+        #[allow(clippy::expect_used)]
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://test@localhost/test")
+            .expect("lazy pool");
+
+        AppState {
+            pool,
+            oidc_client: None,
+            end_session_url: None,
+            config: Arc::new(config),
+        }
+    }
+
+    fn test_app(state: AppState) -> Router {
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        Router::new()
+            .route("/auth/login", get(login))
+            .route("/auth/callback", get(callback))
+            .route("/auth/logout", get(logout))
+            .route("/auth/status", get(status))
+            .route("/test/set-session", get(set_session_handler))
+            .with_state(state)
+            .layer(session_layer)
+    }
+
+    #[derive(Deserialize)]
+    struct SetSessionQuery {
+        csrf: Option<String>,
+        nonce: Option<String>,
+        pkce_verifier: Option<String>,
+        authenticated: Option<bool>,
+        sub: Option<String>,
+        email: Option<String>,
+        name: Option<String>,
+        id_token_hint: Option<String>,
+    }
+
+    async fn set_session_handler(
+        session: Session,
+        axum::extract::Query(q): axum::extract::Query<SetSessionQuery>,
+    ) -> &'static str {
+        if let Some(v) = q.csrf {
+            session
+                .insert(SESSION_KEY_CSRF, v)
+                .await
+                .expect("insert csrf");
+        }
+        if let Some(v) = q.nonce {
+            session
+                .insert(SESSION_KEY_NONCE, v)
+                .await
+                .expect("insert nonce");
+        }
+        if let Some(v) = q.pkce_verifier {
+            session
+                .insert(SESSION_KEY_PKCE_VERIFIER, v)
+                .await
+                .expect("insert pkce");
+        }
+        if let Some(v) = q.authenticated {
+            session
+                .insert(SESSION_KEY_AUTHENTICATED, v)
+                .await
+                .expect("insert auth");
+        }
+        if let Some(v) = q.sub {
+            session
+                .insert(SESSION_KEY_SUB, v)
+                .await
+                .expect("insert sub");
+        }
+        if let Some(v) = q.email {
+            session
+                .insert(SESSION_KEY_EMAIL, v)
+                .await
+                .expect("insert email");
+        }
+        if let Some(v) = q.name {
+            session
+                .insert(SESSION_KEY_NAME, v)
+                .await
+                .expect("insert name");
+        }
+        if let Some(v) = q.id_token_hint {
+            session
+                .insert(SESSION_KEY_ID_TOKEN, v)
+                .await
+                .expect("insert id_token");
+        }
+        "ok"
+    }
+
+    fn extract_cookie(response: &axum::http::Response<Body>) -> String {
+        response
+            .headers()
+            .get("set-cookie")
+            .expect("set-cookie header")
+            .to_str()
+            .expect("cookie str")
+            .to_string()
+    }
+
+    fn build_id_token(nonce: &str, _roles: &[&str]) -> String {
+        use rsa::pkcs1v15::SigningKey;
+        use rsa::signature::SignatureEncoding;
+        use rsa::signature::Signer;
+
+        let now = chrono::Utc::now();
+        let iat = now.timestamp();
+        let exp = (now + chrono::Duration::hours(1)).timestamp();
+
+        let header = serde_json::json!({
+            "alg": "RS256",
+            "typ": "JWT",
+            "kid": "test-key"
+        });
+
+        let payload = serde_json::json!({
+            "iss": "https://idp.test.example/realms/test",
+            "sub": "test-user-id",
+            "aud": "test-client",
+            "exp": exp,
+            "iat": iat,
+            "nonce": nonce,
+            "email": "test@example.com",
+            "preferred_username": "testuser",
+            "name": "Test User"
+        });
+
+        let header_b64 = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).expect("header json"));
+        let payload_b64 =
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).expect("payload json"));
+
+        let message = format!("{header_b64}.{payload_b64}");
+
+        let signing_rsa_key = SigningKey::<sha2::Sha256>::new(TEST_RSA_KEY.clone());
+        let signature = signing_rsa_key.sign(message.as_bytes());
+        let sig_b64 = URL_SAFE_NO_PAD.encode(signature.to_vec());
+
+        format!("{message}.{sig_b64}")
+    }
+
+    fn build_access_token(roles: &[&str]) -> String {
+        let roles_json: Vec<String> = roles.iter().map(|r| format!("\"{r}\"")).collect();
+        let payload = format!(
+            r#"{{"realm_access":{{"roles":[{}]}}}}"#,
+            roles_json.join(",")
+        );
+        fake_jwt(&payload)
+    }
+
+    fn build_token_response_json(id_token: &str, access_token: &str) -> serde_json::Value {
+        serde_json::json!({
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "id_token": id_token
+        })
+    }
+
+    // =========================================================================
+    // Status handler tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn status_unauthenticated_returns_false() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/status")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["authenticated"], false);
+        assert_eq!(json["oidc_configured"], true);
+        assert!(json.get("person").is_none() || json["person"].is_null());
+    }
+
+    #[tokio::test]
+    async fn status_authenticated_returns_person() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let app = test_app(state);
+
+        // Set up authenticated session
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test/set-session?authenticated=true&sub=user-123&email=test%40example.com&name=Test%20User")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = extract_cookie(&response);
+
+        // Check status with session cookie
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/status")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["authenticated"], true);
+        assert_eq!(json["oidc_configured"], true);
+        assert_eq!(json["person"]["sub"], "user-123");
+        assert_eq!(json["person"]["email"], "test@example.com");
+        assert_eq!(json["person"]["name"], "Test User");
+    }
+
+    #[tokio::test]
+    async fn status_oidc_disabled_returns_not_configured() {
+        let state = test_state_no_oidc();
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/status")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["authenticated"], false);
+        assert_eq!(json["oidc_configured"], false);
+    }
+
+    // =========================================================================
+    // Login handler tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn login_redirects_to_idp() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/login")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = response
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .expect("location str");
+
+        assert!(
+            location
+                .starts_with("https://idp.test.example/realms/test/protocol/openid-connect/auth"),
+            "expected redirect to IdP auth URL, got: {location}"
+        );
+        assert!(
+            location.contains("response_type=code"),
+            "missing response_type=code"
+        );
+        assert!(
+            location.contains("client_id=test-client"),
+            "missing client_id"
+        );
+        assert!(location.contains("scope=openid"), "missing scope=openid");
+    }
+
+    #[tokio::test]
+    async fn login_without_oidc_client_returns_501() {
+        let state = test_state_no_oidc();
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/login")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    }
+
+    // =========================================================================
+    // Logout handler tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn logout_with_end_session_url_redirects_to_idp() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(
+            client,
+            Some("https://idp.test.example/realms/test/protocol/openid-connect/logout"),
+        );
+        let app = test_app(state);
+
+        // Set up session with id_token_hint
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test/set-session?authenticated=true&id_token_hint=some.jwt.token")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let cookie = extract_cookie(&response);
+
+        // Logout
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/logout")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = response
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .expect("location str");
+
+        assert!(
+            location
+                .starts_with("https://idp.test.example/realms/test/protocol/openid-connect/logout"),
+            "expected redirect to IdP logout, got: {location}"
+        );
+        assert!(
+            location.contains("post_logout_redirect_uri="),
+            "missing post_logout_redirect_uri"
+        );
+        assert!(
+            location.contains("client_id=test-client"),
+            "missing client_id"
+        );
+        assert!(location.contains("id_token_hint="), "missing id_token_hint");
+    }
+
+    #[tokio::test]
+    async fn logout_without_end_session_url_redirects_to_base() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/logout")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        let location = response
+            .headers()
+            .get("location")
+            .expect("location header")
+            .to_str()
+            .expect("location str");
+        assert_eq!(location, "https://admin.test.example/");
+    }
+
+    #[tokio::test]
+    async fn logout_flushes_session() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        let app = Router::new()
+            .route("/auth/logout", get(logout))
+            .route("/auth/status", get(status))
+            .route("/test/set-session", get(set_session_handler))
+            .with_state(state)
+            .layer(session_layer);
+
+        // Set up authenticated session
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test/set-session?authenticated=true&sub=u1&email=e%40e.com&name=N")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let cookie = extract_cookie(&response);
+
+        // Logout
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/logout")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+
+        // The old session cookie should now show unauthenticated
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/status")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["authenticated"], false);
+    }
+
+    // =========================================================================
+    // Callback handler tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn callback_success_flow() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        let nonce = "test-nonce-123";
+        let csrf = "test-csrf-456";
+        let id_token = build_id_token(nonce, &["allowed-user"]);
+        let access_token = build_access_token(&["allowed-user"]);
+        let token_body = build_token_response_json(&id_token, &access_token);
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/token"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&token_body)
+                    .insert_header("content-type", "application/json"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = test_oidc_client(&mock_server.uri());
+        let state = test_state_with_oidc(client, None);
+
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        let app = Router::new()
+            .route("/auth/callback", get(callback))
+            .route("/auth/status", get(status))
+            .route("/test/set-session", get(set_session_handler))
+            .with_state(state)
+            .layer(session_layer);
+
+        // Pre-populate session with CSRF, nonce, PKCE verifier
+        let pkce_verifier = "test-pkce-verifier";
+        let set_uri =
+            format!("/test/set-session?csrf={csrf}&nonce={nonce}&pkce_verifier={pkce_verifier}");
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&set_uri)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = extract_cookie(&response);
+
+        // Hit callback
+        let callback_uri = format!("/auth/callback?code=test-code&state={csrf}");
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&callback_uri)
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::TEMPORARY_REDIRECT,
+            "expected redirect after successful callback"
+        );
+
+        // Extract the new cookie (session was cycled)
+        let new_cookie = extract_cookie(&response);
+
+        // Verify session is authenticated via /auth/status
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/status")
+                    .header("cookie", &new_cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(json["authenticated"], true);
+        assert_eq!(json["person"]["sub"], "test-user-id");
+        assert_eq!(json["person"]["email"], "test@example.com");
+    }
+
+    #[tokio::test]
+    async fn callback_error_from_idp_returns_403() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/callback?error=access_denied&error_description=User%20denied&state=some-csrf")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn callback_csrf_mismatch_returns_400() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let app = test_app(state);
+
+        // Set session with one CSRF
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test/set-session?csrf=correct-csrf&nonce=n&pkce_verifier=p")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let cookie = extract_cookie(&response);
+
+        // Callback with wrong CSRF
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/callback?code=test-code&state=wrong-csrf")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn callback_missing_code_returns_400() {
+        let client = test_oidc_client("https://idp.test.example");
+        let state = test_state_with_oidc(client, None);
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/callback?state=some-csrf")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn callback_missing_required_role_returns_403() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        let nonce = "test-nonce-role";
+        let csrf = "test-csrf-role";
+        // Token has "viewer" role but NOT "allowed-user"
+        let id_token = build_id_token(nonce, &["viewer"]);
+        let access_token = build_access_token(&["viewer"]);
+        let token_body = build_token_response_json(&id_token, &access_token);
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/token"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&token_body)
+                    .insert_header("content-type", "application/json"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = test_oidc_client(&mock_server.uri());
+        let state = test_state_with_oidc(client, None);
+
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        let app = Router::new()
+            .route("/auth/callback", get(callback))
+            .route("/test/set-session", get(set_session_handler))
+            .with_state(state)
+            .layer(session_layer);
+
+        // Pre-populate session
+        let set_uri =
+            format!("/test/set-session?csrf={csrf}&nonce={nonce}&pkce_verifier=test-pkce");
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&set_uri)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let cookie = extract_cookie(&response);
+
+        // Callback with valid code but wrong roles
+        let callback_uri = format!("/auth/callback?code=test-code&state={csrf}");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&callback_uri)
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn callback_without_oidc_client_returns_501() {
+        let state = test_state_no_oidc();
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/callback?code=test&state=csrf")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
     }
 }
