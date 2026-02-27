@@ -107,7 +107,7 @@ git fetch origin <baseRefName> <headRefName>
 git rev-list --count origin/<headRefName>..origin/<baseRefName>
 ```
 
-If the count is > 0, the PR needs a rebase. Proceed to step 2c.
+If the count is > 0, the PR needs a rebase (likely because a previous PR was just merged into the base branch). Proceed to step 2c.
 If the count is 0, the PR is up-to-date. Skip to step 2d.
 
 ### Step 2c: Rebase via Dependabot Comment
@@ -130,13 +130,27 @@ git rev-list --count origin/<headRefName>..origin/<baseRefName>
 - If after **10 minutes** (10 checks) the rebase still hasn't completed → log a warning and skip this PR (move to next)
 - If the PR is closed or the branch is gone → log and skip
 
-### Step 2d: Merge the PR
+### Step 2d: Merge the PR and Wait for Completion
 
 ```bash
 gh pr merge <NUMBER> --squash --auto
 ```
 
 Use `--squash` to keep the git history clean. Use `--auto` to let GitHub merge once all checks pass.
+
+**IMPORTANT: Wait until the PR is actually merged before moving to the next PR.** Merging one PR changes `main`, which makes other Dependabot PRs outdated. If you move on too early, the next PR may fail to merge or produce conflicts.
+
+Poll every **30 seconds** until the PR state is `MERGED`:
+
+```bash
+gh pr view <NUMBER> --json state --jq '.state'
+```
+
+- If state is `MERGED` → log and move to next PR
+- If state is `CLOSED` (without merge) → log warning and move to next PR
+- If after **15 minutes** (30 checks) the PR still hasn't merged → log a warning and move to next PR (auto-merge remains enabled, GitHub will handle it eventually)
+
+After confirming the merge, do a brief `sleep 10` before starting the next PR to allow GitHub to update the remaining PR branches.
 
 Log: `"Merged PR #<NUMBER>: <title>"`
 
@@ -187,8 +201,9 @@ After processing all PRs, print a summary:
 
 ## Important Notes
 
-- Process PRs **one at a time** — never merge multiple simultaneously as rebasing one may conflict with another
+- Process PRs **strictly one at a time** — do NOT start processing the next PR until the current one is confirmed `MERGED`. Each merge changes the base branch, making other PRs outdated
 - Always wait for CI to be green before merging
 - When in doubt, request changes — a human can always override
 - The `@dependabot rebase` command is the standard way to trigger a rebase; Dependabot responds with a reaction emoji and rebases asynchronously
-- After merging one PR, do a brief `sleep 10` before starting the next to allow GitHub to process webhooks and trigger Dependabot updates on remaining PRs
+- After confirming a merge, do a brief `sleep 10` before starting the next PR to allow GitHub to process webhooks and update remaining PR branches
+- Expect each subsequent PR to need a rebase after the previous one merges — this is normal and handled by step 2b/2c
