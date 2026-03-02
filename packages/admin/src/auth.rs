@@ -1146,6 +1146,11 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             "missing client_id"
         );
         assert!(location.contains("scope=openid"), "missing scope=openid");
+        assert!(location.contains("redirect_uri="), "missing redirect_uri");
+        assert!(
+            location.contains("%2Fauth%2Fcallback"),
+            "redirect_uri should point to /auth/callback"
+        );
     }
 
     #[tokio::test]
@@ -1389,6 +1394,16 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             StatusCode::TEMPORARY_REDIRECT,
             "expected redirect after successful callback"
         );
+        assert_eq!(
+            response
+                .headers()
+                .get("location")
+                .expect("location header")
+                .to_str()
+                .expect("location str"),
+            "https://admin.test.example/",
+            "should redirect to base URL after login"
+        );
 
         // Extract the new cookie (session was cycled)
         let new_cookie = extract_cookie(&response);
@@ -1568,5 +1583,222 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    }
+
+    #[tokio::test]
+    async fn callback_token_endpoint_error_returns_500() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        let nonce = Uuid::new_v4().to_string();
+        let csrf = Uuid::new_v4().to_string();
+
+        // Token endpoint returns HTTP 500
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/token"))
+            .respond_with(wiremock::ResponseTemplate::new(500))
+            .mount(&mock_server)
+            .await;
+
+        let client = test_oidc_client(&mock_server.uri());
+        let state = test_state_with_oidc(client, None);
+
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        let app = Router::new()
+            .route("/auth/callback", get(callback))
+            .route("/test/set-session", get(set_session_handler))
+            .with_state(state)
+            .layer(session_layer);
+
+        let set_uri = format!(
+            "/test/set-session?csrf={}&nonce={}&pkce_verifier=test-pkce",
+            csrf, nonce
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&set_uri)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let cookie = extract_cookie(&response);
+
+        let callback_uri = format!("/auth/callback?code=test-code&state={csrf}");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&callback_uri)
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "token endpoint failure should return 500"
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_nonce_mismatch_returns_error() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        let session_nonce = Uuid::new_v4().to_string();
+        let token_nonce = Uuid::new_v4().to_string(); // Different nonce in the ID token
+        let csrf = Uuid::new_v4().to_string();
+        let id_token = build_id_token(&token_nonce);
+        let access_token = build_access_token(&["allowed-user"]);
+        let token_body = build_token_response_json(&id_token, &access_token);
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/token"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&token_body)
+                    .insert_header("content-type", "application/json"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = test_oidc_client(&mock_server.uri());
+        let state = test_state_with_oidc(client, None);
+
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        let app = Router::new()
+            .route("/auth/callback", get(callback))
+            .route("/test/set-session", get(set_session_handler))
+            .with_state(state)
+            .layer(session_layer);
+
+        // Pre-populate session with a DIFFERENT nonce than what's in the token
+        let set_uri = format!(
+            "/test/set-session?csrf={}&nonce={}&pkce_verifier=test-pkce",
+            csrf, session_nonce
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&set_uri)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let cookie = extract_cookie(&response);
+
+        let callback_uri = format!("/auth/callback?code=test-code&state={csrf}");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&callback_uri)
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "nonce mismatch should fail ID token verification"
+        );
+    }
+
+    #[tokio::test]
+    async fn callback_old_session_cookie_is_invalidated() {
+        let mock_server = wiremock::MockServer::start().await;
+
+        let nonce = Uuid::new_v4().to_string();
+        let csrf = Uuid::new_v4().to_string();
+        let id_token = build_id_token(&nonce);
+        let access_token = build_access_token(&["allowed-user"]);
+        let token_body = build_token_response_json(&id_token, &access_token);
+
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/token"))
+            .respond_with(
+                wiremock::ResponseTemplate::new(200)
+                    .set_body_json(&token_body)
+                    .insert_header("content-type", "application/json"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let client = test_oidc_client(&mock_server.uri());
+        let state = test_state_with_oidc(client, None);
+
+        let store = MemoryStore::default();
+        let session_layer = SessionManagerLayer::new(store);
+
+        let app = Router::new()
+            .route("/auth/callback", get(callback))
+            .route("/auth/status", get(status))
+            .route("/test/set-session", get(set_session_handler))
+            .with_state(state)
+            .layer(session_layer);
+
+        // Pre-populate session
+        let set_uri = format!(
+            "/test/set-session?csrf={}&nonce={}&pkce_verifier=test-pkce",
+            csrf, nonce
+        );
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&set_uri)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        let old_cookie = extract_cookie(&response);
+
+        // Perform callback (this cycles the session ID)
+        let callback_uri = format!("/auth/callback?code=test-code&state={csrf}");
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(&callback_uri)
+                    .header("cookie", &old_cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+
+        // The OLD cookie should no longer yield an authenticated session
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/auth/status")
+                    .header("cookie", &old_cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(
+            json["authenticated"], false,
+            "old pre-auth cookie must not be authenticated after session cycle"
+        );
     }
 }
