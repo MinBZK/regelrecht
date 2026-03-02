@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-03-02
-**Authors:** regelrecht team
+**Authors:** Anne Schuth, Tim
 
 ## Context
 
@@ -14,20 +14,24 @@ The law processing pipeline (#111) provides queue-based harvesting and LLM enric
 
 These APIs are needed by WIAT (impact analysis) and the frontend editor (live conversion preview).
 
+**Prerequisite:** `packages/pipeline/` does not exist yet — it is being built in #111. The registry and execution APIs (Phases 0-1) can be implemented independently. The ad-hoc conversion API (Phase 2) is blocked until #111 delivers a library-compatible pipeline crate.
+
+## Decision
+
+Add `packages/service/` as an Axum HTTP service that wraps the pipeline library and engine.
+
 ### Relationship to pipeline (#111)
 
 This RFC does **not** replace the pipeline — it builds on top of it:
 
 | Component | Owner | Scope |
 |-----------|-------|-------|
-| **Pipeline** (`packages/pipeline/`) | #111 (Tim) | Harvest + enrich queue, PostgreSQL job state, worker loops |
+| **Pipeline** (`packages/pipeline/`) | #111, planned | Harvest + enrich queue, PostgreSQL job state, worker loops |
 | **Service** (`packages/service/`) | This RFC | HTTP API layer: registry, execution, ad-hoc conversion |
 | **Engine** (`packages/engine/`) | Existing | Law evaluation library (used in-process by service) |
 | **Harvester** (`packages/harvester/`) | Existing | BWB scraper CLI (text-only YAML) |
 
 The service uses `pipeline/` as a library for job submission and status queries. It adds the HTTP endpoints that external consumers need.
-
-**Prerequisite:** `packages/pipeline/` does not exist yet — it is being built in #111. The registry and execution APIs (Phases 0-1) can be implemented independently. The ad-hoc conversion API (Phase 2) is blocked until #111 delivers a library-compatible pipeline crate.
 
 ### Component boundaries
 
@@ -47,24 +51,22 @@ The service uses `pipeline/` as a library for job submission and status queries.
 
 `draft-conversions` is periodically rebased onto `main`. The pipeline creates one PR per law for review.
 
-## Decision
-
-Add `packages/service/` as an Axum HTTP service that wraps the pipeline library and engine:
-
 ### 1. Registry API
 
-Serve law YAML from the `regulation/` directory on disk. Consumers don't need to know about branches — the service resolves internally (main first, then draft-conversions).
+**Phase 1 (filesystem only):** Serve law YAML from `regulation/nl/` on disk via filesystem walk. No branch resolution — serves whatever is on the deployed branch.
 
-Phase 1 reads from the local filesystem (walk `regulation/nl/`). Multi-branch resolution (main vs draft-conversions) requires either git worktrees or `libgit2` — deferred to Phase 2 when the pipeline lands.
+**Target state (Phase 2+):** Multi-branch resolution (main first, then draft-conversions) via git worktrees or `libgit2`, added when the pipeline lands. Consumers won't need to know about branches — the service resolves internally.
 
 ```
-GET  /api/v1/laws                    # List all laws
+GET  /api/v1/laws                    # List all laws (?offset=&limit=)
 GET  /api/v1/laws/{id}               # Metadata (?date=)
 GET  /api/v1/laws/{id}/yaml          # YAML content (best available version)
 GET  /api/v1/laws/{id}/versions      # All versions
 ```
 
-`{id}` accepts slug (`wet_op_de_zorgtoeslag`) or BWB-ID (`BWBR0018451`). Quality indicator via headers:
+The list endpoint supports pagination: `?offset=0&limit=50` (default limit 50, max 200).
+
+`{id}` accepts slug (`wet_op_de_zorgtoeslag`) or BWB-ID (`BWBR0018451`). Slugs contain only lowercase letters and underscores; BWB-IDs match the pattern `BWBR\d{7}`. The service disambiguates by format. Quality indicator via headers:
 
 ```
 X-Quality: reviewed       # or "draft" or "text-only"
@@ -90,9 +92,12 @@ POST /api/v1/validate                # Validate YAML against schema
     "toetsingsinkomen": 25000,
     "aanvrager_is_alleenstaande": true
   },
-  "calculation_date": "2025-01-01"
+  "calculation_date": "2025-01-01",
+  "trace": false
 }
 ```
+
+Set `"trace": true` to include the full evaluation trace in the response (for debugging).
 
 **Execute response:**
 ```json
@@ -104,9 +109,7 @@ POST /api/v1/validate                # Validate YAML against schema
 }
 ```
 
-Include `"trace": true` in the request to get the full evaluation trace in the response (for debugging).
-
-**Validate request:**
+**Validate request** (subject to 1 MB body size limit):
 ```json
 {
   "yaml": "..."
@@ -138,6 +141,8 @@ POST /api/v1/convert/jobs
 }
 ```
 
+**Request size limit:** 1 MB per request body. This covers the largest single-law texts with margin.
+
 Diff-aware: if all three fields are provided, the LLM gets before-context and only adjusts changed articles.
 
 **Response: `202 Accepted`**
@@ -157,22 +162,38 @@ GET /api/v1/convert/jobs/{job_id}
 ```json
 {
   "job_id": "abc-123",
-  "status": "generating",           // pending|generating|validating|repairing|testing|completed|failed
+  "status": "generating",
   "progress": "Batch 2/4 done",
   "iteration": 1,
   "result_yaml": null               // populated on completed
 }
 ```
 
+**Status values:**
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Job queued, not yet started |
+| `generating` | LLM is producing machine-readable YAML |
+| `validating` | Output is being validated against the JSON schema |
+| `repairing` | Validation failed; LLM is retrying with error feedback |
+| `testing` | Running BDD/scenario tests against the generated output |
+| `completed` | Conversion succeeded; `result_yaml` is populated |
+| `failed` | Conversion failed after max retries; `error` field has details |
+
+**Job lifecycle:** Ad-hoc jobs are ephemeral (in-memory). Completed and failed jobs are retained for 1 hour, then evicted. Maximum 50 concurrent jobs; requests beyond this limit receive `429 Too Many Requests`.
+
 SSE for real-time progress is a later addition (when the editor needs it).
 
 ### Engine concurrency
 
-`LawExecutionService` is `Send`-safe — the struct only contains `RuleResolver` and `DataSourceRegistry` (no `Rc`). The `Rc<RefCell<TraceBuilder>>` used internally is created per-evaluation in `ResolutionContext`, not stored on the service.
+The `LawExecutionService` struct itself is `Send` (it only holds `RuleResolver` with `HashMap` fields, and `DataSourceRegistry` with `Vec<Box<dyn DataSource>>` where `DataSource: Send + Sync`). However, evaluation methods internally create `Rc<RefCell<TraceBuilder>>` per call, which is not `Send`. This means evaluation **must not be held across `.await` points** — it must run to completion on a single thread.
 
 Pattern for concurrent access in async Axum handlers:
-- **`RwLock<LawExecutionService>`** — read-lock for `evaluate_law_output` (multiple readers), write-lock for `load_law` (exclusive)
-- **`spawn_blocking`** — engine evaluation is CPU-bound; wrap in `tokio::task::spawn_blocking`
+- **`Arc<RwLock<LawExecutionService>>`** — read-lock for `evaluate_law_output` (multiple readers), write-lock for `load_law` (exclusive)
+- **`spawn_blocking`** — required because (1) evaluation is CPU-bound and (2) the per-call `Rc<RefCell>` is not `Send` across await points
+
+Law reloading (write-lock) happens only on startup and when the registry detects file changes. During normal operation, all requests take read-locks and run concurrently.
 
 ### Error handling
 
@@ -189,21 +210,34 @@ All error responses use [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) Probl
 
 Standard error codes:
 
-| Status | When |
-|--------|------|
-| `400` | Invalid request body, missing required fields |
-| `401` | Missing or invalid API key |
-| `404` | Law not found, job not found |
-| `422` | YAML validation failed, engine evaluation error |
-| `500` | Internal server error |
-| `503` | Pipeline unavailable (for conversion endpoints) |
+| Status | When | Phase |
+|--------|------|-------|
+| `400` | Invalid request body, missing required fields, request too large | All |
+| `401` | Missing or invalid API key | All |
+| `404` | Law not found, job not found | All |
+| `422` | YAML validation failed, engine evaluation error | All |
+| `429` | Too many concurrent conversion jobs | 2+ |
+| `500` | Internal server error | All |
+| `503` | Pipeline unavailable (conversion endpoints only) | 2+ |
 
 ### Authentication
 
 - **API key via `X-API-Key` header** — simple, sufficient for server-to-server and editor
+- Single shared key, configured via `SERVICE_API_KEY` environment variable
 - No user authentication needed (not multi-tenant)
-- Key management and rotation are out of scope for the MVP
-- LLM API keys via environment variables
+- Key rotation: redeploy with new env var; no hot-reload needed for MVP
+- LLM API keys via separate environment variables (`LLM_API_KEY`)
+
+### CORS
+
+The frontend editor runs on a different RIG deployment than the service. CORS headers are required:
+- `Access-Control-Allow-Origin`: configured via `CORS_ALLOWED_ORIGINS` env var (editor URL)
+- `Access-Control-Allow-Headers`: `X-API-Key, Content-Type`
+
+### Request limits
+
+- **Body size:** 1 MB max for all POST endpoints (covers full law texts with margin)
+- **Rate limiting:** conversion endpoints (`/convert/jobs`) are rate-limited to 10 requests/minute per API key (LLM calls are expensive). Registry and execution endpoints are not rate-limited in the MVP.
 
 ### Deployment
 
@@ -225,7 +259,7 @@ Standard error codes:
 | Tradeoff | Mitigation |
 |----------|------------|
 | No SSE in first version | Polling is sufficient; add SSE when editor needs real-time progress |
-| Ad-hoc jobs are ephemeral (in-memory) | Acceptable: resubmit after restart; pipeline queue jobs are persistent in PostgreSQL |
+| Ad-hoc jobs are ephemeral (in-memory) | Acceptable: 1h TTL, max 50 concurrent, resubmit after restart; pipeline queue jobs are persistent in PostgreSQL |
 | Service adds another crate | Thin layer; most logic lives in pipeline/ and engine/ |
 
 ### Alternatives Considered
@@ -273,7 +307,7 @@ Standard error codes:
 
 ```
 packages/
-  pipeline/          # EXISTING (#111): queue, harvest, enrich, PostgreSQL
+  pipeline/          # PLANNED (#111): queue, harvest, enrich, PostgreSQL
   service/           # NEW (this RFC): HTTP API layer
     src/
       main.rs        # Axum server startup
@@ -288,7 +322,7 @@ packages/
         wrapper.rs   # RwLock<LawExecutionService> + spawn_blocking
 ```
 
-The service depends on `pipeline/` as a library (for job submission and status) and `engine/` (for in-process execution).
+In Phases 0-1, the service depends only on `engine/` (for in-process execution). From Phase 2, it also depends on `pipeline/` as a library (for job submission and status).
 
 ### Phases
 
@@ -296,7 +330,7 @@ The service depends on `pipeline/` as a library (for job submission and status) 
 
 **Phase 0: Scaffold** — `packages/service/` with Cargo.toml, Axum skeleton, API key auth, health endpoint
 
-**Phase 1: Registry + Execution** — Git-based law lookup, engine wrapper (RwLock + spawn_blocking), registry + execute endpoints
+**Phase 1: Registry + Execution** — Filesystem-based law lookup (no branch resolution), engine wrapper (Arc<RwLock> + spawn_blocking), registry + execute endpoints
 
 **Phase 2: Ad-hoc Conversion** — Wire pipeline enrichment as library, `POST /convert/jobs` + polling, diff-aware mode. Blocked until #111 delivers a library-compatible pipeline crate.
 
