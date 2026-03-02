@@ -2,9 +2,9 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::Deserialize;
-use sqlx::PgPool;
 
 use crate::models::{Job, LawEntry, PaginatedResponse};
+use crate::state::AppState;
 
 /// Validate a sort column against an allowlist. Returns `None` if not allowed.
 fn validated_sort_column<'a>(
@@ -57,9 +57,10 @@ const ALLOWED_SORT_COLUMNS_LAW: &[&str] = &[
 ];
 
 pub async fn list_law_entries(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Query(params): Query<LawEntriesQuery>,
 ) -> Result<Json<PaginatedResponse<LawEntry>>, (StatusCode, String)> {
+    let pool = &state.pool;
     let limit = clamped_limit(params.limit);
     let offset = clamped_offset(params.offset);
 
@@ -76,7 +77,7 @@ pub async fn list_law_entries(
     let total: i64 = if let Some(ref status) = params.status {
         sqlx::query_scalar("SELECT COUNT(*) FROM law_entries WHERE status::text = $1")
             .bind(status)
-            .fetch_one(&pool)
+            .fetch_one(pool)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "count query failed");
@@ -87,7 +88,7 @@ pub async fn list_law_entries(
             })?
     } else {
         sqlx::query_scalar("SELECT COUNT(*) FROM law_entries")
-            .fetch_one(&pool)
+            .fetch_one(pool)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "count query failed");
@@ -121,7 +122,7 @@ pub async fn list_law_entries(
             .bind(status)
             .bind(limit)
             .bind(offset)
-            .fetch_all(&pool)
+            .fetch_all(pool)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "data query failed");
@@ -134,7 +135,7 @@ pub async fn list_law_entries(
         sqlx::query_as::<_, LawEntry>(&query_str)
             .bind(limit)
             .bind(offset)
-            .fetch_all(&pool)
+            .fetch_all(pool)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "data query failed");
@@ -179,9 +180,10 @@ const ALLOWED_SORT_COLUMNS_JOB: &[&str] = &[
 ];
 
 pub async fn list_jobs(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Query(params): Query<JobsQuery>,
 ) -> Result<Json<PaginatedResponse<Job>>, (StatusCode, String)> {
+    let pool = &state.pool;
     let limit = clamped_limit(params.limit);
     let offset = clamped_offset(params.offset);
 
@@ -225,7 +227,7 @@ pub async fn list_jobs(
         count_query = count_query.bind(job_type);
     }
 
-    let total: i64 = count_query.fetch_one(&pool).await.map_err(|e| {
+    let total: i64 = count_query.fetch_one(pool).await.map_err(|e| {
         tracing::error!(error = %e, "count query failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -254,7 +256,7 @@ pub async fn list_jobs(
     }
     data_query = data_query.bind(limit).bind(offset);
 
-    let data: Vec<Job> = data_query.fetch_all(&pool).await.map_err(|e| {
+    let data: Vec<Job> = data_query.fetch_all(pool).await.map_err(|e| {
         tracing::error!(error = %e, "data query failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,

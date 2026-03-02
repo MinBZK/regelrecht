@@ -5,6 +5,12 @@
 # Vulnerabilities are denied by default in v0.19
 # Only warn on unmaintained crates in our own workspace deps
 unmaintained = "workspace"
+ignore = [
+    # RUSTSEC-2023-0071: Marvin Attack timing sidechannel in `rsa` crate.
+    # Transitive dep via openidconnect -> rsa; no patched version available.
+    # We don't use RSA directly; the OIDC flow uses HTTPS transport security.
+    "RUSTSEC-2023-0071",
+]
 
 [licenses]
 # Only explicitly allowed licenses are permitted

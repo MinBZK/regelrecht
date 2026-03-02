@@ -337,6 +337,29 @@ function renderAll() {
 
 
 // ---------------------------------------------------------------------------
+// Authentication
+// ---------------------------------------------------------------------------
+
+async function checkAuth() {
+  try {
+    const response = await fetch('/auth/status');
+    if (!response.ok) return { authenticated: false, oidc_configured: false };
+    return await response.json();
+  } catch {
+    return { authenticated: false, oidc_configured: false };
+  }
+}
+
+function setupLogout() {
+  const nav = $('rr-top-navigation-bar');
+  if (!nav) return;
+  nav.addEventListener('account-click', (e) => {
+    e.preventDefault();
+    window.location.href = '/auth/logout';
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
 
@@ -363,6 +386,11 @@ async function fetchData() {
 
   try {
     const response = await fetch(url);
+
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
@@ -451,7 +479,23 @@ function onNextPage() {
 // Initialization
 // ---------------------------------------------------------------------------
 
-function init() {
+async function init() {
+  const authStatus = await checkAuth();
+
+  if (authStatus.oidc_configured && !authStatus.authenticated) {
+    window.location.href = '/auth/login';
+    return;
+  }
+
+  if (authStatus.authenticated && authStatus.person) {
+    const nav = $('rr-top-navigation-bar');
+    if (nav) {
+      const label = authStatus.person.name || authStatus.person.email || 'Account';
+      nav.setAttribute('utility-account-label', label);
+    }
+    setupLogout();
+  }
+
   // Bind pagination buttons
   $('#pagination-prev').addEventListener('click', onPrevPage);
   $('#pagination-next').addEventListener('click', onNextPage);
