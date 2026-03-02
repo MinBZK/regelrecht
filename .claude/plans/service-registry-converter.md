@@ -72,21 +72,22 @@ url: https://wetten.overheid.nl/BWBR0018451/2025-01-01
 
 De API kan opzoeken via zowel slug (`wet_op_de_zorgtoeslag`), BWB-ID (`BWBR0018451`), als padpatroon.
 
-### Flow
+### Flow: twee gescheiden transformaties
 
 ```
-[Harvester] ──── commit tekst-only YAML ────→ main
-                                                 │
-                                          trigger conversie-job
-                                                 │
-                                                 ▼
-[Converter queue] ── LLM + engine validatie ──→ draft-conversions
-                                                 │
-                                          mens reviewt diff
-                                                 │
-                                                 ▼
-                                    cherry-pick naar main
+                    STAP 1: Scrapen                         STAP 2: Machine-readable maken
+                    (harvester)                             (converter)
+
+[overheid.nl]  ── XML parsen ──→  tekst-only YAML  ── LLM + engine validatie ──→  YAML + machine_readable
+  (BWB/CVDR)                      commit op main                                   commit op draft-conversions
+                                                                                          │
+                                                                                   mens reviewt PR
+                                                                                          │
+                                                                                          ▼
+                                                                              merge naar main
 ```
+
+De harvester weet niets van machine-readability. De converter weet niets van scrapen. Ze communiceren via git: de converter detecteert nieuwe tekst-only YAML op `main` via `git diff`.
 
 ### Waarom git en niet een database
 
