@@ -946,7 +946,9 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             .to_string()
     }
 
-    fn build_id_token(nonce: &str, _roles: &[&str]) -> String {
+    /// Build a signed ID token for testing. Roles are intentionally absent here;
+    /// Keycloak puts `realm_access` in the access token only (see `build_access_token`).
+    fn build_id_token(nonce: &str) -> String {
         use rsa::pkcs1v15::SigningKey;
         use rsa::signature::SignatureEncoding;
         use rsa::signature::Signer;
@@ -1324,7 +1326,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
         let nonce = nonce.as_str();
         let csrf = Uuid::new_v4().to_string();
         let csrf = csrf.as_str();
-        let id_token = build_id_token(nonce, &["allowed-user"]);
+        let id_token = build_id_token(nonce);
         let access_token = build_access_token(&["allowed-user"]);
         let token_body = build_token_response_json(&id_token, &access_token);
 
@@ -1493,7 +1495,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
         let csrf = Uuid::new_v4().to_string();
         let csrf = csrf.as_str();
         // Token has "viewer" role but NOT "allowed-user"
-        let id_token = build_id_token(nonce, &["viewer"]);
+        let id_token = build_id_token(nonce);
         let access_token = build_access_token(&["viewer"]);
         let token_body = build_token_response_json(&id_token, &access_token);
 
