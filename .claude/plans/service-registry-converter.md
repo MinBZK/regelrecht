@@ -6,6 +6,19 @@ De conversie van wettekst naar machine-executable YAML zit nu in WIAT (https://g
 
 ---
 
+## Componentafbakening
+
+| Component | Verantwoordelijkheid | Input | Output | Status |
+|-----------|---------------------|-------|--------|--------|
+| **Harvester** | Scrapen: wettekst ophalen van overheid.nl en opslaan als tekst-only YAML | BWB/CVDR bronnen (overheid.nl) | Tekst-only YAML op `main` | Bestaand (`packages/harvester/`) |
+| **Converter** | Machine-readable maken: tekst-only YAML omzetten naar executeerbare YAML via LLM + engine validatie | Tekst-only YAML (van `main`) | YAML + `machine_readable` secties op `draft-conversions` | **Nieuw** (deze RFC) |
+| **Engine** | Uitvoeren: machine-readable YAML evalueren met parameters | YAML + parameters + datum | Berekend resultaat | Bestaand (`packages/engine/`) |
+| **Service** | API: registry, execution en conversion endpoints aanbieden | HTTP requests | JSON/YAML responses | **Nieuw** (deze RFC) |
+
+De harvester weet niets van machine-readability — het is een scraper die wettekst in het juiste YAML-formaat zet. De converter is een apart proces dat daar bovenop machine_readable secties genereert.
+
+---
+
 ## Kernprincipes
 
 1. **Git is de registry** — geen database voor artefacten. Git repo met YAML files. Branches voor kwaliteitsniveaus.

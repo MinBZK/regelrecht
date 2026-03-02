@@ -20,6 +20,17 @@ De bestaande codebase heeft al:
 
 Wat ontbreekt is een service die dit geheel aanbiedt als API, en een converter die LLM-conversie automatiseert.
 
+### Componentafbakening
+
+| Component | Verantwoordelijkheid | Input | Output |
+|-----------|---------------------|-------|--------|
+| **Harvester** (bestaand) | Scrapen: wettekst ophalen van overheid.nl, opslaan als tekst-only YAML | BWB/CVDR bronnen | Tekst-only YAML op `main` |
+| **Converter** (nieuw) | Machine-readable maken via LLM + engine validatie | Tekst-only YAML | YAML + `machine_readable` op `draft-conversions` |
+| **Engine** (bestaand) | Executie: machine-readable YAML evalueren | YAML + parameters + datum | Berekend resultaat |
+| **Service** (nieuw) | API: registry, execution en conversion endpoints | HTTP requests | JSON/YAML responses |
+
+De harvester weet niets van machine-readability — het is een scraper die wettekst in het juiste YAML-formaat zet. De converter is een apart proces dat daar bovenop `machine_readable` secties genereert.
+
 ### Eisen
 
 - Alles in Rust (past bij bestaande codebase)
