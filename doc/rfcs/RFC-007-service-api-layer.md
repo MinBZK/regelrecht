@@ -27,6 +27,8 @@ This RFC does **not** replace the pipeline — it builds on top of it:
 
 The service uses `pipeline/` as a library for job submission and status queries. It adds the HTTP endpoints that external consumers need.
 
+**Prerequisite:** `packages/pipeline/` does not exist yet — it is being built in #111. The registry and execution APIs (Phases 0-1) can be implemented independently. The ad-hoc conversion API (Phase 2) is blocked until #111 delivers a library-compatible pipeline crate.
+
 ### Component boundaries
 
 | Component | Does | Does not |
@@ -51,7 +53,9 @@ Add `packages/service/` as an Axum HTTP service that wraps the pipeline library 
 
 ### 1. Registry API
 
-Serve law YAML from the git repo. Consumers don't need to know about branches — the service resolves internally (main first, then draft-conversions).
+Serve law YAML from the `regulation/` directory on disk. Consumers don't need to know about branches — the service resolves internally (main first, then draft-conversions).
+
+Phase 1 reads from the local filesystem (walk `regulation/nl/`). Multi-branch resolution (main vs draft-conversions) requires either git worktrees or `libgit2` — deferred to Phase 2 when the pipeline lands.
 
 ```
 GET  /api/v1/laws                    # List all laws
@@ -75,6 +79,46 @@ Run the engine in-process. No subprocess overhead.
 POST /api/v1/execute                 # Evaluate law output
 POST /api/v1/execute/scenarios       # Run test scenarios
 POST /api/v1/validate                # Validate YAML against schema
+```
+
+**Execute request:**
+```json
+{
+  "law_id": "wet_op_de_zorgtoeslag",
+  "output": "zorgtoeslag",
+  "parameters": {
+    "toetsingsinkomen": 25000,
+    "aanvrager_is_alleenstaande": true
+  },
+  "calculation_date": "2025-01-01"
+}
+```
+
+**Execute response:**
+```json
+{
+  "law_id": "wet_op_de_zorgtoeslag",
+  "output": "zorgtoeslag",
+  "result": { "zorgtoeslag": 111.0 },
+  "trace": null
+}
+```
+
+Include `"trace": true` in the request to get the full evaluation trace in the response (for debugging).
+
+**Validate request:**
+```json
+{
+  "yaml": "..."
+}
+```
+
+**Validate response:**
+```json
+{
+  "valid": true,
+  "errors": []
+}
 ```
 
 ### 3. Ad-hoc Conversion API
@@ -110,6 +154,16 @@ Diff-aware: if all three fields are provided, the LLM gets before-context and on
 GET /api/v1/convert/jobs/{job_id}
 ```
 
+```json
+{
+  "job_id": "abc-123",
+  "status": "generating",           // pending|generating|validating|repairing|testing|completed|failed
+  "progress": "Batch 2/4 done",
+  "iteration": 1,
+  "result_yaml": null               // populated on completed
+}
+```
+
 SSE for real-time progress is a later addition (when the editor needs it).
 
 ### Engine concurrency
@@ -120,10 +174,35 @@ Pattern for concurrent access in async Axum handlers:
 - **`RwLock<LawExecutionService>`** — read-lock for `evaluate_law_output` (multiple readers), write-lock for `load_law` (exclusive)
 - **`spawn_blocking`** — engine evaluation is CPU-bound; wrap in `tokio::task::spawn_blocking`
 
+### Error handling
+
+All error responses use [RFC 7807](https://www.rfc-editor.org/rfc/rfc7807) Problem Details format:
+
+```json
+{
+  "type": "https://regelrecht.nl/errors/law-not-found",
+  "title": "Law not found",
+  "status": 404,
+  "detail": "No law with id 'wet_op_de_foo' found in registry"
+}
+```
+
+Standard error codes:
+
+| Status | When |
+|--------|------|
+| `400` | Invalid request body, missing required fields |
+| `401` | Missing or invalid API key |
+| `404` | Law not found, job not found |
+| `422` | YAML validation failed, engine evaluation error |
+| `500` | Internal server error |
+| `503` | Pipeline unavailable (for conversion endpoints) |
+
 ### Authentication
 
 - **API key via `X-API-Key` header** — simple, sufficient for server-to-server and editor
 - No user authentication needed (not multi-tenant)
+- Key management and rotation are out of scope for the MVP
 - LLM API keys via environment variables
 
 ### Deployment
@@ -146,7 +225,7 @@ Pattern for concurrent access in async Axum handlers:
 | Tradeoff | Mitigation |
 |----------|------------|
 | No SSE in first version | Polling is sufficient; add SSE when editor needs real-time progress |
-| Ad-hoc jobs are ephemeral | Acceptable: resubmit after restart; pipeline queue jobs are persistent |
+| Ad-hoc jobs are ephemeral (in-memory) | Acceptable: resubmit after restart; pipeline queue jobs are persistent in PostgreSQL |
 | Service adds another crate | Thin layer; most logic lives in pipeline/ and engine/ |
 
 ### Alternatives Considered
@@ -188,9 +267,43 @@ Pattern for concurrent access in async Axum handlers:
 4. On completion: show machine_readable diff before/after
 ```
 
+## Implementation Notes
+
+### Crate structure
+
+```
+packages/
+  pipeline/          # EXISTING (#111): queue, harvest, enrich, PostgreSQL
+  service/           # NEW (this RFC): HTTP API layer
+    src/
+      main.rs        # Axum server startup
+      config.rs      # Environment-based config
+
+      api/
+        registry.rs  # GET /laws/...
+        execution.rs # POST /execute, /validate
+        conversion.rs# POST /convert/jobs, GET /convert/jobs/{id}
+
+      engine/
+        wrapper.rs   # RwLock<LawExecutionService> + spawn_blocking
+```
+
+The service depends on `pipeline/` as a library (for job submission and status) and `engine/` (for in-process execution).
+
+### Phases
+
+> The pipeline (#111) handles its own phasing. These phases are for the service layer only.
+
+**Phase 0: Scaffold** — `packages/service/` with Cargo.toml, Axum skeleton, API key auth, health endpoint
+
+**Phase 1: Registry + Execution** — Git-based law lookup, engine wrapper (RwLock + spawn_blocking), registry + execute endpoints
+
+**Phase 2: Ad-hoc Conversion** — Wire pipeline enrichment as library, `POST /convert/jobs` + polling, diff-aware mode. Blocked until #111 delivers a library-compatible pipeline crate.
+
+**Phase 3: WIAT integration** — `RegelrechtClient` in WIAT (replaces `regelrecht_generate.py`)
+
 ## References
 
 - [#111 Law Processing Pipeline](https://github.com/MinBZK/regelrecht-mvp/issues/111) — pipeline architecture (Tim)
 - [#114 Pipeline API & CLI](https://github.com/MinBZK/regelrecht-mvp/issues/114) — pipeline's own API (to be aligned)
 - [RFC-006: Language Choice](RFC-006-language-choice.md) — why Rust
-- [Detailed architecture plan](../../.claude/plans/service-api-layer.md) — full design document
