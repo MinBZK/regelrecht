@@ -466,6 +466,7 @@ mod tests {
     use tower::ServiceExt;
     use tower_sessions::SessionManagerLayer;
     use tower_sessions_memory_store::MemoryStore;
+    use uuid::Uuid;
 
     fn fake_jwt(payload_json: &str) -> String {
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"RS256"}"#);
@@ -1319,8 +1320,10 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
     async fn callback_success_flow() {
         let mock_server = wiremock::MockServer::start().await;
 
-        let nonce = "test-nonce-123";
-        let csrf = "test-csrf-456";
+        let nonce = Uuid::new_v4().to_string();
+        let nonce = nonce.as_str();
+        let csrf = Uuid::new_v4().to_string();
+        let csrf = csrf.as_str();
         let id_token = build_id_token(nonce, &["allowed-user"]);
         let access_token = build_access_token(&["allowed-user"]);
         let token_body = build_token_response_json(&id_token, &access_token);
@@ -1485,8 +1488,10 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
     async fn callback_missing_required_role_returns_403() {
         let mock_server = wiremock::MockServer::start().await;
 
-        let nonce = "test-nonce-role";
-        let csrf = "test-csrf-role";
+        let nonce = Uuid::new_v4().to_string();
+        let nonce = nonce.as_str();
+        let csrf = Uuid::new_v4().to_string();
+        let csrf = csrf.as_str();
         // Token has "viewer" role but NOT "allowed-user"
         let id_token = build_id_token(nonce, &["viewer"]);
         let access_token = build_access_token(&["viewer"]);
