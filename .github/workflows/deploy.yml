@@ -147,7 +147,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Preview)
         if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v2
+        uses: RijksICTGilde/zad-actions/deploy@v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -156,10 +156,13 @@ jobs:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ADMIN }}:sha-${{ steps.sha.outputs.short }}
           clone-from: regelrecht
           force-clone: false
+          comment-on-pr: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-header: '## Preview Deployment'
 
       - name: Deploy editor to ZAD (Preview)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v2
+        uses: RijksICTGilde/zad-actions/deploy@v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -191,7 +194,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Production)
         if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v2
+        uses: RijksICTGilde/zad-actions/deploy@v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -201,7 +204,7 @@ jobs:
 
       - name: Deploy editor to ZAD (Production)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v2
+        uses: RijksICTGilde/zad-actions/deploy@v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -219,7 +222,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD Deployment
-        uses: RijksICTGilde/zad-actions/cleanup@v2
+        uses: RijksICTGilde/zad-actions/cleanup@v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -236,7 +239,7 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Cleanup admin container image
-        uses: RijksICTGilde/zad-actions/cleanup@v2
+        uses: RijksICTGilde/zad-actions/cleanup@v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
