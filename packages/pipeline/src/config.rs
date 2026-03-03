@@ -8,9 +8,7 @@ use crate::error::{PipelineError, Result};
 fn resolve_database_url() -> Result<String> {
     std::env::var("DATABASE_URL")
         .or_else(|_| std::env::var("DATABASE_SERVER_FULL"))
-        .map_err(|_| {
-            PipelineError::Config("DATABASE_URL or DATABASE_SERVER_FULL not set".into())
-        })
+        .map_err(|_| PipelineError::Config("DATABASE_URL or DATABASE_SERVER_FULL not set".into()))
 }
 
 fn resolve_max_connections() -> u32 {
