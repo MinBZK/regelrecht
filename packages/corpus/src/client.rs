@@ -170,11 +170,11 @@ impl CorpusClient {
 mod tests {
     use super::*;
 
-    /// Create a bare git repo with one empty initial commit on `main`.
+    /// Create a bare git repo with one empty initial commit on `development`.
     async fn setup_bare_repo(dir: &Path) -> PathBuf {
         let bare_path = dir.join("bare.git");
         Command::new("git")
-            .args(["init", "--bare", "--initial-branch=main"])
+            .args(["init", "--bare", "--initial-branch=development"])
             .arg(&bare_path)
             .output()
             .await
@@ -193,7 +193,7 @@ mod tests {
             vec!["config", "user.name", "test"],
             vec!["config", "user.email", "test@test.nl"],
             vec!["commit", "--allow-empty", "-m", "init"],
-            vec!["push", "origin", "main"],
+            vec!["push", "origin", "development"],
         ] {
             Command::new("git")
                 .args(&args)

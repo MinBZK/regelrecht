@@ -18,7 +18,7 @@ impl CorpusConfig {
         Self {
             repo_url: repo_url.into(),
             repo_path: repo_path.into(),
-            branch: "main".into(),
+            branch: "development".into(),
             git_author_name: "regelrecht-harvester".into(),
             git_author_email: "noreply@minbzk.nl".into(),
             git_token: None,
@@ -41,7 +41,7 @@ impl CorpusConfig {
             .unwrap_or_else(|_| "/data/corpus-repo".into())
             .into();
 
-        let branch = std::env::var("CORPUS_BRANCH").unwrap_or_else(|_| "main".into());
+        let branch = std::env::var("CORPUS_BRANCH").unwrap_or_else(|_| "development".into());
 
         let git_author_name = std::env::var("CORPUS_GIT_AUTHOR_NAME")
             .unwrap_or_else(|_| "regelrecht-harvester".into());
