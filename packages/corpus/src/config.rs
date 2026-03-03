@@ -76,9 +76,10 @@ impl CorpusConfig {
     /// GitHub, GitLab, Forgejo, Gitea, and most git hosting platforms.
     pub(crate) fn authenticated_url(&self) -> String {
         match &self.git_token {
-            Some(token) if self.repo_url.starts_with("https://") => self
-                .repo_url
-                .replacen("https://", &format!("https://token:{token}@"), 1),
+            Some(token) if self.repo_url.starts_with("https://") => {
+                self.repo_url
+                    .replacen("https://", &format!("https://token:{token}@"), 1)
+            }
             _ => self.repo_url.clone(),
         }
     }
