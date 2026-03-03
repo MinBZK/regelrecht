@@ -44,8 +44,12 @@ harvester-test:
 pipeline-test:
     cd packages/pipeline && cargo test --lib
 
-# Run all tests (engine + harvester + pipeline)
-test-all: test harvester-test pipeline-test
+# Run pipeline integration tests (requires Docker for testcontainers)
+pipeline-integration-test:
+    cd packages/pipeline && cargo test --test '*'
+
+# Run all tests (engine + harvester + pipeline unit + pipeline integration)
+test-all: test harvester-test pipeline-test pipeline-integration-test
 
 # --- Mutation testing ---
 

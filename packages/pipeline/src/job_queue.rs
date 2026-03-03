@@ -188,6 +188,48 @@ where
     Ok(job)
 }
 
+/// Reap orphaned jobs stuck in 'processing' for longer than `timeout`.
+///
+/// Jobs that remain in 'processing' beyond the timeout are assumed orphaned
+/// (e.g., the worker crashed). If the job still has retries left, it is reset
+/// to 'pending'; otherwise it is marked 'failed'.
+///
+/// Returns the number of reaped jobs.
+#[tracing::instrument(skip(executor))]
+pub async fn reap_orphaned_jobs<'e, E>(executor: E, timeout: std::time::Duration) -> Result<u64>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let timeout_interval = sqlx::postgres::types::PgInterval::try_from(timeout)
+        .map_err(|_| PipelineError::InvalidInput(format!("invalid reaper timeout: {timeout:?}")))?;
+
+    let result = sqlx::query(
+        r#"
+        UPDATE jobs
+        SET status = CASE
+                WHEN attempts < max_attempts THEN 'pending'::job_status
+                ELSE 'failed'::job_status
+            END,
+            result = jsonb_build_object('error', 'reaped: job stuck in processing'),
+            completed_at = CASE
+                WHEN attempts >= max_attempts THEN now()
+                ELSE NULL
+            END
+        WHERE status = 'processing'
+          AND started_at < now() - $1::interval
+        "#,
+    )
+    .bind(timeout_interval)
+    .execute(executor)
+    .await?;
+
+    let count = result.rows_affected();
+    if count > 0 {
+        tracing::warn!(count, "reaped orphaned jobs stuck in processing");
+    }
+    Ok(count)
+}
+
 /// Get a job by ID.
 pub async fn get_job<'e, E>(executor: E, job_id: Uuid) -> Result<Job>
 where

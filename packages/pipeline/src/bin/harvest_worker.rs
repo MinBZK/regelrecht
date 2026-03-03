@@ -19,17 +19,20 @@ async fn main() {
         }
     };
 
-    tokio::spawn(async {
-        let listener = match tokio::net::TcpListener::bind("0.0.0.0:8000").await {
-            Ok(l) => {
-                tracing::info!("health endpoint listening on 0.0.0.0:8000");
-                l
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "failed to bind health endpoint on port 8000");
-                return;
-            }
-        };
+    // Bind health endpoint before starting worker — failure is fatal because
+    // RIG requires the liveprobe to be reachable; without it the pod restart-loops.
+    let listener = match tokio::net::TcpListener::bind("0.0.0.0:8000").await {
+        Ok(l) => {
+            tracing::info!("health endpoint listening on 0.0.0.0:8000");
+            l
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to bind health endpoint on port 8000");
+            std::process::exit(1);
+        }
+    };
+
+    tokio::spawn(async move {
         loop {
             if let Ok((mut stream, _)) = listener.accept().await {
                 use tokio::io::AsyncWriteExt;

@@ -30,14 +30,11 @@ just validate    # Validate regulation YAML files (all, or pass specific files)
 just check       # Run all quality checks (format + lint + check + validate + tests)
 just test       # Run Rust unit tests
 just bdd        # Run Rust BDD tests (cucumber-rs)
-just test-all   # Run all tests (unit + BDD + harvester)
+just test-all   # Run all tests (unit + BDD + harvester + pipeline)
 
 # Pipeline commands
-just pipeline-test    # Run pipeline tests (requires Docker for testcontainers)
-just pipeline-check   # Check pipeline compilation (no DB needed)
-just db-up            # Start local PostgreSQL for pipeline development
-just db-down          # Stop local PostgreSQL
-just db-migrate       # Run database migrations
+just pipeline-test              # Run pipeline unit tests (no Docker/DB required)
+just pipeline-integration-test  # Run pipeline integration tests (requires Docker for testcontainers)
 ```
 
 ### Pre-commit Hooks
@@ -73,7 +70,7 @@ git worktree add .worktrees/feature-branch feature-branch
   - `src/config.rs` - Configuration from `DATABASE_URL` env var
   - `src/db.rs` - Connection pool creation and migration runner
   - `src/error.rs` - Error types (`PipelineError`)
-  - `migrations/` - SQL migrations (run via `just db-migrate`)
+  - `migrations/` - SQL migrations (run automatically on worker startup)
 - **frontend/** - Static HTML/CSS law editor prototype
   - `index.html` - Law browser page
   - `editor.html` - Law editor page

@@ -91,7 +91,8 @@ impl CorpusClient {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(CorpusError::Git(format!("git clone failed: {stderr}")));
+            let sanitized = self.sanitize_output(&stderr);
+            return Err(CorpusError::Git(format!("git clone failed: {sanitized}")));
         }
 
         // Configure user in the cloned repo
@@ -124,10 +125,11 @@ impl CorpusClient {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            let sanitized = self.sanitize_output(&stderr);
             return Err(CorpusError::Git(format!(
                 "git {} failed: {}",
                 args.first().unwrap_or(&""),
-                stderr
+                sanitized
             )));
         }
 
@@ -145,14 +147,23 @@ impl CorpusClient {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            let sanitized = self.sanitize_output(&stderr);
             return Err(CorpusError::Git(format!(
                 "git {} failed: {}",
                 args.first().unwrap_or(&""),
-                stderr
+                sanitized
             )));
         }
 
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    /// Strip the git token from output to prevent credential leaks in logs.
+    fn sanitize_output(&self, output: &str) -> String {
+        match self.config.git_token() {
+            Some(token) if !token.is_empty() => output.replace(token, "***"),
+            _ => output.to_string(),
+        }
     }
 
     /// Environment variables for git commands (author/committer identity).
@@ -226,6 +237,28 @@ mod tests {
                 .await
                 .unwrap();
         }
+    }
+
+    #[test]
+    fn test_sanitize_output_strips_token() {
+        let config = CorpusConfig::new("https://github.com/example/repo.git", "/tmp/test")
+            .with_token("ghp_secret123");
+        let client = CorpusClient::new(config);
+
+        let output = "fatal: could not read from remote https://token:ghp_secret123@github.com/example/repo.git";
+        let sanitized = client.sanitize_output(output);
+        assert!(!sanitized.contains("ghp_secret123"));
+        assert!(sanitized.contains("***"));
+    }
+
+    #[test]
+    fn test_sanitize_output_no_token() {
+        let config = CorpusConfig::new("https://github.com/example/repo.git", "/tmp/test");
+        let client = CorpusClient::new(config);
+
+        let output = "fatal: repository not found";
+        let sanitized = client.sanitize_output(output);
+        assert_eq!(sanitized, output);
     }
 
     #[tokio::test]

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use regelrecht_corpus::CorpusClient;
 use sqlx::PgPool;
@@ -11,6 +12,9 @@ use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult};
 use crate::job_queue;
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue};
+
+/// Jobs stuck in 'processing' for longer than this are considered orphaned.
+const ORPHAN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 /// Run the harvest worker loop.
 ///
@@ -68,6 +72,11 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
             _ = tokio::time::sleep(current_interval) => {
                 // Ready to process next job
             }
+        }
+
+        // Reap orphaned jobs stuck in 'processing' (cheap single-query check)
+        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, ORPHAN_TIMEOUT).await {
+            tracing::warn!(error = %e, "failed to reap orphaned jobs");
         }
 
         // Process job outside of select! — runs to completion without cancellation

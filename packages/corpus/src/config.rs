@@ -70,6 +70,17 @@ impl CorpusConfig {
         Self::from_env().ok()
     }
 
+    /// Set the git token for authentication.
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.git_token = Some(token.into());
+        self
+    }
+
+    /// Returns the git token, if configured.
+    pub(crate) fn git_token(&self) -> Option<&str> {
+        self.git_token.as_deref()
+    }
+
     /// Build the authenticated clone URL by injecting the token.
     ///
     /// Uses `https://token:{token}@host/...` format, which is accepted by
