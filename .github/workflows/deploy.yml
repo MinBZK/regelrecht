@@ -255,6 +255,7 @@ jobs:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.short }}
 
       - name: Deploy harvester-worker to ZAD (Production)
+        if: needs.build-harvester-worker.result == 'success'
         uses: RijksICTGilde/zad-actions/deploy@v2
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
