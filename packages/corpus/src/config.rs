@@ -10,6 +10,7 @@ pub struct CorpusConfig {
     pub git_author_name: String,
     pub git_author_email: String,
     git_token: Option<String>,
+    git_token_user: String,
 }
 
 impl CorpusConfig {
@@ -22,6 +23,7 @@ impl CorpusConfig {
             git_author_name: "regelrecht-harvester".into(),
             git_author_email: "noreply@minbzk.nl".into(),
             git_token: None,
+            git_token_user: "x-access-token".into(),
         }
     }
 
@@ -51,6 +53,11 @@ impl CorpusConfig {
 
         let git_token = std::env::var("CORPUS_GIT_TOKEN").ok();
 
+        // Token username for HTTPS auth: https://{user}:{token}@host/...
+        // GitHub: x-access-token, Forgejo/Gitea: any non-empty string, GitLab: oauth2
+        let git_token_user = std::env::var("CORPUS_GIT_TOKEN_USER")
+            .unwrap_or_else(|_| "x-access-token".into());
+
         Ok(Self {
             repo_url,
             repo_path,
@@ -58,6 +65,7 @@ impl CorpusConfig {
             git_author_name,
             git_author_email,
             git_token,
+            git_token_user,
         })
     }
 
@@ -71,11 +79,16 @@ impl CorpusConfig {
     }
 
     /// Build the authenticated clone URL by injecting the token.
+    ///
+    /// Uses `https://{user}:{token}@host/...` format, which is supported by
+    /// GitHub, GitLab, Forgejo, Gitea, and most git hosting platforms.
+    /// The username is configurable via `CORPUS_GIT_TOKEN_USER`.
     pub(crate) fn authenticated_url(&self) -> String {
         match &self.git_token {
             Some(token) if self.repo_url.starts_with("https://") => {
+                let user = &self.git_token_user;
                 self.repo_url
-                    .replacen("https://", &format!("https://x-access-token:{token}@"), 1)
+                    .replacen("https://", &format!("https://{user}:{token}@"), 1)
             }
             _ => self.repo_url.clone(),
         }
@@ -95,10 +108,28 @@ mod tests {
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
+            git_token_user: "x-access-token".into(),
         };
         assert_eq!(
             config.authenticated_url(),
             "https://x-access-token:ghp_abc123@github.com/MinBZK/regelrecht-corpus.git"
+        );
+    }
+
+    #[test]
+    fn test_authenticated_url_forgejo() {
+        let config = CorpusConfig {
+            repo_url: "https://forgejo.example.com/org/corpus.git".into(),
+            repo_path: "/tmp/test".into(),
+            branch: "main".into(),
+            git_author_name: "test".into(),
+            git_author_email: "test@test.nl".into(),
+            git_token: Some("token123".into()),
+            git_token_user: "regelrecht-bot".into(),
+        };
+        assert_eq!(
+            config.authenticated_url(),
+            "https://regelrecht-bot:token123@forgejo.example.com/org/corpus.git"
         );
     }
 
@@ -111,6 +142,7 @@ mod tests {
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: None,
+            git_token_user: "x-access-token".into(),
         };
         assert_eq!(
             config.authenticated_url(),
@@ -127,6 +159,7 @@ mod tests {
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
+            git_token_user: "x-access-token".into(),
         };
         // SSH URLs should not be modified
         assert_eq!(
