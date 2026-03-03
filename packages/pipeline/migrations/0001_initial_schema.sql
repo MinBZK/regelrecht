@@ -1,5 +1,8 @@
 -- Pipeline initial schema
 
+-- Enable pgcrypto for gen_random_uuid() on PostgreSQL < 13
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Enum types
 CREATE TYPE job_type AS ENUM ('harvest', 'enrich');
 CREATE TYPE job_status AS ENUM ('pending', 'processing', 'completed', 'failed');
