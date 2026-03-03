@@ -5,6 +5,21 @@ use regelrecht_corpus::CorpusConfig;
 
 use crate::error::{PipelineError, Result};
 
+fn resolve_database_url() -> Result<String> {
+    std::env::var("DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_SERVER_FULL"))
+        .map_err(|_| {
+            PipelineError::Config("DATABASE_URL or DATABASE_SERVER_FULL not set".into())
+        })
+}
+
+fn resolve_max_connections() -> u32 {
+    std::env::var("DATABASE_MAX_CONNECTIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5)
+}
+
 #[derive(Debug, Clone)]
 pub struct PipelineConfig {
     pub database_url: String,
@@ -13,20 +28,9 @@ pub struct PipelineConfig {
 
 impl PipelineConfig {
     pub fn from_env() -> Result<Self> {
-        let database_url = std::env::var("DATABASE_URL")
-            .or_else(|_| std::env::var("DATABASE_SERVER_FULL"))
-            .map_err(|_| {
-                PipelineError::Config("DATABASE_URL or DATABASE_SERVER_FULL not set".into())
-            })?;
-
-        let max_connections = std::env::var("DATABASE_MAX_CONNECTIONS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(5);
-
         Ok(Self {
-            database_url,
-            max_connections,
+            database_url: resolve_database_url()?,
+            max_connections: resolve_max_connections(),
         })
     }
 
@@ -56,16 +60,8 @@ pub struct WorkerConfig {
 
 impl WorkerConfig {
     pub fn from_env() -> Result<Self> {
-        let database_url = std::env::var("DATABASE_URL")
-            .or_else(|_| std::env::var("DATABASE_SERVER_FULL"))
-            .map_err(|_| {
-                PipelineError::Config("DATABASE_URL or DATABASE_SERVER_FULL not set".into())
-            })?;
-
-        let max_connections = std::env::var("DATABASE_MAX_CONNECTIONS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(5);
+        let database_url = resolve_database_url()?;
+        let max_connections = resolve_max_connections();
 
         let output_dir = std::env::var("REGULATION_REPO_PATH")
             .unwrap_or_else(|_| "./regulation-repo".into())

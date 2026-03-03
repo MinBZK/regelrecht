@@ -63,6 +63,10 @@ impl CorpusClient {
         // Commit
         self.run_git(&["commit", "-m", message]).await?;
 
+        // Pull --rebase to incorporate any concurrent remote changes
+        self.run_git(&["pull", "--rebase", "origin", &self.config.branch])
+            .await?;
+
         // Push
         self.run_git(&["push", "origin", &self.config.branch])
             .await?;
