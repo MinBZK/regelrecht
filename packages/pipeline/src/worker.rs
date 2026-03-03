@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use regelrecht_corpus::CorpusClient;
 use sqlx::PgPool;
 use tokio::signal::unix::{signal, SignalKind};
 
@@ -21,8 +22,25 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
     let pool = db::create_pool(&pipeline_config).await?;
     db::run_migrations(&pool).await?;
 
+    // Initialize corpus client if configured
+    let corpus = if let Some(ref corpus_config) = config.corpus_config {
+        let client = CorpusClient::new(corpus_config.clone());
+        client.ensure_repo().await?;
+        tracing::info!(path = %corpus_config.repo_path.display(), "corpus repo ready");
+        Some(client)
+    } else {
+        tracing::info!("corpus integration disabled (CORPUS_REPO_URL not set)");
+        None
+    };
+
+    // When corpus is enabled, write output into the corpus repo checkout
+    let output_dir = match &corpus {
+        Some(client) => client.repo_path().to_path_buf(),
+        None => config.output_dir.clone(),
+    };
+
     tracing::info!(
-        output_dir = %config.output_dir.display(),
+        output_dir = %output_dir.display(),
         output_base = %config.regulation_output_base,
         poll_interval = ?config.poll_interval,
         "starting harvest worker"
@@ -53,7 +71,7 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
         }
 
         // Process job outside of select! — runs to completion without cancellation
-        match process_next_job(&pool, &config).await {
+        match process_next_job(&pool, &config, &output_dir, corpus.as_ref()).await {
             Ok(true) => {
                 current_interval = config.poll_interval;
             }
@@ -78,7 +96,12 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
 /// Process the next available harvest job.
 ///
 /// Returns `Ok(true)` if a job was processed, `Ok(false)` if no job was available.
-async fn process_next_job(pool: &PgPool, config: &WorkerConfig) -> Result<bool> {
+async fn process_next_job(
+    pool: &PgPool,
+    config: &WorkerConfig,
+    output_dir: &Path,
+    corpus: Option<&CorpusClient>,
+) -> Result<bool> {
     let job = match job_queue::claim_job(pool, Some(JobType::Harvest)).await? {
         Some(job) => job,
         None => return Ok(false),
@@ -119,7 +142,7 @@ async fn process_next_job(pool: &PgPool, config: &WorkerConfig) -> Result<bool> 
         tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to harvesting");
     }
 
-    match execute_harvest_job(&config.output_dir, config, &payload).await {
+    match execute_harvest_job(output_dir, config, &payload, corpus).await {
         Ok(result) => {
             tracing::info!(
                 job_id = %job.id,
@@ -167,13 +190,22 @@ async fn process_next_job(pool: &PgPool, config: &WorkerConfig) -> Result<bool> 
 }
 
 /// Execute the harvest and write results to the output directory.
+///
+/// When a corpus client is provided, the written files are committed and pushed
+/// to the corpus repository.
 async fn execute_harvest_job(
     output_dir: &Path,
     config: &WorkerConfig,
     payload: &HarvestPayload,
+    corpus: Option<&CorpusClient>,
 ) -> Result<HarvestResult> {
-    let (result, _written_files) =
+    let (result, written_files) =
         execute_harvest(payload, output_dir, &config.regulation_output_base).await?;
+
+    if let Some(corpus) = corpus {
+        let message = format!("harvest: {} ({})", result.law_name, result.slug);
+        corpus.commit_and_push(&written_files, &message).await?;
+    }
 
     Ok(result)
 }

@@ -2453,6 +2453,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-corpus"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "regelrecht-engine"
 version = "0.1.0"
 dependencies = [
@@ -2506,6 +2517,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "pretty_assertions",
+ "regelrecht-corpus",
  "regelrecht-harvester",
  "serde",
  "serde_json",

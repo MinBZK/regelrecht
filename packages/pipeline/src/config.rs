@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use regelrecht_corpus::CorpusConfig;
+
 use crate::error::{PipelineError, Result};
 
 #[derive(Debug, Clone)]
@@ -49,6 +51,7 @@ pub struct WorkerConfig {
     pub regulation_output_base: String,
     pub poll_interval: Duration,
     pub max_poll_interval: Duration,
+    pub corpus_config: Option<CorpusConfig>,
 }
 
 impl WorkerConfig {
@@ -81,6 +84,8 @@ impl WorkerConfig {
             .and_then(|v| v.parse().ok())
             .unwrap_or(60);
 
+        let corpus_config = CorpusConfig::from_env_optional();
+
         Ok(Self {
             database_url,
             max_connections,
@@ -88,6 +93,7 @@ impl WorkerConfig {
             regulation_output_base,
             poll_interval: Duration::from_secs(poll_interval_secs),
             max_poll_interval: Duration::from_secs(max_poll_interval_secs),
+            corpus_config,
         })
     }
 

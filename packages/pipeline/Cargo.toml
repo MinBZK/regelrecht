@@ -15,6 +15,7 @@ name = "regelrecht-harvest-worker"
 path = "src/bin/harvest_worker.rs"
 
 [dependencies]
+regelrecht-corpus = { path = "../corpus" }
 regelrecht-harvester = { path = "../harvester" }
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }

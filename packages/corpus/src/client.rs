@@ -1,0 +1,290 @@
+use std::path::{Path, PathBuf};
+
+use tokio::process::Command;
+
+use crate::config::CorpusConfig;
+use crate::error::{CorpusError, Result};
+
+pub struct CorpusClient {
+    config: CorpusConfig,
+}
+
+impl CorpusClient {
+    pub fn new(config: CorpusConfig) -> Self {
+        Self { config }
+    }
+
+    /// Ensure the corpus repo is available locally.
+    ///
+    /// If the repo directory doesn't exist, clones it (shallow, single branch).
+    /// If it exists, fetches and resets to the remote branch.
+    pub async fn ensure_repo(&self) -> Result<()> {
+        let repo_path = &self.config.repo_path;
+
+        if repo_path.join(".git").exists() {
+            tracing::info!(path = %repo_path.display(), "corpus repo exists, updating");
+            self.git_fetch_reset().await?;
+        } else {
+            tracing::info!(path = %repo_path.display(), "cloning corpus repo");
+            self.git_clone().await?;
+        }
+
+        Ok(())
+    }
+
+    /// Returns the local path to the corpus repo working directory.
+    pub fn repo_path(&self) -> &Path {
+        &self.config.repo_path
+    }
+
+    /// Stage the given paths, commit, and push to the remote branch.
+    ///
+    /// If there are no changes to commit (working tree is clean), this is a no-op.
+    pub async fn commit_and_push(&self, paths: &[PathBuf], message: &str) -> Result<()> {
+        // Stage the specific files
+        let mut add_args = vec!["add", "--"];
+        let path_strings: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for p in &path_strings {
+            add_args.push(p);
+        }
+        self.run_git(&add_args).await?;
+
+        // Check if there's anything to commit
+        let status_output = self.run_git_output(&["status", "--porcelain"]).await?;
+
+        if status_output.trim().is_empty() {
+            tracing::debug!("no changes to commit, skipping");
+            return Ok(());
+        }
+
+        // Commit
+        self.run_git(&["commit", "-m", message]).await?;
+
+        // Push
+        self.run_git(&["push", "origin", &self.config.branch])
+            .await?;
+
+        tracing::info!(message = %message, "committed and pushed to corpus repo");
+        Ok(())
+    }
+
+    async fn git_clone(&self) -> Result<()> {
+        let url = self.config.authenticated_url();
+        let path_str = self.config.repo_path.to_string_lossy().to_string();
+
+        let output = Command::new("git")
+            .args([
+                "clone",
+                "--branch",
+                &self.config.branch,
+                "--depth",
+                "1",
+                &url,
+                &path_str,
+            ])
+            .envs(self.git_env())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(CorpusError::Git(format!("git clone failed: {stderr}")));
+        }
+
+        // Configure user in the cloned repo
+        self.run_git(&["config", "user.name", &self.config.git_author_name])
+            .await?;
+        self.run_git(&["config", "user.email", &self.config.git_author_email])
+            .await?;
+
+        Ok(())
+    }
+
+    async fn git_fetch_reset(&self) -> Result<()> {
+        self.run_git(&["fetch", "origin", &self.config.branch])
+            .await?;
+
+        let remote_ref = format!("origin/{}", self.config.branch);
+        self.run_git(&["reset", "--hard", &remote_ref]).await?;
+
+        Ok(())
+    }
+
+    /// Run a git command in the repo directory and check for success.
+    async fn run_git(&self, args: &[&str]) -> Result<()> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&self.config.repo_path)
+            .envs(self.git_env())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(CorpusError::Git(format!(
+                "git {} failed: {}",
+                args.first().unwrap_or(&""),
+                stderr
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Run a git command and return stdout.
+    async fn run_git_output(&self, args: &[&str]) -> Result<String> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(&self.config.repo_path)
+            .envs(self.git_env())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(CorpusError::Git(format!(
+                "git {} failed: {}",
+                args.first().unwrap_or(&""),
+                stderr
+            )));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    /// Environment variables for git commands (author/committer identity).
+    fn git_env(&self) -> Vec<(&str, &str)> {
+        vec![
+            ("GIT_AUTHOR_NAME", self.config.git_author_name.as_str()),
+            ("GIT_AUTHOR_EMAIL", self.config.git_author_email.as_str()),
+            ("GIT_COMMITTER_NAME", self.config.git_author_name.as_str()),
+            ("GIT_COMMITTER_EMAIL", self.config.git_author_email.as_str()),
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a bare git repo with one empty initial commit on `main`.
+    async fn setup_bare_repo(dir: &Path) -> PathBuf {
+        let bare_path = dir.join("bare.git");
+        Command::new("git")
+            .args(["init", "--bare", "--initial-branch=main"])
+            .arg(&bare_path)
+            .output()
+            .await
+            .unwrap();
+
+        // Push an initial commit via a temp clone (use file:// for --depth support)
+        let tmp_clone = dir.join("tmp-clone");
+        let bare_url = format!("file://{}", bare_path.display());
+        Command::new("git")
+            .args(["clone", &bare_url])
+            .arg(&tmp_clone)
+            .output()
+            .await
+            .unwrap();
+        for args in [
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+            vec!["commit", "--allow-empty", "-m", "init"],
+            vec!["push", "origin", "main"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp_clone)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        bare_path
+    }
+
+    /// Clone a bare repo and configure git user.
+    async fn clone_with_config(bare_path: &Path, repo_path: &Path) {
+        let bare_url = format!("file://{}", bare_path.display());
+        Command::new("git")
+            .args(["clone", &bare_url])
+            .arg(repo_path)
+            .output()
+            .await
+            .unwrap();
+        for args in [
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(repo_path)
+                .output()
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ensure_repo_clones_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path().join("corpus");
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        assert!(repo_path.join(".git").exists());
+    }
+
+    #[tokio::test]
+    async fn test_commit_and_push_no_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+
+        // No changes — should be a no-op
+        let result = client.commit_and_push(&[], "no changes").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_commit_and_push_with_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Write a test file
+        let test_file = repo_path.join("test.txt");
+        tokio::fs::write(&test_file, "hello").await.unwrap();
+
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+        client
+            .commit_and_push(&[test_file], "add test file")
+            .await
+            .unwrap();
+
+        // Verify commit was pushed by checking the bare repo
+        let log = Command::new("git")
+            .args(["log", "--oneline", "-1"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let log_str = String::from_utf8_lossy(&log.stdout);
+        assert!(log_str.contains("add test file"));
+    }
+}

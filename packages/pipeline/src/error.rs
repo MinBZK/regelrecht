@@ -29,6 +29,9 @@ pub enum PipelineError {
     #[error("harvester error: {0}")]
     Harvester(#[from] regelrecht_harvester::HarvesterError),
 
+    #[error("corpus error: {0}")]
+    Corpus(#[from] regelrecht_corpus::CorpusError),
+
     #[error("worker error: {0}")]
     Worker(String),
 
