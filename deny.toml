@@ -29,6 +29,7 @@ allow = [
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "Unlicense",
+    "OpenSSL",
     "Zlib",
     "EUPL-1.2",
     "CDLA-Permissive-2.0",
