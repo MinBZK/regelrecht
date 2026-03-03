@@ -156,6 +156,9 @@ jobs:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ADMIN }}:sha-${{ steps.sha.outputs.short }}
           clone-from: regelrecht
           force-clone: false
+          comment-on-pr: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-header: '## Preview Deployment'
 
       - name: Deploy editor to ZAD (Preview)
         id: deploy
