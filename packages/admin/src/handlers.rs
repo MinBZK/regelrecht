@@ -283,9 +283,9 @@ pub async fn seed_zorgtoeslag(
     let pool = &state.pool;
 
     sqlx::query(
-        "INSERT INTO law_entries (bwb_id, title, status) \
+        "INSERT INTO law_entries (law_id, law_name, status) \
          VALUES ('BWBR0018451', 'Wet op de zorgtoeslag', 'queued') \
-         ON CONFLICT (bwb_id) DO NOTHING",
+         ON CONFLICT (law_id) DO NOTHING",
     )
     .execute(pool)
     .await
@@ -298,8 +298,9 @@ pub async fn seed_zorgtoeslag(
     })?;
 
     let row = sqlx::query_scalar::<_, String>(
-        "INSERT INTO jobs (job_type, payload, status) \
-         VALUES ('harvest', '{\"bwb_id\": \"BWBR0018451\", \"date\": \"2026-01-01\"}', 'pending') \
+        "INSERT INTO jobs (job_type, law_id, payload, status) \
+         VALUES ('harvest', 'BWBR0018451', \
+         '{\"bwb_id\": \"BWBR0018451\", \"date\": \"2026-01-01\"}', 'pending') \
          RETURNING id::text",
     )
     .fetch_one(pool)
