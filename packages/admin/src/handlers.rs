@@ -1,7 +1,7 @@
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::models::{Job, LawEntry, PaginatedResponse};
 use crate::state::AppState;
@@ -270,6 +270,60 @@ pub async fn list_jobs(
         limit,
         offset,
     }))
+}
+
+#[derive(Serialize)]
+pub struct ResetResponse {
+    pub jobs_reset: u64,
+    pub laws_reset: u64,
+}
+
+pub async fn reset_jobs(
+    State(state): State<AppState>,
+) -> Result<Json<ResetResponse>, (StatusCode, String)> {
+    let pool = &state.pool;
+
+    let jobs_result = sqlx::query(
+        "UPDATE jobs SET status = 'pending', attempts = 0, started_at = NULL, \
+         completed_at = NULL, result = NULL, updated_at = now() \
+         WHERE status IN ('completed', 'failed', 'processing')",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to reset jobs");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to reset jobs".to_string(),
+        )
+    })?;
+
+    let laws_result = sqlx::query(
+        "UPDATE law_entries SET status = 'queued', updated_at = now() \
+         WHERE status != 'queued'",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to reset law entries");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to reset law entries".to_string(),
+        )
+    })?;
+
+    let response = ResetResponse {
+        jobs_reset: jobs_result.rows_affected(),
+        laws_reset: laws_result.rows_affected(),
+    };
+
+    tracing::info!(
+        jobs_reset = response.jobs_reset,
+        laws_reset = response.laws_reset,
+        "reset all jobs and law entries"
+    );
+
+    Ok(Json(response))
 }
 
 #[cfg(test)]
