@@ -431,9 +431,40 @@ function switchTab(tabKey) {
   state.totalCount = 0;
   state.error = null;
 
+  // Show reset button only on jobs tab
+  const resetBtn = $('#reset-jobs-btn');
+  if (resetBtn) {
+    resetBtn.style.display = tabKey === 'jobs' ? '' : 'none';
+  }
+
   renderTabs();
   renderAll();
   fetchData();
+}
+
+async function onResetJobs() {
+  if (!confirm('Reset all completed/failed jobs back to pending?')) return;
+
+  const btn = $('#reset-jobs-btn');
+  btn.disabled = true;
+  btn.textContent = 'Resetting\u2026';
+
+  try {
+    const response = await fetch('api/jobs/reset', { method: 'POST' });
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    alert(`Reset ${result.jobs_reset} job(s) and ${result.laws_reset} law entry/entries.`);
+    fetchData();
+  } catch (err) {
+    alert('Reset failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Reset Jobs';
+  }
 }
 
 function onSort(key) {
@@ -499,6 +530,12 @@ async function init() {
   // Bind pagination buttons
   $('#pagination-prev').addEventListener('click', onPrevPage);
   $('#pagination-next').addEventListener('click', onNextPage);
+
+  // Bind reset button
+  const resetBtn = $('#reset-jobs-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', onResetJobs);
+  }
 
   // Initial render
   renderTabs();
