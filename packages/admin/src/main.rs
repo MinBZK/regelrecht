@@ -88,6 +88,22 @@ async fn main() {
 
     tracing::info!("connected to database");
 
+    // Clean up migration records for removed seed migrations (0002, 0003)
+    // so sqlx doesn't error on missing files.
+    if let Ok(result) = sqlx::query(
+        "DELETE FROM _sqlx_migrations WHERE version > 1",
+    )
+    .execute(&pool)
+    .await
+    {
+        if result.rows_affected() > 0 {
+            tracing::info!(
+                removed = result.rows_affected(),
+                "cleaned up stale migration records"
+            );
+        }
+    }
+
     tracing::info!("running database migrations...");
     if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
         tracing::error!(error = %e, "failed to run migrations");

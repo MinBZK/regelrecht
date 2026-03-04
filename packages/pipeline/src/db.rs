@@ -41,6 +41,20 @@ pub async fn wait_for_schema(pool: &PgPool) -> Result<()> {
 }
 
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
+    // Clean up migration records for removed seed migrations (0002, 0003)
+    // so sqlx doesn't error on missing files.
+    if let Ok(result) = sqlx::query("DELETE FROM _sqlx_migrations WHERE version > 1")
+        .execute(pool)
+        .await
+    {
+        if result.rows_affected() > 0 {
+            tracing::info!(
+                removed = result.rows_affected(),
+                "cleaned up stale migration records"
+            );
+        }
+    }
+
     sqlx::migrate!("./migrations").run(pool).await?;
     Ok(())
 }
