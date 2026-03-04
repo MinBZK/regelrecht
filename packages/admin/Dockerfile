@@ -8,20 +8,34 @@ COPY packages/admin/frontend-src/ .
 # vite outDir is '../static' which resolves to /static from /app
 RUN npm run build
 
-# Stage 2: Build Rust binary
-FROM rust:1.93-alpine AS rust-builder
+# Stage 2: Chef base
+FROM rust:1.93-alpine AS chef
 RUN apk add --no-cache musl-dev
+RUN cargo install cargo-chef --locked
 WORKDIR /build
-COPY packages/admin/ packages/admin/
-WORKDIR /build/packages/admin
+
+# Stage 3: Plan dependencies
+FROM chef AS planner
+COPY packages/admin/Cargo.toml packages/admin/Cargo.lock ./
+COPY packages/admin/src/ src/
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 4: Build Rust binary (deps cached separately from source)
+FROM chef AS builder
+COPY --from=planner /build/recipe.json recipe.json
+COPY packages/admin/Cargo.toml packages/admin/Cargo.lock ./
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY packages/admin/src/ src/
+COPY packages/admin/migrations/ migrations/
 RUN cargo build --release --bin regelrecht-admin
 
-# Stage 3: Runtime
+# Stage 5: Runtime
 FROM alpine:3.23
 RUN apk add --no-cache ca-certificates && \
     addgroup -S app && adduser -S app -G app
 
-COPY --from=rust-builder /build/packages/admin/target/release/regelrecht-admin /usr/local/bin/
+COPY --from=builder /build/target/release/regelrecht-admin /usr/local/bin/
 COPY --from=frontend-builder /static /app/static
 
 WORKDIR /app
