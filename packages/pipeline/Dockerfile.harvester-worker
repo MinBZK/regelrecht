@@ -26,8 +26,6 @@ COPY --from=builder /build/target/release/regelrecht-harvest-worker /usr/local/b
 COPY packages/pipeline/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-RUN mkdir -p /tmp/regulation-repo && chown app:app /tmp/regulation-repo
-
 USER app
 EXPOSE 8000
 
