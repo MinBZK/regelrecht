@@ -88,20 +88,27 @@ async fn main() {
 
     tracing::info!("connected to database");
 
-    // Clean up migration records for removed seed migrations (0002, 0003)
-    // so sqlx doesn't error on missing files.
-    if let Ok(result) = sqlx::query(
-        "DELETE FROM _sqlx_migrations WHERE version > 1",
+    // One-time schema reset: drop and recreate if stale seed migrations
+    // (0002, 0003) or a modified 0001 are detected. Safe because the schema
+    // is fully defined in migration 0001.
+    let needs_reset = sqlx::query_scalar::<_, bool>(
+        "SELECT count(*) > 0 FROM _sqlx_migrations WHERE version > 1",
     )
-    .execute(&pool)
+    .fetch_one(&pool)
     .await
-    {
-        if result.rows_affected() > 0 {
-            tracing::info!(
-                removed = result.rows_affected(),
-                "cleaned up stale migration records"
-            );
-        }
+    .unwrap_or(false);
+
+    if needs_reset {
+        tracing::warn!("stale migrations detected, resetting schema...");
+        sqlx::query("DROP SCHEMA public CASCADE")
+            .execute(&pool)
+            .await
+            .ok();
+        sqlx::query("CREATE SCHEMA public")
+            .execute(&pool)
+            .await
+            .ok();
+        tracing::info!("schema reset complete");
     }
 
     tracing::info!("running database migrations...");
