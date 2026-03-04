@@ -162,13 +162,17 @@ async fn process_next_job(
             );
 
             let result_json = serde_json::to_value(&result).ok();
-            job_queue::complete_job(pool, job.id, result_json).await?;
 
+            // Use a transaction so job completion and law status update are atomic
+            let mut tx = pool.begin().await?;
+            job_queue::complete_job(&mut *tx, job.id, result_json).await?;
             if let Err(e) =
-                law_status::update_status(pool, &job.law_id, LawStatusValue::Harvested).await
+                law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Harvested).await
             {
                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to harvested");
             }
+            tx.commit().await?;
+
             if let Ok(entry) = law_status::get_law(pool, &job.law_id).await {
                 if entry.law_name.is_none() {
                     let _ = law_status::upsert_law(pool, &job.law_id, Some(&result.law_name)).await;
@@ -186,11 +190,23 @@ async fn process_next_job(
             );
 
             let error_json = serde_json::json!({ "error": e.to_string() });
-            job_queue::fail_job(pool, job.id, Some(error_json)).await?;
-            if let Err(status_err) =
-                law_status::update_status(pool, &job.law_id, LawStatusValue::HarvestFailed).await
-            {
-                tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to harvest_failed");
+            let failed_job = job_queue::fail_job(pool, job.id, Some(error_json)).await?;
+
+            // Only mark law as failed when retries are exhausted
+            if failed_job.status == crate::models::JobStatus::Failed {
+                if let Err(status_err) =
+                    law_status::update_status(pool, &job.law_id, LawStatusValue::HarvestFailed)
+                        .await
+                {
+                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to harvest_failed");
+                }
+            } else {
+                // Job will be retried — reset law status to queued
+                if let Err(status_err) =
+                    law_status::update_status(pool, &job.law_id, LawStatusValue::Queued).await
+                {
+                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to queued for retry");
+                }
             }
 
             Ok(true)

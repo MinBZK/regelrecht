@@ -18,10 +18,19 @@ fn resolve_max_connections() -> u32 {
         .unwrap_or(5)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PipelineConfig {
     pub database_url: String,
     pub max_connections: u32,
+}
+
+impl std::fmt::Debug for PipelineConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PipelineConfig")
+            .field("database_url", &"<redacted>")
+            .field("max_connections", &self.max_connections)
+            .finish()
+    }
 }
 
 impl PipelineConfig {
@@ -45,7 +54,7 @@ impl PipelineConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WorkerConfig {
     pub database_url: String,
     pub max_connections: u32,
@@ -54,6 +63,20 @@ pub struct WorkerConfig {
     pub poll_interval: Duration,
     pub max_poll_interval: Duration,
     pub corpus_config: Option<CorpusConfig>,
+}
+
+impl std::fmt::Debug for WorkerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WorkerConfig")
+            .field("database_url", &"<redacted>")
+            .field("max_connections", &self.max_connections)
+            .field("output_dir", &self.output_dir)
+            .field("regulation_output_base", &self.regulation_output_base)
+            .field("poll_interval", &self.poll_interval)
+            .field("max_poll_interval", &self.max_poll_interval)
+            .field("corpus_config", &self.corpus_config)
+            .finish()
+    }
 }
 
 impl WorkerConfig {

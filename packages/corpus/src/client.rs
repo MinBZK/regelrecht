@@ -63,9 +63,16 @@ impl CorpusClient {
         // Commit
         self.run_git(&["commit", "-m", message]).await?;
 
-        // Pull --rebase to incorporate any concurrent remote changes
-        self.run_git(&["pull", "--rebase", "origin", &self.config.branch])
-            .await?;
+        // Pull --rebase to incorporate any concurrent remote changes.
+        // If rebase fails, abort it to prevent leaving repo in broken state.
+        if let Err(e) = self
+            .run_git(&["pull", "--rebase", "origin", &self.config.branch])
+            .await
+        {
+            tracing::warn!(error = %e, "pull --rebase failed, aborting rebase");
+            let _ = self.run_git(&["rebase", "--abort"]).await;
+            return Err(e);
+        }
 
         // Push
         self.run_git(&["push", "origin", &self.config.branch])
@@ -84,8 +91,7 @@ impl CorpusClient {
                 "clone",
                 "--branch",
                 &self.config.branch,
-                "--depth",
-                "1",
+                "--single-branch",
                 &url,
                 &path_str,
             ])
