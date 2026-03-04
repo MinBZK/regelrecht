@@ -55,15 +55,9 @@ mod tests {
                     issuer_url: "https://example.com".into(),
                     required_role: "user".into(),
                 }),
-                base_url: Some("https://example.com".into()),
-                base_url_allow_dynamic: false,
             }
         } else {
-            AppConfig {
-                oidc: None,
-                base_url: None,
-                base_url_allow_dynamic: false,
-            }
+            AppConfig { oidc: None }
         };
 
         #[allow(clippy::expect_used)]

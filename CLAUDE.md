@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **regelrecht-mvp** is an MVP for machine-readable Dutch law execution. Components:
 - `packages/engine/` - Rust law execution engine
+- `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
 - `regulation/` - Dutch legal regulations in machine-readable YAML format
 - `frontend/` - Static HTML/CSS law editor prototype
 - `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
@@ -29,7 +30,11 @@ just validate    # Validate regulation YAML files (all, or pass specific files)
 just check       # Run all quality checks (format + lint + check + validate + tests)
 just test       # Run Rust unit tests
 just bdd        # Run Rust BDD tests (cucumber-rs)
-just test-all   # Run all tests (unit + BDD + harvester)
+just test-all   # Run all tests (unit + BDD + harvester + pipeline)
+
+# Pipeline commands
+just pipeline-test              # Run pipeline unit tests (no Docker/DB required)
+just pipeline-integration-test  # Run pipeline integration tests (requires Docker for testcontainers)
 ```
 
 ### Pre-commit Hooks
@@ -58,6 +63,14 @@ git worktree add .worktrees/feature-branch feature-branch
 ### Directory Structure
 
 - **packages/engine/** - Rust law execution engine (cargo workspace member)
+- **packages/pipeline/** - PostgreSQL-backed job queue and law status tracking (Rust)
+  - `src/job_queue.rs` - Job creation, claiming (`FOR UPDATE SKIP LOCKED`), completion, failure with auto-retry
+  - `src/law_status.rs` - Per-law status tracking from `unknown` through `harvested` to `enriched`
+  - `src/models.rs` - Data types: `Job`, `LawEntry`, `JobType`, `JobStatus`, `LawStatusValue`, `Priority`
+  - `src/config.rs` - Configuration from `DATABASE_URL` env var
+  - `src/db.rs` - Connection pool creation and migration runner
+  - `src/error.rs` - Error types (`PipelineError`)
+  - `migrations/` - SQL migrations (run automatically on worker startup)
 - **frontend/** - Static HTML/CSS law editor prototype
   - `index.html` - Law browser page
   - `editor.html` - Law editor page

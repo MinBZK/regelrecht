@@ -225,6 +225,27 @@ body {
 }
 
 
+.toolbar__btn--danger {
+  padding: var(--spacing-1) var(--spacing-3);
+  font-size: var(--font-size-sm);
+  color: #fff;
+  background-color: #dc2626;
+  border: 1px solid #b91c1c;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toolbar__btn--danger:hover {
+  background-color: #b91c1c;
+}
+
+.toolbar__btn--danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
 /* ============================================================
    Pagination
    ============================================================ */

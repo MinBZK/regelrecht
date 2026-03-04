@@ -6,7 +6,7 @@ use std::time::Duration;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::middleware as axum_middleware;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
@@ -88,6 +88,31 @@ async fn main() {
 
     tracing::info!("connected to database");
 
+    // One-time schema reset: if stale seed migrations (versions > 1) are
+    // detected, wipe all tables and migration records so 0001 re-runs cleanly.
+    let needs_reset = sqlx::query_scalar::<_, bool>(
+        "SELECT count(*) > 0 FROM _sqlx_migrations WHERE version > 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(false);
+
+    if needs_reset {
+        tracing::warn!("stale migrations detected, resetting database...");
+        for stmt in [
+            "DROP TABLE IF EXISTS law_entries CASCADE",
+            "DROP TABLE IF EXISTS jobs CASCADE",
+            "DROP TYPE IF EXISTS job_type CASCADE",
+            "DROP TYPE IF EXISTS job_status CASCADE",
+            "DROP TYPE IF EXISTS law_status CASCADE",
+            "DROP FUNCTION IF EXISTS update_updated_at CASCADE",
+            "DELETE FROM _sqlx_migrations",
+        ] {
+            sqlx::query(stmt).execute(&pool).await.ok();
+        }
+        tracing::info!("database reset complete");
+    }
+
     tracing::info!("running database migrations...");
     if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
         tracing::error!(error = %e, "failed to run migrations");
@@ -136,6 +161,10 @@ async fn main() {
     let api_routes = Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
+        .route(
+            "/api/jobs/seed-zorgtoeslag",
+            post(handlers::seed_zorgtoeslag),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_auth,

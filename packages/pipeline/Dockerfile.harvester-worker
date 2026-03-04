@@ -1,0 +1,35 @@
+# Stage 1: Build
+FROM rust:1.93-alpine AS builder
+RUN apk add --no-cache musl-dev
+
+WORKDIR /build
+
+# Copy lockfile for reproducible dependency resolution
+COPY Cargo.lock ./
+
+# Create a workspace Cargo.toml with only the members needed for this build
+# (avoids needing to copy packages/engine which is not a dependency)
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n]\n' > Cargo.toml
+
+COPY packages/corpus/ packages/corpus/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
+
+RUN cargo build --release --bin regelrecht-harvest-worker
+
+# Stage 2: Runtime
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates git && \
+    addgroup -S app && adduser -S app -G app
+
+COPY --from=builder /build/target/release/regelrecht-harvest-worker /usr/local/bin/
+COPY packages/pipeline/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+USER app
+EXPOSE 8000
+
+ENV REGULATION_REPO_PATH=/tmp/regulation-repo
+ENV REGULATION_OUTPUT_BASE=regulation/nl
+
+ENTRYPOINT ["entrypoint.sh"]

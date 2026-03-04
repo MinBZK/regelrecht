@@ -29,8 +29,10 @@ jobs:
         with:
           filters: |
             ci:
+              - packages/corpus/**
               - packages/engine/**
               - packages/harvester/**
+              - packages/pipeline/**
               - features/**
               - regulation/**
               - schema/**

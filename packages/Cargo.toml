@@ -1,8 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
+    "corpus",
     "engine",
     "harvester",
+    "pipeline",
 ]
 exclude = [
     "admin",

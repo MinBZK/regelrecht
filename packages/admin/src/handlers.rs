@@ -1,7 +1,7 @@
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::models::{Job, LawEntry, PaginatedResponse};
 use crate::state::AppState;
@@ -270,6 +270,52 @@ pub async fn list_jobs(
         limit,
         offset,
     }))
+}
+
+#[derive(Serialize)]
+pub struct SeedResponse {
+    pub job_id: String,
+}
+
+pub async fn seed_zorgtoeslag(
+    State(state): State<AppState>,
+) -> Result<Json<SeedResponse>, (StatusCode, String)> {
+    let pool = &state.pool;
+
+    sqlx::query(
+        "INSERT INTO law_entries (law_id, law_name, status) \
+         VALUES ('BWBR0018451', 'Wet op de zorgtoeslag', 'queued') \
+         ON CONFLICT (law_id) DO NOTHING",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to insert law entry");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to insert law entry".to_string(),
+        )
+    })?;
+
+    let row = sqlx::query_scalar::<_, String>(
+        "INSERT INTO jobs (job_type, law_id, payload, status) \
+         VALUES ('harvest', 'BWBR0018451', \
+         '{\"bwb_id\": \"BWBR0018451\", \"date\": \"2026-01-01\"}', 'pending') \
+         RETURNING id::text",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to create harvest job");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to create harvest job".to_string(),
+        )
+    })?;
+
+    tracing::info!(job_id = %row, "created zorgtoeslag harvest job");
+
+    Ok(Json(SeedResponse { job_id: row }))
 }
 
 #[cfg(test)]

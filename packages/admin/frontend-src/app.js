@@ -431,9 +431,38 @@ function switchTab(tabKey) {
   state.totalCount = 0;
   state.error = null;
 
+  // Show seed button only on jobs tab
+  const seedBtn = $('#seed-zorgtoeslag-btn');
+  if (seedBtn) {
+    seedBtn.style.display = tabKey === 'jobs' ? '' : 'none';
+  }
+
   renderTabs();
   renderAll();
   fetchData();
+}
+
+async function onSeedZorgtoeslag() {
+  const btn = $('#seed-zorgtoeslag-btn');
+  btn.disabled = true;
+  btn.textContent = 'Adding\u2026';
+
+  try {
+    const response = await fetch('api/jobs/seed-zorgtoeslag', { method: 'POST' });
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    alert(`Created harvest job: ${result.job_id}`);
+    fetchData();
+  } catch (err) {
+    alert('Seed failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add Zorgtoeslag Test';
+  }
 }
 
 function onSort(key) {
@@ -499,6 +528,12 @@ async function init() {
   // Bind pagination buttons
   $('#pagination-prev').addEventListener('click', onPrevPage);
   $('#pagination-next').addEventListener('click', onNextPage);
+
+  // Bind seed button
+  const seedBtn = $('#seed-zorgtoeslag-btn');
+  if (seedBtn) {
+    seedBtn.addEventListener('click', onSeedZorgtoeslag);
+  }
 
   // Initial render
   renderTabs();
