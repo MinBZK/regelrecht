@@ -39,6 +39,31 @@ async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCod
     Ok("OK")
 }
 
+/// Wait for the pipeline service to have created the database schema.
+/// Polls until the `jobs` table exists, with a timeout.
+async fn wait_for_schema(pool: &PgPool) {
+    let max_attempts: u32 = 30;
+    for attempt in 1..=max_attempts {
+        let ready: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'jobs')",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
+        if ready {
+            tracing::info!("database schema ready");
+            return;
+        }
+
+        tracing::info!(attempt, max_attempts, "waiting for database schema...");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
+    tracing::error!("timed out waiting for database schema");
+    std::process::exit(1);
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -88,37 +113,9 @@ async fn main() {
 
     tracing::info!("connected to database");
 
-    // One-time schema reset: if stale seed migrations (versions > 1) are
-    // detected, wipe all tables and migration records so 0001 re-runs cleanly.
-    let needs_reset = sqlx::query_scalar::<_, bool>(
-        "SELECT count(*) > 0 FROM _sqlx_migrations WHERE version > 1",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(false);
-
-    if needs_reset {
-        tracing::warn!("stale migrations detected, resetting database...");
-        for stmt in [
-            "DROP TABLE IF EXISTS law_entries CASCADE",
-            "DROP TABLE IF EXISTS jobs CASCADE",
-            "DROP TYPE IF EXISTS job_type CASCADE",
-            "DROP TYPE IF EXISTS job_status CASCADE",
-            "DROP TYPE IF EXISTS law_status CASCADE",
-            "DROP FUNCTION IF EXISTS update_updated_at CASCADE",
-            "DELETE FROM _sqlx_migrations",
-        ] {
-            sqlx::query(stmt).execute(&pool).await.ok();
-        }
-        tracing::info!("database reset complete");
-    }
-
-    tracing::info!("running database migrations...");
-    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
-        tracing::error!(error = %e, "failed to run migrations");
-        std::process::exit(1);
-    }
-    tracing::info!("migrations completed");
+    // Wait for pipeline to have run migrations (pipeline owns the schema).
+    tracing::info!("waiting for database schema (managed by pipeline)...");
+    wait_for_schema(&pool).await;
 
     let (oidc_client, end_session_url) = if let Some(ref oidc_config) = app_config.oidc {
         match oidc::discover_client(oidc_config).await {

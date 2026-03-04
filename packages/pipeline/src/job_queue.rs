@@ -205,24 +205,32 @@ where
 
     let result = sqlx::query(
         r#"
-        UPDATE jobs
-        SET status = CASE
-                WHEN attempts < max_attempts THEN 'pending'::job_status
-                ELSE 'failed'::job_status
-            END,
-            result = jsonb_build_object('error', 'reaped: job stuck in processing'),
-            completed_at = CASE
-                WHEN attempts >= max_attempts THEN now()
-                ELSE NULL
-            END
-        WHERE status = 'processing'
-          AND started_at < now() - $1::interval
+        WITH reaped AS (
+            UPDATE jobs
+            SET status = CASE
+                    WHEN attempts < max_attempts THEN 'pending'::job_status
+                    ELSE 'failed'::job_status
+                END,
+                result = jsonb_build_object('error', 'reaped: job stuck in processing'),
+                completed_at = CASE
+                    WHEN attempts >= max_attempts THEN now()
+                    ELSE NULL
+                END
+            WHERE status = 'processing'
+              AND started_at < now() - $1::interval
+            RETURNING id, law_id, status
+        )
+        UPDATE law_entries SET status = 'failed'::law_status
+        FROM reaped
+        WHERE reaped.status = 'failed' AND law_entries.law_id = reaped.law_id
         "#,
     )
     .bind(timeout_interval)
     .execute(executor)
     .await?;
 
+    // rows_affected counts law_entries updates; use it as a lower bound signal.
+    // The important metric is that reaped jobs were processed, so we log broadly.
     let count = result.rows_affected();
     if count > 0 {
         tracing::warn!(count, "reaped orphaned jobs stuck in processing");
