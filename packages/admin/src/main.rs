@@ -19,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 mod auth;
 mod config;
 mod handlers;
+mod metrics;
 mod middleware;
 mod models;
 mod oidc;
@@ -151,6 +152,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/metrics", get(metrics::metrics_handler))
         .merge(auth_routes)
         .merge(api_routes)
         .with_state(app_state)
