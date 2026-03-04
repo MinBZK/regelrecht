@@ -94,6 +94,9 @@ articles:
               output: heeft_toeslagpartner
               parameters:
                 bsn: $bsn
+          # TODO: Art. 2 lid 2 vereist het gezamenlijk toetsingsinkomen van verzekerde en
+          # toeslagpartner. Huidige implementatie gebruikt alleen het inkomen van de aanvrager.
+          # Zie 2025 versie voor details over de engine-beperking.
           - name: toetsingsinkomen
             type: amount
             source:

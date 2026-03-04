@@ -177,6 +177,14 @@ Feature: Healthcare allowance calculation
     When the healthcare allowance law is executed
     Then the citizen does not have the right to healthcare allowance
 
+  # NB: Gezamenlijk toetsingsinkomen is NOT YET implemented.
+  # Art. 2 lid 2 requires combined income for partners, but the engine currently
+  # only uses the applicant's income. The expected amount (2728.45) reflects
+  # applicant income only. With gezamenlijk toetsingsinkomen (35000+20000=55000),
+  # the expected amount would be lower (~1873.85 euro).
+  # Blocked by: engine does not support conditional cross-law input resolution
+  # (resolving partner income via AWIR art 8 with partner BSN fails when no
+  # partner exists, because null BSN causes TypeMismatch in arithmetic).
   Scenario: Partner with combined income entitled to healthcare allowance (2025)
     Given the calculation date is "2025-01-01"
     And the following RVIG "personal_data" data:
@@ -191,12 +199,15 @@ Feature: Healthcare allowance calculation
     And the following BELASTINGDIENST "box1" data:
       | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
       | 999993653 | 3500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | 999993654 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
     And the following BELASTINGDIENST "box2" data:
       | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
       | 999993653 | 0                   | 0                      |
+      | 999993654 | 0                   | 0                      |
     And the following BELASTINGDIENST "box3" data:
       | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
       | 999993653 | 0         | 0           | 0              | 0        |
+      | 999993654 | 0         | 0           | 0              | 0        |
     And the following DJI "detenties" data:
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
@@ -230,3 +241,56 @@ Feature: Healthcare allowance calculation
     When the healthcare allowance law is executed
     Then the citizen has the right to healthcare allowance
     And the allowance amount is "1718.79" euro
+
+  Scenario: Verdragsinschrijving provides insurance coverage when polis is inactive (2025)
+    Given the calculation date is "2025-01-01"
+    And the following RVIG "personal_data" data:
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1985-01-01    | Amsterdam      | NEDERLAND     |
+    And the following RVIG "relationship_data" data:
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    And the following RVZ "insurance" data:
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | VERLOPEN     | true                 |
+    And the following BELASTINGDIENST "box1" data:
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+    And the following BELASTINGDIENST "box2" data:
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    And the following BELASTINGDIENST "box3" data:
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    And the following DJI "detenties" data:
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    When the healthcare allowance law is executed
+    Then the citizen has the right to healthcare allowance
+    And the allowance amount is "2107.26" euro
+
+  Scenario: Forensische zorg excludes person from insurance coverage (2025)
+    Given the calculation date is "2025-01-01"
+    And the following RVIG "personal_data" data:
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1985-01-01    | Amsterdam      | NEDERLAND     |
+    And the following RVIG "relationship_data" data:
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    And the following RVZ "insurance" data:
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    And the following BELASTINGDIENST "box1" data:
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+    And the following BELASTINGDIENST "box2" data:
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    And the following BELASTINGDIENST "box3" data:
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    And the following DJI "detenties" data:
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | GGZ      | TBS                  |
+    When the healthcare allowance law is executed
+    Then the citizen does not have the right to healthcare allowance

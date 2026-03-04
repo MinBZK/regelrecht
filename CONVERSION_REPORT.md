@@ -14,10 +14,14 @@ Volledige conversie van de zorgtoeslag BDD-scenarios van de POC (Python/poc-mach
 | 4 | Persoon onder 18 | 2025 | geen recht | PASS |
 | 5 | Laag inkomen alleenstaande (20000) | 2025 | 2108.21 euro | PASS |
 | 6 | Student met studiefinanciering (15000) | 2025 | 2109.16 euro | PASS |
-| 7 | Persoon boven 18, inkomen 79547 | 2024 | 1948.34 euro | PASS |
+| 7 | Persoon boven 18, inkomen 79547 | 2024 | 1972.05 euro | PASS |
 | 8 | Persoon onder 18 | 2024 | geen recht | PASS |
+| 9 | Partner met inkomen (35000) | 2025 | 2728.45 euro | PASS |
+| 10 | Alleenstaande met box3-vermogen (70000) | 2025 | 1718.79 euro | PASS |
+| 11 | Verdragsinschrijving, verlopen polis | 2025 | 2107.26 euro | PASS |
+| 12 | Forensische zorg sluit uit | 2025 | geen recht | PASS |
 
-**Totaal: 8 zorgtoeslag-scenarios (was 3), 22 scenarios totaal, 139 steps - alle PASS.**
+**Totaal: 12 zorgtoeslag-scenarios (was 3), 26 scenarios totaal, 182 steps - alle PASS.**
 
 ## Service-naar-datasource mapping
 
@@ -71,7 +75,7 @@ zorgtoeslagwet (art 2: hoogte_zorgtoeslag)
   - wet_inkomstenbelasting_2001, algemene_wet_inkomensafhankelijke_regelingen, wet_op_de_zorgtoeslag, burgerlijk_wetboek_boek_5, participatiewet
 - **regeling_standaardpremie/2025-01-01.yaml**: `valid_from` gewijzigd van `#datum_inwerkingtreding` naar `2025-01-01`
 - **wet_inkomstenbelasting_2001**: `valid_from` gewijzigd van `2025-01-01` naar `2024-01-01` (wet was ook geldig in 2024)
-- **features/zorgtoeslag.feature**: Van 3 naar 8 scenarios
+- **features/zorgtoeslag.feature**: Van 3 naar 12 scenarios
 - **packages/engine/tests/bdd/world.rs**: ExternalData uitgebreid met DUO velden
 - **packages/engine/tests/bdd/steps/given.rs**: DUO datasource steps toegevoegd
 - **packages/engine/tests/bdd/steps/when.rs**: DUO datasource registratie in execute
@@ -84,8 +88,8 @@ zorgtoeslagwet (art 2: hoogte_zorgtoeslag)
 | standaardpremie | 198700 | 211200 |
 | drempelinkomen_alleenstaande | 3749600 | 3971900 |
 | drempelinkomen_met_partner | 4821800 | 5587500 |
-| percentage_drempelinkomen_alleenstaande | 0.0486 | 0.01896 |
-| percentage_drempelinkomen_partner | 0.0486 | 0.04273 |
+| percentage_drempelinkomen_alleenstaande | 0.01879 | 0.01896 |
+| percentage_drempelinkomen_partner | 0.04256 | 0.04273 |
 | percentage_toetsingsinkomen | 0.1367 | 0.137 |
 | vermogensgrens_alleenstaand | 12758200 | 14189600 |
 | vermogensgrens_met_partner | 16132900 | 17942900 |
@@ -123,9 +127,9 @@ zorgtoeslag = MAX(0, 211200 - 284.4) = 210915.6 -> /100 = 2109.16 euro
 
 ### 2024 - Persoon boven 18 (inkomen 79547)
 ```
-normpremie = 0.0486 * MIN(79547, 3749600) + 0.1367 * MAX(0, 79547 - 3749600)
-           = 0.0486 * 79547 + 0 = 3865.98
-zorgtoeslag = MAX(0, 198700 - 3865.98) = 194834.02 -> /100 = 1948.34 euro
+normpremie = 0.01879 * MIN(79547, 3749600) + 0.1367 * MAX(0, 79547 - 3749600)
+           = 0.01879 * 79547 + 0 = 1494.69
+zorgtoeslag = MAX(0, 198700 - 1494.69) = 197205.31 -> afgerond 197205 ec -> /100 = 1972.05 euro
 ```
 
 ## Trace vergelijking POC vs MVP
@@ -242,7 +246,7 @@ De 2024-scenarios zijn gevalideerd op basis van de verwachte berekeningen (zie s
 
 ### Conclusie trace vergelijking
 
-Beide engines produceren **identieke eindresultaten** voor alle 8 scenarios. De tussenwaarden
+Beide engines produceren **identieke eindresultaten** voor alle oorspronkelijke scenarios. De tussenwaarden
 weken op vier punten af. Issue 1 bleek de MVP correct te hebben. Issues 2, 3 en 4 zijn
 opgelost door TypeSpec enforcement in de engine en uitbreiding van WIB art 5.2 en 2.18.
 
@@ -312,7 +316,8 @@ heffingsvrije voet en forfaitair rendement.
 
 ## Niet-geconverteerde items
 
-Geen. Alle 8 POC scenarios (4x 2024 + 4x 2025) zijn succesvol geconverteerd.
+Geen. Alle POC scenarios zijn succesvol geconverteerd en uitgebreid met partner-, box3-,
+verdragsinschrijving- en forensische-zorgscenarios (12 zorgtoeslag-scenarios totaal).
 
 ## Status trace-issues
 

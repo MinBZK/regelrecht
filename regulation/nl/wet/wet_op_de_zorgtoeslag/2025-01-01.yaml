@@ -96,6 +96,12 @@ articles:
                 bsn: $bsn
           # NB: Wet zorgtoeslag art. 1 verwijst direct naar WIB 2001 art. 2.18 voor toetsingsinkomen.
           # AWIR als bron is een indirecte aanname (AWIR verwijst ook naar WIB 2001 art. 2.18).
+          # TODO: Art. 2 lid 2 vereist het gezamenlijk toetsingsinkomen van verzekerde en
+          # toeslagpartner. Huidige implementatie gebruikt alleen het inkomen van de aanvrager.
+          # Implementatie geblokkeerd doordat de engine geen conditionele input-resolutie
+          # ondersteunt: het ophalen van het partner-toetsingsinkomen via AWIR art. 8 met
+          # partner_bsn faalt wanneer er geen partner is (null BSN veroorzaakt TypeMismatch
+          # in rekenkundige operaties).
           - name: toetsingsinkomen
             type: amount
             source:
