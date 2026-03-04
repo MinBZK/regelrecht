@@ -88,7 +88,7 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
                 current_interval = (current_interval * 2)
                     .max(config.poll_interval)
                     .min(config.max_poll_interval);
-                tracing::debug!(next_poll = ?current_interval, "no jobs available, backing off");
+                tracing::info!(next_poll = ?current_interval, "no jobs available, backing off");
             }
             Err(e) => {
                 tracing::error!(error = %e, "error processing job");

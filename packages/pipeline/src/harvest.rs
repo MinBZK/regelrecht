@@ -58,6 +58,7 @@ pub async fn execute_harvest(
     let date_for_download = effective_date.clone();
     let max_size_mb = payload.max_size_mb;
 
+    tracing::info!(bwb_id = %payload.bwb_id, date = %effective_date, "downloading law XML from BWB");
     let law = tokio::task::spawn_blocking(move || {
         if let Some(max_mb) = max_size_mb {
             regelrecht_harvester::download_law_with_max_size(&bwb_id, &date_for_download, max_mb)
@@ -67,6 +68,7 @@ pub async fn execute_harvest(
     })
     .await??;
 
+    tracing::info!(bwb_id = %payload.bwb_id, title = %law.metadata.title, "law XML downloaded successfully");
     let law_name = law.metadata.title.clone();
     let slug = law.metadata.to_slug();
     let layer = law.metadata.regulatory_layer.as_str().to_string();
