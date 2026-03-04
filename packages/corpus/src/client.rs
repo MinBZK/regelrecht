@@ -7,18 +7,54 @@ use crate::error::{CorpusError, Result};
 
 pub struct CorpusClient {
     config: CorpusConfig,
+    askpass_path: Option<PathBuf>,
 }
 
 impl CorpusClient {
     pub fn new(config: CorpusConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            askpass_path: None,
+        }
+    }
+
+    /// Write a GIT_ASKPASS helper script so the git token is passed via
+    /// environment variables instead of being embedded in the clone URL
+    /// (which would be visible via `/proc/[pid]/cmdline`).
+    fn ensure_askpass_script(&mut self) -> Result<()> {
+        if self.config.git_token().is_none() {
+            return Ok(());
+        }
+
+        let script_path = self.config.askpass_script_path();
+        if let Some(parent) = script_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| CorpusError::Git(format!("failed to create askpass dir: {e}")))?;
+        }
+        std::fs::write(
+            &script_path,
+            "#!/bin/sh\nprintf '%s\\n' \"$REGELRECHT_GIT_TOKEN\"\n",
+        )
+        .map_err(|e| CorpusError::Git(format!("failed to write askpass script: {e}")))?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o700))
+                .map_err(|e| CorpusError::Git(format!("failed to set askpass permissions: {e}")))?;
+        }
+
+        self.askpass_path = Some(script_path);
+        Ok(())
     }
 
     /// Ensure the corpus repo is available locally.
     ///
     /// If the repo directory doesn't exist, clones it (shallow, single branch).
     /// If it exists, fetches and resets to the remote branch.
-    pub async fn ensure_repo(&self) -> Result<()> {
+    pub async fn ensure_repo(&mut self) -> Result<()> {
+        self.ensure_askpass_script()?;
+
         let repo_path = &self.config.repo_path;
 
         if repo_path.join(".git").exists() {
@@ -83,7 +119,7 @@ impl CorpusClient {
     }
 
     async fn git_clone(&self) -> Result<()> {
-        let url = self.config.authenticated_url();
+        let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
 
         let output = Command::new("git")
@@ -176,14 +212,35 @@ impl CorpusClient {
         }
     }
 
-    /// Environment variables for git commands (author/committer identity).
-    fn git_env(&self) -> Vec<(&str, &str)> {
-        vec![
-            ("GIT_AUTHOR_NAME", self.config.git_author_name.as_str()),
-            ("GIT_AUTHOR_EMAIL", self.config.git_author_email.as_str()),
-            ("GIT_COMMITTER_NAME", self.config.git_author_name.as_str()),
-            ("GIT_COMMITTER_EMAIL", self.config.git_author_email.as_str()),
-        ]
+    /// Environment variables for git commands (author/committer identity
+    /// and optional GIT_ASKPASS for token-based authentication).
+    fn git_env(&self) -> Vec<(String, String)> {
+        let mut env = vec![
+            (
+                "GIT_AUTHOR_NAME".into(),
+                self.config.git_author_name.clone(),
+            ),
+            (
+                "GIT_AUTHOR_EMAIL".into(),
+                self.config.git_author_email.clone(),
+            ),
+            (
+                "GIT_COMMITTER_NAME".into(),
+                self.config.git_author_name.clone(),
+            ),
+            (
+                "GIT_COMMITTER_EMAIL".into(),
+                self.config.git_author_email.clone(),
+            ),
+            ("GIT_TERMINAL_PROMPT".into(), "0".into()),
+        ];
+
+        if let (Some(askpass), Some(token)) = (&self.askpass_path, self.config.git_token()) {
+            env.push(("GIT_ASKPASS".into(), askpass.to_string_lossy().into()));
+            env.push(("REGELRECHT_GIT_TOKEN".into(), token.into()));
+        }
+
+        env
     }
 }
 
@@ -279,7 +336,7 @@ mod tests {
         let bare_url = format!("file://{}", bare_path.display());
 
         let config = CorpusConfig::new(&bare_url, &repo_path);
-        let client = CorpusClient::new(config);
+        let mut client = CorpusClient::new(config);
         client.ensure_repo().await.unwrap();
 
         assert!(repo_path.join(".git").exists());

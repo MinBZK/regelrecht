@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::error::{CorpusError, Result};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CorpusConfig {
     pub repo_url: String,
     pub repo_path: PathBuf,
@@ -10,6 +10,19 @@ pub struct CorpusConfig {
     pub git_author_name: String,
     pub git_author_email: String,
     git_token: Option<String>,
+}
+
+impl std::fmt::Debug for CorpusConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CorpusConfig")
+            .field("repo_url", &self.repo_url)
+            .field("repo_path", &self.repo_path)
+            .field("branch", &self.branch)
+            .field("git_author_name", &self.git_author_name)
+            .field("git_author_email", &self.git_author_email)
+            .field("git_token", &self.git_token.as_ref().map(|_| "***"))
+            .finish()
+    }
 }
 
 impl CorpusConfig {
@@ -81,18 +94,25 @@ impl CorpusConfig {
         self.git_token.as_deref()
     }
 
-    /// Build the authenticated clone URL by injecting the token.
+    /// Build the clone URL with the username embedded (but NOT the token).
     ///
-    /// Uses `https://token:{token}@host/...` format, which is accepted by
-    /// GitHub, GitLab, Forgejo, Gitea, and most git hosting platforms.
-    pub(crate) fn authenticated_url(&self) -> String {
+    /// The token is provided separately via `GIT_ASKPASS` to avoid exposing
+    /// credentials in `/proc/[pid]/cmdline`.
+    pub(crate) fn clone_url(&self) -> String {
         match &self.git_token {
-            Some(token) if self.repo_url.starts_with("https://") => {
-                self.repo_url
-                    .replacen("https://", &format!("https://token:{token}@"), 1)
+            Some(_) if self.repo_url.starts_with("https://") => {
+                self.repo_url.replacen("https://", "https://token@", 1)
             }
             _ => self.repo_url.clone(),
         }
+    }
+
+    /// Path where the GIT_ASKPASS helper script is written.
+    pub(crate) fn askpass_script_path(&self) -> PathBuf {
+        self.repo_path
+            .parent()
+            .unwrap_or(std::path::Path::new("/tmp"))
+            .join(".git-askpass.sh")
     }
 }
 
@@ -101,7 +121,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_authenticated_url_with_token() {
+    fn test_clone_url_with_token_embeds_username_only() {
         let config = CorpusConfig {
             repo_url: "https://github.com/MinBZK/regelrecht-corpus.git".into(),
             repo_path: "/tmp/test".into(),
@@ -110,14 +130,14 @@ mod tests {
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
         };
-        assert_eq!(
-            config.authenticated_url(),
-            "https://token:ghp_abc123@github.com/MinBZK/regelrecht-corpus.git"
-        );
+        // Token should NOT appear in the URL — only the username
+        let url = config.clone_url();
+        assert_eq!(url, "https://token@github.com/MinBZK/regelrecht-corpus.git");
+        assert!(!url.contains("ghp_abc123"));
     }
 
     #[test]
-    fn test_authenticated_url_without_token() {
+    fn test_clone_url_without_token() {
         let config = CorpusConfig {
             repo_url: "https://github.com/MinBZK/regelrecht-corpus.git".into(),
             repo_path: "/tmp/test".into(),
@@ -127,13 +147,13 @@ mod tests {
             git_token: None,
         };
         assert_eq!(
-            config.authenticated_url(),
+            config.clone_url(),
             "https://github.com/MinBZK/regelrecht-corpus.git"
         );
     }
 
     #[test]
-    fn test_authenticated_url_ssh() {
+    fn test_clone_url_ssh() {
         let config = CorpusConfig {
             repo_url: "git@github.com:MinBZK/regelrecht-corpus.git".into(),
             repo_path: "/tmp/test".into(),
@@ -144,8 +164,23 @@ mod tests {
         };
         // SSH URLs should not be modified
         assert_eq!(
-            config.authenticated_url(),
+            config.clone_url(),
             "git@github.com:MinBZK/regelrecht-corpus.git"
         );
+    }
+
+    #[test]
+    fn test_debug_hides_token() {
+        let config = CorpusConfig {
+            repo_url: "https://github.com/MinBZK/regelrecht-corpus.git".into(),
+            repo_path: "/tmp/test".into(),
+            branch: "main".into(),
+            git_author_name: "test".into(),
+            git_author_email: "test@test.nl".into(),
+            git_token: Some("ghp_abc123".into()),
+        };
+        let debug_output = format!("{:?}", config);
+        assert!(!debug_output.contains("ghp_abc123"));
+        assert!(debug_output.contains("***"));
     }
 }

@@ -28,7 +28,7 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
 
     // Initialize corpus client if configured
     let corpus = if let Some(ref corpus_config) = config.corpus_config {
-        let client = CorpusClient::new(corpus_config.clone());
+        let mut client = CorpusClient::new(corpus_config.clone());
         client.ensure_repo().await?;
         tracing::info!(path = %corpus_config.repo_path.display(), "corpus repo ready");
         Some(client)
@@ -163,14 +163,13 @@ async fn process_next_job(
 
             let result_json = serde_json::to_value(&result).ok();
 
-            // Use a transaction so job completion and law status update are atomic
+            // Use a transaction so job completion and law status update are atomic.
+            // Both operations must succeed — if either fails, the transaction is
+            // rolled back to prevent inconsistent state (e.g. job 'completed'
+            // while law status is stuck at 'harvesting').
             let mut tx = pool.begin().await?;
             job_queue::complete_job(&mut *tx, job.id, result_json).await?;
-            if let Err(e) =
-                law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Harvested).await
-            {
-                tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to harvested");
-            }
+            law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Harvested).await?;
             tx.commit().await?;
 
             if let Ok(entry) = law_status::get_law(pool, &job.law_id).await {
@@ -218,6 +217,14 @@ async fn process_next_job(
 ///
 /// When a corpus client is provided, the written files are committed and pushed
 /// to the corpus repository.
+///
+/// # At-least-once semantics
+///
+/// The corpus push happens before the DB transaction that marks the job as
+/// completed. If the process crashes after a successful push but before the
+/// DB commit, the job will be retried on restart. This is safe because
+/// `commit_and_push` is idempotent: re-harvesting produces identical files,
+/// and git detects "no changes to commit" when the content matches.
 async fn execute_harvest_job(
     output_dir: &Path,
     config: &WorkerConfig,
