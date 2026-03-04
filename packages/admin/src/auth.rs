@@ -15,7 +15,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use tower_sessions::Session;
 
-use crate::config::AppConfig;
 use crate::state::AppState;
 
 const SESSION_KEY_CSRF: &str = "oidc_csrf";
@@ -27,90 +26,19 @@ const SESSION_KEY_EMAIL: &str = "person_email";
 const SESSION_KEY_NAME: &str = "person_name";
 const SESSION_KEY_ID_TOKEN: &str = "id_token_hint";
 
-fn base_url_from_request(config: &AppConfig, headers: &HeaderMap) -> String {
-    // Safety: startup validation in AppConfig::try_from_env ensures BASE_URL is
-    // set when OIDC is enabled. If we somehow get here without it, fall back to
-    // a safe default rather than panicking.
-    let Some(base_url) = config.base_url.as_deref() else {
-        tracing::error!("BASE_URL is not set — this should have been caught at startup");
-        return "https://localhost".to_string();
-    };
-
-    if !config.base_url_allow_dynamic {
-        return base_url.to_string();
-    }
-
-    // Dynamic mode: try to derive from headers, validate against BASE_URL
-    match derive_url_from_headers(headers) {
-        Some(derived) => match validate_derived_url(&derived, config) {
-            Ok(()) => derived,
-            Err(reason) => {
-                tracing::warn!(
-                    derived_url = %derived,
-                    reason = %reason,
-                    "rejected header-derived URL, falling back to BASE_URL"
-                );
-                base_url.to_string()
-            }
-        },
-        None => base_url.to_string(),
-    }
-}
-
-fn derive_url_from_headers(headers: &HeaderMap) -> Option<String> {
+fn base_url_from_request(headers: &HeaderMap) -> String {
     let host = headers
         .get("x-forwarded-host")
         .or_else(|| headers.get("host"))
-        .and_then(|v| v.to_str().ok())?;
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
 
     let scheme = headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("https");
 
-    Some(format!("{scheme}://{host}"))
-}
-
-fn validate_derived_url(derived: &str, config: &AppConfig) -> Result<(), String> {
-    // Parse scheme and host from derived URL
-    let (derived_scheme, derived_host) = derived
-        .split_once("://")
-        .ok_or_else(|| "invalid URL format".to_string())?;
-
-    // Reject suspicious characters that could enable URL confusion
-    if derived_host.contains('@') || derived_host.contains('\\') {
-        return Err(format!("suspicious characters in host: {derived_host}"));
-    }
-
-    // Validate scheme matches BASE_URL
-    if let Some(base_scheme) = config.base_url_scheme() {
-        if derived_scheme != base_scheme {
-            return Err(format!(
-                "scheme mismatch: derived={derived_scheme}, base={base_scheme}"
-            ));
-        }
-    }
-
-    // Validate domain suffix matches BASE_URL
-    if let Some(base_suffix) = config.base_url_domain_suffix() {
-        // Strip port from derived host for suffix comparison
-        let derived_host_no_port = derived_host.split(':').next().unwrap_or(derived_host);
-        let derived_suffix = derived_host_no_port
-            .find('.')
-            .map(|i| &derived_host_no_port[i..]);
-
-        match derived_suffix {
-            Some(suffix) if suffix == base_suffix => Ok(()),
-            Some(suffix) => Err(format!(
-                "domain suffix mismatch: derived={suffix}, base={base_suffix}"
-            )),
-            None => Err(format!(
-                "no domain suffix in derived host: {derived_host_no_port}"
-            )),
-        }
-    } else {
-        Err("BASE_URL has no domain suffix to validate against".to_string())
-    }
+    format!("{scheme}://{host}")
 }
 
 #[derive(Serialize)]
@@ -149,7 +77,7 @@ pub async fn login(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let base_url = base_url_from_request(&state.config, &headers);
+    let base_url = base_url_from_request(&headers);
     let redirect_url = RedirectUrl::new(format!("{base_url}/auth/callback")).map_err(|e| {
         tracing::error!(error = %e, "invalid redirect URL");
         StatusCode::INTERNAL_SERVER_ERROR
@@ -219,7 +147,7 @@ pub async fn callback(
         .as_ref()
         .ok_or(StatusCode::NOT_IMPLEMENTED)?;
 
-    let base_url = base_url_from_request(&app_state.config, &headers);
+    let base_url = base_url_from_request(&headers);
     let redirect_url = RedirectUrl::new(format!("{base_url}/auth/callback")).map_err(|e| {
         tracing::error!(error = %e, "invalid redirect URL");
         StatusCode::INTERNAL_SERVER_ERROR
@@ -363,7 +291,7 @@ pub async fn logout(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let base_url = base_url_from_request(&state.config, &headers);
+    let base_url = base_url_from_request(&headers);
 
     if let (Some(ref end_session_url), Some(ref oidc)) =
         (&state.end_session_url, &state.config.oidc)
@@ -453,9 +381,10 @@ fn extract_realm_roles(jwt: &str) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::AppConfig;
     use crate::oidc::ConfiguredClient;
     use axum::body::Body;
-    use axum::http::HeaderValue;
+
     use axum::routing::get;
     use axum::Router;
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -545,167 +474,45 @@ mod tests {
 
     // --- base_url_from_request ---
 
-    fn config_static(url: &str) -> AppConfig {
-        AppConfig {
-            oidc: None,
-            base_url: Some(url.to_string()),
-            base_url_allow_dynamic: false,
-        }
+    #[test]
+    fn base_url_uses_forwarded_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-host", "admin.example.com".parse().unwrap());
+        headers.insert("x-forwarded-proto", "https".parse().unwrap());
+        assert_eq!(base_url_from_request(&headers), "https://admin.example.com");
     }
-
-    fn config_dynamic(url: &str) -> AppConfig {
-        AppConfig {
-            oidc: None,
-            base_url: Some(url.to_string()),
-            base_url_allow_dynamic: true,
-        }
-    }
-
-    // --- Static mode tests ---
 
     #[test]
-    fn static_mode_returns_base_url_ignoring_headers() {
-        let config = config_static("https://admin.rig.example.nl");
+    fn base_url_falls_back_to_host_header() {
         let mut headers = HeaderMap::new();
-        headers.insert("host", HeaderValue::from_static("evil.attacker.com"));
+        headers.insert("host", "localhost:8000".parse().unwrap());
+        assert_eq!(base_url_from_request(&headers), "https://localhost:8000");
+    }
+
+    #[test]
+    fn base_url_forwarded_host_takes_precedence() {
+        let mut headers = HeaderMap::new();
+        headers.insert("host", "internal:8000".parse().unwrap());
+        headers.insert("x-forwarded-host", "public.example.com".parse().unwrap());
+        headers.insert("x-forwarded-proto", "https".parse().unwrap());
         assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://admin.rig.example.nl"
+            base_url_from_request(&headers),
+            "https://public.example.com"
         );
     }
 
     #[test]
-    fn static_mode_returns_base_url_with_no_headers() {
-        let config = config_static("https://admin.example.com");
+    fn base_url_no_headers_defaults() {
         let headers = HeaderMap::new();
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://admin.example.com"
-        );
+        assert_eq!(base_url_from_request(&headers), "https://localhost");
     }
 
-    // --- Dynamic mode tests ---
-
     #[test]
-    fn dynamic_mode_accepts_matching_suffix() {
-        let config = config_dynamic("https://admin.rig.example.nl");
+    fn base_url_http_scheme() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-forwarded-host",
-            HeaderValue::from_static("pr42.rig.example.nl"),
-        );
-        headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://pr42.rig.example.nl"
-        );
-    }
-
-    #[test]
-    fn dynamic_mode_rejects_wrong_domain() {
-        let config = config_dynamic("https://admin.rig.example.nl");
-        let mut headers = HeaderMap::new();
-        headers.insert("host", HeaderValue::from_static("evil.attacker.com"));
-        // Should fall back to BASE_URL
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://admin.rig.example.nl"
-        );
-    }
-
-    #[test]
-    fn dynamic_mode_rejects_scheme_mismatch() {
-        let config = config_dynamic("https://admin.rig.example.nl");
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-forwarded-host",
-            HeaderValue::from_static("pr42.rig.example.nl"),
-        );
-        headers.insert("x-forwarded-proto", HeaderValue::from_static("http"));
-        // Should fall back to BASE_URL
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://admin.rig.example.nl"
-        );
-    }
-
-    #[test]
-    fn dynamic_mode_rejects_at_sign_in_host() {
-        let config = config_dynamic("https://admin.rig.example.nl");
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-forwarded-host",
-            HeaderValue::from_static("user@evil.rig.example.nl"),
-        );
-        headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://admin.rig.example.nl"
-        );
-    }
-
-    #[test]
-    fn dynamic_mode_rejects_backslash_in_host() {
-        let config = config_dynamic("https://admin.rig.example.nl");
-        let mut headers = HeaderMap::new();
-        headers.insert("host", HeaderValue::from_static("evil\\x.rig.example.nl"));
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://admin.rig.example.nl"
-        );
-    }
-
-    #[test]
-    fn dynamic_mode_no_headers_falls_back() {
-        let config = config_dynamic("https://admin.rig.example.nl");
-        let headers = HeaderMap::new();
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://admin.rig.example.nl"
-        );
-    }
-
-    #[test]
-    fn dynamic_mode_forwarded_host_takes_priority_over_host() {
-        let config = config_dynamic("https://admin.rig.example.nl");
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-forwarded-host",
-            HeaderValue::from_static("pr99.rig.example.nl"),
-        );
-        headers.insert("x-forwarded-proto", HeaderValue::from_static("https"));
-        headers.insert("host", HeaderValue::from_static("internal:8000"));
-        assert_eq!(
-            base_url_from_request(&config, &headers),
-            "https://pr99.rig.example.nl"
-        );
-    }
-
-    // --- derive_url_from_headers ---
-
-    #[test]
-    fn derive_url_returns_none_without_host() {
-        let headers = HeaderMap::new();
-        assert!(derive_url_from_headers(&headers).is_none());
-    }
-
-    #[test]
-    fn derive_url_defaults_to_https() {
-        let mut headers = HeaderMap::new();
-        headers.insert("host", HeaderValue::from_static("example.com"));
-        assert_eq!(
-            derive_url_from_headers(&headers).unwrap(),
-            "https://example.com"
-        );
-    }
-
-    // --- validate_derived_url ---
-
-    #[test]
-    fn validate_rejects_bare_hostname() {
-        let config = config_dynamic("https://admin.rig.example.nl");
-        let result = validate_derived_url("https://localhost", &config);
-        assert!(result.is_err());
+        headers.insert("host", "localhost:8000".parse().unwrap());
+        headers.insert("x-forwarded-proto", "http".parse().unwrap());
+        assert_eq!(base_url_from_request(&headers), "http://localhost:8000");
     }
 
     // =========================================================================
@@ -818,8 +625,6 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
                 issuer_url: "https://idp.test.example/realms/test".into(),
                 required_role: "allowed-user".into(),
             }),
-            base_url: Some("https://admin.test.example".into()),
-            base_url_allow_dynamic: false,
         };
 
         #[allow(clippy::expect_used)]
@@ -836,11 +641,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
     }
 
     fn test_state_no_oidc() -> AppState {
-        let config = AppConfig {
-            oidc: None,
-            base_url: None,
-            base_url_allow_dynamic: false,
-        };
+        let config = AppConfig { oidc: None };
 
         #[allow(clippy::expect_used)]
         let pool = PgPoolOptions::new()
@@ -1256,7 +1057,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             .expect("location header")
             .to_str()
             .expect("location str");
-        assert_eq!(location, "https://admin.test.example/");
+        assert_eq!(location, "https://localhost/");
     }
 
     #[tokio::test]
@@ -1401,7 +1202,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
                 .expect("location header")
                 .to_str()
                 .expect("location str"),
-            "https://admin.test.example/",
+            "https://localhost/",
             "should redirect to base URL after login"
         );
 

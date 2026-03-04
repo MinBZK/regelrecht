@@ -16,13 +16,8 @@
 //! *Required together — if `OIDC_CLIENT_ID` is set, `OIDC_CLIENT_SECRET` must also be set,
 //! and either `OIDC_DISCOVERY_URL` or both `KEYCLOAK_BASE_URL` + `KEYCLOAK_REALM`.
 //!
-//! ## Base URL & host validation
-//!
-//! | Variable                | Required | Description                                              |
-//! |-------------------------|----------|----------------------------------------------------------|
-//! | `BASE_URL`              | yes*     | Canonical base URL. Required when OIDC is enabled.       |
-//! | `BASE_URL_ALLOW_DYNAMIC`| no       | `true`/`1` to allow header-derived URLs within the       |
-//! |                         |          | `BASE_URL` domain suffix (for PR preview deploys).       |
+//! The base URL for OIDC redirects is derived from request headers (`x-forwarded-host`,
+//! `x-forwarded-proto`) at runtime. Keycloak validates redirect URIs server-side.
 
 use std::env;
 
@@ -48,8 +43,6 @@ impl std::fmt::Debug for OidcConfig {
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub oidc: Option<OidcConfig>,
-    pub base_url: Option<String>,
-    pub base_url_allow_dynamic: bool,
 }
 
 impl AppConfig {
@@ -69,42 +62,13 @@ impl AppConfig {
             Some(client_id) => Some(Self::parse_oidc_config(client_id)?),
         };
 
-        let base_url = env::var("BASE_URL").ok();
-
-        let base_url_allow_dynamic = matches!(
-            env::var("BASE_URL_ALLOW_DYNAMIC").as_deref(),
-            Ok("true" | "1")
-        );
-
         if oidc.is_some() {
-            if base_url.is_none() {
-                return Err("OIDC is enabled but BASE_URL is not set. \
-                     BASE_URL is required when OIDC authentication is enabled \
-                     to prevent host header injection attacks."
-                    .to_string());
-            }
             tracing::info!("OIDC authentication is enabled");
-            if base_url_allow_dynamic {
-                tracing::info!(
-                    "BASE_URL_ALLOW_DYNAMIC is enabled; request-derived hosts \
-                     sharing the BASE_URL domain suffix will be accepted"
-                );
-            }
         } else {
             tracing::warn!("OIDC authentication is DISABLED — admin panel is unprotected");
         }
 
-        if base_url_allow_dynamic && base_url.is_none() {
-            return Err("BASE_URL_ALLOW_DYNAMIC=true but BASE_URL is not set. \
-                 BASE_URL is required as the trust anchor for dynamic host validation."
-                .to_string());
-        }
-
-        Ok(Self {
-            oidc,
-            base_url,
-            base_url_allow_dynamic,
-        })
+        Ok(Self { oidc })
     }
 
     fn parse_oidc_config(client_id: String) -> Result<OidcConfig, String> {
@@ -159,24 +123,6 @@ impl AppConfig {
     pub fn is_auth_enabled(&self) -> bool {
         self.oidc.is_some()
     }
-
-    /// Returns the domain suffix of `BASE_URL` (everything from the first `.` in the host).
-    /// E.g. `https://admin.rig.example.nl` → `.rig.example.nl`
-    pub fn base_url_domain_suffix(&self) -> Option<&str> {
-        let base = self.base_url.as_deref()?;
-        let host = base
-            .strip_prefix("https://")
-            .or_else(|| base.strip_prefix("http://"))?;
-        // Strip port if present
-        let host = host.split(':').next().unwrap_or(host);
-        host.find('.').map(|i| &host[i..])
-    }
-
-    /// Returns the scheme of `BASE_URL` (`"https"` or `"http"`).
-    pub fn base_url_scheme(&self) -> Option<&str> {
-        let base = self.base_url.as_deref()?;
-        base.split("://").next()
-    }
 }
 
 #[cfg(test)]
@@ -193,8 +139,6 @@ mod tests {
         "KEYCLOAK_BASE_URL",
         "KEYCLOAK_REALM",
         "OIDC_REQUIRED_ROLE",
-        "BASE_URL",
-        "BASE_URL_ALLOW_DYNAMIC",
     ];
 
     fn clear_oidc_env() {
@@ -208,7 +152,6 @@ mod tests {
         env::set_var("OIDC_CLIENT_SECRET", "secret");
         env::set_var("KEYCLOAK_BASE_URL", "https://keycloak.example.com");
         env::set_var("KEYCLOAK_REALM", "test-realm");
-        env::set_var("BASE_URL", "https://admin.example.com");
     }
 
     #[test]
@@ -263,7 +206,6 @@ mod tests {
         clear_oidc_env();
         env::set_var("OIDC_CLIENT_ID", "test-client");
         env::set_var("OIDC_CLIENT_SECRET", "secret");
-        env::set_var("BASE_URL", "https://admin.example.com");
         env::set_var(
             "OIDC_DISCOVERY_URL",
             "https://idp.example.com/realms/myrealm",
@@ -329,148 +271,5 @@ mod tests {
         assert_eq!(config.oidc.unwrap().required_role, "super-admin");
 
         clear_oidc_env();
-    }
-
-    #[test]
-    fn default_base_url_is_none() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-
-        let config = AppConfig::try_from_env().expect("should succeed");
-        assert!(config.base_url.is_none());
-    }
-
-    #[test]
-    fn custom_base_url() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-        env::set_var("BASE_URL", "https://admin.example.com");
-
-        let config = AppConfig::try_from_env().expect("should succeed");
-        assert_eq!(config.base_url.unwrap(), "https://admin.example.com");
-
-        clear_oidc_env();
-    }
-
-    #[test]
-    fn oidc_without_base_url_fails() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-        env::set_var("OIDC_CLIENT_ID", "test-client");
-        env::set_var("OIDC_CLIENT_SECRET", "secret");
-        env::set_var("KEYCLOAK_BASE_URL", "https://keycloak.example.com");
-        env::set_var("KEYCLOAK_REALM", "test-realm");
-        // No BASE_URL set
-
-        let result = AppConfig::try_from_env();
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("BASE_URL"));
-
-        clear_oidc_env();
-    }
-
-    #[test]
-    fn allow_dynamic_without_base_url_fails() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-        env::set_var("BASE_URL_ALLOW_DYNAMIC", "true");
-
-        let result = AppConfig::try_from_env();
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("BASE_URL_ALLOW_DYNAMIC"));
-
-        clear_oidc_env();
-    }
-
-    #[test]
-    fn allow_dynamic_parsed_correctly() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-        env::set_var("BASE_URL", "https://admin.example.com");
-        env::set_var("BASE_URL_ALLOW_DYNAMIC", "true");
-
-        let config = AppConfig::try_from_env().expect("should succeed");
-        assert!(config.base_url_allow_dynamic);
-
-        clear_oidc_env();
-    }
-
-    #[test]
-    fn allow_dynamic_accepts_1() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-        env::set_var("BASE_URL", "https://admin.example.com");
-        env::set_var("BASE_URL_ALLOW_DYNAMIC", "1");
-
-        let config = AppConfig::try_from_env().expect("should succeed");
-        assert!(config.base_url_allow_dynamic);
-
-        clear_oidc_env();
-    }
-
-    #[test]
-    fn allow_dynamic_defaults_to_false() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-
-        let config = AppConfig::try_from_env().expect("should succeed");
-        assert!(!config.base_url_allow_dynamic);
-
-        clear_oidc_env();
-    }
-
-    #[test]
-    fn base_url_domain_suffix_extracts_correctly() {
-        let config = AppConfig {
-            oidc: None,
-            base_url: Some("https://admin.rig.prd1.gn2.quattro.rijksapps.nl".to_string()),
-            base_url_allow_dynamic: false,
-        };
-        assert_eq!(
-            config.base_url_domain_suffix(),
-            Some(".rig.prd1.gn2.quattro.rijksapps.nl")
-        );
-    }
-
-    #[test]
-    fn base_url_domain_suffix_with_port() {
-        let config = AppConfig {
-            oidc: None,
-            base_url: Some("https://admin.example.com:8443".to_string()),
-            base_url_allow_dynamic: false,
-        };
-        assert_eq!(config.base_url_domain_suffix(), Some(".example.com"));
-    }
-
-    #[test]
-    fn base_url_domain_suffix_none_when_no_base_url() {
-        let config = AppConfig {
-            oidc: None,
-            base_url: None,
-            base_url_allow_dynamic: false,
-        };
-        assert_eq!(config.base_url_domain_suffix(), None);
-    }
-
-    #[test]
-    fn base_url_scheme_extracts_correctly() {
-        let config = AppConfig {
-            oidc: None,
-            base_url: Some("https://admin.example.com".to_string()),
-            base_url_allow_dynamic: false,
-        };
-        assert_eq!(config.base_url_scheme(), Some("https"));
-    }
-
-    #[test]
-    fn base_url_scheme_http() {
-        let config = AppConfig {
-            oidc: None,
-            base_url: Some("http://localhost:8000".to_string()),
-            base_url_allow_dynamic: false,
-        };
-        assert_eq!(config.base_url_scheme(), Some("http"));
     }
 }
