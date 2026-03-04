@@ -637,6 +637,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             oidc_client: Some(Arc::new(client)),
             end_session_url: end_session_url.map(String::from),
             config: Arc::new(config),
+            metrics_cache: Arc::new(crate::metrics::new_cache()),
         }
     }
 
@@ -653,6 +654,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             oidc_client: None,
             end_session_url: None,
             config: Arc::new(config),
+            metrics_cache: Arc::new(crate::metrics::new_cache()),
         }
     }
 

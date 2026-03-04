@@ -124,6 +124,7 @@ async fn main() {
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
+        metrics_cache: Arc::new(metrics::new_cache()),
     };
 
     let session_layer = SessionManagerLayer::new(session_store)

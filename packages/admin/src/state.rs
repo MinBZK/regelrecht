@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sqlx::PgPool;
 
 use crate::config::AppConfig;
+use crate::metrics::MetricsCache;
 use crate::oidc::ConfiguredClient;
 
 #[derive(Clone)]
@@ -11,4 +12,5 @@ pub struct AppState {
     pub oidc_client: Option<Arc<ConfiguredClient>>,
     pub end_session_url: Option<String>,
     pub config: Arc<AppConfig>,
+    pub metrics_cache: Arc<MetricsCache>,
 }

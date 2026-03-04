@@ -70,6 +70,7 @@ mod tests {
             oidc_client: None,
             end_session_url: None,
             config: Arc::new(config),
+            metrics_cache: Arc::new(crate::metrics::new_cache()),
         }
     }
 
