@@ -273,57 +273,48 @@ pub async fn list_jobs(
 }
 
 #[derive(Serialize)]
-pub struct ResetResponse {
-    pub jobs_reset: u64,
-    pub laws_reset: u64,
+pub struct SeedResponse {
+    pub job_id: String,
 }
 
-pub async fn reset_jobs(
+pub async fn seed_zorgtoeslag(
     State(state): State<AppState>,
-) -> Result<Json<ResetResponse>, (StatusCode, String)> {
+) -> Result<Json<SeedResponse>, (StatusCode, String)> {
     let pool = &state.pool;
 
-    let jobs_result = sqlx::query(
-        "UPDATE jobs SET status = 'pending', attempts = 0, started_at = NULL, \
-         completed_at = NULL, result = NULL, updated_at = now() \
-         WHERE status IN ('completed', 'failed', 'processing')",
+    sqlx::query(
+        "INSERT INTO law_entries (bwb_id, title, status) \
+         VALUES ('BWBR0018451', 'Wet op de zorgtoeslag', 'queued') \
+         ON CONFLICT (bwb_id) DO NOTHING",
     )
     .execute(pool)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "failed to reset jobs");
+        tracing::error!(error = %e, "failed to insert law entry");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to reset jobs".to_string(),
+            "failed to insert law entry".to_string(),
         )
     })?;
 
-    let laws_result = sqlx::query(
-        "UPDATE law_entries SET status = 'queued', updated_at = now() \
-         WHERE status != 'queued'",
+    let row = sqlx::query_scalar::<_, String>(
+        "INSERT INTO jobs (job_type, payload, status) \
+         VALUES ('harvest', '{\"bwb_id\": \"BWBR0018451\", \"date\": \"2026-01-01\"}', 'pending') \
+         RETURNING id::text",
     )
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "failed to reset law entries");
+        tracing::error!(error = %e, "failed to create harvest job");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to reset law entries".to_string(),
+            "failed to create harvest job".to_string(),
         )
     })?;
 
-    let response = ResetResponse {
-        jobs_reset: jobs_result.rows_affected(),
-        laws_reset: laws_result.rows_affected(),
-    };
+    tracing::info!(job_id = %row, "created zorgtoeslag harvest job");
 
-    tracing::info!(
-        jobs_reset = response.jobs_reset,
-        laws_reset = response.laws_reset,
-        "reset all jobs and law entries"
-    );
-
-    Ok(Json(response))
+    Ok(Json(SeedResponse { job_id: row }))
 }
 
 #[cfg(test)]

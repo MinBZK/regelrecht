@@ -431,10 +431,10 @@ function switchTab(tabKey) {
   state.totalCount = 0;
   state.error = null;
 
-  // Show reset button only on jobs tab
-  const resetBtn = $('#reset-jobs-btn');
-  if (resetBtn) {
-    resetBtn.style.display = tabKey === 'jobs' ? '' : 'none';
+  // Show seed button only on jobs tab
+  const seedBtn = $('#seed-zorgtoeslag-btn');
+  if (seedBtn) {
+    seedBtn.style.display = tabKey === 'jobs' ? '' : 'none';
   }
 
   renderTabs();
@@ -442,28 +442,26 @@ function switchTab(tabKey) {
   fetchData();
 }
 
-async function onResetJobs() {
-  if (!confirm('Reset all completed/failed jobs back to pending?')) return;
-
-  const btn = $('#reset-jobs-btn');
+async function onSeedZorgtoeslag() {
+  const btn = $('#seed-zorgtoeslag-btn');
   btn.disabled = true;
-  btn.textContent = 'Resetting\u2026';
+  btn.textContent = 'Adding\u2026';
 
   try {
-    const response = await fetch('api/jobs/reset', { method: 'POST' });
+    const response = await fetch('api/jobs/seed-zorgtoeslag', { method: 'POST' });
     if (response.status === 401) {
       window.location.href = '/auth/login';
       return;
     }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const result = await response.json();
-    alert(`Reset ${result.jobs_reset} job(s) and ${result.laws_reset} law entry/entries.`);
+    alert(`Created harvest job: ${result.job_id}`);
     fetchData();
   } catch (err) {
-    alert('Reset failed: ' + err.message);
+    alert('Seed failed: ' + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Reset Jobs';
+    btn.textContent = 'Add Zorgtoeslag Test';
   }
 }
 
@@ -531,10 +529,10 @@ async function init() {
   $('#pagination-prev').addEventListener('click', onPrevPage);
   $('#pagination-next').addEventListener('click', onNextPage);
 
-  // Bind reset button
-  const resetBtn = $('#reset-jobs-btn');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', onResetJobs);
+  // Bind seed button
+  const seedBtn = $('#seed-zorgtoeslag-btn');
+  if (seedBtn) {
+    seedBtn.addEventListener('click', onSeedZorgtoeslag);
   }
 
   // Initial render

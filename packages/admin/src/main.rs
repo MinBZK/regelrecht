@@ -136,7 +136,10 @@ async fn main() {
     let api_routes = Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
-        .route("/api/jobs/reset", post(handlers::reset_jobs))
+        .route(
+            "/api/jobs/seed-zorgtoeslag",
+            post(handlers::seed_zorgtoeslag),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_auth,
