@@ -17,14 +17,17 @@ WORKDIR /build
 
 # Stage 3: Plan dependencies
 FROM chef AS planner
-COPY packages/admin/Cargo.toml packages/admin/Cargo.lock ./
+COPY packages/admin/Cargo.toml ./
+# Use the workspace lockfile (admin is a workspace member)
+COPY packages/Cargo.lock ./
 COPY packages/admin/src/ src/
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 4: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
 COPY --from=planner /build/recipe.json recipe.json
-COPY packages/admin/Cargo.toml packages/admin/Cargo.lock ./
+COPY packages/admin/Cargo.toml ./
+COPY packages/Cargo.lock ./
 RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY packages/admin/src/ src/
