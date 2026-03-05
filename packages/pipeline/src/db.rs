@@ -32,10 +32,13 @@ pub async fn ensure_schema(pool: &PgPool) -> Result<()> {
     let result = run_migrations_inner(pool).await;
 
     // Always release the lock, even on error.
-    sqlx::query("SELECT pg_advisory_unlock($1)")
+    if let Err(e) = sqlx::query("SELECT pg_advisory_unlock($1)")
         .bind(MIGRATION_LOCK_KEY)
         .execute(pool)
-        .await?;
+        .await
+    {
+        tracing::warn!(error = %e, "failed to release migration lock");
+    }
 
     result
 }
