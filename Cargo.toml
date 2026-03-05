@@ -1,11 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "packages/admin",
     "packages/corpus",
     "packages/engine",
     "packages/harvester",
     "packages/pipeline",
+]
+exclude = [
+    "packages/admin",
 ]
 
 [workspace.package]
