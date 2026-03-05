@@ -33,7 +33,10 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY packages/admin/src/ src/
 # sqlx::migrate!("../pipeline/migrations") resolves at compile time
 COPY packages/pipeline/migrations/ ../pipeline/migrations/
-RUN cargo build --release --bin regelrecht-admin
+# Invalidate cargo's fingerprint cache so it recompiles with real source
+# instead of using the stub binary from cargo-chef cook.
+RUN find src -name '*.rs' -exec touch {} + && \
+    cargo build --release --bin regelrecht-admin
 
 # Stage 5: Runtime
 FROM alpine:3.23
