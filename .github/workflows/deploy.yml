@@ -332,7 +332,6 @@ jobs:
           container-tag: pr-${{ github.event.pull_request.number }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
-          update-pr-comment: true
           comment-header: '## Preview Deployment'
 
       - name: Cleanup admin container image
@@ -347,6 +346,7 @@ jobs:
           container-tag: pr-${{ github.event.pull_request.number }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
+          comment-header: '## Preview Deployment'
 
       - name: Cleanup harvester-worker container image
         uses: RijksICTGilde/zad-actions/cleanup@v2.4.0
@@ -360,6 +360,7 @@ jobs:
           container-tag: pr-${{ github.event.pull_request.number }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
+          comment-header: '## Preview Deployment'
 
       - name: Prune orphaned SHA-tagged images
         env:

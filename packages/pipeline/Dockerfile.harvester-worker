@@ -1,23 +1,32 @@
-# Stage 1: Build
-FROM rust:1.93-alpine AS builder
+# syntax=docker/dockerfile:1
+# Stage 1: Chef base
+FROM rust:1.93-alpine AS chef
 RUN apk add --no-cache musl-dev
-
+RUN cargo install cargo-chef --locked
 WORKDIR /build
 
-# Copy lockfile for reproducible dependency resolution
+# Stage 2: Plan dependencies
+FROM chef AS planner
 COPY Cargo.lock ./
-
-# Create a workspace Cargo.toml with only the members needed for this build
-# (avoids needing to copy packages/engine which is not a dependency)
 RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n]\n' > Cargo.toml
+COPY packages/corpus/ packages/corpus/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 3: Build (deps cached separately from source)
+FROM chef AS builder
+COPY Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n]\n' > Cargo.toml
+COPY --from=planner /build/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY packages/corpus/ packages/corpus/
 COPY packages/pipeline/ packages/pipeline/
 COPY packages/harvester/ packages/harvester/
-
 RUN cargo build --release --bin regelrecht-harvest-worker
 
-# Stage 2: Runtime
+# Stage 4: Runtime
 FROM alpine:3.23
 RUN apk add --no-cache ca-certificates git && \
     addgroup -S app && adduser -S app -G app
