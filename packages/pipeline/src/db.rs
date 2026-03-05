@@ -1,10 +1,12 @@
-use std::time::Duration;
-
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
 use crate::config::PipelineConfig;
 use crate::error::Result;
+
+/// Advisory lock key for migration coordination. All components that call
+/// `ensure_schema` use this same key so only one runs migrations at a time.
+pub const MIGRATION_LOCK_KEY: i64 = 0x5245_4745_4C52_4543; // "REGELREC"
 
 pub async fn create_pool(config: &PipelineConfig) -> Result<PgPool> {
     let pool = PgPoolOptions::new()
@@ -15,32 +17,30 @@ pub async fn create_pool(config: &PipelineConfig) -> Result<PgPool> {
     Ok(pool)
 }
 
-/// Wait for the database schema to be ready (migrations run by admin).
-pub async fn wait_for_schema(pool: &PgPool) -> Result<()> {
-    let max_attempts = 30;
-    for attempt in 1..=max_attempts {
-        let ready: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'jobs')",
-        )
-        .fetch_one(pool)
-        .await
-        .unwrap_or(false);
+/// Ensure the database schema is up to date.
+///
+/// Uses a PostgreSQL advisory lock so that whichever component starts first
+/// runs migrations while the others block. Since sqlx migrations are
+/// idempotent, the second caller safely no-ops after the lock is released.
+pub async fn ensure_schema(pool: &PgPool) -> Result<()> {
+    tracing::info!("acquiring migration lock...");
+    sqlx::query("SELECT pg_advisory_lock($1)")
+        .bind(MIGRATION_LOCK_KEY)
+        .execute(pool)
+        .await?;
 
-        if ready {
-            tracing::info!("database schema ready");
-            return Ok(());
-        }
+    let result = run_migrations_inner(pool).await;
 
-        tracing::info!(attempt, max_attempts, "waiting for database schema...");
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
+    // Always release the lock, even on error.
+    sqlx::query("SELECT pg_advisory_unlock($1)")
+        .bind(MIGRATION_LOCK_KEY)
+        .execute(pool)
+        .await?;
 
-    Err(crate::error::PipelineError::Worker(
-        "timed out waiting for database schema".to_string(),
-    ))
+    result
 }
 
-pub async fn run_migrations(pool: &PgPool) -> Result<()> {
+async fn run_migrations_inner(pool: &PgPool) -> Result<()> {
     // One-time schema reset: if stale seed migrations (versions > 1) are
     // detected, wipe all tables and migration records so 0001 re-runs cleanly.
     let needs_reset = sqlx::query_scalar::<_, bool>(
@@ -66,6 +66,8 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
         tracing::info!("database reset complete");
     }
 
+    tracing::info!("running database migrations...");
     sqlx::migrate!("./migrations").run(pool).await?;
+    tracing::info!("migrations completed");
     Ok(())
 }

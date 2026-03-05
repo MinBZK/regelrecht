@@ -24,7 +24,7 @@ const ORPHAN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
     let pipeline_config = config.pipeline_config();
     let pool = db::create_pool(&pipeline_config).await?;
-    db::wait_for_schema(&pool).await?;
+    db::ensure_schema(&pool).await?;
 
     // Initialize corpus client if configured
     let corpus = if let Some(ref corpus_config) = config.corpus_config {
