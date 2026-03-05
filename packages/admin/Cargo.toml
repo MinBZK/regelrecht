@@ -38,6 +38,8 @@ rsa = "0.9"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 
+[workspace]
+
 [lints.clippy]
 unwrap_used = "warn"
 expect_used = "warn"

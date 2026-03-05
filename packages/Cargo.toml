@@ -1,11 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "admin",
     "corpus",
     "engine",
     "harvester",
     "pipeline",
+]
+exclude = [
+    "admin",
 ]
 
 [workspace.lints.clippy]

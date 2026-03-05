@@ -280,8 +280,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-admin-${{ hashFiles('packages/admin/Cargo.toml', 'packages/Cargo.lock') }}
+            packages/admin/target
+          key: ${{ runner.os }}-cargo-admin-${{ hashFiles('packages/admin/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-admin-
 
