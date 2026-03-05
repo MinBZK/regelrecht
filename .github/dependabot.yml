@@ -2,10 +2,10 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: /packages
+    directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - rust
@@ -20,7 +20,7 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - javascript
@@ -34,7 +34,7 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - docker
@@ -52,7 +52,7 @@ updates:
     directory: /packages/admin
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - rust
@@ -66,7 +66,7 @@ updates:
     directory: /packages/admin/frontend-src
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - javascript
@@ -80,7 +80,7 @@ updates:
     directory: /packages/admin
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - docker
@@ -97,7 +97,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
       - github-actions
