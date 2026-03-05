@@ -23,7 +23,7 @@ impl TestDb {
 
         let config = PipelineConfig::new(&database_url);
         let pool = db::create_pool(&config).await.unwrap();
-        db::run_migrations(&pool).await.unwrap();
+        db::ensure_schema(&pool).await.unwrap();
 
         // Clear seed data from migrations so tests start with empty tables
         sqlx::query("TRUNCATE jobs, law_entries CASCADE")
