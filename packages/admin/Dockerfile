@@ -28,6 +28,8 @@ COPY packages/admin/Cargo.toml packages/admin/Cargo.lock ./
 RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY packages/admin/src/ src/
+# sqlx::migrate!("../pipeline/migrations") resolves at compile time
+COPY packages/pipeline/migrations/ ../pipeline/migrations/
 RUN cargo build --release --bin regelrecht-admin
 
 # Stage 5: Runtime
