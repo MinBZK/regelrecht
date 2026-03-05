@@ -41,7 +41,7 @@ impl CorpusConfig {
     /// Load configuration from environment variables.
     ///
     /// Required: `CORPUS_REPO_URL`
-    /// Optional: `CORPUS_REPO_PATH` (default: `/data/corpus-repo`),
+    /// Optional: `CORPUS_REPO_PATH` (default: `/tmp/corpus-repo`),
     ///           `CORPUS_BRANCH` (default: `main`),
     ///           `CORPUS_GIT_AUTHOR_NAME` (default: `regelrecht-harvester`),
     ///           `CORPUS_GIT_AUTHOR_EMAIL` (default: `noreply@minbzk.nl`),
@@ -51,7 +51,7 @@ impl CorpusConfig {
             .map_err(|_| CorpusError::Config("CORPUS_REPO_URL not set".into()))?;
 
         let repo_path = std::env::var("CORPUS_REPO_PATH")
-            .unwrap_or_else(|_| "/data/corpus-repo".into())
+            .unwrap_or_else(|_| "/tmp/corpus-repo".into())
             .into();
 
         let branch = std::env::var("CORPUS_BRANCH").unwrap_or_else(|_| "development".into());

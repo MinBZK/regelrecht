@@ -11,4 +11,9 @@ OUTPUT_DIR="${REGULATION_REPO_PATH:-/tmp/regulation-repo}"
 mkdir -p "$OUTPUT_DIR"
 export REGULATION_REPO_PATH="$OUTPUT_DIR"
 
+# Create corpus repo directory at runtime (read-only root filesystem)
+CORPUS_DIR="${CORPUS_REPO_PATH:-/tmp/corpus-repo}"
+mkdir -p "$CORPUS_DIR"
+export CORPUS_REPO_PATH="$CORPUS_DIR"
+
 exec regelrecht-harvest-worker

@@ -137,16 +137,67 @@ impl CorpusClient {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+
+            // Branch doesn't exist on remote — clone development and create the branch
+            if stderr.contains("not found in upstream") || stderr.contains("Remote branch") {
+                tracing::info!(
+                    branch = %self.config.branch,
+                    "branch not found on remote, creating from development"
+                );
+                return self.git_clone_and_create_branch().await;
+            }
+
             let sanitized = self.sanitize_output(&stderr);
             return Err(CorpusError::Git(format!("git clone failed: {sanitized}")));
         }
 
-        // Configure user in the cloned repo
+        self.configure_git_user().await?;
+        Ok(())
+    }
+
+    /// Clone the `development` base branch, then create and push the target branch.
+    async fn git_clone_and_create_branch(&self) -> Result<()> {
+        let url = self.config.clone_url();
+        let path_str = self.config.repo_path.to_string_lossy().to_string();
+
+        let output = Command::new("git")
+            .args([
+                "clone",
+                "--branch",
+                "development",
+                "--single-branch",
+                &url,
+                &path_str,
+            ])
+            .envs(self.git_env())
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let sanitized = self.sanitize_output(&stderr);
+            return Err(CorpusError::Git(format!(
+                "git clone (development) failed: {sanitized}"
+            )));
+        }
+
+        self.configure_git_user().await?;
+
+        // Create the target branch and push it
+        self.run_git(&["checkout", "-b", &self.config.branch])
+            .await?;
+        self.run_git(&["push", "-u", "origin", &self.config.branch])
+            .await?;
+
+        tracing::info!(branch = %self.config.branch, "created and pushed new branch");
+        Ok(())
+    }
+
+    async fn configure_git_user(&self) -> Result<()> {
         self.run_git(&["config", "user.name", &self.config.git_author_name])
             .await?;
         self.run_git(&["config", "user.email", &self.config.git_author_email])
             .await?;
-
         Ok(())
     }
 
@@ -386,5 +437,41 @@ mod tests {
             .unwrap();
         let log_str = String::from_utf8_lossy(&log.stdout);
         assert!(log_str.contains("add test file"));
+    }
+
+    #[tokio::test]
+    async fn test_ensure_repo_creates_branch_if_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path().join("corpus");
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Request a branch that doesn't exist — should clone development and create it
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "pr999".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        assert!(repo_path.join(".git").exists());
+
+        // Verify local branch is pr999
+        let output = Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert_eq!(branch, "pr999");
+
+        // Verify the branch was pushed to the bare remote
+        let output = Command::new("git")
+            .args(["branch"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let branches = String::from_utf8_lossy(&output.stdout);
+        assert!(branches.contains("pr999"));
     }
 }
