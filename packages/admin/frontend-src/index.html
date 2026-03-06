@@ -34,9 +34,20 @@
           <!-- Rendered by app.js -->
         </div>
 
-        <button id="seed-zorgtoeslag-btn" class="toolbar__btn" style="display:none" title="Add a zorgtoeslag harvest job">
-          Add Zorgtoeslag Test
-        </button>
+        <form id="harvest-form" class="harvest-form" style="display:none">
+          <input
+            id="harvest-bwb-id"
+            class="harvest-form__input"
+            type="text"
+            placeholder="BWB ID (e.g. BWBR0018451)"
+            required
+            pattern="BWB[A-Z]\d{7}"
+            title="BWB ID format: BWBR0018451"
+          >
+          <button type="submit" class="harvest-form__btn">
+            Harvest
+          </button>
+        </form>
 
         <div class="pagination">
           <button id="pagination-prev" class="pagination__btn" title="Previous page" disabled>
