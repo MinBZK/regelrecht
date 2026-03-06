@@ -2,6 +2,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use regelrecht_pipeline::job_queue::{create_job, CreateJobRequest};
+use regelrecht_pipeline::law_status::set_harvest_job;
 use regelrecht_pipeline::{HarvestPayload, JobType, Priority};
 use serde::{Deserialize, Serialize};
 
@@ -301,6 +302,30 @@ pub async fn create_harvest_job(
 
     let pool = &state.pool;
 
+    // Check for existing pending or processing harvest job to prevent duplicates.
+    let existing: Option<(sqlx::types::Uuid,)> = sqlx::query_as(
+        "SELECT id FROM jobs \
+         WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
+         LIMIT 1",
+    )
+    .bind(&bwb_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, law_id = %bwb_id, "failed to check for existing jobs");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to check for existing jobs".to_string(),
+        )
+    })?;
+
+    if let Some((existing_id,)) = existing {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("a pending or processing harvest job already exists: {existing_id}"),
+        ));
+    }
+
     sqlx::query(
         "INSERT INTO law_entries (law_id, status) \
          VALUES ($1, 'queued') \
@@ -340,6 +365,15 @@ pub async fn create_harvest_job(
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to create harvest job".to_string(),
+        )
+    })?;
+
+    // Link the harvest job to the law entry.
+    set_harvest_job(pool, &bwb_id, job.id).await.map_err(|e| {
+        tracing::error!(error = %e, law_id = %bwb_id, job_id = %job.id, "failed to link harvest job to law entry");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to link harvest job to law entry".to_string(),
         )
     })?;
 
