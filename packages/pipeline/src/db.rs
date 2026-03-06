@@ -23,18 +23,24 @@ pub async fn create_pool(config: &PipelineConfig) -> Result<PgPool> {
 /// runs migrations while the others block. Since sqlx migrations are
 /// idempotent, the second caller safely no-ops after the lock is released.
 pub async fn ensure_schema(pool: &PgPool) -> Result<()> {
+    // Acquire a dedicated connection so that pg_advisory_lock and
+    // pg_advisory_unlock run on the same session (advisory locks are
+    // session-level; routing through the pool could hit different connections).
+    let mut conn = pool.acquire().await?;
+
     tracing::info!("acquiring migration lock...");
     sqlx::query("SELECT pg_advisory_lock($1)")
         .bind(MIGRATION_LOCK_KEY)
-        .execute(pool)
+        .execute(conn.as_mut())
         .await?;
 
+    // Run migrations using the pool (sqlx::migrate needs &PgPool).
     let result = run_migrations_inner(pool).await;
 
-    // Always release the lock, even on error.
+    // Always release the lock on the same connection, even on error.
     if let Err(e) = sqlx::query("SELECT pg_advisory_unlock($1)")
         .bind(MIGRATION_LOCK_KEY)
-        .execute(pool)
+        .execute(conn.as_mut())
         .await
     {
         tracing::warn!(error = %e, "failed to release migration lock");

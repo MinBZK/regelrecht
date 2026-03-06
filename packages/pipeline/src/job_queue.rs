@@ -3,6 +3,19 @@ use uuid::Uuid;
 use crate::error::{PipelineError, Result};
 use crate::models::{Job, JobStatus, JobType, Priority};
 
+/// Internal row type for the reaper CTE result.
+#[derive(sqlx::FromRow)]
+struct ReapedRow {
+    #[allow(dead_code)]
+    id: Uuid,
+    #[allow(dead_code)]
+    law_id: String,
+    #[allow(dead_code)]
+    job_type: JobType,
+    #[allow(dead_code)]
+    status: JobStatus,
+}
+
 pub struct CreateJobRequest {
     pub job_type: JobType,
     pub law_id: String,
@@ -203,7 +216,7 @@ where
     let timeout_interval = sqlx::postgres::types::PgInterval::try_from(timeout)
         .map_err(|_| PipelineError::InvalidInput(format!("invalid reaper timeout: {timeout:?}")))?;
 
-    let result = sqlx::query(
+    let reaped_rows = sqlx::query_as::<_, ReapedRow>(
         r#"
         WITH reaped AS (
             UPDATE jobs
@@ -218,20 +231,16 @@ where
                 END
             WHERE status = 'processing'
               AND started_at < now() - $1::interval
-            RETURNING id, law_id, status
+            RETURNING id, law_id, job_type, status
         )
-        UPDATE law_entries SET status = 'failed'::law_status
-        FROM reaped
-        WHERE reaped.status = 'failed' AND law_entries.law_id = reaped.law_id
+        SELECT id, law_id, job_type, status FROM reaped
         "#,
     )
     .bind(timeout_interval)
-    .execute(executor)
+    .fetch_all(executor)
     .await?;
 
-    // rows_affected counts law_entries updates; use it as a lower bound signal.
-    // The important metric is that reaped jobs were processed, so we log broadly.
-    let count = result.rows_affected();
+    let count = reaped_rows.len() as u64;
     if count > 0 {
         tracing::warn!(count, "reaped orphaned jobs stuck in processing");
     }
