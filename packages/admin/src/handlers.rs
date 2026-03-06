@@ -1,6 +1,8 @@
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
+use regelrecht_pipeline::job_queue::{create_job, CreateJobRequest};
+use regelrecht_pipeline::{HarvestPayload, JobType, Priority};
 use serde::{Deserialize, Serialize};
 
 use crate::models::{Job, LawEntry, PaginatedResponse};
@@ -272,53 +274,99 @@ pub async fn list_jobs(
     }))
 }
 
-#[derive(Serialize)]
-pub struct SeedResponse {
-    pub job_id: String,
+#[derive(Deserialize)]
+pub struct CreateJobBody {
+    pub bwb_id: String,
+    pub priority: Option<i32>,
+    pub date: Option<String>,
 }
 
-pub async fn seed_zorgtoeslag(
+#[derive(Serialize)]
+pub struct CreateJobResponse {
+    pub job_id: String,
+    pub law_id: String,
+}
+
+pub async fn create_harvest_job(
     State(state): State<AppState>,
-) -> Result<Json<SeedResponse>, (StatusCode, String)> {
+    Json(body): Json<CreateJobBody>,
+) -> Result<(StatusCode, Json<CreateJobResponse>), (StatusCode, String)> {
+    let bwb_id = body.bwb_id.trim().to_string();
+    if bwb_id.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "bwb_id must not be empty".to_string(),
+        ));
+    }
+
     let pool = &state.pool;
 
     sqlx::query(
-        "INSERT INTO law_entries (law_id, law_name, status) \
-         VALUES ('BWBR0018451', 'Wet op de zorgtoeslag', 'queued') \
+        "INSERT INTO law_entries (law_id, status) \
+         VALUES ($1, 'queued') \
          ON CONFLICT (law_id) DO NOTHING",
     )
+    .bind(&bwb_id)
     .execute(pool)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "failed to insert law entry");
+        tracing::error!(error = %e, law_id = %bwb_id, "failed to upsert law entry");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to insert law entry".to_string(),
+            "failed to upsert law entry".to_string(),
         )
     })?;
 
-    let row = sqlx::query_scalar::<_, String>(
-        "INSERT INTO jobs (job_type, law_id, payload, status) \
-         VALUES ('harvest', 'BWBR0018451', \
-         '{\"bwb_id\": \"BWBR0018451\", \"date\": \"2026-01-01\"}', 'pending') \
-         RETURNING id::text",
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "failed to create harvest job");
+    let payload = HarvestPayload {
+        bwb_id: bwb_id.clone(),
+        date: body.date,
+        max_size_mb: None,
+    };
+
+    let priority = Priority::new(body.priority.unwrap_or(50));
+
+    let req = CreateJobRequest::new(JobType::Harvest, &bwb_id)
+        .with_priority(priority)
+        .with_payload(serde_json::to_value(&payload).map_err(|e| {
+            tracing::error!(error = %e, "failed to serialize payload");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to serialize payload".to_string(),
+            )
+        })?);
+
+    let job = create_job(pool, req).await.map_err(|e| {
+        tracing::error!(error = %e, law_id = %bwb_id, "failed to create harvest job");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to create harvest job".to_string(),
         )
     })?;
 
-    tracing::info!(job_id = %row, "created zorgtoeslag harvest job");
+    tracing::info!(job_id = %job.id, law_id = %bwb_id, "created harvest job");
 
-    Ok(Json(SeedResponse { job_id: row }))
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateJobResponse {
+            job_id: job.id.to_string(),
+            law_id: bwb_id,
+        }),
+    ))
+}
+
+pub async fn seed_zorgtoeslag(
+    State(state): State<AppState>,
+) -> Result<(StatusCode, Json<CreateJobResponse>), (StatusCode, String)> {
+    let body = CreateJobBody {
+        bwb_id: "BWBR0018451".to_string(),
+        priority: None,
+        date: Some("2026-01-01".to_string()),
+    };
+    create_harvest_job(State(state), Json(body)).await
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -443,6 +491,33 @@ mod tests {
                 "missing law column: {col}"
             );
         }
+    }
+
+    // --- CreateJobBody deserialization ---
+
+    #[test]
+    fn create_job_body_full() {
+        let json = r#"{"bwb_id": "BWBR0018451", "priority": 80, "date": "2026-01-01"}"#;
+        let body: CreateJobBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.bwb_id, "BWBR0018451");
+        assert_eq!(body.priority, Some(80));
+        assert_eq!(body.date.as_deref(), Some("2026-01-01"));
+    }
+
+    #[test]
+    fn create_job_body_minimal() {
+        let json = r#"{"bwb_id": "BWBR0018451"}"#;
+        let body: CreateJobBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.bwb_id, "BWBR0018451");
+        assert_eq!(body.priority, None);
+        assert_eq!(body.date, None);
+    }
+
+    #[test]
+    fn create_job_body_missing_bwb_id() {
+        let json = r#"{"priority": 50}"#;
+        let result = serde_json::from_str::<CreateJobBody>(json);
+        assert!(result.is_err());
     }
 
     #[test]

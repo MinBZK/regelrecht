@@ -136,7 +136,10 @@ async fn main() {
 
     let api_routes = Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
-        .route("/api/jobs", get(handlers::list_jobs))
+        .route(
+            "/api/jobs",
+            get(handlers::list_jobs).post(handlers::create_harvest_job),
+        )
         .route(
             "/api/jobs/seed-zorgtoeslag",
             post(handlers::seed_zorgtoeslag),

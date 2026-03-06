@@ -379,6 +379,7 @@ fn extract_realm_roles(jwt: &str) -> Option<Vec<String>> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::config::AppConfig;
