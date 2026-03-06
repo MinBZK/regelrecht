@@ -62,7 +62,7 @@ mutants *ARGS:
 
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)
 audit:
-    cargo deny check
+    cd packages && cargo deny check --config ../deny.toml
     cd frontend && npm audit
     cd frontend && npx license-checker --production --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
     cd packages/admin/frontend-src && npm audit
