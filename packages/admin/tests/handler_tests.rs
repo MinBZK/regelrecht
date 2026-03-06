@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use http_body_util::BodyExt;
 use pretty_assertions::assert_eq;
@@ -30,10 +30,8 @@ fn test_app(pool: sqlx::PgPool) -> Router {
     };
     Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
-        .route(
-            "/api/jobs",
-            get(handlers::list_jobs).post(handlers::create_harvest_job),
-        )
+        .route("/api/jobs", get(handlers::list_jobs))
+        .route("/api/harvest-jobs", post(handlers::create_harvest_job))
         .with_state(state)
 }
 
@@ -53,7 +51,7 @@ async fn create_harvest_job_returns_created() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
                 .unwrap(),
@@ -77,7 +75,7 @@ async fn create_harvest_job_links_harvest_job_id() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
                 .unwrap(),
@@ -111,7 +109,7 @@ async fn create_harvest_job_rejects_duplicate() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
                 .unwrap(),
@@ -126,7 +124,7 @@ async fn create_harvest_job_rejects_duplicate() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
                 .unwrap(),
@@ -148,7 +146,7 @@ async fn create_harvest_job_allows_after_completion() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
                 .unwrap(),
@@ -175,7 +173,7 @@ async fn create_harvest_job_allows_after_completion() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
                 .unwrap(),
@@ -195,7 +193,7 @@ async fn create_harvest_job_rejects_empty_bwb_id() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "  "}"#))
                 .unwrap(),
@@ -215,7 +213,7 @@ async fn create_harvest_job_with_priority_and_date() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     r#"{"bwb_id": "BWBR0018451", "priority": 80, "date": "2026-01-01"}"#,
@@ -290,7 +288,7 @@ async fn list_jobs_after_creation() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/jobs")
+                .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"bwb_id": "BWBR0018451"}"#))
                 .unwrap(),
