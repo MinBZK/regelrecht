@@ -164,7 +164,9 @@ async fn create_harvest_job_allows_after_completion() {
         .await
         .unwrap()
         .unwrap();
-    job_queue::complete_job(&pool, claimed.id, None).await.unwrap();
+    job_queue::complete_job(&pool, claimed.id, None)
+        .await
+        .unwrap();
     assert_eq!(claimed.id, job_id);
 
     // Now creating another harvest job for the same law_id should succeed
