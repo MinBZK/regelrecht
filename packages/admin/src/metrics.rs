@@ -47,10 +47,11 @@ pub fn new_cache() -> MetricsCache {
 pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error> {
     // Two queries instead of five: jobs grouped by status + laws grouped by status + avg duration.
     // We combine the avg-duration query with a CTE so it's a single round-trip for jobs.
-    let jobs_by_status =
-        sqlx::query_as::<_, (String, i64)>("SELECT status::text, COUNT(*) FROM jobs GROUP BY status")
-            .fetch_all(pool)
-            .await?;
+    let jobs_by_status = sqlx::query_as::<_, (String, i64)>(
+        "SELECT status::text, COUNT(*) FROM jobs GROUP BY status",
+    )
+    .fetch_all(pool)
+    .await?;
 
     let laws_by_status = sqlx::query_as::<_, (String, i64)>(
         "SELECT status::text, COUNT(*) FROM law_entries GROUP BY status",
@@ -78,7 +79,11 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
     let mut registry = Registry::default();
 
     let jobs_total = Family::<StatusLabel, Gauge<i64, AtomicI64>>::default();
-    registry.register("regelrecht_jobs", "Number of jobs per status", jobs_total.clone());
+    registry.register(
+        "regelrecht_jobs",
+        "Number of jobs per status",
+        jobs_total.clone(),
+    );
 
     let laws_total = Family::<StatusLabel, Gauge<i64, AtomicI64>>::default();
     registry.register(
@@ -179,8 +184,14 @@ mod tests {
             avg_job_duration_secs: None,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
-        assert!(body.contains("regelrecht_jobs"), "should contain jobs metric family");
-        assert!(body.contains("regelrecht_laws"), "should contain laws metric family");
+        assert!(
+            body.contains("regelrecht_jobs"),
+            "should contain jobs metric family"
+        );
+        assert!(
+            body.contains("regelrecht_laws"),
+            "should contain laws metric family"
+        );
         assert!(
             body.contains("regelrecht_job_duration_avg_seconds"),
             "should contain duration metric"
@@ -195,25 +206,40 @@ mod tests {
                 ("failed".to_string(), 3),
                 ("pending".to_string(), 7),
             ],
-            laws_by_status: vec![
-                ("active".to_string(), 100),
-                ("draft".to_string(), 5),
-            ],
+            laws_by_status: vec![("active".to_string(), 100), ("draft".to_string(), 5)],
             avg_job_duration_secs: Some(12.5),
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
 
         // Job counts by status should appear as labeled gauges.
-        assert!(body.contains("regelrecht_jobs{status=\"completed\"} 42"), "completed jobs");
-        assert!(body.contains("regelrecht_jobs{status=\"failed\"} 3"), "failed jobs");
-        assert!(body.contains("regelrecht_jobs{status=\"pending\"} 7"), "pending jobs");
+        assert!(
+            body.contains("regelrecht_jobs{status=\"completed\"} 42"),
+            "completed jobs"
+        );
+        assert!(
+            body.contains("regelrecht_jobs{status=\"failed\"} 3"),
+            "failed jobs"
+        );
+        assert!(
+            body.contains("regelrecht_jobs{status=\"pending\"} 7"),
+            "pending jobs"
+        );
 
         // Law counts.
-        assert!(body.contains("regelrecht_laws{status=\"active\"} 100"), "active laws");
-        assert!(body.contains("regelrecht_laws{status=\"draft\"} 5"), "draft laws");
+        assert!(
+            body.contains("regelrecht_laws{status=\"active\"} 100"),
+            "active laws"
+        );
+        assert!(
+            body.contains("regelrecht_laws{status=\"draft\"} 5"),
+            "draft laws"
+        );
 
         // Average duration.
-        assert!(body.contains("regelrecht_job_duration_avg_seconds 12.5"), "avg duration");
+        assert!(
+            body.contains("regelrecht_job_duration_avg_seconds 12.5"),
+            "avg duration"
+        );
     }
 
     #[test]
@@ -242,10 +268,7 @@ mod tests {
         // `regelrecht_jobs_failed` metrics. Verify they no longer appear — users
         // should use `regelrecht_jobs{status="completed"}` instead.
         let snapshot = MetricsSnapshot {
-            jobs_by_status: vec![
-                ("completed".to_string(), 10),
-                ("failed".to_string(), 2),
-            ],
+            jobs_by_status: vec![("completed".to_string(), 10), ("failed".to_string(), 2)],
             laws_by_status: vec![],
             avg_job_duration_secs: None,
         };
