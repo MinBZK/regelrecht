@@ -8,7 +8,7 @@ pub mod models;
 pub mod worker;
 
 pub use config::{PipelineConfig, WorkerConfig};
-pub use db::{create_pool, run_migrations};
+pub use db::{create_pool, ensure_schema, MIGRATION_LOCK_KEY};
 pub use error::PipelineError;
 pub use harvest::{HarvestPayload, HarvestResult};
 pub use models::{Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};

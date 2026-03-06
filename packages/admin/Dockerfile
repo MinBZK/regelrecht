@@ -17,19 +17,29 @@ WORKDIR /build
 
 # Stage 3: Plan dependencies
 FROM chef AS planner
-COPY packages/admin/Cargo.toml packages/admin/Cargo.lock ./
-COPY packages/admin/src/ src/
+COPY Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/admin",\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n]\n' > Cargo.toml
+COPY packages/admin/ packages/admin/
+COPY packages/corpus/ packages/corpus/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 4: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
+COPY Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/admin",\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n]\n' > Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
-COPY packages/admin/Cargo.toml packages/admin/Cargo.lock ./
 RUN cargo chef cook --release --recipe-path recipe.json
 
-COPY packages/admin/src/ src/
-COPY packages/admin/migrations/ migrations/
-RUN cargo build --release --bin regelrecht-admin
+COPY packages/admin/ packages/admin/
+COPY packages/corpus/ packages/corpus/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
+# Invalidate cargo's fingerprint cache so it recompiles with real source
+# instead of using the stub binary from cargo-chef cook.
+RUN find packages -name '*.rs' -exec touch {} + && \
+    cargo build --release --bin regelrecht-admin
 
 # Stage 5: Runtime
 FROM alpine:3.23

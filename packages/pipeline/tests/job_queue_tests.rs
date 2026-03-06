@@ -1,5 +1,7 @@
 mod common;
 
+use std::time::Duration;
+
 use pretty_assertions::assert_eq;
 use serde_json::json;
 
@@ -191,6 +193,85 @@ async fn test_list_jobs() {
         .await
         .unwrap();
     assert_eq!(processing.len(), 1);
+}
+
+#[tokio::test]
+async fn test_reap_orphaned_jobs_resets_to_pending() {
+    let db = common::TestDb::new().await;
+
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_max_attempts(3);
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+
+    // Claim the job so it becomes 'processing'
+    let claimed = job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+    assert_eq!(claimed.id, job.id);
+    assert_eq!(claimed.status, JobStatus::Processing);
+
+    // Backdate started_at so reaper considers it orphaned
+    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 hours' WHERE id = $1")
+        .bind(job.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    // Job should be back to pending (still has retries left: attempts=1, max=3)
+    let reaped = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(reaped.status, JobStatus::Pending);
+    assert!(reaped.completed_at.is_none());
+}
+
+#[tokio::test]
+async fn test_reap_orphaned_jobs_permanently_fails_exhausted() {
+    let db = common::TestDb::new().await;
+
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_max_attempts(1);
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+
+    // Claim (attempts becomes 1, which equals max_attempts=1)
+    job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+
+    // Backdate started_at
+    sqlx::query("UPDATE jobs SET started_at = now() - interval '2 hours' WHERE id = $1")
+        .bind(job.id)
+        .execute(&db.pool)
+        .await
+        .unwrap();
+
+    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+
+    // Job should be permanently failed (attempts=1 >= max_attempts=1)
+    let reaped = job_queue::get_job(&db.pool, job.id).await.unwrap();
+    assert_eq!(reaped.status, JobStatus::Failed);
+    assert!(reaped.completed_at.is_some());
+}
+
+#[tokio::test]
+async fn test_reap_orphaned_jobs_returns_zero_when_none_orphaned() {
+    let db = common::TestDb::new().await;
+
+    // No jobs at all
+    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+
+    // A processing job that is NOT yet timed out
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840");
+    job_queue::create_job(&db.pool, req).await.unwrap();
+    job_queue::claim_job(&db.pool, None).await.unwrap().unwrap();
+
+    let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(3600))
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
 }
 
 #[tokio::test]

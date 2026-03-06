@@ -88,37 +88,10 @@ async fn main() {
 
     tracing::info!("connected to database");
 
-    // One-time schema reset: if stale seed migrations (versions > 1) are
-    // detected, wipe all tables and migration records so 0001 re-runs cleanly.
-    let needs_reset = sqlx::query_scalar::<_, bool>(
-        "SELECT count(*) > 0 FROM _sqlx_migrations WHERE version > 1",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(false);
-
-    if needs_reset {
-        tracing::warn!("stale migrations detected, resetting database...");
-        for stmt in [
-            "DROP TABLE IF EXISTS law_entries CASCADE",
-            "DROP TABLE IF EXISTS jobs CASCADE",
-            "DROP TYPE IF EXISTS job_type CASCADE",
-            "DROP TYPE IF EXISTS job_status CASCADE",
-            "DROP TYPE IF EXISTS law_status CASCADE",
-            "DROP FUNCTION IF EXISTS update_updated_at CASCADE",
-            "DELETE FROM _sqlx_migrations",
-        ] {
-            sqlx::query(stmt).execute(&pool).await.ok();
-        }
-        tracing::info!("database reset complete");
-    }
-
-    tracing::info!("running database migrations...");
-    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
-        tracing::error!(error = %e, "failed to run migrations");
+    if let Err(e) = regelrecht_pipeline::ensure_schema(&pool).await {
+        tracing::error!(error = %e, "database migration failed");
         std::process::exit(1);
     }
-    tracing::info!("migrations completed");
 
     let (oidc_client, end_session_url) = if let Some(ref oidc_config) = app_config.oidc {
         match oidc::discover_client(oidc_config).await {

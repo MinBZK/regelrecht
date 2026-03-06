@@ -62,7 +62,6 @@ mutants *ARGS:
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)
 audit:
     cargo deny check
-    cargo deny --manifest-path packages/admin/Cargo.toml check
     cd frontend && npm audit
     cd frontend && npx license-checker --production --failOn "GPL-2.0;GPL-3.0;AGPL-1.0;AGPL-3.0;SSPL-1.0;BUSL-1.1"
     cd packages/admin/frontend-src && npm audit
@@ -71,7 +70,7 @@ audit:
 
 # Run admin API locally (requires DATABASE_SERVER_FULL env var)
 admin:
-    cargo run --manifest-path packages/admin/Cargo.toml
+    cd packages && cargo run --package regelrecht-admin
 
 # Build admin frontend (requires GITHUB_TOKEN env var for npm)
 admin-frontend:
@@ -79,16 +78,16 @@ admin-frontend:
 
 # Check admin Rust code
 admin-check:
-    cargo check --manifest-path packages/admin/Cargo.toml
+    cd packages && cargo check --package regelrecht-admin
 
 # Lint admin Rust code
 admin-lint:
-    cargo clippy --manifest-path packages/admin/Cargo.toml -- -D warnings
+    cd packages && cargo clippy --package regelrecht-admin -- -D warnings
 
 # Format check admin Rust code
 admin-fmt:
-    cd packages/admin && cargo fmt --check
+    cd packages && cargo fmt --check --package regelrecht-admin
 
 # Run admin tests
 admin-test:
-    cargo test --manifest-path packages/admin/Cargo.toml
+    cd packages && cargo test --package regelrecht-admin

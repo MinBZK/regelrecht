@@ -24,7 +24,10 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY packages/corpus/ packages/corpus/
 COPY packages/pipeline/ packages/pipeline/
 COPY packages/harvester/ packages/harvester/
-RUN cargo build --release --bin regelrecht-harvest-worker
+# Invalidate cargo's fingerprint cache so it recompiles with real source
+# instead of using the stub binary from cargo-chef cook.
+RUN find packages -name '*.rs' -exec touch {} + && \
+    cargo build --release --bin regelrecht-harvest-worker
 
 # Stage 4: Runtime
 FROM alpine:3.23

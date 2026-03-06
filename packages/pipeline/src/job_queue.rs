@@ -3,6 +3,19 @@ use uuid::Uuid;
 use crate::error::{PipelineError, Result};
 use crate::models::{Job, JobStatus, JobType, Priority};
 
+/// Internal row type for the reaper CTE result.
+#[derive(sqlx::FromRow)]
+struct ReapedRow {
+    #[allow(dead_code)]
+    id: Uuid,
+    #[allow(dead_code)]
+    law_id: String,
+    #[allow(dead_code)]
+    job_type: JobType,
+    #[allow(dead_code)]
+    status: JobStatus,
+}
+
 pub struct CreateJobRequest {
     pub job_type: JobType,
     pub law_id: String,
@@ -203,27 +216,31 @@ where
     let timeout_interval = sqlx::postgres::types::PgInterval::try_from(timeout)
         .map_err(|_| PipelineError::InvalidInput(format!("invalid reaper timeout: {timeout:?}")))?;
 
-    let result = sqlx::query(
+    let reaped_rows = sqlx::query_as::<_, ReapedRow>(
         r#"
-        UPDATE jobs
-        SET status = CASE
-                WHEN attempts < max_attempts THEN 'pending'::job_status
-                ELSE 'failed'::job_status
-            END,
-            result = jsonb_build_object('error', 'reaped: job stuck in processing'),
-            completed_at = CASE
-                WHEN attempts >= max_attempts THEN now()
-                ELSE NULL
-            END
-        WHERE status = 'processing'
-          AND started_at < now() - $1::interval
+        WITH reaped AS (
+            UPDATE jobs
+            SET status = CASE
+                    WHEN attempts < max_attempts THEN 'pending'::job_status
+                    ELSE 'failed'::job_status
+                END,
+                result = jsonb_build_object('error', 'reaped: job stuck in processing'),
+                completed_at = CASE
+                    WHEN attempts >= max_attempts THEN now()
+                    ELSE NULL
+                END
+            WHERE status = 'processing'
+              AND started_at < now() - $1::interval
+            RETURNING id, law_id, job_type, status
+        )
+        SELECT id, law_id, job_type, status FROM reaped
         "#,
     )
     .bind(timeout_interval)
-    .execute(executor)
+    .fetch_all(executor)
     .await?;
 
-    let count = result.rows_affected();
+    let count = reaped_rows.len() as u64;
     if count > 0 {
         tracing::warn!(count, "reaped orphaned jobs stuck in processing");
     }
