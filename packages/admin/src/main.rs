@@ -39,47 +39,6 @@ async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCod
     Ok("OK")
 }
 
-/// Advisory lock key shared with the pipeline crate — must match
-/// `regelrecht_pipeline::db::MIGRATION_LOCK_KEY`.
-const MIGRATION_LOCK_KEY: i64 = 0x5245_4745_4C52_4543; // "REGELREC"
-
-/// Ensure the database schema is up to date.
-///
-/// Uses a PostgreSQL advisory lock so that whichever component starts first
-/// runs migrations while the others block. Migrations are idempotent so the
-/// second caller safely no-ops after the lock is released.
-async fn ensure_schema(pool: &PgPool) {
-    tracing::info!("acquiring migration lock...");
-    if let Err(e) = sqlx::query("SELECT pg_advisory_lock($1)")
-        .bind(MIGRATION_LOCK_KEY)
-        .execute(pool)
-        .await
-    {
-        tracing::error!(error = %e, "failed to acquire migration lock");
-        std::process::exit(1);
-    }
-
-    tracing::info!("running database migrations...");
-    // Path resolved at compile time relative to admin's CARGO_MANIFEST_DIR.
-    if let Err(e) = sqlx::migrate!("../pipeline/migrations").run(pool).await {
-        tracing::error!(error = %e, "failed to run migrations");
-        let _ = sqlx::query("SELECT pg_advisory_unlock($1)")
-            .bind(MIGRATION_LOCK_KEY)
-            .execute(pool)
-            .await;
-        std::process::exit(1);
-    }
-    tracing::info!("migrations completed");
-
-    if let Err(e) = sqlx::query("SELECT pg_advisory_unlock($1)")
-        .bind(MIGRATION_LOCK_KEY)
-        .execute(pool)
-        .await
-    {
-        tracing::error!(error = %e, "failed to release migration lock");
-    }
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -129,7 +88,10 @@ async fn main() {
 
     tracing::info!("connected to database");
 
-    ensure_schema(&pool).await;
+    if let Err(e) = regelrecht_pipeline::ensure_schema(&pool).await {
+        tracing::error!(error = %e, "database migration failed");
+        std::process::exit(1);
+    }
 
     let (oidc_client, end_session_url) = if let Some(ref oidc_config) = app_config.oidc {
         match oidc::discover_client(oidc_config).await {

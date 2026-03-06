@@ -2781,6 +2781,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "openidconnect",
+ "regelrecht-pipeline",
  "reqwest 0.12.28",
  "rsa",
  "serde",

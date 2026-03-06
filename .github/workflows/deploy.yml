@@ -36,6 +36,8 @@ jobs:
           filters: |
             admin:
               - 'packages/admin/**'
+              - 'packages/pipeline/migrations/**'
+              - 'packages/pipeline/src/db.rs'
             harvester-worker:
               - 'packages/pipeline/**'
               - 'packages/harvester/**'
