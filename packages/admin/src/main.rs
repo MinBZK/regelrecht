@@ -19,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 mod auth;
 mod config;
 mod handlers;
+mod metrics;
 mod middleware;
 mod models;
 mod oidc;
@@ -123,6 +124,7 @@ async fn main() {
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
+        metrics_cache: Arc::new(metrics::new_cache()),
     };
 
     let session_layer = SessionManagerLayer::new(session_store)
@@ -151,6 +153,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/metrics", get(metrics::metrics_handler))
         .merge(auth_routes)
         .merge(api_routes)
         .with_state(app_state)

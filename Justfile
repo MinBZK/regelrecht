@@ -24,7 +24,8 @@ validate *FILES:
     script/validate.sh {{FILES}}
 
 # Run all quality checks (format + lint + check + validate + tests)
-check: format lint build-check validate test-all admin-fmt admin-lint admin-check admin-test admin-frontend
+# Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
+check: format lint build-check validate test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend
 
 # --- Tests ---
 
