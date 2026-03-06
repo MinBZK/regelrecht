@@ -17,7 +17,7 @@ WORKDIR /build
 
 # Stage 3: Plan dependencies
 FROM chef AS planner
-COPY Cargo.lock ./
+COPY packages/Cargo.lock ./
 RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/admin",\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n]\n' > Cargo.toml
 COPY packages/admin/ packages/admin/
 COPY packages/corpus/ packages/corpus/
@@ -27,7 +27,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 4: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
-COPY Cargo.lock ./
+COPY packages/Cargo.lock ./
 RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/admin",\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n]\n' > Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
