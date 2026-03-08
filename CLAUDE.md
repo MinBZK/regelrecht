@@ -141,18 +141,9 @@ CI runs via `.github/workflows/ci.yml`.
 2. **PR closed**: Deletes RIG deployment and GHCR image
 3. **Push to main**: Deploys `regelrecht` (production) to RIG
 
-### Gemini AI PR Review
-
-Automated code reviews via `gemini-dispatch.yml` and `gemini-review.yml`:
-- 5 parallel review agents: correctness, quality, security, tests, docs
-- Triggers on PR open, push to PR, or `@gemini-cli /review` comment
-- Draft PRs are skipped; review starts when marked ready
-- Prompts in `.gemini/prompts/gemini-review-*.toml`
-
 ### Required Secrets
 
 - `RIG_API_KEY` - API key for RIG Operations Manager (configured in GitHub secrets)
-- `GEMINI_API_KEY` - Google Gemini API key for AI code reviews
 
 ### Docker Image
 
