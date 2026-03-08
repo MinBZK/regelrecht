@@ -663,9 +663,10 @@ impl TraceBuilder {
         let mut completed = building.node;
         completed.duration_us = Some(duration);
 
-        // If there's a parent, add this as a child
+        // If there's a parent, add this as a child (move, not clone)
         if let Some(parent) = self.stack.last_mut() {
-            parent.node.children.push(completed.clone());
+            parent.node.children.push(completed);
+            return None;
         }
 
         Some(completed)

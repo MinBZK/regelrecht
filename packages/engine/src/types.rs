@@ -406,6 +406,35 @@ impl Operation {
     pub fn is_date(&self) -> bool {
         matches!(self, Operation::SubtractDate)
     }
+
+    /// Get the operation name as a static uppercase string.
+    ///
+    /// Avoids per-invocation `format!("{:?}", op).to_uppercase()` allocations.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Operation::Equals => "EQUALS",
+            Operation::NotEquals => "NOT_EQUALS",
+            Operation::GreaterThan => "GREATER_THAN",
+            Operation::LessThan => "LESS_THAN",
+            Operation::GreaterThanOrEqual => "GREATER_THAN_OR_EQUAL",
+            Operation::LessThanOrEqual => "LESS_THAN_OR_EQUAL",
+            Operation::Add => "ADD",
+            Operation::Subtract => "SUBTRACT",
+            Operation::Multiply => "MULTIPLY",
+            Operation::Divide => "DIVIDE",
+            Operation::Max => "MAX",
+            Operation::Min => "MIN",
+            Operation::And => "AND",
+            Operation::Or => "OR",
+            Operation::If => "IF",
+            Operation::Switch => "SWITCH",
+            Operation::IsNull => "IS_NULL",
+            Operation::NotNull => "NOT_NULL",
+            Operation::In => "IN",
+            Operation::NotIn => "NOT_IN",
+            Operation::SubtractDate => "SUBTRACT_DATE",
+        }
+    }
 }
 
 /// Re-export the canonical regulatory layer types from the shared crate.
