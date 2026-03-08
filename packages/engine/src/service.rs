@@ -1258,7 +1258,7 @@ impl LawExecutionService {
 
         Some(LawInfo {
             id: law.id.clone(),
-            regulatory_layer: law.regulatory_layer.clone(),
+            regulatory_layer: law.regulatory_layer,
             publication_date: law.publication_date.clone(),
             bwb_id: law.bwb_id.clone(),
             url: law.url.clone(),
