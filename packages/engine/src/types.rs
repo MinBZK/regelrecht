@@ -413,11 +413,11 @@ impl Operation {
     pub fn name(&self) -> &'static str {
         match self {
             Operation::Equals => "EQUALS",
-            Operation::NotEquals => "NOT_EQUALS",
-            Operation::GreaterThan => "GREATER_THAN",
-            Operation::LessThan => "LESS_THAN",
-            Operation::GreaterThanOrEqual => "GREATER_THAN_OR_EQUAL",
-            Operation::LessThanOrEqual => "LESS_THAN_OR_EQUAL",
+            Operation::NotEquals => "NOTEQUALS",
+            Operation::GreaterThan => "GREATERTHAN",
+            Operation::LessThan => "LESSTHAN",
+            Operation::GreaterThanOrEqual => "GREATERTHANOREQUAL",
+            Operation::LessThanOrEqual => "LESSTHANOREQUAL",
             Operation::Add => "ADD",
             Operation::Subtract => "SUBTRACT",
             Operation::Multiply => "MULTIPLY",
@@ -428,11 +428,11 @@ impl Operation {
             Operation::Or => "OR",
             Operation::If => "IF",
             Operation::Switch => "SWITCH",
-            Operation::IsNull => "IS_NULL",
-            Operation::NotNull => "NOT_NULL",
+            Operation::IsNull => "ISNULL",
+            Operation::NotNull => "NOTNULL",
             Operation::In => "IN",
-            Operation::NotIn => "NOT_IN",
-            Operation::SubtractDate => "SUBTRACT_DATE",
+            Operation::NotIn => "NOTIN",
+            Operation::SubtractDate => "SUBTRACTDATE",
         }
     }
 }
