@@ -113,14 +113,14 @@ pub async fn list_law_entries(
     // interpolating it into the query string is safe.
     let query_str = if params.status.is_some() {
         format!(
-            "SELECT law_id, law_name, status::text as status, quality_score, \
+            "SELECT law_id, law_name, status, quality_score, \
              harvest_job_id, enrich_job_id, created_at, updated_at \
              FROM law_entries WHERE status::text = $1 \
              ORDER BY {sort_column} {order} LIMIT $2 OFFSET $3"
         )
     } else {
         format!(
-            "SELECT law_id, law_name, status::text as status, quality_score, \
+            "SELECT law_id, law_name, status, quality_score, \
              harvest_job_id, enrich_job_id, created_at, updated_at \
              FROM law_entries \
              ORDER BY {sort_column} {order} LIMIT $1 OFFSET $2"
@@ -251,7 +251,7 @@ pub async fn list_jobs(
     let offset_idx = bind_index + 1;
 
     let data_sql = format!(
-        "SELECT id, job_type::text as job_type, law_id, status::text as status, \
+        "SELECT id, job_type, law_id, status, \
          priority, attempts, max_attempts, created_at, updated_at, started_at, completed_at \
          FROM jobs {where_sql} \
          ORDER BY {sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"

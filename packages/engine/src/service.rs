@@ -257,11 +257,17 @@ pub struct LawInfo {
 /// corresponding `RegulatoryLayer` enum variant.
 fn parse_regulatory_layer(resolve_type: &str) -> Option<RegulatoryLayer> {
     match resolve_type.to_lowercase().as_str() {
-        "ministeriele_regeling" => Some(RegulatoryLayer::MinisterieleRegeling),
+        "grondwet" => Some(RegulatoryLayer::Grondwet),
         "wet" => Some(RegulatoryLayer::Wet),
         "amvb" => Some(RegulatoryLayer::Amvb),
-        "gemeentelijke_verordening" => Some(RegulatoryLayer::GemeentelijkeVerordening),
+        "ministeriele_regeling" => Some(RegulatoryLayer::MinisterieleRegeling),
         "beleidsregel" => Some(RegulatoryLayer::Beleidsregel),
+        "eu_verordening" => Some(RegulatoryLayer::EuVerordening),
+        "eu_richtlijn" => Some(RegulatoryLayer::EuRichtlijn),
+        "verdrag" => Some(RegulatoryLayer::Verdrag),
+        "uitvoeringsbeleid" => Some(RegulatoryLayer::Uitvoeringsbeleid),
+        "gemeentelijke_verordening" => Some(RegulatoryLayer::GemeentelijkeVerordening),
+        "provinciale_verordening" => Some(RegulatoryLayer::ProvincialeVerordening),
         _ => None,
     }
 }

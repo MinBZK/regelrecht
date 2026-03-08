@@ -51,10 +51,11 @@ async fn main() {
 
     let app_config = AppConfig::from_env();
 
-    let database_url = match env::var("DATABASE_SERVER_FULL") {
+    let database_url = match env::var("DATABASE_URL").or_else(|_| env::var("DATABASE_SERVER_FULL"))
+    {
         Ok(url) => url,
         Err(_) => {
-            tracing::error!("DATABASE_SERVER_FULL environment variable is not set");
+            tracing::error!("DATABASE_URL or DATABASE_SERVER_FULL environment variable is not set");
             std::process::exit(1);
         }
     };

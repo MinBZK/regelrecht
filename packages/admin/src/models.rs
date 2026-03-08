@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 
+pub use regelrecht_pipeline::{JobStatus, JobType, LawStatusValue};
+
 #[derive(Serialize)]
 pub struct PaginatedResponse<T: Serialize> {
     pub data: Vec<T>,
@@ -13,7 +15,7 @@ pub struct PaginatedResponse<T: Serialize> {
 pub struct LawEntry {
     pub law_id: String,
     pub law_name: Option<String>,
-    pub status: String,
+    pub status: LawStatusValue,
     pub quality_score: Option<f64>,
     pub harvest_job_id: Option<sqlx::types::Uuid>,
     pub enrich_job_id: Option<sqlx::types::Uuid>,
@@ -24,9 +26,9 @@ pub struct LawEntry {
 #[derive(Serialize, sqlx::FromRow)]
 pub struct Job {
     pub id: sqlx::types::Uuid,
-    pub job_type: String,
+    pub job_type: JobType,
     pub law_id: String,
-    pub status: String,
+    pub status: JobStatus,
     pub priority: i32,
     pub attempts: i32,
     pub max_attempts: i32,

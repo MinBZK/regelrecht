@@ -1,0 +1,22 @@
+[package]
+name = "regelrecht-shared"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "RegelRecht shared types - Canonical domain types used across crates"
+license = "MIT"
+repository = "https://github.com/MinBZK/regelrecht-mvp"
+homepage = "https://github.com/MinBZK/regelrecht-mvp"
+keywords = ["law", "legal", "dutch", "regelrecht", "types"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+
+[dev-dependencies]
+serde_json = "1.0"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"

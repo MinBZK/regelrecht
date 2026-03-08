@@ -178,6 +178,97 @@ impl<T: Into<Value>> From<Option<T>> for Value {
     }
 }
 
+impl From<serde_json::Value> for Value {
+    fn from(v: serde_json::Value) -> Self {
+        match v {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::Bool(b) => Value::Bool(b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Int(i)
+                } else if let Some(f) = n.as_f64() {
+                    // Coerce whole-number floats to Int for consistency
+                    if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                        Value::Int(f as i64)
+                    } else {
+                        Value::Float(f)
+                    }
+                } else {
+                    Value::Null
+                }
+            }
+            serde_json::Value::String(s) => Value::String(s),
+            serde_json::Value::Array(arr) => {
+                Value::Array(arr.into_iter().map(Value::from).collect())
+            }
+            serde_json::Value::Object(obj) => {
+                let map: HashMap<String, Value> =
+                    obj.into_iter().map(|(k, v)| (k, Value::from(v))).collect();
+                Value::Object(map)
+            }
+        }
+    }
+}
+
+impl From<&serde_json::Value> for Value {
+    fn from(v: &serde_json::Value) -> Self {
+        match v {
+            serde_json::Value::Null => Value::Null,
+            serde_json::Value::Bool(b) => Value::Bool(*b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Value::Int(i)
+                } else if let Some(f) = n.as_f64() {
+                    if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+                        Value::Int(f as i64)
+                    } else {
+                        Value::Float(f)
+                    }
+                } else {
+                    Value::Null
+                }
+            }
+            serde_json::Value::String(s) => Value::String(s.clone()),
+            serde_json::Value::Array(arr) => Value::Array(arr.iter().map(Value::from).collect()),
+            serde_json::Value::Object(obj) => {
+                let map: HashMap<String, Value> = obj
+                    .iter()
+                    .map(|(k, v)| (k.clone(), Value::from(v)))
+                    .collect();
+                Value::Object(map)
+            }
+        }
+    }
+}
+
+impl From<&Value> for serde_json::Value {
+    fn from(v: &Value) -> Self {
+        match v {
+            Value::Null => serde_json::Value::Null,
+            Value::Bool(b) => serde_json::Value::Bool(*b),
+            Value::Int(i) => serde_json::json!(*i),
+            Value::Float(f) => serde_json::json!(*f),
+            Value::String(s) => serde_json::Value::String(s.clone()),
+            Value::Array(arr) => {
+                serde_json::Value::Array(arr.iter().map(serde_json::Value::from).collect())
+            }
+            Value::Object(map) => {
+                let obj: serde_json::Map<String, serde_json::Value> = map
+                    .iter()
+                    .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
+                    .collect();
+                serde_json::Value::Object(obj)
+            }
+        }
+    }
+}
+
+impl From<Value> for serde_json::Value {
+    fn from(v: Value) -> Self {
+        serde_json::Value::from(&v)
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -305,22 +396,8 @@ impl Operation {
     }
 }
 
-/// Regulatory layer types
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum RegulatoryLayer {
-    /// Formal law (wet)
-    #[default]
-    Wet,
-    /// Ministerial regulation (ministeriële regeling)
-    MinisterieleRegeling,
-    /// General administrative order (AMvB)
-    Amvb,
-    /// Municipal ordinance (gemeentelijke verordening)
-    GemeentelijkeVerordening,
-    /// Policy rule (beleidsregel)
-    Beleidsregel,
-}
+/// Re-export the canonical regulatory layer types from the shared crate.
+pub use regelrecht_shared::RegulatoryLayer;
 
 /// Parameter type specification
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
