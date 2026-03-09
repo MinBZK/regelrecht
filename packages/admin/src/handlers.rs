@@ -376,7 +376,7 @@ pub async fn create_harvest_job(
     sqlx::query(
         "INSERT INTO law_entries (law_id, status) \
          VALUES ($1, 'queued') \
-         ON CONFLICT (law_id) DO UPDATE SET status = 'queued'",
+         ON CONFLICT (law_id) DO NOTHING",
     )
     .bind(&bwb_id)
     .execute(&mut *tx)

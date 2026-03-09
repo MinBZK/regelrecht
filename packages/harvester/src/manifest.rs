@@ -90,7 +90,7 @@ fn parse_manifest(xml: &str, bwb_id: &str) -> Result<BwbManifest> {
             .descendants()
             .find(|n| n.has_tag_name("einddatum"))
             .and_then(|n| n.text())
-            .unwrap_or_default()
+            .unwrap_or("9999-12-31")
             .to_string();
 
         if !label.is_empty() && !datum_inwerkingtreding.is_empty() {
