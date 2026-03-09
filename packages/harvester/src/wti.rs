@@ -130,7 +130,7 @@ fn find_regulatory_layer(doc: &Document<'_>) -> (RegulatoryLayer, Option<String>
     doc.descendants()
         .find(|n| n.has_tag_name("soort-regeling"))
         .and_then(|n| n.text())
-        .map(RegulatoryLayer::from_soort_regeling)
+        .map(crate::types::regulatory_layer_from_soort_regeling)
         .unwrap_or((RegulatoryLayer::Wet, None))
 }
 

@@ -13,6 +13,60 @@ use crate::config::wetten_url;
 /// Re-export the canonical regulatory layer types from the shared crate.
 pub use regelrecht_shared::RegulatoryLayer;
 
+/// Parse a WTI "soort-regeling" text into a `RegulatoryLayer`.
+///
+/// Returns `(layer, warning)` where the warning is `Some` for ambiguous mappings
+/// or unknown types. Direct matches produce no warning.
+#[must_use]
+pub fn regulatory_layer_from_soort_regeling(text: &str) -> (RegulatoryLayer, Option<String>) {
+    match text.to_lowercase().as_str() {
+        "grondwet" => (RegulatoryLayer::Grondwet, None),
+        "wet" => (RegulatoryLayer::Wet, None),
+        "amvb" | "algemene maatregel van bestuur" => (RegulatoryLayer::Amvb, None),
+        "ministeriele regeling" | "ministeriële regeling" => {
+            (RegulatoryLayer::MinisterieleRegeling, None)
+        }
+        "beleidsregel" => (RegulatoryLayer::Beleidsregel, None),
+        "eu-verordening" => (RegulatoryLayer::EuVerordening, None),
+        "eu-richtlijn" => (RegulatoryLayer::EuRichtlijn, None),
+        "verdrag" => (RegulatoryLayer::Verdrag, None),
+        "uitvoeringsbeleid" => (RegulatoryLayer::Uitvoeringsbeleid, None),
+        "gemeentelijke verordening" => (RegulatoryLayer::GemeentelijkeVerordening, None),
+        "provinciale verordening" => (RegulatoryLayer::ProvincialeVerordening, None),
+        // Ambiguous mappings - produce warnings
+        "koninklijk besluit" | "kb" => (
+            RegulatoryLayer::Amvb,
+            Some(format!(
+                "Mapped soort-regeling '{text}' to AMVB (closest schema match)"
+            )),
+        ),
+        "regeling" => (
+            RegulatoryLayer::MinisterieleRegeling,
+            Some(format!(
+                "Mapped soort-regeling '{text}' to MINISTERIELE_REGELING (closest schema match)"
+            )),
+        ),
+        "verordening" => (
+            RegulatoryLayer::GemeentelijkeVerordening,
+            Some(format!(
+                "Mapped soort-regeling '{text}' to GEMEENTELIJKE_VERORDENING (closest schema match)"
+            )),
+        ),
+        unknown => {
+            tracing::warn!(
+                soort_regeling = %unknown,
+                "Unknown soort-regeling type, defaulting to WET"
+            );
+            (
+                RegulatoryLayer::Wet,
+                Some(format!(
+                    "Unknown soort-regeling '{unknown}', defaulting to WET"
+                )),
+            )
+        }
+    }
+}
+
 /// Metadata extracted from WTI file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LawMetadata {
@@ -289,53 +343,53 @@ mod tests {
     fn test_regulatory_layer_from_soort_regeling() {
         // Direct matches - no warning
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("wet"),
+            regulatory_layer_from_soort_regeling("wet"),
             (RegulatoryLayer::Wet, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("WET"),
+            regulatory_layer_from_soort_regeling("WET"),
             (RegulatoryLayer::Wet, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("amvb"),
+            regulatory_layer_from_soort_regeling("amvb"),
             (RegulatoryLayer::Amvb, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("algemene maatregel van bestuur"),
+            regulatory_layer_from_soort_regeling("algemene maatregel van bestuur"),
             (RegulatoryLayer::Amvb, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("ministeriële regeling"),
+            regulatory_layer_from_soort_regeling("ministeriële regeling"),
             (RegulatoryLayer::MinisterieleRegeling, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("grondwet"),
+            regulatory_layer_from_soort_regeling("grondwet"),
             (RegulatoryLayer::Grondwet, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("eu-verordening"),
+            regulatory_layer_from_soort_regeling("eu-verordening"),
             (RegulatoryLayer::EuVerordening, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("verdrag"),
+            regulatory_layer_from_soort_regeling("verdrag"),
             (RegulatoryLayer::Verdrag, None)
         );
 
         // Ambiguous mappings - produce warnings
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("koninklijk besluit");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("koninklijk besluit");
         assert_eq!(layer, RegulatoryLayer::Amvb);
         assert!(warning.is_some());
 
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("regeling");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("regeling");
         assert_eq!(layer, RegulatoryLayer::MinisterieleRegeling);
         assert!(warning.is_some());
 
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("verordening");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("verordening");
         assert_eq!(layer, RegulatoryLayer::GemeentelijkeVerordening);
         assert!(warning.is_some());
 
         // Unknown defaults to Wet with warning
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("unknown");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("unknown");
         assert_eq!(layer, RegulatoryLayer::Wet);
         assert!(warning.is_some());
     }
