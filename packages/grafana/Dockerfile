@@ -1,4 +1,4 @@
-FROM grafana/grafana-oss:11.6.0
+FROM grafana/grafana-oss:12.4.0
 
 # ZAD requires port 8000 for liveprobe
 ENV GF_SERVER_HTTP_PORT=8000
