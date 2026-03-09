@@ -27,7 +27,7 @@ Accept a PR number (e.g., `204`) or deployment name (e.g., `pr204`, `pr204b`). I
 You need the `RIG_API_KEY` to access the RIG Operations Manager API. Load it from the workspace environment file:
 
 ```bash
-eval "$(grep '^RIG_API_KEY=' /workspace/.env)"
+RIG_API_KEY=$(grep '^RIG_API_KEY=' /workspace/.env | cut -d= -f2-)
 ```
 
 ### 3. Check CI/Deploy status
@@ -56,9 +56,15 @@ curl -s -H "X-API-Key: $RIG_API_KEY" \
   "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/logs/regel-k4c?deployment={name}&lines=20"
 ```
 
-The API returns logs grouped by component. For each component (editor, harvester-admin, harvester-worker) in the response:
+The API returns logs grouped by component. Note that **not all components are deployed for every PR**:
+- `editor` is always deployed
+- `harvester-admin` and `harvester-worker` are only deployed when the PR contains backend changes (`packages/admin/`, `packages/pipeline/`, `packages/harvester/`, `packages/corpus/`)
+
+For frontend-only PRs, empty logs for backend components are expected — not a failure.
+
+For each component in the response:
 - **Has recent logs**: pod is running
-- **Empty logs (0 lines)**: pod is NOT running — likely image pull error or quota issue
+- **Empty logs (0 lines) on a component that should be deployed**: pod is NOT running — likely image pull error or quota issue
 
 ### 5. Check image availability
 
@@ -100,8 +106,17 @@ If the user asks to fix a broken deployment:
 - **Pods not starting**: Check quota by listing all active deployments, suggest cleaning up stale ones
 - **Only as last resort**: Create a manual deployment — but **ALWAYS ask the user for confirmation first**. Explain what you're about to do and why, and wait for approval before making any RIG API calls. Manual deploys are not the normal workflow; the CI/CD pipeline should handle this automatically.
 
-When creating a manual deployment (after user approval), use `pr-{N}` tags (NEVER `sha-` tags):
+When creating a manual deployment (after user approval), use `pr-{N}` tags (NEVER `sha-` tags). **Only include components whose images actually exist** — check step 5 first. For frontend-only PRs, only deploy the editor:
+
 ```bash
+# Frontend-only PR:
+curl -s -X POST -H "X-API-Key: $RIG_API_KEY" -H "Content-Type: application/json" \
+  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/projects/regel-k4c/:upsert-deployment" \
+  -d '{"deploymentName": "{name}", "cloneFrom": "regelrecht", "components": [
+    {"reference": "editor", "image": "ghcr.io/minbzk/regelrecht-mvp:pr-{N}"}
+  ]}'
+
+# PR with backend changes (all three images exist):
 curl -s -X POST -H "X-API-Key: $RIG_API_KEY" -H "Content-Type: application/json" \
   "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/projects/regel-k4c/:upsert-deployment" \
   -d '{"deploymentName": "{name}", "cloneFrom": "regelrecht", "components": [
