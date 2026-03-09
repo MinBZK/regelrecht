@@ -1,8 +1,15 @@
 ---
 apiVersion: 1
 
+# Remove the mattermost contact point provisioned by an earlier image.
+deleteContactPoints:
+  - orgId: 1
+    uid: mattermost-webhook
+
 # Contact points and notification policies are configured via the Grafana UI
 # once external webhook URLs (e.g. Mattermost) are available.
+# Note: resetPolicies is intentionally omitted — it runs on every restart
+# and would wipe any alert routing configured via the UI.
 
 groups:
   - orgId: 1

@@ -6,15 +6,15 @@ ENV GF_SERVER_HTTP_PORT=8000
 # Disable anonymous access
 ENV GF_AUTH_ANONYMOUS_ENABLED=false
 
-# Disable local admin account — OIDC is the sole auth path.
-ENV GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true
+# Disable local admin account when OIDC is available (set in entrypoint.sh).
+# When OIDC vars are missing, the entrypoint keeps the default admin/admin
+# account as a temporary fallback. Do NOT expose publicly without OIDC.
 # NOTE: GF_SECURITY_SECRET_KEY must be injected at deploy time via ZAD env_vars
 # to keep sessions stable across pod restarts.
 
-# Enable OIDC via Keycloak using ZAD-provided env vars.
-# ZAD injects OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_URL, and OIDC_REALM
-# into all components automatically.
-ENV GF_AUTH_GENERIC_OAUTH_ENABLED=true
+# OIDC is conditionally enabled in entrypoint.sh based on whether
+# ZAD injects OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_URL, OIDC_REALM.
+# These static OIDC settings apply when OIDC is enabled:
 ENV GF_AUTH_GENERIC_OAUTH_NAME=Keycloak
 ENV GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=true
 ENV GF_AUTH_GENERIC_OAUTH_SCOPES="openid email profile"
