@@ -11,13 +11,11 @@ contactPoints:
     name: mattermost
     receivers:
       - uid: mattermost-digilab
-        type: webhook
+        type: slack
         settings:
+          # Mattermost implements the Slack-compatible webhook API.
           url: ${MATTERMOST_WEBHOOK_URL}
-          httpMethod: POST
-          # Custom payload formatted for Mattermost incoming webhook.
-          # Grafana's default webhook JSON is not compatible with Mattermost.
-          message: |
+          text: |
             {{ range .Alerts }}
             **[{{ .Status | toUpper }}] {{ .Labels.alertname }}**
             {{ .Annotations.summary }}
@@ -32,7 +30,7 @@ policies:
       - alertname
     group_wait: 10s
     group_interval: 1m
-    repeat_interval: 5m
+    repeat_interval: 1h
 
 groups:
   - orgId: 1
@@ -72,7 +70,7 @@ groups:
               refId: C
         noDataState: Alerting
         execErrState: Alerting
-        for: 0m
+        for: 1m
         labels:
           severity: warning
         annotations:
@@ -109,7 +107,7 @@ groups:
                   reducer:
                     type: last
               refId: C
-        noDataState: Alerting
+        noDataState: NoData
         execErrState: Alerting
         for: 1m
         labels:
