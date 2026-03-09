@@ -329,7 +329,7 @@ jobs:
       always() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       !cancelled() &&
-      (needs.build.result == 'success' || needs.build-admin.result == 'success' || needs.build-harvester-worker.result == 'success')
+      (needs.build.result == 'success' || needs.build-admin.result == 'success' || needs.build-harvester-worker.result == 'success' || needs.build-grafana.result == 'success')
     permissions: {}
     environment:
       name: production

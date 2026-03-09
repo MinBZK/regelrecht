@@ -29,20 +29,20 @@ groups:
     interval: 1m
     rules:
       - uid: failed-jobs
-        title: Failed jobs detected
+        title: New failed jobs detected
         condition: C
         data:
           - refId: A
             relativeTimeRange:
-              from: 300
+              from: 600
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: regelrecht_jobs{status="failed"}
+              expr: increase(regelrecht_jobs{status="failed"}[10m])
               refId: A
           - refId: C
             relativeTimeRange:
-              from: 300
+              from: 600
               to: 0
             datasourceUid: __expr__
             model:
@@ -62,7 +62,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: 'Failed jobs detected: {{ $value }} jobs in failed state'
+          summary: >-
+            {{ $value }} new failed jobs in the last 10 minutes
 
       - uid: slow-jobs
         title: Jobs running slow
