@@ -105,14 +105,14 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
     for status in JobStatus::iter() {
         jobs_total
             .get_or_create(&StatusLabel {
-                status: status.as_str().to_string(),
+                status: status.to_string(),
             })
             .set(0);
     }
     for status in LawStatusValue::iter() {
         laws_total
             .get_or_create(&StatusLabel {
-                status: status.as_str().to_string(),
+                status: status.to_string(),
             })
             .set(0);
     }
@@ -218,14 +218,14 @@ mod tests {
 
         // Default zero-value gauges should be present for all known statuses.
         for status in JobStatus::iter() {
-            let s = status.as_str();
+            let s = status.to_string();
             assert!(
                 body.contains(&format!("regelrecht_jobs{{status=\"{s}\"}} 0")),
                 "jobs should have default zero for {s}"
             );
         }
         for status in LawStatusValue::iter() {
-            let s = status.as_str();
+            let s = status.to_string();
             assert!(
                 body.contains(&format!("regelrecht_laws{{status=\"{s}\"}} 0")),
                 "laws should have default zero for {s}"
