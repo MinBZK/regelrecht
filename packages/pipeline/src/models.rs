@@ -10,7 +10,9 @@ pub enum JobType {
     Enrich,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, strum::EnumIter,
+)]
 #[sqlx(type_name = "job_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum JobStatus {
@@ -20,7 +22,21 @@ pub enum JobStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+impl JobStatus {
+    /// Returns the lowercase string representation matching the DB/serde format.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Processing => "processing",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type, strum::EnumIter,
+)]
 #[sqlx(type_name = "law_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum LawStatusValue {
@@ -36,6 +52,22 @@ pub enum LawStatusValue {
     #[sqlx(rename = "enrich_failed")]
     #[serde(rename = "enrich_failed")]
     EnrichFailed,
+}
+
+impl LawStatusValue {
+    /// Returns the lowercase/snake_case string representation matching the DB/serde format.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Queued => "queued",
+            Self::Harvesting => "harvesting",
+            Self::Harvested => "harvested",
+            Self::HarvestFailed => "harvest_failed",
+            Self::Enriching => "enriching",
+            Self::Enriched => "enriched",
+            Self::EnrichFailed => "enrich_failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
