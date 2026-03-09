@@ -2,6 +2,7 @@ FROM grafana/grafana-oss:11.6.0
 
 # ZAD requires port 8000 for liveprobe
 ENV GF_SERVER_HTTP_PORT=8000
+ENV GF_SERVER_ROOT_URL=https://grafana.regelrecht.rijks.app
 
 # Disable anonymous access
 ENV GF_AUTH_ANONYMOUS_ENABLED=false
