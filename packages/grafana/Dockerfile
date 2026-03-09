@@ -3,6 +3,7 @@ FROM grafana/grafana-oss:12.4.0
 # Install grafanactl for Git Sync configuration
 USER root
 RUN wget -q "https://github.com/grafana/grafanactl/releases/download/v0.1.9/grafanactl_Linux_x86_64.tar.gz" -O /tmp/grafanactl.tar.gz \
+    && echo "b66e7f1b5b7b871c43be240d0247c353021433f407c9fbeabdcbee3c71b41271  /tmp/grafanactl.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/grafanactl.tar.gz -C /usr/local/bin grafanactl \
     && chmod +x /usr/local/bin/grafanactl \
     && rm /tmp/grafanactl.tar.gz

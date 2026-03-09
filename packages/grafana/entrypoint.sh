@@ -33,17 +33,23 @@ fi
 # Start Grafana in the background
 /run.sh "$@" &
 GRAFANA_PID=$!
+trap 'kill -TERM $GRAFANA_PID' TERM INT
 
 # Configure Git Sync for dashboard version control if GITHUB_PAT is set.
 if [ -n "${GITHUB_PAT:-}" ]; then
   echo "Waiting for Grafana to become ready..."
+  GRAFANA_READY=false
   for i in $(seq 1 30); do
     if wget -q -O /dev/null "http://localhost:${GF_SERVER_HTTP_PORT:-8000}/api/health" 2>/dev/null; then
+      GRAFANA_READY=true
       break
     fi
     sleep 2
   done
 
+  if [ "$GRAFANA_READY" = false ]; then
+    echo "ERROR: Grafana did not become ready in 60s — skipping Git Sync setup"
+  else
   # Create repository CRD for Git Sync
   REPO_DIR=$(mktemp -d)
   cat > "${REPO_DIR}/repository.yaml" <<GITEOF
@@ -62,8 +68,8 @@ spec:
   title: Regelrecht Dashboards
   type: github
   github:
-    url: https://github.com/MinBZK/regelrecht-mvp
-    branch: main
+    url: ${GITHUB_REPO_URL:-https://github.com/MinBZK/regelrecht-mvp}
+    branch: ${GITHUB_BRANCH:-main}
     path: packages/grafana/dashboards/
 secure:
   token:
@@ -72,12 +78,13 @@ GITEOF
 
   export GRAFANA_SERVER="http://localhost:${GF_SERVER_HTTP_PORT:-8000}"
   export GRAFANA_USER=admin
-  export GRAFANA_PASSWORD=admin
+  export GRAFANA_PASSWORD="${GF_SECURITY_ADMIN_PASSWORD:-admin}"
   export GRAFANA_ORG_ID=1
 
   echo "Configuring Git Sync..."
   grafanactl resources push --path "${REPO_DIR}" 2>&1 || echo "WARNING: Git Sync configuration failed"
   rm -rf "${REPO_DIR}"
+  fi # GRAFANA_READY
 else
   echo "WARNING: GITHUB_PAT not set — Git Sync for dashboards is disabled."
 fi
