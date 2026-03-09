@@ -71,6 +71,18 @@ pub enum HarvesterError {
     /// HTTP response too large.
     #[error("HTTP response too large: {actual_bytes} bytes exceeds limit of {max_bytes} bytes")]
     ResponseTooLarge { max_bytes: u64, actual_bytes: u64 },
+
+    /// Failed to download manifest.
+    #[error("Failed to download manifest for {bwb_id}: {source}")]
+    ManifestDownload {
+        bwb_id: String,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// No consolidation found for the given date.
+    #[error("No consolidation found for {bwb_id} at date {date}")]
+    NoConsolidation { bwb_id: String, date: String },
 }
 
 /// Result type alias for harvester operations.
