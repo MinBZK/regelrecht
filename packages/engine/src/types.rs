@@ -265,7 +265,19 @@ impl From<&Value> for serde_json::Value {
 
 impl From<Value> for serde_json::Value {
     fn from(v: Value) -> Self {
-        serde_json::Value::from(&v)
+        match v {
+            Value::Null => serde_json::Value::Null,
+            Value::Bool(b) => serde_json::Value::Bool(b),
+            Value::Int(i) => serde_json::json!(i),
+            Value::Float(f) => serde_json::json!(f),
+            Value::String(s) => serde_json::Value::String(s),
+            Value::Array(arr) => {
+                serde_json::Value::Array(arr.into_iter().map(Into::into).collect())
+            }
+            Value::Object(map) => {
+                serde_json::Value::Object(map.into_iter().map(|(k, v)| (k, v.into())).collect())
+            }
+        }
     }
 }
 

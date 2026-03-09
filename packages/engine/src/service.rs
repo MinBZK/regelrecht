@@ -2335,6 +2335,30 @@ articles:
             parse_regulatory_layer("beleidsregel"),
             Some(RegulatoryLayer::Beleidsregel)
         );
+        assert_eq!(
+            parse_regulatory_layer("grondwet"),
+            Some(RegulatoryLayer::Grondwet)
+        );
+        assert_eq!(
+            parse_regulatory_layer("eu_verordening"),
+            Some(RegulatoryLayer::EuVerordening)
+        );
+        assert_eq!(
+            parse_regulatory_layer("eu_richtlijn"),
+            Some(RegulatoryLayer::EuRichtlijn)
+        );
+        assert_eq!(
+            parse_regulatory_layer("verdrag"),
+            Some(RegulatoryLayer::Verdrag)
+        );
+        assert_eq!(
+            parse_regulatory_layer("uitvoeringsbeleid"),
+            Some(RegulatoryLayer::Uitvoeringsbeleid)
+        );
+        assert_eq!(
+            parse_regulatory_layer("provinciale_verordening"),
+            Some(RegulatoryLayer::ProvincialeVerordening)
+        );
         assert_eq!(parse_regulatory_layer("unknown_type"), None);
     }
 
