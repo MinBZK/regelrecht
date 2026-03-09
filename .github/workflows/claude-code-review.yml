@@ -28,6 +28,39 @@ jobs:
           use_sticky_comment: true
           claude_args: "--allowedTools Bash,Read,Glob,Grep"
           prompt: |
+            ## Step 0: Clean up previous reviews
+
+            BEFORE doing anything else, clean up your own previous review comments and
+            reviews on this PR so they don't pile up. Run these commands:
+
+            ```bash
+            # Dismiss all previous claude[bot] reviews (changes CHANGES_REQUESTED to comments)
+            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+              --paginate --jq '.[] | select(.user.login == "claude[bot]" and (.state == "CHANGES_REQUESTED" or .state == "COMMENTED")) | .id' \
+            | while read -r review_id; do
+                gh api -X PUT "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews/${review_id}/dismissals" \
+                  -f message="Superseded by new review" -f event="DISMISS" 2>/dev/null || true
+              done
+
+            # Delete all previous claude[bot] inline review comments
+            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" \
+              --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
+            | while read -r comment_id; do
+                gh api -X DELETE "repos/${{ github.repository }}/pulls/comments/${comment_id}" 2>/dev/null || true
+              done
+
+            # Delete all previous claude[bot] issue comments (except sticky which is managed automatically)
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+              --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
+            | while read -r comment_id; do
+                gh api -X DELETE "repos/${{ github.repository }}/issues/comments/${comment_id}" 2>/dev/null || true
+              done
+            ```
+
+            After cleanup, proceed with the review below.
+
+            ---
+
             Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
 
             ## Project context
