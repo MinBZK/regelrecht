@@ -333,12 +333,27 @@ pub async fn create_harvest_job(
         )
     })?;
 
+    // Acquire an advisory lock keyed on the bwb_id to serialize concurrent requests
+    // for the same law. This prevents the TOCTOU race where two requests both see
+    // no existing job and both create one. The lock is released when the transaction
+    // commits or rolls back.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+        .bind(&bwb_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, law_id = %bwb_id, "failed to acquire advisory lock");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal server error".to_string(),
+            )
+        })?;
+
     // Check for existing pending or processing harvest job to prevent duplicates.
     let existing: Option<(sqlx::types::Uuid,)> = sqlx::query_as(
         "SELECT id FROM jobs \
          WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
-         LIMIT 1 \
-         FOR UPDATE",
+         LIMIT 1",
     )
     .bind(&bwb_id)
     .fetch_optional(&mut *tx)
@@ -361,7 +376,7 @@ pub async fn create_harvest_job(
     sqlx::query(
         "INSERT INTO law_entries (law_id, status) \
          VALUES ($1, 'queued') \
-         ON CONFLICT (law_id) DO NOTHING",
+         ON CONFLICT (law_id) DO UPDATE SET status = 'queued'",
     )
     .bind(&bwb_id)
     .execute(&mut *tx)

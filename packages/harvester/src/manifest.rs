@@ -62,7 +62,10 @@ fn parse_manifest(xml: &str, bwb_id: &str) -> Result<BwbManifest> {
     let work = root
         .descendants()
         .find(|n| n.has_tag_name("work"))
-        .unwrap_or(root);
+        .ok_or_else(|| HarvesterError::MissingElement {
+            element: "work".to_string(),
+            context: format!("manifest for {bwb_id}"),
+        })?;
 
     let latest_item = work
         .attribute("_latestItem")
