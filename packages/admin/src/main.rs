@@ -156,6 +156,7 @@ async fn main() {
         .merge(api_routes)
         .with_state(app_state)
         .layer(session_layer)
+        .layer(axum_middleware::from_fn(middleware::security_headers))
         .layer(TraceLayer::new_for_http())
         .fallback_service(ServeDir::new(
             env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string()),
