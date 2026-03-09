@@ -257,11 +257,17 @@ pub struct LawInfo {
 /// corresponding `RegulatoryLayer` enum variant.
 fn parse_regulatory_layer(resolve_type: &str) -> Option<RegulatoryLayer> {
     match resolve_type.to_lowercase().as_str() {
-        "ministeriele_regeling" => Some(RegulatoryLayer::MinisterieleRegeling),
+        "grondwet" => Some(RegulatoryLayer::Grondwet),
         "wet" => Some(RegulatoryLayer::Wet),
         "amvb" => Some(RegulatoryLayer::Amvb),
-        "gemeentelijke_verordening" => Some(RegulatoryLayer::GemeentelijkeVerordening),
+        "ministeriele_regeling" => Some(RegulatoryLayer::MinisterieleRegeling),
         "beleidsregel" => Some(RegulatoryLayer::Beleidsregel),
+        "eu_verordening" => Some(RegulatoryLayer::EuVerordening),
+        "eu_richtlijn" => Some(RegulatoryLayer::EuRichtlijn),
+        "verdrag" => Some(RegulatoryLayer::Verdrag),
+        "uitvoeringsbeleid" => Some(RegulatoryLayer::Uitvoeringsbeleid),
+        "gemeentelijke_verordening" => Some(RegulatoryLayer::GemeentelijkeVerordening),
+        "provinciale_verordening" => Some(RegulatoryLayer::ProvincialeVerordening),
         _ => None,
     }
 }
@@ -1252,7 +1258,7 @@ impl LawExecutionService {
 
         Some(LawInfo {
             id: law.id.clone(),
-            regulatory_layer: law.regulatory_layer.clone(),
+            regulatory_layer: law.regulatory_layer,
             publication_date: law.publication_date.clone(),
             bwb_id: law.bwb_id.clone(),
             url: law.url.clone(),
@@ -2328,6 +2334,30 @@ articles:
         assert_eq!(
             parse_regulatory_layer("beleidsregel"),
             Some(RegulatoryLayer::Beleidsregel)
+        );
+        assert_eq!(
+            parse_regulatory_layer("grondwet"),
+            Some(RegulatoryLayer::Grondwet)
+        );
+        assert_eq!(
+            parse_regulatory_layer("eu_verordening"),
+            Some(RegulatoryLayer::EuVerordening)
+        );
+        assert_eq!(
+            parse_regulatory_layer("eu_richtlijn"),
+            Some(RegulatoryLayer::EuRichtlijn)
+        );
+        assert_eq!(
+            parse_regulatory_layer("verdrag"),
+            Some(RegulatoryLayer::Verdrag)
+        );
+        assert_eq!(
+            parse_regulatory_layer("uitvoeringsbeleid"),
+            Some(RegulatoryLayer::Uitvoeringsbeleid)
+        );
+        assert_eq!(
+            parse_regulatory_layer("provinciale_verordening"),
+            Some(RegulatoryLayer::ProvincialeVerordening)
         );
         assert_eq!(parse_regulatory_layer("unknown_type"), None);
     }

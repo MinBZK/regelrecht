@@ -6,6 +6,7 @@ members = [
     "engine",
     "harvester",
     "pipeline",
+    "shared",
 ]
 
 [workspace.lints.clippy]

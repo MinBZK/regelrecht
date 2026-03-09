@@ -10,144 +10,59 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::config::wetten_url;
 
-/// Types of regulatory documents in Dutch law.
+/// Re-export the canonical regulatory layer types from the shared crate.
+pub use regelrecht_shared::RegulatoryLayer;
+
+/// Parse a WTI "soort-regeling" text into a `RegulatoryLayer`.
 ///
-/// Aligned with schema v0.3.1 regulatory_layer enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RegulatoryLayer {
-    /// Constitutional law (Grondwet).
-    #[serde(rename = "GRONDWET")]
-    Grondwet,
-
-    /// Formal law (wet).
-    #[serde(rename = "WET")]
-    Wet,
-
-    /// General administrative measure (Algemene Maatregel van Bestuur).
-    #[serde(rename = "AMVB")]
-    Amvb,
-
-    /// Ministerial regulation (Ministeriële regeling).
-    #[serde(rename = "MINISTERIELE_REGELING")]
-    MinisterieleRegeling,
-
-    /// Policy rule (Beleidsregel).
-    #[serde(rename = "BELEIDSREGEL")]
-    Beleidsregel,
-
-    /// EU regulation (EU-verordening).
-    #[serde(rename = "EU_VERORDENING")]
-    EuVerordening,
-
-    /// EU directive (EU-richtlijn).
-    #[serde(rename = "EU_RICHTLIJN")]
-    EuRichtlijn,
-
-    /// International treaty (Verdrag).
-    #[serde(rename = "VERDRAG")]
-    Verdrag,
-
-    /// Implementation policy (Uitvoeringsbeleid).
-    #[serde(rename = "UITVOERINGSBELEID")]
-    Uitvoeringsbeleid,
-
-    /// Municipal ordinance (Gemeentelijke verordening).
-    #[serde(rename = "GEMEENTELIJKE_VERORDENING")]
-    GemeentelijkeVerordening,
-
-    /// Provincial ordinance (Provinciale verordening).
-    #[serde(rename = "PROVINCIALE_VERORDENING")]
-    ProvincialeVerordening,
-}
-
-impl RegulatoryLayer {
-    /// Get the string value for YAML output.
-    #[must_use]
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Grondwet => "GRONDWET",
-            Self::Wet => "WET",
-            Self::Amvb => "AMVB",
-            Self::MinisterieleRegeling => "MINISTERIELE_REGELING",
-            Self::Beleidsregel => "BELEIDSREGEL",
-            Self::EuVerordening => "EU_VERORDENING",
-            Self::EuRichtlijn => "EU_RICHTLIJN",
-            Self::Verdrag => "VERDRAG",
-            Self::Uitvoeringsbeleid => "UITVOERINGSBELEID",
-            Self::GemeentelijkeVerordening => "GEMEENTELIJKE_VERORDENING",
-            Self::ProvincialeVerordening => "PROVINCIALE_VERORDENING",
+/// Returns `(layer, warning)` where the warning is `Some` for ambiguous mappings
+/// or unknown types. Direct matches produce no warning.
+#[must_use]
+pub fn regulatory_layer_from_soort_regeling(text: &str) -> (RegulatoryLayer, Option<String>) {
+    match text.to_lowercase().as_str() {
+        "grondwet" => (RegulatoryLayer::Grondwet, None),
+        "wet" => (RegulatoryLayer::Wet, None),
+        "amvb" | "algemene maatregel van bestuur" => (RegulatoryLayer::Amvb, None),
+        "ministeriele regeling" | "ministeriële regeling" => {
+            (RegulatoryLayer::MinisterieleRegeling, None)
         }
-    }
-
-    /// Get the directory name for file output.
-    #[must_use]
-    pub fn as_dir_name(&self) -> &'static str {
-        match self {
-            Self::Grondwet => "grondwet",
-            Self::Wet => "wet",
-            Self::Amvb => "amvb",
-            Self::MinisterieleRegeling => "ministeriele_regeling",
-            Self::Beleidsregel => "beleidsregel",
-            Self::EuVerordening => "eu_verordening",
-            Self::EuRichtlijn => "eu_richtlijn",
-            Self::Verdrag => "verdrag",
-            Self::Uitvoeringsbeleid => "uitvoeringsbeleid",
-            Self::GemeentelijkeVerordening => "gemeentelijke_verordening",
-            Self::ProvincialeVerordening => "provinciale_verordening",
-        }
-    }
-
-    /// Parse from WTI "soort-regeling" text.
-    ///
-    /// Returns `(layer, warning)` where the warning is `Some` for ambiguous mappings
-    /// or unknown types. Direct matches produce no warning.
-    #[must_use]
-    pub fn from_soort_regeling(text: &str) -> (Self, Option<String>) {
-        match text.to_lowercase().as_str() {
-            "grondwet" => (Self::Grondwet, None),
-            "wet" => (Self::Wet, None),
-            "amvb" | "algemene maatregel van bestuur" => (Self::Amvb, None),
-            "ministeriele regeling" | "ministeriële regeling" => {
-                (Self::MinisterieleRegeling, None)
-            }
-            "beleidsregel" => (Self::Beleidsregel, None),
-            "eu-verordening" => (Self::EuVerordening, None),
-            "eu-richtlijn" => (Self::EuRichtlijn, None),
-            "verdrag" => (Self::Verdrag, None),
-            "uitvoeringsbeleid" => (Self::Uitvoeringsbeleid, None),
-            "gemeentelijke verordening" => (Self::GemeentelijkeVerordening, None),
-            "provinciale verordening" => (Self::ProvincialeVerordening, None),
-            // Ambiguous mappings - produce warnings
-            "koninklijk besluit" | "kb" => (
-                Self::Amvb,
+        "beleidsregel" => (RegulatoryLayer::Beleidsregel, None),
+        "eu-verordening" => (RegulatoryLayer::EuVerordening, None),
+        "eu-richtlijn" => (RegulatoryLayer::EuRichtlijn, None),
+        "verdrag" => (RegulatoryLayer::Verdrag, None),
+        "uitvoeringsbeleid" => (RegulatoryLayer::Uitvoeringsbeleid, None),
+        "gemeentelijke verordening" => (RegulatoryLayer::GemeentelijkeVerordening, None),
+        "provinciale verordening" => (RegulatoryLayer::ProvincialeVerordening, None),
+        // Ambiguous mappings - produce warnings
+        "koninklijk besluit" | "kb" => (
+            RegulatoryLayer::Amvb,
+            Some(format!(
+                "Mapped soort-regeling '{text}' to AMVB (closest schema match)"
+            )),
+        ),
+        "regeling" => (
+            RegulatoryLayer::MinisterieleRegeling,
+            Some(format!(
+                "Mapped soort-regeling '{text}' to MINISTERIELE_REGELING (closest schema match)"
+            )),
+        ),
+        "verordening" => (
+            RegulatoryLayer::GemeentelijkeVerordening,
+            Some(format!(
+                "Mapped soort-regeling '{text}' to GEMEENTELIJKE_VERORDENING (closest schema match)"
+            )),
+        ),
+        unknown => {
+            tracing::warn!(
+                soort_regeling = %unknown,
+                "Unknown soort-regeling type, defaulting to WET"
+            );
+            (
+                RegulatoryLayer::Wet,
                 Some(format!(
-                    "Mapped soort-regeling '{text}' to AMVB (closest schema match)"
+                    "Unknown soort-regeling '{unknown}', defaulting to WET"
                 )),
-            ),
-            "regeling" => (
-                Self::MinisterieleRegeling,
-                Some(format!(
-                    "Mapped soort-regeling '{text}' to MINISTERIELE_REGELING (closest schema match)"
-                )),
-            ),
-            "verordening" => (
-                Self::GemeentelijkeVerordening,
-                Some(format!(
-                    "Mapped soort-regeling '{text}' to GEMEENTELIJKE_VERORDENING (closest schema match)"
-                )),
-            ),
-            unknown => {
-                tracing::warn!(
-                    soort_regeling = %unknown,
-                    "Unknown soort-regeling type, defaulting to WET"
-                );
-                (
-                    Self::Wet,
-                    Some(format!(
-                        "Unknown soort-regeling '{unknown}', defaulting to WET"
-                    )),
-                )
-            }
+            )
         }
     }
 }
@@ -428,53 +343,53 @@ mod tests {
     fn test_regulatory_layer_from_soort_regeling() {
         // Direct matches - no warning
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("wet"),
+            regulatory_layer_from_soort_regeling("wet"),
             (RegulatoryLayer::Wet, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("WET"),
+            regulatory_layer_from_soort_regeling("WET"),
             (RegulatoryLayer::Wet, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("amvb"),
+            regulatory_layer_from_soort_regeling("amvb"),
             (RegulatoryLayer::Amvb, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("algemene maatregel van bestuur"),
+            regulatory_layer_from_soort_regeling("algemene maatregel van bestuur"),
             (RegulatoryLayer::Amvb, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("ministeriële regeling"),
+            regulatory_layer_from_soort_regeling("ministeriële regeling"),
             (RegulatoryLayer::MinisterieleRegeling, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("grondwet"),
+            regulatory_layer_from_soort_regeling("grondwet"),
             (RegulatoryLayer::Grondwet, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("eu-verordening"),
+            regulatory_layer_from_soort_regeling("eu-verordening"),
             (RegulatoryLayer::EuVerordening, None)
         );
         assert_eq!(
-            RegulatoryLayer::from_soort_regeling("verdrag"),
+            regulatory_layer_from_soort_regeling("verdrag"),
             (RegulatoryLayer::Verdrag, None)
         );
 
         // Ambiguous mappings - produce warnings
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("koninklijk besluit");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("koninklijk besluit");
         assert_eq!(layer, RegulatoryLayer::Amvb);
         assert!(warning.is_some());
 
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("regeling");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("regeling");
         assert_eq!(layer, RegulatoryLayer::MinisterieleRegeling);
         assert!(warning.is_some());
 
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("verordening");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("verordening");
         assert_eq!(layer, RegulatoryLayer::GemeentelijkeVerordening);
         assert!(warning.is_some());
 
         // Unknown defaults to Wet with warning
-        let (layer, warning) = RegulatoryLayer::from_soort_regeling("unknown");
+        let (layer, warning) = regulatory_layer_from_soort_regeling("unknown");
         assert_eq!(layer, RegulatoryLayer::Wet);
         assert!(warning.is_some());
     }

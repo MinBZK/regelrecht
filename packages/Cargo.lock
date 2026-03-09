@@ -2882,6 +2882,7 @@ dependencies = [
  "futures",
  "jsonschema",
  "pretty_assertions",
+ "regelrecht-shared",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -2905,6 +2906,7 @@ dependencies = [
  "indicatif",
  "predicates",
  "pretty_assertions",
+ "regelrecht-shared",
  "regex",
  "reqwest 0.13.2",
  "roxmltree",
@@ -2943,6 +2945,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "regelrecht-shared"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

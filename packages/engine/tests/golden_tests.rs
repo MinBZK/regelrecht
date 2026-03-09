@@ -69,35 +69,9 @@ struct Expected {
     error_type: Option<String>,
 }
 
-/// Convert JSON value to engine Value
+/// Convert JSON value to engine Value using the canonical From impl.
 fn json_to_value(json: &serde_json::Value) -> Value {
-    match json {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Bool(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                // Check if it's actually an integer
-                if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-                    Value::Int(f as i64)
-                } else {
-                    Value::Float(f)
-                }
-            } else {
-                Value::Null
-            }
-        }
-        serde_json::Value::String(s) => Value::String(s.clone()),
-        serde_json::Value::Array(arr) => Value::Array(arr.iter().map(json_to_value).collect()),
-        serde_json::Value::Object(obj) => {
-            let map: HashMap<String, Value> = obj
-                .iter()
-                .map(|(k, v)| (k.clone(), json_to_value(v)))
-                .collect();
-            Value::Object(map)
-        }
-    }
+    Value::from(json)
 }
 
 /// Compare expected JSON value with actual Value

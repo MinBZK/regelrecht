@@ -60,49 +60,6 @@ fn error_response(msg: String) -> EvaluateResponse {
     }
 }
 
-fn json_to_value(v: &serde_json::Value) -> Value {
-    match v {
-        serde_json::Value::Null => Value::Null,
-        serde_json::Value::Bool(b) => Value::Bool(*b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int(i)
-            } else if let Some(f) = n.as_f64() {
-                Value::Float(f)
-            } else {
-                Value::Null
-            }
-        }
-        serde_json::Value::String(s) => Value::String(s.clone()),
-        serde_json::Value::Array(arr) => Value::Array(arr.iter().map(json_to_value).collect()),
-        serde_json::Value::Object(obj) => {
-            let map: HashMap<String, Value> = obj
-                .iter()
-                .map(|(k, v)| (k.clone(), json_to_value(v)))
-                .collect();
-            Value::Object(map)
-        }
-    }
-}
-
-fn value_to_json(v: &Value) -> serde_json::Value {
-    match v {
-        Value::Null => serde_json::Value::Null,
-        Value::Bool(b) => serde_json::Value::Bool(*b),
-        Value::Int(i) => serde_json::json!(*i),
-        Value::Float(f) => serde_json::json!(*f),
-        Value::String(s) => serde_json::Value::String(s.clone()),
-        Value::Array(arr) => serde_json::Value::Array(arr.iter().map(value_to_json).collect()),
-        Value::Object(map) => {
-            let obj: serde_json::Map<String, serde_json::Value> = map
-                .iter()
-                .map(|(k, v)| (k.clone(), value_to_json(v)))
-                .collect();
-            serde_json::Value::Object(obj)
-        }
-    }
-}
-
 fn main() {
     let mut input = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut input) {
@@ -155,7 +112,7 @@ fn main() {
     let params: HashMap<String, Value> = request
         .params
         .iter()
-        .map(|(k, v)| (k.clone(), json_to_value(v)))
+        .map(|(k, v)| (k.clone(), Value::from(v)))
         .collect();
 
     // Evaluate
@@ -164,12 +121,12 @@ fn main() {
             let outputs: HashMap<String, serde_json::Value> = result
                 .outputs
                 .iter()
-                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
                 .collect();
             let resolved_inputs: HashMap<String, serde_json::Value> = result
                 .resolved_inputs
                 .iter()
-                .map(|(k, v)| (k.clone(), value_to_json(v)))
+                .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
                 .collect();
             let resp = EvaluateResponse {
                 outputs: Some(outputs),
