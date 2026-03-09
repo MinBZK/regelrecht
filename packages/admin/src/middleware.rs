@@ -25,6 +25,10 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'",
         ),
     );
+    headers.insert(
+        "permissions-policy",
+        HeaderValue::from_static("geolocation=(), camera=(), microphone=()"),
+    );
     response
 }
 
@@ -139,6 +143,10 @@ mod tests {
         assert_eq!(
             response.headers().get("content-security-policy").unwrap(),
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+        );
+        assert_eq!(
+            response.headers().get("permissions-policy").unwrap(),
+            "geolocation=(), camera=(), microphone=()"
         );
     }
 
