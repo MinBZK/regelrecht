@@ -17,7 +17,8 @@ else
   export GF_AUTH_GENERIC_OAUTH_AUTH_URL="${OIDC_URL}/realms/${OIDC_REALM}/protocol/openid-connect/auth"
   export GF_AUTH_GENERIC_OAUTH_TOKEN_URL="${OIDC_URL}/realms/${OIDC_REALM}/protocol/openid-connect/token"
   export GF_AUTH_GENERIC_OAUTH_API_URL="${OIDC_URL}/realms/${OIDC_REALM}/protocol/openid-connect/userinfo"
-  # Disable local admin when OIDC is the auth path
+  # Disable local login form and admin when OIDC is the auth path
+  export GF_AUTH_DISABLE_LOGIN_FORM=true
   export GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true
 fi
 
