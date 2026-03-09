@@ -30,4 +30,57 @@ if [ -z "${MATTERMOST_WEBHOOK_URL:-}" ]; then
   export MATTERMOST_WEBHOOK_URL="http://localhost:0/webhook-not-configured"
 fi
 
-exec /run.sh "$@"
+# Start Grafana in the background
+/run.sh "$@" &
+GRAFANA_PID=$!
+
+# Configure Git Sync for dashboard version control if GITHUB_PAT is set.
+if [ -n "${GITHUB_PAT:-}" ]; then
+  echo "Waiting for Grafana to become ready..."
+  for i in $(seq 1 30); do
+    if wget -q -O /dev/null "http://localhost:${GF_SERVER_HTTP_PORT:-8000}/api/health" 2>/dev/null; then
+      break
+    fi
+    sleep 2
+  done
+
+  # Create repository CRD for Git Sync
+  REPO_DIR=$(mktemp -d)
+  cat > "${REPO_DIR}/repository.yaml" <<GITEOF
+apiVersion: provisioning.grafana.app/v0alpha1
+kind: Repository
+metadata:
+  name: regelrecht-dashboards
+spec:
+  sync:
+    enabled: true
+    intervalSeconds: 60
+    target: folder
+  workflows:
+    - write
+    - branch
+  title: Regelrecht Dashboards
+  type: github
+  github:
+    url: https://github.com/MinBZK/regelrecht-mvp
+    branch: main
+    path: packages/grafana/dashboards/
+secure:
+  token:
+    create: "${GITHUB_PAT}"
+GITEOF
+
+  export GRAFANA_SERVER="http://localhost:${GF_SERVER_HTTP_PORT:-8000}"
+  export GRAFANA_USER=admin
+  export GRAFANA_PASSWORD=admin
+  export GRAFANA_ORG_ID=1
+
+  echo "Configuring Git Sync..."
+  grafanactl resources push --path "${REPO_DIR}" 2>&1 || echo "WARNING: Git Sync configuration failed"
+  rm -rf "${REPO_DIR}"
+else
+  echo "WARNING: GITHUB_PAT not set — Git Sync for dashboards is disabled."
+fi
+
+# Wait for Grafana to exit
+wait $GRAFANA_PID
