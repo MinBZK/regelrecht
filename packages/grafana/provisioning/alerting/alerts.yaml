@@ -20,10 +20,14 @@ contactPoints:
           title: ':bar_chart: Dagelijkse Regelrecht Update'
           text: |
             {{ range .Alerts -}}
+            {{ if eq .Labels.alertname "Dagelijkse Regelrecht Update" -}}
             | | |
             |:---|:---|
             | :seedling: **Geharvest** | {{ index $values "A" }} wetten |
             | :sparkles: **Verrijkt** | {{ index $values "B" }} wetten |
+            {{ else if eq .Labels.alertname "Nieuwe mislukte jobs" -}}
+            :warning: **{{ .Annotations.summary }}**
+            {{ end -}}
             {{ end }}
         disableResolveMessage: true
 
@@ -45,6 +49,8 @@ groups:
     rules:
       - uid: daily-summary
         title: Dagelijkse Regelrecht Update
+        # Always-fire condition: law counts are >= 0, so > -1 is always true.
+        # This makes the alert act as a daily summary via repeat_interval: 24h.
         condition: C
         data:
           - refId: A
@@ -82,7 +88,7 @@ groups:
                     type: last
               refId: C
         noDataState: OK
-        execErrState: OK
+        execErrState: Alerting
         for: 0s
         labels:
           severity: info
@@ -90,3 +96,43 @@ groups:
           summary: >-
             Geharvest: {{ index $values "A" }} wetten,
             Verrijkt: {{ index $values "B" }} wetten
+
+      - uid: failed-jobs
+        title: Nieuwe mislukte jobs
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              # Detect NEW failures in the last hour, not cumulative total.
+              expr: increase(regelrecht_jobs{status="failed"}[1h])
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+              refId: C
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            {{ $value }} nieuwe mislukte jobs in het afgelopen uur
