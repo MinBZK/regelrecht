@@ -12,10 +12,9 @@ ENV GF_AUTH_ANONYMOUS_ENABLED=false
 # NOTE: GF_SECURITY_SECRET_KEY must be injected at deploy time via ZAD env_vars
 # to keep sessions stable across pod restarts.
 
-# Enable OIDC via Keycloak using ZAD-provided env vars.
-# ZAD injects OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_URL, and OIDC_REALM
-# into all components automatically.
-ENV GF_AUTH_GENERIC_OAUTH_ENABLED=true
+# OIDC is conditionally enabled in entrypoint.sh based on whether
+# ZAD injects OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_URL, OIDC_REALM.
+# These static OIDC settings apply when OIDC is enabled:
 ENV GF_AUTH_GENERIC_OAUTH_NAME=Keycloak
 ENV GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=true
 ENV GF_AUTH_GENERIC_OAUTH_SCOPES="openid email profile"

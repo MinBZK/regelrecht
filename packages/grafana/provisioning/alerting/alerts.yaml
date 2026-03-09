@@ -6,12 +6,10 @@ deleteContactPoints:
   - orgId: 1
     uid: mattermost-webhook
 
-# Reset notification policy to default (no custom routing).
-resetPolicies:
-  - orgId: 1
-
 # Contact points and notification policies are configured via the Grafana UI
 # once external webhook URLs (e.g. Mattermost) are available.
+# Note: resetPolicies is intentionally omitted — it runs on every restart
+# and would wipe any alert routing configured via the UI.
 
 groups:
   - orgId: 1
