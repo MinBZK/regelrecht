@@ -92,7 +92,6 @@ impl RegulatoryLayer {
             Self::ProvincialeVerordening => "provinciale_verordening",
         }
     }
-
 }
 
 #[cfg(test)]
