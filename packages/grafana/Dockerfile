@@ -1,5 +1,14 @@
 FROM grafana/grafana-oss:12.4.0
 
+# Install grafanactl for Git Sync configuration
+USER root
+RUN wget -q "https://github.com/grafana/grafanactl/releases/download/v0.1.9/grafanactl_Linux_x86_64.tar.gz" -O /tmp/grafanactl.tar.gz \
+    && echo "b66e7f1b5b7b871c43be240d0247c353021433f407c9fbeabdcbee3c71b41271  /tmp/grafanactl.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/grafanactl.tar.gz -C /usr/local/bin grafanactl \
+    && chmod +x /usr/local/bin/grafanactl \
+    && rm /tmp/grafanactl.tar.gz
+USER grafana
+
 # ZAD requires port 8000 for liveprobe
 ENV GF_SERVER_HTTP_PORT=8000
 ENV GF_SERVER_ROOT_URL=https://grafana.regelrecht.rijks.app
@@ -27,6 +36,9 @@ ENV GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH="contains(groups[*], 'grafana-admi
 # Enable unified alerting
 ENV GF_UNIFIED_ALERTING_ENABLED=true
 ENV GF_ALERTING_ENABLED=false
+
+# Enable Git Sync (experimental) for dashboard version control
+ENV GF_FEATURE_TOGGLES_ENABLE=provisioning,kubernetesDashboards
 
 # Copy provisioning files and entrypoint
 COPY provisioning/ /etc/grafana/provisioning/

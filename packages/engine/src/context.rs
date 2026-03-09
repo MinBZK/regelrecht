@@ -54,19 +54,19 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub struct RuleContext {
     /// Article-level definitions (constants)
-    definitions: HashMap<String, Value>,
+    definitions: Rc<HashMap<String, Value>>,
 
     /// Input parameters (e.g., BSN, income)
-    parameters: HashMap<String, Value>,
+    parameters: Rc<HashMap<String, Value>>,
 
     /// Calculated output values
-    outputs: HashMap<String, Value>,
+    outputs: Rc<HashMap<String, Value>>,
 
     /// Local scope variables (for FOREACH loops)
     local: HashMap<String, Value>,
 
     /// Cached resolved inputs from cross-law references
-    resolved_inputs: HashMap<String, Value>,
+    resolved_inputs: Rc<HashMap<String, Value>>,
 
     /// Reference date for calculations
     reference_date: NaiveDate,
@@ -91,11 +91,11 @@ impl RuleContext {
         let reference_date_value = date_to_value(reference_date);
 
         Ok(Self {
-            definitions: HashMap::new(),
-            parameters,
-            outputs: HashMap::new(),
+            definitions: Rc::new(HashMap::new()),
+            parameters: Rc::new(parameters),
+            outputs: Rc::new(HashMap::new()),
             local: HashMap::new(),
-            resolved_inputs: HashMap::new(),
+            resolved_inputs: Rc::new(HashMap::new()),
             reference_date,
             reference_date_value,
             trace: None,
@@ -115,20 +115,22 @@ impl RuleContext {
     ///
     /// Processes the Definition enum to extract actual values.
     pub fn set_definitions(&mut self, definitions: &HashMap<String, Definition>) {
-        self.definitions = definitions
-            .iter()
-            .map(|(k, v)| (k.clone(), v.value().clone()))
-            .collect();
+        self.definitions = Rc::new(
+            definitions
+                .iter()
+                .map(|(k, v)| (k.clone(), v.value().clone()))
+                .collect(),
+        );
     }
 
     /// Set definitions directly from a Value HashMap.
     pub fn set_definitions_raw(&mut self, definitions: HashMap<String, Value>) {
-        self.definitions = definitions;
+        self.definitions = Rc::new(definitions);
     }
 
     /// Set an output value.
     pub fn set_output(&mut self, name: impl Into<String>, value: Value) {
-        self.outputs.insert(name.into(), value);
+        Rc::make_mut(&mut self.outputs).insert(name.into(), value);
     }
 
     /// Get an output value.
@@ -153,7 +155,7 @@ impl RuleContext {
 
     /// Set a resolved input value (cached cross-law result).
     pub fn set_resolved_input(&mut self, name: impl Into<String>, value: Value) {
-        self.resolved_inputs.insert(name.into(), value);
+        Rc::make_mut(&mut self.resolved_inputs).insert(name.into(), value);
     }
 
     /// Get all resolved inputs (cached cross-law results).
@@ -201,11 +203,11 @@ impl RuleContext {
     /// needed values explicitly via parameters before evaluation.
     pub fn create_child(&self) -> Self {
         Self {
-            definitions: self.definitions.clone(),
-            parameters: self.parameters.clone(),
-            outputs: self.outputs.clone(),
+            definitions: Rc::clone(&self.definitions),
+            parameters: Rc::clone(&self.parameters),
+            outputs: Rc::clone(&self.outputs),
             local: HashMap::new(), // Child starts with empty local scope
-            resolved_inputs: self.resolved_inputs.clone(),
+            resolved_inputs: Rc::clone(&self.resolved_inputs),
             reference_date: self.reference_date,
             reference_date_value: self.reference_date_value.clone(),
             trace: self.trace.clone(), // Share the same trace builder
