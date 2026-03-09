@@ -1,6 +1,6 @@
 //! BWB manifest parsing for consolidation date resolution.
 //!
-//! The BWB repository doesn't have a consolidation for every date. The manifest.xml
+//! The BWB repository doesn't have a consolidation for every date — the manifest.xml
 //! file contains all available consolidation dates with their validity periods.
 //! This module downloads and parses the manifest to find the correct consolidation date.
 
