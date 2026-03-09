@@ -301,8 +301,6 @@ jobs:
           deployment-name: pr${{ github.event.pull_request.number }}
           component: grafana
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GRAFANA }}:sha-${{ steps.sha.outputs.short }}
-          clone-from: regelrecht
-          force-clone: false
           comment-on-pr: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-header: '## Preview Deployment'
@@ -435,6 +433,7 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Cleanup grafana container image
+        continue-on-error: true
         uses: RijksICTGilde/zad-actions/cleanup@v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}

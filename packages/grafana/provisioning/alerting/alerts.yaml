@@ -58,6 +58,8 @@ groups:
                   reducer:
                     type: last
               refId: C
+        noDataState: NoData
+        execErrState: Error
         for: 5m
         labels:
           severity: warning
@@ -95,6 +97,8 @@ groups:
                   reducer:
                     type: last
               refId: C
+        noDataState: NoData
+        execErrState: Error
         for: 10m
         labels:
           severity: warning
