@@ -38,7 +38,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: increase(regelrecht_jobs{status="failed"}[10m])
+              expr: regelrecht_jobs{status="failed"}
               refId: A
           - refId: C
             relativeTimeRange:
@@ -65,7 +65,7 @@ groups:
           severity: warning
         annotations:
           summary: >-
-            {{ $value }} new failed jobs in the last 10 minutes
+            {{ $value }} failed jobs detected
 
       - uid: slow-jobs
         title: Jobs running slow
