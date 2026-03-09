@@ -15,10 +15,15 @@ contactPoints:
         settings:
           # Mattermost implements the Slack-compatible webhook API.
           url: ${MATTERMOST_WEBHOOK_URL}
-          title: Dagelijkse Regelrecht Update
+          icon_emoji: ':scales:'
+          username: Regelrecht
+          title: ':bar_chart: Dagelijkse Regelrecht Update'
           text: |
-            {{ range .Alerts }}
-            {{ .Annotations.summary }}
+            {{ range .Alerts -}}
+            | | |
+            |:---|:---|
+            | :seedling: **Geharvest** | {{ index $values "A" }} wetten |
+            | :sparkles: **Verrijkt** | {{ index $values "B" }} wetten |
             {{ end }}
         disableResolveMessage: true
 
@@ -82,6 +87,6 @@ groups:
         labels:
           severity: info
         annotations:
-          summary: |
-            Geharvest: {{ index $values "A" }} wetten
+          summary: >-
+            Geharvest: {{ index $values "A" }} wetten,
             Verrijkt: {{ index $values "B" }} wetten
