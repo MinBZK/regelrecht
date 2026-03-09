@@ -6,8 +6,8 @@ ENV GF_SERVER_HTTP_PORT=8000
 # Disable anonymous access
 ENV GF_AUTH_ANONYMOUS_ENABLED=false
 
-# Disable local admin account — OIDC is the sole auth path.
-ENV GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true
+# Disable local admin account when OIDC is available (set in entrypoint.sh).
+# When OIDC vars are missing, the entrypoint keeps admin enabled as fallback.
 # NOTE: GF_SECURITY_SECRET_KEY must be injected at deploy time via ZAD env_vars
 # to keep sessions stable across pod restarts.
 
