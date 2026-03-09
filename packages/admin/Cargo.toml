@@ -40,7 +40,7 @@ prometheus-client = "0.23"
 strum = "0.28"
 
 [dev-dependencies]
-tower-sessions-memory-store = "0.14"
+tower-sessions-memory-store = "0.15"
 wiremock = "0.6"
 rsa = "0.9"
 sha2 = "0.10"
