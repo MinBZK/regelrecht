@@ -13,7 +13,7 @@ contactPoints:
       - uid: mattermost-digilab
         type: webhook
         settings:
-          url: https://digilab.overheid.nl/chat/hooks/7b9jk3n98f8tjqcg7nwp4j8w4y
+          url: ${MATTERMOST_WEBHOOK_URL}
           httpMethod: POST
           # Custom payload formatted for Mattermost incoming webhook.
           # Grafana's default webhook JSON is not compatible with Mattermost.
