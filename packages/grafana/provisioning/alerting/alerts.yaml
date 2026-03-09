@@ -15,12 +15,21 @@ contactPoints:
         settings:
           # Mattermost implements the Slack-compatible webhook API.
           url: ${MATTERMOST_WEBHOOK_URL}
+          icon_emoji: ':scales:'
+          username: Regelrecht
+          title: ':bar_chart: Dagelijkse Regelrecht Update'
           text: |
-            {{ range .Alerts }}
-            **[{{ .Status | toUpper }}] {{ .Labels.alertname }}**
-            {{ .Annotations.summary }}
+            {{ range .Alerts -}}
+            {{ if eq .Labels.alertname "Dagelijkse Regelrecht Update" -}}
+            | | |
+            |:---|:---|
+            | :seedling: **Geharvest** | {{ index .Values "A" }} wetten |
+            | :sparkles: **Verrijkt** | {{ index .Values "B" }} wetten |
+            {{ else if eq .Labels.alertname "Nieuwe mislukte jobs" -}}
+            :warning: **{{ .Annotations.summary }}**
+            {{ end -}}
             {{ end }}
-        disableResolveMessage: false
+        disableResolveMessage: true
 
 policies:
   - orgId: 1
@@ -28,31 +37,82 @@ policies:
     group_by:
       - grafana_folder
       - alertname
-    group_wait: 10s
-    group_interval: 1m
-    repeat_interval: 1h
+    group_wait: 30s
+    group_interval: 24h
+    repeat_interval: 24h
 
 groups:
   - orgId: 1
     name: regelrecht
     folder: Regelrecht
-    interval: 1m
+    interval: 1h
     rules:
-      - uid: failed-jobs
-        title: New failed jobs detected
+      - uid: daily-summary
+        title: Dagelijkse Regelrecht Update
+        # Always-fire condition: law counts are >= 0, so > -1 is always true.
+        # This makes the alert act as a daily summary via repeat_interval: 24h.
         condition: C
         data:
           - refId: A
             relativeTimeRange:
-              from: 600
+              from: 86400
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: regelrecht_jobs{status="failed"}
+              expr: regelrecht_laws{status="harvested"}
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: regelrecht_laws{status="enriched"}
+              refId: B
+          - refId: C
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - -1
+                  operator:
+                    type: and
+                  reducer:
+                    type: last
+              refId: C
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        labels:
+          severity: info
+        annotations:
+          summary: >-
+            Geharvest: {{ index $values "A" }} wetten,
+            Verrijkt: {{ index $values "B" }} wetten
+
+      - uid: failed-jobs
+        title: Nieuwe mislukte jobs
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              # Detect NEW failures in the last hour, not cumulative total.
+              expr: increase(regelrecht_jobs{status="failed"}[1h])
               refId: A
           - refId: C
             relativeTimeRange:
-              from: 600
+              from: 3600
               to: 0
             datasourceUid: __expr__
             model:
@@ -68,50 +128,11 @@ groups:
                   reducer:
                     type: last
               refId: C
-        noDataState: Alerting
+        noDataState: OK
         execErrState: Alerting
-        for: 1m
+        for: 5m
         labels:
           severity: warning
         annotations:
           summary: >-
-            {{ $value }} failed jobs detected
-
-      - uid: slow-jobs
-        title: Jobs running slow
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 300
-              to: 0
-            datasourceUid: PBFA97CFB590B2093
-            model:
-              expr: regelrecht_job_duration_avg_seconds
-              refId: A
-          - refId: C
-            relativeTimeRange:
-              from: 300
-              to: 0
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator:
-                    type: gt
-                    params:
-                      - 300
-                  operator:
-                    type: and
-                  reducer:
-                    type: last
-              refId: C
-        noDataState: NoData
-        execErrState: Alerting
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: >-
-            Average job duration is {{ $value }}s (threshold: 300s)
+            {{ $value }} nieuwe mislukte jobs in het afgelopen uur
