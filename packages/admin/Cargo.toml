@@ -32,6 +32,7 @@ urlencoding = "2"
 base64 = "0.22"
 time = "0.3"
 prometheus-client = "0.23"
+strum = "0.28"
 
 [dev-dependencies]
 tower-sessions-memory-store = "0.14"
