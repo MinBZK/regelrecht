@@ -3,6 +3,7 @@ $schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main
 $id: wet_forensische_zorg
 regulatory_layer: WET
 publication_date: '2019-01-01'
+valid_from: '2025-01-01'
 bwb_id: BWBR0040634
 url: https://wetten.overheid.nl/BWBR0040634/2025-01-01
 name: '#wet_naam'
