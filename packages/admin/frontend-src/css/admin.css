@@ -247,6 +247,58 @@ body {
 
 
 /* ============================================================
+   Harvest Form
+   ============================================================ */
+
+.harvest-form {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.harvest-form__input {
+  padding: var(--spacing-1) var(--spacing-3);
+  font-size: var(--font-size-sm);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  width: 220px;
+}
+
+.harvest-form__input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+.harvest-form__input::placeholder {
+  font-family: var(--font-family);
+  color: var(--color-text-muted);
+}
+
+.harvest-form__btn {
+  padding: var(--spacing-1) var(--spacing-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-white);
+  background-color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.harvest-form__btn:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+
+.harvest-form__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+/* ============================================================
    Pagination
    ============================================================ */
 

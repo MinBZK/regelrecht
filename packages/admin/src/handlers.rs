@@ -1,10 +1,20 @@
+use std::sync::LazyLock;
+
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
+use regelrecht_pipeline::job_queue::{create_job, CreateJobRequest};
+use regelrecht_pipeline::law_status::set_harvest_job;
+use regelrecht_pipeline::{HarvestPayload, JobType, Priority};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::models::{Job, LawEntry, PaginatedResponse};
 use crate::state::AppState;
+
+#[allow(clippy::expect_used)]
+static BWB_ID_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));
 
 /// Validate a sort column against an allowlist. Returns `None` if not allowed.
 fn validated_sort_column<'a>(
@@ -272,53 +282,170 @@ pub async fn list_jobs(
     }))
 }
 
-#[derive(Serialize)]
-pub struct SeedResponse {
-    pub job_id: String,
+#[derive(Deserialize)]
+pub struct CreateJobBody {
+    pub bwb_id: String,
+    pub priority: Option<i32>,
+    pub date: Option<String>,
 }
 
-pub async fn seed_zorgtoeslag(
+#[derive(Serialize)]
+pub struct CreateJobResponse {
+    pub job_id: String,
+    pub law_id: String,
+}
+
+pub async fn create_harvest_job(
     State(state): State<AppState>,
-) -> Result<Json<SeedResponse>, (StatusCode, String)> {
+    Json(body): Json<CreateJobBody>,
+) -> Result<(StatusCode, Json<CreateJobResponse>), (StatusCode, String)> {
+    let bwb_id = body.bwb_id.trim().to_string();
+    if bwb_id.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "bwb_id must not be empty".to_string(),
+        ));
+    }
+
+    if !BWB_ID_PATTERN.is_match(&bwb_id) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("invalid BWB ID format: expected BWBR followed by 7 digits, got '{bwb_id}'"),
+        ));
+    }
+
+    if let Some(ref date) = body.date {
+        if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("invalid date format: expected YYYY-MM-DD, got '{date}'"),
+            ));
+        }
+    }
+
     let pool = &state.pool;
 
-    sqlx::query(
-        "INSERT INTO law_entries (law_id, law_name, status) \
-         VALUES ('BWBR0018451', 'Wet op de zorgtoeslag', 'queued') \
-         ON CONFLICT (law_id) DO NOTHING",
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "failed to insert law entry");
+    let mut tx = pool.begin().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to begin transaction");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to insert law entry".to_string(),
+            "internal server error".to_string(),
         )
     })?;
 
-    let row = sqlx::query_scalar::<_, String>(
-        "INSERT INTO jobs (job_type, law_id, payload, status) \
-         VALUES ('harvest', 'BWBR0018451', \
-         '{\"bwb_id\": \"BWBR0018451\", \"date\": \"2026-01-01\"}', 'pending') \
-         RETURNING id::text",
+    // Acquire an advisory lock keyed on the bwb_id to serialize concurrent requests
+    // for the same law. This prevents the TOCTOU race where two requests both see
+    // no existing job and both create one. The lock is released when the transaction
+    // commits or rolls back.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+        .bind(&bwb_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, law_id = %bwb_id, "failed to acquire advisory lock");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal server error".to_string(),
+            )
+        })?;
+
+    // Check for existing pending or processing harvest job to prevent duplicates.
+    let existing: Option<(sqlx::types::Uuid,)> = sqlx::query_as(
+        "SELECT id FROM jobs \
+         WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
+         LIMIT 1",
     )
-    .fetch_one(pool)
+    .bind(&bwb_id)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "failed to create harvest job");
+        tracing::error!(error = %e, law_id = %bwb_id, "failed to check for existing jobs");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to check for existing jobs".to_string(),
+        )
+    })?;
+
+    if let Some((existing_id,)) = existing {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("a pending or processing harvest job already exists: {existing_id}"),
+        ));
+    }
+
+    sqlx::query(
+        "INSERT INTO law_entries (law_id, status) \
+         VALUES ($1, 'queued') \
+         ON CONFLICT (law_id) DO UPDATE SET status = 'queued', updated_at = NOW() \
+         WHERE law_entries.status NOT IN ('harvesting', 'enriching')",
+    )
+    .bind(&bwb_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, law_id = %bwb_id, "failed to upsert law entry");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to upsert law entry".to_string(),
+        )
+    })?;
+
+    let payload = HarvestPayload {
+        bwb_id: bwb_id.clone(),
+        date: body.date,
+        max_size_mb: None,
+    };
+
+    let priority = Priority::new(body.priority.unwrap_or(50));
+
+    let req = CreateJobRequest::new(JobType::Harvest, &bwb_id)
+        .with_priority(priority)
+        .with_payload(serde_json::to_value(&payload).map_err(|e| {
+            tracing::error!(error = %e, "failed to serialize payload");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to serialize payload".to_string(),
+            )
+        })?);
+
+    let job = create_job(&mut *tx, req).await.map_err(|e| {
+        tracing::error!(error = %e, law_id = %bwb_id, "failed to create harvest job");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to create harvest job".to_string(),
         )
     })?;
 
-    tracing::info!(job_id = %row, "created zorgtoeslag harvest job");
+    // Link the harvest job to the law entry.
+    set_harvest_job(&mut *tx, &bwb_id, job.id).await.map_err(|e| {
+        tracing::error!(error = %e, law_id = %bwb_id, job_id = %job.id, "failed to link harvest job to law entry");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to link harvest job to law entry".to_string(),
+        )
+    })?;
 
-    Ok(Json(SeedResponse { job_id: row }))
+    tx.commit().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to commit transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    tracing::info!(job_id = %job.id, law_id = %bwb_id, "created harvest job");
+
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateJobResponse {
+            job_id: job.id.to_string(),
+            law_id: bwb_id,
+        }),
+    ))
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -443,6 +570,33 @@ mod tests {
                 "missing law column: {col}"
             );
         }
+    }
+
+    // --- CreateJobBody deserialization ---
+
+    #[test]
+    fn create_job_body_full() {
+        let json = r#"{"bwb_id": "BWBR0018451", "priority": 80, "date": "2026-01-01"}"#;
+        let body: CreateJobBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.bwb_id, "BWBR0018451");
+        assert_eq!(body.priority, Some(80));
+        assert_eq!(body.date.as_deref(), Some("2026-01-01"));
+    }
+
+    #[test]
+    fn create_job_body_minimal() {
+        let json = r#"{"bwb_id": "BWBR0018451"}"#;
+        let body: CreateJobBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.bwb_id, "BWBR0018451");
+        assert_eq!(body.priority, None);
+        assert_eq!(body.date, None);
+    }
+
+    #[test]
+    fn create_job_body_missing_bwb_id() {
+        let json = r#"{"priority": 50}"#;
+        let result = serde_json::from_str::<CreateJobBody>(json);
+        assert!(result.is_err());
     }
 
     #[test]

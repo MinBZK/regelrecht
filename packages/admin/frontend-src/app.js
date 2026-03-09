@@ -431,10 +431,10 @@ function switchTab(tabKey) {
   state.totalCount = 0;
   state.error = null;
 
-  // Show seed button only on jobs tab
-  const seedBtn = $('#seed-zorgtoeslag-btn');
-  if (seedBtn) {
-    seedBtn.style.display = tabKey === 'jobs' ? '' : 'none';
+  // Show harvest form only on jobs tab
+  const harvestForm = $('#harvest-form');
+  if (harvestForm) {
+    harvestForm.style.display = tabKey === 'jobs' ? '' : 'none';
   }
 
   renderTabs();
@@ -442,26 +442,43 @@ function switchTab(tabKey) {
   fetchData();
 }
 
-async function onSeedZorgtoeslag() {
-  const btn = $('#seed-zorgtoeslag-btn');
+async function onHarvestSubmit(e) {
+  e.preventDefault();
+  const input = $('#harvest-bwb-id');
+  const btn = $('#harvest-form .harvest-form__btn');
+  const bwbId = input.value.trim();
+  if (!bwbId) return;
+
   btn.disabled = true;
-  btn.textContent = 'Adding\u2026';
+  btn.textContent = 'Submitting\u2026';
 
   try {
-    const response = await fetch('api/jobs/seed-zorgtoeslag', { method: 'POST' });
+    const response = await fetch('api/harvest-jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bwb_id: bwbId }),
+    });
     if (response.status === 401) {
       window.location.href = '/auth/login';
       return;
     }
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (response.status === 409) {
+      alert('A harvest job for this law is already pending or processing.');
+      return;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `HTTP ${response.status}`);
+    }
     const result = await response.json();
     alert(`Created harvest job: ${result.job_id}`);
+    input.value = '';
     fetchData();
   } catch (err) {
-    alert('Seed failed: ' + err.message);
+    alert('Harvest failed: ' + err.message);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Add Zorgtoeslag Test';
+    btn.textContent = 'Harvest';
   }
 }
 
@@ -529,10 +546,10 @@ async function init() {
   $('#pagination-prev').addEventListener('click', onPrevPage);
   $('#pagination-next').addEventListener('click', onNextPage);
 
-  // Bind seed button
-  const seedBtn = $('#seed-zorgtoeslag-btn');
-  if (seedBtn) {
-    seedBtn.addEventListener('click', onSeedZorgtoeslag);
+  // Bind harvest form
+  const harvestForm = $('#harvest-form');
+  if (harvestForm) {
+    harvestForm.addEventListener('submit', onHarvestSubmit);
   }
 
   // Initial render

@@ -7,6 +7,10 @@ description = "RegelRecht admin UI for viewing pipeline database"
 license = "MIT"
 repository = "https://github.com/MinBZK/regelrecht-mvp"
 
+[lib]
+name = "regelrecht_admin"
+path = "src/lib.rs"
+
 [[bin]]
 name = "regelrecht-admin"
 path = "src/main.rs"
@@ -21,6 +25,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+regex = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 openidconnect = "4.0"
@@ -40,6 +45,10 @@ wiremock = "0.6"
 rsa = "0.9"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres"] }
+http-body-util = "0.1"
+pretty_assertions = "1"
 
 [lints.clippy]
 unwrap_used = "warn"
