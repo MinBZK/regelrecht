@@ -99,6 +99,32 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
         job_duration_avg.clone(),
     );
 
+    // Seed all known statuses with zero so Prometheus always discovers them.
+    for status in &["pending", "processing", "completed", "failed"] {
+        jobs_total
+            .get_or_create(&StatusLabel {
+                status: (*status).to_string(),
+            })
+            .set(0);
+    }
+    for status in &[
+        "unknown",
+        "queued",
+        "harvesting",
+        "harvested",
+        "harvest_failed",
+        "enriching",
+        "enriched",
+        "enrich_failed",
+    ] {
+        laws_total
+            .get_or_create(&StatusLabel {
+                status: (*status).to_string(),
+            })
+            .set(0);
+    }
+
+    // Overwrite with actual values from the database.
     for (status, count) in &snapshot.jobs_by_status {
         jobs_total
             .get_or_create(&StatusLabel {
@@ -196,6 +222,29 @@ mod tests {
             body.contains("regelrecht_job_duration_avg_seconds"),
             "should contain duration metric"
         );
+
+        // Default zero-value gauges should be present for all known statuses.
+        for status in &["pending", "processing", "completed", "failed"] {
+            assert!(
+                body.contains(&format!("regelrecht_jobs{{status=\"{status}\"}} 0")),
+                "jobs should have default zero for {status}"
+            );
+        }
+        for status in &[
+            "unknown",
+            "queued",
+            "harvesting",
+            "harvested",
+            "harvest_failed",
+            "enriching",
+            "enriched",
+            "enrich_failed",
+        ] {
+            assert!(
+                body.contains(&format!("regelrecht_laws{{status=\"{status}\"}} 0")),
+                "laws should have default zero for {status}"
+            );
+        }
     }
 
     #[test]
