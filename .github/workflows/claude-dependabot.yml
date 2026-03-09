@@ -27,7 +27,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "dependabot[bot]"
           use_sticky_comment: true
-          allowed_tools: "Bash,Read,Glob,Grep"
+          claude_args: "--allowedTools Bash,Read,Glob,Grep"
           prompt: |
             Review Dependabot PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
 
