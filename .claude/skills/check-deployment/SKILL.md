@@ -24,11 +24,7 @@ Accept a PR number (e.g., `204`) or deployment name (e.g., `pr204`, `pr204b`). I
 
 ### 2. Load RIG API key
 
-You need the `RIG_API_KEY` to access the RIG Operations Manager API. Load it from the workspace environment file:
-
-```bash
-RIG_API_KEY=$(grep '^RIG_API_KEY=' /workspace/.env | cut -d= -f2-)
-```
+You need the `RIG_API_KEY` environment variable set to access the RIG Operations Manager API.
 
 ### 3. Check CI/Deploy status
 
