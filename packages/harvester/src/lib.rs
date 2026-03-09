@@ -23,6 +23,7 @@
 //! - [`error`]: Error types and Result alias
 //! - [`http`]: HTTP client for downloading from BWB
 //! - [`wti`]: WTI metadata parsing
+//! - [`manifest`]: BWB manifest parsing for consolidation date resolution
 //! - [`content`]: Content XML downloading
 //! - [`xml`]: XML utilities
 //! - [`registry`]: Extensible element handler system
@@ -37,6 +38,7 @@ pub mod content;
 pub mod error;
 pub mod harvester;
 pub mod http;
+pub mod manifest;
 pub mod registry;
 pub mod splitting;
 pub mod types;

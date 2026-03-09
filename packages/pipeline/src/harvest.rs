@@ -4,6 +4,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
+use regelrecht_harvester::manifest;
 
 /// Payload for a harvest job, stored as JSON in the job queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,10 +51,15 @@ pub async fn execute_harvest(
     repo_path: &Path,
     output_base: &str,
 ) -> Result<(HarvestResult, Vec<PathBuf>)> {
-    let effective_date = payload
-        .date
-        .clone()
-        .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+    let bwb_id_for_manifest = payload.bwb_id.clone();
+    let date_for_manifest = payload.date.clone();
+    let effective_date = tokio::task::spawn_blocking(move || {
+        let client = regelrecht_harvester::http::create_client()?;
+        let bwb_manifest = manifest::download_manifest(&client, &bwb_id_for_manifest)?;
+        manifest::resolve_consolidation_date(&bwb_manifest, date_for_manifest.as_deref())
+    })
+    .await??;
+    tracing::info!(bwb_id = %payload.bwb_id, resolved_date = %effective_date, "resolved consolidation date from manifest");
     let bwb_id = payload.bwb_id.clone();
     let date_for_download = effective_date.clone();
     let max_size_mb = payload.max_size_mb;

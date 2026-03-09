@@ -100,6 +100,24 @@ pub fn validate_date(date_str: &str) -> Result<()> {
     Ok(())
 }
 
+/// Build manifest URL for a law.
+///
+/// # Arguments
+/// * `bwb_id` - The BWB identifier (should be validated with `validate_bwb_id` first)
+///
+/// # Returns
+/// URL to the manifest.xml file
+///
+/// # Panics
+/// Debug builds panic if bwb_id doesn't match expected format.
+pub fn manifest_url(bwb_id: &str) -> String {
+    debug_assert!(
+        BWB_ID_PATTERN.is_match(bwb_id),
+        "bwb_id should be validated before calling manifest_url"
+    );
+    format!("{BWB_REPOSITORY_URL}/{bwb_id}/manifest.xml")
+}
+
 /// Build WTI (metadata) URL for a law.
 ///
 /// # Arguments
@@ -249,6 +267,14 @@ mod tests {
         assert!(validate_date("2025-13-01").is_err()); // Invalid month
         assert!(validate_date("2025-02-30").is_err()); // Invalid day
         assert!(validate_date("2025-00-01").is_err()); // Zero month
+    }
+
+    #[test]
+    fn test_manifest_url() {
+        assert_eq!(
+            manifest_url("BWBR0015703"),
+            "https://repository.officiele-overheidspublicaties.nl/bwb/BWBR0015703/manifest.xml"
+        );
     }
 
     #[test]
