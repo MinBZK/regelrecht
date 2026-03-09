@@ -238,8 +238,13 @@ async fn execute_harvest_job(
     corpus: Option<&CorpusClient>,
     http_client: &Client,
 ) -> Result<HarvestResult> {
-    let (result, written_files) =
-        execute_harvest(payload, output_dir, &config.regulation_output_base, http_client).await?;
+    let (result, written_files) = execute_harvest(
+        payload,
+        output_dir,
+        &config.regulation_output_base,
+        http_client,
+    )
+    .await?;
 
     if let Some(corpus) = corpus {
         let message = format!("harvest: {} ({})", result.law_name, result.slug);
