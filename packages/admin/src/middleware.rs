@@ -136,13 +136,10 @@ mod tests {
             response.headers().get("referrer-policy").unwrap(),
             "strict-origin-when-cross-origin"
         );
-        assert!(response
-            .headers()
-            .get("content-security-policy")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .contains("frame-ancestors 'none'"));
+        assert_eq!(
+            response.headers().get("content-security-policy").unwrap(),
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+        );
     }
 
     #[tokio::test]
