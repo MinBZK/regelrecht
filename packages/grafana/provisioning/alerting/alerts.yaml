@@ -23,8 +23,8 @@ contactPoints:
             {{ if eq .Labels.alertname "Dagelijkse Regelrecht Update" -}}
             | | |
             |:---|:---|
-            | :seedling: **Geharvest** | {{ index $values "A" }} wetten |
-            | :sparkles: **Verrijkt** | {{ index $values "B" }} wetten |
+            | :seedling: **Geharvest** | {{ index .Values "A" }} wetten |
+            | :sparkles: **Verrijkt** | {{ index .Values "B" }} wetten |
             {{ else if eq .Labels.alertname "Nieuwe mislukte jobs" -}}
             :warning: **{{ .Annotations.summary }}**
             {{ end -}}
