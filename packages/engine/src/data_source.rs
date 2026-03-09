@@ -387,8 +387,11 @@ impl std::fmt::Debug for DataSourceRegistry {
 ///
 /// Sorts criteria by key name and joins values with underscore.
 fn build_lookup_key(criteria: &HashMap<String, Value>) -> String {
-    let mut pairs: Vec<_> = criteria.iter().collect();
-    pairs.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    let mut pairs: Vec<_> = criteria
+        .iter()
+        .map(|(k, v)| (k.to_lowercase(), v))
+        .collect();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
 
     pairs
         .iter()

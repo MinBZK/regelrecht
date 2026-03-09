@@ -155,10 +155,9 @@ impl RuleResolver {
         }
 
         // Sort versions by valid_from date (newest first)
-        versions.sort_by(|a, b| {
-            let a_date = a.valid_from.as_ref().and_then(|s| parse_date(s).ok());
-            let b_date = b.valid_from.as_ref().and_then(|s| parse_date(s).ok());
-            b_date.cmp(&a_date) // Newest first
+        // Use sort_by_cached_key to parse dates once instead of per-comparison
+        versions.sort_by_cached_key(|v| {
+            std::cmp::Reverse(v.valid_from.as_ref().and_then(|s| parse_date(s).ok()))
         });
 
         // Rebuild indexes using the most recent version

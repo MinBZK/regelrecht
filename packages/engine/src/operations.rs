@@ -123,17 +123,14 @@ pub fn execute_operation<R: ValueResolver>(
     }
 
     let tracing = resolver.has_trace();
-    let op_name = if tracing {
-        let name = format!("{:?}", op.operation).to_uppercase();
-        resolver.trace_push(&name, PathNodeType::Operation);
-        Some(name)
-    } else {
-        None
-    };
+    if tracing {
+        resolver.trace_push(op.operation.name(), PathNodeType::Operation);
+    }
 
     let result = execute_operation_internal(op, resolver, depth);
 
-    if let Some(op_name) = op_name {
+    if tracing {
+        let op_name = op.operation.name();
         match &result {
             Ok(value) => {
                 resolver.trace_set_result(value.clone());
