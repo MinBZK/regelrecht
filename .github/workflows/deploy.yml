@@ -199,8 +199,10 @@ jobs:
 
   build-grafana:
     runs-on: ubuntu-latest
+    needs: changes
     if: >-
-      github.ref == 'refs/heads/main' && github.event_name == 'push'
+      github.ref == 'refs/heads/main' && github.event_name == 'push' &&
+      needs.changes.outputs.grafana == 'true'
     permissions:
       contents: read
       packages: write
@@ -309,7 +311,7 @@ jobs:
       always() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       !cancelled() &&
-      (needs.build.result == 'success' || needs.build-admin.result == 'success' || needs.build-harvester-worker.result == 'success' || needs.build-grafana.result == 'success')
+      needs.build.result == 'success'
     permissions: {}
     environment:
       name: production

@@ -5,6 +5,6 @@ datasources:
     type: prometheus
     uid: PBFA97CFB590B2093
     access: proxy
-    url: ${PROMETHEUS_URL}
+    url: http://prometheus.rig-prd-operations.svc.cluster.local:9090
     isDefault: true
     editable: false
