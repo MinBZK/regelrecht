@@ -24,8 +24,10 @@ Accept a PR number (e.g., `204`) or deployment name (e.g., `pr204`, `pr204b`). I
 
 ### 2. Load RIG API key
 
+You need the `RIG_API_KEY` to access the RIG Operations Manager API. Load it from the workspace environment file:
+
 ```bash
-eval "$(grep RIG_API_KEY /workspace/.env)"
+eval "$(grep '^RIG_API_KEY=' /workspace/.env)"
 ```
 
 ### 3. Check CI/Deploy status
@@ -51,10 +53,10 @@ Verify pods are actually running by checking for recent log output:
 
 ```bash
 curl -s -H "X-API-Key: $RIG_API_KEY" \
-  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/logs/regel-k4c?deployment={name}&lines=5"
+  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/logs/regel-k4c?deployment={name}&lines=20"
 ```
 
-For each component (editor, harvester-admin, harvester-worker):
+The API returns logs grouped by component. For each component (editor, harvester-admin, harvester-worker) in the response:
 - **Has recent logs**: pod is running
 - **Empty logs (0 lines)**: pod is NOT running — likely image pull error or quota issue
 
@@ -65,7 +67,7 @@ If pods aren't running, verify the images exist:
 ```bash
 # Check what tags exist for this PR
 for pkg in regelrecht-mvp regelrecht-admin regelrecht-harvester-worker; do
-  gh api "/orgs/MinBZK/packages/container/${pkg}/versions" \
+  gh api --paginate "/orgs/MinBZK/packages/container/${pkg}/versions" \
     --jq ".[] | select(.metadata.container.tags | any(test(\"pr-{N}\"))) | .metadata.container.tags"
 done
 ```
