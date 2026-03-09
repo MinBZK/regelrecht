@@ -94,7 +94,8 @@ async fn test_execute_harvest_real_law() {
         max_size_mb: Some(50),
     };
 
-    let (result, written_files) = execute_harvest(&payload, repo_path, "regulation/nl")
+    let client = regelrecht_harvester::http::create_client().unwrap();
+    let (result, written_files) = execute_harvest(&payload, repo_path, "regulation/nl", &client)
         .await
         .unwrap();
 
