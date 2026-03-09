@@ -21,4 +21,12 @@ else
   export GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true
 fi
 
+# Mattermost webhook URL for alert notifications.
+# Must be set as env var on the grafana component in ZAD.
+if [ -z "${MATTERMOST_WEBHOOK_URL:-}" ]; then
+  echo "WARNING: MATTERMOST_WEBHOOK_URL not set — alerts will not be delivered to Mattermost."
+  # Set a placeholder so Grafana provisioning doesn't fail on empty variable.
+  export MATTERMOST_WEBHOOK_URL="http://localhost:0/webhook-not-configured"
+fi
+
 exec /run.sh "$@"
