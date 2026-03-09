@@ -30,6 +30,10 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
         "permissions-policy",
         HeaderValue::from_static("geolocation=(), camera=(), microphone=()"),
     );
+    headers.insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+    );
     response
 }
 
@@ -148,6 +152,10 @@ mod tests {
         assert_eq!(
             response.headers().get("permissions-policy").unwrap(),
             "geolocation=(), camera=(), microphone=()"
+        );
+        assert_eq!(
+            response.headers().get("strict-transport-security").unwrap(),
+            "max-age=31536000; includeSubDomains"
         );
     }
 
