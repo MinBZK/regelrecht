@@ -10,9 +10,21 @@ pub enum JobType {
     Enrich,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    sqlx::Type,
+    strum::EnumIter,
+    strum::Display,
+)]
 #[sqlx(type_name = "job_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase")]
 pub enum JobStatus {
     Pending,
     Processing,
@@ -20,9 +32,21 @@ pub enum JobStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    sqlx::Type,
+    strum::EnumIter,
+    strum::Display,
+)]
 #[sqlx(type_name = "law_status", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
+#[strum(serialize_all = "snake_case")]
 pub enum LawStatusValue {
     Unknown,
     Queued,
