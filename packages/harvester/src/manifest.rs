@@ -157,13 +157,18 @@ pub fn resolve_consolidation_date(manifest: &BwbManifest, date: Option<&str>) ->
 }
 
 /// Extract BWB ID from the `_latestItem` path for error messages.
+#[allow(clippy::expect_used)]
 fn extract_bwb_id_from_latest(latest_item: &str) -> String {
-    // Try to find BWBR followed by 7 digits in the string
-    latest_item
-        .find("BWBR")
-        .and_then(|start| latest_item.get(start..start + 11))
-        .unwrap_or("unknown")
-        .to_string()
+    use regex::Regex;
+    use std::sync::LazyLock;
+
+    static BWB_FINDER: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"BWB[A-Z]\d{7}").expect("valid regex"));
+
+    BWB_FINDER
+        .find(latest_item)
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 #[cfg(test)]

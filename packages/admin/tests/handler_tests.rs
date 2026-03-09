@@ -234,6 +234,70 @@ async fn create_harvest_job_with_priority_and_date() {
     assert_eq!(job.0, 80);
 }
 
+#[tokio::test]
+async fn create_harvest_job_rejects_invalid_bwb_id() {
+    let db = common::TestDb::new().await;
+    let app = test_app(db.pool.clone());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/harvest-jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"bwb_id": "INVALID"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_harvest_job_rejects_invalid_date() {
+    let db = common::TestDb::new().await;
+    let app = test_app(db.pool.clone());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/harvest-jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"bwb_id": "BWBR0018451", "date": "not-a-date"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn create_harvest_job_rejects_impossible_date() {
+    let db = common::TestDb::new().await;
+    let app = test_app(db.pool.clone());
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/harvest-jobs")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"bwb_id": "BWBR0018451", "date": "2025-13-01"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
 // --- list endpoints ---
 
 #[tokio::test]

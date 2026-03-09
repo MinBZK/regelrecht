@@ -1,13 +1,20 @@
+use std::sync::LazyLock;
+
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use regelrecht_pipeline::job_queue::{create_job, CreateJobRequest};
 use regelrecht_pipeline::law_status::set_harvest_job;
 use regelrecht_pipeline::{HarvestPayload, JobType, Priority};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::models::{Job, LawEntry, PaginatedResponse};
 use crate::state::AppState;
+
+#[allow(clippy::expect_used)]
+static BWB_ID_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));
 
 /// Validate a sort column against an allowlist. Returns `None` if not allowed.
 fn validated_sort_column<'a>(
@@ -300,16 +307,41 @@ pub async fn create_harvest_job(
         ));
     }
 
+    if !BWB_ID_PATTERN.is_match(&bwb_id) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("invalid BWB ID format: expected BWBR followed by 7 digits, got '{bwb_id}'"),
+        ));
+    }
+
+    if let Some(ref date) = body.date {
+        if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("invalid date format: expected YYYY-MM-DD, got '{date}'"),
+            ));
+        }
+    }
+
     let pool = &state.pool;
+
+    let mut tx = pool.begin().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to begin transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
 
     // Check for existing pending or processing harvest job to prevent duplicates.
     let existing: Option<(sqlx::types::Uuid,)> = sqlx::query_as(
         "SELECT id FROM jobs \
          WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
-         LIMIT 1",
+         LIMIT 1 \
+         FOR UPDATE",
     )
     .bind(&bwb_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, "failed to check for existing jobs");
@@ -332,7 +364,7 @@ pub async fn create_harvest_job(
          ON CONFLICT (law_id) DO NOTHING",
     )
     .bind(&bwb_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, "failed to upsert law entry");
@@ -360,7 +392,7 @@ pub async fn create_harvest_job(
             )
         })?);
 
-    let job = create_job(pool, req).await.map_err(|e| {
+    let job = create_job(&mut *tx, req).await.map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, "failed to create harvest job");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -369,11 +401,19 @@ pub async fn create_harvest_job(
     })?;
 
     // Link the harvest job to the law entry.
-    set_harvest_job(pool, &bwb_id, job.id).await.map_err(|e| {
+    set_harvest_job(&mut *tx, &bwb_id, job.id).await.map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, job_id = %job.id, "failed to link harvest job to law entry");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "failed to link harvest job to law entry".to_string(),
+        )
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to commit transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
         )
     })?;
 
@@ -386,17 +426,6 @@ pub async fn create_harvest_job(
             law_id: bwb_id,
         }),
     ))
-}
-
-pub async fn seed_zorgtoeslag(
-    State(state): State<AppState>,
-) -> Result<(StatusCode, Json<CreateJobResponse>), (StatusCode, String)> {
-    let body = CreateJobBody {
-        bwb_id: "BWBR0018451".to_string(),
-        priority: None,
-        date: Some("2026-01-01".to_string()),
-    };
-    create_harvest_job(State(state), Json(body)).await
 }
 
 #[cfg(test)]

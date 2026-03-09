@@ -138,10 +138,6 @@ async fn main() {
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
-        .route(
-            "/api/jobs/seed-zorgtoeslag",
-            post(handlers::seed_zorgtoeslag),
-        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_auth,

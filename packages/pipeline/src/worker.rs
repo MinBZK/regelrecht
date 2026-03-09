@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use regelrecht_corpus::CorpusClient;
+use reqwest::blocking::Client;
 use sqlx::PgPool;
 use tokio::signal::unix::{signal, SignalKind};
 
@@ -43,6 +44,10 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
         None => config.output_dir.clone(),
     };
 
+    let http_client = regelrecht_harvester::http::create_client().map_err(|e| {
+        crate::error::PipelineError::Worker(format!("failed to create HTTP client: {e}"))
+    })?;
+
     tracing::info!(
         output_dir = %output_dir.display(),
         output_base = %config.regulation_output_base,
@@ -80,7 +85,7 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
         }
 
         // Process job outside of select! — runs to completion without cancellation
-        match process_next_job(&pool, &config, &output_dir, corpus.as_ref()).await {
+        match process_next_job(&pool, &config, &output_dir, corpus.as_ref(), &http_client).await {
             Ok(true) => {
                 current_interval = config.poll_interval;
             }
@@ -110,6 +115,7 @@ async fn process_next_job(
     config: &WorkerConfig,
     output_dir: &Path,
     corpus: Option<&CorpusClient>,
+    http_client: &Client,
 ) -> Result<bool> {
     let job = match job_queue::claim_job(pool, Some(JobType::Harvest)).await? {
         Some(job) => job,
@@ -151,7 +157,7 @@ async fn process_next_job(
         tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to harvesting");
     }
 
-    match execute_harvest_job(output_dir, config, &payload, corpus).await {
+    match execute_harvest_job(output_dir, config, &payload, corpus, http_client).await {
         Ok(result) => {
             tracing::info!(
                 job_id = %job.id,
@@ -230,9 +236,10 @@ async fn execute_harvest_job(
     config: &WorkerConfig,
     payload: &HarvestPayload,
     corpus: Option<&CorpusClient>,
+    http_client: &Client,
 ) -> Result<HarvestResult> {
     let (result, written_files) =
-        execute_harvest(payload, output_dir, &config.regulation_output_base).await?;
+        execute_harvest(payload, output_dir, &config.regulation_output_base, http_client).await?;
 
     if let Some(corpus) = corpus {
         let message = format!("harvest: {} ({})", result.law_name, result.slug);

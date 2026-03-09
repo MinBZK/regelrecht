@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
+use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
@@ -50,12 +51,13 @@ pub async fn execute_harvest(
     payload: &HarvestPayload,
     repo_path: &Path,
     output_base: &str,
+    http_client: &Client,
 ) -> Result<(HarvestResult, Vec<PathBuf>)> {
     let bwb_id_for_manifest = payload.bwb_id.clone();
     let date_for_manifest = payload.date.clone();
+    let client_for_manifest = http_client.clone();
     let effective_date = tokio::task::spawn_blocking(move || {
-        let client = regelrecht_harvester::http::create_client()?;
-        let bwb_manifest = manifest::download_manifest(&client, &bwb_id_for_manifest)?;
+        let bwb_manifest = manifest::download_manifest(&client_for_manifest, &bwb_id_for_manifest)?;
         manifest::resolve_consolidation_date(&bwb_manifest, date_for_manifest.as_deref())
     })
     .await??;
