@@ -6,7 +6,7 @@ set -eu
 # Note: OIDC_DISCOVERY_URL is also provided but Grafana doesn't support a
 # single discovery URL — we construct the individual endpoints manually.
 
-if [ -z "${OIDC_CLIENT_ID:-}" ] || [ -z "${OIDC_URL:-}" ] || [ -z "${OIDC_REALM:-}" ]; then
+if [ -z "${OIDC_CLIENT_ID:-}" ] || [ -z "${OIDC_CLIENT_SECRET:-}" ] || [ -z "${OIDC_URL:-}" ] || [ -z "${OIDC_REALM:-}" ]; then
   echo "WARNING: OIDC env vars not set — starting Grafana without OIDC authentication."
   echo "WARNING: Set OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_URL, OIDC_REALM to enable OIDC."
   export GF_AUTH_GENERIC_OAUTH_ENABLED=false
