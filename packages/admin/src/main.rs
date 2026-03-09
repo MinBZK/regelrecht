@@ -11,6 +11,7 @@ use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 use tower_http::services::ServeDir;
+use tower_http::trace::TraceLayer;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
@@ -158,6 +159,7 @@ async fn main() {
         .merge(api_routes)
         .with_state(app_state)
         .layer(session_layer)
+        .layer(TraceLayer::new_for_http())
         .fallback_service(ServeDir::new(
             env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string()),
         ));
