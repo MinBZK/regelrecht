@@ -8,7 +8,9 @@ use prometheus_client::encoding::text::encode;
 use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::gauge::Gauge;
 use prometheus_client::registry::Registry;
+use regelrecht_pipeline::models::{JobStatus, LawStatusValue};
 use sqlx::PgPool;
+use strum::IntoEnumIterator;
 use tokio::sync::RwLock;
 
 use crate::state::AppState;
@@ -99,6 +101,23 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
         job_duration_avg.clone(),
     );
 
+    // Seed all known statuses with zero so Prometheus always discovers them.
+    for status in JobStatus::iter() {
+        jobs_total
+            .get_or_create(&StatusLabel {
+                status: status.to_string(),
+            })
+            .set(0);
+    }
+    for status in LawStatusValue::iter() {
+        laws_total
+            .get_or_create(&StatusLabel {
+                status: status.to_string(),
+            })
+            .set(0);
+    }
+
+    // Overwrite with actual values from the database.
     for (status, count) in &snapshot.jobs_by_status {
         jobs_total
             .get_or_create(&StatusLabel {
@@ -196,6 +215,22 @@ mod tests {
             body.contains("regelrecht_job_duration_avg_seconds"),
             "should contain duration metric"
         );
+
+        // Default zero-value gauges should be present for all known statuses.
+        for status in JobStatus::iter() {
+            let s = status.to_string();
+            assert!(
+                body.contains(&format!("regelrecht_jobs{{status=\"{s}\"}} 0")),
+                "jobs should have default zero for {s}"
+            );
+        }
+        for status in LawStatusValue::iter() {
+            let s = status.to_string();
+            assert!(
+                body.contains(&format!("regelrecht_laws{{status=\"{s}\"}} 0")),
+                "laws should have default zero for {s}"
+            );
+        }
     }
 
     #[test]
@@ -206,7 +241,7 @@ mod tests {
                 ("failed".to_string(), 3),
                 ("pending".to_string(), 7),
             ],
-            laws_by_status: vec![("active".to_string(), 100), ("draft".to_string(), 5)],
+            laws_by_status: vec![("harvested".to_string(), 100), ("enriched".to_string(), 5)],
             avg_job_duration_secs: Some(12.5),
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
@@ -227,12 +262,12 @@ mod tests {
 
         // Law counts.
         assert!(
-            body.contains("regelrecht_laws{status=\"active\"} 100"),
-            "active laws"
+            body.contains("regelrecht_laws{status=\"harvested\"} 100"),
+            "harvested laws"
         );
         assert!(
-            body.contains("regelrecht_laws{status=\"draft\"} 5"),
-            "draft laws"
+            body.contains("regelrecht_laws{status=\"enriched\"} 5"),
+            "enriched laws"
         );
 
         // Average duration.

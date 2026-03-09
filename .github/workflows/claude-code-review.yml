@@ -1,0 +1,136 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  claude-review:
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_sticky_comment: true
+          prompt: |
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+
+            ## Project context
+
+            regelrecht-mvp is the full MVP for making Dutch law machine-readable and executable.
+            It is NOT just an engine — it covers the entire pipeline from harvesting laws from
+            government sources to executing them as legally binding decisions.
+
+            **Components:**
+            - `packages/engine/` — Rust law execution engine (evaluates YAML logic, produces decisions)
+            - `packages/harvester/` — Downloads Dutch legislation from BWB, converts XML to schema-compliant YAML
+            - `packages/pipeline/` — PostgreSQL-backed job queue and law status tracking (harvest → enrich pipeline)
+            - `packages/corpus/` — Git client for the regelrecht-corpus repo (version-controlled law storage)
+            - `packages/admin/` — Axum web admin UI with OIDC auth, metrics, and pipeline monitoring
+            - `frontend/` — Static HTML/CSS law editor prototype (Vite + nginx)
+            - `regulation/` — Dutch legal regulations in machine-readable YAML format
+            - `features/` — Gherkin BDD feature files (cucumber-rs)
+
+            Laws are encoded as YAML with `machine_readable` sections containing executable logic.
+            The engine evaluates these to produce legally binding decisions (beschikkingen) that
+            directly affect citizens — benefit entitlements, tax calculations, allowances.
+
+            Errors here are not just bugs. A wrong operator, a misplaced decimal, or a broken
+            cross-law reference can produce incorrect legal decisions at scale.
+
+            ## Review dimensions
+
+            Review the PR diff across these dimensions. Only comment on changed lines.
+            Skip dimensions that have no findings. Be precise and actionable — no "consider"
+            or "you might want to" comments.
+
+            ### 1. Legal faithfulness (regulation YAML changes)
+
+            When `machine_readable` sections are added or changed:
+            - Does the execution logic faithfully implement what the legal `text` says?
+            - Are percentages, thresholds, and amounts correct? (e.g., text says "4,273 procent",
+              YAML should have `0.04273`)
+            - All monetary amounts MUST be in eurocent (integers). Flag any euro values or floats.
+            - Are conditions complete? If the law says "A AND B AND C", does the logic check all three?
+            - Are edge cases from the legal text handled (e.g., "tenzij" / "unless" clauses)?
+
+            ### 2. Cross-law reference integrity (regulation YAML changes)
+
+            - Do `source.regulation` values reference valid law `$id` slugs that exist in `regulation/`?
+            - Do `source.output` values match actual `output.name` fields in the referenced law?
+            - Are `source.parameters` passed correctly (matching the referenced law's parameter names)?
+            - Are `regelrecht://` URIs well-formed: `regelrecht://{law_id}/{output_name}#{field}`?
+
+            ### 3. Schema and format compliance (regulation YAML changes)
+
+            - Does the YAML structure conform to the schema (v0.3.0)?
+            - Are required fields present (`$schema`, `$id`, `regulatory_layer`, `valid_from`, etc.)?
+            - Are operation names valid (`IF`, `AND`, `OR`, `ADD`, `SUBTRACT`, `MULTIPLY`, etc.)?
+            - Are type declarations correct (`string`, `number`, `boolean`, `amount` with `type_spec.unit`)?
+
+            ### 4. BDD scenario correctness (feature file changes)
+
+            - Do expected values match what the law actually prescribes?
+            - Are test data tables realistic and internally consistent?
+            - Do scenarios cover the important paths from the law (eligibility, calculation, exclusions)?
+            - Are Given/When/Then steps using existing step definitions?
+
+            ### 5. Harvester and pipeline correctness (harvester/pipeline/corpus changes)
+
+            - Does XML-to-YAML conversion preserve legal text faithfully (no dropped articles, no mangled Unicode)?
+            - Are BWB API interactions robust (retries, error handling for network failures)?
+            - Job queue operations: correct use of `FOR UPDATE SKIP LOCKED`, proper state transitions,
+              retry logic with backoff, no lost jobs on worker crash.
+            - Law status transitions must be valid (unknown → queued → harvesting → harvested → enriching → enriched).
+            - Git corpus operations: handle merge conflicts, network failures, and concurrent pushes.
+            - Database migrations must be backwards-compatible and idempotent.
+
+            ### 6. Admin and frontend (admin/frontend changes)
+
+            - OIDC authentication: no session fixation, proper token validation, secure cookie settings.
+            - SQL injection: all queries must use parameterized statements, sort columns must be allowlisted.
+            - No XSS vectors in rendered content (law text may contain special characters).
+            - API pagination: no unbounded queries that could OOM on large datasets.
+
+            ### 7. Engine correctness (engine Rust changes)
+
+            - No `unwrap()` or `panic!()` on paths reachable during law execution — these crash the
+              engine mid-decision. Use `Result`/`Option` propagation.
+            - Operation implementations must be mathematically correct (especially integer arithmetic
+              for eurocent amounts — watch for overflow and rounding).
+            - Cross-law resolution must handle missing laws and circular references gracefully.
+            - New operations or types must be deterministic — same input must always produce same output.
+
+            ### 8. General code quality and CI/CD (all changes)
+
+            - Security: no secrets in code, no injection vectors, CI permissions minimal, Docker images pinned.
+            - Correctness: logic errors, off-by-one, unhandled errors.
+            - Idiomatic Rust: unnecessary clones, missing iterators, non-idiomatic patterns.
+            - Workflow changes: no excessive permissions, secrets not exposed in logs.
+
+            ## Output format
+
+            Structure your review as a single comment with sections for each dimension that has
+            findings. Use this severity scale:
+
+            - 🔴 **Critical** — wrong legal outcome, data loss, runtime crash, security vulnerability
+            - 🟠 **Significant** — likely bug, broken reference, missing edge case, lost jobs
+            - 🟡 **Minor** — code quality, style, non-blocking improvement
+
+            Also leave inline comments on specific lines where possible.
+
+            If there are no issues, say so briefly. Do not pad the review with praise or filler.
