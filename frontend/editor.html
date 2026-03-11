@@ -1,364 +1,510 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="nl" style="color-scheme: light;">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RegelRecht - Editor</title>
-  <!-- Fonts loaded via CSS import in variables.css -->
   <link rel="stylesheet" href="css/main.css">
   <script type="module" src="/main.js"></script>
+  <style>
+    .machine-section-title {
+      font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
+      font-weight: 550;
+      font-size: 20px;
+      line-height: 1.4;
+      color: var(--semantics-text-primary-color, #333B44);
+      margin: 0 0 8px 0;
+    }
+    rr-button-cell {
+      flex-direction: row !important;
+      gap: 4px;
+    }
+
+    /* Action sheet overlay */
+    .action-sheet-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      justify-content: flex-end;
+    }
+    .action-sheet-overlay:target {
+      display: flex;
+    }
+    .action-sheet-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.1);
+    }
+    .action-sheet-panel {
+      position: relative;
+      width: 480px;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      box-shadow: 0px 16px 64px 0px rgba(0, 0, 0, 0.11),
+                  0px 8px 32px 0px rgba(0, 0, 0, 0.09),
+                  0px 4px 16px 0px rgba(0, 0, 0, 0.06),
+                  0px 2px 8px 0px rgba(0, 0, 0, 0.04),
+                  0px 1px 4px 0px rgba(0, 0, 0, 0.03),
+                  0px 0px 2px 0px rgba(0, 0, 0, 0.02);
+    }
+    .action-sheet-body {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .action-sheet-footer {
+      padding: 0 16px 16px;
+    }
+  </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Top Navigation Bar -->
-    <rr-top-navigation-bar
-      title="regelrecht editor"
-      no-logo
-      no-menu
-      has-back-button
-      back-href="index.html"
-      back-label="Browser"
-      utility-no-language-switch
-      utility-account-label="A.J. Jansen-de Jong"
-    >
-    </rr-top-navigation-bar>
+
+  <rr-page header-sticky>
+    <!-- Header: Main Toolbar -->
+    <rr-toolbar slot="header" size="md">
+      <rr-toolbar-start-area>
+        <rr-toolbar-item>
+          <rr-tab-bar size="md">
+            <rr-tab-bar-item href="index.html">Bibliotheek</rr-tab-bar-item>
+            <rr-tab-bar-item selected>Editor</rr-tab-bar-item>
+          </rr-tab-bar>
+        </rr-toolbar-item>
+      </rr-toolbar-start-area>
+      <rr-toolbar-center-area>
+        <rr-toolbar-item>
+          <rr-search-field size="md" placeholder="Zoeken"></rr-search-field>
+        </rr-toolbar-item>
+      </rr-toolbar-center-area>
+      <rr-toolbar-end-area>
+        <rr-toolbar-item>
+          <rr-icon-button variant="neutral-tinted" size="m" title="Notificaties">
+            <img src="assets/icons/bell.svg" alt="Notificaties" width="24" height="24">
+          </rr-icon-button>
+        </rr-toolbar-item>
+        <rr-toolbar-item>
+          <rr-button-bar size="md">
+            <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
+            <rr-icon-button variant="neutral-tinted" size="m" has-menu title="Account">
+              <img src="assets/icons/person.svg" alt="Account" width="24" height="24">
+            </rr-icon-button>
+          </rr-button-bar>
+        </rr-toolbar-item>
+      </rr-toolbar-end-area>
+    </rr-toolbar>
 
     <!-- Document Tab Bar -->
-    <div class="document-tab-bar">
-      <div class="document-tab-bar__item document-tab-bar__item--active">
-        <div class="document-tab-bar__item-content">
-          <span class="document-tab-bar__item-title">Artikel 2</span>
-          <span class="document-tab-bar__item-subtitle">Wet op de zorgtoeslag</span>
-        </div>
-        <button class="document-tab-bar__item-dismiss-button">
-          <img src="assets/icons/dismiss-small.svg" alt="Sluiten" width="16" height="16">
-        </button>
-      </div>
-      <div class="document-tab-bar__item">
-        <div class="document-tab-bar__item-content">
-          <span class="document-tab-bar__item-title">Artikel 5</span>
-          <span class="document-tab-bar__item-subtitle">Wet op de zorgtoeslag</span>
-        </div>
-        <button class="document-tab-bar__item-dismiss-button">
-          <img src="assets/icons/dismiss-small.svg" alt="Sluiten" width="16" height="16">
-        </button>
-      </div>
-      <div class="document-tab-bar__item">
-        <div class="document-tab-bar__item-content">
-          <span class="document-tab-bar__item-title">Artikel 17</span>
-          <span class="document-tab-bar__item-subtitle">Awir</span>
-        </div>
-        <button class="document-tab-bar__item-dismiss-button">
-          <img src="assets/icons/dismiss-small.svg" alt="Sluiten" width="16" height="16">
-        </button>
-      </div>
-      <div class="document-tab-bar__item">
-        <div class="document-tab-bar__item-content">
-          <span class="document-tab-bar__item-title">Artikel 13</span>
-          <span class="document-tab-bar__item-subtitle">Algemene wet inzake rijksbelastingen</span>
-        </div>
-        <button class="document-tab-bar__item-dismiss-button">
-          <img src="assets/icons/dismiss-small.svg" alt="Sluiten" width="16" height="16">
-        </button>
-      </div>
-      <div class="document-tab-bar__spacer"></div>
-      <button class="document-tab-bar__action-btn" title="Meer opties">
-        <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
-      </button>
-      <button class="document-tab-bar__action-btn document-tab-bar__action-btn--primary" title="Nieuw artikel">
-        <img src="assets/icons/plus.svg" alt="Nieuw" width="16" height="16">
-      </button>
-    </div>
+    <rr-document-tab-bar>
+      <rr-document-tab-bar-item selected subtitle="Wet op de Zorgtoeslag" has-dismiss-button>
+        Artikel 2
+      </rr-document-tab-bar-item>
+      <rr-document-tab-bar-item subtitle="Zorgverzekeringswet" has-dismiss-button>
+        Artikel 1
+      </rr-document-tab-bar-item>
+      <rr-document-tab-bar-item subtitle="Zorgverzekeringswet" has-dismiss-button>
+        Artikel 68b
+      </rr-document-tab-bar-item>
+      <rr-document-tab-bar-item subtitle="Zorgverzekeringswet" has-dismiss-button>
+        Artikel 69
+      </rr-document-tab-bar-item>
+      <rr-document-tab-bar-item subtitle="Zorgverzekeringswet" has-dismiss-button>
+        Artikel 24
+      </rr-document-tab-bar-item>
+      <rr-document-tab-bar-item subtitle="WML" has-dismiss-button>
+        Artikel 8
+      </rr-document-tab-bar-item>
 
-    <!-- Main Editor Content: 2 Panes -->
-    <main class="columns-split-view">
+      <rr-icon-button slot="end" variant="neutral-tinted" size="m" title="Meer tabbladen">
+        <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="24" height="24">
+      </rr-icon-button>
+    </rr-document-tab-bar>
+
+    <!-- Main Editor: Side-by-side split view -->
+    <rr-side-by-side-split-view>
 
       <!-- Left Pane: Text Editor -->
-      <section class="editor-text-pane">
-        <div class="editor-text-pane__toolbar">
-          <div class="editor-text-pane__toolbar-dropdown">
-            <select class="editor-text-pane__toolbar-select">
-              <option selected>Tekst</option>
-              <option>Kop 1</option>
-              <option>Kop 2</option>
-            </select>
-          </div>
-          <div class="editor-text-pane__toolbar-group">
-            <rr-button variant="neutral-tinted" size="xs" title="Link">Link</rr-button>
-          </div>
-          <div class="editor-text-pane__toolbar-group">
-            <rr-icon-button variant="neutral-tinted" size="s" title="Bold">
-              <img src="assets/icons/bold.svg" alt="Bold" width="16" height="16">
-            </rr-icon-button>
-            <rr-icon-button variant="neutral-tinted" size="s" title="Italic">
-              <img src="assets/icons/italic.svg" alt="Italic" width="16" height="16">
-            </rr-icon-button>
-          </div>
-          <div class="editor-text-pane__toolbar-group">
-            <rr-icon-button variant="neutral-tinted" size="s" title="Horizontale lijn">
-              <img src="assets/icons/minus.svg" alt="Lijn" width="16" height="16">
-            </rr-icon-button>
-          </div>
-          <div class="editor-text-pane__toolbar-group">
-            <rr-icon-button variant="neutral-tinted" size="s" title="Bullet list">
-              <img src="assets/icons/bullet-list.svg" alt="Bullet list" width="16" height="16">
-            </rr-icon-button>
-            <rr-icon-button variant="neutral-tinted" size="s" title="Numbered list">
-              <img src="assets/icons/numbered-list.svg" alt="Numbered list" width="16" height="16">
-            </rr-icon-button>
-          </div>
-        </div>
+      <div slot="start" style="background: #F4F6F9;">
+        <rr-page header-sticky>
+          <!-- Text Editor Toolbar -->
+          <rr-toolbar slot="header" size="md">
+            <rr-toolbar-start-area>
+              <rr-toolbar-item>
+                <rr-button variant="neutral-tinted" size="md">
+                  Tekst
+                  <img src="assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
+                </rr-button>
+              </rr-toolbar-item>
+            </rr-toolbar-start-area>
+            <rr-toolbar-end-area>
+              <rr-toolbar-item>
+                <rr-segmented-control size="md" content-type="icons">
+                  <rr-segmented-control-item value="bold" title="Bold">
+                    <img src="assets/icons/bold.svg" alt="Bold" width="20" height="20">
+                  </rr-segmented-control-item>
+                  <rr-segmented-control-item value="italic" title="Italic">
+                    <img src="assets/icons/italic.svg" alt="Italic" width="20" height="20">
+                  </rr-segmented-control-item>
+                </rr-segmented-control>
+              </rr-toolbar-item>
+              <rr-toolbar-item>
+                <rr-segmented-control size="md" content-type="icons">
+                  <rr-segmented-control-item value="hr" title="Horizontale lijn">
+                    <img src="assets/icons/minus.svg" alt="Lijn" width="20" height="20">
+                  </rr-segmented-control-item>
+                  <rr-segmented-control-item value="ul" title="Bullet list">
+                    <img src="assets/icons/bullet-list.svg" alt="Bullet list" width="20" height="20">
+                  </rr-segmented-control-item>
+                  <rr-segmented-control-item value="ol" title="Numbered list">
+                    <img src="assets/icons/numbered-list.svg" alt="Numbered list" width="20" height="20">
+                  </rr-segmented-control-item>
+                </rr-segmented-control>
+              </rr-toolbar-item>
+            </rr-toolbar-end-area>
+          </rr-toolbar>
 
-        <div class="editor-text-pane__content scrollable">
-          <div class="editor-text-pane__body">
-            <h2>Artikel 2 - Aanspraak zorgtoeslag</h2>
+          <!-- Article Text Content -->
+          <rr-simple-section>
+            <rr-box on-tinted style="border-radius: 16px; padding: 16px;">
+              <p><strong>1.</strong> Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil. Voor een verzekerde met een toeslagpartner geldt het dubbele van de standaardpremie en worden de verzekerde en de toeslagpartner geacht gezamenlijk aanspraak te maken op zorgtoeslag.</p>
 
-            <p><strong>1.</strong> Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil. Voor een verzekerde met een toeslagpartner geldt het dubbele van de standaardpremie en worden de verzekerde en de toeslagpartner geacht gezamenlijk aanspraak te maken op zorgtoeslag.</p>
+              <p><strong>2.</strong> De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een percentage van het toetsingsinkomen van de verzekerde. Ingeval de verzekerde een toeslagpartner heeft, wordt het gezamenlijk toetsingsinkomen van de verzekerde en de toeslagpartner in aanmerking genomen.</p>
 
-            <p><strong>2.</strong> De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een percentage van het toetsingsinkomen van de verzekerde. Ingeval de verzekerde een toeslagpartner heeft, wordt het gezamenlijk toetsingsinkomen van de verzekerde en de toeslagpartner in aanmerking genomen.</p>
+              <p><strong>3.</strong> De percentages, bedoeld in het tweede lid, bedragen voor een verzekerde met een toeslagpartner 4,273 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen, en voor een verzekerde zonder toeslagpartner 1,896 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen. Bij ministeriële regeling kunnen deze percentages worden gewijzigd.</p>
 
-            <p><strong>3.</strong> De percentages, bedoeld in het tweede lid, bedragen voor een verzekerde met een toeslagpartner 4,273 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen, en voor een verzekerde zonder toeslagpartner 1,896 procent van het drempelinkomen, vermeerderd met 13,700 procent van het toetsingsinkomen. Bij ministeriële regeling kunnen deze percentages worden gewijzigd.</p>
+              <p><strong>4.</strong> In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een verzekerde met een partner die geen verzekerde is, vijftig procent van het op grond van het eerste lid berekende bedrag.</p>
 
-            <p><strong>4.</strong> In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een verzekerde met een partner die geen verzekerde is, vijftig procent van het op grond van het eerste lid berekende bedrag.</p>
+              <p><strong>5.</strong> De aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk bepaald.</p>
 
-            <p><strong>5.</strong> De aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk bepaald.</p>
+              <p><strong>6.</strong> Bij ministeriële regeling kunnen nadere regels worden gesteld.</p>
 
-            <p><strong>6.</strong> Bij ministeriële regeling kunnen nadere regels worden gesteld.</p>
-
-            <p><strong>7.</strong> Onze Minister zendt een voornemen tot wijziging van de percentages, bedoeld in het derde lid, ten minste twee weken voor de vaststelling aan beide kamers der Staten-Generaal.</p>
-          </div>
-        </div>
-      </section>
+              <p><strong>7.</strong> Onze Minister zendt een voornemen tot wijziging van de percentages, bedoeld in het derde lid, ten minste twee weken voor de vaststelling aan beide kamers der Staten-Generaal.</p>
+            </rr-box>
+          </rr-simple-section>
+        </rr-page>
+      </div>
 
       <!-- Right Pane: Machine Readable Editor -->
-      <section class="editor-machine-pane">
-        <div class="editor-machine-pane__header">
-          <div class="editor-machine-pane__dropdown">
-            <select class="editor-machine-pane__dropdown-select">
-              <option selected>Machine</option>
-              <option>Tekst</option>
-              <option>YAML</option>
-            </select>
-          </div>
-        </div>
+      <div slot="end">
+        <rr-page header-sticky>
+          <!-- Machine Editor Toolbar -->
+          <rr-toolbar slot="header" size="md">
+            <rr-toolbar-start-area>
+              <rr-toolbar-item>
+                <rr-button variant="neutral-tinted" size="md">
+                  Machine
+                  <img src="assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
+                </rr-button>
+              </rr-toolbar-item>
+            </rr-toolbar-start-area>
+          </rr-toolbar>
 
-        <!-- Pagination (Lid Selector) - Centered -->
-        <div class="lid-nav lid-nav--editor">
-          <rr-icon-button variant="neutral-tinted" size="s" title="Vorige">
-            <img src="assets/icons/chevron-left-small.svg" alt="Vorige" width="16" height="16">
-          </rr-icon-button>
-          <div class="lid-nav__buttons">
-            <rr-toggle-button size="s" selected>Lid 1</rr-toggle-button>
-            <rr-toggle-button size="s">Lid 2</rr-toggle-button>
-            <rr-toggle-button size="s">Lid 3</rr-toggle-button>
-            <rr-toggle-button size="s">Lid 4</rr-toggle-button>
-            <rr-toggle-button size="s">Lid 5</rr-toggle-button>
-            <rr-toggle-button size="s">Lid 6</rr-toggle-button>
-            <rr-toggle-button size="s">Lid 7</rr-toggle-button>
-          </div>
-          <rr-icon-button variant="neutral-tinted" size="s" title="Volgende">
-            <img src="assets/icons/chevron-right-small.svg" alt="Volgende" width="16" height="16">
-          </rr-icon-button>
-        </div>
+          <!-- Machine Editor Content -->
+          <rr-simple-section>
+            <!-- Metadata List (untitled) -->
+            <rr-list variant="box">
+              <rr-list-item size="md">
+                <rr-label-cell>Juridische basis</rr-label-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="md">
+                    Beschikking
+                    <img src="assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
+                  </rr-button>
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-label-cell>Besluit-type</rr-label-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="md">
+                    Toekenning
+                    <img src="assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
+                  </rr-button>
+                </rr-button-cell>
+              </rr-list-item>
+            </rr-list>
 
-        <div class="editor-machine-pane__content scrollable">
-          <!-- Text Preview -->
-          <div class="editor-machine-pane__preview">
-            <p>Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil... <a href="#" class="editor-machine-pane__preview-link">Toon alles</a></p>
-          </div>
+            <rr-spacer size="24"></rr-spacer>
 
-          <!-- Meta dropdowns - side by side -->
-          <div class="editor-machine-pane__meta">
-            <div class="form-field">
-              <label class="form-field__label">Juridische basis</label>
-              <select class="form-field__select">
-                <option>Beschikking</option>
-                <option>Vergunning</option>
-                <option>Subsidie</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label class="form-field__label">Besluittype</label>
-              <select class="form-field__select">
-                <option>Toekenning</option>
-                <option>Afwijzing</option>
-                <option>Intrekking</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- Definities Section -->
-          <div class="section-group">
-            <h3 class="section-group__title">Definities</h3>
-            <div class="section-group__items">
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">{definition-title} = {value}</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+            <!-- Definities Section -->
+            <h3 class="machine-section-title">Definities</h3>
+            <rr-list variant="box">
+              <rr-list-item size="md">
+                <rr-text-cell>drempelinkomen alleenstaande = EUR 39.719,00</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">{definition-title} = {value}</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>drempelinkomen met toeslagpartner = EUR 49.649,00</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-            </div>
-            <rr-button class="section-group__add-btn" variant="neutral-transparent" size="s" has-leading-icon>
-              <img slot="icon-start" src="assets/icons/plus-small.svg" alt="" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>standaardpremie = EUR 1.928,00</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                  </rr-icon-button>
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>percentage alleenstaande = 1,896%</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                  </rr-icon-button>
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>percentage met toeslagpartner = 4,273%</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                  </rr-icon-button>
+                </rr-button-cell>
+              </rr-list-item>
+            </rr-list>
+            <rr-button variant="neutral-transparent" size="s">
+              <img src="assets/icons/plus-small.svg" alt="" width="16" height="16">
               Nieuwe definitie
             </rr-button>
-          </div>
 
-          <!-- Parameters Section -->
-          <div class="section-group">
-            <h3 class="section-group__title">Parameters</h3>
-            <p class="section-group__description">Nodig om dit lid uit te kunnen voeren. <a href="#">Lees meer</a></p>
-            <div class="section-group__items">
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">{parameter-title} ({type})</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+            <rr-spacer size="24"></rr-spacer>
+
+            <!-- Parameters Section -->
+            <h3 class="machine-section-title">Parameters</h3>
+            <rr-list variant="box">
+              <rr-list-item size="md">
+                <rr-text-cell>toetsingsinkomen (amount)</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">{parameter-title} ({type})</span>
-                  <span class="section-item__description">Verplicht om uit te voeren. Dit is een beschrijving van deze parameter.</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>
+                  heeft_toeslagpartner (boolean)
+                  <span slot="supporting-text">Verplicht om uit te voeren.</span>
+                </rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-            </div>
-            <rr-button class="section-group__add-btn" variant="neutral-transparent" size="s" has-leading-icon>
-              <img slot="icon-start" src="assets/icons/plus-small.svg" alt="" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+            </rr-list>
+            <rr-button variant="neutral-transparent" size="s">
+              <img src="assets/icons/plus-small.svg" alt="" width="16" height="16">
               Nieuwe parameter
             </rr-button>
-          </div>
 
-          <!-- Invoer Section -->
-          <div class="section-group">
-            <h3 class="section-group__title">Invoer</h3>
-            <p class="section-group__description">Van andere regels om te gebruiken. <a href="#">Lees meer</a></p>
-            <div class="section-group__items">
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">{input-title} ({output-title})</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+            <rr-spacer size="24"></rr-spacer>
+
+            <!-- Inputs Section -->
+            <h3 class="machine-section-title">Inputs</h3>
+            <rr-list variant="box">
+              <rr-list-item size="md">
+                <rr-text-cell>normpremie (normpremie_berekening)</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">{input-title} ({output-title})</span>
-                  <span class="section-item__description">Verplicht om uit te voeren.</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>
+                  standaardpremie (standaardpremie_berekening)
+                  <span slot="supporting-text">Verplicht om uit te voeren.</span>
+                </rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-            </div>
-            <rr-button class="section-group__add-btn" variant="neutral-transparent" size="s" has-leading-icon>
-              <img slot="icon-start" src="assets/icons/plus-small.svg" alt="" width="16" height="16">
-              Nieuwe invoer
+                </rr-button-cell>
+              </rr-list-item>
+            </rr-list>
+            <rr-button variant="neutral-transparent" size="s">
+              <img src="assets/icons/plus-small.svg" alt="" width="16" height="16">
+              Nieuwe input
             </rr-button>
-          </div>
 
-          <!-- Uitvoer Section -->
-          <div class="section-group">
-            <h3 class="section-group__title">Uitvoer</h3>
-            <div class="section-group__items">
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">heeft_recht_op_zorgtoeslag (boolean)</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+            <rr-spacer size="24"></rr-spacer>
+
+            <!-- Outputs Section -->
+            <h3 class="machine-section-title">Outputs</h3>
+            <rr-list variant="box">
+              <rr-list-item size="md">
+                <rr-text-cell>heeft_recht_op_zorgtoeslag (boolean)</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">hoogte_zorgtoeslag (amount)</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>hoogte_zorgtoeslag (amount)</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-            </div>
-            <rr-button class="section-group__add-btn" variant="neutral-transparent" size="s" has-leading-icon>
-              <img slot="icon-start" src="assets/icons/plus-small.svg" alt="" width="16" height="16">
-              Nieuwe uitvoer
+                </rr-button-cell>
+              </rr-list-item>
+            </rr-list>
+            <rr-button variant="neutral-transparent" size="s">
+              <img src="assets/icons/plus-small.svg" alt="" width="16" height="16">
+              Nieuwe output
             </rr-button>
-          </div>
 
-          <!-- Acties Section -->
-          <div class="section-group">
-            <h3 class="section-group__title">Acties</h3>
-            <div class="section-group__items">
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">bereken_normpremie</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+            <rr-spacer size="24"></rr-spacer>
+
+            <!-- Acties Section -->
+            <h3 class="machine-section-title">Acties</h3>
+            <rr-list variant="box">
+              <rr-list-item size="md">
+                <rr-text-cell>bereken_normpremie</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm" onclick="location.hash='action'">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-              <div class="section-item">
-                <div class="section-item__content">
-                  <span class="section-item__label">bereken_zorgtoeslag</span>
-                </div>
-                <div class="section-item__actions">
-                  <rr-button variant="neutral-tinted" size="xs">Bewerk</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="xs">
-                    <img src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+              <rr-list-item size="md">
+                <rr-text-cell>bereken_zorgtoeslag</rr-text-cell>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm" onclick="location.hash='action'">Bewerk</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
+                    <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
-                </div>
-              </div>
-            </div>
-            <rr-button class="section-group__add-btn" variant="neutral-transparent" size="s" has-leading-icon>
-              <img slot="icon-start" src="assets/icons/plus-small.svg" alt="" width="16" height="16">
+                </rr-button-cell>
+              </rr-list-item>
+            </rr-list>
+            <rr-button variant="neutral-transparent" size="s">
+              <img src="assets/icons/plus-small.svg" alt="" width="16" height="16">
               Nieuwe actie
             </rr-button>
-          </div>
-        </div>
-      </section>
 
-    </main>
+            <rr-spacer size="32"></rr-spacer>
+          </rr-simple-section>
+        </rr-page>
+      </div>
+
+    </rr-side-by-side-split-view>
+  </rr-page>
+
+  <!-- Action Sheet Overlay -->
+  <div id="action" class="action-sheet-overlay">
+    <a href="#" class="action-sheet-backdrop" aria-label="Sluit"></a>
+    <div class="action-sheet-panel">
+      <rr-toolbar size="md">
+        <rr-toolbar-start-area>
+          <rr-toolbar-item><span class="machine-section-title" style="margin:0">Actie</span></rr-toolbar-item>
+        </rr-toolbar-start-area>
+        <rr-toolbar-end-area>
+          <rr-toolbar-item>
+            <rr-button variant="accent-transparent" size="md" onclick="location.hash=''">Annuleer</rr-button>
+          </rr-toolbar-item>
+        </rr-toolbar-end-area>
+      </rr-toolbar>
+
+      <div class="action-sheet-body">
+        <rr-simple-section>
+          <h3 class="machine-section-title">Operaties</h3>
+          <rr-list variant="box">
+            <rr-list-item size="md">
+              <rr-text-cell>bereken_normpremie</rr-text-cell>
+              <rr-button-cell slot="end">
+                <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+              </rr-button-cell>
+            </rr-list-item>
+            <rr-list-item size="md">
+              <rr-text-cell>bereken_verschil</rr-text-cell>
+              <rr-button-cell slot="end">
+                <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
+              </rr-button-cell>
+            </rr-list-item>
+          </rr-list>
+
+          <rr-spacer size="24"></rr-spacer>
+
+          <h3 class="machine-section-title">Berekening</h3>
+          <rr-list variant="box">
+            <rr-list-item size="md">
+              <rr-label-cell>Titel</rr-label-cell>
+              <rr-button-cell slot="end">
+                <rr-text-field size="md" value="bereken_normpremie"></rr-text-field>
+              </rr-button-cell>
+            </rr-list-item>
+            <rr-list-item size="md">
+              <rr-label-cell>Type</rr-label-cell>
+              <rr-button-cell slot="end">
+                <rr-drop-down-field size="md" value="Berekening">
+                  <option value="Berekening" selected>Berekening</option>
+                  <option value="Vergelijking">Vergelijking</option>
+                  <option value="Voorwaarde">Voorwaarde</option>
+                </rr-drop-down-field>
+              </rr-button-cell>
+            </rr-list-item>
+            <rr-list-item size="md">
+              <rr-label-cell>Waarde 1</rr-label-cell>
+              <rr-button-cell slot="end">
+                <rr-drop-down-field size="md" value="normpremie">
+                  <option value="normpremie" selected>normpremie</option>
+                  <option value="standaardpremie">standaardpremie</option>
+                  <option value="toetsingsinkomen">toetsingsinkomen</option>
+                </rr-drop-down-field>
+              </rr-button-cell>
+            </rr-list-item>
+            <rr-list-item size="md">
+              <rr-label-cell>Waarde 2</rr-label-cell>
+              <rr-button-cell slot="end">
+                <rr-drop-down-field size="md" value="standaardpremie">
+                  <option value="normpremie">normpremie</option>
+                  <option value="standaardpremie" selected>standaardpremie</option>
+                  <option value="toetsingsinkomen">toetsingsinkomen</option>
+                </rr-drop-down-field>
+              </rr-button-cell>
+            </rr-list-item>
+            <rr-list-item size="md">
+              <rr-label-cell>Waarde 3</rr-label-cell>
+              <rr-button-cell slot="end">
+                <rr-drop-down-field size="md" value="toetsingsinkomen">
+                  <option value="normpremie">normpremie</option>
+                  <option value="standaardpremie">standaardpremie</option>
+                  <option value="toetsingsinkomen" selected>toetsingsinkomen</option>
+                </rr-drop-down-field>
+              </rr-button-cell>
+            </rr-list-item>
+          </rr-list>
+          <rr-button variant="neutral-transparent" size="s">
+            <img src="assets/icons/plus-small.svg" alt="" width="16" height="16">
+            Nieuwe waarde
+          </rr-button>
+        </rr-simple-section>
+      </div>
+
+      <div class="action-sheet-footer">
+        <rr-button variant="accent-filled" size="md" style="width: 100%;" onclick="location.hash=''">Opslaan</rr-button>
+      </div>
+    </div>
   </div>
+
 </body>
 </html>
