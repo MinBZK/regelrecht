@@ -84,7 +84,7 @@ git worktree add .worktrees/feature-branch feature-branch
 ### Law Format
 
 Laws are stored as article-based YAML files conforming to the official JSON schema:
-- Schema: `https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.2.0/schema.json`
+- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json`
 
 ### Cross-Law References
 
