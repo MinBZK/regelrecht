@@ -5,8 +5,10 @@ regulatory_layer: WET
 publication_date: '2019-01-01'
 valid_from: '2019-01-01'
 bwb_id: BWBR0040634
-url: https://wetten.overheid.nl/BWBR0040634/2025-01-01
+url: https://wetten.overheid.nl/BWBR0040634/2019-01-01
 name: '#wet_naam'
+competent_authority:
+  name: Minister van Justitie en Veiligheid
 articles:
   - number: Artikel 1.1
     text: |-
@@ -25,7 +27,7 @@ articles:
 
       c. zorg voor verstandelijk gehandicapten als omschreven bij of krachtens de Wet zorg en dwang
       psychogeriatrische en verstandelijk gehandicapte clienten.
-    url: https://wetten.overheid.nl/BWBR0040634/2025-01-01#Hoofdstuk1_Artikel1.1
+    url: https://wetten.overheid.nl/BWBR0040634/2019-01-01#Hoofdstuk1_Artikel1.1
     machine_readable:
       definitions:
         forensische_zorgtypen:
@@ -75,11 +77,11 @@ articles:
       mogelijk dienstbaar gemaakt aan de voorbereiding van de terugkeer van de forensische patient in
       de maatschappij en de vermindering van de kans op recidive, met inachtneming van de veiligheid
       van de samenleving.
-    url: https://wetten.overheid.nl/BWBR0040634/2025-01-01#Hoofdstuk2_Artikel2.1
+    url: https://wetten.overheid.nl/BWBR0040634/2019-01-01#Hoofdstuk2_Artikel2.1
   - number: Artikel 10.3
     text: |-
       Artikel 10.3 Deze wet wordt aangehaald als: Wet forensische zorg.
-    url: https://wetten.overheid.nl/BWBR0040634/2025-01-01#Hoofdstuk10_Artikel10.3
+    url: https://wetten.overheid.nl/BWBR0040634/2019-01-01#Hoofdstuk10_Artikel10.3
     machine_readable:
       execution:
         output:
