@@ -276,6 +276,16 @@ Articles that SHOULD be made executable:
 | "verminderd met" | `SUBTRACT` with `values` array |
 | "vermeerderd met" | `ADD` with `values` array |
 
+## Phase 1.5: Capture BDD Baseline
+
+**Before modifying the law file**, capture the current BDD state so you can distinguish
+pre-existing failures from newly introduced ones:
+```bash
+just bdd 2>&1 | tail -100
+```
+Note the summary line and any pre-existing failures. This baseline is your reference
+for all subsequent Phase 3 runs.
+
 ## Phase 2: Validate (with repair sub-loop)
 
 Run validation:
@@ -284,7 +294,7 @@ just validate <file_path>
 ```
 
 - If OK → proceed to Phase 3
-- If errors → **Repair** (up to 2 rounds):
+- If errors → **Repair** (up to 2 rounds per iteration):
   1. Read error output, identify broken articles/fields
   2. Fix with Edit tool
   3. Re-run `just validate`
@@ -296,12 +306,6 @@ just validate <file_path>
 ## Phase 3: Run BDD Tests
 
 Run the Gherkin scenarios against the machine_readable logic:
-
-First, capture the **baseline** BDD state before your changes by running:
-```bash
-just bdd 2>&1 | tail -50
-```
-Note any pre-existing failures. Then, after generating machine_readable sections, run:
 ```bash
 just bdd
 ```
@@ -403,10 +407,10 @@ fn register_if_present(
 
 For checking output values — **use the concrete output name in the regex**:
 ```rust
-#[then(regex = r#"^the my_output is "(\d+)" eurocent$"#)]
+#[then(regex = r#"^the my_output is "(-?\d+)" eurocent$"#)]
 fn assert_my_output(world: &mut RegelrechtWorld, expected: String) {
     assert!(world.is_success(), "Expected success, got error: {:?}", world.error_message());
-    let expected_amount: i64 = expected.parse().expect("Invalid eurocent value");
+    let expected_amount: i64 = expected.parse().expect("Invalid eurocent value (must be integer, may be negative)");
     let actual = world.get_output("my_output");
     match actual {
         Some(Value::Int(n)) => assert_eq!(*n, expected_amount),
@@ -495,9 +499,10 @@ The JSON payload format (written to the temp file):
   - **NEVER change the expected values in MvT-derived scenarios** — these are
     the legislature's intended outcomes and serve as ground truth
   - Go back to Phase 2 (validate → test again)
-- **After 3 iterations**: stop and report remaining issues. For large laws (>20
-    articles), this limit applies per batch — each batch of ~15 articles gets its
-    own 3-iteration budget
+- **After 3 iterations**: stop and report remaining issues. Each iteration includes
+    its own Phase 2 validation cycle (up to 2 repair rounds per iteration). For large
+    laws (>20 articles), this limit applies per batch — each batch of ~15 articles
+    gets its own 3-iteration budget
 
 ## Phase 5: Report
 

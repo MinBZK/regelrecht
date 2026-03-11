@@ -191,8 +191,6 @@ machine_readable:
       value: 0.01896
     percentage_drempelinkomen_partner:
       value: 0.04273
-    percentage_toetsingsinkomen:
-      value: 0.137
   execution:
     parameters:
       - name: bsn
