@@ -361,6 +361,60 @@ actions:
 
 ---
 
+## Example 8: MvT Passage to Gherkin Scenario
+
+Shows how to convert a Memorie van Toelichting passage into a BDD scenario.
+
+**MvT passage (from kst-30912-3, Wet op de zorgtoeslag):**
+```
+Rekenvoorbeeld 1: Alleenstaande met een inkomen van €20.000
+
+De standaardpremie bedraagt €2.112. Het percentage van het drempelinkomen
+voor een alleenstaande bedraagt 1,896%. Het percentage normpremie
+toetsingsinkomen bedraagt 13,7%.
+
+Normpremie = 1,896% × €20.000 = €379,20
+Zorgtoeslag = €2.112 - €379,20 = €1.732,80
+```
+
+**Generated Gherkin scenario:**
+```gherkin
+Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
+  Testscenario's afgeleid uit de Memorie van Toelichting bij de
+  Wet op de zorgtoeslag (kst-30912-3).
+
+  # Bron: kst-30912-3
+  # URL: https://zoek.officielebekendmakingen.nl/kst-30912-3.html
+
+  Background:
+    Given the calculation date is "2025-01-01"
+
+  # === Rekenvoorbeelden uit MvT ===
+
+  Scenario: Alleenstaande met inkomen van 20.000 euro
+    # Bron: kst-30912-3, Rekenvoorbeeld 1
+    Given the following RVIG "personal_data" data:
+      | bsn       | geboortedatum | land_verblijf |
+      | 999993653 | 1990-01-01    | NEDERLAND     |
+    And the following RVZ "insurance" data:
+      | bsn       | is_verzekerd |
+      | 999993653 | true         |
+    And the following BELASTINGDIENST "box1" data:
+      | bsn       | belastbaar_inkomen |
+      | 999993653 | 2000000            |
+    When the healthcare allowance law is executed
+    Then the allowance amount is "1732.80" euro
+```
+
+**Key points:**
+- Each scenario traces back to a specific MvT passage with `# Bron:` comment
+- Monetary inputs are in eurocent (€20.000 = 2000000)
+- Expected outputs use the format matching existing Then steps (here `euro` not `eurocent` — match whichever step definition exists)
+- The scenario uses existing Given/When/Then steps, not new ones
+- Do NOT invent scenarios — only use what the legislature provided
+
+---
+
 ## Common Mistakes and Fixes
 
 ### Mistake 1: Wrong IF syntax

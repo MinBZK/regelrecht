@@ -149,16 +149,29 @@ value: $geboortedatum       # Second date (subtrahend)
 unit: years                 # days | months | years
 ```
 
-### Other Operations
+### NOT — negation
 ```yaml
-# NOT (flexible properties)
 operation: NOT
-# ... (additionalProperties: true)
-
-# FOREACH (iteration, flexible properties)
-operation: FOREACH
-# ... (additionalProperties: true)
+value:
+  operation: EQUALS
+  subject: $is_verzekerd
+  value: true
 ```
+
+### FOREACH — iteration over arrays
+```yaml
+operation: FOREACH
+collection: $items
+item_variable: $item
+value:
+  operation: MULTIPLY
+  values:
+    - $item.bedrag
+    - $item.percentage
+```
+
+**Note:** Both `NOT` and `FOREACH` use `additionalProperties: true` in the schema,
+so field names are flexible. Check existing regulation YAML files for usage patterns.
 
 ## Variable References
 
@@ -229,9 +242,9 @@ source:
 **Rules:**
 1. Remove currency symbol (€)
 2. Remove thousands separators (.)
-3. Replace decimal comma (,) with nothing
-4. Multiply by 100
-5. Result must be integer
+3. Replace decimal comma (,) with decimal point (.)
+4. Parse as decimal number (euros)
+5. Multiply by 100 and round to integer
 
 ## Common Legal Phrases → Operations
 

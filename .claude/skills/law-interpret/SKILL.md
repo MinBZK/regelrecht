@@ -45,7 +45,7 @@ Extract the `bwb_id` (e.g., `BWBR0018451`) from the law YAML's `bwb_id` field.
 Search for related parliamentary documents using the overheid.nl SRU API:
 
 ```
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.references=={BWB_ID}&maximumRecords=20
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.references=={BWB_ID}&maximumRecords=20
 ```
 
 Use WebFetch to retrieve the results. Parse the XML response to find documents of
@@ -55,17 +55,20 @@ these types (in `<dcterms:type>`):
 - **Nota van wijziging** (amendment note)
 - **Brief van de minister** (ministerial letter with examples)
 
-Also search by law title for additional coverage:
+Also search by law title for additional coverage. **URL-encode the law title**
+(replace spaces with `%20`, quotes with `%22`, etc.) before substituting:
 ```
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.title%20any%20"{LAW_TITLE}"%20AND%20dcterms.type=="Memorie van toelichting"&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.title%20any%20%22{URL_ENCODED_LAW_TITLE}%22%20AND%20dcterms.type%3D%3D%22Memorie%20van%20toelichting%22&maximumRecords=10
 ```
 
 There may be **multiple MvT documents** (original + amendments). Collect all of them.
 
 ### Step 1.2: Download and Read MvT Content
 
-For each found document, extract the document identifier from the search results
-(e.g., `kst-36XXX-3`) and download the HTML version:
+For each found document, extract the document identifier from the search results.
+The `<dcterms:identifier>` field typically contains a full URI like
+`https://identifier.overheid.nl/BWBR/sgd/kst-36450-3`. Extract only the **last
+path segment** (e.g., `kst-36450-3`) and use it to download the HTML version:
 
 ```
 https://zoek.officielebekendmakingen.nl/{DOCUMENT_ID}.html
@@ -111,7 +114,10 @@ For each extracted example, note:
 
 ### Step 1.4: Generate Gherkin Feature File
 
-Write a `.feature` file to `features/{law_id}.feature` based on the MvT examples.
+Write a `.feature` file to `features/{slug}.feature` based on the MvT examples,
+where `{slug}` is the law's short name slug (e.g., `zorgtoeslag`, `bijstand`,
+`participatiewet`) — matching the convention used by existing feature files.
+Do NOT use the full `$id` or BWB ID as the filename.
 
 Follow the existing project conventions (see `features/bijstand.feature` and
 `features/zorgtoeslag.feature` for style).
@@ -425,7 +431,7 @@ Run the Gherkin scenarios from Phase 1 against the machine_readable logic:
 
 First, capture the **baseline** BDD state before your changes by running:
 ```bash
-just bdd 2>&1 | tail -20
+just bdd 2>&1 | tail -50
 ```
 Note any pre-existing failures. Then, after generating machine_readable sections, run:
 ```bash
@@ -476,76 +482,74 @@ Given the following RVIG "personal_data" data:
   | 999993653 | 1990-01-01 | NEDERLAND |
 ```
 
-If a new external data source is needed, add a step in `steps/given.rs`:
+If a new external data source is needed, add a step in `steps/given.rs` following
+the existing pattern (note: all steps are synchronous `fn`, NOT `async fn`):
 ```rust
-#[given(regex = r#"the following NEWSOURCE "(\w+)" data:"#)]
-async fn given_newsource_data(world: &mut RegelrechtWorld, field: String, step: &Step) {
-    let table = step.table.as_ref().expect("Expected a data table");
-    let records = parse_external_data_table(table);
-    world.external_data.newsource.insert(field, records);
-}
-```
-
-And add the corresponding field to `ExternalData` in `world.rs`.
-
-#### Adding a When Step (law execution)
-
-Each law needs a When step that triggers execution. Pattern:
-```rust
-#[when(regex = r"the {law_name} is executed for {law_id} article (\d+)")]
-async fn when_execute_new_law(world: &mut RegelrechtWorld, article: u32) {
-    // Register any external data sources needed
-    register_if_present(&mut world.service, "RVIG", "bsn", &world.external_data.rvig);
-    // ... register other sources
-
-    // Execute the law
-    world.execute_law("{law_id}", "{output_name}").await;
-}
-```
-
-The `register_if_present` helper registers a dict source only if data was provided:
-```rust
-fn register_if_present(
-    service: &mut LawExecutionService,
-    source_name: &str,
-    key_field: &str,
-    data: &HashMap<String, Vec<HashMap<String, Value>>>,
-) {
-    for (field, records) in data {
-        service.register_dict_source(
-            &format!("{}_{}", source_name, field),
-            key_field,
-            records.clone(),
-        );
+#[given(regex = r#"the following NEWSOURCE "newsource_field" data:"#)]
+fn set_newsource_data(world: &mut RegelrechtWorld, step: &Step) {
+    if let Some(table) = &step.table {
+        parse_external_data_table(table, &mut world.external_data.newsource_field);
     }
 }
 ```
 
+And add the corresponding field to `ExternalData` in `world.rs`:
+```rust
+pub struct ExternalData {
+    // ... existing fields ...
+    pub newsource_field: HashMap<String, HashMap<String, Value>>,
+}
+```
+
+#### Adding a When Step (law execution)
+
+Each law needs a When step that triggers execution. **Use concrete law names in
+the regex, not placeholders.** All steps are synchronous `fn`. Example based on
+the actual bijstand step:
+```rust
+#[when(regex = r"^the my_law_execution is executed for my_law_id article (\d+)$")]
+fn execute_my_law(world: &mut RegelrechtWorld, _article: String) {
+    // Register any external data sources if this law uses them
+    register_if_present(&mut world.service, "source_name", &world.external_data.source_field);
+
+    // Execute the law for the desired output
+    world.execute_law("my_law_id", "my_output_name");
+}
+```
+
+The `register_if_present` helper (already defined in `when.rs`) takes 3 arguments:
+```rust
+fn register_if_present(
+    service: &mut regelrecht_engine::LawExecutionService,
+    name: &str,
+    data: &std::collections::HashMap<String, std::collections::HashMap<String, Value>>,
+)
+```
+
 #### Adding a Then Step (assertions)
 
-For checking output values:
+For checking output values — **use the concrete output name in the regex**:
 ```rust
-#[then(regex = r#"the {output_name} is "([^"]+)" eurocent"#)]
-async fn then_check_amount(world: &mut RegelrechtWorld, expected: String) {
-    assert!(world.is_success(), "Execution failed: {}", world.error_message());
-    let output = world.get_output("{output_name}").expect("Output not found");
-    let expected_val = parse_eurocent(&expected);
-    // Handle Int/Float comparison
-    match output {
-        Value::Int(v) => assert_eq!(*v, expected_val as i64),
-        Value::Float(v) => assert!((v - expected_val as f64).abs() < 0.01),
-        other => panic!("Expected number, got {:?}", other),
+#[then(regex = r#"^the my_output is "(\d+)" eurocent$"#)]
+fn assert_my_output(world: &mut RegelrechtWorld, expected: String) {
+    assert!(world.is_success(), "Expected success, got error: {:?}", world.error_message());
+    let expected_amount: i64 = expected.parse().expect("Invalid eurocent value");
+    let actual = world.get_output("my_output");
+    match actual {
+        Some(Value::Int(n)) => assert_eq!(*n, expected_amount),
+        Some(Value::Float(f)) => assert_eq!(f.round() as i64, expected_amount),
+        _ => panic!("Expected number, got {:?}", actual),
     }
 }
 ```
 
 For boolean checks:
 ```rust
-#[then("the citizen has the right to {benefit}")]
-async fn then_has_right(world: &mut RegelrechtWorld) {
+#[then("the citizen has the right to my_benefit")]
+fn assert_has_right(world: &mut RegelrechtWorld) {
     assert!(world.is_success());
-    let output = world.get_output("heeft_recht").expect("Missing heeft_recht");
-    assert_eq!(output, &Value::Bool(true));
+    let output = world.get_output("heeft_recht");
+    assert!(matches!(output, Some(Value::Bool(true))), "Expected true, got {:?}", output);
 }
 ```
 
@@ -554,9 +558,11 @@ async fn then_has_right(world: &mut RegelrechtWorld) {
 - `world.execute_law(law_id, output_name)` — runs the engine, stores result/error
 - `world.get_output(name)` — retrieves a named output from the last result
 - `world.is_success()` — true if execution succeeded
-- `world.error_message()` — error string from last failed execution
+- `world.error_message()` — error string from last failed execution (`Option<String>`)
 - `world.parameters` — `HashMap<String, Value>` for simple inputs
-- `world.external_data` — struct with fields for each data source
+- `world.external_data` — `ExternalData` struct with fields:
+  `rvig_personal`, `rvig_relationship`, `rvz_insurance`, `bd_box1`, `bd_box2`,
+  `bd_box3`, `dji_detenties` (each `HashMap<String, HashMap<String, Value>>`)
 
 #### Prefer Reusing Existing Steps
 
