@@ -1,5 +1,5 @@
 ---
-name: dutch-law-downloader
+name: law-download
 description: Downloads Dutch official legal publications including national laws (wetten, ministeriele regelingen, koninklijk besluiten), local regulations (lokale verordeningen, gemeentelijk beleid), and implementation policies (uitvoeringsbeleid) from government databases (BWB, CVDR) and converts them to YAML format with textual content only. Use when user wants to download, fetch, or import any Dutch regulation by name or type.
 allowed-tools: Read, Write, WebFetch, Bash, Grep, Glob
 ---
