@@ -380,7 +380,7 @@
               <rr-list-item size="md">
                 <rr-text-cell>bereken_normpremie</rr-text-cell>
                 <rr-button-cell slot="end">
-                  <rr-button variant="neutral-tinted" size="sm" onclick="location.hash='action'">Bewerk</rr-button>
+                  <rr-button variant="neutral-tinted" size="sm" data-open-action>Bewerk</rr-button>
                   <rr-icon-button variant="neutral-tinted" size="sm" title="Meer opties">
                     <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
@@ -389,7 +389,7 @@
               <rr-list-item size="md">
                 <rr-text-cell>bereken_zorgtoeslag</rr-text-cell>
                 <rr-button-cell slot="end">
-                  <rr-button variant="neutral-tinted" size="sm" onclick="location.hash='action'">Bewerk</rr-button>
+                  <rr-button variant="neutral-tinted" size="sm" data-open-action>Bewerk</rr-button>
                   <rr-icon-button variant="neutral-tinted" size="sm" title="Meer opties">
                     <img slot="__icon" src="assets/icons/ellipsis-horizontal.svg" alt="Meer" width="16" height="16">
                   </rr-icon-button>
@@ -411,7 +411,7 @@
 
   <!-- Action Sheet Overlay -->
   <div id="action" class="action-sheet-overlay">
-    <a href="#" class="action-sheet-backdrop" aria-label="Sluit"></a>
+    <a class="action-sheet-backdrop" aria-label="Sluit" data-close-action></a>
     <div class="action-sheet-panel">
       <rr-toolbar size="md">
         <rr-toolbar-start-area>
@@ -419,7 +419,7 @@
         </rr-toolbar-start-area>
         <rr-toolbar-end-area>
           <rr-toolbar-item>
-            <rr-button variant="accent-transparent" size="md" onclick="location.hash=''">Annuleer</rr-button>
+            <rr-button variant="accent-transparent" size="md" data-close-action>Annuleer</rr-button>
           </rr-toolbar-item>
         </rr-toolbar-end-area>
       </rr-toolbar>
@@ -501,10 +501,31 @@
       </div>
 
       <div class="action-sheet-footer">
-        <rr-button variant="accent-filled" size="md" style="width: 100%;" onclick="location.hash=''">Opslaan</rr-button>
+        <rr-button variant="accent-filled" size="md" style="width: 100%;" data-close-action>Opslaan</rr-button>
       </div>
     </div>
   </div>
 
+  <script>
+    const overlay = document.getElementById('action');
+
+    function openActionSheet() {
+      history.replaceState(null, '', '#action');
+      overlay.style.display = 'flex';
+    }
+
+    function closeActionSheet() {
+      history.replaceState(null, '', location.pathname);
+      overlay.style.display = '';
+    }
+
+    document.querySelectorAll('[data-open-action]').forEach(function (btn) {
+      btn.addEventListener('click', openActionSheet);
+    });
+
+    document.querySelectorAll('[data-close-action]').forEach(function (btn) {
+      btn.addEventListener('click', closeActionSheet);
+    });
+  </script>
 </body>
 </html>
