@@ -57,7 +57,7 @@ Download the Wet op de Zorgtoeslag
      Saved to: regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
 
    The YAML file contains the legal text only.
-   To add machine-readable execution logic, use the law-machine-readable-interpreter skill.
+   To add machine-readable execution logic, use the law-interpret skill.
    ```
 
 ---
@@ -264,7 +264,7 @@ Download the "Wet op het Groentetuintje"
 **Complete example of downloaded YAML file:**
 
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.2.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: "wet_op_de_zorgtoeslag"
 uuid: "a7b3c4d5-e6f7-8a9b-0c1d-2e3f4a5b6c7d"
 regulatory_layer: "WET"
@@ -320,12 +320,12 @@ articles:
 
 ## Integration with Machine-Readable Interpreter
 
-After downloading with this skill, use the `law-machine-readable-interpreter` skill:
+After downloading with this skill, use the `law-interpret` skill:
 
 ```
 User: "Now interpret the zorgtoeslag law"
 
-[law-machine-readable-interpreter activates]
+[law-interpret activates]
 
 Result: The same YAML file updated with machine_readable sections:
 - Endpoints identified

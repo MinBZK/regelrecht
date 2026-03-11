@@ -158,7 +158,7 @@ Map `<bwb-dl:soort>` to `regulatory_layer`:
 
 **Schema URL:**
 ```
-https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.2.0/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 ```
 
 **Required Fields:**
@@ -204,7 +204,7 @@ regulation/nl/koninklijk_besluit/kb_zorgtoeslag/2023-07-01.yaml
 
 ## XML Parsing Reference
 
-The dutch-law-downloader skill (Claude) handles XML parsing directly using WebFetch.
+The law-download skill (Claude) handles XML parsing directly using WebFetch.
 Below are the key XML structures and extraction patterns to follow.
 
 ### WTI Extraction

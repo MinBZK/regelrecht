@@ -3,10 +3,10 @@
 Download and convert a Dutch law from BWB to regelrecht YAML format.
 
 Usage:
-    python .claude/skills/dutch-law-downloader/download_law.py BWBR0033715 2025-02-12
-    python .claude/skills/dutch-law-downloader/download_law.py BWBR0033715  # Uses latest version
+    python .claude/skills/law-download/download_law.py BWBR0033715 2025-02-12
+    python .claude/skills/law-download/download_law.py BWBR0033715  # Uses latest version
 
-Note: This is a standalone utility script. The dutch-law-downloader Claude skill
+Note: This is a standalone utility script. The law-download Claude skill
 replaces this script for interactive use (it uses WebFetch instead of Python).
 This script is kept as a reference and for batch/CI use.
 """
@@ -183,7 +183,7 @@ def generate_yaml(metadata, articles, effective_date):
 
     # Create YAML structure
     law_data = {
-        "$schema": "https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json",
+        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json",
         "$id": law_id,
         "uuid": str(uuid.uuid4()),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),
@@ -222,10 +222,10 @@ def save_yaml(law_id, law_data, regulatory_layer, effective_date):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python .claude/skills/dutch-law-downloader/download_law.py BWBR_ID [DATE]")
+        print("Usage: python .claude/skills/law-download/download_law.py BWBR_ID [DATE]")
         print()
         print("Example:")
-        print("  python .claude/skills/dutch-law-downloader/download_law.py BWBR0033715 2025-02-12")
+        print("  python .claude/skills/law-download/download_law.py BWBR0033715 2025-02-12")
         sys.exit(1)
 
     bwbr_id = sys.argv[1]
@@ -271,7 +271,7 @@ def main():
         print("Next steps:")
         print(f"1. Validate: just validate {output_file}")
         print(
-            "2. Interpret: Use the law-machine-readable-interpreter skill to add machine_readable sections"
+            "2. Interpret: Use the law-interpret skill to add machine_readable sections"
         )
 
     except Exception as e:
