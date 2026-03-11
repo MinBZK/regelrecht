@@ -295,6 +295,12 @@ machine_readable:
         type: string
         required: true
     input:
+      - name: normbedrag
+        type: amount
+        source:
+          output: normbedrag  # Internal reference from another article
+        type_spec:
+          unit: eurocent
       - name: verlaging_percentage
         type: number
         source:

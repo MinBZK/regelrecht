@@ -466,7 +466,9 @@ The JSON payload format (written to the temp file):
   - **NEVER change the expected values in MvT-derived scenarios** — these are
     the legislature's intended outcomes and serve as ground truth
   - Go back to Phase 2 (validate → test again)
-- **After 3 iterations**: stop and report remaining issues
+- **After 3 iterations**: stop and report remaining issues. For large laws (>20
+    articles), this limit applies per batch — each batch of ~15 articles gets its
+    own 3-iteration budget
 
 ## Phase 5: Report
 

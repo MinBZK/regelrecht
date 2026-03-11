@@ -80,10 +80,20 @@ machine_readable:
 
 ### Arithmetic Operations — use `values` array
 ```yaml
-operation: ADD              # ADD | SUBTRACT | MULTIPLY | DIVIDE | MIN | MAX | CONCAT
+operation: ADD              # ADD | SUBTRACT | MULTIPLY | DIVIDE | MIN | MAX
 values:
   - $operand_1              # Each item is an operationValue
   - $operand_2              # (literal, $variable, or nested operation)
+```
+
+### String Concatenation — use `values` array
+```yaml
+operation: CONCAT
+values:
+  - "Beschikking inzake "
+  - $wet_naam
+  - " voor BSN "
+  - $bsn
 ```
 
 ### Logical Operations — use `conditions` array
@@ -195,8 +205,9 @@ value:
 ```
 
 **Note:** Both `NOT` and `FOREACH` use `additionalProperties: true` in the schema,
-so field names beyond the examples above are flexible. Check existing regulation
-YAML files for additional usage patterns.
+which means they accept custom field names beyond `operation`. The examples above
+show the established conventions (`value` for NOT, `collection`/`item_variable`/`value`
+for FOREACH). Always follow these conventions for consistency.
 
 ## Variable References
 
@@ -253,16 +264,19 @@ source:
 
 ## Eurocent Conversion Table
 
-| Written Amount | Eurocent Value |
-|----------------|----------------|
-| €1 | 100 |
-| €10 | 1000 |
-| €100 | 10000 |
-| €795,47 | 79547 |
-| €2.112 | 211200 |
-| €79.547 | 7954700 |
-| €154.859 | 15485900 |
-| €1.000.000 | 100000000 |
+| Written Amount | Eurocent Value | Note |
+|----------------|----------------|------|
+| €1 | 100 | |
+| €10 | 1000 | |
+| €100 | 10000 | |
+| €795,47 | 79547 | comma = decimal separator |
+| €2.112 | 211200 | dot = thousands separator (two thousand one hundred twelve) |
+| €79.547 | 7954700 | dot = thousands separator (seventy-nine thousand) |
+| €154.859 | 15485900 | dot = thousands separator |
+| €1.000.000 | 100000000 | dots = thousands separators (one million) |
+
+**Dutch number format:** In Dutch, `.` is the thousands separator and `,` is the decimal separator.
+This is the opposite of English. So `€1.234,56` means one thousand two hundred thirty-four euro and fifty-six cents.
 
 **Rules:**
 1. Remove currency symbol (€)

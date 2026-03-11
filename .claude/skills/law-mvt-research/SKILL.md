@@ -44,6 +44,12 @@ https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&
 
 There may be **multiple MvT documents** (original + amendments). Collect all of them.
 
+**Error handling:** The SRU API may return empty results, HTTP errors, or malformed
+XML. If a search returns no results:
+1. Try the alternate query (BWB ID vs title, or vice versa)
+2. Try broadening the title query (use fewer keywords)
+3. If both fail, report "No MvT documents found" and proceed — this is not an error
+
 ## Step 2: Download and Read MvT Content
 
 For each found document, extract the document identifier from the search results.

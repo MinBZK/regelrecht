@@ -31,11 +31,21 @@ Invoke `/law-mvt-research` on the target law file.
 This searches for Memorie van Toelichting documents and generates Gherkin
 test scenarios from legislature-intended examples.
 
+**Context passing:** The MvT skill writes its output to `features/{slug}.feature`.
+The `/law-generate` skill in Step 3 picks this up automatically when running
+`just bdd`, which executes all feature files in `features/`. No manual context
+transfer is needed — the file system is the interface.
+
 After completion, note the results:
 - How many MvT documents were found
 - How many Gherkin scenarios were generated
 - Which articles lack MvT examples
 - Path to the generated feature file
+
+**If no MvT documents are found:** This is common for many Dutch laws. Proceed
+to Step 3 anyway — `/law-generate` will fall back to ad-hoc testing via the
+evaluate binary. Not having MvT scenarios reduces confidence but does not block
+the pipeline.
 
 ## Step 3: Generate Machine-Readable Logic
 
@@ -57,7 +67,18 @@ Invoke `/law-reverse-validate` on the target law file.
 This checks every element in `machine_readable` traces back to the original
 legal text, catching hallucinated logic.
 
-## Step 5: Final Report
+## Step 5: Dependency Check
+
+Before the final report, scan the generated `machine_readable` sections for
+`source.regulation` references. For each referenced regulation:
+
+1. Check if it exists in `regulation/nl/` using Glob
+2. If missing, add it to the TODOs list with a note to run `/law-download` for it
+3. If present but lacking `machine_readable`, note it needs `/law-interpret`
+
+This helps the user understand what additional work is needed for full execution.
+
+## Step 6: Final Report
 
 Combine results from all phases into a single report:
 
@@ -83,6 +104,10 @@ Interpreted {LAW_NAME}
 
   Remaining issues:
   - {description of any unresolved failures}
+
+  Dependencies:
+  - {regulation_id}: {status: present/missing/needs machine_readable}
+    → Run `/law-download` then `/law-interpret` if missing
 
   TODOs:
   - {external laws that need to be downloaded/implemented}

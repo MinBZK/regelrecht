@@ -184,7 +184,7 @@ xmlns:bwb-dl="http://www.geonovum.nl/bwb-dl/1.0"
 - `<bwb-dl:publicatiedatum>` → `publication_date`
 
 **Generate UUID:**
-Use Python uuid4 to generate a new UUID for the `uuid` field.
+Use `uuidgen` (via Bash) to generate a new UUID for the `uuid` field.
 
 ### Step 6: Parse Legal Text XML for Articles
 
@@ -335,6 +335,6 @@ To add machine-readable execution logic, run /law-interpret on this file.
 - Always download BOTH WTI and Toestand files
 - Handle XML namespaces correctly
 - Preserve exact text formatting (spaces, line breaks)
-- Generate human-readable `$id` slugs (lowercase, hyphens)
+- Generate human-readable `$id` slugs (lowercase, underscores — e.g., `wet_op_de_zorgtoeslag`)
 - Double-check all articles are included (count them)
 - Validate YAML syntax before saving
