@@ -64,15 +64,18 @@ These do not correspond to any published legal values.
 
 **POC behaviour**: The WIB article 5.2 lacked the complete box 3 income calculation. The heffingsvrije voet, forfaitair rendement, and the intermediate `box3_bezittingen` computation were not fully modelled.
 
-**MVP correction**: WIB article 5.2 now computes:
+**MVP correction**: WIB article 5.2 now computes box3 with per-category forfaitair rendement (Overbruggingswet box 3):
 ```
 box3_bezittingen = MAX(0, (spaargeld + beleggingen + onroerend_goed) - schulden - heffingsvrije_voet)
-box3_inkomen = box3_bezittingen × forfaitair_rendement (6%)
+effectief_rendement = (spaargeld × rate_spaargeld + overige × rate_overig - schulden × rate_schulden) / rendementsgrondslag
+box3_inkomen = box3_bezittingen × effectief_rendement
 ```
 
+Rates for 2024: spaargeld 1.03%, overige bezittingen 6.04%, schulden 2.47%.
+Rates for 2025: spaargeld 1.44%, overige bezittingen 5.88%, schulden 2.47%.
 The heffingsvrije voet is selected based on partner status (alleenstaand vs partners).
 
-**Impact on results**: For the existing test scenarios with low or zero savings, box3_inkomen remains 0. The new MVP-only scenario (EUR 70,000 savings) exercises this path and produces a zorgtoeslag of EUR 1,718.79 — confirming the box3 calculation affects the outcome.
+**Impact on results**: For the existing test scenarios with low or zero savings, box3_inkomen remains 0. The new MVP-only scenario (EUR 70,000 savings) exercises this path and produces a zorgtoeslag of EUR 1,729.44 — confirming the box3 calculation affects the outcome.
 
 ## 7. Toetsingsinkomen Missing Box 3 Component (Trace Issue 4)
 

@@ -17,7 +17,7 @@ Volledige conversie van de zorgtoeslag BDD-scenarios van de POC (Python/poc-mach
 | 7 | Persoon boven 18, inkomen 79547 | 2024 | 1972.05 euro | PASS |
 | 8 | Persoon onder 18 | 2024 | geen recht | PASS |
 | 9 | Partner met inkomen (35000) | 2025 | 2728.45 euro | PASS |
-| 10 | Alleenstaande met box3-vermogen (70000) | 2025 | 1718.79 euro | PASS |
+| 10 | Alleenstaande met box3-vermogen (70000) | 2025 | 1729.44 euro | PASS |
 | 11 | Verdragsinschrijving, verlopen polis | 2025 | 2107.26 euro | PASS |
 | 12 | Forensische zorg sluit uit | 2025 | geen recht | PASS |
 
@@ -207,8 +207,14 @@ De POC berekent box3 in meerdere stappen:
 - `box3_bezittingen = MAX(0, SUBTRACT(ADD(sparen, beleggen, onroerend_goed), schulden, heffingsvrije_voet))`
 - `box3_inkomen = MULTIPLY(box3_bezittingen, forfaitair_rendement=0.06)`
 
-De MVP berekent alleen `rendementsgrondslag = SUBTRACT(ADD(spaargeld, beleggingen, onroerend_goed), schulden)`
-zonder heffingsvrije voet (5.772.900 eurocent alleenstaand) en zonder forfaitair rendement (6%).
+De MVP berekent box3 volledig met per-categorie rendementspercentages (Overbruggingswet box 3):
+- `rendementsgrondslag = SUBTRACT(ADD(spaargeld, beleggingen, onroerend_goed), schulden)`
+- `box3_bezittingen = MAX(0, rendementsgrondslag - heffingsvrije_voet)`
+- `effectief_rendement = (spaargeld × rate_spaargeld + overige × rate_overig - schulden × rate_schulden) / rendementsgrondslag`
+- `box3_inkomen = box3_bezittingen × effectief_rendement`
+
+Rendementspercentages 2024: spaargeld 1,03%, overige bezittingen 6,04%, schulden 2,47%.
+Rendementspercentages 2025: spaargeld 1,44%, overige bezittingen 5,88%, schulden 2,47%.
 
 #### 5. Partner resolutie: andere juridische grondslag (geen issue)
 

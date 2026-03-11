@@ -240,7 +240,7 @@ Feature: Healthcare allowance calculation
       | 999993653 | null           | null            | null     | null                 |
     When the healthcare allowance law is executed
     Then the citizen has the right to healthcare allowance
-    And the allowance amount is "1718.79" euro
+    And the allowance amount is "1729.44" euro
 
   Scenario: Verdragsinschrijving provides insurance coverage when polis is inactive (2025)
     Given the calculation date is "2025-01-01"
