@@ -96,8 +96,12 @@ articles:
           value: 5700000
         heffingsvrije_voet_partners:
           value: 11400000
-        forfaitair_rendement:
-          value: 0.06
+        rendement_spaargeld:
+          value: 0.0103
+        rendement_overige_bezittingen:
+          value: 0.0604
+        rendement_schulden:
+          value: 0.0247
       execution:
         parameters:
           - name: bsn
@@ -169,10 +173,38 @@ articles:
                       else: $heffingsvrije_voet_alleenstaand
           - output: box3_inkomen
             value:
-              operation: MULTIPLY
-              values:
-                - $box3_bezittingen
-                - $forfaitair_rendement
+              operation: IF
+              when:
+                operation: GREATER_THAN
+                subject: $rendementsgrondslag
+                value: 0
+              then:
+                operation: MULTIPLY
+                values:
+                  - $box3_bezittingen
+                  - operation: DIVIDE
+                    values:
+                      - operation: SUBTRACT
+                        values:
+                          - operation: ADD
+                            values:
+                              - operation: MULTIPLY
+                                values:
+                                  - $spaargeld
+                                  - $rendement_spaargeld
+                              - operation: MULTIPLY
+                                values:
+                                  - operation: ADD
+                                    values:
+                                      - $beleggingen
+                                      - $onroerend_goed
+                                  - $rendement_overige_bezittingen
+                          - operation: MULTIPLY
+                            values:
+                              - $schulden
+                              - $rendement_schulden
+                      - $rendementsgrondslag
+              else: 0
 
   - number: '2.18'
     text: |-

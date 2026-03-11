@@ -169,12 +169,11 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   ║   │   │   │   │   │   ├──Resolving from DEFINITION: 5768400
 ║   ║   ║   ║   ├──Result of box3_bezittingen: 0
 ║   ║   ║   ║   ├──Computing box3_inkomen
-║   ║   ║   ║   │   ├──Compute MULTIPLY(...) = 0
-║   ║   ║   ║   │   │   ├──Resolving $BOX3_BEZITTINGEN
-║   ║   ║   ║   │   │   │   ├──Resolving from OUTPUT: 0
-║   ║   ║   ║   │   │   ├──Resolving $FORFAITAIR_RENDEMENT
-║   ║   ║   ║   │   │   │   ├──Resolving from DEFINITION: 0.06
-║   ║   ║   ║   ├──Result of box3_inkomen: 0.0
+║   ║   ║   ║   │   ├──Compute IF(...) = 0
+║   ║   ║   ║   │   │   ├──Compute GREATERTHAN(...) = False
+║   ║   ║   ║   │   │   │   ├──Resolving $RENDEMENTSGRONDSLAG
+║   ║   ║   ║   │   │   │   │   ├──Resolving from OUTPUT: 0
+║   ║   ║   ║   ├──Result of box3_inkomen: 0
 ║   ║   ║   ├──Computing toetsingsinkomen
 ║   ║   ║   │   ├──Compute ADD(...) = 79547
 ║   ║   ║   │   │   ├──Resolving $BOX1_INKOMEN
@@ -245,12 +244,11 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │   │   │   │   │   ├──Resolving from DEFINITION: 5768400
 ║   ║   ├──Result of box3_bezittingen: 0
 ║   ║   ├──Computing box3_inkomen
-║   ║   │   ├──Compute MULTIPLY(...) = 0
-║   ║   │   │   ├──Resolving $BOX3_BEZITTINGEN
-║   ║   │   │   │   ├──Resolving from OUTPUT: 0
-║   ║   │   │   ├──Resolving $FORFAITAIR_RENDEMENT
-║   ║   │   │   │   ├──Resolving from DEFINITION: 0.06
-║   ║   ├──Result of box3_inkomen: 0.0
+║   ║   │   ├──Compute IF(...) = 0
+║   ║   │   │   ├──Compute GREATERTHAN(...) = False
+║   ║   │   │   │   ├──Resolving $RENDEMENTSGRONDSLAG
+║   ║   │   │   │   │   ├──Resolving from OUTPUT: 0
+║   ║   ├──Result of box3_inkomen: 0
 ║   ├──URI call: algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner
 ║   ║   ├──Resolving $BSN
 ║   ║   │   ├──Resolving from PARAMETERS: '999993653'
