@@ -17,6 +17,10 @@ Generates `machine_readable` sections for Dutch law YAML files through an iterat
 cycle of MvT research, Gherkin scenario generation, machine_readable creation,
 validation, and BDD testing.
 
+**CRITICAL**: All generated YAML MUST pass `just validate <file>`. The schema is the
+single source of truth. When in doubt, consult `schema/latest/schema.json` and study
+working examples in `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
+
 ## Phase 0: Setup
 
 1. Read the target law YAML file
@@ -27,10 +31,6 @@ validation, and BDD testing.
 5. Read an existing feature file as Gherkin reference:
    `features/bijstand.feature`
 6. Count articles; if >20 articles, process in batches of ~15
-7. Build the evaluate binary once:
-   ```bash
-   cargo build --manifest-path packages/engine/Cargo.toml --bin evaluate --release
-   ```
 
 ## Phase 1: Search and Extract Memorie van Toelichting
 
@@ -40,7 +40,7 @@ cases, then turn them into Gherkin acceptance tests.
 
 ### Step 1.1: Find MvT Documents
 
-Extract the `bwb_id` (e.g., `BWBR0018451`) from the law YAML's `identifiers.bwb_id`.
+Extract the `bwb_id` (e.g., `BWBR0018451`) from the law YAML's `bwb_id` field.
 
 Search for related parliamentary documents using the overheid.nl SRU API:
 
@@ -184,30 +184,209 @@ a feature file. The later phases will fall back to the JSON-based test approach.
 
 For each article with computable logic, generate the `machine_readable` section.
 
-### Rules
-- Edit the YAML file in place using the Edit tool
-- Follow all schema rules from `reference.md`
+### Action Format (CRITICAL — two valid patterns)
+
+Actions are the core of the execution logic. Each action MUST have an `output` field.
+There are **two valid patterns** for specifying what to compute:
+
+**Pattern 1: `value` — for assignments, comparisons, conditionals, and logical ops**
+```yaml
+actions:
+  - output: heeft_recht
+    value:
+      operation: AND
+      conditions:
+        - operation: GREATER_THAN_OR_EQUAL
+          subject: $leeftijd
+          value: 18
+        - operation: EQUALS
+          subject: $is_verzekerd
+          value: true
+```
+
+**Pattern 2: `operation` + `values` — shorthand for arithmetic at action level**
+```yaml
+actions:
+  - output: totaal
+    operation: SUBTRACT
+    values:
+      - $bruto_bedrag
+      - $korting
+```
+
+**Pattern 3: `value` — for direct literal/variable assignment**
+```yaml
+actions:
+  - output: wet_naam
+    value: Wet op de zorgtoeslag
+  - output: constante
+    value: $SOME_DEFINITION
+```
+
+**Pattern 4: `resolve` — for ministeriele regeling lookups**
+```yaml
+actions:
+  - output: standaardpremie
+    resolve:
+      type: ministeriele_regeling
+      output: standaardpremie
+      match:
+        output: berekeningsjaar
+        value: $referencedate.year
+```
+
+### Operation Syntax by Category
+
+**Arithmetic** — use `values` array (NOT `subject`/`value`):
+```yaml
+operation: ADD          # or SUBTRACT, MULTIPLY, DIVIDE, MIN, MAX, CONCAT
+values:
+  - $operand_1
+  - $operand_2
+```
+
+**Comparison** — use `subject` + `value`:
+```yaml
+operation: EQUALS       # or NOT_EQUALS, GREATER_THAN, LESS_THAN,
+                        # GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
+subject: $variable      # MUST be a $variable reference
+value: 18               # literal or $variable
+```
+
+**Membership** — use `subject` + `value` (array):
+```yaml
+operation: IN           # or NOT_IN
+subject: $status
+value: ["ACTIEF", "GEPAUZEERD"]
+```
+
+**Null check** — use `subject` only:
+```yaml
+operation: NOT_NULL
+subject: $some_field
+```
+
+**Logical** — use `conditions` array:
+```yaml
+operation: AND          # or OR
+conditions:
+  - operation: EQUALS
+    subject: $a
+    value: true
+  - operation: EQUALS
+    subject: $b
+    value: true
+```
+
+**Conditional IF** — use `when`/`then`/`else` (NOT `condition`/`then_value`/`else_value`):
+```yaml
+operation: IF
+when:
+  operation: EQUALS
+  subject: $heeft_partner
+  value: true
+then: $bedrag_partner
+else: $bedrag_alleenstaand
+```
+
+**SWITCH** — use `cases` array:
+```yaml
+operation: SWITCH
+cases:
+  - when:
+      operation: EQUALS
+      subject: $categorie
+      value: "A"
+    then: 100000
+  - when:
+      operation: EQUALS
+      subject: $categorie
+      value: "B"
+    then: 75000
+default: 50000
+```
+
+**Date** — use `subject` + `value` + `unit`:
+```yaml
+operation: SUBTRACT_DATE
+subject: $peildatum
+value: $geboortedatum
+unit: years
+```
+
+### Cross-Law References (source)
+
+Input fields reference other laws via `source`. Use `regulation` + `output`, NOT `url`:
+
+```yaml
+input:
+  - name: toetsingsinkomen
+    type: amount
+    source:
+      regulation: algemene_wet_inkomensafhankelijke_regelingen
+      output: toetsingsinkomen
+      parameters:
+        bsn: $bsn
+    type_spec:
+      unit: eurocent
+```
+
+For **internal references** (same law, different article), omit `regulation`:
+```yaml
+input:
+  - name: vermogen_onder_grens
+    type: boolean
+    source:
+      output: vermogen_onder_grens
+```
+
+For **delegated regulations** (e.g., gemeentelijke verordeningen):
+```yaml
+input:
+  - name: verlaging_percentage
+    type: number
+    source:
+      delegation:
+        law_id: participatiewet
+        article: "8"
+        select_on:
+          - name: gemeente_code
+            value: $gemeente_code
+      output: verlaging_percentage
+      parameters:
+        bsn: $bsn
+```
+
+### Field Types
+
+| Context | Valid types |
+|---------|------------|
+| `parameters` | `string`, `number`, `boolean`, `date` |
+| `input` | `string`, `number`, `boolean`, `amount`, `object`, `array`, `date` |
+| `output` | `string`, `number`, `boolean`, `amount`, `object`, `array`, `date` |
+
+For monetary values, use `type: amount` with `type_spec: { unit: eurocent }`.
+
+### Other Rules
 - Convert monetary amounts to eurocent (€100 = 10000)
 - Use `$variable` references for inter-action dependencies
-- Parameter types: `string`, `number`, `boolean`, `date` (NOT `amount` for parameters — `amount` is only for input/output fields)
-- Cross-law references use `source.regulation`
 - Skip articles that are purely definitional/procedural (no computable output)
-- `subject` in comparisons must always be a `$variable`, never nested operations
-- `conditions` for AND/OR as array (not `values` for conditionals)
-- `values` for arithmetic as array (not `conditions` for arithmetic)
+- `subject` in comparisons MUST be a `$variable`, never a nested operation
+- Operations can be nested: a `value` in an arithmetic array can itself be an operation
+- `endpoint` on `machine_readable` makes an article callable from other regulations
 
 ### Available Operations
 | Category | Operations |
 |----------|------------|
-| Arithmetic | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE`, `MIN`, `MAX` |
+| Arithmetic | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE`, `MIN`, `MAX`, `CONCAT` |
 | Comparison | `EQUALS`, `NOT_EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
-| Logical | `AND`, `OR`, `NOT` |
+| Logical | `AND`, `OR` |
 | Membership | `IN`, `NOT_IN` |
 | Null check | `NOT_NULL` |
-| Conditional | `IF` |
+| Conditional | `IF`, `SWITCH` |
 | Iteration | `FOREACH` |
 | Date | `SUBTRACT_DATE` |
-| String | `CONCAT` |
+| Other | `NOT` |
 
 ### Common Legal Text → Operation Mappings
 | Legal Text | Operation |
@@ -215,10 +394,13 @@ For each article with computable logic, generate the `machine_readable` section.
 | "heeft bereikt de leeftijd van 18 jaar" | `GREATER_THAN_OR_EQUAL`, subject: $leeftijd, value: 18 |
 | "niet meer bedraagt dan X" | `LESS_THAN_OR_EQUAL` |
 | "ten minste X" | `GREATER_THAN_OR_EQUAL` |
-| "indien ... en ..." | `AND` with values array |
-| "indien ... of ..." | `OR` with values array |
+| "indien ... en ..." | `AND` with `conditions` array |
+| "indien ... of ..." | `OR` with `conditions` array |
 | "niet ..." | `NOT` |
 | "gelijk aan" | `EQUALS` |
+| "vermenigvuldigd met" | `MULTIPLY` with `values` array |
+| "verminderd met" | `SUBTRACT` with `values` array |
+| "vermeerderd met" | `ADD` with `values` array |
 
 ## Phase 3: Validate (with repair sub-loop)
 
@@ -232,12 +414,20 @@ just validate <file_path>
   1. Read error output, identify broken articles/fields
   2. Fix with Edit tool
   3. Re-run `just validate`
-  4. If still failing after 2 repair rounds: log errors and continue to Phase 4
+  4. If still failing after 2 repair rounds: **stop and report the validation errors
+     to the user**. Do NOT proceed to Phase 4 with invalid YAML — BDD tests against
+     a schema-invalid file will produce misleading failures that look like logic bugs,
+     wasting iterations on the wrong problem.
 
 ## Phase 4: Run BDD Tests
 
 Run the Gherkin scenarios from Phase 1 against the machine_readable logic:
 
+First, capture the **baseline** BDD state before your changes by running:
+```bash
+just bdd 2>&1 | tail -20
+```
+Note any pre-existing failures. Then, after generating machine_readable sections, run:
 ```bash
 just bdd
 ```
@@ -247,6 +437,9 @@ The command is equivalent to:
 ```bash
 cd packages/engine && cargo test --test bdd -- --nocapture
 ```
+
+**Important:** Only investigate failures that are NEW compared to the baseline. Pre-existing
+failures from other laws are not your problem — do not attempt to fix them.
 
 ### Creating New Step Definitions
 
@@ -378,14 +571,22 @@ when the law requires a genuinely different execution pattern or data source.
 
 ### If no MvT feature file was generated
 
-Fall back to ad-hoc testing: for each article with `execution.output`, pipe JSON
-to the evaluate binary:
+Fall back to ad-hoc testing: for each article with `execution.output`, build the
+evaluate binary and pipe a JSON payload to it:
 
 ```bash
-echo '<json>' | ./target/release/evaluate
+cargo build --manifest-path packages/engine/Cargo.toml --bin evaluate --release
 ```
 
-The JSON payload format:
+**Important:** Do NOT use `echo` to pipe JSON — Dutch law YAML contains quotes,
+newlines, and special characters that will break shell escaping. Instead, use the
+`Write` tool to create a temp file, then pipe from it:
+
+```bash
+cat /tmp/eval_payload.json | ./target/release/evaluate
+```
+
+The JSON payload format (written to the temp file):
 ```json
 {
   "law_yaml": "<full YAML content of the law file>",
@@ -462,13 +663,14 @@ Report any assumptions that need user review.
 
 ## Key Schema Rules Summary
 
-- `competent_authority`: who has binding authority (`name`, `type: INSTANCE|CATEGORY`)
-- `requires`: dependencies on other laws
+- `endpoint`: named endpoint making article callable from other regulations (string)
+- `competent_authority`: who has binding authority (string ref or `{name, type}`)
+- `requires`: dependencies on other articles/laws
 - `definitions`: constants (eurocent for money)
-- `execution.produces`: legal character and decision type
+- `execution.produces`: legal character (`BESCHIKKING`/`TOETS`/`WAARDEBEPALING`/`BESLUIT_VAN_ALGEMENE_STREKKING`/`INFORMATIEF`) and decision type
 - `execution.parameters`: caller inputs (types: `string`/`number`/`boolean`/`date`)
-- `execution.input`: data from other sources (types include `amount`)
-- `execution.output`: what article produces (types include `amount`)
-- `execution.actions`: computation logic with operations
-- `legal_basis`: traceability to specific law text
-- `resolve`: lookup from ministeriele_regeling
+- `execution.input`: data from other sources (types include `amount` with `type_spec`)
+- `execution.output`: what article produces (types include `amount` with `type_spec`)
+- `execution.actions`: computation logic — `output` required, then `value`/`operation`+`values`/`resolve`
+- `legal_basis`: traceability to specific law text (on fields and actions)
+- `resolve`: lookup from ministeriele_regeling (with `type`, `output`, `match`)

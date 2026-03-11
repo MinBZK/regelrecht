@@ -1,285 +1,216 @@
-# Law Machine-Readable Interpreter - Technical Reference
+# Law Interpret - Technical Reference
 
-## Schema Reference
+Based on schema v0.3.2 (`schema/latest/schema.json`). Validate with `just validate`.
 
-### Complete Machine-Readable Section Structure
+## Complete Machine-Readable Section Structure
 
 ```yaml
 machine_readable:
-  definitions:                 # Optional: Constants
+  endpoint: string              # Named endpoint, callable from other regulations
+  competent_authority:          # Who has binding authority
+    name: "Belastingdienst"
+    type: "INSTANCE"            # INSTANCE (default) or CATEGORY
+  # OR as internal reference:
+  # competent_authority: "#bevoegd_gezag"
+
+  requires:                     # Dependencies (optional)
+    - law: "zorgverzekeringswet"
+      values: ["is_verzekerd"]
+    - article: "11"             # Same-law article reference
+
+  definitions:                  # Constants (optional, arbitrary keys)
     CONSTANT_NAME:
-      value: any               # Constant value (number, string, boolean)
-      description: string      # Human-readable description
+      value: 211200             # Any literal value
+      description: "Description"
+    # Or simple key-value:
+    simple_key: "simple value"
 
   execution:
-    parameters:                # Required inputs from caller
-      - name: string           # Parameter name
-        type: string           # "string" | "number" | "boolean" | "date"
-        required: boolean      # Is this required?
-        description: string    # Human-readable description
+    produces:                   # Legal character (optional)
+      legal_character: BESCHIKKING  # BESCHIKKING | TOETS | WAARDEBEPALING |
+                                    # BESLUIT_VAN_ALGEMENE_STREKKING | INFORMATIEF
+      decision_type: TOEKENNING     # TOEKENNING | AFWIJZING | GOEDKEURING |
+                                    # GEEN_BESLUIT | ALGEMEEN_VERBINDEND_VOORSCHRIFT |
+                                    # BELEIDSREGEL | VOORBEREIDINGSBESLUIT |
+                                    # ANDERE_HANDELING | AANSLAG
 
-    input:                     # Data from external sources
-      - name: string           # Variable name
-        type: string           # Data type
+    parameters:                 # Caller-provided inputs
+      - name: "bsn"
+        type: "string"          # string | number | boolean | date
+        required: true
+        description: "Burgerservicenummer"
+
+    input:                      # Data from external sources
+      - name: "toetsingsinkomen"
+        type: "amount"          # string | number | boolean | amount | object | array | date
         source:
-          url: string          # URI: "regulation/nl/..." or "#field"
-          parameters:          # Parameters to pass to source
-            key: string        # "$variable" or literal value
+          regulation: "awir"    # External law/regulation ID
+          output: "toetsingsinkomen"  # Output field to retrieve
+          parameters:
+            bsn: "$bsn"
+        type_spec:
+          unit: "eurocent"      # eurocent | years | months | weeks | days
 
-    output:                    # What this article produces
-      - name: string           # Output field name
-        type: string           # Data type
-        description: string    # Human-readable description
+    output:                     # What this article produces
+      - name: "hoogte_zorgtoeslag"
+        type: "amount"
+        type_spec:
+          unit: "eurocent"
+        description: "Hoogte van de zorgtoeslag"
 
-    actions:                   # Execution logic
-      - output: string         # Which output field to set
-        operation: string      # Operation type (see below)
-        subject: any           # Left operand
-        value: any             # Right operand (optional)
-        conditions: array      # For AND/OR operations
-        condition: object      # For NOT/IF_THEN_ELSE
-        then_value: any        # For IF_THEN_ELSE
-        else_value: any        # For IF_THEN_ELSE
+    actions:                    # Computation logic
+      - output: "result_name"   # Required: which output to set
+        value: <operationValue> # Pattern 1: value assignment
+        # OR
+        operation: "ADD"        # Pattern 2: top-level arithmetic
+        values: [...]
+        # OR
+        resolve:                # Pattern 3: ministeriele regeling lookup
+          type: ministeriele_regeling
+          output: standaardpremie
+          match:
+            output: berekeningsjaar
+            value: $referencedate.year
+        legal_basis:            # Optional: traceability
+          law: "Wet op de zorgtoeslag"
+          article: "2"
 ```
 
-## Operation Types
+## Operation Types (all 21)
 
-### Comparison Operations
-
-**EQUALS**
+### Arithmetic Operations — use `values` array
 ```yaml
-operation: "EQUALS"
-subject: "$variable"
-value: "expected_value"
+operation: ADD              # ADD | SUBTRACT | MULTIPLY | DIVIDE | MIN | MAX | CONCAT
+values:
+  - $operand_1              # Each item is an operationValue
+  - $operand_2              # (literal, $variable, or nested operation)
 ```
-Returns: boolean
 
-**NOT_EQUALS**
+### Logical Operations — use `conditions` array
 ```yaml
-operation: "NOT_EQUALS"
-subject: "$variable"
-value: "unexpected_value"
-```
-Returns: boolean
-
-**GREATER_THAN**
-```yaml
-operation: "GREATER_THAN"
-subject: "$amount"
-value: 1000
-```
-Returns: boolean
-
-**GREATER_THAN_OR_EQUAL**
-```yaml
-operation: "GREATER_THAN_OR_EQUAL"
-subject: "$age"
-value: 18
-```
-Returns: boolean
-
-**LESS_THAN**
-```yaml
-operation: "LESS_THAN"
-subject: "$income"
-value: 50000
-```
-Returns: boolean
-
-**LESS_THAN_OR_EQUAL**
-```yaml
-operation: "LESS_THAN_OR_EQUAL"
-subject: "$vermogen"
-value: "$VERMOGENSGRENS"
-```
-Returns: boolean
-
-### Logical Operations
-
-**AND**
-```yaml
-operation: "AND"
+operation: AND              # AND | OR
 conditions:
-  - operation: "EQUALS"
-    subject: "$is_verzekerd"
+  - operation: EQUALS
+    subject: $a
     value: true
-  - operation: "GREATER_THAN_OR_EQUAL"
-    subject: "$leeftijd"
-    value: 18
-  - operation: "EQUALS"
-    subject: "$woont_in_nederland"
-    value: true
+  - operation: GREATER_THAN
+    subject: $b
+    value: 0
 ```
-Returns: boolean (true if ALL conditions are true)
 
-**OR**
+### Comparison Operations — use `subject` + `value`
 ```yaml
-operation: "OR"
-conditions:
-  - operation: "EQUALS"
-    subject: "$status"
-    value: "A"
-  - operation: "EQUALS"
-    subject: "$status"
-    value: "B"
+operation: EQUALS           # EQUALS | NOT_EQUALS | GREATER_THAN | LESS_THAN
+                            # GREATER_THAN_OR_EQUAL | LESS_THAN_OR_EQUAL
+                            # IN | NOT_IN
+subject: $variable          # MUST be a $variable reference
+value: 18                   # operationValue (literal, $var, or operation)
 ```
-Returns: boolean (true if ANY condition is true)
 
-**NOT**
+### Null Check — `subject` only
 ```yaml
-operation: "NOT"
-condition:
-  operation: "EQUALS"
-  subject: "$heeft_partner"
+operation: NOT_NULL
+subject: $field
+```
+
+### Conditional IF — use `when`/`then`/`else`
+```yaml
+operation: IF
+when:                       # Condition (operationValue that evaluates to boolean)
+  operation: EQUALS
+  subject: $has_partner
   value: true
+then: $partner_amount       # Value when true (operationValue)
+else: $single_amount        # Value when false (operationValue, optional)
 ```
-Returns: boolean (inverts the condition)
 
-### Arithmetic Operations
-
-**ADD**
+### SWITCH — use `cases` array
 ```yaml
-operation: "ADD"
-subject: "$bedrag1"
-value: "$bedrag2"
+operation: SWITCH
+cases:
+  - when:
+      operation: EQUALS
+      subject: $type
+      value: "A"
+    then: 100000
+  - when:
+      operation: EQUALS
+      subject: $type
+      value: "B"
+    then: 75000
+default: 50000              # Fallback value
 ```
-Returns: number (subject + value)
 
-**SUBTRACT**
+### Date Operations — use `subject` + `value` + `unit`
 ```yaml
-operation: "SUBTRACT"
-subject: "$totaal"
-value: "$korting"
+operation: SUBTRACT_DATE
+subject: $peildatum         # First date (minuend)
+value: $geboortedatum       # Second date (subtrahend)
+unit: years                 # days | months | years
 ```
-Returns: number (subject - value)
 
-**MULTIPLY**
+### Other Operations
 ```yaml
-operation: "MULTIPLY"
-subject: "$basis"
-value: "$percentage"
-```
-Returns: number (subject * value)
+# NOT (flexible properties)
+operation: NOT
+# ... (additionalProperties: true)
 
-**DIVIDE**
-```yaml
-operation: "DIVIDE"
-subject: "$totaal"
-value: 12
+# FOREACH (iteration, flexible properties)
+operation: FOREACH
+# ... (additionalProperties: true)
 ```
-Returns: number (subject / value)
-
-### Conditional Operations
-
-**IF_THEN_ELSE**
-```yaml
-operation: "IF_THEN_ELSE"
-condition:
-  operation: "GREATER_THAN"
-  subject: "$leeftijd"
-  value: 65
-then_value: "$hoog_tarief"
-else_value: "$laag_tarief"
-```
-Returns: then_value if condition is true, else_value otherwise
 
 ## Variable References
 
-### Syntax
+Pattern: `$name` or `$name.property` (dot notation for nested access)
 
-**Parameter reference:** `$parameter_name`
 ```yaml
-parameters:
-  BSN: "$BSN"  # Pass the BSN parameter value
+# Parameter reference
+subject: $bsn
+
+# Input reference
+subject: $toetsingsinkomen
+
+# Definition/constant reference
+value: $STANDAARDPREMIE
+
+# Previous action output reference
+subject: $intermediate_result
+
+# Dot notation for property access
+value: $referencedate.year
 ```
 
-**Input reference:** `$input_name`
-```yaml
-subject: "$toetsingsinkomen"  # Use the toetsingsinkomen input
-```
+## Source Formats (for input fields)
 
-**Constant reference:** `$CONSTANT_NAME`
-```yaml
-value: "$VERMOGENSGRENS"  # Use the constant value
-```
-
-**Nested operation result:** `$intermediate_output`
-```yaml
-actions:
-  - output: "premie_basis"
-    operation: "MULTIPLY"
-    subject: "$standaardpremie"
-    value: 1.5
-
-  - output: "premie_finaal"
-    operation: "SUBTRACT"
-    subject: "$premie_basis"  # Reference previous output
-    value: "$korting"
-```
-
-### Literal Values
-
-**Numbers:**
-```yaml
-value: 18           # Integer
-value: 15485900     # Eurocent amount
-```
-
-**Strings:**
-```yaml
-value: "ACTIEF"
-value: "NEDERLAND"
-```
-
-**Booleans:**
-```yaml
-value: true
-value: false
-```
-
-## URI Formats
-
-### Internal Reference (Same File)
-
-Format: `#output_name`
-
+### External Law Reference
 ```yaml
 source:
-  url: "#vermogen_onder_grens"
+  regulation: "regeling_standaardpremie"   # Law/regulation $id
+  output: "standaardpremie"                # Output field to retrieve
+  parameters:                              # Parameters to pass (optional)
+    bsn: $bsn
+```
+
+### Internal Reference (same law)
+```yaml
+source:
+  output: "vermogen_onder_grens"           # Output from another article
+  # No regulation field = same law
+```
+
+### Delegated Regulation (e.g., gemeentelijke verordening)
+```yaml
+source:
+  delegation:
+    law_id: participatiewet
+    article: "8"
+    select_on:
+      - name: gemeente_code
+        value: $gemeente_code
+  output: verlaging_percentage
   parameters:
-    BSN: "$BSN"
-```
-
-This calls another article in the same file and extracts the `vermogen_onder_grens` output field.
-
-### External Reference (Different File)
-
-Format: `regulation/nl/{layer}/{law_id}#{output_name}`
-
-```yaml
-source:
-  url: "regulation/nl/ministeriele_regeling/regeling_standaardpremie#standaardpremie"
-```
-
-This calls an article in another law file.
-
-**Layers:**
-- `wet`
-- `ministeriele_regeling`
-- `amvb`
-- `koninklijk_besluit`
-- `verordening`
-- `beleidsregel`
-
-### TODO Placeholder (Missing Law)
-
-```yaml
-source:
-  # TODO: Implement Zorgverzekeringswet
-  # Should reference: regulation/nl/wet/zorgverzekeringswet#is_verzekerd
-  url: "TODO_zorgverzekeringswet"
-  parameters:
-    BSN: "$BSN"
+    bsn: $bsn
 ```
 
 ## Eurocent Conversion Table
@@ -295,350 +226,73 @@ source:
 | €154.859 | 15485900 |
 | €1.000.000 | 100000000 |
 
-**Conversion Rules:**
+**Rules:**
 1. Remove currency symbol (€)
-2. Remove thousands separators (. or ,)
-3. Replace decimal separator (, or .) with nothing
-4. Multiply by 100 (or just treat as eurocent)
+2. Remove thousands separators (.)
+3. Replace decimal comma (,) with nothing
+4. Multiply by 100
 5. Result must be integer
-
-**Examples:**
-- "€795,47" → Remove € → "795,47" → Remove comma → "79547" → 79547
-- "€2.112" → Remove € → "2.112" → Remove dot → "2112" → 211200 (multiply by 100)
-- "€154.859" → Remove € → "154.859" → "154859" → 15485900
 
 ## Common Legal Phrases → Operations
 
-| Dutch Legal Phrase | English | Operation Pattern |
-|-------------------|---------|------------------|
-| "heeft bereikt de leeftijd van X jaar" | has reached age X | `GREATER_THAN_OR_EQUAL`, subject: leeftijd, value: X |
-| "ten minste X" | at least X | `GREATER_THAN_OR_EQUAL`, value: X |
-| "niet meer dan X" | no more than X | `LESS_THAN_OR_EQUAL`, value: X |
-| "minder dan X" | less than X | `LESS_THAN`, value: X |
-| "meer dan X" | more than X | `GREATER_THAN`, value: X |
-| "gelijk aan X" | equal to X | `EQUALS`, value: X |
-| "vermenigvuldigd met" | multiplied by | `MULTIPLY` |
-| "gedeeld door" | divided by | `DIVIDE` |
-| "vermeerderd met" | increased by | `ADD` |
-| "verminderd met" | decreased by | `SUBTRACT` |
-| "indien ... en ..." | if ... and ... | `AND` operation |
-| "indien ... of ..." | if ... or ... | `OR` operation |
-| "tenzij" | unless | `NOT` operation |
-| "ingevolge" | pursuant to | Cross-law reference |
-| "bedoeld in artikel X" | referred to in article X | Internal reference |
+| Dutch Legal Phrase | Operation Pattern |
+|-------------------|------------------|
+| "heeft bereikt de leeftijd van X jaar" | `GREATER_THAN_OR_EQUAL`, subject: $leeftijd, value: X |
+| "ten minste X" | `GREATER_THAN_OR_EQUAL`, value: X |
+| "niet meer dan X" | `LESS_THAN_OR_EQUAL`, value: X |
+| "minder dan X" | `LESS_THAN`, value: X |
+| "meer dan X" | `GREATER_THAN`, value: X |
+| "gelijk aan X" | `EQUALS`, value: X |
+| "vermenigvuldigd met" | `MULTIPLY`, values: [...] |
+| "gedeeld door" | `DIVIDE`, values: [...] |
+| "vermeerderd met" | `ADD`, values: [...] |
+| "verminderd met" | `SUBTRACT`, values: [...] |
+| "indien ... en ..." | `AND`, conditions: [...] |
+| "indien ... of ..." | `OR`, conditions: [...] |
+| "tenzij" | `NOT` |
+| "ingevolge" | Cross-law reference via source.regulation |
+| "bedoeld in artikel X" | Internal reference via source.output |
 
 ## Data Type Mapping
 
 ### Common Parameters
+| Legal Concept | Parameter Name | Type |
+|--------------|---------------|------|
+| Citizen | bsn | string |
+| Date | peildatum | date |
+| Year | jaar | number |
+| Municipality | gemeente_code | string |
 
-| Legal Concept | Parameter Name | Type | Example |
-|--------------|---------------|------|---------|
-| Citizen | BSN | string | "999993653" |
-| Date | peildatum | date | "2025-01-01" |
-| Year | jaar | integer | 2025 |
-| Amount | bedrag | number | 79547 (eurocent) |
-| Age | leeftijd | integer | 18 |
-| Income | inkomen | number | 7954700 (eurocent) |
-| Assets | vermogen | number | 15485900 (eurocent) |
-
-### Common Inputs
-
+### Common Input Fields
 | Legal Concept | Input Name | Type | Source |
 |--------------|-----------|------|--------|
-| Birth date | geboortedatum | date | BRP |
-| Age | leeftijd | integer | Calculated from geboortedatum |
-| Insured status | is_verzekerd | boolean | ZVW |
-| Residence | woont_in_nederland | boolean | BRP |
-| Partner status | heeft_partner | boolean | AWIR |
-| Test income | toetsingsinkomen | number | Belastingdienst |
-| Assets | vermogen | number | Belastingdienst |
+| Age | leeftijd | number | wet_basisregistratie_personen |
+| Insured status | is_verzekerd | boolean | zorgverzekeringswet |
+| Partner status | heeft_toeslagpartner | boolean | awir |
+| Test income | toetsingsinkomen | amount | awir |
+| Assets | vermogen | amount | belastingdienst |
 
 ### Common Outputs
-
-| Legal Concept | Output Name | Type | Description |
-|--------------|------------|------|-------------|
-| Eligibility | heeft_recht | boolean | Has right to benefit |
-| Amount | bedrag | number | Benefit amount (eurocent) |
-| Percentage | percentage | number | Percentage value |
-| Below threshold | onder_grens | boolean | Below limit |
-| Age check | is_volwassen | boolean | Is adult (18+) |
-
-## Example Interpretations
-
-### Example 1: Simple Constant
-
-**Legal Text:**
-```
-De standaardpremie bedraagt € 2.112.
-```
-
-**Interpretation:**
-```yaml
-machine_readable:
-  definitions:
-    STANDAARDPREMIE:
-      value: 211200  # €2.112 in eurocent
-      description: "Standaardpremie zorgverzekering"
-
-  execution:
-    output:
-      - name: "standaardpremie"
-        type: "number"
-        description: "Standaardpremie in eurocenten"
-
-    actions:
-      - output: "standaardpremie"
-        operation: "EQUALS"
-        subject: "$STANDAARDPREMIE"
-        value: "$STANDAARDPREMIE"
-```
-
-### Example 2: Age Check with Cross-Reference
-
-**Legal Text:**
-```
-Een persoon heeft recht indien hij de leeftijd van 18 jaar heeft bereikt.
-```
-
-**Interpretation:**
-```yaml
-machine_readable:
-  execution:
-    parameters:
-      - name: "BSN"
-        type: "string"
-        required: true
-        description: "Burgerservicenummer"
-
-    input:
-      - name: "geboortedatum"
-        type: "date"
-        source:
-          # TODO: Implement BRP (Basisregistratie Personen)
-          url: "TODO_brp"
-          parameters:
-            BSN: "$BSN"
-
-    output:
-      - name: "heeft_recht"
-        type: "boolean"
-        description: "Heeft de persoon recht (18+)?"
-
-    actions:
-      - output: "leeftijd"
-        operation: "CALCULATE_AGE"
-        subject: "$geboortedatum"
-
-      - output: "heeft_recht"
-        operation: "GREATER_THAN_OR_EQUAL"
-        subject: "$leeftijd"
-        value: 18
-```
-
-### Example 3: Complex Conditions (AND)
-
-**Legal Text:**
-```
-Een persoon heeft recht op zorgtoeslag indien hij:
-a. de leeftijd van 18 jaar heeft bereikt;
-b. verzekerd is ingevolge de Zorgverzekeringswet;
-c. in Nederland woont.
-```
-
-**Interpretation:**
-```yaml
-machine_readable:
-  execution:
-    parameters:
-      - name: "BSN"
-        type: "string"
-        required: true
-
-    input:
-      - name: "leeftijd"
-        type: "integer"
-        source:
-          url: "TODO_brp"
-          parameters:
-            BSN: "$BSN"
-
-      - name: "is_verzekerd"
-        type: "boolean"
-        source:
-          # TODO: Implement Zorgverzekeringswet
-          url: "TODO_zvw"
-          parameters:
-            BSN: "$BSN"
-
-      - name: "woont_in_nederland"
-        type: "boolean"
-        source:
-          url: "TODO_brp"
-          parameters:
-            BSN: "$BSN"
-
-    output:
-      - name: "bepaal_recht_op_zorgtoeslag"
-        type: "boolean"
-        description: "Heeft recht op zorgtoeslag"
-
-    actions:
-      - output: "bepaal_recht_op_zorgtoeslag"
-        operation: "AND"
-        conditions:
-          - operation: "GREATER_THAN_OR_EQUAL"
-            subject: "$leeftijd"
-            value: 18
-          - operation: "EQUALS"
-            subject: "$is_verzekerd"
-            value: true
-          - operation: "EQUALS"
-            subject: "$woont_in_nederland"
-            value: true
-```
-
-### Example 4: Calculation with Cross-Reference
-
-**Legal Text:**
-```
-Het toetsingsinkomen bedraagt niet meer dan de standaardpremie,
-vermenigvuldigd met het normpremiepercentage van 6,68%.
-```
-
-**Interpretation:**
-```yaml
-machine_readable:
-  definitions:
-    NORMPREMIEPERCENTAGE:
-      value: 6.68
-      description: "Normpremiepercentage voor zorgtoeslag"
-
-  execution:
-    parameters:
-      - name: "BSN"
-        type: "string"
-        required: true
-
-    input:
-      - name: "standaardpremie"
-        type: "number"
-        source:
-          url: "regulation/nl/ministeriele_regeling/regeling_standaardpremie#standaardpremie"
-
-      - name: "toetsingsinkomen"
-        type: "number"
-        source:
-          # TODO: Implement AWIR
-          url: "TODO_awir"
-          parameters:
-            BSN: "$BSN"
-
-    output:
-      - name: "voldoet_aan_inkomenseis"
-        type: "boolean"
-        description: "Toetsingsinkomen onder grens"
-
-    actions:
-      - output: "inkomensgrens"
-        operation: "MULTIPLY"
-        subject: "$standaardpremie"
-        value: "$NORMPREMIEPERCENTAGE"
-
-      - output: "voldoet_aan_inkomenseis"
-        operation: "LESS_THAN_OR_EQUAL"
-        subject: "$toetsingsinkomen"
-        value: "$inkomensgrens"
-```
-
-### Example 5: Internal Reference
-
-**Legal Text (Article 2):**
-```
-Een persoon heeft recht indien het vermogen niet meer bedraagt
-dan de in artikel 3 genoemde grens.
-```
-
-**Legal Text (Article 3):**
-```
-De grens bedraagt € 154.859 voor een alleenstaande.
-```
-
-**Interpretation (Article 2):**
-```yaml
-machine_readable:
-  execution:
-    parameters:
-      - name: "BSN"
-        type: "string"
-        required: true
-
-    input:
-      - name: "vermogen_onder_grens"
-        type: "boolean"
-        source:
-          url: "#vermogen_onder_grens"  # Internal reference to article 3
-          parameters:
-            BSN: "$BSN"
-
-    output:
-      - name: "bepaal_recht"
-        type: "boolean"
-
-    actions:
-      - output: "bepaal_recht"
-        operation: "EQUALS"
-        subject: "$vermogen_onder_grens"
-        value: true
-```
-
-**Interpretation (Article 3):**
-```yaml
-machine_readable:
-  definitions:
-    VERMOGENSGRENS:
-      value: 15485900  # €154.859 in eurocent
-      description: "Vermogensgrens voor alleenstaande"
-
-  execution:
-    parameters:
-      - name: "BSN"
-        type: "string"
-        required: true
-
-    input:
-      - name: "vermogen"
-        type: "number"
-        source:
-          # TODO: Implement Belastingdienst vermogen check
-          url: "TODO_belastingdienst"
-          parameters:
-            BSN: "$BSN"
-
-    output:
-      - name: "vermogen_onder_grens"
-        type: "boolean"
-
-    actions:
-      - output: "vermogen_onder_grens"
-        operation: "LESS_THAN_OR_EQUAL"
-        subject: "$vermogen"
-        value: "$VERMOGENSGRENS"
-```
+| Legal Concept | Output Name | Type | type_spec |
+|--------------|------------|------|-----------|
+| Eligibility | heeft_recht | boolean | — |
+| Amount | hoogte_toeslag | amount | unit: eurocent |
+| Below threshold | onder_grens | boolean | — |
 
 ## Debugging Tips
 
-1. **Check variable scope**: Ensure `$variable` references are defined
-2. **Verify operation types**: Match operation to expected return type
-3. **Test cross-references**: Confirm `#field` references exist in same file
-4. **Validate eurocent**: Double-check monetary conversions
-5. **Check TODO comments**: List all missing external dependencies
-6. **Type consistency**: Boolean operations should return boolean, etc.
-7. **Parameter passing**: Ensure parameters match between caller and callee
-8. **Nested operations**: Complex operations may need intermediate outputs
+1. **Run `just validate <file>`** — catches schema violations with exact paths
+2. **Check action patterns**: `value:` for assignments/operations, `operation:`+`values:` for arithmetic only
+3. **IF uses when/then/else** — NOT condition/then_value/else_value
+4. **Arithmetic uses values array** — NOT subject/value
+5. **Logical uses conditions array** — NOT values
+6. **Comparison uses subject (must be $var)** — and value
+7. **Source uses regulation/output** — NOT url
+8. **Monetary fields**: type `amount` with `type_spec: { unit: eurocent }`
 
 ## External Resources
 
-- **Schema v0.2.0:** https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.2.0/schema.json
-- **Project CLAUDE.md:** See `/Users/anneschuth/regelrecht-mvp/CLAUDE.md`
-- **Existing Laws:** Browse `regulation/nl/` for examples
-- **Engine Reference:** See `engine/` directory for execution details
+- **Schema**: `schema/latest/schema.json` (v0.3.2)
+- **Working example**: `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
+- **Engine source**: `packages/engine/src/`
+- **Validation binary**: `packages/engine/src/bin/validate.rs`
