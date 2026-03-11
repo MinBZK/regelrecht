@@ -402,14 +402,15 @@ Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
     And the following BELASTINGDIENST "box1" data:
       | bsn       | belastbaar_inkomen |
       | 999993653 | 2000000            |
-    When the healthcare allowance law is executed
-    Then the allowance amount is "1732.80" euro
+    When the zorgtoeslag is executed for wet_op_de_zorgtoeslag article 2
+    Then the hoogte_zorgtoeslag is "173280" eurocent
 ```
 
 **Key points:**
 - Each scenario traces back to a specific MvT passage with `# Bron:` comment
 - Monetary inputs are in eurocent (€20.000 = 2000000)
-- Expected outputs use the format matching existing Then steps (here `euro` not `eurocent` — match whichever step definition exists)
+- Expected outputs are ALWAYS in eurocent (€1.732,80 = 173280) — never use euro with decimals
+- When/Then steps use concrete law names (not placeholders like `{law_name}`)
 - The scenario uses existing Given/When/Then steps, not new ones
 - Do NOT invent scenarios — only use what the legislature provided
 

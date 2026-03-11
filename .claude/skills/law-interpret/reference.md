@@ -150,7 +150,11 @@ unit: years                 # days | months | years
 ```
 
 ### NOT — negation
+
+Negates a boolean condition. Use `value:` containing the operation to negate.
+
 ```yaml
+# "tenzij de persoon verzekerd is" → NOT(is_verzekerd == true)
 operation: NOT
 value:
   operation: EQUALS
@@ -158,8 +162,28 @@ value:
   value: true
 ```
 
-### FOREACH — iteration over arrays
+Can also negate compound conditions:
 ```yaml
+# "tenzij zowel A als B" → NOT(A AND B)
+operation: NOT
+value:
+  operation: AND
+  conditions:
+    - operation: EQUALS
+      subject: $a
+      value: true
+    - operation: EQUALS
+      subject: $b
+      value: true
+```
+
+### FOREACH — iteration over arrays
+
+Iterates over a collection, applying an operation to each item. Uses dot notation
+(`$item.field`) to access properties of each element.
+
+```yaml
+# Sum all line item amounts: for each item, multiply bedrag × percentage
 operation: FOREACH
 collection: $items
 item_variable: $item
@@ -171,7 +195,8 @@ value:
 ```
 
 **Note:** Both `NOT` and `FOREACH` use `additionalProperties: true` in the schema,
-so field names are flexible. Check existing regulation YAML files for usage patterns.
+so field names beyond the examples above are flexible. Check existing regulation
+YAML files for additional usage patterns.
 
 ## Variable References
 
@@ -241,10 +266,15 @@ source:
 
 **Rules:**
 1. Remove currency symbol (€)
-2. Remove thousands separators (.)
-3. Replace decimal comma (,) with decimal point (.)
-4. Parse as decimal number (euros)
-5. Multiply by 100 and round to integer
+2. Remove thousands separators (.) — these are the dots between digit groups (e.g., `1.000.000`)
+3. Replace decimal comma (,) with decimal point (.) — this is the comma before cents (e.g., `795,47` → `795.47`)
+4. Parse as decimal number (euros) — e.g., `795.47`
+5. Multiply by 100 and round to integer — e.g., `795.47 × 100 = 79547`
+
+**Examples applying the rules:**
+- `€2.112` → remove `€` → `2.112` → remove thousands `.` → `2112` → no decimal comma → parse `2112.0` → × 100 = `211200`
+- `€795,47` → remove `€` → `795,47` → no thousands sep → `795,47` → replace `,` with `.` → parse `795.47` → × 100 = `79547`
+- `€1.234,56` → remove `€` → `1.234,56` → remove thousands `.` → `1234,56` → replace `,` with `.` → parse `1234.56` → × 100 = `123456`
 
 ## Common Legal Phrases → Operations
 
