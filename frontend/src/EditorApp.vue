@@ -1,3 +1,21 @@
+<script setup>
+import { ref } from 'vue';
+import { useLaw } from './composables/useLaw.js';
+import ArticleText from './components/ArticleText.vue';
+import MachineReadable from './components/MachineReadable.vue';
+import YamlView from './components/YamlView.vue';
+import ActionSheet from './components/ActionSheet.vue';
+
+const { articles, lawName, selectedArticle, selectedArticleNumber, loading } = useLaw();
+
+const activeAction = ref(null);
+const rightPaneView = ref('machine');
+
+function selectArticle(number) {
+  selectedArticleNumber.value = String(number);
+}
+</script>
+
 <template>
   <rr-page header-sticky>
     <!-- Header: Main Toolbar -->
@@ -32,12 +50,101 @@
       </rr-toolbar-end-area>
     </rr-toolbar>
 
-    <!-- Content area -->
-    <rr-simple-section>
-      <p>Editor wordt geladen...</p>
-    </rr-simple-section>
-  </rr-page>
-</template>
+    <!-- Document Tab Bar -->
+    <rr-document-tab-bar v-if="!loading">
+      <rr-document-tab-bar-item
+        v-for="article in articles"
+        :key="article.number"
+        :subtitle="lawName"
+        :selected="String(article.number) === String(selectedArticleNumber) || undefined"
+        has-dismiss-button
+        @click="selectArticle(article.number)"
+      >
+        Artikel {{ article.number }}
+      </rr-document-tab-bar-item>
+    </rr-document-tab-bar>
 
-<script setup>
-</script>
+    <!-- Main Editor: Side-by-side split view -->
+    <rr-side-by-side-split-view>
+
+      <!-- Left Pane: Text -->
+      <div slot="start" style="background: #F4F6F9;">
+        <rr-page header-sticky>
+          <rr-toolbar slot="header" size="md">
+            <rr-toolbar-start-area>
+              <rr-toolbar-item>
+                <rr-button variant="neutral-tinted" size="md">
+                  Tekst
+                  <img src="/assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
+                </rr-button>
+              </rr-toolbar-item>
+            </rr-toolbar-start-area>
+            <rr-toolbar-end-area>
+              <rr-toolbar-item>
+                <rr-segmented-control size="md" content-type="icons">
+                  <rr-segmented-control-item value="bold" title="Bold">
+                    <img src="/assets/icons/bold.svg" alt="Bold" width="20" height="20">
+                  </rr-segmented-control-item>
+                  <rr-segmented-control-item value="italic" title="Italic">
+                    <img src="/assets/icons/italic.svg" alt="Italic" width="20" height="20">
+                  </rr-segmented-control-item>
+                </rr-segmented-control>
+              </rr-toolbar-item>
+              <rr-toolbar-item>
+                <rr-segmented-control size="md" content-type="icons">
+                  <rr-segmented-control-item value="hr" title="Horizontale lijn">
+                    <img src="/assets/icons/minus.svg" alt="Lijn" width="20" height="20">
+                  </rr-segmented-control-item>
+                  <rr-segmented-control-item value="ul" title="Bullet list">
+                    <img src="/assets/icons/bullet-list.svg" alt="Bullet list" width="20" height="20">
+                  </rr-segmented-control-item>
+                  <rr-segmented-control-item value="ol" title="Numbered list">
+                    <img src="/assets/icons/numbered-list.svg" alt="Numbered list" width="20" height="20">
+                  </rr-segmented-control-item>
+                </rr-segmented-control>
+              </rr-toolbar-item>
+            </rr-toolbar-end-area>
+          </rr-toolbar>
+
+          <rr-simple-section>
+            <ArticleText :article="selectedArticle" />
+          </rr-simple-section>
+        </rr-page>
+      </div>
+
+      <!-- Right Pane: Machine / YAML -->
+      <div slot="end">
+        <rr-page header-sticky>
+          <rr-toolbar slot="header" size="md">
+            <rr-toolbar-start-area>
+              <rr-toolbar-item>
+                <rr-button-bar size="md">
+                  <rr-button
+                    :variant="rightPaneView === 'machine' ? 'accent-filled' : 'neutral-tinted'"
+                    size="md"
+                    @click="rightPaneView = 'machine'"
+                  >Machine</rr-button>
+                  <rr-button
+                    :variant="rightPaneView === 'yaml' ? 'accent-filled' : 'neutral-tinted'"
+                    size="md"
+                    @click="rightPaneView = 'yaml'"
+                  >YAML</rr-button>
+                </rr-button-bar>
+              </rr-toolbar-item>
+            </rr-toolbar-start-area>
+          </rr-toolbar>
+
+          <rr-simple-section v-show="rightPaneView === 'machine'">
+            <MachineReadable :article="selectedArticle" @open-action="activeAction = $event" />
+          </rr-simple-section>
+          <rr-simple-section v-show="rightPaneView === 'yaml'">
+            <YamlView :article="selectedArticle" />
+          </rr-simple-section>
+        </rr-page>
+      </div>
+
+    </rr-side-by-side-split-view>
+  </rr-page>
+
+  <ActionSheet :action="activeAction" @close="activeAction = null" />
+</template>

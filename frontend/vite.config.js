@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
 import vue from '@vitejs/plugin-vue';
+import { resolve } from 'path';
 
 export default defineConfig({
   root: '.',
@@ -18,8 +18,8 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        'editor-example': resolve(__dirname, 'editor-example.html'),
         editor: resolve(__dirname, 'editor.html'),
+        editorExample: resolve(__dirname, 'editor-example.html'),
       },
     },
   },
