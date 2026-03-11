@@ -554,6 +554,68 @@ Engine: Calculates result using all interconnected laws
 
 ---
 
+## Example 8: MvT-Derived Gherkin Scenarios
+
+**MvT passage (from kst-29764-3, Memorie van Toelichting Wet op de Zorgtoeslag):**
+```
+Voorbeeld: Een alleenstaande met een toetsingsinkomen van € 20.000 en een
+standaardpremie van € 2.112. De normpremie bedraagt 6,68% × € 20.000 = € 1.336.
+De zorgtoeslag bedraagt € 2.112 − € 1.336 = € 776.
+```
+
+**Generated Gherkin (features/zorgtoeslag_mvt.feature):**
+```gherkin
+Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
+  Testscenario's afgeleid uit de Memorie van Toelichting bij de
+  Wet op de Zorgtoeslag (BWBR0018451).
+
+  # Bron: kst-29764-3 (Memorie van Toelichting)
+  # URL: https://zoek.officielebekendmakingen.nl/kst-29764-3.html
+
+  Background:
+    Given the calculation date is "2025-01-01"
+
+  # === Rekenvoorbeelden uit MvT ===
+
+  Scenario: Alleenstaande met toetsingsinkomen €20.000 (MvT voorbeeld)
+    # Bron: kst-29764-3, artikelsgewijze toelichting bij artikel 2
+    # Berekening: normpremie = 6,68% × €20.000 = €1.336
+    #             zorgtoeslag = €2.112 − €1.336 = €776
+    Given the following RVIG "personal_data" data:
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+    And the following RVIG "relationship_data" data:
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    And the following RVZ "insurance" data:
+      | bsn       | polis_status |
+      | 999993653 | ACTIEF       |
+    And the following BELASTINGDIENST "box1" data:
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            |
+    And the following BELASTINGDIENST "box2" data:
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    And the following BELASTINGDIENST "box3" data:
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    And the following DJI "detenties" data:
+      | bsn       | detentiestatus | inrichting_type |
+      | 999993653 | null           | null            |
+    When the healthcare allowance law is executed
+    Then the allowance amount is "776.00" euro
+```
+
+**Key points:**
+- The scenario traces directly to a specific MvT passage (`# Bron:` comment)
+- The expected value (€776) comes from the legislature's own calculation, NOT from
+  the skill's interpretation — this is ground truth
+- Input values (€20.000 toetsingsinkomen) converted to eurocent (2000000) in the
+  data tables
+- The intermediate calculation is documented in comments for traceability
+
+---
+
 ## Tips for Working with Interpreted Laws
 
 1. **Review TODOs first**: List all missing dependencies before execution

@@ -2,17 +2,20 @@
 name: law-interpret
 description: >
   Generates machine-readable execution logic for Dutch law YAML files using an
-  iterative generate-validate-test loop. Reads legal text, creates machine_readable
-  sections, validates against the schema/engine, generates test scenarios, runs them,
-  and iterates until correct (up to 3 iterations). Use when user wants to make a law
-  executable or add machine_readable sections.
-allowed-tools: Read, Edit, Write, Bash, Grep, Glob
+  iterative generate-validate-test loop. First searches for Memorie van Toelichting
+  (explanatory memoranda) to extract legislature-intended examples and generates
+  Gherkin test scenarios from them. Then creates machine_readable sections, validates
+  against the schema/engine, runs BDD tests, and iterates until correct (up to 3
+  iterations). Use when user wants to make a law executable or add machine_readable
+  sections.
+allowed-tools: Read, Edit, Write, Bash, Grep, Glob, WebFetch
 ---
 
 # Law Interpret — Agentic Generate→Validate→Test Loop
 
 Generates `machine_readable` sections for Dutch law YAML files through an iterative
-cycle of generation, validation, test scenario creation, and execution.
+cycle of MvT research, Gherkin scenario generation, machine_readable creation,
+validation, and BDD testing.
 
 ## Phase 0: Setup
 
@@ -21,13 +24,163 @@ cycle of generation, validation, test scenario creation, and execution.
    `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
 3. Read the schema reference: `.claude/skills/law-interpret/reference.md`
 4. Read the examples: `.claude/skills/law-interpret/examples.md`
-5. Count articles; if >20 articles, process in batches of ~15
-6. Build the evaluate binary once:
+5. Read an existing feature file as Gherkin reference:
+   `features/bijstand.feature`
+6. Count articles; if >20 articles, process in batches of ~15
+7. Build the evaluate binary once:
    ```bash
    cargo build --manifest-path packages/engine/Cargo.toml --bin evaluate --release
    ```
 
-## Phase 1: Generate `machine_readable` Sections
+## Phase 1: Search and Extract Memorie van Toelichting
+
+This phase runs **independently** from the machine_readable generation. Its sole
+purpose is to find legislature-intended examples, calculation scenarios, and edge
+cases, then turn them into Gherkin acceptance tests.
+
+### Step 1.1: Find MvT Documents
+
+Extract the `bwb_id` (e.g., `BWBR0018451`) from the law YAML's `identifiers.bwb_id`.
+
+Search for related parliamentary documents using the overheid.nl SRU API:
+
+```
+http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.references=={BWB_ID}&maximumRecords=20
+```
+
+Use WebFetch to retrieve the results. Parse the XML response to find documents of
+these types (in `<dcterms:type>`):
+- **Memorie van toelichting** (explanatory memorandum)
+- **Nota naar aanleiding van het verslag** (response to parliamentary report)
+- **Nota van wijziging** (amendment note)
+- **Brief van de minister** (ministerial letter with examples)
+
+Also search by law title for additional coverage:
+```
+http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=officielepublicaties&query=dcterms.title%20any%20"{LAW_TITLE}"%20AND%20dcterms.type=="Memorie van toelichting"&maximumRecords=10
+```
+
+There may be **multiple MvT documents** (original + amendments). Collect all of them.
+
+### Step 1.2: Download and Read MvT Content
+
+For each found document, extract the document identifier from the search results
+(e.g., `kst-36XXX-3`) and download the HTML version:
+
+```
+https://zoek.officielebekendmakingen.nl/{DOCUMENT_ID}.html
+```
+
+Use WebFetch to retrieve the content. If HTML is too large, focus on sections that
+contain:
+- "voorbeeld" (example)
+- "rekenvoorbeeld" (calculation example)
+- "casus" (case)
+- "scenario"
+- "tabel" (table — often contains example calculations)
+- "berekening" (calculation)
+- "stel dat" (suppose that)
+- "in het geval" (in the case of)
+
+### Step 1.3: Extract Test-Relevant Information
+
+From the MvT content, extract:
+
+1. **Rekenvoorbeelden** (calculation examples):
+   - Input values used by the legislature
+   - Expected output values
+   - Step-by-step calculations shown
+
+2. **Concrete scenario's** (concrete scenarios):
+   - Described situations with specific parameters
+   - Expected outcomes stated by the legislature
+
+3. **Randgevallen** (edge cases):
+   - Boundary conditions explicitly discussed
+   - Special cases the legislature considered
+
+4. **Bedoelde uitkomsten** (intended outcomes):
+   - "De bedoeling is dat..." (the intention is that...)
+   - "Dit betekent dat een persoon die..." (this means that a person who...)
+
+For each extracted example, note:
+- Which article(s) it relates to
+- The input parameters and their values
+- The expected output/result
+- The source document and page/section reference
+
+### Step 1.4: Generate Gherkin Feature File
+
+Write a `.feature` file to `features/{law_id}.feature` based on the MvT examples.
+
+Follow the existing project conventions (see `features/bijstand.feature` and
+`features/zorgtoeslag.feature` for style).
+
+**Structure:**
+```gherkin
+Feature: {Law title} — scenarios uit Memorie van Toelichting
+  Testscenario's afgeleid uit de Memorie van Toelichting en parlementaire
+  stukken bij {law_title}.
+
+  # Bron: {MvT document identifier(s)}
+  # URL: {MvT document URL(s)}
+
+  Background:
+    Given the calculation date is "{effective_date}"
+
+  # === Rekenvoorbeelden uit MvT ===
+
+  Scenario: {Description from MvT}
+    # Bron: {document_id}, {section/page reference}
+    Given a citizen with the following data:
+      | parameter_1 | value_1 |
+      | parameter_2 | value_2 |
+    When the {law_execution} is executed for {law_id} article {N}
+    Then the {output_name} is "{expected_value}" eurocent
+
+  # === Randgevallen ===
+
+  Scenario: {Edge case from MvT}
+    # Bron: {document_id}, {section/page reference}
+    ...
+```
+
+**Guidelines:**
+- Each scenario MUST trace back to a specific MvT passage (add `# Bron:` comments)
+- Convert monetary amounts in MvT to eurocent
+- Use the same Given/When/Then step patterns as existing feature files
+- If MvT examples reference external data sources (RVIG, Belastingdienst, etc.),
+  use the appropriate Given steps for those sources
+- If the MvT doesn't provide enough examples for a specific article, note this in
+  a comment but do NOT invent scenarios — only use what the legislature provided
+- Group scenarios by: rekenvoorbeelden, randgevallen, afwijzingsscenario's
+
+### Step 1.5: Report MvT Findings
+
+Report to the user before proceeding to machine_readable generation:
+
+```
+MvT Research for {LAW_NAME}
+
+  Documents found: {COUNT}
+  - {doc_id_1}: {title} ({date})
+  - {doc_id_2}: {title} ({date})
+
+  Extracted scenarios: {SCENARIO_COUNT}
+  - Rekenvoorbeelden: {N}
+  - Randgevallen: {N}
+  - Afwijzingsscenario's: {N}
+
+  Feature file: features/{law_id}.feature
+
+  Articles without MvT examples: {list}
+  Note: No synthetic scenarios were added for these articles.
+```
+
+If NO MvT documents are found, report this clearly and continue to Phase 2 without
+a feature file. The later phases will fall back to the JSON-based test approach.
+
+## Phase 2: Generate `machine_readable` Sections
 
 For each article with computable logic, generate the `machine_readable` section.
 
@@ -67,54 +220,166 @@ For each article with computable logic, generate the `machine_readable` section.
 | "niet ..." | `NOT` |
 | "gelijk aan" | `EQUALS` |
 
-## Phase 2: Validate (with repair sub-loop)
+## Phase 3: Validate (with repair sub-loop)
 
 Run validation:
 ```bash
 just validate <file_path>
 ```
 
-- If OK → proceed to Phase 3
+- If OK → proceed to Phase 4
 - If errors → **Repair** (up to 2 rounds):
   1. Read error output, identify broken articles/fields
   2. Fix with Edit tool
   3. Re-run `just validate`
-  4. If still failing after 2 repair rounds: log errors and continue to Phase 3
+  4. If still failing after 2 repair rounds: log errors and continue to Phase 4
 
-## Phase 3: Generate Test Scenarios
+## Phase 4: Run BDD Tests
 
-For each article with `execution.output`, generate 2–5 test scenarios.
+Run the Gherkin scenarios from Phase 1 against the machine_readable logic:
 
-### Scenario Format
-Write scenarios as JSON to `/tmp/scenarios_<law_id>.json`:
-```json
-[
-  {
-    "name": "Beschrijving van het scenario",
-    "output_name": "heeft_recht",
-    "params": {
-      "bsn": "123456789",
-      "peildatum": "2025-01-01"
-    },
-    "date": "2025-01-01",
-    "expected": {
-      "heeft_recht": true
-    }
-  }
-]
+```bash
+just bdd
 ```
 
-### Scenario Guidelines
-- Cover: happy path, edge cases, boundary values
-- Amounts in eurocent (integers)
-- Dates as YYYY-MM-DD strings
-- Include at least one scenario per distinct output
-- Test both true/false paths for boolean outputs
-- Test boundary values for thresholds (e.g., age exactly 18)
+This runs ALL feature files (in `features/`) including the one generated in Phase 1.
+The command is equivalent to:
+```bash
+cd packages/engine && cargo test --test bdd -- --nocapture
+```
 
-## Phase 4: Execute Scenarios
+### Creating New Step Definitions
 
-For each scenario, pipe JSON to the evaluate binary:
+If the feature file uses Given/When/Then steps that don't exist yet, you must add
+them before running `just bdd`. The BDD harness lives in:
+
+```
+packages/engine/tests/bdd/
+├── main.rs              # Test runner (finds features/, runs cucumber)
+├── world.rs             # RegelrechtWorld state struct
+├── steps/
+│   ├── mod.rs           # Module exports
+│   ├── given.rs         # Setup steps (data input)
+│   ├── when.rs          # Action steps (law execution)
+│   └── then.rs          # Assertion steps (output checks)
+└── helpers/
+    ├── regulation_loader.rs  # Loads all YAML from regulation/nl/
+    └── value_conversion.rs   # Gherkin string → Value conversion
+```
+
+#### Adding a Given Step (data setup)
+
+For simple parameter tables (`| key | value |`), reuse the existing step:
+```gherkin
+Given a citizen with the following data:
+  | leeftijd | 35 |
+  | inkomen  | 2000000 |
+```
+
+For external data sources (RVIG, Belastingdienst, etc.), reuse existing steps like:
+```gherkin
+Given the following RVIG "personal_data" data:
+  | bsn | geboortedatum | land_verblijf |
+  | 999993653 | 1990-01-01 | NEDERLAND |
+```
+
+If a new external data source is needed, add a step in `steps/given.rs`:
+```rust
+#[given(regex = r#"the following NEWSOURCE "(\w+)" data:"#)]
+async fn given_newsource_data(world: &mut RegelrechtWorld, field: String, step: &Step) {
+    let table = step.table.as_ref().expect("Expected a data table");
+    let records = parse_external_data_table(table);
+    world.external_data.newsource.insert(field, records);
+}
+```
+
+And add the corresponding field to `ExternalData` in `world.rs`.
+
+#### Adding a When Step (law execution)
+
+Each law needs a When step that triggers execution. Pattern:
+```rust
+#[when(regex = r"the {law_name} is executed for {law_id} article (\d+)")]
+async fn when_execute_new_law(world: &mut RegelrechtWorld, article: u32) {
+    // Register any external data sources needed
+    register_if_present(&mut world.service, "RVIG", "bsn", &world.external_data.rvig);
+    // ... register other sources
+
+    // Execute the law
+    world.execute_law("{law_id}", "{output_name}").await;
+}
+```
+
+The `register_if_present` helper registers a dict source only if data was provided:
+```rust
+fn register_if_present(
+    service: &mut LawExecutionService,
+    source_name: &str,
+    key_field: &str,
+    data: &HashMap<String, Vec<HashMap<String, Value>>>,
+) {
+    for (field, records) in data {
+        service.register_dict_source(
+            &format!("{}_{}", source_name, field),
+            key_field,
+            records.clone(),
+        );
+    }
+}
+```
+
+#### Adding a Then Step (assertions)
+
+For checking output values:
+```rust
+#[then(regex = r#"the {output_name} is "([^"]+)" eurocent"#)]
+async fn then_check_amount(world: &mut RegelrechtWorld, expected: String) {
+    assert!(world.is_success(), "Execution failed: {}", world.error_message());
+    let output = world.get_output("{output_name}").expect("Output not found");
+    let expected_val = parse_eurocent(&expected);
+    // Handle Int/Float comparison
+    match output {
+        Value::Int(v) => assert_eq!(*v, expected_val as i64),
+        Value::Float(v) => assert!((v - expected_val as f64).abs() < 0.01),
+        other => panic!("Expected number, got {:?}", other),
+    }
+}
+```
+
+For boolean checks:
+```rust
+#[then("the citizen has the right to {benefit}")]
+async fn then_has_right(world: &mut RegelrechtWorld) {
+    assert!(world.is_success());
+    let output = world.get_output("heeft_recht").expect("Missing heeft_recht");
+    assert_eq!(output, &Value::Bool(true));
+}
+```
+
+#### Key World Methods
+
+- `world.execute_law(law_id, output_name)` — runs the engine, stores result/error
+- `world.get_output(name)` — retrieves a named output from the last result
+- `world.is_success()` — true if execution succeeded
+- `world.error_message()` — error string from last failed execution
+- `world.parameters` — `HashMap<String, Value>` for simple inputs
+- `world.external_data` — struct with fields for each data source
+
+#### Prefer Reusing Existing Steps
+
+Before creating new steps, check if existing patterns cover your case. Read the
+existing step files first:
+- `packages/engine/tests/bdd/steps/given.rs`
+- `packages/engine/tests/bdd/steps/when.rs`
+- `packages/engine/tests/bdd/steps/then.rs`
+
+Many scenarios can be expressed using the existing generic steps. Only add new steps
+when the law requires a genuinely different execution pattern or data source.
+
+### If no MvT feature file was generated
+
+Fall back to ad-hoc testing: for each article with `execution.output`, pipe JSON
+to the evaluate binary:
 
 ```bash
 echo '<json>' | ./target/release/evaluate
@@ -141,17 +406,15 @@ The JSON payload format:
   ```
 - Use Glob to find referenced law files
 
-### Comparing Results
-- Compare actual output values against expected values
-- Track pass/fail per scenario
-
 ## Phase 5: Iterate (up to 3 total iterations)
 
-- **All scenarios pass** → proceed to Phase 6
+- **All BDD scenarios pass** → proceed to Phase 6
 - **Failures** → analyze each failure:
   - **Logic bug in machine_readable**: fix the YAML actions/operations
-  - **Wrong expected value in scenario**: fix the scenario
-  - Go back to Phase 2 (validate → test again)
+  - **Wrong step definition**: fix the BDD step code
+  - **NEVER change the expected values in MvT-derived scenarios** — these are
+    the legislature's intended outcomes and serve as ground truth
+  - Go back to Phase 3 (validate → test again)
 - **After 3 iterations**: stop and report remaining issues
 
 ## Phase 6: Report
@@ -161,10 +424,15 @@ Report to the user:
 ```
 Interpreted {LAW_NAME}
 
+  MvT sources: {MvT_COUNT} documents found
+  - {doc_id}: {title}
+
   Articles processed: {TOTAL}
   Made executable: {EXECUTABLE_COUNT}
   Validation: {PASSED/FAILED}
-  Test scenarios: {PASS_COUNT}/{TOTAL_COUNT} passing
+
+  BDD scenarios (from MvT): {MvT_PASS}/{MvT_TOTAL} passing
+  Ad-hoc scenarios: {ADHOC_PASS}/{ADHOC_TOTAL} passing
 
   Iterations needed: {N}
 
@@ -174,6 +442,7 @@ Interpreted {LAW_NAME}
   TODOs:
   - {external laws that need to be downloaded/implemented}
 
+  Feature file: features/{law_id}.feature
   The law is now executable via the engine!
 ```
 
