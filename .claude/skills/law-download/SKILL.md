@@ -1,12 +1,26 @@
 ---
 name: law-download
-description: Downloads Dutch official legal publications including national laws (wetten, ministeriele regelingen, koninklijk besluiten), local regulations (lokale verordeningen, gemeentelijk beleid), and implementation policies (uitvoeringsbeleid) from government databases (BWB, CVDR) and converts them to YAML format with textual content only. Use when user wants to download, fetch, or import any Dutch regulation by name or type.
+description: >
+  Downloads Dutch official legal publications including national laws (wetten,
+  ministeriele regelingen, koninklijk besluiten), local regulations (lokale
+  verordeningen, gemeentelijk beleid), and implementation policies
+  (uitvoeringsbeleid) from government databases (BWB, CVDR) and converts them
+  to YAML format with textual content only. Use when user wants to download,
+  fetch, or import any Dutch regulation by name or type. Run this before
+  /law-interpret to create the text-only YAML that law-interpret then makes
+  executable.
 allowed-tools: Read, Write, WebFetch, Bash, Grep, Glob
 ---
 
-# Dutch Law Downloader
+# Law Download
 
-Downloads official Dutch legal publications from government sources (national and local) and converts them to the regelrecht YAML format.
+Downloads official Dutch legal publications from government sources (national
+and local) and converts them to the regelrecht YAML format.
+
+**Pipeline:** `/law-download` (this skill) → `/law-interpret` (adds machine_readable logic)
+
+Use this skill first to create a text-only YAML file, then use `/law-interpret`
+to add machine-readable execution logic to it.
 
 ## What This Skill Does
 
@@ -216,7 +230,7 @@ xmlns:bwb="http://www.overheid.nl/2011/BWB"
 
 **Target Structure:**
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.2.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: "{slugified_title}"
 uuid: {generated_uuid}
 regulatory_layer: "{MAPPED_LAYER}"
@@ -259,24 +273,31 @@ regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
 
 Create directories if they don't exist.
 
-### Step 9: Validate YAML Against Schema
+### Step 9: Validate YAML Against Schema (with repair loop)
 
-Before confirming, validate the generated YAML:
+**CRITICAL**: The generated YAML MUST pass `just validate`. The schema is the single
+source of truth.
 
 ```bash
 just validate {FILE_PATH}
 ```
 
-**If validation fails:**
-- Review error messages
-- Fix the YAML structure
-- Re-validate until it passes
+**If validation fails** — repair (up to 3 rounds):
+1. Read the error output carefully, identify broken fields/structure
+2. Fix the YAML with the Edit tool
+3. Re-run `just validate`
+4. If still failing after 3 rounds, stop and report the errors to the user
 
 **Common validation issues:**
-- Missing required fields (bwb_id, uuid, etc.)
-- Incorrect type for regulatory_layer
-- Malformed YAML syntax
-- Invalid date formats
+- Missing required fields (`bwb_id`, `uuid`, `$schema`, `$id`)
+- Wrong `$schema` URL — must be: `https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json`
+- Incorrect `regulatory_layer` enum value
+- Malformed YAML syntax (bad indentation, unescaped special characters in text)
+- Invalid date formats (must be `YYYY-MM-DD`)
+- Articles missing `number`, `text`, or `url` fields
+
+**Do NOT proceed to Step 10 with invalid YAML.** A file that fails validation
+cannot be used by `/law-interpret` in the next step.
 
 ### Step 10: Confirm with User
 
@@ -290,7 +311,7 @@ Report:
   ✅ Schema validation: PASSED
 
 The YAML file contains the legal text only.
-To add machine-readable execution logic, use the law-machine-readable-interpreter skill.
+To add machine-readable execution logic, run /law-interpret on this file.
 ```
 
 ## Error Handling

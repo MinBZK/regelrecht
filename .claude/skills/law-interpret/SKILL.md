@@ -184,10 +184,10 @@ a feature file. The later phases will fall back to the JSON-based test approach.
 
 For each article with computable logic, generate the `machine_readable` section.
 
-### Action Format (CRITICAL — two valid patterns)
+### Action Format (CRITICAL — four valid patterns)
 
 Actions are the core of the execution logic. Each action MUST have an `output` field.
-There are **two valid patterns** for specifying what to compute:
+There are **four valid patterns** for specifying what to compute:
 
 **Pattern 1: `value` — for assignments, comparisons, conditionals, and logical ops**
 ```yaml
