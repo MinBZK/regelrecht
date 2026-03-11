@@ -8,7 +8,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@minbzk/storybook": "^0.8.8"
+    "@minbzk/storybook": "^0.8.8",
+    "@vitejs/plugin-vue": "^6.0.4",
+    "vue": "^3.5.30"
   },
   "devDependencies": {
     "vite": "^7.3.1"
