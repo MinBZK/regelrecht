@@ -8,7 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@minbzk/storybook": "^0.1.5"
+    "@minbzk/storybook": "^0.8.8"
   },
   "devDependencies": {
     "vite": "^7.3.1"
