@@ -67,6 +67,11 @@ Invoke `/law-reverse-validate` on the target law file.
 This checks every element in `machine_readable` traces back to the original
 legal text, catching hallucinated logic.
 
+**Important:** If reverse validation removes any elements from the YAML, re-run
+`just validate <file>` to ensure the file still passes schema validation.
+Element removal can break required field constraints or leave dangling references.
+If validation fails after removal, fix the issues before proceeding.
+
 ## Step 5: Dependency Check
 
 Before the final report, scan the generated `machine_readable` sections for
@@ -92,8 +97,8 @@ Interpreted {LAW_NAME}
   Made executable: {EXECUTABLE_COUNT}
   Validation: {PASSED/FAILED}
 
-  BDD scenarios (from MvT): {MvT_PASS}/{MvT_TOTAL} passing
-  Ad-hoc scenarios: {ADHOC_PASS}/{ADHOC_TOTAL} passing
+  BDD scenarios: {PASS}/{TOTAL} passing
+  (from MvT feature file and/or ad-hoc evaluate tests)
 
   Iterations needed: {N}
 

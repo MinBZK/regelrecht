@@ -1,4 +1,4 @@
-# Law Interpret - Usage Examples
+# Law Generate - Usage Examples
 
 All examples below conform to schema v0.3.2 and pass `just validate`.
 

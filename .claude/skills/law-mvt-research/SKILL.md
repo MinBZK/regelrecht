@@ -4,7 +4,7 @@ description: >
   Searches for Memorie van Toelichting (explanatory memoranda) for a Dutch law
   and generates Gherkin test scenarios from legislature-intended examples.
   Use when you want MvT-derived BDD scenarios without generating machine_readable.
-allowed-tools: Read, Write, WebFetch, Bash, Grep, Glob
+allowed-tools: Read, Write, WebFetch, WebSearch, Bash, Grep, Glob
 user-invocable: true
 ---
 
@@ -48,14 +48,21 @@ There may be **multiple MvT documents** (original + amendments). Collect all of 
 XML. If a search returns no results:
 1. Try the alternate query (BWB ID vs title, or vice versa)
 2. Try broadening the title query (use fewer keywords)
-3. If both fail, report "No MvT documents found" and proceed — this is not an error
+3. Try WebSearch as a fallback (e.g., search for `site:zoek.officielebekendmakingen.nl memorie van toelichting {law_title}`)
+4. If all searches fail, report "No MvT documents found" and proceed — this is not an error
 
 ## Step 2: Download and Read MvT Content
 
 For each found document, extract the document identifier from the search results.
-The `<dcterms:identifier>` field typically contains a full URI like
-`https://identifier.overheid.nl/BWBR/sgd/kst-36450-3`. Extract only the **last
-path segment** (e.g., `kst-36450-3`) and use it to download the HTML version:
+The `<dcterms:identifier>` field contains the document identifier, but its format
+varies. It may be:
+- A full URI: `https://identifier.overheid.nl/BWBR/sgd/kst-36450-3`
+- A prefixed path: `/sgd/kst-36450-3`
+- A bare ID: `kst-36450-3`
+
+To extract the document ID: take the **last path segment** (split on `/`, take the
+last non-empty part). For example, `kst-36450-3` from any of the above formats.
+Then use it to download the HTML version:
 
 ```
 https://zoek.officielebekendmakingen.nl/{DOCUMENT_ID}.html

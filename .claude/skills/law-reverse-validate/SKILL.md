@@ -39,6 +39,10 @@ hallucinated operations that aren't grounded in the law.
 
 4. For elements classified as "Remove": delete them from the YAML using Edit
 5. For elements classified as "Report as assumption": collect them for the report
+6. **After any removals:** re-run `just validate <file>` to ensure the file still
+   passes schema validation. Removing elements can break required field constraints
+   or leave dangling `$variable` references. Fix any validation errors before
+   completing the report.
 
 ## Report
 

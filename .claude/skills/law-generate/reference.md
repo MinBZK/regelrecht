@@ -1,4 +1,4 @@
-# Law Interpret - Technical Reference
+# Law Generate - Technical Reference
 
 Based on schema v0.3.2 (`schema/latest/schema.json`). Validate with `just validate`.
 

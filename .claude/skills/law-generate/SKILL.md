@@ -217,10 +217,34 @@ input:
 
 For monetary values, use `type: amount` with `type_spec: { unit: eurocent }`.
 
+### Built-in Variables
+
+The engine provides `$referencedate` as a built-in variable representing the
+calculation/reference date. It supports dot notation for property access:
+- `$referencedate.year` — the year component (integer)
+- `$referencedate` — the full date
+
+This is NOT a parameter — it is automatically available in all executions and does
+not need to be declared in `parameters` or `input`.
+
+### When to Skip Articles
+
+Skip articles that have no computable output. Heuristics for non-computable articles:
+- **Pure definitions** — "In deze wet wordt verstaan onder..." (definition articles)
+- **Procedural** — describes who must do what, deadlines for filing, appeal procedures
+- **Delegation** — "Bij of krachtens algemene maatregel van bestuur worden regels gesteld..." (delegates to AMvB without computable logic)
+- **Scope/applicability** — "Deze wet is van toepassing op..." (unless it has testable conditions)
+- **Transitional provisions** — "overgangsrecht" articles about old-to-new transitions
+
+Articles that SHOULD be made executable:
+- Eligibility checks ("heeft recht op ... indien")
+- Calculations ("bedraagt", "wordt berekend", "vermenigvuldigd met")
+- Thresholds ("niet meer dan", "ten minste")
+- Conditional amounts (SWITCH/IF patterns based on categories)
+
 ### Other Rules
 - Convert monetary amounts to eurocent (€100 = 10000)
 - Use `$variable` references for inter-action dependencies
-- Skip articles that are purely definitional/procedural (no computable output)
 - `subject` in comparisons MUST be a `$variable`, never a nested operation
 - Operations can be nested: a `value` in an arithmetic array can itself be an operation
 - `endpoint` on `machine_readable` makes an article callable from other regulations
@@ -327,7 +351,12 @@ Given the following RVIG "personal_data" data:
 ```
 
 If a new external data source is needed, add a step in `steps/given.rs` following
-the existing pattern (note: all steps are synchronous `fn`, NOT `async fn`):
+the existing pattern.
+
+**IMPORTANT: All BDD steps MUST be synchronous `fn`, NOT `async fn`.** The cucumber-rs
+harness in this project uses synchronous world execution. Using `async fn` will compile
+but cause runtime panics or silent test hangs.
+
 ```rust
 #[given(regex = r#"the following NEWSOURCE "newsource_field" data:"#)]
 fn set_newsource_data(world: &mut RegelrechtWorld, step: &Step) {
@@ -481,8 +510,8 @@ Interpreted {LAW_NAME}
   Made executable: {EXECUTABLE_COUNT}
   Validation: {PASSED/FAILED}
 
-  BDD scenarios (from MvT): {MvT_PASS}/{MvT_TOTAL} passing
-  Ad-hoc scenarios: {ADHOC_PASS}/{ADHOC_TOTAL} passing
+  BDD scenarios: {PASS}/{TOTAL} passing
+  (from MvT feature file and/or ad-hoc evaluate tests)
 
   Iterations needed: {N}
 
