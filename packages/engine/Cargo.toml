@@ -23,7 +23,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 
 [dependencies.jsonschema]
-version = "0.42"
+version = "0.45"
 optional = true
 
 [dependencies.wasm-bindgen]
