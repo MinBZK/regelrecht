@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "prebuild": "node scripts/copy-laws.js",
+    "predev": "node scripts/copy-laws.js",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
