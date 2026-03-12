@@ -319,16 +319,17 @@ machine_readable:
           unit: eurocent
     actions:
       - output: uitkering_bedrag
-        operation: SUBTRACT
-        values:
-          - $normbedrag
-          - operation: MULTIPLY
-            values:
-              - $normbedrag
-              - operation: DIVIDE
-                values:
-                  - $verlaging_percentage
-                  - 100
+        value:
+          operation: SUBTRACT
+          values:
+            - $normbedrag
+            - operation: MULTIPLY
+              values:
+                - $normbedrag
+                - operation: DIVIDE
+                  values:
+                    - $verlaging_percentage
+                    - 100
 ```
 
 ---
