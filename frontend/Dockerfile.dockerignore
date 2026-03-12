@@ -1,0 +1,15 @@
+.git
+.worktrees
+target
+node_modules
+features
+doc
+*.md
+*.png
+.vscode
+.idea
+.claude
+.pytest_cache
+__pycache__
+.github
+packages
