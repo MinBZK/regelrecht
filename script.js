@@ -311,16 +311,50 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!signupForm) return;
 
     var successEl = document.getElementById('signup-success');
-    var nextUrlInput = document.getElementById('form-next-url');
+    var errorEl = document.getElementById('signup-error');
 
-    // Set redirect URL dynamically (works on any domain)
-    nextUrlInput.value = window.location.origin + window.location.pathname + '?success=true';
+    signupForm.addEventListener('submit', function(e) {
+        e.preventDefault();
 
-    // Check if returning from successful submission
-    if (new URLSearchParams(window.location.search).get('success') === 'true') {
-        signupForm.hidden = true;
-        successEl.hidden = false;
-    }
+        // Honeypot check
+        if (signupForm.querySelector('[name="_honey"]').value) return;
+
+        var bijdragen = signupForm.querySelector('[name="Bijdragen aan validatie"]:checked');
+        var opDeHoogte = signupForm.querySelector('[name="Op de hoogte blijven"]');
+        var email = signupForm.querySelector('[name="E-mailadres"]').value;
+        var naam = signupForm.querySelector('[name="Volledige naam"]').value;
+        var organisatie = signupForm.querySelector('[name="Organisatie"]').value;
+        var functie = signupForm.querySelector('[name="Functie"]').value;
+
+        var text = '#### Nieuwe aanmelding: RegelRecht\n' +
+            '| Veld | Waarde |\n' +
+            '|:-----|:-------|\n' +
+            '| **Naam** | ' + naam + ' |\n' +
+            '| **E-mail** | ' + email + ' |\n' +
+            '| **Organisatie** | ' + (organisatie || '-') + ' |\n' +
+            '| **Functie** | ' + (functie || '-') + ' |\n' +
+            '| **Bijdragen aan validatie** | ' + (bijdragen ? bijdragen.value : '-') + ' |\n' +
+            '| **Op de hoogte blijven** | ' + (opDeHoogte.checked ? 'Ja' : 'Nee') + ' |';
+
+        var submitBtn = signupForm.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Bezig met versturen...';
+
+        fetch('https://digilab.overheid.nl/chat/hooks/khcsah5zg3gy8notbfy5baoxwh', {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify({ text: text })
+        }).then(function() {
+            signupForm.hidden = true;
+            successEl.hidden = false;
+        }).catch(function() {
+            signupForm.hidden = true;
+            errorEl.hidden = false;
+        }).finally(function() {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Meld me aan';
+        });
+    });
 });
 
 function resetForm() {
