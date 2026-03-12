@@ -74,12 +74,12 @@ Based on the regulation type, choose the appropriate database:
 
 **API Endpoint (BWB):**
 ```
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query={QUERY}&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query={QUERY}&maximumRecords=10
 ```
 
 **API Endpoint (CVDR):**
 ```
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query={QUERY}&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query={QUERY}&maximumRecords=10
 ```
 
 **Query Construction:**
@@ -92,13 +92,13 @@ http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x
 **Examples:**
 ```
 # Search BWB
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20"zorgtoeslag"&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20"zorgtoeslag"&maximumRecords=10
 
 # Search CVDR for municipal regulations
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=dcterms.title%20any%20"afvalstoffenverordening"&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=dcterms.title%20any%20"afvalstoffenverordening"&maximumRecords=10
 
 # Search specific municipality
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=overheidcvdr.organisatietype==gemeenten%20AND%20dcterms.creator==Amsterdam%20AND%20dcterms.title%20any%20"afval"&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=overheidcvdr.organisatietype==gemeenten%20AND%20dcterms.creator==Amsterdam%20AND%20dcterms.title%20any%20"afval"&maximumRecords=10
 ```
 
 ### Step 3: Parse Search Results

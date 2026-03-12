@@ -163,7 +163,7 @@ https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v
 
 **Required Fields:**
 - `$schema` (string)
-- `$id` (string, slug format: lowercase, hyphens)
+- `$id` (string, slug format: lowercase, underscores)
 - `uuid` (string, UUID v4)
 - `regulatory_layer` (enum)
 - `publication_date` (string, YYYY-MM-DD)

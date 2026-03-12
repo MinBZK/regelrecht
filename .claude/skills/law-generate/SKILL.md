@@ -37,7 +37,7 @@ For each article with computable logic, generate the `machine_readable` section.
 ### Action Format (CRITICAL — four valid patterns)
 
 Actions are the core of the execution logic. Each action MUST have an `output` field.
-There are **four valid patterns** for specifying what to compute:
+There are **three valid patterns** for specifying what to compute:
 
 **Pattern 1: `value` — for assignments, comparisons, conditionals, and logical ops**
 ```yaml
@@ -54,17 +54,7 @@ actions:
           value: true
 ```
 
-**Pattern 2: `operation` + `values` — shorthand for arithmetic at action level**
-```yaml
-actions:
-  - output: totaal
-    operation: SUBTRACT
-    values:
-      - $bruto_bedrag
-      - $korting
-```
-
-**Pattern 3: `value` — for direct literal/variable assignment**
+**Pattern 2: `value` — for direct literal/variable assignment**
 ```yaml
 actions:
   - output: wet_naam
@@ -73,7 +63,7 @@ actions:
     value: $SOME_DEFINITION
 ```
 
-**Pattern 4: `resolve` — for ministeriele regeling lookups**
+**Pattern 3: `resolve` — for ministeriele regeling lookups**
 ```yaml
 actions:
   - output: standaardpremie
