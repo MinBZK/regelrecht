@@ -34,6 +34,7 @@ jobs:
             reviews on this PR so they don't pile up. Run these commands:
 
             ```bash
+            # Dismiss all previous claude[bot] reviews (changes CHANGES_REQUESTED to comments)
             gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
               --paginate --jq '.[] | select(.user.login == "claude[bot]" and (.state == "CHANGES_REQUESTED" or .state == "COMMENTED")) | .id' \
             | while read -r review_id; do
@@ -41,12 +42,14 @@ jobs:
                   -f message="Superseded by new review" -f event="DISMISS" 2>/dev/null || true
               done
 
+            # Delete all previous claude[bot] inline review comments
             gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" \
               --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
             | while read -r comment_id; do
                 gh api -X DELETE "repos/${{ github.repository }}/pulls/comments/${comment_id}" 2>/dev/null || true
               done
 
+            # Delete all previous claude[bot] issue comments (except sticky which is managed automatically)
             gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
               --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
             | while read -r comment_id; do
@@ -66,6 +69,15 @@ jobs:
             Review the PR diff. Only comment on changed lines.
             Skip dimensions that have no findings. Be precise and actionable — no "consider"
             or "you might want to" comments.
+
+            ## Output format
+
+            Structure your review as a single comment with sections for each dimension that has
+            findings. Use this severity scale:
+
+            - 🔴 **Critical** — wrong legal outcome, data loss, runtime crash, security vulnerability
+            - 🟠 **Significant** — likely bug, broken reference, missing edge case, lost jobs
+            - 🟡 **Minor** — code quality, style, non-blocking improvement
 
             Also leave inline comments on specific lines where possible.
 
