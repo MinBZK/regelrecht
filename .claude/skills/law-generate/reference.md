@@ -62,10 +62,7 @@ machine_readable:
       - output: "result_name"   # Required: which output to set
         value: <operationValue> # Pattern 1: value assignment
         # OR
-        operation: "ADD"        # Pattern 2: top-level arithmetic
-        values: [...]
-        # OR
-        resolve:                # Pattern 3: ministeriele regeling lookup
+        resolve:                # Pattern 2: ministeriele regeling lookup
           type: ministeriele_regeling
           output: standaardpremie
           match:

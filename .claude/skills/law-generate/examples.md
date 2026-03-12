@@ -227,26 +227,27 @@ machine_readable:
           unit: eurocent
     actions:
       - output: hoogte_zorgtoeslag
-        operation: MAX
-        values:
-          - 0
-          - operation: SUBTRACT
-            values:
-              - $standaardpremie
-              - operation: MULTIPLY
-                values:
-                  - operation: IF
-                    when:
-                      operation: EQUALS
-                      subject: $heeft_toeslagpartner
-                      value: true
-                    then: $percentage_drempelinkomen_partner
-                    else: $percentage_drempelinkomen_alleenstaande
-                  - $toetsingsinkomen
+        value:
+          operation: MAX
+          values:
+            - 0
+            - operation: SUBTRACT
+              values:
+                - $standaardpremie
+                - operation: MULTIPLY
+                  values:
+                    - operation: IF
+                      when:
+                        operation: EQUALS
+                        subject: $heeft_toeslagpartner
+                        value: true
+                      then: $percentage_drempelinkomen_partner
+                      else: $percentage_drempelinkomen_alleenstaande
+                    - $toetsingsinkomen
 ```
 
 **Key points:**
-- Top-level action uses `operation: MAX` + `values: [...]` (arithmetic shorthand)
+- Action uses `value:` wrapper with nested `operation: MAX` + `values: [...]`
 - Operations nest deeply: MAX → SUBTRACT → MULTIPLY → IF
 - Each nested operation is a full operation object
 - No `subject`/`value` on arithmetic — only `values` array

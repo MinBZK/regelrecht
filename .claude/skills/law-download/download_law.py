@@ -193,7 +193,8 @@ def parse_articles(toestand_tree, bwbr_id, date):
 def generate_yaml(metadata, articles, effective_date):
     """Generate YAML law file."""
     # Generate law ID from title
-    law_id = slugify(metadata.get("title", metadata["bwb_id"]))
+    bwb_id = metadata.get("bwb_id")
+    law_id = slugify(metadata.get("title", bwb_id or "unknown"))
 
     # Create YAML structure matching schema v0.3.2
     # Schema has top-level bwb_id, url, valid_from, name (no $schema, $id, uuid, identifiers)
@@ -202,10 +203,12 @@ def generate_yaml(metadata, articles, effective_date):
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),
         "publication_date": metadata.get("publication_date", effective_date),
         "valid_from": effective_date,
-        "url": f"https://wetten.overheid.nl/{metadata['bwb_id']}/{effective_date}",
-        "bwb_id": metadata["bwb_id"],
+        "url": f"https://wetten.overheid.nl/{bwb_id}/{effective_date}",
         "articles": articles,
     }
+    # Only include bwb_id if present (required for national laws, optional otherwise)
+    if bwb_id is not None:
+        law_data["bwb_id"] = bwb_id
 
     return law_id, law_data
 
