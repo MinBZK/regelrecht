@@ -253,7 +253,8 @@ fn run_scenario(scenario: &Scenario) {
                 *n as f64 / 100.0
             ),
             Value::Float(f) => {
-                let rounded = f.round() as i64;
+                // Display-only: safe to use `as i64` since zorgtoeslag values are small eurocent amounts
+            let rounded = f.round() as i64;
                 println!(
                     "  {}: {:.5} (rounded: {} eurocent = {:.2} euro)",
                     key,
@@ -270,6 +271,7 @@ fn run_scenario(scenario: &Scenario) {
 }
 
 #[test]
+#[ignore] // Diagnostic utility: run manually with `cargo test dump_all -- --ignored`
 fn dump_all_zorgtoeslag_traces() {
     let scenarios = vec![
         // =====================================================================

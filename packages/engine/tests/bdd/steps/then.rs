@@ -299,7 +299,7 @@ fn assert_allowance_amount_euro(world: &mut RegelrechtWorld, expected: String) {
             let diff = (actual_euro - expected_euro).abs();
             assert!(
                 diff < 0.01,
-                "Expected zorgtoeslag_bedrag to be {} euro, got {} euro (diff: {})",
+                "Expected hoogte_zorgtoeslag to be {} euro, got {} euro (diff: {})",
                 expected_euro,
                 actual_euro,
                 diff
@@ -311,14 +311,14 @@ fn assert_allowance_amount_euro(world: &mut RegelrechtWorld, expected: String) {
             let diff = (actual_euro - expected_euro).abs();
             assert!(
                 diff < 0.01,
-                "Expected zorgtoeslag_bedrag to be {} euro, got {} euro (diff: {})",
+                "Expected hoogte_zorgtoeslag to be {} euro, got {} euro (diff: {})",
                 expected_euro,
                 actual_euro,
                 diff
             );
         }
         _ => panic!(
-            "Expected zorgtoeslag_bedrag to be a number, got {:?}",
+            "Expected hoogte_zorgtoeslag to be a number, got {:?}",
             actual
         ),
     }

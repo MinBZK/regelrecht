@@ -538,7 +538,10 @@ impl LawExecutionService {
             )?
         };
 
-        // Enforce TypeSpec: round eurocent outputs to integer
+        // Enforce TypeSpec: round eurocent outputs to integer.
+        // This applies only to top-level article outputs (the API boundary).
+        // Intermediate values within article logic remain as Float to preserve
+        // precision during calculation; rounding happens here at the output edge.
         if let Some(exec) = article.get_execution_spec() {
             if let Some(outputs) = &exec.output {
                 for output_spec in outputs {
