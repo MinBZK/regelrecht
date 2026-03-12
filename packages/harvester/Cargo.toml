@@ -37,8 +37,8 @@ unicode-normalization = "0.1"
 
 [dev-dependencies]
 pretty_assertions = "1.4"
-tempfile = "3.26"
-assert_cmd = "2.0"
+tempfile = "3.27"
+assert_cmd = "2.2"
 predicates = "3.1"
 wiremock = "0.6"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
