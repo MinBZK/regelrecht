@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1
+# Stage 1: Chef base
+FROM rust:1.93-alpine AS chef
+RUN apk add --no-cache musl-dev
+RUN cargo install cargo-chef --locked
+WORKDIR /build
+
+# Stage 2: Plan dependencies
+FROM chef AS planner
+COPY packages/Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY packages/corpus/ packages/corpus/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
+COPY packages/shared/ packages/shared/
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 3: Build (deps cached separately from source)
+FROM chef AS builder
+COPY packages/Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY --from=planner /build/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY packages/corpus/ packages/corpus/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
+COPY packages/shared/ packages/shared/
+# Invalidate cargo's fingerprint cache so it recompiles with real source
+# instead of using the stub binary from cargo-chef cook.
+RUN find packages -name '*.rs' -exec touch {} + && \
+    cargo build --release --bin regelrecht-enrich-worker
+
+# Stage 4: Runtime
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates git nodejs npm && \
+    addgroup -S app && adduser -S app -G app
+
+# Install opencode and claude CLI globally
+RUN npm install -g opencode @anthropic-ai/claude-code && \
+    npm cache clean --force
+
+# Copy opencode provider config (VLAM) — the API key is injected at runtime
+COPY packages/pipeline/opencode.json /etc/opencode/opencode.json
+
+# Install opencode provider plugin in a shared location
+RUN mkdir -p /opt/opencode-plugins && \
+    cd /opt/opencode-plugins && \
+    npm init -y && \
+    npm install @ai-sdk/openai-compatible && \
+    npm cache clean --force
+
+COPY --from=builder /build/target/release/regelrecht-enrich-worker /usr/local/bin/
+COPY packages/pipeline/entrypoint-enrich.sh /usr/local/bin/entrypoint-enrich.sh
+RUN chmod +x /usr/local/bin/entrypoint-enrich.sh
+
+USER app
+EXPOSE 8000
+
+ENV REGULATION_REPO_PATH=/tmp/regulation-repo
+ENV REGULATION_OUTPUT_BASE=regulation/nl
+
+ENTRYPOINT ["entrypoint-enrich.sh"]
