@@ -148,11 +148,13 @@ Map `<bwb-dl:soort>` to `regulatory_layer`:
 | Algemene maatregel van bestuur | AMVB |
 | ministeriele regeling | MINISTERIELE_REGELING |
 | ministeriële regeling | MINISTERIELE_REGELING |
-| koninklijk besluit | KONINKLIJK_BESLUIT |
-| KB | KONINKLIJK_BESLUIT |
-| verordening | VERORDENING |
 | beleidsregel | BELEIDSREGEL |
-| regeling | REGELING |
+
+**Note:** `KONINKLIJK_BESLUIT`, `VERORDENING`, and `REGELING` are NOT valid
+schema v0.3.2 enum values. Map koninklijk besluiten to the closest match
+(e.g., `AMVB`) or ask the user. Valid values: GRONDWET, WET, AMVB,
+MINISTERIELE_REGELING, BELEIDSREGEL, EU_VERORDENING, EU_RICHTLIJN,
+VERDRAG, UITVOERINGSBELEID, GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING.
 
 ## Target YAML Schema
 
@@ -186,7 +188,7 @@ All identifiers (`bwb_id`, `url`) are top-level, not nested.
 
 **Pattern:**
 ```
-regulation/nl/{regulatory_layer}/{law_id}/{effective_date}.yaml
+regulation/nl/{regulatory_layer}/{law_id}/{valid_from}.yaml
 ```
 
 **Examples:**
@@ -194,7 +196,6 @@ regulation/nl/{regulatory_layer}/{law_id}/{effective_date}.yaml
 regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
 regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
 regulation/nl/amvb/besluit_zorgverzekering/2024-01-01.yaml
-regulation/nl/koninklijk_besluit/kb_zorgtoeslag/2023-07-01.yaml
 ```
 
 **Law ID Generation:**

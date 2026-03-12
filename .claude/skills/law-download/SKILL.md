@@ -178,8 +178,8 @@ xmlns:bwb-dl="http://www.geonovum.nl/bwb-dl/1.0"
   - "wet" → "WET"
   - "AMvB" → "AMVB"
   - "ministeriele regeling" → "MINISTERIELE_REGELING"
-  - "koninklijk besluit" → "KONINKLIJK_BESLUIT"
-  - etc.
+  - "beleidsregel" → "BELEIDSREGEL"
+  - See schema for full enum list (no KONINKLIJK_BESLUIT — map to closest match)
 - `<bwb-dl:citeertitel>` or `<bwb-dl:officiele-titel>` → `name` (and slugified for directory name)
 - First `<bwb-dl:intrekking datum="...">` → `valid_from`
 - `<bwb-dl:publicatiedatum>` → `publication_date`
@@ -258,7 +258,7 @@ articles:
 
 **Directory Structure:**
 ```
-regulation/nl/{regulatory_layer_lowercase}/{law_id}/{effective_date}.yaml
+regulation/nl/{regulatory_layer_lowercase}/{law_id}/{valid_from}.yaml
 ```
 
 **Example:**
@@ -331,6 +331,6 @@ To add machine-readable execution logic, run /law-interpret on this file.
 - Always download BOTH WTI and Toestand files
 - Handle XML namespaces correctly
 - Preserve exact text formatting (spaces, line breaks)
-- Generate human-readable `$id` slugs (lowercase, underscores — e.g., `wet_op_de_zorgtoeslag`)
+- Generate human-readable directory name slugs (lowercase, underscores — e.g., `wet_op_de_zorgtoeslag`)
 - Double-check all articles are included (count them)
 - Validate YAML syntax before saving

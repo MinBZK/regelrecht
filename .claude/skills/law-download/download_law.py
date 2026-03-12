@@ -78,8 +78,7 @@ def parse_wti_metadata(wti_tree):
             "algemene maatregel van bestuur": "AMVB",
             "ministeriele regeling": "MINISTERIELE_REGELING",
             "ministeriële regeling": "MINISTERIELE_REGELING",
-            "koninklijk besluit": "KONINKLIJK_BESLUIT",
-            "kb": "KONINKLIJK_BESLUIT",
+            "beleidsregel": "BELEIDSREGEL",
         }
         metadata["regulatory_layer"] = type_mapping.get(
             soort_text, soort_text.upper().replace(" ", "_")

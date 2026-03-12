@@ -15,7 +15,7 @@ examples into Gherkin acceptance tests.
 
 ## Setup
 
-1. Read the target law YAML file to extract `bwb_id`, title, and `effective_date`
+1. Read the target law YAML file to extract `bwb_id`, title, and `valid_from`
 2. Read an existing feature file as Gherkin style reference:
    `features/bijstand.feature`
 
@@ -126,7 +126,7 @@ Feature: {Law title} — scenarios uit Memorie van Toelichting
   # URL: {MvT document URL(s)}
 
   Background:
-    Given the calculation date is "{effective_date}"
+    Given the calculation date is "{valid_from}"
 
   # === Rekenvoorbeelden uit MvT ===
 
