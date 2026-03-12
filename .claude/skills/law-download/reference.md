@@ -161,24 +161,26 @@ Map `<bwb-dl:soort>` to `regulatory_layer`:
 https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 ```
 
-**Required Fields:**
-- `$schema` (string)
-- `$id` (string, slug format: lowercase, underscores)
-- `uuid` (string, UUID v4)
+**Required Fields (always):**
 - `regulatory_layer` (enum)
 - `publication_date` (string, YYYY-MM-DD)
-- `effective_date` (string, YYYY-MM-DD)
-- `identifiers.bwb_id` (string)
-- `identifiers.url` (string)
+- `url` (string, top-level)
 - `articles` (array)
   - `number` (string)
   - `text` (string, multiline)
   - `url` (string)
 
+**Conditionally Required:**
+- `bwb_id` (string, top-level) — required for WET, AMVB, MINISTERIELE_REGELING, GRONDWET
+
 **Optional Fields:**
+- `name` (string) — law title
+- `valid_from` (string, YYYY-MM-DD) — effective date
 - `machine_readable` (object) - NOT included by this skill
-- `metadata` (object)
 - `references` (array)
+
+**Note:** Schema v0.3.2 has NO `$schema`, `$id`, `uuid`, `effective_date`, or `identifiers` fields.
+All identifiers (`bwb_id`, `url`) are top-level, not nested.
 
 ## File System Structure
 
@@ -198,7 +200,7 @@ regulation/nl/koninklijk_besluit/kb_zorgtoeslag/2023-07-01.yaml
 **Law ID Generation:**
 - Take `<bwb-dl:citeertitel>` or `<bwb-dl:officiele-titel>`
 - Convert to lowercase
-- Replace spaces with underscores or hyphens
+- Replace spaces with underscores
 - Remove special characters
 - Example: "Wet op de zorgtoeslag" → "wet_op_de_zorgtoeslag"
 

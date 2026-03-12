@@ -264,16 +264,12 @@ Download the "Wet op het Groentetuintje"
 **Complete example of downloaded YAML file:**
 
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
-$id: "wet_op_de_zorgtoeslag"
-uuid: "a7b3c4d5-e6f7-8a9b-0c1d-2e3f4a5b6c7d"
+name: "Wet op de zorgtoeslag"
 regulatory_layer: "WET"
 publication_date: "2005-12-30"
-effective_date: "2006-01-01"
-
-identifiers:
-  bwb_id: "BWBR0018451"
-  url: "https://wetten.overheid.nl/BWBR0018451/2025-01-01"
+valid_from: "2006-01-01"
+url: "https://wetten.overheid.nl/BWBR0018451/2025-01-01"
+bwb_id: "BWBR0018451"
 
 articles:
   - number: "1"
@@ -315,6 +311,8 @@ articles:
 - Links converted to markdown format
 - Monetary amounts kept as-is (€ notation)
 - All articles included
+- All identifiers (`bwb_id`, `url`) are top-level, not nested under `identifiers`
+- Uses `valid_from` (not `effective_date`) and `name` (not `$id`)
 
 ---
 

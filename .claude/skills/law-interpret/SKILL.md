@@ -18,9 +18,9 @@ Invokes three sub-skills sequentially, passing context between them.
 
 1. Determine which law YAML file to interpret (from user input or context)
 2. Read the target file to confirm it exists and extract key metadata:
-   - `$id` (law identifier)
-   - `bwb_id` (BWB identifier for MvT search)
-   - Title and effective date
+   - `name` (law title)
+   - `bwb_id` (BWB identifier for MvT search, top-level field)
+   - `valid_from` (effective date)
    - Count of articles
 3. Report to user: "Starting interpretation of {law_name} ({N} articles)"
 
@@ -70,7 +70,9 @@ legal text, catching hallucinated logic.
 **Important:** If reverse validation removes any elements from the YAML, re-run
 `just validate <file>` to ensure the file still passes schema validation.
 Element removal can break required field constraints or leave dangling references.
-If validation fails after removal, fix the issues before proceeding.
+If validation fails after removal, re-invoke `/law-generate` to regenerate the
+affected sections (this orchestrator does not have Edit access — delegate file
+modifications to the sub-skills).
 
 ## Step 5: Dependency Check
 

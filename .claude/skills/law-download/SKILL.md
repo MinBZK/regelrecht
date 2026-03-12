@@ -173,19 +173,16 @@ xmlns:bwb-dl="http://www.geonovum.nl/bwb-dl/1.0"
 ```
 
 **Fields to Extract:**
-- `<bwb-dl:bwb-id>` → `identifiers.bwb_id`
+- `<bwb-dl:bwb-id>` → `bwb_id` (top-level field)
 - `<bwb-dl:soort>` → Map to `regulatory_layer`:
   - "wet" → "WET"
   - "AMvB" → "AMVB"
   - "ministeriele regeling" → "MINISTERIELE_REGELING"
   - "koninklijk besluit" → "KONINKLIJK_BESLUIT"
   - etc.
-- `<bwb-dl:citeertitel>` or `<bwb-dl:officiele-titel>` → Use to generate `$id` (slugified)
-- First `<bwb-dl:intrekking datum="...">` → `effective_date`
+- `<bwb-dl:citeertitel>` or `<bwb-dl:officiele-titel>` → `name` (and slugified for directory name)
+- First `<bwb-dl:intrekking datum="...">` → `valid_from`
 - `<bwb-dl:publicatiedatum>` → `publication_date`
-
-**Generate UUID:**
-Use `uuidgen` (via Bash) to generate a new UUID for the `uuid` field.
 
 ### Step 6: Parse Legal Text XML for Articles
 
@@ -231,16 +228,12 @@ xmlns:bwb="http://www.overheid.nl/2011/BWB"
 
 **Target Structure:**
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
-$id: "{slugified_title}"
-uuid: {generated_uuid}
+name: "{LAW_TITLE}"
 regulatory_layer: "{MAPPED_LAYER}"
 publication_date: "{YYYY-MM-DD}"
-effective_date: "{YYYY-MM-DD}"
-
-identifiers:
-  bwb_id: "{BWBR_ID}"
-  url: "https://wetten.overheid.nl/{BWBR_ID}/{DATE}"
+valid_from: "{YYYY-MM-DD}"
+url: "https://wetten.overheid.nl/{BWBR_ID}/{DATE}"
+bwb_id: "{BWBR_ID}"
 
 articles:
   - number: "{ARTICLE_NUMBER}"
@@ -258,6 +251,8 @@ articles:
 - Keep text as-is (no eurocent conversion)
 - Include ALL articles from the law
 - Use proper YAML multiline string format (`|`) for text
+- Schema v0.3.2 uses top-level `bwb_id`, `url`, `valid_from`, `name` — NOT nested under `identifiers`
+- No `$schema`, `$id`, `uuid`, or `effective_date` fields — those are not in the schema
 
 ### Step 8: Save File
 
@@ -290,8 +285,8 @@ just validate {FILE_PATH}
 4. If still failing after 3 rounds, stop and report the errors to the user
 
 **Common validation issues:**
-- Missing required fields (`bwb_id`, `uuid`, `$schema`, `$id`)
-- Wrong `$schema` URL — must be: `https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json`
+- Missing required fields (`regulatory_layer`, `publication_date`, `url`, `articles`)
+- Missing `bwb_id` for national laws (WET, AMVB, MINISTERIELE_REGELING, GRONDWET)
 - Incorrect `regulatory_layer` enum value
 - Malformed YAML syntax (bad indentation, unescaped special characters in text)
 - Invalid date formats (must be `YYYY-MM-DD`)

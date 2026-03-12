@@ -12,7 +12,6 @@ This script is kept as a reference and for batch/CI use.
 """
 
 import sys
-import uuid
 import re
 from pathlib import Path
 from datetime import datetime
@@ -183,18 +182,15 @@ def generate_yaml(metadata, articles, effective_date):
     # Generate law ID from title
     law_id = slugify(metadata.get("title", metadata["bwb_id"]))
 
-    # Create YAML structure
+    # Create YAML structure matching schema v0.3.2
+    # Schema has top-level bwb_id, url, valid_from, name (no $schema, $id, uuid, identifiers)
     law_data = {
-        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json",
-        "$id": law_id,
-        "uuid": str(uuid.uuid4()),
+        "name": metadata.get("title", law_id),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),
         "publication_date": metadata.get("publication_date", effective_date),
-        "effective_date": effective_date,
-        "identifiers": {
-            "bwb_id": metadata["bwb_id"],
-            "url": f"https://wetten.overheid.nl/{metadata['bwb_id']}/{effective_date}",
-        },
+        "valid_from": effective_date,
+        "url": f"https://wetten.overheid.nl/{metadata['bwb_id']}/{effective_date}",
+        "bwb_id": metadata["bwb_id"],
         "articles": articles,
     }
 
