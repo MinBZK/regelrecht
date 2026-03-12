@@ -1,16 +1,19 @@
 use std::path::Path;
 use std::time::Duration;
 
-use regelrecht_corpus::CorpusClient;
+use regelrecht_corpus::{CorpusClient, CorpusConfig};
 use reqwest::blocking::Client;
 use sqlx::PgPool;
 use tokio::signal::unix::{signal, SignalKind};
 
 use crate::config::WorkerConfig;
 use crate::db;
+use crate::enrich::{
+    create_enrich_corpus, enrich_branch_name, execute_enrich, EnrichConfig, EnrichPayload,
+};
 use crate::error::Result;
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult};
-use crate::job_queue;
+use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue};
 
@@ -184,6 +187,33 @@ async fn process_next_job(
                 }
             }
 
+            // Auto-create enrich job after successful harvest
+            let enrich_payload = EnrichPayload {
+                law_id: job.law_id.clone(),
+                yaml_path: result.file_path.clone(),
+            };
+            if let Ok(payload_json) = serde_json::to_value(&enrich_payload) {
+                let enrich_req =
+                    CreateJobRequest::new(JobType::Enrich, &job.law_id).with_payload(payload_json);
+                match job_queue::create_job(pool, enrich_req).await {
+                    Ok(enrich_job) => {
+                        tracing::info!(
+                            enrich_job_id = %enrich_job.id,
+                            law_id = %job.law_id,
+                            "auto-created enrich job after harvest"
+                        );
+                        let _ = law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            law_id = %job.law_id,
+                            "failed to auto-create enrich job (harvest still succeeded)"
+                        );
+                    }
+                }
+            }
+
             Ok(true)
         }
         Err(e) => {
@@ -211,6 +241,244 @@ async fn process_next_job(
                     law_status::update_status(pool, &job.law_id, LawStatusValue::Queued).await
                 {
                     tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to queued for retry");
+                }
+            }
+
+            Ok(true)
+        }
+    }
+}
+
+/// Run the enrich worker loop.
+///
+/// Polls the job queue for enrich jobs and executes them using the configured
+/// LLM provider (opencode or claude). Each enrichment pushes to a separate
+/// branch (`enrich/{provider}/{law_slug}`) for review before merging.
+///
+/// Supports graceful shutdown via SIGTERM and SIGINT (ctrl+c).
+pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
+    let pipeline_config = config.pipeline_config();
+    let pool = db::create_pool(&pipeline_config).await?;
+    db::ensure_schema(&pool).await?;
+
+    let enrich_config = EnrichConfig::from_env();
+
+    // Corpus config is passed per-job so each enrichment creates its own
+    // branch-specific corpus client. We still use the base repo_path as
+    // fallback when corpus is not configured.
+    let repo_path = config
+        .corpus_config
+        .as_ref()
+        .map(|c| c.repo_path.clone())
+        .unwrap_or_else(|| config.output_dir.clone());
+
+    if config.corpus_config.is_some() {
+        tracing::info!("corpus integration enabled, enrichments will push to separate branches");
+    } else {
+        tracing::info!("corpus integration disabled (CORPUS_REPO_URL not set)");
+    }
+
+    tracing::info!(
+        repo_path = %repo_path.display(),
+        provider = %enrich_config.provider.name(),
+        poll_interval = ?config.poll_interval,
+        "starting enrich worker"
+    );
+
+    let mut sigterm = signal(SignalKind::terminate()).map_err(|e| {
+        crate::error::PipelineError::Worker(format!("failed to register SIGTERM handler: {e}"))
+    })?;
+
+    let mut current_interval = std::time::Duration::ZERO;
+
+    loop {
+        tokio::select! {
+            biased;
+
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("received SIGINT, stopping enrich worker");
+                break;
+            }
+            _ = sigterm.recv() => {
+                tracing::info!("received SIGTERM, stopping enrich worker");
+                break;
+            }
+            _ = tokio::time::sleep(current_interval) => {
+                // Ready to process next job
+            }
+        }
+
+        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, ORPHAN_TIMEOUT).await {
+            tracing::warn!(error = %e, "failed to reap orphaned jobs");
+        }
+
+        match process_next_enrich_job(
+            &pool,
+            &repo_path,
+            &enrich_config,
+            config.corpus_config.as_ref(),
+        )
+        .await
+        {
+            Ok(true) => {
+                current_interval = config.poll_interval;
+            }
+            Ok(false) => {
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+                tracing::info!(next_poll = ?current_interval, "no enrich jobs available, backing off");
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "error processing enrich job");
+                current_interval = (current_interval * 2)
+                    .max(config.poll_interval)
+                    .min(config.max_poll_interval);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Process the next available enrich job.
+///
+/// Returns `Ok(true)` if a job was processed, `Ok(false)` if no job was available.
+///
+/// Each enrichment creates a separate branch (`enrich/{provider}/{law_slug}`)
+/// so results can be reviewed before merging. A dedicated `CorpusClient` is
+/// created per job pointing at the enrichment branch.
+async fn process_next_enrich_job(
+    pool: &PgPool,
+    repo_path: &Path,
+    enrich_config: &EnrichConfig,
+    corpus_config: Option<&CorpusConfig>,
+) -> Result<bool> {
+    let job = match job_queue::claim_job(pool, Some(JobType::Enrich)).await? {
+        Some(job) => job,
+        None => return Ok(false),
+    };
+
+    tracing::info!(
+        job_id = %job.id,
+        law_id = %job.law_id,
+        attempt = job.attempts,
+        provider = %enrich_config.provider.name(),
+        "processing enrich job"
+    );
+
+    let payload: EnrichPayload = match &job.payload {
+        Some(p) => match serde_json::from_value(p.clone()) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                tracing::error!(job_id = %job.id, error = %e, "invalid enrich payload");
+                let error_json =
+                    serde_json::json!({ "error": format!("invalid enrich payload: {e}") });
+                if let Err(fail_err) = job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                    tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+                }
+                return Ok(true);
+            }
+        },
+        None => {
+            tracing::error!(job_id = %job.id, "enrich job has no payload");
+            let error_json = serde_json::json!({ "error": "enrich job requires a payload" });
+            if let Err(fail_err) = job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+            }
+            return Ok(true);
+        }
+    };
+
+    if let Err(e) = law_status::update_status(pool, &job.law_id, LawStatusValue::Enriching).await {
+        tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
+    }
+
+    // Create a branch-specific corpus client for this enrichment
+    let branch = enrich_branch_name(enrich_config.provider.name(), &payload.yaml_path);
+    let enrich_corpus = if let Some(base_config) = corpus_config {
+        match create_enrich_corpus(base_config, &branch).await {
+            Ok(client) => {
+                tracing::info!(branch = %branch, "created enrichment branch corpus");
+                Some(client)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, branch = %branch, "failed to create enrichment branch corpus, proceeding without");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Use the enrichment branch repo if available, otherwise the base repo
+    let effective_repo = enrich_corpus
+        .as_ref()
+        .map(|c| c.repo_path().to_path_buf())
+        .unwrap_or_else(|| repo_path.to_path_buf());
+
+    match execute_enrich(&payload, &effective_repo, enrich_config).await {
+        Ok((result, written_files)) => {
+            tracing::info!(
+                job_id = %job.id,
+                articles_total = result.articles_total,
+                articles_enriched = result.articles_enriched,
+                quality_score = result.quality_score,
+                provider = %result.provider,
+                branch = %result.branch,
+                "enrichment completed successfully"
+            );
+
+            // Push to enrichment branch (at-least-once semantics)
+            if let Some(ref corpus) = enrich_corpus {
+                let message = format!(
+                    "enrich({}): {} ({})",
+                    result.provider, result.law_id, result.yaml_path
+                );
+                if let Err(e) = corpus.commit_and_push(&written_files, &message).await {
+                    tracing::warn!(error = %e, "failed to push enrichment to corpus");
+                }
+            }
+
+            let result_json = serde_json::to_value(&result).ok();
+
+            let mut tx = pool.begin().await?;
+            job_queue::complete_job(&mut *tx, job.id, result_json).await?;
+            law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
+            tx.commit().await?;
+
+            // Set quality score outside the transaction (non-critical)
+            if let Err(e) =
+                law_status::set_quality_score(pool, &job.law_id, result.quality_score).await
+            {
+                tracing::warn!(error = %e, "failed to set quality score");
+            }
+
+            Ok(true)
+        }
+        Err(e) => {
+            tracing::error!(
+                job_id = %job.id,
+                law_id = %job.law_id,
+                error = %e,
+                "enrichment failed"
+            );
+
+            let error_json = serde_json::json!({ "error": e.to_string() });
+            let failed_job = job_queue::fail_job(pool, job.id, Some(error_json)).await?;
+
+            if failed_job.status == crate::models::JobStatus::Failed {
+                if let Err(status_err) =
+                    law_status::update_status(pool, &job.law_id, LawStatusValue::EnrichFailed).await
+                {
+                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                }
+            } else {
+                // Job will be retried — reset law status to harvested
+                if let Err(status_err) =
+                    law_status::update_status(pool, &job.law_id, LawStatusValue::Harvested).await
+                {
+                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
                 }
             }
 
