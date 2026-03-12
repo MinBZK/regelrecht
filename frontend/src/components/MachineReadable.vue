@@ -15,7 +15,8 @@ const definitions = computed(() => {
   if (!defs) return [];
   return Object.entries(defs).map(([name, def]) => {
     const val = typeof def === 'object' ? def.value : def;
-    return { name, value: val };
+    const unit = typeof def === 'object' ? def.type_spec?.unit : undefined;
+    return { name, value: val, unit };
   });
 });
 
@@ -46,9 +47,9 @@ const outputs = computed(() =>
 
 const actions = computed(() => execution.value?.actions ?? []);
 
-function formatValue(val) {
+function formatValue(val, unit) {
   if (typeof val === 'number') {
-    if (val >= 1 && val % 1 === 0 && val > 100) {
+    if (unit === 'eurocent') {
       return (val / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
     }
     if (val > 0 && val < 1) {
@@ -94,7 +95,7 @@ function formatValue(val) {
       <h3 class="machine-section-title">Definities</h3>
       <rr-list variant="box">
         <rr-list-item v-for="def in definitions" :key="def.name" size="md">
-          <rr-text-cell>{{ def.name }} = {{ formatValue(def.value) }}</rr-text-cell>
+          <rr-text-cell>{{ def.name }} = {{ formatValue(def.value, def.unit) }}</rr-text-cell>
           <rr-button-cell slot="end">
             <rr-button variant="neutral-tinted" size="sm">Bewerk</rr-button>
           </rr-button-cell>

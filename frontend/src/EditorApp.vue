@@ -6,7 +6,7 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 
-const { articles, lawName, selectedArticle, selectedArticleNumber, loading } = useLaw();
+const { articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
 
 const activeAction = ref(null);
 const rightPaneView = ref('machine');
@@ -50,8 +50,13 @@ function selectArticle(number) {
       </rr-toolbar-end-area>
     </rr-toolbar>
 
+    <!-- Error state -->
+    <div v-if="error" style="padding: 32px; color: #c00; text-align: center;">
+      Kon de wet niet laden: {{ error.message }}
+    </div>
+
     <!-- Document Tab Bar -->
-    <rr-document-tab-bar v-if="!loading">
+    <rr-document-tab-bar v-if="!loading && !error">
       <rr-document-tab-bar-item
         v-for="article in articles"
         :key="article.number"
