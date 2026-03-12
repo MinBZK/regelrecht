@@ -45,7 +45,7 @@ wiremock = "0.6"
 rsa = "0.9"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
-testcontainers = "0.23"
+testcontainers = "0.24"
 testcontainers-modules = { version = "0.11", features = ["postgres"] }
 http-body-util = "0.1"
 pretty_assertions = "1"
