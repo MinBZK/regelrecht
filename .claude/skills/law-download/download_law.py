@@ -69,6 +69,11 @@ def parse_wti_metadata(wti_tree):
     metadata["bwb_id"] = bwb_id_elem.text if bwb_id_elem is not None else None
 
     # Type (regulatory layer)
+    VALID_LAYERS = {
+        "GRONDWET", "WET", "AMVB", "MINISTERIELE_REGELING", "BELEIDSREGEL",
+        "EU_VERORDENING", "EU_RICHTLIJN", "VERDRAG", "UITVOERINGSBELEID",
+        "GEMEENTELIJKE_VERORDENING", "PROVINCIALE_VERORDENING",
+    }
     soort = wti_tree.find(f".//{{{NS}}}soort-regeling")
     if soort is not None:
         soort_text = soort.text.lower()
@@ -80,9 +85,18 @@ def parse_wti_metadata(wti_tree):
             "ministeriële regeling": "MINISTERIELE_REGELING",
             "beleidsregel": "BELEIDSREGEL",
         }
-        metadata["regulatory_layer"] = type_mapping.get(
-            soort_text, soort_text.upper().replace(" ", "_")
-        )
+        layer = type_mapping.get(soort_text, soort_text.upper().replace(" ", "_"))
+        if layer not in VALID_LAYERS:
+            raise ValueError(
+                f"'{soort_text}' maps to '{layer}' which is not a valid "
+                f"schema v0.3.2 regulatory_layer. Map manually to e.g. AMVB."
+            )
+        metadata["regulatory_layer"] = layer
+
+    # Guard: bwb_id is required for national laws
+    NATIONAL_LAYERS = {"WET", "AMVB", "MINISTERIELE_REGELING", "GRONDWET"}
+    if metadata.get("bwb_id") is None and metadata.get("regulatory_layer") in NATIONAL_LAYERS:
+        raise ValueError(f"bwb-id element not found in WTI XML (namespace: {NS})")
 
     # Publication date
     pub_date = wti_tree.find(f".//{{{NS}}}publicatiedatum")
