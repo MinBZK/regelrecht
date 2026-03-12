@@ -47,12 +47,15 @@ When `machine_readable` sections are added or changed:
 - Do expected values match what the law actually prescribes?
 - Are test data tables realistic and internally consistent?
 - Do scenarios cover the important paths from the law (eligibility, calculation, exclusions)?
+- Are Given/When/Then steps using existing step definitions?
 
 ### Harvester and pipeline (harvester/pipeline/corpus changes)
 
 - Does XML-to-YAML conversion preserve legal text faithfully (no dropped articles, no mangled Unicode)?
 - Job queue operations: correct use of `FOR UPDATE SKIP LOCKED`, proper state transitions, retry logic with backoff, no lost jobs on worker crash.
 - Law status transitions must be valid (unknown → queued → harvesting → harvested → enriching → enriched).
+- Are BWB API interactions robust (retries, error handling for network failures)?
+- Git corpus operations: handle merge conflicts, network failures, and concurrent pushes.
 - Database migrations must be backwards-compatible and idempotent.
 
 ### Admin and frontend (admin/frontend changes)
