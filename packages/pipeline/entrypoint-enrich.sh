@@ -23,15 +23,16 @@ export CORPUS_REPO_PATH="$CORPUS_DIR"
 # the image; only the key is injected at runtime.
 if [ -n "$VLAM_API_KEY" ]; then
   mkdir -p "$HOME/.local/share/opencode"
-  printf '{"vlam":{"type":"api","key":"%s"}}' "$VLAM_API_KEY" \
-    > "$HOME/.local/share/opencode/auth.json"
+  cat > "$HOME/.local/share/opencode/auth.json" <<AUTHEOF
+{"vlam":{"type":"api","key":"${VLAM_API_KEY}"}}
+AUTHEOF
+  chmod 600 "$HOME/.local/share/opencode/auth.json"
 fi
 
-# Copy opencode config to user-writable location
-mkdir -p "$HOME/.config/opencode/node_modules"
+# Set up opencode config in user-writable location
+mkdir -p "$HOME/.config/opencode"
 cp /etc/opencode/opencode.json "$HOME/.config/opencode/opencode.json"
-cp -r /opt/opencode-plugins/node_modules/* "$HOME/.config/opencode/node_modules/" 2>/dev/null || true
-# opencode needs a package.json in the config dir
+ln -sf /opt/opencode-plugins/node_modules "$HOME/.config/opencode/node_modules"
 printf '{"dependencies":{"@ai-sdk/openai-compatible":"*"}}' \
   > "$HOME/.config/opencode/package.json"
 
