@@ -34,7 +34,7 @@ working examples in `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
 
 For each article with computable logic, generate the `machine_readable` section.
 
-### Action Format (CRITICAL — four valid patterns)
+### Action Format (CRITICAL — three valid patterns)
 
 Actions are the core of the execution logic. Each action MUST have an `output` field.
 There are **three valid patterns** for specifying what to compute:
@@ -371,16 +371,16 @@ pub struct ExternalData {
 #### Adding a When Step (law execution)
 
 Each law needs a When step that triggers execution. **Use concrete law names in
-the regex, not placeholders.** All steps are synchronous `fn`. Example based on
-the actual bijstand step:
+the regex, not placeholders.** All steps are synchronous `fn`. Example from the
+actual bijstand step:
 ```rust
-#[when(regex = r"^the my_law_execution is executed for my_law_id article (\d+)$")]
-fn execute_my_law(world: &mut RegelrechtWorld, _article: String) {
+#[when(regex = r"^the bijstandsaanvraag is executed for participatiewet article (\d+)$")]
+fn execute_bijstand(world: &mut RegelrechtWorld, _article: String) {
     // Register any external data sources if this law uses them
-    register_if_present(&mut world.service, "source_name", &world.external_data.source_field);
+    register_if_present(&mut world.service, "rvig_personal_data", &world.external_data.rvig_personal_data);
 
     // Execute the law for the desired output
-    world.execute_law("my_law_id", "my_output_name");
+    world.execute_law("participatiewet", "bijstandsnorm");
 }
 ```
 

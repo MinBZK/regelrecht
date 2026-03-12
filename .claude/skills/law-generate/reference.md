@@ -76,7 +76,7 @@ machine_readable:
           article: "2"
 ```
 
-## Operation Types (all 21)
+## Operation Types (all 23)
 
 ### Arithmetic Operations — use `values` array
 ```yaml
