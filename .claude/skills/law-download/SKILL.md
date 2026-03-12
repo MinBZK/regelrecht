@@ -10,6 +10,7 @@ description: >
   /law-interpret to create the text-only YAML that law-interpret then makes
   executable.
 allowed-tools: Read, Write, WebFetch, Bash, Grep, Glob
+user-invocable: true
 ---
 
 # Law Download

@@ -12,7 +12,7 @@ Download the Wet op de Zorgtoeslag
 1. **Search SRU API:**
    ```
    Query: dcterms.title any "zorgtoeslag"
-   URL: http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20%22zorgtoeslag%22
+   URL: https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20%22zorgtoeslag%22
    ```
 
 2. **Present Results:**

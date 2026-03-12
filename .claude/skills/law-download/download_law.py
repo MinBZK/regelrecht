@@ -58,17 +58,19 @@ def parse_wti_metadata(wti_tree):
     """Extract metadata from WTI XML."""
     metadata = {}
 
+    NS = "http://www.geonovum.nl/bwb-dl/1.0"
+
     # Title
-    citeertitel = wti_tree.find(".//citeertitel[@status='officieel']")
+    citeertitel = wti_tree.find(f".//{{{NS}}}citeertitel[@status='officieel']")
     if citeertitel is not None:
         metadata["title"] = citeertitel.text
 
-    # BWB ID
-    bwb_id = wti_tree.get("bwb-id")
-    metadata["bwb_id"] = bwb_id
+    # BWB ID (child element, not attribute)
+    bwb_id_elem = wti_tree.find(f".//{{{NS}}}bwb-id")
+    metadata["bwb_id"] = bwb_id_elem.text if bwb_id_elem is not None else None
 
     # Type (regulatory layer)
-    soort = wti_tree.find(".//soort-regeling")
+    soort = wti_tree.find(f".//{{{NS}}}soort-regeling")
     if soort is not None:
         soort_text = soort.text.lower()
         type_mapping = {
@@ -85,7 +87,7 @@ def parse_wti_metadata(wti_tree):
         )
 
     # Publication date
-    pub_date = wti_tree.find(".//publicatiedatum")
+    pub_date = wti_tree.find(f".//{{{NS}}}publicatiedatum")
     if pub_date is not None:
         metadata["publication_date"] = pub_date.text
 
@@ -188,8 +190,11 @@ def generate_yaml(metadata, articles, effective_date):
         "uuid": str(uuid.uuid4()),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),
         "publication_date": metadata.get("publication_date", effective_date),
-        "bwb_id": metadata["bwb_id"],
-        "url": f"https://wetten.overheid.nl/{metadata['bwb_id']}/{effective_date}",
+        "effective_date": effective_date,
+        "identifiers": {
+            "bwb_id": metadata["bwb_id"],
+            "url": f"https://wetten.overheid.nl/{metadata['bwb_id']}/{effective_date}",
+        },
         "articles": articles,
     }
 

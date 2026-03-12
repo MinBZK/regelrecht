@@ -6,7 +6,7 @@
 
 **Base Endpoint:**
 ```
-http://zoekservice.overheid.nl/sru/Search
+https://zoekservice.overheid.nl/sru/Search
 ```
 
 **Required Parameters:**
@@ -234,7 +234,7 @@ From a toestand XML, extract articles using the `bwb` namespace (`http://www.ove
 
 Construct SRU URLs by URL-encoding the CQL query parameter:
 ```
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query={URL_ENCODED_CQL}
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query={URL_ENCODED_CQL}
 ```
 
 ### Validation

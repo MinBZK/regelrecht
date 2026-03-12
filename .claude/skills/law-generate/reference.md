@@ -44,7 +44,7 @@ machine_readable:
       - name: "toetsingsinkomen"
         type: "amount"          # string | number | boolean | amount | object | array | date
         source:
-          regulation: "awir"    # External law/regulation ID
+          regulation: "algemene_wet_inkomensafhankelijke_regelingen"    # External law/regulation ID
           output: "toetsingsinkomen"  # Output field to retrieve
           parameters:
             bsn: "$bsn"
@@ -325,8 +325,8 @@ This is the opposite of English. So `€1.234,56` means one thousand two hundred
 |--------------|-----------|------|--------|
 | Age | leeftijd | number | wet_basisregistratie_personen |
 | Insured status | is_verzekerd | boolean | zorgverzekeringswet |
-| Partner status | heeft_toeslagpartner | boolean | awir |
-| Test income | toetsingsinkomen | amount | awir |
+| Partner status | heeft_toeslagpartner | boolean | algemene_wet_inkomensafhankelijke_regelingen |
+| Test income | toetsingsinkomen | amount | algemene_wet_inkomensafhankelijke_regelingen |
 | Assets | vermogen | amount | belastingdienst |
 
 ### Common Outputs
