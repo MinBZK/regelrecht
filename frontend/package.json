@@ -13,7 +13,7 @@
     "@minbzk/storybook": "^0.8.8"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.4",
+    "@vitejs/plugin-vue": "^6.0.5",
     "js-yaml": "^4.1.1",
     "vite": "^7.3.1",
     "vue": "^3.5.30"
