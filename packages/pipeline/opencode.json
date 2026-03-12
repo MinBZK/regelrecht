@@ -9,7 +9,11 @@
       },
       "models": {
         "ubiops-deployment/bzk-dig-mistralmedium-flexibel//chat-model": {
-          "name": "VLAM Mistral Medium"
+          "name": "VLAM Mistral Medium",
+          "limit": {
+            "context": 32000,
+            "output": 8192
+          }
         }
       }
     }
