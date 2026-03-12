@@ -41,17 +41,9 @@
         <div class="signup-form-container">
             <h2 class="section-title">Op de hoogte blijven of bijdragen aan RegelRecht?</h2>
 
-            <form id="signup-form" action="https://formsubmit.co/regelrecht@minbzk.nl" method="POST">
+            <form id="signup-form">
                 <!-- Honeypot spam protection -->
                 <input type="text" name="_honey" style="display:none">
-                <!-- Disable captcha -->
-                <input type="hidden" name="_captcha" value="false">
-                <!-- Subject line -->
-                <input type="hidden" name="_subject" value="Nieuwe aanmelding: RegelRecht">
-                <!-- Template -->
-                <input type="hidden" name="_template" value="table">
-                <!-- Redirect after success -->
-                <input type="hidden" name="_next" id="form-next-url">
 
                 <div class="form-group">
                     <fieldset class="radio-group">
@@ -99,7 +91,7 @@
             <!-- Success message -->
             <div id="signup-success" class="signup-success" hidden>
                 <h3>Bedankt voor je aanmelding!</h3>
-                <p>We hebben je aanmelding ontvangen. Je ontvangt een bevestiging op het opgegeven e-mailadres.</p>
+                <p>We hebben je aanmelding ontvangen.</p>
                 <button onclick="resetForm()" class="btn-primary signup-submit">Nog iemand aanmelden</button>
             </div>
 
