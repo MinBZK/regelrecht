@@ -12,7 +12,7 @@ Download the Wet op de Zorgtoeslag
 1. **Search SRU API:**
    ```
    Query: dcterms.title any "zorgtoeslag"
-   URL: http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20%22zorgtoeslag%22
+   URL: https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20%22zorgtoeslag%22
    ```
 
 2. **Present Results:**
@@ -57,7 +57,7 @@ Download the Wet op de Zorgtoeslag
      Saved to: regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
 
    The YAML file contains the legal text only.
-   To add machine-readable execution logic, use the law-machine-readable-interpreter skill.
+   To add machine-readable execution logic, use the law-interpret skill.
    ```
 
 ---
@@ -264,16 +264,12 @@ Download the "Wet op het Groentetuintje"
 **Complete example of downloaded YAML file:**
 
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.2.0/schema.json
-$id: "wet_op_de_zorgtoeslag"
-uuid: "a7b3c4d5-e6f7-8a9b-0c1d-2e3f4a5b6c7d"
+name: "Wet op de zorgtoeslag"
 regulatory_layer: "WET"
 publication_date: "2005-12-30"
-effective_date: "2006-01-01"
-
-identifiers:
-  bwb_id: "BWBR0018451"
-  url: "https://wetten.overheid.nl/BWBR0018451/2025-01-01"
+valid_from: "2006-01-01"
+url: "https://wetten.overheid.nl/BWBR0018451/2025-01-01"
+bwb_id: "BWBR0018451"
 
 articles:
   - number: "1"
@@ -315,17 +311,19 @@ articles:
 - Links converted to markdown format
 - Monetary amounts kept as-is (€ notation)
 - All articles included
+- All identifiers (`bwb_id`, `url`) are top-level, not nested under `identifiers`
+- Uses `valid_from` (not `effective_date`) and `name` (not `$id`)
 
 ---
 
 ## Integration with Machine-Readable Interpreter
 
-After downloading with this skill, use the `law-machine-readable-interpreter` skill:
+After downloading with this skill, use the `law-interpret` skill:
 
 ```
 User: "Now interpret the zorgtoeslag law"
 
-[law-machine-readable-interpreter activates]
+[law-interpret activates]
 
 Result: The same YAML file updated with machine_readable sections:
 - Endpoints identified

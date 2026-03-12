@@ -1,12 +1,27 @@
 ---
-name: dutch-law-downloader
-description: Downloads Dutch official legal publications including national laws (wetten, ministeriele regelingen, koninklijk besluiten), local regulations (lokale verordeningen, gemeentelijk beleid), and implementation policies (uitvoeringsbeleid) from government databases (BWB, CVDR) and converts them to YAML format with textual content only. Use when user wants to download, fetch, or import any Dutch regulation by name or type.
+name: law-download
+description: >
+  Downloads Dutch official legal publications including national laws (wetten,
+  ministeriele regelingen, koninklijk besluiten), local regulations (lokale
+  verordeningen, gemeentelijk beleid), and implementation policies
+  (uitvoeringsbeleid) from government databases (BWB, CVDR) and converts them
+  to YAML format with textual content only. Use when user wants to download,
+  fetch, or import any Dutch regulation by name or type. Run this before
+  /law-interpret to create the text-only YAML that law-interpret then makes
+  executable.
 allowed-tools: Read, Write, WebFetch, Bash, Grep, Glob
+user-invocable: true
 ---
 
-# Dutch Law Downloader
+# Law Download
 
-Downloads official Dutch legal publications from government sources (national and local) and converts them to the regelrecht YAML format.
+Downloads official Dutch legal publications from government sources (national
+and local) and converts them to the regelrecht YAML format.
+
+**Pipeline:** `/law-download` (this skill) → `/law-interpret` (adds machine_readable logic)
+
+Use this skill first to create a text-only YAML file, then use `/law-interpret`
+to add machine-readable execution logic to it.
 
 ## What This Skill Does
 
@@ -60,12 +75,12 @@ Based on the regulation type, choose the appropriate database:
 
 **API Endpoint (BWB):**
 ```
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query={QUERY}&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query={QUERY}&maximumRecords=10
 ```
 
 **API Endpoint (CVDR):**
 ```
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query={QUERY}&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query={QUERY}&maximumRecords=10
 ```
 
 **Query Construction:**
@@ -78,13 +93,13 @@ http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x
 **Examples:**
 ```
 # Search BWB
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20"zorgtoeslag"&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=BWB&query=dcterms.title%20any%20"zorgtoeslag"&maximumRecords=10
 
 # Search CVDR for municipal regulations
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=dcterms.title%20any%20"afvalstoffenverordening"&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=dcterms.title%20any%20"afvalstoffenverordening"&maximumRecords=10
 
 # Search specific municipality
-http://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=overheidcvdr.organisatietype==gemeenten%20AND%20dcterms.creator==Amsterdam%20AND%20dcterms.title%20any%20"afval"&maximumRecords=10
+https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=overheidcvdr.organisatietype==gemeenten%20AND%20dcterms.creator==Amsterdam%20AND%20dcterms.title%20any%20"afval"&maximumRecords=10
 ```
 
 ### Step 3: Parse Search Results
@@ -158,19 +173,16 @@ xmlns:bwb-dl="http://www.geonovum.nl/bwb-dl/1.0"
 ```
 
 **Fields to Extract:**
-- `<bwb-dl:bwb-id>` → `identifiers.bwb_id`
+- `<bwb-dl:bwb-id>` → `bwb_id` (top-level field)
 - `<bwb-dl:soort>` → Map to `regulatory_layer`:
   - "wet" → "WET"
   - "AMvB" → "AMVB"
   - "ministeriele regeling" → "MINISTERIELE_REGELING"
-  - "koninklijk besluit" → "KONINKLIJK_BESLUIT"
-  - etc.
-- `<bwb-dl:citeertitel>` or `<bwb-dl:officiele-titel>` → Use to generate `$id` (slugified)
-- First `<bwb-dl:intrekking datum="...">` → `effective_date`
+  - "beleidsregel" → "BELEIDSREGEL"
+  - See schema for full enum list (no KONINKLIJK_BESLUIT — map to closest match)
+- `<bwb-dl:citeertitel>` or `<bwb-dl:officiele-titel>` → `name` (and slugified for directory name)
+- First `<bwb-dl:intrekking datum="...">` → `valid_from`
 - `<bwb-dl:publicatiedatum>` → `publication_date`
-
-**Generate UUID:**
-Use Python uuid4 to generate a new UUID for the `uuid` field.
 
 ### Step 6: Parse Legal Text XML for Articles
 
@@ -216,16 +228,12 @@ xmlns:bwb="http://www.overheid.nl/2011/BWB"
 
 **Target Structure:**
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.2.0/schema.json
-$id: "{slugified_title}"
-uuid: {generated_uuid}
+name: "{LAW_TITLE}"
 regulatory_layer: "{MAPPED_LAYER}"
 publication_date: "{YYYY-MM-DD}"
-effective_date: "{YYYY-MM-DD}"
-
-identifiers:
-  bwb_id: "{BWBR_ID}"
-  url: "https://wetten.overheid.nl/{BWBR_ID}/{DATE}"
+valid_from: "{YYYY-MM-DD}"
+url: "https://wetten.overheid.nl/{BWBR_ID}/{DATE}"
+bwb_id: "{BWBR_ID}"
 
 articles:
   - number: "{ARTICLE_NUMBER}"
@@ -243,12 +251,14 @@ articles:
 - Keep text as-is (no eurocent conversion)
 - Include ALL articles from the law
 - Use proper YAML multiline string format (`|`) for text
+- Schema v0.3.2 uses top-level `bwb_id`, `url`, `valid_from`, `name` — NOT nested under `identifiers`
+- No `$schema`, `$id`, `uuid`, or `effective_date` fields — those are not in the schema
 
 ### Step 8: Save File
 
 **Directory Structure:**
 ```
-regulation/nl/{regulatory_layer_lowercase}/{law_id}/{effective_date}.yaml
+regulation/nl/{regulatory_layer_lowercase}/{law_id}/{valid_from}.yaml
 ```
 
 **Example:**
@@ -259,24 +269,31 @@ regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
 
 Create directories if they don't exist.
 
-### Step 9: Validate YAML Against Schema
+### Step 9: Validate YAML Against Schema (with repair loop)
 
-Before confirming, validate the generated YAML:
+**CRITICAL**: The generated YAML MUST pass `just validate`. The schema is the single
+source of truth.
 
 ```bash
 just validate {FILE_PATH}
 ```
 
-**If validation fails:**
-- Review error messages
-- Fix the YAML structure
-- Re-validate until it passes
+**If validation fails** — repair (up to 3 rounds):
+1. Read the error output carefully, identify broken fields/structure
+2. Fix the YAML with the Edit tool
+3. Re-run `just validate`
+4. If still failing after 3 rounds, stop and report the errors to the user
 
 **Common validation issues:**
-- Missing required fields (bwb_id, uuid, etc.)
-- Incorrect type for regulatory_layer
-- Malformed YAML syntax
-- Invalid date formats
+- Missing required fields (`regulatory_layer`, `publication_date`, `url`, `articles`)
+- Missing `bwb_id` for national laws (WET, AMVB, MINISTERIELE_REGELING, GRONDWET)
+- Incorrect `regulatory_layer` enum value
+- Malformed YAML syntax (bad indentation, unescaped special characters in text)
+- Invalid date formats (must be `YYYY-MM-DD`)
+- Articles missing `number`, `text`, or `url` fields
+
+**Do NOT proceed to Step 10 with invalid YAML.** A file that fails validation
+cannot be used by `/law-interpret` in the next step.
 
 ### Step 10: Confirm with User
 
@@ -290,7 +307,7 @@ Report:
   ✅ Schema validation: PASSED
 
 The YAML file contains the legal text only.
-To add machine-readable execution logic, use the law-machine-readable-interpreter skill.
+To add machine-readable execution logic, run /law-interpret on this file.
 ```
 
 ## Error Handling
@@ -314,6 +331,6 @@ To add machine-readable execution logic, use the law-machine-readable-interprete
 - Always download BOTH WTI and Toestand files
 - Handle XML namespaces correctly
 - Preserve exact text formatting (spaces, line breaks)
-- Generate human-readable `$id` slugs (lowercase, hyphens)
+- Generate human-readable directory name slugs (lowercase, underscores — e.g., `wet_op_de_zorgtoeslag`)
 - Double-check all articles are included (count them)
 - Validate YAML syntax before saving

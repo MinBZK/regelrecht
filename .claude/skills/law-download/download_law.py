@@ -3,16 +3,15 @@
 Download and convert a Dutch law from BWB to regelrecht YAML format.
 
 Usage:
-    python .claude/skills/dutch-law-downloader/download_law.py BWBR0033715 2025-02-12
-    python .claude/skills/dutch-law-downloader/download_law.py BWBR0033715  # Uses latest version
+    python .claude/skills/law-download/download_law.py BWBR0033715 2025-02-12
+    python .claude/skills/law-download/download_law.py BWBR0033715  # Uses latest version
 
-Note: This is a standalone utility script. The dutch-law-downloader Claude skill
+Note: This is a standalone utility script. The law-download Claude skill
 replaces this script for interactive use (it uses WebFetch instead of Python).
 This script is kept as a reference and for batch/CI use.
 """
 
 import sys
-import uuid
 import re
 from pathlib import Path
 from datetime import datetime
@@ -58,17 +57,24 @@ def parse_wti_metadata(wti_tree):
     """Extract metadata from WTI XML."""
     metadata = {}
 
+    NS = "http://www.geonovum.nl/bwb-dl/1.0"
+
     # Title
-    citeertitel = wti_tree.find(".//citeertitel[@status='officieel']")
+    citeertitel = wti_tree.find(f".//{{{NS}}}citeertitel[@status='officieel']")
     if citeertitel is not None:
         metadata["title"] = citeertitel.text
 
-    # BWB ID
-    bwb_id = wti_tree.get("bwb-id")
-    metadata["bwb_id"] = bwb_id
+    # BWB ID (child element, not attribute)
+    bwb_id_elem = wti_tree.find(f".//{{{NS}}}bwb-id")
+    metadata["bwb_id"] = bwb_id_elem.text if bwb_id_elem is not None else None
 
     # Type (regulatory layer)
-    soort = wti_tree.find(".//soort-regeling")
+    VALID_LAYERS = {
+        "GRONDWET", "WET", "AMVB", "MINISTERIELE_REGELING", "BELEIDSREGEL",
+        "EU_VERORDENING", "EU_RICHTLIJN", "VERDRAG", "UITVOERINGSBELEID",
+        "GEMEENTELIJKE_VERORDENING", "PROVINCIALE_VERORDENING",
+    }
+    soort = wti_tree.find(f".//{{{NS}}}soort-regeling")
     if soort is not None:
         soort_text = soort.text.lower()
         type_mapping = {
@@ -77,15 +83,23 @@ def parse_wti_metadata(wti_tree):
             "algemene maatregel van bestuur": "AMVB",
             "ministeriele regeling": "MINISTERIELE_REGELING",
             "ministeriële regeling": "MINISTERIELE_REGELING",
-            "koninklijk besluit": "KONINKLIJK_BESLUIT",
-            "kb": "KONINKLIJK_BESLUIT",
+            "beleidsregel": "BELEIDSREGEL",
         }
-        metadata["regulatory_layer"] = type_mapping.get(
-            soort_text, soort_text.upper().replace(" ", "_")
-        )
+        layer = type_mapping.get(soort_text, soort_text.upper().replace(" ", "_"))
+        if layer not in VALID_LAYERS:
+            raise ValueError(
+                f"'{soort_text}' maps to '{layer}' which is not a valid "
+                f"schema v0.3.2 regulatory_layer. Map manually to e.g. AMVB."
+            )
+        metadata["regulatory_layer"] = layer
+
+    # Guard: bwb_id is required for national laws
+    NATIONAL_LAYERS = {"WET", "AMVB", "MINISTERIELE_REGELING", "GRONDWET"}
+    if metadata.get("bwb_id") is None and metadata.get("regulatory_layer") in NATIONAL_LAYERS:
+        raise ValueError(f"bwb-id element not found in WTI XML (namespace: {NS})")
 
     # Publication date
-    pub_date = wti_tree.find(".//publicatiedatum")
+    pub_date = wti_tree.find(f".//{{{NS}}}publicatiedatum")
     if pub_date is not None:
         metadata["publication_date"] = pub_date.text
 
@@ -179,19 +193,22 @@ def parse_articles(toestand_tree, bwbr_id, date):
 def generate_yaml(metadata, articles, effective_date):
     """Generate YAML law file."""
     # Generate law ID from title
-    law_id = slugify(metadata.get("title", metadata["bwb_id"]))
+    bwb_id = metadata.get("bwb_id")
+    law_id = slugify(metadata.get("title", bwb_id or "unknown"))
 
-    # Create YAML structure
+    # Create YAML structure matching schema v0.3.2
+    # Schema has top-level bwb_id, url, valid_from, name (no $schema, $id, uuid, identifiers)
     law_data = {
-        "$schema": "https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json",
-        "$id": law_id,
-        "uuid": str(uuid.uuid4()),
+        "name": metadata.get("title", law_id),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),
         "publication_date": metadata.get("publication_date", effective_date),
-        "bwb_id": metadata["bwb_id"],
-        "url": f"https://wetten.overheid.nl/{metadata['bwb_id']}/{effective_date}",
+        "valid_from": effective_date,
+        "url": f"https://wetten.overheid.nl/{bwb_id}/{effective_date}",
         "articles": articles,
     }
+    # Only include bwb_id if present (required for national laws, optional otherwise)
+    if bwb_id is not None:
+        law_data["bwb_id"] = bwb_id
 
     return law_id, law_data
 
@@ -222,10 +239,10 @@ def save_yaml(law_id, law_data, regulatory_layer, effective_date):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python .claude/skills/dutch-law-downloader/download_law.py BWBR_ID [DATE]")
+        print("Usage: python .claude/skills/law-download/download_law.py BWBR_ID [DATE]")
         print()
         print("Example:")
-        print("  python .claude/skills/dutch-law-downloader/download_law.py BWBR0033715 2025-02-12")
+        print("  python .claude/skills/law-download/download_law.py BWBR0033715 2025-02-12")
         sys.exit(1)
 
     bwbr_id = sys.argv[1]
@@ -271,7 +288,7 @@ def main():
         print("Next steps:")
         print(f"1. Validate: just validate {output_file}")
         print(
-            "2. Interpret: Use the law-machine-readable-interpreter skill to add machine_readable sections"
+            "2. Interpret: Use the law-interpret skill to add machine_readable sections"
         )
 
     except Exception as e:
