@@ -10,7 +10,7 @@ COPY packages/admin/frontend-src/ .
 RUN npm run build
 
 # Stage 2: Chef base
-FROM rust:1.93-alpine AS chef
+FROM rust:1.94-alpine AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
