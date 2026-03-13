@@ -171,18 +171,13 @@ impl EnrichConfig {
     }
 }
 
-/// Build the enrichment branch name for a given provider and law.
+/// Build the enrichment branch name for a given provider.
 ///
-/// Format: `enrich/{provider}/{law_slug}` where law_slug is derived from
-/// the YAML path (e.g. `wet_op_de_zorgtoeslag`).
-pub fn enrich_branch_name(provider_name: &str, yaml_path: &str) -> String {
-    let slug = Path::new(yaml_path)
-        .parent()
-        .and_then(|p| p.file_name())
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "unknown".into());
-
-    format!("enrich/{provider_name}/{slug}")
+/// All enriched laws for a provider live on a single shared branch
+/// (`enrich/{provider}`), so results can be compared with main and
+/// between providers without branch-per-law proliferation.
+pub fn enrich_branch_name(provider_name: &str) -> String {
+    format!("enrich/{provider_name}")
 }
 
 /// Build the prompt that tells the LLM to follow the skill pipeline.
@@ -446,7 +441,7 @@ pub async fn execute_enrich(
         }
     }
 
-    let branch = enrich_branch_name(&provider_name, &payload.yaml_path);
+    let branch = enrich_branch_name(&provider_name);
 
     let result = EnrichResult {
         law_id: payload.law_id.clone(),
@@ -572,14 +567,14 @@ mod tests {
             articles_enriched: 7,
             quality_score: 0.7,
             provider: "opencode".to_string(),
-            branch: "enrich/opencode/wet_op_de_zorgtoeslag".to_string(),
+            branch: "enrich/opencode".to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["articles_enriched"], 7);
         assert_eq!(json["quality_score"], 0.7);
         assert_eq!(json["provider"], "opencode");
-        assert_eq!(json["branch"], "enrich/opencode/wet_op_de_zorgtoeslag");
+        assert_eq!(json["branch"], "enrich/opencode");
     }
 
     #[test]
@@ -654,20 +649,8 @@ mod tests {
 
     #[test]
     fn test_enrich_branch_name() {
-        assert_eq!(
-            enrich_branch_name(
-                "opencode",
-                "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml"
-            ),
-            "enrich/opencode/wet_op_de_zorgtoeslag"
-        );
-        assert_eq!(
-            enrich_branch_name(
-                "claude",
-                "regulation/nl/ministeriele_regeling/huurtoeslag_param/2025-01-01.yaml"
-            ),
-            "enrich/claude/huurtoeslag_param"
-        );
+        assert_eq!(enrich_branch_name("opencode"), "enrich/opencode");
+        assert_eq!(enrich_branch_name("claude"), "enrich/claude");
     }
 
     #[test]

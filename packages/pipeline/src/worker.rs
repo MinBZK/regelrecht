@@ -410,7 +410,7 @@ async fn process_next_enrich_job(
     }
 
     // Create a branch-specific corpus client for this enrichment
-    let branch = enrich_branch_name(effective_config.provider.name(), &payload.yaml_path);
+    let branch = enrich_branch_name(effective_config.provider.name());
     let enrich_corpus = if let Some(base_config) = corpus_config {
         match create_enrich_corpus(base_config, &branch).await {
             Ok(client) => {
