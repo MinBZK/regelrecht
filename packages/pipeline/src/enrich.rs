@@ -100,7 +100,9 @@ pub struct EnrichResult {
     pub law_id: String,
     pub yaml_path: String,
     pub articles_total: usize,
-    pub articles_enriched: usize,
+    /// Total articles with a `machine_readable` section after enrichment
+    /// (includes pre-existing ones). Not the count of newly enriched articles.
+    pub articles_with_machine_readable: usize,
     /// Fraction of articles that have a `machine_readable` section.
     /// Measures coverage only, not correctness — 1.0 means every article
     /// has a `machine_readable` key, but says nothing about its content.
@@ -120,7 +122,8 @@ pub struct EnrichmentMetadata {
     pub code_commit: String,
     pub coverage_score: f64,
     pub articles_total: usize,
-    pub articles_enriched: usize,
+    /// Total articles with a `machine_readable` section after enrichment.
+    pub articles_with_machine_readable: usize,
 }
 
 /// Supported LLM providers for enrichment.
@@ -462,8 +465,8 @@ pub async fn execute_enrich_with_runner(
 
     // Count articles with machine_readable after enrichment.
     // Coverage score measures what the LLM *added*, not total coverage.
-    let articles_enriched = count_machine_readable_articles(&yaml_abs).await?;
-    let newly_enriched = articles_enriched.saturating_sub(machine_readable_before);
+    let articles_with_machine_readable = count_machine_readable_articles(&yaml_abs).await?;
+    let newly_enriched = articles_with_machine_readable.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
     let coverage_score = if articles_needing_enrichment > 0 {
         newly_enriched as f64 / articles_needing_enrichment as f64
@@ -484,7 +487,7 @@ pub async fn execute_enrich_with_runner(
         code_commit: config.code_commit.clone(),
         coverage_score,
         articles_total: articles_before,
-        articles_enriched,
+        articles_with_machine_readable,
     };
 
     let metadata_path = yaml_abs
@@ -530,7 +533,7 @@ pub async fn execute_enrich_with_runner(
         law_id: payload.law_id.clone(),
         yaml_path: payload.yaml_path.clone(),
         articles_total: articles_before,
-        articles_enriched,
+        articles_with_machine_readable,
         coverage_score,
         provider: provider_name,
         branch,
@@ -655,14 +658,14 @@ mod tests {
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             articles_total: 10,
-            articles_enriched: 7,
+            articles_with_machine_readable: 7,
             coverage_score: 0.7,
             provider: "opencode".to_string(),
             branch: "enrich/opencode".to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
-        assert_eq!(json["articles_enriched"], 7);
+        assert_eq!(json["articles_with_machine_readable"], 7);
         assert_eq!(json["coverage_score"], 0.7);
         assert_eq!(json["provider"], "opencode");
         assert_eq!(json["branch"], "enrich/opencode");
@@ -775,7 +778,7 @@ mod tests {
             code_commit: "deadbeef".to_string(),
             coverage_score: 0.7,
             articles_total: 10,
-            articles_enriched: 7,
+            articles_with_machine_readable: 7,
         };
 
         let yaml = serde_yaml_ng::to_string(&meta).unwrap();
@@ -783,7 +786,7 @@ mod tests {
         assert!(yaml.contains("provider: opencode"));
 
         let deserialized: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
-        assert_eq!(deserialized.articles_enriched, 7);
+        assert_eq!(deserialized.articles_with_machine_readable, 7);
     }
 
     #[test]
@@ -900,7 +903,7 @@ articles:
                 .unwrap();
 
         assert_eq!(result.articles_total, 3);
-        assert_eq!(result.articles_enriched, 3);
+        assert_eq!(result.articles_with_machine_readable, 3);
         // 2 out of 2 articles needing enrichment were enriched
         assert!((result.coverage_score - 1.0).abs() < f64::EPSILON);
         assert_eq!(result.provider, "opencode");
@@ -916,7 +919,7 @@ articles:
         let meta: EnrichmentMetadata = serde_yaml_ng::from_str(&meta_content).unwrap();
         assert_eq!(meta.law_id, "BWBR0000001");
         assert_eq!(meta.provider, "opencode");
-        assert_eq!(meta.articles_enriched, 3);
+        assert_eq!(meta.articles_with_machine_readable, 3);
     }
 
     /// Fake runner that fails, to test error path.

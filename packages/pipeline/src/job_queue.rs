@@ -288,6 +288,45 @@ where
     Ok(row)
 }
 
+/// Create an enrich job if no active (pending/processing) enrich job exists
+/// for this law_id + provider combination.
+///
+/// Uses `INSERT ... ON CONFLICT DO NOTHING` against the
+/// `idx_unique_active_enrich_job` partial unique index to atomically
+/// prevent duplicates — no TOCTOU race regardless of isolation level.
+///
+/// Returns `Some(job)` if created, `None` if a duplicate already existed.
+pub async fn create_enrich_job_if_not_exists<'e, E>(
+    executor: E,
+    req: CreateJobRequest,
+) -> Result<Option<Job>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let job = sqlx::query_as::<_, Job>(
+        r#"
+        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (law_id, job_type, (payload->>'provider'))
+            WHERE job_type = 'enrich' AND status IN ('pending', 'processing')
+        DO NOTHING
+        RETURNING *
+        "#,
+    )
+    .bind(req.job_type)
+    .bind(&req.law_id)
+    .bind(req.priority.value())
+    .bind(&req.payload)
+    .bind(req.max_attempts)
+    .fetch_optional(executor)
+    .await?;
+
+    if let Some(ref j) = job {
+        tracing::info!(job_id = %j.id, "enrich job created");
+    }
+    Ok(job)
+}
+
 /// List jobs with optional status filter.
 pub async fn list_jobs<'e, E>(executor: E, status: Option<JobStatus>) -> Result<Vec<Job>>
 where
