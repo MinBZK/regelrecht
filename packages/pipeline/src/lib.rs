@@ -10,7 +10,9 @@ pub mod worker;
 
 pub use config::{PipelineConfig, WorkerConfig};
 pub use db::{create_pool, ensure_schema, MIGRATION_LOCK_KEY};
-pub use enrich::{EnrichConfig, EnrichPayload, EnrichResult, EnrichmentMetadata, LlmProvider};
+pub use enrich::{
+    EnrichConfig, EnrichPayload, EnrichResult, EnrichmentMetadata, LlmProvider, ENRICH_PROVIDERS,
+};
 pub use error::PipelineError;
 pub use harvest::{HarvestPayload, HarvestResult};
 pub use models::{Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};

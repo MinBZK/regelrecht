@@ -187,29 +187,38 @@ async fn process_next_job(
                 }
             }
 
-            // Auto-create enrich job after successful harvest
-            let enrich_payload = EnrichPayload {
-                law_id: job.law_id.clone(),
-                yaml_path: result.file_path.clone(),
-            };
-            if let Ok(payload_json) = serde_json::to_value(&enrich_payload) {
-                let enrich_req =
-                    CreateJobRequest::new(JobType::Enrich, &job.law_id).with_payload(payload_json);
-                match job_queue::create_job(pool, enrich_req).await {
-                    Ok(enrich_job) => {
-                        tracing::info!(
-                            enrich_job_id = %enrich_job.id,
-                            law_id = %job.law_id,
-                            "auto-created enrich job after harvest"
-                        );
-                        let _ = law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await;
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            law_id = %job.law_id,
-                            "failed to auto-create enrich job (harvest still succeeded)"
-                        );
+            // Auto-create enrich jobs after successful harvest — one per provider.
+            // Each provider writes to its own branch (`enrich/{provider}/{law_slug}`)
+            // so results can be compared side-by-side.
+            for provider_name in crate::enrich::ENRICH_PROVIDERS {
+                let enrich_payload = EnrichPayload {
+                    law_id: job.law_id.clone(),
+                    yaml_path: result.file_path.clone(),
+                    provider: Some((*provider_name).to_string()),
+                };
+                if let Ok(payload_json) = serde_json::to_value(&enrich_payload) {
+                    let enrich_req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+                        .with_payload(payload_json);
+                    match job_queue::create_job(pool, enrich_req).await {
+                        Ok(enrich_job) => {
+                            tracing::info!(
+                                enrich_job_id = %enrich_job.id,
+                                law_id = %job.law_id,
+                                provider = %provider_name,
+                                "auto-created enrich job after harvest"
+                            );
+                            // Track the last created enrich job on the law entry
+                            let _ =
+                                law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                law_id = %job.law_id,
+                                provider = %provider_name,
+                                "failed to auto-create enrich job (harvest still succeeded)"
+                            );
+                        }
                     }
                 }
             }
@@ -359,14 +368,6 @@ async fn process_next_enrich_job(
         None => return Ok(false),
     };
 
-    tracing::info!(
-        job_id = %job.id,
-        law_id = %job.law_id,
-        attempt = job.attempts,
-        provider = %enrich_config.provider.name(),
-        "processing enrich job"
-    );
-
     let payload: EnrichPayload = match &job.payload {
         Some(p) => match serde_json::from_value(p.clone()) {
             Ok(parsed) => parsed,
@@ -390,12 +391,26 @@ async fn process_next_enrich_job(
         }
     };
 
+    // Override the provider if the payload specifies one
+    let effective_config = match &payload.provider {
+        Some(provider_name) => enrich_config.with_provider_override(provider_name),
+        None => enrich_config.clone(),
+    };
+
+    tracing::info!(
+        job_id = %job.id,
+        law_id = %job.law_id,
+        attempt = job.attempts,
+        provider = %effective_config.provider.name(),
+        "processing enrich job"
+    );
+
     if let Err(e) = law_status::update_status(pool, &job.law_id, LawStatusValue::Enriching).await {
         tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
     }
 
     // Create a branch-specific corpus client for this enrichment
-    let branch = enrich_branch_name(enrich_config.provider.name(), &payload.yaml_path);
+    let branch = enrich_branch_name(effective_config.provider.name(), &payload.yaml_path);
     let enrich_corpus = if let Some(base_config) = corpus_config {
         match create_enrich_corpus(base_config, &branch).await {
             Ok(client) => {
@@ -417,7 +432,7 @@ async fn process_next_enrich_job(
         .map(|c| c.repo_path().to_path_buf())
         .unwrap_or_else(|| repo_path.to_path_buf());
 
-    match execute_enrich(&payload, &effective_repo, enrich_config).await {
+    match execute_enrich(&payload, &effective_repo, &effective_config).await {
         Ok((result, written_files)) => {
             tracing::info!(
                 job_id = %job.id,

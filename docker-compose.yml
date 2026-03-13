@@ -11,9 +11,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # Enrich worker — runs enrichments using the configured LLM provider.
-  # Set LLM_PROVIDER to "opencode" (VLAM) or "claude" to select.
-  # Both tools are in the same image; provider is selected at runtime.
+  # Enrich workers — each harvest creates two enrich jobs (one per provider).
+  # Both workers share the same image; the provider per job is determined by
+  # the payload. LLM_PROVIDER sets the default for jobs without a provider field.
+  #
+  # A single worker instance handles both providers (provider is per-job),
+  # but you can also run separate instances for independent scaling.
   enrich-worker:
     build:
       context: .
@@ -23,11 +26,9 @@ services:
     environment:
       DATABASE_URL: postgresql://regelrecht:regelrecht_dev@postgres:5432/regelrecht_pipeline
       LLM_PROVIDER: opencode
-      LLM_MODEL: vlam/ubiops-deployment/bzk-dig-mistralmedium-flexibel//chat-model
-      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}  # uncomment for claude provider
+      OPENCODE_MODEL: vlam/ubiops-deployment/bzk-dig-mistralmedium-flexibel//chat-model
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     volumes:
-      # Mount opencode auth (VLAM API key) — generate with `opencode auth`
-      # - ./secrets/opencode-auth.json:/home/worker/.local/share/opencode/auth.json:ro
       - corpus-repo:/home/worker/corpus
 
 volumes:

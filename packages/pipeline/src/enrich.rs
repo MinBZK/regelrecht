@@ -13,7 +13,15 @@ pub struct EnrichPayload {
     pub law_id: String,
     /// Relative path to the harvested YAML file within the repo.
     pub yaml_path: String,
+    /// LLM provider to use for this enrichment ("opencode" or "claude").
+    /// When set, overrides the worker's `LLM_PROVIDER` env var.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
+
+/// All known provider names. Used to create one enrich job per provider
+/// after a successful harvest.
+pub const ENRICH_PROVIDERS: &[&str] = &["opencode", "claude"];
 
 /// Result of a successful enrichment execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,6 +131,42 @@ impl EnrichConfig {
             provider,
             timeout: Duration::from_secs(timeout),
             code_commit,
+        }
+    }
+
+    /// Return a config with the provider overridden if the payload specifies one.
+    ///
+    /// The timeout and code_commit are preserved from the base config; only
+    /// the provider (and its path/model) change. Path and model fall back to
+    /// env vars (`LLM_PATH`, `LLM_MODEL`) or defaults.
+    pub fn with_provider_override(&self, provider_name: &str) -> Self {
+        let provider = match provider_name {
+            "claude" => {
+                let path = std::env::var("CLAUDE_PATH")
+                    .or_else(|_| std::env::var("LLM_PATH"))
+                    .unwrap_or_else(|_| "claude".into())
+                    .into();
+                let model = std::env::var("CLAUDE_MODEL")
+                    .or_else(|_| std::env::var("LLM_MODEL"))
+                    .ok();
+                LlmProvider::Claude { path, model }
+            }
+            _ => {
+                let path = std::env::var("OPENCODE_PATH")
+                    .or_else(|_| std::env::var("LLM_PATH"))
+                    .unwrap_or_else(|_| "opencode".into())
+                    .into();
+                let model = std::env::var("OPENCODE_MODEL")
+                    .or_else(|_| std::env::var("LLM_MODEL"))
+                    .ok();
+                LlmProvider::OpenCode { path, model }
+            }
+        };
+
+        Self {
+            provider,
+            timeout: self.timeout,
+            code_commit: self.code_commit.clone(),
         }
     }
 }
@@ -496,10 +540,24 @@ mod tests {
         let payload = EnrichPayload {
             law_id: "BWBR0018451".to_string(),
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
+            provider: Some("claude".to_string()),
         };
 
         let json = serde_json::to_string(&payload).unwrap();
         let deserialized: EnrichPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.provider.as_deref(), Some("claude"));
+
+        // Verify backward compatibility: provider is optional and skipped when None
+        let payload_no_provider = EnrichPayload {
+            law_id: "BWBR0018451".to_string(),
+            yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
+            provider: None,
+        };
+        let json_no_provider = serde_json::to_string(&payload_no_provider).unwrap();
+        assert!(!json_no_provider.contains("provider"));
+        let deserialized_no_provider: EnrichPayload =
+            serde_json::from_str(&json_no_provider).unwrap();
+        assert!(deserialized_no_provider.provider.is_none());
 
         assert_eq!(deserialized.law_id, "BWBR0018451");
         assert!(deserialized.yaml_path.contains("zorgtoeslag"));
@@ -542,6 +600,33 @@ mod tests {
         };
         assert_eq!(provider.name(), "claude");
         assert_eq!(provider.model_str(), "opus");
+    }
+
+    #[test]
+    fn test_with_provider_override() {
+        let base_config = EnrichConfig {
+            provider: LlmProvider::OpenCode {
+                path: "opencode".into(),
+                model: None,
+            },
+            timeout: Duration::from_secs(600),
+            code_commit: "abc123".to_string(),
+        };
+
+        let claude_config = base_config.with_provider_override("claude");
+        assert_eq!(claude_config.provider.name(), "claude");
+        assert_eq!(claude_config.timeout, Duration::from_secs(600));
+        assert_eq!(claude_config.code_commit, "abc123");
+
+        let opencode_config = base_config.with_provider_override("opencode");
+        assert_eq!(opencode_config.provider.name(), "opencode");
+    }
+
+    #[test]
+    fn test_enrich_providers_list() {
+        assert!(ENRICH_PROVIDERS.contains(&"opencode"));
+        assert!(ENRICH_PROVIDERS.contains(&"claude"));
+        assert_eq!(ENRICH_PROVIDERS.len(), 2);
     }
 
     #[test]
