@@ -45,6 +45,7 @@ if [ -n "$VLAM_BASE_URL" ]; then
     fs.writeFileSync(process.argv[1], JSON.stringify(config, null, 2));
   " "$HOME/.config/opencode/opencode.json"
 else
+  echo "WARNING: VLAM_BASE_URL is not set — using demo API endpoint baked into opencode.json" >&2
   cp /etc/opencode/opencode.json "$HOME/.config/opencode/opencode.json"
 fi
 ln -sf /opt/opencode-plugins/node_modules "$HOME/.config/opencode/node_modules"

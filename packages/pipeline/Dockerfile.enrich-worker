@@ -37,7 +37,7 @@ RUN apk add --no-cache ca-certificates git nodejs npm && \
     addgroup -S app && adduser -S app -G app
 
 # Install opencode and claude CLI globally (pinned versions for reproducibility)
-RUN npm install -g opencode-ai@1.2.25 @anthropic-ai/claude-code@2.1.74 && \
+RUN npm install -g --ignore-scripts opencode-ai@1.2.25 @anthropic-ai/claude-code@2.1.74 && \
     npm cache clean --force
 
 # Copy opencode provider config (VLAM) — the API key is injected at runtime

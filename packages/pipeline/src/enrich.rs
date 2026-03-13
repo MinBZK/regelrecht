@@ -461,7 +461,7 @@ pub async fn execute_enrich_with_runner(
     tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
 
     // Count articles with machine_readable after enrichment.
-    // Quality score measures what the LLM *added*, not total coverage.
+    // Coverage score measures what the LLM *added*, not total coverage.
     let articles_enriched = count_machine_readable_articles(&yaml_abs).await?;
     let newly_enriched = articles_enriched.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
