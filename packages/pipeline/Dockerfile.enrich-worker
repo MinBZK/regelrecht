@@ -32,7 +32,7 @@ RUN find packages -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-enrich-worker
 
 # Stage 4: Runtime
-FROM alpine:3.23
+FROM alpine:3.21
 RUN apk add --no-cache ca-certificates git nodejs npm && \
     addgroup -S app && adduser -S app -G app
 

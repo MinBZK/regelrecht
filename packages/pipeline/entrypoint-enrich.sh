@@ -23,9 +23,10 @@ export CORPUS_REPO_PATH="$CORPUS_DIR"
 # the image; only the key is injected at runtime.
 if [ -n "$VLAM_API_KEY" ]; then
   mkdir -p "$HOME/.local/share/opencode"
-  cat > "$HOME/.local/share/opencode/auth.json" <<AUTHEOF
-{"vlam":{"type":"api","key":"${VLAM_API_KEY}"}}
-AUTHEOF
+  # Use printf to safely write the key without shell interpolation issues.
+  # The key is treated as a raw string — no shell expansion occurs.
+  printf '{"vlam":{"type":"api","key":"%s"}}' "$VLAM_API_KEY" \
+    > "$HOME/.local/share/opencode/auth.json"
   chmod 600 "$HOME/.local/share/opencode/auth.json"
 fi
 

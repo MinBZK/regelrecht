@@ -22,6 +22,9 @@ pub struct EnrichResult {
     pub yaml_path: String,
     pub articles_total: usize,
     pub articles_enriched: usize,
+    /// Ratio of articles with a `machine_readable` section vs total articles.
+    /// This measures coverage, not correctness — a value of 1.0 means every
+    /// article has a `machine_readable` key, but says nothing about its quality.
     pub quality_score: f64,
     pub provider: String,
     pub branch: String,
@@ -235,6 +238,29 @@ pub async fn create_enrich_corpus(
     Ok(client)
 }
 
+/// Validate that a yaml_path contains only safe characters.
+///
+/// Prevents path traversal and injection via crafted job payloads.
+fn validate_yaml_path(yaml_path: &str) -> Result<()> {
+    if yaml_path.is_empty() {
+        return Err(PipelineError::Enrich("yaml_path must not be empty".into()));
+    }
+    if !yaml_path
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'))
+    {
+        return Err(PipelineError::Enrich(format!(
+            "yaml_path contains invalid characters: {yaml_path}"
+        )));
+    }
+    if yaml_path.contains("..") {
+        return Err(PipelineError::Enrich(format!(
+            "yaml_path must not contain '..': {yaml_path}"
+        )));
+    }
+    Ok(())
+}
+
 /// Execute the enrichment: call the configured LLM to generate machine_readable sections.
 ///
 /// Returns the enrichment result and a list of files that were written
@@ -244,6 +270,8 @@ pub async fn execute_enrich(
     repo_path: &Path,
     config: &EnrichConfig,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
+    validate_yaml_path(&payload.yaml_path)?;
+
     let yaml_abs = repo_path.join(&payload.yaml_path);
     if !yaml_abs.exists() {
         return Err(PipelineError::Enrich(format!(
@@ -267,22 +295,49 @@ pub async fn execute_enrich(
         "starting enrichment"
     );
 
-    let output = tokio::time::timeout(config.timeout, cmd.output())
-        .await
-        .map_err(|_| {
-            PipelineError::Enrich(format!(
+    // Spawn the child process so we can kill it on timeout.
+    // Use child.wait() (borrows) instead of wait_with_output() (consumes)
+    // so we retain access to child.kill() if the timeout fires.
+    cmd.stderr(std::process::Stdio::piped());
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name)))?;
+
+    let status = tokio::select! {
+        result = child.wait() => {
+            result.map_err(|e| {
+                PipelineError::Enrich(format!("failed to wait for {}: {e}", provider_name))
+            })?
+        }
+        _ = tokio::time::sleep(config.timeout) => {
+            // Timeout elapsed — kill the child process
+            if let Err(e) = child.kill().await {
+                tracing::warn!(error = %e, "failed to kill timed-out LLM process");
+            }
+            // Wait for the killed process to be reaped
+            let _ = child.wait().await;
+            return Err(PipelineError::Enrich(format!(
                 "{} timed out after {:?}",
                 provider_name, config.timeout
-            ))
-        })?
-        .map_err(|e| PipelineError::Enrich(format!("failed to run {}: {e}", provider_name)))?;
+            )));
+        }
+    };
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    if !status.success() {
+        let stderr_bytes = match child.stderr.take() {
+            Some(mut stderr) => {
+                let mut buf = Vec::new();
+                use tokio::io::AsyncReadExt;
+                let _ = stderr.read_to_end(&mut buf).await;
+                buf
+            }
+            None => Vec::new(),
+        };
+        let stderr = String::from_utf8_lossy(&stderr_bytes);
         return Err(PipelineError::Enrich(format!(
             "{} exited with {}: {}",
             provider_name,
-            output.status,
+            status,
             stderr.chars().take(500).collect::<String>()
         )));
     }
@@ -321,14 +376,27 @@ pub async fn execute_enrich(
     // Collect written files for corpus staging
     let mut written_files = vec![yaml_abs.clone(), metadata_path];
 
-    // Check if a feature file was generated (MvT research creates these)
+    // Check if a feature file was generated for this specific law.
+    // MvT research creates feature files named after the law slug.
+    // Only include files whose name contains the law slug to avoid
+    // accidentally staging unrelated feature files.
+    let law_slug = Path::new(&payload.yaml_path)
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string());
     let features_dir = repo_path.join("features");
-    if features_dir.exists() {
-        if let Ok(mut entries) = tokio::fs::read_dir(&features_dir).await {
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                let path = entry.path();
-                if path.extension().is_some_and(|e| e == "feature") {
-                    written_files.push(path);
+    if let Some(ref slug) = law_slug {
+        if features_dir.exists() {
+            if let Ok(mut entries) = tokio::fs::read_dir(&features_dir).await {
+                while let Ok(Some(entry)) = entries.next_entry().await {
+                    let path = entry.path();
+                    if path.extension().is_some_and(|e| e == "feature") {
+                        if let Some(name) = path.file_stem() {
+                            if name.to_string_lossy().contains(slug.as_str()) {
+                                written_files.push(path);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -537,6 +605,25 @@ mod tests {
 
         let deserialized: EnrichmentMetadata = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(deserialized.articles_enriched, 7);
+    }
+
+    #[test]
+    fn test_validate_yaml_path_valid() {
+        assert!(validate_yaml_path("regulation/nl/wet/zorgtoeslag/2025-01-01.yaml").is_ok());
+        assert!(validate_yaml_path("regulation/nl/ministeriele_regeling/test/file.yaml").is_ok());
+    }
+
+    #[test]
+    fn test_validate_yaml_path_rejects_traversal() {
+        assert!(validate_yaml_path("../etc/passwd").is_err());
+        assert!(validate_yaml_path("regulation/../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_validate_yaml_path_rejects_special_chars() {
+        assert!(validate_yaml_path("regulation/nl/wet/test; rm -rf /").is_err());
+        assert!(validate_yaml_path("regulation/nl/wet/test$(whoami)").is_err());
+        assert!(validate_yaml_path("").is_err());
     }
 
     #[test]

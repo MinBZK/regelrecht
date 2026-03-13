@@ -17,7 +17,7 @@ services:
   enrich-worker:
     build:
       context: .
-      dockerfile: packages/pipeline/Dockerfile
+      dockerfile: packages/pipeline/Dockerfile.enrich-worker
     depends_on:
       - postgres
     environment:
