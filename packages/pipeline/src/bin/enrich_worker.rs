@@ -1,6 +1,7 @@
 use tracing_subscriber::EnvFilter;
 
 use regelrecht_pipeline::config::WorkerConfig;
+use regelrecht_pipeline::db;
 use regelrecht_pipeline::worker::run_enrich_worker;
 
 #[tokio::main]
@@ -15,6 +16,15 @@ async fn main() {
         Ok(config) => config,
         Err(e) => {
             tracing::error!(error = %e, "failed to load configuration");
+            std::process::exit(1);
+        }
+    };
+
+    // Create a pool for the health check endpoint
+    let health_pool = match db::create_pool(&config.pipeline_config()).await {
+        Ok(pool) => pool,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to create DB pool for health check");
             std::process::exit(1);
         }
     };
@@ -40,11 +50,18 @@ async fn main() {
         loop {
             if let Ok((mut stream, _)) = listener.accept().await {
                 use tokio::io::AsyncWriteExt;
-                let _ = stream
-                    .write_all(
-                        b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\nOK",
-                    )
-                    .await;
+                // Check database connectivity before reporting healthy
+                let response =
+                    match sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(&health_pool).await {
+                        Ok(_) => {
+                            b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 2\r\n\r\nOK"
+                                as &[u8]
+                        }
+                        Err(_) => {
+                            b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 13\r\n\r\nDB unreachable"
+                        }
+                    };
+                let _ = stream.write_all(response).await;
             }
         }
     });

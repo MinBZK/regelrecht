@@ -261,6 +261,33 @@ where
     Ok(job)
 }
 
+/// Check whether a pending or processing enrich job already exists for a
+/// given law_id whose payload contains the specified provider.
+///
+/// Used to avoid creating duplicate enrich jobs when a harvest is retried.
+pub async fn has_active_enrich_job<'e, E>(executor: E, law_id: &str, provider: &str) -> Result<bool>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let row = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM jobs
+            WHERE law_id = $1
+              AND job_type = 'enrich'
+              AND status IN ('pending', 'processing')
+              AND payload->>'provider' = $2
+        )
+        "#,
+    )
+    .bind(law_id)
+    .bind(provider)
+    .fetch_one(executor)
+    .await?;
+
+    Ok(row)
+}
+
 /// List jobs with optional status filter.
 pub async fn list_jobs<'e, E>(executor: E, status: Option<JobStatus>) -> Result<Vec<Job>>
 where

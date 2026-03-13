@@ -188,9 +188,32 @@ async fn process_next_job(
             }
 
             // Auto-create enrich jobs after successful harvest — one per provider.
-            // Each provider writes to its own branch (`enrich/{provider}/{law_slug}`)
+            // Each provider writes to its own branch (`enrich/{provider}`)
             // so results can be compared side-by-side.
+            // Skip creation if an active (pending/processing) enrich job already
+            // exists for this law + provider to avoid duplicate LLM calls on retries.
             for provider_name in crate::enrich::ENRICH_PROVIDERS {
+                // Check for existing active enrich job to avoid duplicates
+                match job_queue::has_active_enrich_job(pool, &job.law_id, provider_name).await {
+                    Ok(true) => {
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            provider = %provider_name,
+                            "skipping enrich job creation: active job already exists"
+                        );
+                        continue;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            law_id = %job.law_id,
+                            provider = %provider_name,
+                            "failed to check for existing enrich jobs, creating anyway"
+                        );
+                    }
+                    Ok(false) => {}
+                }
+
                 let enrich_payload = EnrichPayload {
                     law_id: job.law_id.clone(),
                     yaml_path: result.file_path.clone(),
@@ -207,9 +230,6 @@ async fn process_next_job(
                                 provider = %provider_name,
                                 "auto-created enrich job after harvest"
                             );
-                            // Track the last created enrich job on the law entry
-                            let _ =
-                                law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await;
                         }
                         Err(e) => {
                             tracing::warn!(
@@ -354,7 +374,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
 ///
 /// Returns `Ok(true)` if a job was processed, `Ok(false)` if no job was available.
 ///
-/// Each enrichment creates a separate branch (`enrich/{provider}/{law_slug}`)
+/// Each enrichment creates a separate branch (`enrich/{provider}`)
 /// so results can be reviewed before merging. A dedicated `CorpusClient` is
 /// created per job pointing at the enrichment branch.
 async fn process_next_enrich_job(
@@ -409,10 +429,11 @@ async fn process_next_enrich_job(
         tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
     }
 
-    // Create a branch-specific corpus client for this enrichment
+    // Create a branch-specific corpus client for this enrichment.
+    // Pass the job ID to get a unique checkout directory per worker.
     let branch = enrich_branch_name(effective_config.provider.name());
     let enrich_corpus = if let Some(base_config) = corpus_config {
-        match create_enrich_corpus(base_config, &branch).await {
+        match create_enrich_corpus(base_config, &branch, job.id).await {
             Ok(client) => {
                 tracing::info!(branch = %branch, "created enrichment branch corpus");
                 Some(client)

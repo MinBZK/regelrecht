@@ -4,6 +4,7 @@ use std::time::Duration;
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
 
@@ -257,20 +258,25 @@ fn build_command(
 ///
 /// Clones the base corpus config but sets the branch to the enrichment branch.
 /// The client's `ensure_repo()` will auto-create the branch if it doesn't exist.
+///
+/// Each invocation uses a unique checkout directory (keyed by branch + job ID)
+/// to prevent concurrent workers from clobbering each other's checkouts.
 pub async fn create_enrich_corpus(
     base_config: &CorpusConfig,
     branch: &str,
+    job_id: Uuid,
 ) -> Result<CorpusClient> {
     let mut config = base_config.clone();
     config.branch = branch.into();
 
-    // Use a separate checkout directory per branch to avoid conflicts
-    let branch_dir_name = branch.replace('/', "-");
+    // Use a separate checkout directory per branch + job to avoid conflicts
+    // between concurrent workers processing different laws on the same branch.
+    let dir_name = format!("{}-{}", branch.replace('/', "-"), job_id);
     config.repo_path = config
         .repo_path
         .parent()
         .unwrap_or(Path::new("/tmp"))
-        .join(branch_dir_name);
+        .join(dir_name);
 
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
@@ -319,8 +325,9 @@ pub async fn execute_enrich(
         )));
     }
 
-    // Count articles before enrichment
+    // Count articles and existing machine_readable sections before enrichment
     let articles_before = count_articles(&yaml_abs).await?;
+    let machine_readable_before = count_machine_readable_articles(&yaml_abs).await?;
 
     let prompt = build_prompt(&payload.yaml_path);
     let provider_name = config.provider.name().to_string();
@@ -331,13 +338,16 @@ pub async fn execute_enrich(
         law_id = %payload.law_id,
         yaml_path = %payload.yaml_path,
         provider = %provider_name,
+        articles = articles_before,
+        already_enriched = machine_readable_before,
         "starting enrichment"
     );
 
     // Spawn the child process so we can kill it on timeout.
-    // Use child.wait() (borrows) instead of wait_with_output() (consumes)
-    // so we retain access to child.kill() if the timeout fires.
-    cmd.stderr(std::process::Stdio::piped());
+    // stderr is inherited so the LLM's logging goes to the worker's stderr.
+    // This avoids a deadlock: if stderr were piped, a verbose LLM (e.g. Claude CLI)
+    // could fill the OS pipe buffer (64 KB) and block indefinitely.
+    cmd.stderr(std::process::Stdio::inherit());
     let mut child = cmd
         .spawn()
         .map_err(|e| PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name)))?;
@@ -363,30 +373,24 @@ pub async fn execute_enrich(
     };
 
     if !status.success() {
-        let stderr_bytes = match child.stderr.take() {
-            Some(mut stderr) => {
-                let mut buf = Vec::new();
-                use tokio::io::AsyncReadExt;
-                let _ = stderr.read_to_end(&mut buf).await;
-                buf
-            }
-            None => Vec::new(),
-        };
-        let stderr = String::from_utf8_lossy(&stderr_bytes);
         return Err(PipelineError::Enrich(format!(
-            "{} exited with {}: {}",
-            provider_name,
-            status,
-            stderr.chars().take(500).collect::<String>()
+            "{} exited with {}",
+            provider_name, status,
         )));
     }
 
     tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
 
-    // Count articles with machine_readable after enrichment
+    // Count articles with machine_readable after enrichment.
+    // Quality score measures what the LLM *added*, not total coverage.
     let articles_enriched = count_machine_readable_articles(&yaml_abs).await?;
-    let quality_score = if articles_before > 0 {
-        articles_enriched as f64 / articles_before as f64
+    let newly_enriched = articles_enriched.saturating_sub(machine_readable_before);
+    let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
+    let quality_score = if articles_needing_enrichment > 0 {
+        newly_enriched as f64 / articles_needing_enrichment as f64
+    } else if articles_before > 0 {
+        // All articles already had machine_readable before — nothing to do
+        1.0
     } else {
         0.0
     };
@@ -469,11 +473,19 @@ async fn compute_prompt_hash(repo_path: &Path) -> String {
     ];
 
     let mut hasher = Sha256::new();
+    let mut files_found = 0usize;
     for file in &skill_files {
         let path = repo_path.join(file);
         if let Ok(content) = tokio::fs::read(&path).await {
             hasher.update(&content);
+            files_found += 1;
+        } else {
+            tracing::warn!(file = %file, "skill file not found for prompt hash");
         }
+    }
+
+    if files_found == 0 {
+        tracing::warn!("no skill files found — prompt hash will be empty");
     }
 
     format!("{:x}", hasher.finalize())
