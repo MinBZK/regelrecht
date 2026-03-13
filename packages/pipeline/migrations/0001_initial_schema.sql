@@ -42,7 +42,7 @@ CREATE TABLE law_entries (
     status          law_status  NOT NULL DEFAULT 'unknown',
     harvest_job_id  UUID REFERENCES jobs(id) ON DELETE SET NULL,
     enrich_job_id   UUID REFERENCES jobs(id) ON DELETE SET NULL,
-    quality_score   DOUBLE PRECISION CHECK (quality_score >= 0 AND quality_score <= 1),
+    coverage_score   DOUBLE PRECISION CHECK (coverage_score >= 0 AND coverage_score <= 1),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -8,6 +8,76 @@ use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
 
+/// Trait abstracting the LLM invocation so `execute_enrich` can be tested
+/// with a fake provider that doesn't spawn real processes.
+#[async_trait::async_trait]
+pub trait LlmRunner: Send + Sync {
+    /// Run the LLM on the given YAML file and return its exit status.
+    ///
+    /// Implementations should respect the timeout in `config`.
+    async fn run(
+        &self,
+        payload: &EnrichPayload,
+        yaml_abs: &Path,
+        repo_path: &Path,
+        config: &EnrichConfig,
+    ) -> Result<()>;
+}
+
+/// Default runner that spawns a real CLI process.
+pub struct ProcessLlmRunner;
+
+#[async_trait::async_trait]
+impl LlmRunner for ProcessLlmRunner {
+    async fn run(
+        &self,
+        payload: &EnrichPayload,
+        yaml_abs: &Path,
+        repo_path: &Path,
+        config: &EnrichConfig,
+    ) -> Result<()> {
+        let prompt = build_prompt(&payload.yaml_path);
+        let provider_name = config.provider.name().to_string();
+
+        let mut cmd = build_command(&config.provider, &prompt, yaml_abs, repo_path);
+
+        // stderr is inherited so the LLM's logging goes to the worker's stderr.
+        // This avoids a deadlock: if stderr were piped, a verbose LLM (e.g. Claude CLI)
+        // could fill the OS pipe buffer (64 KB) and block indefinitely.
+        cmd.stderr(std::process::Stdio::inherit());
+        let mut child = cmd.spawn().map_err(|e| {
+            PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name))
+        })?;
+
+        let status = tokio::select! {
+            result = child.wait() => {
+                result.map_err(|e| {
+                    PipelineError::Enrich(format!("failed to wait for {}: {e}", provider_name))
+                })?
+            }
+            _ = tokio::time::sleep(config.timeout) => {
+                if let Err(e) = child.kill().await {
+                    tracing::warn!(error = %e, "failed to kill timed-out LLM process");
+                }
+                let _ = child.wait().await;
+                return Err(PipelineError::Enrich(format!(
+                    "{} timed out after {:?}",
+                    provider_name, config.timeout
+                )));
+            }
+        };
+
+        if !status.success() {
+            return Err(PipelineError::Enrich(format!(
+                "{} exited with {}",
+                provider_name, status,
+            )));
+        }
+
+        Ok(())
+    }
+}
+
 /// Payload for an enrich job, stored as JSON in the job queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnrichPayload {
@@ -31,10 +101,10 @@ pub struct EnrichResult {
     pub yaml_path: String,
     pub articles_total: usize,
     pub articles_enriched: usize,
-    /// Ratio of articles with a `machine_readable` section vs total articles.
-    /// This measures coverage, not correctness — a value of 1.0 means every
-    /// article has a `machine_readable` key, but says nothing about its quality.
-    pub quality_score: f64,
+    /// Fraction of articles that have a `machine_readable` section.
+    /// Measures coverage only, not correctness — 1.0 means every article
+    /// has a `machine_readable` key, but says nothing about its content.
+    pub coverage_score: f64,
     pub provider: String,
     pub branch: String,
 }
@@ -48,7 +118,7 @@ pub struct EnrichmentMetadata {
     pub model: String,
     pub prompt_hash: String,
     pub code_commit: String,
-    pub quality_score: f64,
+    pub coverage_score: f64,
     pub articles_total: usize,
     pub articles_enriched: usize,
 }
@@ -93,33 +163,21 @@ impl LlmProvider {
 }
 
 /// Configuration for enrichment execution.
+///
+/// All env vars are read once at startup and stored. `with_provider_override()`
+/// selects from pre-built provider configs without re-reading the environment.
 #[derive(Debug, Clone)]
 pub struct EnrichConfig {
     pub provider: LlmProvider,
     pub timeout: Duration,
     pub code_commit: String,
+    /// Pre-built provider configs keyed by name, populated at startup.
+    provider_configs: std::collections::HashMap<String, LlmProvider>,
 }
 
 impl EnrichConfig {
     pub fn from_env() -> Self {
         let provider_name = std::env::var("LLM_PROVIDER").unwrap_or_else(|_| "opencode".into());
-
-        let provider = match provider_name.as_str() {
-            "claude" => {
-                let path = std::env::var("LLM_PATH")
-                    .unwrap_or_else(|_| "claude".into())
-                    .into();
-                let model = std::env::var("LLM_MODEL").ok();
-                LlmProvider::Claude { path, model }
-            }
-            _ => {
-                let path = std::env::var("LLM_PATH")
-                    .unwrap_or_else(|_| "opencode".into())
-                    .into();
-                let model = std::env::var("LLM_MODEL").ok();
-                LlmProvider::OpenCode { path, model }
-            }
-        };
 
         let timeout = std::env::var("LLM_TIMEOUT_SECS")
             .ok()
@@ -128,46 +186,58 @@ impl EnrichConfig {
 
         let code_commit = std::env::var("CODE_COMMIT").unwrap_or_default();
 
+        // Build all provider configs once from env vars
+        let opencode_provider = LlmProvider::OpenCode {
+            path: std::env::var("OPENCODE_PATH")
+                .or_else(|_| std::env::var("LLM_PATH"))
+                .unwrap_or_else(|_| "opencode".into())
+                .into(),
+            model: std::env::var("OPENCODE_MODEL")
+                .or_else(|_| std::env::var("LLM_MODEL"))
+                .ok(),
+        };
+        let claude_provider = LlmProvider::Claude {
+            path: std::env::var("CLAUDE_PATH")
+                .or_else(|_| std::env::var("LLM_PATH"))
+                .unwrap_or_else(|_| "claude".into())
+                .into(),
+            model: std::env::var("CLAUDE_MODEL")
+                .or_else(|_| std::env::var("LLM_MODEL"))
+                .ok(),
+        };
+
+        let provider = match provider_name.as_str() {
+            "claude" => claude_provider.clone(),
+            _ => opencode_provider.clone(),
+        };
+
+        let mut provider_configs = std::collections::HashMap::new();
+        provider_configs.insert("opencode".to_string(), opencode_provider);
+        provider_configs.insert("claude".to_string(), claude_provider);
+
         Self {
             provider,
             timeout: Duration::from_secs(timeout),
             code_commit,
+            provider_configs,
         }
     }
 
     /// Return a config with the provider overridden if the payload specifies one.
     ///
-    /// The timeout and code_commit are preserved from the base config; only
-    /// the provider (and its path/model) change. Path and model fall back to
-    /// env vars (`LLM_PATH`, `LLM_MODEL`) or defaults.
+    /// Selects from pre-built provider configs — no env vars are re-read.
     pub fn with_provider_override(&self, provider_name: &str) -> Self {
-        let provider = match provider_name {
-            "claude" => {
-                let path = std::env::var("CLAUDE_PATH")
-                    .or_else(|_| std::env::var("LLM_PATH"))
-                    .unwrap_or_else(|_| "claude".into())
-                    .into();
-                let model = std::env::var("CLAUDE_MODEL")
-                    .or_else(|_| std::env::var("LLM_MODEL"))
-                    .ok();
-                LlmProvider::Claude { path, model }
-            }
-            _ => {
-                let path = std::env::var("OPENCODE_PATH")
-                    .or_else(|_| std::env::var("LLM_PATH"))
-                    .unwrap_or_else(|_| "opencode".into())
-                    .into();
-                let model = std::env::var("OPENCODE_MODEL")
-                    .or_else(|_| std::env::var("LLM_MODEL"))
-                    .ok();
-                LlmProvider::OpenCode { path, model }
-            }
-        };
+        let provider = self
+            .provider_configs
+            .get(provider_name)
+            .cloned()
+            .unwrap_or_else(|| self.provider.clone());
 
         Self {
             provider,
             timeout: self.timeout,
             code_commit: self.code_commit.clone(),
+            provider_configs: self.provider_configs.clone(),
         }
     }
 }
@@ -209,23 +279,50 @@ Write all changes to disk. Do not ask questions — proceed autonomously."#
     )
 }
 
+/// Allowlisted environment variable prefixes/names that are safe to pass to the
+/// LLM subprocess.  Everything else (DATABASE_URL, etc.) is stripped.
+const LLM_ENV_ALLOWLIST: &[&str] = &[
+    "HOME",
+    "PATH",
+    "TERM",
+    "LANG",
+    "USER",
+    "SHELL",
+    "TMPDIR",
+    "XDG_",
+    // Provider-specific auth
+    "ANTHROPIC_API_KEY",
+    "VLAM_API_KEY",
+    "OPENCODE_",
+];
+
+/// Check whether an environment variable name is on the allowlist.
+fn env_allowed(key: &str) -> bool {
+    LLM_ENV_ALLOWLIST
+        .iter()
+        .any(|prefix| key == *prefix || key.starts_with(prefix))
+}
+
 /// Build the command for the configured LLM provider.
 ///
-/// The subprocess inherits the parent environment. Both providers manage their
-/// own authentication:
-/// - OpenCode/VLAM reads `~/.local/share/opencode/auth.json`
-/// - Claude reads `~/.claude/.credentials` or `ANTHROPIC_API_KEY` env var
-///
-/// In Docker, mount the relevant auth files or set env vars on the container.
+/// The subprocess gets a stripped environment: only variables on
+/// `LLM_ENV_ALLOWLIST` are forwarded.  This prevents leaking DATABASE_URL
+/// and other secrets to the LLM process (which may have shell access).
 fn build_command(
     provider: &LlmProvider,
     prompt: &str,
     yaml_abs: &Path,
     repo_path: &Path,
 ) -> tokio::process::Command {
+    // Collect allowed env vars before creating the command.
+    let safe_env: Vec<(String, String)> =
+        std::env::vars().filter(|(k, _)| env_allowed(k)).collect();
+
     match provider {
         LlmProvider::OpenCode { path, model } => {
             let mut cmd = tokio::process::Command::new(path);
+            cmd.env_clear();
+            cmd.envs(safe_env);
             cmd.arg("run")
                 .arg(prompt)
                 .arg("-f")
@@ -241,10 +338,12 @@ fn build_command(
         }
         LlmProvider::Claude { path, model } => {
             let mut cmd = tokio::process::Command::new(path);
+            cmd.env_clear();
+            cmd.envs(safe_env);
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
-                .arg("Read,Edit,Write,Bash,Grep,Glob")
+                .arg("Read,Edit,Write,Grep,Glob")
                 .current_dir(repo_path);
             if let Some(ref m) = model {
                 cmd.arg("--model").arg(m);
@@ -290,6 +389,11 @@ fn validate_yaml_path(yaml_path: &str) -> Result<()> {
     if yaml_path.is_empty() {
         return Err(PipelineError::Enrich("yaml_path must not be empty".into()));
     }
+    if yaml_path.starts_with('/') {
+        return Err(PipelineError::Enrich(format!(
+            "yaml_path must be relative, not absolute: {yaml_path}"
+        )));
+    }
     if !yaml_path
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'))
@@ -306,14 +410,26 @@ fn validate_yaml_path(yaml_path: &str) -> Result<()> {
     Ok(())
 }
 
-/// Execute the enrichment: call the configured LLM to generate machine_readable sections.
+/// Execute the enrichment using the default process-based LLM runner.
 ///
-/// Returns the enrichment result and a list of files that were written
-/// (for git staging).
+/// Convenience wrapper around `execute_enrich_with_runner` using `ProcessLlmRunner`.
 pub async fn execute_enrich(
     payload: &EnrichPayload,
     repo_path: &Path,
     config: &EnrichConfig,
+) -> Result<(EnrichResult, Vec<PathBuf>)> {
+    execute_enrich_with_runner(payload, repo_path, config, &ProcessLlmRunner).await
+}
+
+/// Execute the enrichment: call the LLM runner to generate machine_readable sections.
+///
+/// Returns the enrichment result and a list of files that were written
+/// (for git staging). Accepts a `runner` to allow testing with a fake LLM.
+pub async fn execute_enrich_with_runner(
+    payload: &EnrichPayload,
+    repo_path: &Path,
+    config: &EnrichConfig,
+    runner: &dyn LlmRunner,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
     validate_yaml_path(&payload.yaml_path)?;
 
@@ -329,10 +445,7 @@ pub async fn execute_enrich(
     let articles_before = count_articles(&yaml_abs).await?;
     let machine_readable_before = count_machine_readable_articles(&yaml_abs).await?;
 
-    let prompt = build_prompt(&payload.yaml_path);
     let provider_name = config.provider.name().to_string();
-
-    let mut cmd = build_command(&config.provider, &prompt, &yaml_abs, repo_path);
 
     tracing::info!(
         law_id = %payload.law_id,
@@ -343,41 +456,7 @@ pub async fn execute_enrich(
         "starting enrichment"
     );
 
-    // Spawn the child process so we can kill it on timeout.
-    // stderr is inherited so the LLM's logging goes to the worker's stderr.
-    // This avoids a deadlock: if stderr were piped, a verbose LLM (e.g. Claude CLI)
-    // could fill the OS pipe buffer (64 KB) and block indefinitely.
-    cmd.stderr(std::process::Stdio::inherit());
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| PipelineError::Enrich(format!("failed to spawn {}: {e}", provider_name)))?;
-
-    let status = tokio::select! {
-        result = child.wait() => {
-            result.map_err(|e| {
-                PipelineError::Enrich(format!("failed to wait for {}: {e}", provider_name))
-            })?
-        }
-        _ = tokio::time::sleep(config.timeout) => {
-            // Timeout elapsed — kill the child process
-            if let Err(e) = child.kill().await {
-                tracing::warn!(error = %e, "failed to kill timed-out LLM process");
-            }
-            // Wait for the killed process to be reaped
-            let _ = child.wait().await;
-            return Err(PipelineError::Enrich(format!(
-                "{} timed out after {:?}",
-                provider_name, config.timeout
-            )));
-        }
-    };
-
-    if !status.success() {
-        return Err(PipelineError::Enrich(format!(
-            "{} exited with {}",
-            provider_name, status,
-        )));
-    }
+    runner.run(payload, &yaml_abs, repo_path, config).await?;
 
     tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
 
@@ -386,7 +465,7 @@ pub async fn execute_enrich(
     let articles_enriched = count_machine_readable_articles(&yaml_abs).await?;
     let newly_enriched = articles_enriched.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
-    let quality_score = if articles_needing_enrichment > 0 {
+    let coverage_score = if articles_needing_enrichment > 0 {
         newly_enriched as f64 / articles_needing_enrichment as f64
     } else if articles_before > 0 {
         // All articles already had machine_readable before — nothing to do
@@ -403,7 +482,7 @@ pub async fn execute_enrich(
         model: config.provider.model_str(),
         prompt_hash: compute_prompt_hash(repo_path).await,
         code_commit: config.code_commit.clone(),
-        quality_score,
+        coverage_score,
         articles_total: articles_before,
         articles_enriched,
     };
@@ -452,7 +531,7 @@ pub async fn execute_enrich(
         yaml_path: payload.yaml_path.clone(),
         articles_total: articles_before,
         articles_enriched,
-        quality_score,
+        coverage_score,
         provider: provider_name,
         branch,
     };
@@ -577,14 +656,14 @@ mod tests {
             yaml_path: "regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml".to_string(),
             articles_total: 10,
             articles_enriched: 7,
-            quality_score: 0.7,
+            coverage_score: 0.7,
             provider: "opencode".to_string(),
             branch: "enrich/opencode".to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["articles_enriched"], 7);
-        assert_eq!(json["quality_score"], 0.7);
+        assert_eq!(json["coverage_score"], 0.7);
         assert_eq!(json["provider"], "opencode");
         assert_eq!(json["branch"], "enrich/opencode");
     }
@@ -609,16 +688,36 @@ mod tests {
         assert_eq!(provider.model_str(), "opus");
     }
 
-    #[test]
-    fn test_with_provider_override() {
-        let base_config = EnrichConfig {
-            provider: LlmProvider::OpenCode {
+    fn test_config(provider: LlmProvider) -> EnrichConfig {
+        let mut provider_configs = std::collections::HashMap::new();
+        provider_configs.insert(
+            "opencode".to_string(),
+            LlmProvider::OpenCode {
                 path: "opencode".into(),
                 model: None,
             },
+        );
+        provider_configs.insert(
+            "claude".to_string(),
+            LlmProvider::Claude {
+                path: "claude".into(),
+                model: Some("opus".into()),
+            },
+        );
+        EnrichConfig {
+            provider,
             timeout: Duration::from_secs(600),
             code_commit: "abc123".to_string(),
-        };
+            provider_configs,
+        }
+    }
+
+    #[test]
+    fn test_with_provider_override() {
+        let base_config = test_config(LlmProvider::OpenCode {
+            path: "opencode".into(),
+            model: None,
+        });
 
         let claude_config = base_config.with_provider_override("claude");
         assert_eq!(claude_config.provider.name(), "claude");
@@ -627,6 +726,10 @@ mod tests {
 
         let opencode_config = base_config.with_provider_override("opencode");
         assert_eq!(opencode_config.provider.name(), "opencode");
+
+        // Unknown provider falls back to current provider
+        let unknown_config = base_config.with_provider_override("unknown");
+        assert_eq!(unknown_config.provider.name(), "opencode");
     }
 
     #[test]
@@ -638,14 +741,10 @@ mod tests {
 
     #[test]
     fn test_enrich_config_default_timeout() {
-        let config = EnrichConfig {
-            provider: LlmProvider::OpenCode {
-                path: "opencode".into(),
-                model: None,
-            },
-            timeout: Duration::from_secs(600),
-            code_commit: String::new(),
-        };
+        let config = test_config(LlmProvider::OpenCode {
+            path: "opencode".into(),
+            model: None,
+        });
         assert_eq!(config.timeout, Duration::from_secs(600));
         assert_eq!(config.provider.name(), "opencode");
     }
@@ -674,7 +773,7 @@ mod tests {
             model: "vlam/mistral-medium".to_string(),
             prompt_hash: "abc123".to_string(),
             code_commit: "deadbeef".to_string(),
-            quality_score: 0.7,
+            coverage_score: 0.7,
             articles_total: 10,
             articles_enriched: 7,
         };
@@ -722,5 +821,147 @@ articles:
         let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(count_articles_in_value(&value), 3);
         assert_eq!(count_machine_readable_in_value(&value), 1);
+    }
+
+    /// Fake LLM runner that simulates enrichment by adding `machine_readable`
+    /// sections to articles that don't already have them.
+    struct FakeLlmRunner;
+
+    #[async_trait::async_trait]
+    impl LlmRunner for FakeLlmRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            let content = tokio::fs::read_to_string(yaml_abs).await?;
+            let mut value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
+
+            if let serde_yaml_ng::Value::Mapping(ref mut map) = value {
+                if let Some(serde_yaml_ng::Value::Sequence(ref mut articles)) =
+                    map.get_mut("articles")
+                {
+                    for article in articles.iter_mut() {
+                        if let serde_yaml_ng::Value::Mapping(ref mut article_map) = article {
+                            if !article_map.contains_key("machine_readable") {
+                                article_map.insert(
+                                    serde_yaml_ng::Value::String("machine_readable".into()),
+                                    serde_yaml_ng::Value::Mapping(Default::default()),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            let output = serde_yaml_ng::to_string(&value)?;
+            tokio::fs::write(yaml_abs, output).await?;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_with_fake_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+
+        let yaml_content = r#"articles:
+  - id: art1
+    name: Article 1
+  - id: art2
+    name: Article 2
+    machine_readable:
+      actions: []
+  - id: art3
+    name: Article 3
+"#;
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), yaml_content)
+            .await
+            .unwrap();
+
+        let payload = EnrichPayload {
+            law_id: "BWBR0000001".into(),
+            yaml_path: yaml_path.into(),
+            provider: Some("opencode".into()),
+        };
+
+        let config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+
+        let (result, written_files) =
+            execute_enrich_with_runner(&payload, dir.path(), &config, &FakeLlmRunner)
+                .await
+                .unwrap();
+
+        assert_eq!(result.articles_total, 3);
+        assert_eq!(result.articles_enriched, 3);
+        // 2 out of 2 articles needing enrichment were enriched
+        assert!((result.coverage_score - 1.0).abs() < f64::EPSILON);
+        assert_eq!(result.provider, "opencode");
+        assert_eq!(result.branch, "enrich/opencode");
+
+        // Should have written the YAML file + metadata file
+        assert!(written_files.len() >= 2);
+
+        // Verify metadata file was written
+        let metadata_path = law_dir.join(".enrichment.yaml");
+        assert!(metadata_path.exists());
+        let meta_content = tokio::fs::read_to_string(&metadata_path).await.unwrap();
+        let meta: EnrichmentMetadata = serde_yaml_ng::from_str(&meta_content).unwrap();
+        assert_eq!(meta.law_id, "BWBR0000001");
+        assert_eq!(meta.provider, "opencode");
+        assert_eq!(meta.articles_enriched, 3);
+    }
+
+    /// Fake runner that fails, to test error path.
+    struct FailingLlmRunner;
+
+    #[async_trait::async_trait]
+    impl LlmRunner for FailingLlmRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            _yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            Err(PipelineError::Enrich("simulated LLM failure".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_with_failing_runner() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+
+        let yaml_content = "articles:\n  - id: art1\n    name: Article 1\n";
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), yaml_content)
+            .await
+            .unwrap();
+
+        let payload = EnrichPayload {
+            law_id: "BWBR0000001".into(),
+            yaml_path: yaml_path.into(),
+            provider: None,
+        };
+
+        let config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &FailingLlmRunner)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("simulated LLM failure"));
     }
 }

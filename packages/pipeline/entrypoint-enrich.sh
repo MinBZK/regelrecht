@@ -23,17 +23,30 @@ export CORPUS_REPO_PATH="$CORPUS_DIR"
 # the image; only the key is injected at runtime.
 if [ -n "$VLAM_API_KEY" ]; then
   mkdir -p "$HOME/.local/share/opencode"
-  # Write auth.json using a heredoc to avoid printf format string issues
-  # (API keys containing '%' would break printf format specifiers).
-  cat > "$HOME/.local/share/opencode/auth.json" <<AUTHEOF
-{"vlam":{"type":"api","key":"${VLAM_API_KEY}"}}
-AUTHEOF
+  # Use Node.js to safely JSON-encode the API key, avoiding shell injection
+  # and broken JSON from keys containing quotes, backslashes, or percent signs.
+  node -e "
+    const fs = require('fs');
+    const key = process.env.VLAM_API_KEY;
+    const data = {vlam: {type: 'api', key: key}};
+    fs.writeFileSync(process.argv[1], JSON.stringify(data));
+  " "$HOME/.local/share/opencode/auth.json"
   chmod 600 "$HOME/.local/share/opencode/auth.json"
 fi
 
-# Set up opencode config in user-writable location
+# Set up opencode config in user-writable location.
+# If VLAM_BASE_URL is set, override the demo URL baked into opencode.json.
 mkdir -p "$HOME/.config/opencode"
-cp /etc/opencode/opencode.json "$HOME/.config/opencode/opencode.json"
+if [ -n "$VLAM_BASE_URL" ]; then
+  node -e "
+    const fs = require('fs');
+    const config = JSON.parse(fs.readFileSync('/etc/opencode/opencode.json', 'utf8'));
+    config.provider.vlam.options.baseURL = process.env.VLAM_BASE_URL;
+    fs.writeFileSync(process.argv[1], JSON.stringify(config, null, 2));
+  " "$HOME/.config/opencode/opencode.json"
+else
+  cp /etc/opencode/opencode.json "$HOME/.config/opencode/opencode.json"
+fi
 ln -sf /opt/opencode-plugins/node_modules "$HOME/.config/opencode/node_modules"
 printf '{"dependencies":{"@ai-sdk/openai-compatible":"*"}}' \
   > "$HOME/.config/opencode/package.json"

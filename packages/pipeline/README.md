@@ -168,7 +168,7 @@ tx.commit().await?;
 | `update_status(executor, law_id, status)` | Update a law's processing status |
 | `set_harvest_job(executor, law_id, job_id)` | Link a harvest job to a law |
 | `set_enrich_job(executor, law_id, job_id)` | Link an enrich job to a law |
-| `set_quality_score(executor, law_id, score)` | Set quality score (0.0–1.0) |
+| `set_coverage_score(executor, law_id, score)` | Set coverage score (0.0–1.0) |
 | `get_law(executor, law_id)` | Get a law entry by ID |
 | `list_laws(executor, status?)` | List laws, optionally filtered by status |
 

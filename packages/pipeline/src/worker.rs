@@ -11,7 +11,7 @@ use crate::db;
 use crate::enrich::{
     create_enrich_corpus, enrich_branch_name, execute_enrich, EnrichConfig, EnrichPayload,
 };
-use crate::error::Result;
+use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult};
 use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
@@ -459,21 +459,23 @@ async fn process_next_enrich_job(
                 job_id = %job.id,
                 articles_total = result.articles_total,
                 articles_enriched = result.articles_enriched,
-                quality_score = result.quality_score,
+                coverage_score = result.coverage_score,
                 provider = %result.provider,
                 branch = %result.branch,
                 "enrichment completed successfully"
             );
 
-            // Push to enrichment branch (at-least-once semantics)
+            // Push to enrichment branch — fail the job if push fails so it
+            // gets retried rather than silently losing the enrichment result.
             if let Some(ref corpus) = enrich_corpus {
                 let message = format!(
                     "enrich({}): {} ({})",
                     result.provider, result.law_id, result.yaml_path
                 );
-                if let Err(e) = corpus.commit_and_push(&written_files, &message).await {
-                    tracing::warn!(error = %e, "failed to push enrichment to corpus");
-                }
+                corpus.commit_and_push(&written_files, &message).await.map_err(|e| {
+                    tracing::error!(error = %e, "failed to push enrichment to corpus — failing job for retry");
+                    PipelineError::Enrich(format!("corpus push failed: {e}"))
+                })?;
             }
 
             let result_json = serde_json::to_value(&result).ok();
@@ -485,7 +487,7 @@ async fn process_next_enrich_job(
 
             // Set quality score outside the transaction (non-critical)
             if let Err(e) =
-                law_status::set_quality_score(pool, &job.law_id, result.quality_score).await
+                law_status::set_coverage_score(pool, &job.law_id, result.coverage_score).await
             {
                 tracing::warn!(error = %e, "failed to set quality score");
             }

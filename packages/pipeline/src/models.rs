@@ -105,7 +105,7 @@ pub struct LawEntry {
     pub status: LawStatusValue,
     pub harvest_job_id: Option<Uuid>,
     pub enrich_job_id: Option<Uuid>,
-    pub quality_score: Option<f64>,
+    pub coverage_score: Option<f64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

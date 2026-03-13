@@ -27,6 +27,9 @@ services:
       DATABASE_URL: postgresql://regelrecht:regelrecht_dev@postgres:5432/regelrecht_pipeline
       LLM_PROVIDER: opencode
       OPENCODE_MODEL: vlam/ubiops-deployment/bzk-dig-mistralmedium-flexibel//chat-model
+      # NOTE: opencode.json contains the VLAM demo API URL. For production,
+      # override VLAM_BASE_URL or replace the config in the deployment.
+      # VLAM_BASE_URL: https://api.vlam.ai/v2.1/projects/prod/openai-compatible/v1
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
     volumes:
       - corpus-repo:/home/worker/corpus

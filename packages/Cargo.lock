@@ -2927,6 +2927,7 @@ dependencies = [
 name = "regelrecht-pipeline"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "pretty_assertions",
  "regelrecht-corpus",

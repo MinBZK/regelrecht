@@ -101,21 +101,24 @@ where
     Ok(entry)
 }
 
-/// Set the quality score for a law entry. Score must be finite and between 0.0 and 1.0.
+/// Set the coverage score for a law entry. Score must be finite and between 0.0 and 1.0.
+///
+/// Coverage score measures what fraction of articles have a `machine_readable`
+/// section — it does NOT measure correctness or quality of that section.
 #[tracing::instrument(skip(executor))]
-pub async fn set_quality_score<'e, E>(executor: E, law_id: &str, score: f64) -> Result<LawEntry>
+pub async fn set_coverage_score<'e, E>(executor: E, law_id: &str, score: f64) -> Result<LawEntry>
 where
     E: sqlx::PgExecutor<'e>,
 {
     if !score.is_finite() || !(0.0..=1.0).contains(&score) {
         return Err(PipelineError::InvalidInput(format!(
-            "quality_score must be between 0.0 and 1.0, got {score}"
+            "coverage_score must be between 0.0 and 1.0, got {score}"
         )));
     }
 
     let entry = sqlx::query_as::<_, LawEntry>(
         r#"
-        UPDATE law_entries SET quality_score = $2
+        UPDATE law_entries SET coverage_score = $2
         WHERE law_id = $1
         RETURNING *
         "#,
@@ -126,7 +129,7 @@ where
     .await?
     .ok_or_else(|| PipelineError::LawNotFound(law_id.to_string()))?;
 
-    tracing::info!(law_id = %entry.law_id, score, "quality score updated");
+    tracing::info!(law_id = %entry.law_id, score, "coverage score updated");
     Ok(entry)
 }
 
