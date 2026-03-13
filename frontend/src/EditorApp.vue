@@ -151,5 +151,5 @@ function selectArticle(number) {
     </rr-side-by-side-split-view>
   </rr-page>
 
-  <ActionSheet :action="activeAction" @close="activeAction = null" />
+  <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
 </template>

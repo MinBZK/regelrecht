@@ -1,16 +1,78 @@
 export const OPERATION_LABELS = {
+  // Rekenkundig
   ADD: 'optellen',
   SUBTRACT: 'aftrekken',
-  MULTIPLY: 'vermenigvuldig',
-  MIN: 'min',
-  MAX: 'max',
+  MULTIPLY: 'vermenigvuldigen',
+  DIVIDE: 'delen',
+  MIN: 'minimum',
+  MAX: 'maximum',
+  CONCAT: 'samenvoegen',
+  // Vergelijking
   EQUALS: 'gelijk aan',
+  NOT_EQUALS: 'niet gelijk aan',
   GREATER_THAN: 'groter dan',
   GREATER_THAN_OR_EQUAL: 'groter dan of gelijk',
+  LESS_THAN: 'kleiner dan',
   LESS_THAN_OR_EQUAL: 'kleiner dan of gelijk',
-  IF: 'voorwaarde',
+  NOT_NULL: 'heeft waarde',
+  IN: 'in lijst',
+  NOT_IN: 'niet in lijst',
+  // Logisch
   AND: 'en',
+  OR: 'of',
+  NOT: 'niet',
+  // Conditioneel
+  IF: 'voorwaarde',
+  SWITCH: 'keuze',
+  // Overig
+  FOREACH: 'voor elk',
+  SUBTRACT_DATE: 'datum aftrekken',
 };
+
+export const OPERATION_CATEGORIES = {
+  Vergelijking: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL', 'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'NOT_NULL', 'IN', 'NOT_IN'],
+  Rekenkundig: ['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'MIN', 'MAX', 'CONCAT'],
+  Logisch: ['AND', 'OR', 'NOT'],
+  Conditioneel: ['IF', 'SWITCH'],
+  Overig: ['FOREACH', 'SUBTRACT_DATE'],
+};
+
+export function collectAvailableVariables(article) {
+  if (!article?.machine_readable) return [];
+  const mr = article.machine_readable;
+  const vars = [];
+
+  if (mr.definitions) {
+    for (const name of Object.keys(mr.definitions)) {
+      vars.push({ name, ref: `$${name}`, category: 'Definitie' });
+    }
+  }
+
+  const execution = mr.execution;
+  if (!execution) return vars;
+
+  if (execution.input) {
+    for (const input of execution.input) {
+      vars.push({ name: input.name, ref: `$${input.name}`, category: 'Input' });
+    }
+  }
+
+  if (execution.parameters) {
+    for (const param of execution.parameters) {
+      vars.push({ name: param.name, ref: `$${param.name}`, category: 'Parameter' });
+    }
+  }
+
+  if (execution.actions) {
+    for (const action of execution.actions) {
+      if (action.output) {
+        vars.push({ name: action.output, ref: `$${action.output}`, category: 'Actie' });
+      }
+    }
+  }
+
+  return vars;
+}
 
 export function buildOperationTree(action) {
   if (!action) return [];
@@ -63,8 +125,8 @@ function getChildOperations(node) {
     }
   }
 
-  // Don't traverse into `when` (condition spec, not structural child)
-  // Don't traverse into `value` (comparison value, handled at root level only)
+  if (isOperationNode(node.when)) children.push(node.when);
+  if (isOperationNode(node.value)) children.push(node.value);
   if (isOperationNode(node.then)) children.push(node.then);
   if (isOperationNode(node.else)) children.push(node.else);
 

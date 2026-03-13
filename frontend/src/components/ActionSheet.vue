@@ -5,6 +5,16 @@ import OperationSettings from './OperationSettings.vue';
 
 const props = defineProps({
   action: { type: Object, default: null },
+  article: { type: Object, default: null },
+});
+
+const outputOptions = computed(() => {
+  const outputs = props.article?.machine_readable?.execution?.output;
+  if (!Array.isArray(outputs)) return [];
+  return outputs.map(o => ({
+    value: o.name,
+    label: `${o.name.replace(/_/g, ' ')} (${o.type})`,
+  }));
 });
 
 const emit = defineEmits(['close']);
@@ -32,6 +42,11 @@ function selectOperation(op) {
   const idx = operationTree.value.indexOf(op);
   if (idx >= 0) selectedOpIndex.value = idx;
 }
+
+function selectOperationByNode(node) {
+  const idx = operationTree.value.findIndex(op => op.node === node);
+  if (idx >= 0) selectedOpIndex.value = idx;
+}
 </script>
 
 <template>
@@ -55,6 +70,19 @@ function selectOperation(op) {
       <!-- Body -->
       <div class="action-sheet-body">
         <rr-simple-section>
+          <!-- Output binding -->
+          <h3 class="section-title">Output</h3>
+          <rr-list variant="box">
+            <rr-list-item size="md">
+              <rr-label-cell>Verbonden aan</rr-label-cell>
+              <rr-button-cell slot="end">
+                <rr-drop-down-field size="md" :value="action?.output" .options="outputOptions"></rr-drop-down-field>
+              </rr-button-cell>
+            </rr-list-item>
+          </rr-list>
+
+          <rr-spacer size="16"></rr-spacer>
+
           <!-- Section A: Bovenliggende operaties -->
           <template v-if="parentOperations.length">
             <h3 class="section-title">Bovenliggende operaties</h3>
@@ -74,7 +102,7 @@ function selectOperation(op) {
           </template>
 
           <!-- Section B: Operation Settings -->
-          <OperationSettings v-if="selectedOperation" :operation="selectedOperation" />
+          <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" @select-operation="selectOperationByNode" />
         </rr-simple-section>
       </div>
 
@@ -103,7 +131,7 @@ function selectOperation(op) {
 }
 .action-sheet-panel {
   position: relative;
-  width: 480px;
+  width: 640px;
   background: #fff;
   display: flex;
   flex-direction: column;
