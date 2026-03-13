@@ -346,6 +346,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Preview)
         if: needs.changes.outputs.backend == 'true' && needs.build-enrich-worker.result == 'success'
+        continue-on-error: true  # enrich-worker component not yet registered in ZAD
         uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -425,6 +426,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Production)
         if: needs.build-enrich-worker.result == 'success'
+        continue-on-error: true  # enrich-worker component not yet registered in ZAD
         uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
