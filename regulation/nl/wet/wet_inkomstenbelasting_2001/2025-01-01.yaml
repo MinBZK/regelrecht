@@ -179,31 +179,34 @@ articles:
                 subject: $rendementsgrondslag
                 value: 0
               then:
-                operation: MULTIPLY
+                operation: MAX
                 values:
-                  - $box3_bezittingen
-                  - operation: DIVIDE
+                  - 0
+                  - operation: MULTIPLY
                     values:
-                      - operation: SUBTRACT
+                      - $box3_bezittingen
+                      - operation: DIVIDE
                         values:
-                          - operation: ADD
+                          - operation: SUBTRACT
                             values:
-                              - operation: MULTIPLY
+                              - operation: ADD
                                 values:
-                                  - $spaargeld
-                                  - $rendement_spaargeld
-                              - operation: MULTIPLY
-                                values:
-                                  - operation: ADD
+                                  - operation: MULTIPLY
                                     values:
-                                      - $beleggingen
-                                      - $onroerend_goed
-                                  - $rendement_overige_bezittingen
-                          - operation: MULTIPLY
-                            values:
-                              - $schulden
-                              - $rendement_schulden
-                      - $rendementsgrondslag
+                                      - $spaargeld
+                                      - $rendement_spaargeld
+                                  - operation: MULTIPLY
+                                    values:
+                                      - operation: ADD
+                                        values:
+                                          - $beleggingen
+                                          - $onroerend_goed
+                                      - $rendement_overige_bezittingen
+                              - operation: MULTIPLY
+                                values:
+                                  - $schulden
+                                  - $rendement_schulden
+                          - $rendementsgrondslag
               else: 0
 
   - number: '2.18'
