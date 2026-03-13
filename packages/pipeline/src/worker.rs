@@ -193,53 +193,75 @@ async fn process_next_job(
             // Skip creation if an active (pending/processing) enrich job already
             // exists for this law + provider to avoid duplicate LLM calls on retries.
             for provider_name in crate::enrich::ENRICH_PROVIDERS {
-                // Check for existing active enrich job to avoid duplicates
-                match job_queue::has_active_enrich_job(pool, &job.law_id, provider_name).await {
-                    Ok(true) => {
-                        tracing::info!(
-                            law_id = %job.law_id,
-                            provider = %provider_name,
-                            "skipping enrich job creation: active job already exists"
-                        );
-                        continue;
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            law_id = %job.law_id,
-                            provider = %provider_name,
-                            "failed to check for existing enrich jobs, creating anyway"
-                        );
-                    }
-                    Ok(false) => {}
-                }
+                // Wrap the duplicate check and job creation in a single
+                // transaction to prevent TOCTOU races where two harvest
+                // retries could both see "no active job" and both create one.
+                let tx_result: std::result::Result<(), crate::error::PipelineError> = async {
+                    let mut tx = pool.begin().await?;
 
-                let enrich_payload = EnrichPayload {
-                    law_id: job.law_id.clone(),
-                    yaml_path: result.file_path.clone(),
-                    provider: Some((*provider_name).to_string()),
-                };
-                if let Ok(payload_json) = serde_json::to_value(&enrich_payload) {
-                    let enrich_req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
-                        .with_payload(payload_json);
-                    match job_queue::create_job(pool, enrich_req).await {
-                        Ok(enrich_job) => {
+                    // Check for existing active enrich job to avoid duplicates
+                    match job_queue::has_active_enrich_job(&mut *tx, &job.law_id, provider_name)
+                        .await
+                    {
+                        Ok(true) => {
                             tracing::info!(
-                                enrich_job_id = %enrich_job.id,
                                 law_id = %job.law_id,
                                 provider = %provider_name,
-                                "auto-created enrich job after harvest"
+                                "skipping enrich job creation: active job already exists"
                             );
+                            return Ok(());
                         }
                         Err(e) => {
                             tracing::warn!(
                                 error = %e,
                                 law_id = %job.law_id,
                                 provider = %provider_name,
-                                "failed to auto-create enrich job (harvest still succeeded)"
+                                "failed to check for existing enrich jobs, creating anyway"
                             );
                         }
+                        Ok(false) => {}
                     }
+
+                    let enrich_payload = EnrichPayload {
+                        law_id: job.law_id.clone(),
+                        yaml_path: result.file_path.clone(),
+                        provider: Some((*provider_name).to_string()),
+                    };
+                    if let Ok(payload_json) = serde_json::to_value(&enrich_payload) {
+                        let enrich_req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+                            .with_payload(payload_json);
+                        match job_queue::create_job(&mut *tx, enrich_req).await {
+                            Ok(enrich_job) => {
+                                tracing::info!(
+                                    enrich_job_id = %enrich_job.id,
+                                    law_id = %job.law_id,
+                                    provider = %provider_name,
+                                    "auto-created enrich job after harvest"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    law_id = %job.law_id,
+                                    provider = %provider_name,
+                                    "failed to auto-create enrich job (harvest still succeeded)"
+                                );
+                            }
+                        }
+                    }
+
+                    tx.commit().await?;
+                    Ok(())
+                }
+                .await;
+
+                if let Err(e) = tx_result {
+                    tracing::warn!(
+                        error = %e,
+                        law_id = %job.law_id,
+                        provider = %provider_name,
+                        "failed enrich job creation transaction (harvest still succeeded)"
+                    );
                 }
             }
 
@@ -489,7 +511,7 @@ async fn process_next_enrich_job(
             if let Err(e) =
                 law_status::set_coverage_score(pool, &job.law_id, result.coverage_score).await
             {
-                tracing::warn!(error = %e, "failed to set quality score");
+                tracing::warn!(error = %e, "failed to set coverage score");
             }
 
             Ok(true)
@@ -512,11 +534,28 @@ async fn process_next_enrich_job(
                     tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
                 }
             } else {
-                // Job will be retried — reset law status to harvested
-                if let Err(status_err) =
-                    law_status::update_status(pool, &job.law_id, LawStatusValue::Harvested).await
-                {
-                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+                // Job will be retried — only reset to Harvested if the current
+                // status is Enriching. If another provider already enriched
+                // successfully (status = Enriched), we must not overwrite that.
+                match law_status::get_law(pool, &job.law_id).await {
+                    Ok(entry) if entry.status == LawStatusValue::Enriching => {
+                        if let Err(status_err) =
+                            law_status::update_status(pool, &job.law_id, LawStatusValue::Harvested)
+                                .await
+                        {
+                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+                        }
+                    }
+                    Ok(entry) => {
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            current_status = ?entry.status,
+                            "not resetting status to harvested: current status is not enriching"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to get law entry for status check");
+                    }
                 }
             }
 
