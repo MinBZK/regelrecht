@@ -103,9 +103,9 @@ pub struct EnrichResult {
     /// Total articles with a `machine_readable` section after enrichment
     /// (includes pre-existing ones). Not the count of newly enriched articles.
     pub articles_with_machine_readable: usize,
-    /// Fraction of articles that have a `machine_readable` section.
-    /// Measures coverage only, not correctness — 1.0 means every article
-    /// has a `machine_readable` key, but says nothing about its content.
+    /// Fraction of previously-unenriched articles that the LLM enriched
+    /// in this session. 1.0 means every article that was missing a
+    /// `machine_readable` section now has one; says nothing about correctness.
     pub coverage_score: f64,
     pub provider: String,
     pub branch: String,
@@ -230,11 +230,16 @@ impl EnrichConfig {
     ///
     /// Selects from pre-built provider configs — no env vars are re-read.
     pub fn with_provider_override(&self, provider_name: &str) -> Self {
-        let provider = self
-            .provider_configs
-            .get(provider_name)
-            .cloned()
-            .unwrap_or_else(|| self.provider.clone());
+        let provider = if let Some(cfg) = self.provider_configs.get(provider_name) {
+            cfg.clone()
+        } else {
+            tracing::warn!(
+                requested = %provider_name,
+                fallback = %self.provider.name(),
+                "unknown provider in payload, falling back to default"
+            );
+            self.provider.clone()
+        };
 
         Self {
             provider,
@@ -464,7 +469,7 @@ pub async fn execute_enrich_with_runner(
     tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
 
     // Count articles with machine_readable after enrichment.
-    // Coverage score measures what the LLM *added*, not total coverage.
+    // Coverage score measures what the LLM *added* this session, not total coverage.
     let articles_with_machine_readable = count_machine_readable_articles(&yaml_abs).await?;
     let newly_enriched = articles_with_machine_readable.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);

@@ -337,7 +337,8 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         .await
         {
             Ok(true) => {
-                current_interval = config.poll_interval;
+                // Reset to zero to drain the queue quickly when jobs are available.
+                current_interval = Duration::ZERO;
             }
             Ok(false) => {
                 current_interval = (current_interval * 2)
@@ -501,10 +502,26 @@ async fn process_next_enrich_job(
             let failed_job = job_queue::fail_job(pool, job.id, Some(error_json)).await?;
 
             if failed_job.status == crate::models::JobStatus::Failed {
-                if let Err(status_err) =
-                    law_status::update_status(pool, &job.law_id, LawStatusValue::EnrichFailed).await
-                {
-                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                // Only set EnrichFailed if the current status is not already
+                // Enriched (another provider may have succeeded).
+                match law_status::get_law(pool, &job.law_id).await {
+                    Ok(entry) if entry.status == LawStatusValue::Enriched => {
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            "not setting enrich_failed: another provider already enriched successfully"
+                        );
+                    }
+                    _ => {
+                        if let Err(status_err) = law_status::update_status(
+                            pool,
+                            &job.law_id,
+                            LawStatusValue::EnrichFailed,
+                        )
+                        .await
+                        {
+                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                        }
+                    }
                 }
             } else {
                 // Job will be retried — only reset to Harvested if the current
