@@ -25,7 +25,7 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Input};
+use crate::article::{Article, ArticleBasedLaw, Execution, Input, MachineReadable};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
@@ -661,29 +661,64 @@ impl LawExecutionService {
                 );
 
                 if let Some(ref actions) = default.actions {
-                    // Execute default actions using the current law/article context
-                    // We create a minimal execution by evaluating each action
-                    let mut default_value = Value::Null;
-                    for action in actions {
-                        if let Some(ref val) = action.value {
-                            default_value = match crate::operations::evaluate_value(val, context, 0)
-                            {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    if let Some(ref tb) = res_ctx.trace {
-                                        let mut tb = tb.borrow_mut();
-                                        tb.set_message(format!(
-                                            "Open term '{}': default evaluation failed: {}",
-                                            term.id, e
-                                        ));
-                                        tb.pop();
-                                    }
-                                    res_ctx.leave(&ot_key);
-                                    return Err(e);
-                                }
-                            };
-                        }
+                    // Build a synthetic article from the default actions and evaluate
+                    // it through ArticleEngine — this correctly handles action.output,
+                    // intermediate variables, and all operation patterns.
+                    let synthetic_article = Article {
+                        number: format!("default:{}", term.id),
+                        text: String::new(),
+                        url: None,
+                        machine_readable: Some(MachineReadable {
+                            definitions: None,
+                            execution: Some(Execution {
+                                produces: None,
+                                parameters: None,
+                                input: None,
+                                output: None,
+                                actions: Some(actions.clone()),
+                            }),
+                            requires: None,
+                            competent_authority: None,
+                            open_terms: None,
+                            implements: None,
+                        }),
+                    };
+
+                    let engine = ArticleEngine::new(&synthetic_article, law);
+
+                    // Pass current context parameters so default actions can
+                    // reference variables like $type_beplanting
+                    let mut default_params = context.parameters().clone();
+                    // Include already-resolved open terms from this evaluation
+                    for (k, v) in &resolved {
+                        default_params.insert(k.clone(), v.clone());
                     }
+
+                    let default_result = match engine.evaluate_with_output(
+                        default_params,
+                        res_ctx.calculation_date,
+                        Some(&term.id),
+                    ) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            if let Some(ref tb) = res_ctx.trace {
+                                let mut tb = tb.borrow_mut();
+                                tb.set_message(format!(
+                                    "Open term '{}': default evaluation failed: {}",
+                                    term.id, e
+                                ));
+                                tb.pop();
+                            }
+                            res_ctx.leave(&ot_key);
+                            return Err(e);
+                        }
+                    };
+
+                    let default_value = default_result
+                        .outputs
+                        .get(&term.id)
+                        .cloned()
+                        .unwrap_or(Value::Null);
 
                     if let Some(ref tb) = res_ctx.trace {
                         let mut tb = tb.borrow_mut();
