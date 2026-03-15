@@ -122,7 +122,6 @@ articles:
           - name: standaardpremie
             type: amount
             source:
-              regulation: regeling_standaardpremie
               output: standaardpremie
             type_spec:
               unit: eurocent
