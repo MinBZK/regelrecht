@@ -4,7 +4,7 @@
 //! This library provides functionality for:
 //! - Loading and parsing article-based law specifications (YAML)
 //! - Executing law logic with variable resolution
-//! - Cross-law references and delegation handling
+//! - Cross-law references and IoC (open terms) resolution
 //!
 //! # Example
 //!
@@ -45,8 +45,8 @@ pub mod wasm;
 
 // Re-export commonly used items
 pub use article::{
-    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Delegation, Execution,
-    MachineReadable, SelectOnCriteria, Source, SwitchCase,
+    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Execution, MachineReadable,
+    Source, SwitchCase,
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
@@ -54,10 +54,7 @@ pub use config::{
 };
 pub use context::RuleContext;
 pub use data_source::{DataSource, DataSourceMatch, DataSourceRegistry, DictDataSource};
-pub use engine::{
-    evaluate_select_on_criteria, get_delegation_info, matches_delegation_criteria, ArticleEngine,
-    ArticleResult,
-};
+pub use engine::{ArticleEngine, ArticleResult};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
 pub use resolver::RuleResolver;

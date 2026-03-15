@@ -469,8 +469,6 @@ pub enum PathNodeType {
     UriCall,
     /// Article-level execution
     Article,
-    /// Delegation to another regulation
-    Delegation,
     /// Cached cross-law result (memoized)
     Cached,
     /// Open term resolution via IoC (implements lookup)

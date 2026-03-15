@@ -164,7 +164,6 @@ impl PathNode {
             PathNodeType::Requirement => "requirement",
             PathNodeType::UriCall => "uri_call",
             PathNodeType::Article => "article",
-            PathNodeType::Delegation => "delegation",
             PathNodeType::Cached => "cached",
             PathNodeType::OpenTermResolution => "open_term",
         };
@@ -415,19 +414,6 @@ impl PathNode {
                 }
             }
 
-            PathNodeType::Delegation => {
-                if let Some(ref msg) = self.message {
-                    lines.push(format!("{}├──{}", prefix, msg));
-                } else {
-                    lines.push(format!("{}├──Delegation: {}", prefix, self.name));
-                }
-
-                let child_prefix = format!("{}│   ", prefix);
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
-                }
-            }
-
             PathNodeType::Cached => {
                 let result_str = self
                     .result
@@ -463,7 +449,6 @@ impl PathNode {
             PathNodeType::Requirement => "req",
             PathNodeType::UriCall => "uri",
             PathNodeType::Article => "art",
-            PathNodeType::Delegation => "del",
             PathNodeType::Cached => "cache",
             PathNodeType::OpenTermResolution => "ot",
         };

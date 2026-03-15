@@ -91,7 +91,7 @@ pub fn resolve_candidate<'a>(
                 );
             } else if candidate_date == best_date {
                 // Same layer, same date: ambiguous — this is a law authoring error
-                return Err(EngineError::DelegationError(format!(
+                return Err(EngineError::ResolutionError(format!(
                     "Ambiguous priority: {} and {} both have regulatory layer {:?} and valid_from '{}' — cannot determine winner",
                     best.law.id, candidate.law.id, best.law.regulatory_layer, best_date
                 )));

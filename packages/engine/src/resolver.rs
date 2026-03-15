@@ -3,7 +3,7 @@
 //! Provides indexing and lookup functionality for laws, including:
 //! - Law registry by ID with multi-version support
 //! - Output index for fast article lookup by output name
-//! - Legal basis index for delegation lookups
+//! - Implements index for IoC open term resolution
 //! - Version selection based on reference_date
 //!
 //! # Multi-version Support
@@ -21,11 +21,9 @@
 
 use crate::article::{Article, ArticleBasedLaw};
 use crate::config;
-use crate::context::RuleContext;
-use crate::engine::{evaluate_select_on_criteria, matches_delegation_criteria};
 use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};
-use crate::types::{RegulatoryLayer, Value};
+use crate::types::Value;
 use chrono::NaiveDate;
 use std::collections::HashMap;
 
@@ -34,7 +32,7 @@ use std::collections::HashMap;
 /// The resolver maintains several indexes for efficient lookups:
 /// - **Law registry**: All loaded laws by ID, supporting multiple versions per ID
 /// - **Output index**: Maps (law_id, output_name) to article number
-/// - **Legal basis index**: Maps (law_id, article) to delegated regulations
+/// - **Implements index**: Maps (law_id, article, open_term_id) to implementing regulations
 ///
 /// # Multi-version Support
 ///
@@ -62,14 +60,6 @@ use std::collections::HashMap;
 ///
 /// // Find article by output
 /// let article = resolver.get_article_by_output("zorgtoeslagwet", "standaardpremie", None);
-///
-/// // Find delegated regulation
-/// let delegated = resolver.find_delegated_regulation(
-///     "participatiewet",
-///     "8",
-///     &criteria,
-///     None, // Use latest version
-/// );
 /// ```
 pub struct RuleResolver {
     /// Registry of loaded laws by ID, supporting multiple versions per law ID.
@@ -78,8 +68,6 @@ pub struct RuleResolver {
     /// Index: (law_id, output_name) -> article_number
     /// Note: This index uses the most recent version of each law
     output_index: HashMap<(String, String), String>,
-    /// Index: (law_id, article) -> list of law IDs with this legal basis
-    legal_basis_index: HashMap<(String, String), Vec<String>>,
     /// IoC index: (law_id, article, open_term_id) -> list of (implementing_law_id, implementing_article_number)
     implements_index: HashMap<(String, String, String), Vec<(String, String)>>,
 }
@@ -96,7 +84,6 @@ impl RuleResolver {
         Self {
             law_versions: HashMap::new(),
             output_index: HashMap::new(),
-            legal_basis_index: HashMap::new(),
             implements_index: HashMap::new(),
         }
     }
@@ -142,9 +129,6 @@ impl RuleResolver {
             )));
         }
 
-        // Extract legal_basis before moving law into the version list
-        let legal_basis = law.legal_basis.clone();
-
         // Get or create the version list for this law ID
         let versions = self.law_versions.entry(law_id.clone()).or_default();
 
@@ -166,18 +150,6 @@ impl RuleResolver {
 
         // Rebuild indexes using the most recent version
         self.rebuild_indexes_for_law(&law_id);
-
-        // Build legal basis index (if law has legal_basis metadata)
-        // This is per-law-ID, not per-version
-        if let Some(legal_bases) = &legal_basis {
-            for lb in legal_bases {
-                let key = (lb.law_id.clone(), lb.article.clone());
-                let candidates = self.legal_basis_index.entry(key).or_default();
-                if !candidates.contains(&law_id) {
-                    candidates.push(law_id.clone());
-                }
-            }
-        }
 
         let total_laws: usize = self.law_versions.values().map(|v| v.len()).sum();
         tracing::debug!(law_id = %law_id, total = total_laws, "Law loaded");
@@ -284,155 +256,6 @@ impl RuleResolver {
         let law = self.get_law_for_date(law_id, reference_date)?;
         // Search directly in the version-specific law for the article with this output
         law.find_article_by_output(output)
-    }
-
-    /// Find a delegated regulation matching the given criteria.
-    ///
-    /// This searches for regulations that:
-    /// 1. Have legal_basis pointing to the specified law/article
-    /// 2. Match all select_on criteria
-    ///
-    /// # Arguments
-    /// * `law_id` - The law that grants the delegation
-    /// * `article` - The article number that grants the delegation
-    /// * `criteria` - Evaluated select_on criteria to match
-    /// * `reference_date` - Optional date to select the appropriate version
-    ///
-    /// # Returns
-    /// Reference to the first matching regulation, or None.
-    pub fn find_delegated_regulation(
-        &self,
-        law_id: &str,
-        article: &str,
-        criteria: &HashMap<String, Value>,
-        reference_date: Option<NaiveDate>,
-    ) -> Option<&ArticleBasedLaw> {
-        // Find all laws with this legal basis
-        let key = (law_id.to_string(), article.to_string());
-        let candidate_ids = self.legal_basis_index.get(&key)?;
-
-        tracing::debug!(
-            law_id = %law_id,
-            article = %article,
-            candidates = candidate_ids.len(),
-            "Finding delegated regulation"
-        );
-
-        // Check each candidate against criteria
-        for candidate_id in candidate_ids {
-            // Get the appropriate version of the candidate law
-            let Some(law) = self.get_law_for_date(candidate_id, reference_date) else {
-                continue;
-            };
-
-            // Build a map of law metadata for criteria matching
-            let mut law_values = HashMap::new();
-
-            // Add common metadata fields
-            if let Some(gemeente_code) = &law.gemeente_code {
-                law_values.insert(
-                    "gemeente_code".to_string(),
-                    Value::String(gemeente_code.clone()),
-                );
-            }
-            if let Some(jaar) = law.jaar {
-                law_values.insert("jaar".to_string(), Value::Int(jaar as i64));
-            }
-            if let Some(name) = &law.name {
-                law_values.insert("name".to_string(), Value::String(name.clone()));
-            }
-
-            // Check if criteria match
-            let matches = matches_delegation_criteria(criteria, &law_values);
-            tracing::debug!(
-                candidate = %candidate_id,
-                law_values = ?law_values,
-                criteria = ?criteria,
-                matches = %matches,
-                "Checking candidate regulation"
-            );
-
-            if matches {
-                return Some(law);
-            }
-        }
-
-        tracing::debug!(
-            law_id = %law_id,
-            article = %article,
-            "No matching regulation found"
-        );
-        None
-    }
-
-    /// Find a delegated regulation using context for criteria evaluation.
-    ///
-    /// This is a convenience method that evaluates select_on criteria
-    /// using the provided context before matching.
-    ///
-    /// # Arguments
-    /// * `law_id` - The law that grants the delegation
-    /// * `article` - The article number that grants the delegation
-    /// * `select_on` - Unevaluated select_on criteria
-    /// * `context` - Context for variable resolution
-    /// * `reference_date` - Optional date to select the appropriate version
-    ///
-    /// # Returns
-    /// Reference to the first matching regulation, or error.
-    pub fn find_delegated_regulation_with_context(
-        &self,
-        law_id: &str,
-        article: &str,
-        select_on: &[crate::article::SelectOnCriteria],
-        context: &RuleContext,
-        reference_date: Option<NaiveDate>,
-    ) -> Result<Option<&ArticleBasedLaw>> {
-        let criteria = evaluate_select_on_criteria(select_on, context)?;
-        Ok(self.find_delegated_regulation(law_id, article, &criteria, reference_date))
-    }
-
-    /// Find all regulations that declare a given law+article as their legal basis.
-    ///
-    /// Optionally filters by regulatory layer.
-    ///
-    /// # Arguments
-    /// * `law_id` - The law that grants the delegation
-    /// * `article` - The article number that grants the delegation
-    /// * `layer_filter` - Optional regulatory layer to filter candidates
-    /// * `reference_date` - Optional date to select the appropriate version
-    ///
-    /// # Returns
-    /// List of references to matching laws.
-    pub fn find_regulations_by_legal_basis(
-        &self,
-        law_id: &str,
-        article: &str,
-        layer_filter: Option<&RegulatoryLayer>,
-        reference_date: Option<NaiveDate>,
-    ) -> Vec<&ArticleBasedLaw> {
-        let key = (law_id.to_string(), article.to_string());
-        let candidate_ids = match self.legal_basis_index.get(&key) {
-            Some(ids) => ids,
-            None => return Vec::new(),
-        };
-
-        let mut results = Vec::new();
-        for candidate_id in candidate_ids {
-            let Some(law) = self.get_law_for_date(candidate_id, reference_date) else {
-                continue;
-            };
-
-            // Filter by regulatory layer if specified
-            if let Some(filter) = layer_filter {
-                if &law.regulatory_layer != filter {
-                    continue;
-                }
-            }
-
-            results.push(law);
-        }
-
-        results
     }
 
     /// Find all implementations of an open term, resolved by priority.
@@ -777,12 +600,6 @@ impl RuleResolver {
         // Remove output index entries
         self.output_index.retain(|(id, _), _| id.as_str() != law_id);
 
-        // Remove from legal basis index
-        for candidates in self.legal_basis_index.values_mut() {
-            candidates.retain(|id| id != law_id);
-        }
-        self.legal_basis_index.retain(|_, v| !v.is_empty());
-
         // Remove from implements index (this law as implementor)
         for candidates in self.implements_index.values_mut() {
             candidates.retain(|(impl_law_id, _)| impl_law_id != law_id);
@@ -842,50 +659,6 @@ articles:
         )
     }
 
-    fn make_delegating_law() -> &'static str {
-        r#"
-$id: participatiewet
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '8'
-    text: Article granting delegation authority
-    machine_readable:
-      execution:
-        output:
-          - name: delegation_granted
-            type: boolean
-        actions:
-          - output: delegation_granted
-            value: true
-"#
-    }
-
-    fn make_delegated_regulation(gemeente_code: &str) -> String {
-        format!(
-            r#"
-$id: {gemeente_code}_verordening
-regulatory_layer: GEMEENTELIJKE_VERORDENING
-publication_date: '2025-01-01'
-gemeente_code: "{gemeente_code}"
-legal_basis:
-  - law_id: participatiewet
-    article: '8'
-articles:
-  - number: '1'
-    text: Local regulation
-    machine_readable:
-      execution:
-        output:
-          - name: verlaging_percentage
-            type: number
-        actions:
-          - output: verlaging_percentage
-            value: 20
-"#
-        )
-    }
-
     #[test]
     fn test_resolver_basic() {
         let mut resolver = RuleResolver::new();
@@ -934,12 +707,10 @@ articles:
         let mut resolver = RuleResolver::new();
 
         resolver.load_from_yaml(make_test_law()).unwrap();
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
 
         let laws = resolver.list_laws();
-        assert_eq!(laws.len(), 2);
-        // Should be sorted
-        assert_eq!(laws, vec!["participatiewet", "test_law"]);
+        assert_eq!(laws.len(), 1);
+        assert_eq!(laws, vec!["test_law"]);
     }
 
     #[test]
@@ -956,73 +727,6 @@ articles:
         assert!(resolver
             .get_article_by_output("test_law", "test_output", None)
             .is_none());
-    }
-
-    #[test]
-    fn test_resolver_legal_basis_index() {
-        let mut resolver = RuleResolver::new();
-
-        // Load the delegating law
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
-
-        // Load delegated regulations
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0363"))
-            .unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0518"))
-            .unwrap();
-
-        // Find by legal basis
-        let key = ("participatiewet".to_string(), "8".to_string());
-        let candidates = resolver.legal_basis_index.get(&key).unwrap();
-        assert_eq!(candidates.len(), 2);
-        assert!(candidates.contains(&"0363_verordening".to_string()));
-        assert!(candidates.contains(&"0518_verordening".to_string()));
-    }
-
-    #[test]
-    fn test_resolver_find_delegated_regulation() {
-        let mut resolver = RuleResolver::new();
-
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0363"))
-            .unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0518"))
-            .unwrap();
-
-        // Find Amsterdam regulation
-        let mut criteria = HashMap::new();
-        criteria.insert(
-            "gemeente_code".to_string(),
-            Value::String("0363".to_string()),
-        );
-
-        let found = resolver
-            .find_delegated_regulation("participatiewet", "8", &criteria, None)
-            .unwrap();
-        assert_eq!(found.id, "0363_verordening");
-        assert_eq!(found.gemeente_code, Some("0363".to_string()));
-
-        // Find Den Haag regulation
-        criteria.insert(
-            "gemeente_code".to_string(),
-            Value::String("0518".to_string()),
-        );
-        let found = resolver
-            .find_delegated_regulation("participatiewet", "8", &criteria, None)
-            .unwrap();
-        assert_eq!(found.id, "0518_verordening");
-
-        // Non-matching criteria
-        criteria.insert(
-            "gemeente_code".to_string(),
-            Value::String("9999".to_string()),
-        );
-        let found = resolver.find_delegated_regulation("participatiewet", "8", &criteria, None);
-        assert!(found.is_none());
     }
 
     #[test]
@@ -1062,57 +766,6 @@ articles:
         assert!(resolver
             .get_article_by_output("test_law", "new_output", None)
             .is_some());
-    }
-
-    #[test]
-    fn test_resolver_find_delegated_regulation_empty_criteria() {
-        // With empty criteria, should match any regulation with the legal basis
-        let mut resolver = RuleResolver::new();
-
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0363"))
-            .unwrap();
-
-        // Empty criteria - matches first candidate
-        let criteria = HashMap::new();
-        let found = resolver.find_delegated_regulation("participatiewet", "8", &criteria, None);
-
-        // Should find the regulation (the only one with this legal basis)
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().id, "0363_verordening");
-    }
-
-    #[test]
-    fn test_resolver_stale_index_continues() {
-        // Test that if legal_basis_index has a stale entry, we continue to next candidate
-        let mut resolver = RuleResolver::new();
-
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0363"))
-            .unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0518"))
-            .unwrap();
-
-        // Manually corrupt the index by adding a non-existent law ID
-        // (simulating a partial cleanup failure)
-        let key = ("participatiewet".to_string(), "8".to_string());
-        if let Some(candidates) = resolver.legal_basis_index.get_mut(&key) {
-            candidates.insert(0, "nonexistent_law".to_string());
-        }
-
-        // Should still find 0518_verordening (skipping the non-existent law)
-        let mut criteria = HashMap::new();
-        criteria.insert(
-            "gemeente_code".to_string(),
-            Value::String("0518".to_string()),
-        );
-
-        let found = resolver.find_delegated_regulation("participatiewet", "8", &criteria, None);
-        assert!(found.is_some());
-        assert_eq!(found.unwrap().id, "0518_verordening");
     }
 
     #[test]
@@ -1367,9 +1020,6 @@ articles:
 
         resolver.load_from_yaml(make_test_law()).unwrap();
         assert_eq!(resolver.output_count(), 1);
-
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
-        assert_eq!(resolver.output_count(), 2);
     }
 
     #[test]
@@ -1377,51 +1027,10 @@ articles:
         let mut resolver = RuleResolver::new();
 
         resolver.load_from_yaml(make_test_law()).unwrap();
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
 
         let outputs = resolver.list_all_outputs();
-        assert_eq!(outputs.len(), 2);
+        assert_eq!(outputs.len(), 1);
         assert!(outputs.contains(&("test_law", "test_output")));
-        assert!(outputs.contains(&("participatiewet", "delegation_granted")));
-    }
-
-    #[test]
-    fn test_resolver_find_regulations_by_legal_basis() {
-        let mut resolver = RuleResolver::new();
-
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0363"))
-            .unwrap();
-        resolver
-            .load_from_yaml(&make_delegated_regulation("0518"))
-            .unwrap();
-
-        // Find all regulations with this legal basis
-        let results = resolver.find_regulations_by_legal_basis("participatiewet", "8", None, None);
-        assert_eq!(results.len(), 2);
-
-        // Filter by regulatory layer
-        let results = resolver.find_regulations_by_legal_basis(
-            "participatiewet",
-            "8",
-            Some(&RegulatoryLayer::GemeentelijkeVerordening),
-            None,
-        );
-        assert_eq!(results.len(), 2);
-
-        // Filter by a layer that doesn't match
-        let results = resolver.find_regulations_by_legal_basis(
-            "participatiewet",
-            "8",
-            Some(&RegulatoryLayer::MinisterieleRegeling),
-            None,
-        );
-        assert_eq!(results.len(), 0);
-
-        // Non-existent law/article
-        let results = resolver.find_regulations_by_legal_basis("nonexistent", "1", None, None);
-        assert_eq!(results.len(), 0);
     }
 
     // -------------------------------------------------------------------------
@@ -1610,10 +1219,9 @@ articles:
         let mut resolver = RuleResolver::new();
 
         resolver.load_from_yaml(make_test_law()).unwrap();
-        resolver.load_from_yaml(make_delegating_law()).unwrap();
 
         assert_eq!(resolver.implements_count(), 0);
-        assert_eq!(resolver.law_count(), 2);
+        assert_eq!(resolver.law_count(), 1);
     }
 
     #[test]

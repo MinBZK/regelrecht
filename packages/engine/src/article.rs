@@ -38,35 +38,6 @@ pub struct LegalBasis {
     pub description: Option<String>,
 }
 
-/// Contract specification for legal_basis_for delegations
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LegalBasisForContract {
-    #[serde(default)]
-    pub parameters: Option<Vec<Parameter>>,
-    #[serde(default)]
-    pub output: Option<Vec<Output>>,
-}
-
-/// Defaults specification for optional delegations
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LegalBasisForDefaults {
-    #[serde(default)]
-    pub definitions: Option<HashMap<String, Definition>>,
-    #[serde(default)]
-    pub actions: Option<Vec<Action>>,
-}
-
-/// Legal basis for specification - defines what lower regulations can provide
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LegalBasisFor {
-    pub regulatory_layer: RegulatoryLayer,
-    pub subject: String,
-    #[serde(default)]
-    pub contract: Option<LegalBasisForContract>,
-    #[serde(default)]
-    pub defaults: Option<LegalBasisForDefaults>,
-}
-
 /// Type specification for input/output fields.
 ///
 /// Currently only contains unit specification, but may be extended
@@ -78,57 +49,16 @@ pub struct TypeSpec {
     pub unit: Option<String>,
 }
 
-/// Selection criteria for delegation matching
-///
-/// Used in `select_on` to specify which criteria must match when
-/// selecting among multiple candidate regulations (e.g., gemeente_code).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SelectOnCriteria {
-    /// Name of the criteria field (e.g., "gemeente_code")
-    pub name: String,
-    /// Value to match (can be a variable reference like "$gemeente_code")
-    pub value: ActionValue,
-}
-
-/// Delegation specification for cross-law references
-///
-/// Specifies how to find and call a delegated regulation. Used when a higher law
-/// (e.g., Participatiewet) delegates to a lower regulation (e.g., gemeentelijke verordening).
-///
-/// # Example
-///
-/// ```yaml
-/// delegation:
-///   law_id: participatiewet
-///   article: '8'
-///   select_on:
-///     - name: gemeente_code
-///       value: $gemeente_code
-/// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Delegation {
-    /// Law ID that establishes the delegation (e.g., "participatiewet")
-    pub law_id: String,
-    /// Article number that contains the delegation authority
-    pub article: String,
-    /// Selection criteria for matching the correct regulation
-    #[serde(default)]
-    pub select_on: Option<Vec<SelectOnCriteria>>,
-}
-
 /// Source specification for input fields
 ///
 /// Defines where an input value comes from. Can be:
 /// - Simple regulation reference: `regulation: "other_law"` + `output: "field_name"`
-/// - Delegation: Complex lookup based on legal_basis and select_on criteria
+/// - Same-law reference: `output: "field_name"` (resolved within the same law)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     /// Simple cross-law reference (law ID)
     #[serde(default)]
     pub regulation: Option<String>,
-    /// Delegation specification for complex cross-law lookups
-    #[serde(default)]
-    pub delegation: Option<Delegation>,
     /// Output field to retrieve from the source.
     /// When None (e.g. `source: {}`), the input is resolved from the DataSourceRegistry.
     #[serde(default)]
@@ -188,23 +118,6 @@ pub struct Produces {
     /// Type of decision (e.g., "TOEKENNING", "GOEDKEURING")
     #[serde(default)]
     pub decision_type: Option<String>,
-}
-
-/// Resolve specification for delegation
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Resolve {
-    #[serde(rename = "type")]
-    pub resolve_type: String,
-    pub output: String,
-    #[serde(rename = "match", default)]
-    pub match_spec: Option<ResolveMatch>,
-}
-
-/// Match specification for resolve
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ResolveMatch {
-    pub output: String,
-    pub value: ActionValue,
 }
 
 /// A single case in a SWITCH operation
@@ -295,9 +208,6 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
-    /// Resolve specification for delegation
-    #[serde(default)]
-    pub resolve: Option<Resolve>,
     /// Unit for SUBTRACT_DATE operation ("days", "months", "years")
     #[serde(default)]
     pub unit: Option<String>,
@@ -408,8 +318,6 @@ pub struct MachineReadable {
     pub requires: Option<Vec<String>>,
     #[serde(default)]
     pub competent_authority: Option<CompetentAuthority>,
-    #[serde(default)]
-    pub legal_basis_for: Option<Vec<LegalBasisFor>>,
     /// Open terms that can or must be filled by implementing regulations
     #[serde(default)]
     pub open_terms: Option<Vec<OpenTerm>>,
@@ -490,16 +398,6 @@ impl Article {
         self.machine_readable
             .as_ref()
             .and_then(|mr| mr.competent_authority.as_ref())
-    }
-
-    /// Get legal_basis_for specifications from this article.
-    ///
-    /// These define what lower-level regulations can provide and optionally
-    /// include default values if no delegated regulation exists.
-    pub fn get_legal_basis_for(&self) -> Option<&Vec<LegalBasisFor>> {
-        self.machine_readable
-            .as_ref()
-            .and_then(|mr| mr.legal_basis_for.as_ref())
     }
 
     /// Get open terms declared by this article.
