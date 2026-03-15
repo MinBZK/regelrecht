@@ -505,6 +505,9 @@ impl LawExecutionService {
         // Resolve inputs with sources using ServiceProvider
         self.resolve_inputs_with_service(article, law, &mut context, &parameters, res_ctx)?;
 
+        // Resolve open terms via IoC (implements index lookup)
+        let open_term_values = self.resolve_open_terms(article, law, &context, res_ctx)?;
+
         // Pre-resolve any resolve actions in this article
         let resolved_actions = self.pre_resolve_actions(article, law, &context, res_ctx)?;
 
@@ -516,6 +519,10 @@ impl LawExecutionService {
         let mut combined_params = parameters;
         for (name, value) in context.resolved_inputs() {
             combined_params.insert(name.clone(), value.clone());
+        }
+        // Merge open term values (IoC resolved)
+        for (name, value) in open_term_values {
+            combined_params.insert(name, value);
         }
         // Merge pre-resolved action outputs so the engine can pick them up
         for (name, value) in resolved_actions {
@@ -563,6 +570,212 @@ impl LawExecutionService {
         }
 
         Ok(result)
+    }
+
+    /// Resolve open terms declared on an article via IoC (implements index).
+    ///
+    /// For each open term:
+    /// 1. Look up implementations in the resolver's implements_index
+    /// 2. If found: execute the implementing article to get the value
+    /// 3. If not found + has default: execute the default actions
+    /// 4. If not found + required + no default: error
+    /// 5. If not found + not required + no default: skip
+    fn resolve_open_terms(
+        &self,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        context: &RuleContext,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<HashMap<String, Value>> {
+        let mut resolved = HashMap::new();
+
+        let open_terms = match article.get_open_terms() {
+            Some(terms) => terms,
+            None => return Ok(resolved),
+        };
+
+        for term in open_terms {
+            // Cycle detection: check if we're already resolving this open term
+            let ot_key = format!("open_term:{}#{}#{}", law.id, article.number, term.id);
+            if res_ctx.is_visited(&ot_key) {
+                tracing::warn!(
+                    law_id = %law.id,
+                    article = %article.number,
+                    open_term = %term.id,
+                    "Circular open term dependency detected"
+                );
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.push(&term.id, PathNodeType::OpenTermResolution);
+                    tb.set_message(format!(
+                        "Circular dependency: open term '{}' on {}#{} is already being resolved",
+                        term.id, law.id, article.number
+                    ));
+                    tb.pop();
+                }
+                return Err(EngineError::CircularReference(format!(
+                    "Circular open term dependency: '{}' on {} article {} is already being resolved",
+                    term.id, law.id, article.number
+                )));
+            }
+            res_ctx.enter(ot_key.clone());
+
+            tracing::debug!(
+                law_id = %law.id,
+                article = %article.number,
+                open_term = %term.id,
+                "Resolving open term"
+            );
+
+            // Trace the open term resolution
+            if let Some(ref tb) = res_ctx.trace {
+                let mut tb = tb.borrow_mut();
+                tb.push(&term.id, PathNodeType::OpenTermResolution);
+                tb.set_resolve_type(ResolveType::OpenTerm);
+            }
+
+            // Look up implementations
+            let implementations = self.resolver.find_implementations(
+                &law.id,
+                &article.number,
+                &term.id,
+                res_ctx.reference_date(),
+            );
+
+            if let Some((impl_law, impl_article)) = implementations.first() {
+                tracing::debug!(
+                    open_term = %term.id,
+                    implementing_law = %impl_law.id,
+                    implementing_article = %impl_article.number,
+                    "Found implementation for open term"
+                );
+
+                // Execute the implementing article to get the value
+                let result = match self.evaluate_article_with_service(
+                    impl_article,
+                    impl_law,
+                    HashMap::new(),
+                    Some(&term.id),
+                    res_ctx,
+                ) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        res_ctx.leave(&ot_key);
+                        return Err(e);
+                    }
+                };
+
+                if let Some(value) = result.outputs.get(&term.id) {
+                    // Trace success
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_result(value.clone());
+                        tb.set_message(format!(
+                            "Open term '{}' resolved from {} article {}",
+                            term.id, impl_law.id, impl_article.number
+                        ));
+                        tb.pop();
+                    }
+
+                    resolved.insert(term.id.clone(), value.clone());
+                } else {
+                    // Implementation executed but didn't produce the expected output
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_message(format!(
+                            "Open term '{}': implementation {} article {} produced no matching output",
+                            term.id, impl_law.id, impl_article.number
+                        ));
+                        tb.pop();
+                    }
+                    res_ctx.leave(&ot_key);
+                    return Err(EngineError::InvalidOperation(format!(
+                        "Implementation {} article {} for open term '{}' did not produce output named '{}'",
+                        impl_law.id, impl_article.number, term.id, term.id
+                    )));
+                }
+            } else if let Some(ref default) = term.default {
+                // No implementation found — execute default actions
+                tracing::debug!(
+                    open_term = %term.id,
+                    "No implementation found, using default"
+                );
+
+                if let Some(ref actions) = default.actions {
+                    // Execute default actions using the current law/article context
+                    // We create a minimal execution by evaluating each action
+                    let mut default_value = Value::Null;
+                    for action in actions {
+                        if let Some(ref val) = action.value {
+                            default_value = match crate::operations::evaluate_value(val, context, 0)
+                            {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    res_ctx.leave(&ot_key);
+                                    return Err(e);
+                                }
+                            };
+                        }
+                    }
+
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_result(default_value.clone());
+                        tb.set_message(format!("Open term '{}' resolved from default", term.id));
+                        tb.pop();
+                    }
+
+                    resolved.insert(term.id.clone(), default_value);
+                } else {
+                    // Default exists but has no actions — treat as null
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_result(Value::Null);
+                        tb.set_message(format!(
+                            "Open term '{}' resolved from empty default",
+                            term.id
+                        ));
+                        tb.pop();
+                    }
+                    resolved.insert(term.id.clone(), Value::Null);
+                }
+            } else if term.required {
+                // Required but no implementation and no default
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!(
+                        "Open term '{}' is required but no implementation found",
+                        term.id
+                    ));
+                    tb.pop();
+                }
+
+                res_ctx.leave(&ot_key);
+                return Err(EngineError::DelegationError(format!(
+                    "Required open term '{}' on {}#{} has no implementation and no default",
+                    term.id, law.id, article.number
+                )));
+            } else {
+                // Not required, no implementation, no default — skip
+                tracing::debug!(
+                    open_term = %term.id,
+                    "Optional open term not implemented, skipping"
+                );
+
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!(
+                        "Open term '{}' not required, no implementation, skipped",
+                        term.id
+                    ));
+                    tb.pop();
+                }
+            }
+
+            res_ctx.leave(&ot_key);
+        }
+
+        Ok(resolved)
     }
 
     /// Pre-resolve all resolve actions in an article.
@@ -2731,5 +2944,244 @@ articles:
 
         // Parameter value (50) should win over registry value (100)
         assert_eq!(result.outputs.get("result"), Some(&Value::Int(50)));
+    }
+
+    // -------------------------------------------------------------------------
+    // IoC (open_terms + implements) Tests
+    // -------------------------------------------------------------------------
+
+    fn make_law_with_open_term() -> &'static str {
+        r#"
+$id: zorgtoeslag_ioc
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: "$standaardpremie"
+"#
+    }
+
+    fn make_implementing_regulation() -> &'static str {
+        r#"
+$id: regeling_sp_ioc
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 1928
+    machine_readable:
+      implements:
+        - law: zorgtoeslag_ioc
+          article: '4'
+          open_term: standaardpremie
+          gelet_op: "Gelet op artikel 4 van de Wet op de zorgtoeslag"
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 1928
+"#
+    }
+
+    #[test]
+    fn test_ioc_resolve_open_term() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        service.load_law(make_implementing_regulation()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "zorgtoeslag_ioc",
+                "standaardpremie",
+                HashMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("standaardpremie"),
+            Some(&Value::Int(1928))
+        );
+    }
+
+    #[test]
+    fn test_ioc_required_no_implementation() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        // No implementing regulation loaded
+
+        let result = service.evaluate_law_output(
+            "zorgtoeslag_ioc",
+            "standaardpremie",
+            HashMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::DelegationError(_))),
+            "Expected DelegationError for missing required implementation, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_ioc_optional_no_implementation() {
+        let yaml = r#"
+$id: optional_term_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Optional open term
+    machine_readable:
+      open_terms:
+        - id: bijzondere_premie
+          type: amount
+          required: false
+      execution:
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: 42
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        // Should succeed — optional term not implemented is fine
+        let result = service
+            .evaluate_law_output("optional_term_law", "result", HashMap::new(), "2025-01-01")
+            .unwrap();
+
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_ioc_with_default() {
+        let yaml = r#"
+$id: default_term_law
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Default open term
+    machine_readable:
+      open_terms:
+        - id: redelijk_percentage
+          type: number
+          required: true
+          default:
+            actions:
+              - output: redelijk_percentage
+                value: 6
+      execution:
+        output:
+          - name: redelijk_percentage
+            type: number
+        actions:
+          - output: redelijk_percentage
+            value: "$redelijk_percentage"
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        // No implementation loaded — should fall back to default
+        let result = service
+            .evaluate_law_output(
+                "default_term_law",
+                "redelijk_percentage",
+                HashMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("redelijk_percentage"),
+            Some(&Value::Int(6))
+        );
+    }
+
+    #[test]
+    fn test_ioc_implementation_overrides_default() {
+        let law_yaml = r#"
+$id: default_override_law
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Default open term
+    machine_readable:
+      open_terms:
+        - id: percentage
+          type: number
+          required: true
+          default:
+            actions:
+              - output: percentage
+                value: 6
+      execution:
+        output:
+          - name: percentage
+            type: number
+        actions:
+          - output: percentage
+            value: "$percentage"
+"#;
+
+        let impl_yaml = r#"
+$id: override_implementation
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-06-01'
+valid_from: '2025-06-01'
+articles:
+  - number: '1'
+    text: Override percentage
+    machine_readable:
+      implements:
+        - law: default_override_law
+          article: '1'
+          open_term: percentage
+      execution:
+        output:
+          - name: percentage
+            type: number
+        actions:
+          - output: percentage
+            value: 4
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law_yaml).unwrap();
+        service.load_law(impl_yaml).unwrap();
+
+        // Implementation should override default
+        let result = service
+            .evaluate_law_output(
+                "default_override_law",
+                "percentage",
+                HashMap::new(),
+                "2025-07-01",
+            )
+            .unwrap();
+
+        assert_eq!(result.outputs.get("percentage"), Some(&Value::Int(4)));
     }
 }

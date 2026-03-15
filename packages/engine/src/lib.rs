@@ -33,6 +33,7 @@ pub mod data_source;
 pub mod engine;
 pub mod error;
 pub mod operations;
+pub mod priority;
 pub mod resolver;
 pub mod service;
 pub mod trace;

@@ -166,6 +166,7 @@ impl PathNode {
             PathNodeType::Article => "article",
             PathNodeType::Delegation => "delegation",
             PathNodeType::Cached => "cached",
+            PathNodeType::OpenTermResolution => "open_term",
         };
 
         // Build the main line
@@ -183,6 +184,7 @@ impl PathNode {
                 ResolveType::Context => "context",
                 ResolveType::ResolvedInput => "resolved_input",
                 ResolveType::DataSource => "data_source",
+                ResolveType::OpenTerm => "open_term",
             };
             line.push_str(&format!(" [{}]", rt_str));
         }
@@ -434,6 +436,21 @@ impl PathNode {
                     .unwrap_or_default();
                 lines.push(format!("{}├──CACHED: {}{}", prefix, self.name, result_str));
             }
+
+            PathNodeType::OpenTermResolution => {
+                let result_str = self
+                    .result
+                    .as_ref()
+                    .map(|v| format!(": {}", format_value_display(v)))
+                    .unwrap_or_default();
+                let msg = self.message.as_deref().unwrap_or(&self.name);
+                lines.push(format!("{}├──OPEN_TERM: {}{}", prefix, msg, result_str));
+
+                let child_prefix = format!("{}│   ", prefix);
+                for child in &self.children {
+                    child.render_box_node(lines, &child_prefix);
+                }
+            }
         }
     }
 
@@ -448,6 +465,7 @@ impl PathNode {
             PathNodeType::Article => "art",
             PathNodeType::Delegation => "del",
             PathNodeType::Cached => "cache",
+            PathNodeType::OpenTermResolution => "ot",
         };
 
         let result_str = self
@@ -547,6 +565,7 @@ fn resolve_type_name(rt: &ResolveType) -> &'static str {
         ResolveType::Context => "CONTEXT",
         ResolveType::ResolvedInput => "RESOLVED_INPUT",
         ResolveType::DataSource => "DATA_SOURCE",
+        ResolveType::OpenTerm => "OPEN_TERM",
     }
 }
 

@@ -24,6 +24,7 @@ use crate::config;
 use crate::context::RuleContext;
 use crate::engine::{evaluate_select_on_criteria, matches_delegation_criteria};
 use crate::error::{EngineError, Result};
+use crate::priority::{self, Candidate};
 use crate::types::{RegulatoryLayer, Value};
 use chrono::NaiveDate;
 use std::collections::HashMap;
@@ -79,6 +80,8 @@ pub struct RuleResolver {
     output_index: HashMap<(String, String), String>,
     /// Index: (law_id, article) -> list of law IDs with this legal basis
     legal_basis_index: HashMap<(String, String), Vec<String>>,
+    /// IoC index: (law_id, article, open_term_id) -> list of (implementing_law_id, implementing_article_number)
+    implements_index: HashMap<(String, String, String), Vec<(String, String)>>,
 }
 
 impl Default for RuleResolver {
@@ -94,6 +97,7 @@ impl RuleResolver {
             law_versions: HashMap::new(),
             output_index: HashMap::new(),
             legal_basis_index: HashMap::new(),
+            implements_index: HashMap::new(),
         }
     }
 
@@ -431,6 +435,98 @@ impl RuleResolver {
         results
     }
 
+    /// Find all implementations of an open term, resolved by priority.
+    ///
+    /// Looks up the implements index for regulations that declare they fill
+    /// the given open term. Optionally filters by temporal validity.
+    ///
+    /// Returns candidates sorted by priority (winner first), along with
+    /// each candidate's (law, article) pair.
+    ///
+    /// # Arguments
+    /// * `law_id` - The law that declares the open term
+    /// * `article` - The article number that declares the open term
+    /// * `open_term_id` - The open term identifier
+    /// * `reference_date` - Optional date to filter by temporal validity
+    pub fn find_implementations(
+        &self,
+        law_id: &str,
+        article: &str,
+        open_term_id: &str,
+        reference_date: Option<NaiveDate>,
+    ) -> Vec<(&ArticleBasedLaw, &Article)> {
+        let key = (
+            law_id.to_string(),
+            article.to_string(),
+            open_term_id.to_string(),
+        );
+        let candidate_entries = match self.implements_index.get(&key) {
+            Some(entries) => entries,
+            None => return Vec::new(),
+        };
+
+        tracing::debug!(
+            law_id = %law_id,
+            article = %article,
+            open_term_id = %open_term_id,
+            candidates = candidate_entries.len(),
+            "Finding implementations for open term"
+        );
+
+        // Resolve each candidate to actual (law, article) references
+        let mut candidates: Vec<Candidate> = Vec::new();
+        let mut resolved: Vec<(&ArticleBasedLaw, &Article)> = Vec::new();
+
+        for (impl_law_id, impl_article_number) in candidate_entries {
+            let Some(law) = self.get_law_for_date(impl_law_id, reference_date) else {
+                continue;
+            };
+
+            let Some(art) = law
+                .articles
+                .iter()
+                .find(|a| a.number == *impl_article_number)
+            else {
+                continue;
+            };
+
+            candidates.push(Candidate {
+                law,
+                article_number: impl_article_number.clone(),
+            });
+            resolved.push((law, art));
+        }
+
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+
+        // Use priority resolution to sort — return winner first
+        if let Some((winner_law, reason)) = priority::resolve_candidate(&candidates) {
+            tracing::debug!(
+                winner = %winner_law.id,
+                reason = %reason,
+                "Open term implementation resolved"
+            );
+
+            // Put winner first, then the rest
+            let winner_idx = resolved.iter().position(|(law, _)| law.id == winner_law.id);
+            if let Some(idx) = winner_idx {
+                if idx != 0 {
+                    resolved.swap(0, idx);
+                }
+            }
+        }
+
+        resolved
+    }
+
+    /// Get the number of entries in the implements index.
+    #[cfg(test)]
+    pub fn implements_count(&self) -> usize {
+        self.implements_index.values().map(|v| v.len()).sum()
+    }
+
     /// Get the number of entries in the output index.
     ///
     /// This counts the total number of (law_id, output_name) pairs across all laws.
@@ -593,16 +689,23 @@ impl RuleResolver {
         }
     }
 
-    /// Rebuild output indexes for a specific law using its most recent version.
+    /// Rebuild output and implements indexes for a specific law using its most recent version.
     fn rebuild_indexes_for_law(&mut self, law_id: &str) {
         // Remove old output index entries
         self.output_index.retain(|(id, _), _| id.as_str() != law_id);
 
-        // Add new output index entries from the most recent version
+        // Remove old implements index entries where this law is an implementor
+        for candidates in self.implements_index.values_mut() {
+            candidates.retain(|(impl_law_id, _)| impl_law_id != law_id);
+        }
+        self.implements_index.retain(|_, v| !v.is_empty());
+
+        // Add new index entries from the most recent version
         // Access law_versions directly to avoid borrowing self through get_law()
         if let Some(versions) = self.law_versions.get(law_id) {
             if let Some(law) = versions.first() {
                 for article in &law.articles {
+                    // Output index
                     if let Some(exec) = article.get_execution_spec() {
                         if let Some(outputs) = &exec.output {
                             for output in outputs {
@@ -610,6 +713,22 @@ impl RuleResolver {
                                     (law_id.to_string(), output.name.clone()),
                                     article.number.clone(),
                                 );
+                            }
+                        }
+                    }
+
+                    // Implements index (IoC)
+                    if let Some(impl_decls) = article.get_implements() {
+                        for decl in impl_decls {
+                            let key = (
+                                decl.law.clone(),
+                                decl.article.clone(),
+                                decl.open_term.clone(),
+                            );
+                            let entry = (law_id.to_string(), article.number.clone());
+                            let candidates = self.implements_index.entry(key).or_default();
+                            if !candidates.contains(&entry) {
+                                candidates.push(entry);
                             }
                         }
                     }
@@ -628,6 +747,12 @@ impl RuleResolver {
             candidates.retain(|id| id != law_id);
         }
         self.legal_basis_index.retain(|_, v| !v.is_empty());
+
+        // Remove from implements index (this law as implementor)
+        for candidates in self.implements_index.values_mut() {
+            candidates.retain(|(impl_law_id, _)| impl_law_id != law_id);
+        }
+        self.implements_index.retain(|_, v| !v.is_empty());
     }
 }
 
@@ -1262,6 +1387,166 @@ articles:
         // Non-existent law/article
         let results = resolver.find_regulations_by_legal_basis("nonexistent", "1", None, None);
         assert_eq!(results.len(), 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // Implements Index (IoC) Tests
+    // -------------------------------------------------------------------------
+
+    fn make_law_with_open_term() -> &'static str {
+        r#"
+$id: zorgtoeslagwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 0
+"#
+    }
+
+    fn make_implementing_regulation() -> &'static str {
+        r#"
+$id: regeling_standaardpremie
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 1928
+    machine_readable:
+      implements:
+        - law: zorgtoeslagwet
+          article: '4'
+          open_term: standaardpremie
+          gelet_op: "Gelet op artikel 4 van de Wet op de zorgtoeslag"
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 1928
+"#
+    }
+
+    fn make_implementing_regulation_older() -> &'static str {
+        r#"
+$id: regeling_standaardpremie_2024
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 1889
+    machine_readable:
+      implements:
+        - law: zorgtoeslagwet
+          article: '4'
+          open_term: standaardpremie
+          gelet_op: "Gelet op artikel 4 van de Wet op de zorgtoeslag"
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 1889
+"#
+    }
+
+    #[test]
+    fn test_implements_index_populated() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation())
+            .unwrap();
+
+        // Index should be populated
+        assert_eq!(resolver.implements_count(), 1);
+
+        // Look up
+        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0.id, "regeling_standaardpremie");
+        assert_eq!(results[0].1.number, "1");
+    }
+
+    #[test]
+    fn test_implements_index_no_match() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        // No implementing regulation loaded
+
+        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_implements_index_priority_lex_posterior() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation_older())
+            .unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation())
+            .unwrap();
+
+        assert_eq!(resolver.implements_count(), 2);
+
+        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        assert_eq!(results.len(), 2);
+        // Winner (newest) should be first
+        assert_eq!(results[0].0.id, "regeling_standaardpremie");
+        assert_eq!(results[1].0.id, "regeling_standaardpremie_2024");
+    }
+
+    #[test]
+    fn test_implements_index_unload() {
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_law_with_open_term()).unwrap();
+        resolver
+            .load_from_yaml(make_implementing_regulation())
+            .unwrap();
+
+        assert_eq!(resolver.implements_count(), 1);
+
+        resolver.unload_law("regeling_standaardpremie");
+        assert_eq!(resolver.implements_count(), 0);
+
+        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_implements_index_backward_compat() {
+        // Laws without implements should still load fine
+        let mut resolver = RuleResolver::new();
+
+        resolver.load_from_yaml(make_test_law()).unwrap();
+        resolver.load_from_yaml(make_delegating_law()).unwrap();
+
+        assert_eq!(resolver.implements_count(), 0);
+        assert_eq!(resolver.law_count(), 2);
     }
 
     #[test]
