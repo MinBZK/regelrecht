@@ -73,8 +73,8 @@ machine_readable:
 - **Discoverable**: the engine builds an index automatically
 - **Traceable**: each resolution produces trace output showing which
   implementations were found, which one won priority, and why
-- **Backward compatible**: existing `resolve` actions and `source.delegation`
-  continue to work; IoC is an additional resolution path
+- **Backward compatible**: existing `source.delegation` patterns continue to
+  work; IoC is an additional resolution path
 
 ## What changed
 
@@ -88,6 +88,7 @@ machine_readable:
 | **Tracing** | `trace.rs`, `types.rs` | `PathNodeType::OpenTermResolution`, `ResolveType::OpenTerm` |
 | **Validation** | `validate.rs` | v0.4.0 schema support |
 | **Proof** | `regulation/` | Zorgtoeslag wet + Regeling standaardpremie updated with IoC pattern |
+| **Safety** | `service.rs` | Cycle detection via `visited` set in `ResolutionContext` |
 
 ## Proof of concept
 
@@ -98,6 +99,34 @@ The zorgtoeslag / standaardpremie pair demonstrates the full cycle:
 3. When the engine executes article 4 of the zorgtoeslag wet, it finds the
    regeling via the implements index, executes its article 1, and uses the
    result (€ 2.112,00) as the standaardpremie value
+4. Article 2 consumes `standaardpremie` via `source.output` (same-law internal
+   reference to article 4), not by reaching directly into the regeling — this
+   properly reflects the legal structure where article 4 is the single point
+   of delegation
+
+### Internal same-law references
+
+Articles within a law reference each other's outputs via `source.output`
+(without `source.regulation`). This means article 2 gets its `standaardpremie`
+value from article 4, which in turn gets it filled via IoC from the regeling.
+The flow is:
+
+```
+article 2 → article 4 (source.output) → IoC → regeling_standaardpremie
+```
+
+This ensures there is exactly one article that declares the open term and
+serves as the single point of delegation. All other articles in the same law
+that need that value reference the declaring article, not the lower regulation.
+
+## Safety: cycle detection
+
+Open term resolution can potentially create cycles if laws are incorrectly
+written (e.g., law A delegates to law B which delegates back to law A). The
+engine detects this via a `visited` set in `ResolutionContext` with keys like
+`open_term:{law_id}#{article}#{term_id}`. If a cycle is detected, resolution
+stops with a `DelegationError` — this is a law authoring problem, not something
+the engine should try to fix.
 
 ## When to use which delegation pattern
 
@@ -105,4 +134,5 @@ The zorgtoeslag / standaardpremie pair demonstrates the full cycle:
 |---------|----------|
 | **IoC** (`open_terms` + `implements`) | Simple delegation: higher law delegates a value to a lower regulation |
 | **Delegation** (`source.delegation` + `select_on`) | Selection-based: pick a regulation based on runtime criteria (e.g., gemeente) |
-| **External reference** (`source.regulation`) | Direct reference: one law needs a specific value from another |
+| **Same-law reference** (`source.output`) | Internal: one article needs a value produced by another article in the same law |
+| **External reference** (`source.regulation`) | Direct reference: one law needs a specific value from another law |
