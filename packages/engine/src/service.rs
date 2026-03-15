@@ -654,7 +654,7 @@ impl LawExecutionService {
                 let result = match self.evaluate_article_with_service(
                     impl_article,
                     impl_law,
-                    HashMap::new(),
+                    context.parameters().clone(),
                     Some(&term.id),
                     res_ctx,
                 ) {
