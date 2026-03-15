@@ -596,7 +596,8 @@ impl LawExecutionService {
 
         for term in open_terms {
             // Cycle detection: check if we're already resolving this open term
-            let ot_key = format!("open_term:{}#{}#{}", law.id, article.number, term.id);
+            // Use \0 as separator to prevent key collisions when IDs contain #
+            let ot_key = format!("open_term:{}\0{}\0{}", law.id, article.number, term.id);
             if res_ctx.is_visited(&ot_key) {
                 tracing::warn!(
                     law_id = %law.id,
@@ -635,15 +636,50 @@ impl LawExecutionService {
             }
 
             // Look up implementations (filtered by execution scope)
-            let implementations = self.resolver.find_implementations(
+            let implementations = match self.resolver.find_implementations(
                 &law.id,
                 &article.number,
                 &term.id,
                 res_ctx.reference_date(),
                 context.parameters(),
-            );
+            ) {
+                Ok(impls) => impls,
+                Err(e) => {
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_message(format!(
+                            "Open term '{}': implementation lookup failed: {}",
+                            term.id, e
+                        ));
+                        tb.pop();
+                    }
+                    res_ctx.leave(&ot_key);
+                    return Err(e);
+                }
+            };
 
             if let Some((impl_law, impl_article)) = implementations.first() {
+                // Validate that the implementing regulation's layer matches the
+                // delegation_type declared on the open term (if specified).
+                if let Some(ref expected_type) = term.delegation_type {
+                    let actual_layer = impl_law.regulatory_layer.as_str();
+                    if actual_layer != expected_type {
+                        if let Some(ref tb) = res_ctx.trace {
+                            let mut tb = tb.borrow_mut();
+                            tb.set_message(format!(
+                                "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
+                                term.id, impl_law.id, actual_layer, expected_type
+                            ));
+                            tb.pop();
+                        }
+                        res_ctx.leave(&ot_key);
+                        return Err(EngineError::DelegationError(format!(
+                            "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
+                            impl_law.id, term.id, actual_layer, expected_type
+                        )));
+                    }
+                }
+
                 tracing::debug!(
                     open_term = %term.id,
                     implementing_law = %impl_law.id,
@@ -651,11 +687,15 @@ impl LawExecutionService {
                     "Found implementation for open term"
                 );
 
-                // Execute the implementing article to get the value
+                // Execute the implementing article to get the value.
+                // Only forward parameters that the implementing article declares
+                // in its execution.parameters — principle of least privilege.
+                let impl_params =
+                    Self::filter_parameters_for_article(impl_article, context.parameters());
                 let result = match self.evaluate_article_with_service(
                     impl_article,
                     impl_law,
-                    context.parameters().clone(),
+                    impl_params,
                     Some(&term.id),
                     res_ctx,
                 ) {
@@ -1463,6 +1503,32 @@ impl LawExecutionService {
 
         // No value specified - return null
         Ok(Value::Null)
+    }
+
+    /// Filter execution parameters to only those declared by the target article.
+    ///
+    /// When resolving open terms, we don't want to forward all parameters from
+    /// the calling context (which may include sensitive data like BSN). Instead,
+    /// we only pass parameters that the implementing article declares in its
+    /// execution.parameters section.
+    fn filter_parameters_for_article(
+        article: &Article,
+        all_params: &HashMap<String, Value>,
+    ) -> HashMap<String, Value> {
+        let Some(exec) = article.get_execution_spec() else {
+            return HashMap::new();
+        };
+        let Some(declared_params) = &exec.parameters else {
+            return HashMap::new();
+        };
+
+        let mut filtered = HashMap::new();
+        for param in declared_params {
+            if let Some(value) = all_params.get(&param.name) {
+                filtered.insert(param.name.clone(), value.clone());
+            }
+        }
+        filtered
     }
 
     /// Build parameters for a target article from source parameter mapping.

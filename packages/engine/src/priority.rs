@@ -7,7 +7,10 @@
 //! 2. **Lex posterior**: Among equal layers, later effective dates win
 
 use crate::article::ArticleBasedLaw;
+use crate::error::EngineError;
 use crate::types::RegulatoryLayer;
+
+type Result<T> = std::result::Result<T, EngineError>;
 
 /// Returns the priority rank for a regulatory layer (lower = higher authority).
 ///
@@ -49,12 +52,12 @@ pub struct Candidate<'a> {
 ///
 /// Returns `None` if the candidate list is empty.
 /// Returns `Some((winner, reason))` with a human-readable reason string.
-#[must_use]
+/// Returns `Err` if two candidates have the same layer and date (ambiguous).
 pub fn resolve_candidate<'a>(
     candidates: &[Candidate<'a>],
-) -> Option<(&'a ArticleBasedLaw, String)> {
+) -> Result<Option<(&'a ArticleBasedLaw, String)>> {
     if candidates.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     let mut best = &candidates[0];
@@ -87,19 +90,16 @@ pub fn resolve_candidate<'a>(
                     candidate.law.id, candidate_date, prev_id, prev_date,
                 );
             } else if candidate_date == best_date {
-                // Same layer, same date: ambiguous — keep current best but warn
-                tracing::warn!(
-                    best = %best.law.id,
-                    candidate = %candidate.law.id,
-                    layer = ?best.law.regulatory_layer,
-                    valid_from = %best_date,
-                    "Ambiguous open term priority: same regulatory layer and valid_from date, keeping first-loaded"
-                );
+                // Same layer, same date: ambiguous — this is a law authoring error
+                return Err(EngineError::DelegationError(format!(
+                    "Ambiguous priority: {} and {} both have regulatory layer {:?} and valid_from '{}' — cannot determine winner",
+                    best.law.id, candidate.law.id, best.law.regulatory_layer, best_date
+                )));
             }
         }
     }
 
-    Some((best.law, reason))
+    Ok(Some((best.law, reason)))
 }
 
 #[cfg(test)]
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn test_resolve_candidate_empty() {
         let candidates: Vec<Candidate> = vec![];
-        assert!(resolve_candidate(&candidates).is_none());
+        assert!(resolve_candidate(&candidates).unwrap().is_none());
     }
 
     #[test]
@@ -159,7 +159,7 @@ articles:
             article_number: "1".to_string(),
         }];
 
-        let (winner, reason) = resolve_candidate(&candidates).unwrap();
+        let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "test_regulation");
         assert!(reason.contains("only candidate"));
     }
@@ -201,7 +201,7 @@ articles:
             },
         ];
 
-        let (winner, reason) = resolve_candidate(&candidates).unwrap();
+        let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "higher_law");
         assert!(reason.contains("lex superior"));
     }
@@ -245,7 +245,7 @@ articles:
             },
         ];
 
-        let (winner, reason) = resolve_candidate(&candidates).unwrap();
+        let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "newer_regulation");
         assert!(reason.contains("lex posterior"));
     }

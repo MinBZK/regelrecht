@@ -437,6 +437,28 @@ impl RuleResolver {
 
     /// Find all implementations of an open term, resolved by priority.
     ///
+    /// Check if a law's scope fields match the execution scope.
+    ///
+    /// Scope fields are law-level metadata that limit territorial applicability
+    /// (e.g., `gemeente_code`, `provincie_code`). A law with no scope fields
+    /// is considered national and always matches. A law with scope fields only
+    /// matches if every scope field has a matching value in the execution scope.
+    fn matches_scope(law: &ArticleBasedLaw, scope: &HashMap<String, Value>) -> bool {
+        // Currently gemeente_code is the only scope field on ArticleBasedLaw.
+        // When we add provincie_code etc., add them here.
+        if let Some(ref law_gemeente) = law.gemeente_code {
+            let scope_value = scope.get("gemeente_code").and_then(|v| match v {
+                Value::String(s) => Some(s.as_str()),
+                _ => None,
+            });
+            match scope_value {
+                Some(sg) if sg == law_gemeente => {}
+                _ => return false, // No match or no scope provided
+            }
+        }
+        true
+    }
+
     /// Looks up the implements index for regulations that declare they fill
     /// the given open term. Optionally filters by temporal validity.
     ///
@@ -455,7 +477,7 @@ impl RuleResolver {
         open_term_id: &str,
         reference_date: Option<NaiveDate>,
         scope: &HashMap<String, Value>,
-    ) -> Vec<(&ArticleBasedLaw, &Article)> {
+    ) -> Result<Vec<(&ArticleBasedLaw, &Article)>> {
         let key = (
             law_id.to_string(),
             article.to_string(),
@@ -463,7 +485,7 @@ impl RuleResolver {
         );
         let candidate_entries = match self.implements_index.get(&key) {
             Some(entries) => entries,
-            None => return Vec::new(),
+            None => return Ok(Vec::new()),
         };
 
         tracing::debug!(
@@ -478,39 +500,21 @@ impl RuleResolver {
         let mut candidates: Vec<Candidate> = Vec::new();
         let mut resolved: Vec<(&ArticleBasedLaw, &Article)> = Vec::new();
 
-        // Extract scope values for filtering
-        let scope_gemeente = scope.get("gemeente_code").and_then(|v| match v {
-            Value::String(s) => Some(s.as_str()),
-            _ => None,
-        });
-
         for (impl_law_id, impl_article_number) in candidate_entries {
             let Some(law) = self.get_law_for_date(impl_law_id, reference_date) else {
                 continue;
             };
 
-            // Scope filtering: if the candidate has a gemeente_code, it must match
-            // the execution scope. National regulations (no gemeente_code) always match.
-            if let Some(law_gemeente) = &law.gemeente_code {
-                match scope_gemeente {
-                    Some(sg) if sg == law_gemeente => {} // match
-                    Some(_) => {
-                        tracing::debug!(
-                            candidate = %impl_law_id,
-                            law_gemeente = %law_gemeente,
-                            "Skipping: gemeente_code does not match scope"
-                        );
-                        continue;
-                    }
-                    None => {
-                        // No scope specified — skip scoped regulations
-                        tracing::debug!(
-                            candidate = %impl_law_id,
-                            "Skipping: scoped regulation but no scope in parameters"
-                        );
-                        continue;
-                    }
-                }
+            // Scope filtering: check all scope fields on the candidate law against
+            // the execution parameters. A scoped regulation (e.g., with gemeente_code
+            // or provincie_code) only matches when the execution scope contains the
+            // same value. Unscoped regulations (national) always match.
+            if !Self::matches_scope(law, scope) {
+                tracing::debug!(
+                    candidate = %impl_law_id,
+                    "Skipping: scope fields do not match execution parameters"
+                );
+                continue;
             }
 
             let Some(art) = law
@@ -529,11 +533,11 @@ impl RuleResolver {
         }
 
         if candidates.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         // Use priority resolution to sort — return winner first
-        if let Some((winner_law, reason)) = priority::resolve_candidate(&candidates) {
+        if let Some((winner_law, reason)) = priority::resolve_candidate(&candidates)? {
             tracing::debug!(
                 winner = %winner_law.id,
                 reason = %reason,
@@ -549,7 +553,7 @@ impl RuleResolver {
             }
         }
 
-        resolved
+        Ok(resolved)
     }
 
     /// Get the number of entries in the implements index.
@@ -1512,13 +1516,15 @@ articles:
         assert_eq!(resolver.implements_count(), 1);
 
         // Look up
-        let results = resolver.find_implementations(
-            "zorgtoeslagwet",
-            "4",
-            "standaardpremie",
-            None,
-            &HashMap::new(),
-        );
+        let results = resolver
+            .find_implementations(
+                "zorgtoeslagwet",
+                "4",
+                "standaardpremie",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
         assert_eq!(results[0].1.number, "1");
@@ -1531,13 +1537,15 @@ articles:
         resolver.load_from_yaml(make_law_with_open_term()).unwrap();
         // No implementing regulation loaded
 
-        let results = resolver.find_implementations(
-            "zorgtoeslagwet",
-            "4",
-            "standaardpremie",
-            None,
-            &HashMap::new(),
-        );
+        let results = resolver
+            .find_implementations(
+                "zorgtoeslagwet",
+                "4",
+                "standaardpremie",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
         assert!(results.is_empty());
     }
 
@@ -1555,13 +1563,15 @@ articles:
 
         assert_eq!(resolver.implements_count(), 2);
 
-        let results = resolver.find_implementations(
-            "zorgtoeslagwet",
-            "4",
-            "standaardpremie",
-            None,
-            &HashMap::new(),
-        );
+        let results = resolver
+            .find_implementations(
+                "zorgtoeslagwet",
+                "4",
+                "standaardpremie",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
         assert_eq!(results.len(), 2);
         // Winner (newest) should be first
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
@@ -1582,13 +1592,15 @@ articles:
         resolver.unload_law("regeling_standaardpremie");
         assert_eq!(resolver.implements_count(), 0);
 
-        let results = resolver.find_implementations(
-            "zorgtoeslagwet",
-            "4",
-            "standaardpremie",
-            None,
-            &HashMap::new(),
-        );
+        let results = resolver
+            .find_implementations(
+                "zorgtoeslagwet",
+                "4",
+                "standaardpremie",
+                None,
+                &HashMap::new(),
+            )
+            .unwrap();
         assert!(results.is_empty());
     }
 

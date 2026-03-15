@@ -73,12 +73,22 @@ articles:
           delegated_to: gemeenteraad
           delegation_type: GEMEENTELIJKE_VERORDENING
           legal_basis: artikel 8 lid 1 onderdeel a Participatiewet
+          # Zonder verordening kan de gemeente niet verlagen (art. 18 lid 2:
+          # "verlaagt ... overeenkomstig de verordening"). Geen verordening = geen verlaging.
+          default:
+            actions:
+              - output: verlaging_percentage
+                value: 0
         - id: duur_maanden
           type: number
           required: true
           delegated_to: gemeenteraad
           delegation_type: GEMEENTELIJKE_VERORDENING
           legal_basis: artikel 8 lid 1 onderdeel a Participatiewet
+          default:
+            actions:
+              - output: duur_maanden
+                value: 0
       execution:
         parameters:
           - name: gemeente_code

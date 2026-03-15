@@ -59,7 +59,9 @@ machine_readable:
 2. When executing an article with `open_terms`, the engine looks up
    implementations via the index
 3. Conflicts are resolved using **lex superior** (higher regulatory layer wins)
-   then **lex posterior** (newer `valid_from` date wins)
+   then **lex posterior** (newer `valid_from` date wins). Ambiguous candidates
+   (same layer and same `valid_from` date) produce a `DelegationError` — this
+   is a law authoring error that needs fixing
 4. The winning implementation's article is executed to obtain the value
 5. Open terms support an optional `default` block for standalone execution
 6. Missing required implementations produce a clear `DelegationError`
@@ -95,7 +97,13 @@ machine_readable:
 | **Tracing** | `trace.rs`, `types.rs` | `PathNodeType::OpenTermResolution`, `ResolveType::OpenTerm` |
 | **Validation** | `validate.rs` | v0.4.0 schema support |
 | **Proof** | `regulation/` | Zorgtoeslag wet + Regeling standaardpremie updated with IoC pattern |
-| **Safety** | `service.rs` | Cycle detection via `visited` set in `ResolutionContext` |
+| **Scope filtering** | `service.rs` | `find_implementations` uses `matches_scope` helper; checks all scope fields against execution parameters (currently `gemeente_code`, extensible) |
+| **Parameter forwarding** | `service.rs` | `filter_parameters_for_article` only passes parameters declared in implementing article's `execution.parameters` (least privilege) |
+| **Delegation type validation** | `service.rs` | Validates implementing regulation's `regulatory_layer` matches open term's `delegation_type` |
+| **Defaults** | `regulation/` | Participatiewet article 8 open terms have `default` blocks (`verlaging_percentage: 0`, `duur_maanden: 0`); legal basis: no verordening means no verlaging |
+| **Safety** | `service.rs` | Cycle detection via `visited` set in `ResolutionContext`; key separator changed from `#` to `\0` to prevent collisions |
+| **Safety** | `service.rs` | Array size validation: `open_terms` and `implements` checked against `MAX_ARRAY_SIZE` at load time |
+| **Priority** | `priority.rs` | Ambiguous priority (same layer + same date) is now a `DelegationError`, not a silent first-match |
 
 ## Proof of concept
 
@@ -131,9 +139,10 @@ that need that value reference the declaring article, not the lower regulation.
 Open term resolution can potentially create cycles if laws are incorrectly
 written (e.g., law A delegates to law B which delegates back to law A). The
 engine detects this via a `visited` set in `ResolutionContext` with keys like
-`open_term:{law_id}#{article}#{term_id}`. If a cycle is detected, resolution
-stops with a `DelegationError` — this is a law authoring problem, not something
-the engine should try to fix.
+`open_term:{law_id}\0{article}\0{term_id}` (using null byte separators to
+prevent key collisions when law IDs or article numbers contain `#`). If a cycle
+is detected, resolution stops with a `DelegationError` — this is a law
+authoring problem, not something the engine should try to fix.
 
 ## Delegation patterns (target state)
 
@@ -150,9 +159,11 @@ encoded in the law.
 
 ### Migration path
 
-This PR implements step 1. The remaining steps are follow-ups:
+This PR implements steps 1 and 2. The remaining steps are follow-ups:
 
 1. IoC for parameter-free delegation (zorgtoeslag → standaardpremie) ✅
-2. Extend `resolve_open_terms` to forward execution parameters and filter by scope
-3. Migrate BW5 erfgrens and Participatiewet afstemming from `source.delegation` to `open_terms`
+2. Scope filtering, parameter forwarding, delegation type validation, Participatiewet defaults ✅
+3. Migrate BW5 erfgrens from `source.delegation` to `open_terms`
 4. Remove `source.delegation`, `select_on`, and `legal_basis_for` from the schema
+
+Note: RFC-003 (Delegation Pattern) is now superseded by RFC-007.

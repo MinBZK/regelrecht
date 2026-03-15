@@ -688,6 +688,30 @@ impl ArticleBasedLaw {
         // Check each article's nested arrays
         for article in &self.articles {
             if let Some(mr) = &article.machine_readable {
+                // Check open_terms array
+                if let Some(open_terms) = &mr.open_terms {
+                    if open_terms.len() > config::MAX_ARRAY_SIZE {
+                        return Err(EngineError::LoadError(format!(
+                            "Too many open_terms in article {} ({}, max {})",
+                            article.number,
+                            open_terms.len(),
+                            config::MAX_ARRAY_SIZE
+                        )));
+                    }
+                }
+
+                // Check implements array
+                if let Some(implements) = &mr.implements {
+                    if implements.len() > config::MAX_ARRAY_SIZE {
+                        return Err(EngineError::LoadError(format!(
+                            "Too many implements in article {} ({}, max {})",
+                            article.number,
+                            implements.len(),
+                            config::MAX_ARRAY_SIZE
+                        )));
+                    }
+                }
+
                 if let Some(exec) = &mr.execution {
                     // Check parameters
                     if let Some(params) = &exec.parameters {

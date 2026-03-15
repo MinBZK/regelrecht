@@ -50,12 +50,14 @@ machine_readable:
 
 1. Engine indexes all `implements` declarations at law load time
 2. When executing an article with `open_terms`, the engine looks up implementations
-3. Priority resolution: **lex superior** (higher regulatory layer wins) then **lex posterior** (newer `valid_from` wins). When candidates have the same layer and date, the first match is used and a warning is emitted in trace
+3. Priority resolution: **lex superior** (higher regulatory layer wins) then **lex posterior** (newer `valid_from` wins). When candidates have the same layer and date, this is ambiguous — the engine returns a `DelegationError` rather than silently picking one. This is a law authoring error that needs fixing
 4. If found: execute the implementing article to get the value
 5. If not found + has `default`: execute the default actions block
 6. If not found + `required: true` + no default: `DelegationError`
 7. If not found + `required: false` + no default: skip (traced)
-8. **Cycle detection**: if an open term is already being resolved (via `ResolutionContext.visited`), a `CircularReference` error is raised — circular dependencies are a law authoring problem, not something the engine should fix
+8. **Cycle detection**: if an open term is already being resolved (via `ResolutionContext.visited`), a `CircularReference` error is raised — circular dependencies are a law authoring problem, not something the engine should fix. The cycle detection key uses `\0` (null byte) as separator to prevent key collisions when law IDs or article numbers contain `#`
+9. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a gemeente verordening tries to implement a term delegated to a minister, the engine rejects it with a clear error
+10. **Array size validation**: `open_terms` and `implements` arrays are validated against `MAX_ARRAY_SIZE` at law load time, preventing resource exhaustion
 
 ### Same-law routing via `source.output`
 
@@ -88,6 +90,8 @@ open_terms:
 ```
 
 This pattern is more common at lower regulatory layers (a policy rule with a reasonable default that can be overridden by implementation policy) but the mechanism works on all layers.
+
+Defaults also serve a legal correctness role. For example, Participatiewet article 8's open terms have `default` blocks with `verlaging_percentage: 0` and `duur_maanden: 0`. Legal basis: art. 18 lid 2 says "verlaagt ... overeenkomstig de verordening" — no verordening means no verlaging. A missing verordening now results in full bijstand (no reduction) rather than a `DelegationError`.
 
 ## Why
 
@@ -126,9 +130,9 @@ implements:
     gelet_op: Gelet op artikel 8 van de Participatiewet
 ```
 
-The scoping question (which gemeente's verordening applies?) is an engine concern, not a law-encoding concern. The engine already knows the execution scope (e.g., `gemeente_code: GM0384`) from its parameters. It should filter the `implements_index` by scope, just as it would filter which laws are loaded in a given context. This eliminates `select_on`, `legal_basis_for`, and `source.delegation` entirely — all delegation flows through `open_terms` + `implements`.
+The scoping question (which gemeente's verordening applies?) is an engine concern, not a law-encoding concern. The engine already knows the execution scope (e.g., `gemeente_code: GM0384`) from its parameters. The `find_implementations` method uses a `matches_scope` helper that checks all scope fields on the candidate law against execution parameters. Currently supports `gemeente_code`; designed for easy extension to `provincie_code` etc. This eliminates `select_on`, `legal_basis_for`, and `source.delegation` entirely — all delegation flows through `open_terms` + `implements`.
 
-The initial implementation in this PR handles the simple case (standaardpremie: no scope, no parameters). Extending `resolve_open_terms` to forward parameters and filter by scope is a follow-up that completes the convergence.
+When resolving open terms, the engine does not forward all execution parameters to implementing articles. It uses `filter_parameters_for_article` to only pass parameters declared in the implementing article's `execution.parameters` section (principle of least privilege).
 
 ### Tradeoffs
 
@@ -170,9 +174,13 @@ The old `source.delegation` + `select_on` + `legal_basis_for` pattern is superse
 ### Migration path
 
 1. **This PR**: IoC for parameter-free delegation (zorgtoeslag → standaardpremie) ✅
-2. **Follow-up**: extend `resolve_open_terms` to forward execution parameters and filter `implements_index` by scope
-3. **Follow-up**: migrate BW5 erfgrens and Participatiewet afstemming from `source.delegation` to `open_terms`
+2. **This PR**: scope filtering, parameter forwarding, delegation type validation, Participatiewet defaults ✅
+3. **Follow-up**: migrate BW5 erfgrens from `source.delegation` to `open_terms`
 4. **Follow-up**: remove `source.delegation`, `select_on`, and `legal_basis_for` from the schema
+
+### Supersedes
+
+RFC-003 (Delegation Pattern) is superseded by this RFC. The top-down delegation model described in RFC-003 is replaced by the IoC model described here.
 
 ## References
 
