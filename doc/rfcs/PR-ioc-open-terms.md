@@ -67,14 +67,21 @@ machine_readable:
 ## Why this matters
 
 - **Matches legislative reality**: lower regulations register themselves, just as
-  in real Dutch law
+  in real Dutch law — a ministerial regulation says "Gelet op artikel 4", it
+  doesn't wait for the higher law to come looking for it
 - **Decoupled**: adding a new implementing regulation does not require changes to
   the higher law
 - **Discoverable**: the engine builds an index automatically
 - **Traceable**: each resolution produces trace output showing which
   implementations were found, which one won priority, and why
-- **Backward compatible**: existing `source.delegation` patterns continue to
-  work; IoC is an additional resolution path
+- **Replaces `source.delegation`**: the old `source.delegation` + `select_on` +
+  `legal_basis_for` mechanism forced the higher law to encode selection logic
+  (e.g., `select_on: gemeente_code`). This is backwards — the Participatiewet
+  doesn't know which gemeenten have verordeningen, it just delegates. With IoC,
+  the gemeente verordening registers itself via `implements`, and scope filtering
+  (which gemeente applies?) is an engine concern, not something encoded in the
+  law YAML. This eliminates an entire class of top-down wiring from the
+  regulation files
 
 ## What changed
 
@@ -128,11 +135,24 @@ engine detects this via a `visited` set in `ResolutionContext` with keys like
 stops with a `DelegationError` — this is a law authoring problem, not something
 the engine should try to fix.
 
-## When to use which delegation pattern
+## Delegation patterns (target state)
 
 | Pattern | Use when |
 |---------|----------|
-| **IoC** (`open_terms` + `implements`) | Simple delegation: higher law delegates a value to a lower regulation |
-| **Delegation** (`source.delegation` + `select_on`) | Selection-based: pick a regulation based on runtime criteria (e.g., gemeente) |
+| **IoC** (`open_terms` + `implements`) | Any delegation: higher law delegates a value to a lower regulation |
 | **Same-law reference** (`source.output`) | Internal: one article needs a value produced by another article in the same law |
 | **External reference** (`source.regulation`) | Direct reference: one law needs a specific value from another law |
+
+The old `source.delegation` + `select_on` + `legal_basis_for` pattern is
+superseded by IoC and will be phased out. Scoping (which gemeente's verordening
+applies?) is handled by the engine's execution context, not by selection logic
+encoded in the law.
+
+### Migration path
+
+This PR implements step 1. The remaining steps are follow-ups:
+
+1. IoC for parameter-free delegation (zorgtoeslag → standaardpremie) ✅
+2. Extend `resolve_open_terms` to forward execution parameters and filter by scope
+3. Migrate BW5 erfgrens and Participatiewet afstemming from `source.delegation` to `open_terms`
+4. Remove `source.delegation`, `select_on`, and `legal_basis_for` from the schema
