@@ -1,6 +1,6 @@
 # Law Generate - Technical Reference
 
-Based on schema v0.3.2 (`schema/latest/schema.json`). Validate with `just validate`.
+Based on schema v0.4.0 (`schema/latest/schema.json`). Validate with `just validate`.
 
 ## Complete Machine-Readable Section Structure
 
@@ -60,14 +60,7 @@ machine_readable:
 
     actions:                    # Computation logic
       - output: "result_name"   # Required: which output to set
-        value: <operationValue> # Pattern 1: value assignment
-        # OR
-        resolve:                # Pattern 2: ministeriele regeling lookup
-          type: ministeriele_regeling
-          output: standaardpremie
-          match:
-            output: berekeningsjaar
-            value: $referencedate.year
+        value: <operationValue> # Value assignment (literal, $variable, or operation)
         legal_basis:            # Optional: traceability
           law: "Wet op de zorgtoeslag"
           article: "2"
@@ -245,19 +238,53 @@ source:
   # No regulation field = same law
 ```
 
-### Delegated Regulation (e.g., gemeentelijke verordening)
+### Open Terms (IoC — Inversion of Control)
+
+When a higher law delegates a value to a lower regulation (e.g., "bij ministeriële
+regeling" or "bij gemeentelijke verordening"), use the `open_terms` + `implements` pattern:
+
+**Higher law** declares an open term:
 ```yaml
-source:
-  delegation:
-    law_id: participatiewet
-    article: "8"
-    select_on:
-      - name: gemeente_code
-        value: $gemeente_code
-  output: verlaging_percentage
-  parameters:
-    bsn: $bsn
+machine_readable:
+  open_terms:
+    - id: standaardpremie
+      type: amount
+      required: true
+      delegated_to: minister
+      delegation_type: MINISTERIELE_REGELING
+      legal_basis: artikel 4 Wet op de zorgtoeslag
+  execution:
+    output:
+      - name: standaardpremie
+        type: amount
+        type_spec:
+          unit: eurocent
+    actions:
+      - output: standaardpremie
+        value: $standaardpremie   # Engine resolves via implements_index
 ```
+
+**Lower regulation** registers as implementing:
+```yaml
+machine_readable:
+  implements:
+    - law: zorgtoeslagwet
+      article: '4'
+      open_term: standaardpremie
+      gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
+  execution:
+    output:
+      - name: standaardpremie
+        type: amount
+        type_spec:
+          unit: eurocent
+    actions:
+      - output: standaardpremie
+        value: 211200
+```
+
+The engine automatically resolves `$standaardpremie` by finding the regulation
+that `implements` the open term, using lex superior / lex posterior priority rules.
 
 ## Eurocent Conversion Table
 
@@ -346,7 +373,7 @@ This is the opposite of English. So `€1.234,56` means one thousand two hundred
 
 ## External Resources
 
-- **Schema**: `schema/latest/schema.json` (v0.3.2)
+- **Schema**: `schema/latest/schema.json` (v0.4.0)
 - **Working example**: `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
 - **Engine source**: `packages/engine/src/`
 - **Validation binary**: `packages/engine/src/bin/validate.rs`

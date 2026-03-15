@@ -84,15 +84,23 @@ git worktree add .worktrees/feature-branch feature-branch
 ### Law Format
 
 Laws are stored as article-based YAML files conforming to the official JSON schema:
-- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json`
+- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json`
 
 ### Cross-Law References
 
-Laws reference each other using `regelrecht://` URIs:
+Laws reference each other via `source` on input fields:
 
-**Format:** `regelrecht://{law_id}/{output_name}#{field}`
+```yaml
+source:
+  regulation: "other_law_id"   # External law $id
+  output: "output_name"        # Output field to retrieve
+  parameters:
+    bsn: $bsn                  # Parameters to pass
+```
 
-The engine resolves these URIs by finding the law by `$id` slug, finding the article by output name, executing the logic, and extracting the requested field.
+For delegated values (e.g., "bij ministeriële regeling"), laws use the IoC pattern:
+higher laws declare `open_terms`, lower regulations declare `implements`.
+See `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
 
 ## RFC Process
 
