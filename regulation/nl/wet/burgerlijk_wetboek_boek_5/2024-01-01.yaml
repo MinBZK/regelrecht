@@ -50,40 +50,6 @@ articles:
                     value: boom
                   then: 200
                   else: 50
-      legal_basis_for:
-        - regulatory_layer: GEMEENTELIJKE_VERORDENING
-          subject: erfgrens_beplanting
-
-          contract:
-            parameters:
-              - name: type_beplanting
-                type: string
-                required: true
-                description: Type beplanting - "boom" of "heg_of_heester"
-            output:
-              - name: minimale_afstand_cm
-                type: number
-                description: Minimale afstand tot erfgrens in centimeters
-
-          # DEFAULTS: dit maakt de gemeentelijke verordening OPTIONEEL
-          # Als gemeente geen verordening heeft, gelden deze afstanden uit de rijkswet
-          defaults:
-            definitions:
-              AFSTAND_BOOM_CM:
-                value: 200  # 2 meter voor bomen
-              AFSTAND_HEG_OF_HEESTER_CM:
-                value: 50  # 0,5 meter voor heesters en heggen
-            actions:
-              - output: minimale_afstand_cm
-                value:
-                  operation: IF
-                  when:
-                    operation: EQUALS
-                    subject: $type_beplanting
-                    value: boom
-                  then: $AFSTAND_BOOM_CM
-                  else: $AFSTAND_HEG_OF_HEESTER_CM
-
       # Publiek endpoint om de minimale afstand te bepalen
       execution:
         produces:
@@ -100,23 +66,6 @@ articles:
             required: true
             description: Type beplanting - "boom" of "heg_of_heester"
 
-        input:
-          # Minimale afstand uit gemeentelijke verordening of rijkswet defaults
-          - name: minimale_afstand_uit_verordening
-            type: number
-            description: Minimale afstand uit gemeentelijke verordening of rijkswet defaults
-            source:
-              delegation:
-                law_id: burgerlijk_wetboek_boek_5
-                article: '42'
-                # Generic select_on mechanism for finding delegated regulation
-                select_on:
-                  - name: gemeente_code
-                    value: $gemeente_code
-              output: minimale_afstand_cm
-              parameters:
-                type_beplanting: $type_beplanting
-
         output:
           - name: minimale_afstand_cm
             type: number
@@ -126,9 +75,10 @@ articles:
             description: De geldende minimale afstand tot de erfgrens in meters
 
         actions:
-          # Afstand uit verordening of defaults
+          # minimale_afstand_cm is resolved via IoC (open term) before actions run:
+          # gemeente verordening if present, otherwise the default (200cm/50cm)
           - output: minimale_afstand_cm
-            value: $minimale_afstand_uit_verordening
+            value: $minimale_afstand_cm
 
           # Bereken afstand in meters
           - output: minimale_afstand_m

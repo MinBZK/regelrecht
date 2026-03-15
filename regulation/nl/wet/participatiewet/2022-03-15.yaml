@@ -79,21 +79,24 @@ articles:
           delegated_to: gemeenteraad
           delegation_type: GEMEENTELIJKE_VERORDENING
           legal_basis: artikel 8 lid 1 onderdeel a Participatiewet
-      legal_basis_for:
-        - regulatory_layer: GEMEENTELIJKE_VERORDENING
-          subject: afstemming_bijstand
-          contract:
-            parameters:
-              - name: bsn
-                type: string
-                description: BSN van de belanghebbende
-            output:
-              - name: verlaging_percentage
-                type: number
-                description: Verlagingspercentage van de bijstandsnorm
-              - name: duur_maanden
-                type: number
-                description: Duur van de verlaging in maanden
+      execution:
+        parameters:
+          - name: gemeente_code
+            type: string
+            required: true
+            description: CBS gemeentecode van de gemeente
+        output:
+          - name: verlaging_percentage
+            type: number
+            description: Verlagingspercentage uit gemeentelijke afstemmingsverordening
+          - name: duur_maanden
+            type: number
+            description: Duur van de verlaging in maanden uit gemeentelijke afstemmingsverordening
+        actions:
+          - output: verlaging_percentage
+            value: $verlaging_percentage
+          - output: duur_maanden
+            value: $duur_maanden
 
   - number: '11'
     text: |-
@@ -431,32 +434,12 @@ articles:
             type: number
             description: Verlagingspercentage uit gemeentelijke afstemmingsverordening
             source:
-              delegation:
-                law_id: participatiewet
-                article: '8'
-                # Generic select_on mechanism for finding delegated regulation
-                select_on:
-                  - name: gemeente_code
-                    value: $gemeente_code
               output: verlaging_percentage
-              parameters:
-                bsn: $bsn
-                gedragscategorie: $gedragscategorie
-
           - name: duur_maanden_uit_verordening
             type: number
             description: Duur van de verlaging uit gemeentelijke afstemmingsverordening
             source:
-              delegation:
-                law_id: participatiewet
-                article: '8'
-                select_on:
-                  - name: gemeente_code
-                    value: $gemeente_code
               output: duur_maanden
-              parameters:
-                bsn: $bsn
-                gedragscategorie: $gedragscategorie
 
         output:
           - name: heeft_recht_op_bijstand

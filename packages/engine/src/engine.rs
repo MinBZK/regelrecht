@@ -1552,8 +1552,9 @@ articles:
         }
 
         #[test]
-        fn test_parse_participatiewet_delegation() {
-            // Test that the real participatiewet file with delegation parses correctly
+        fn test_parse_participatiewet_ioc() {
+            // Test that participatiewet uses IoC: article 8 has open_terms,
+            // article 43 references article 8 via source.output
             use std::path::PathBuf;
 
             let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -1565,33 +1566,25 @@ articles:
 
             let law = ArticleBasedLaw::from_yaml_file(&path).unwrap();
 
-            // Find article 43 which uses delegation
-            let article = law.find_article_by_number("43");
-            assert!(article.is_some(), "Should find article 43");
+            // Article 8 should declare open_terms
+            let article8 = law.find_article_by_number("8").unwrap();
+            let mr = article8.machine_readable.as_ref().unwrap();
+            let open_terms = mr.open_terms.as_ref().unwrap();
+            assert_eq!(open_terms.len(), 2);
+            assert_eq!(open_terms[0].id, "verlaging_percentage");
+            assert_eq!(open_terms[1].id, "duur_maanden");
 
-            let article = article.unwrap();
-            let exec = article.get_execution_spec().unwrap();
-
-            // Check that inputs with delegation are parsed
+            // Article 43 should reference article 8 via source.output
+            let article43 = law.find_article_by_number("43").unwrap();
+            let exec = article43.get_execution_spec().unwrap();
             let inputs = exec.input.as_ref().unwrap();
-            let delegation_input = inputs
+            let input = inputs
                 .iter()
-                .find(|i| i.name == "verlaging_percentage_uit_verordening");
-            assert!(
-                delegation_input.is_some(),
-                "Should find verlaging_percentage_uit_verordening input"
-            );
-
-            let source = delegation_input.unwrap().source.as_ref().unwrap();
-            assert!(source.delegation.is_some(), "Should have delegation");
-
-            let delegation = source.delegation.as_ref().unwrap();
-            assert_eq!(delegation.law_id, "participatiewet");
-            assert_eq!(delegation.article, "8");
-
-            let select_on = delegation.select_on.as_ref().unwrap();
-            assert_eq!(select_on.len(), 1);
-            assert_eq!(select_on[0].name, "gemeente_code");
+                .find(|i| i.name == "verlaging_percentage_uit_verordening")
+                .unwrap();
+            let source = input.source.as_ref().unwrap();
+            assert!(source.delegation.is_none(), "Should not use delegation");
+            assert_eq!(source.output.as_deref(), Some("verlaging_percentage"));
         }
     }
 

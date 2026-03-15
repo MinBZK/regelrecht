@@ -454,6 +454,7 @@ impl RuleResolver {
         article: &str,
         open_term_id: &str,
         reference_date: Option<NaiveDate>,
+        scope: &HashMap<String, Value>,
     ) -> Vec<(&ArticleBasedLaw, &Article)> {
         let key = (
             law_id.to_string(),
@@ -477,10 +478,40 @@ impl RuleResolver {
         let mut candidates: Vec<Candidate> = Vec::new();
         let mut resolved: Vec<(&ArticleBasedLaw, &Article)> = Vec::new();
 
+        // Extract scope values for filtering
+        let scope_gemeente = scope.get("gemeente_code").and_then(|v| match v {
+            Value::String(s) => Some(s.as_str()),
+            _ => None,
+        });
+
         for (impl_law_id, impl_article_number) in candidate_entries {
             let Some(law) = self.get_law_for_date(impl_law_id, reference_date) else {
                 continue;
             };
+
+            // Scope filtering: if the candidate has a gemeente_code, it must match
+            // the execution scope. National regulations (no gemeente_code) always match.
+            if let Some(law_gemeente) = &law.gemeente_code {
+                match scope_gemeente {
+                    Some(sg) if sg == law_gemeente => {} // match
+                    Some(_) => {
+                        tracing::debug!(
+                            candidate = %impl_law_id,
+                            law_gemeente = %law_gemeente,
+                            "Skipping: gemeente_code does not match scope"
+                        );
+                        continue;
+                    }
+                    None => {
+                        // No scope specified — skip scoped regulations
+                        tracing::debug!(
+                            candidate = %impl_law_id,
+                            "Skipping: scoped regulation but no scope in parameters"
+                        );
+                        continue;
+                    }
+                }
+            }
 
             let Some(art) = law
                 .articles
@@ -1481,7 +1512,13 @@ articles:
         assert_eq!(resolver.implements_count(), 1);
 
         // Look up
-        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        let results = resolver.find_implementations(
+            "zorgtoeslagwet",
+            "4",
+            "standaardpremie",
+            None,
+            &HashMap::new(),
+        );
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
         assert_eq!(results[0].1.number, "1");
@@ -1494,7 +1531,13 @@ articles:
         resolver.load_from_yaml(make_law_with_open_term()).unwrap();
         // No implementing regulation loaded
 
-        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        let results = resolver.find_implementations(
+            "zorgtoeslagwet",
+            "4",
+            "standaardpremie",
+            None,
+            &HashMap::new(),
+        );
         assert!(results.is_empty());
     }
 
@@ -1512,7 +1555,13 @@ articles:
 
         assert_eq!(resolver.implements_count(), 2);
 
-        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        let results = resolver.find_implementations(
+            "zorgtoeslagwet",
+            "4",
+            "standaardpremie",
+            None,
+            &HashMap::new(),
+        );
         assert_eq!(results.len(), 2);
         // Winner (newest) should be first
         assert_eq!(results[0].0.id, "regeling_standaardpremie");
@@ -1533,7 +1582,13 @@ articles:
         resolver.unload_law("regeling_standaardpremie");
         assert_eq!(resolver.implements_count(), 0);
 
-        let results = resolver.find_implementations("zorgtoeslagwet", "4", "standaardpremie", None);
+        let results = resolver.find_implementations(
+            "zorgtoeslagwet",
+            "4",
+            "standaardpremie",
+            None,
+            &HashMap::new(),
+        );
         assert!(results.is_empty());
     }
 

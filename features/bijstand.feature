@@ -189,4 +189,4 @@ Feature: Bijstandsaanvraag via Participatiewet
       | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 1            |
     When the bijstandsaanvraag is executed for participatiewet article 43
-    Then the execution fails with "No regulation found for mandatory delegation"
+    Then the execution fails with "Required open term 'verlaging_percentage' on participatiewet#8 has no implementation and no default"

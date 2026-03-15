@@ -634,12 +634,13 @@ impl LawExecutionService {
                 tb.set_resolve_type(ResolveType::OpenTerm);
             }
 
-            // Look up implementations
+            // Look up implementations (filtered by execution scope)
             let implementations = self.resolver.find_implementations(
                 &law.id,
                 &article.number,
                 &term.id,
                 res_ctx.reference_date(),
+                context.parameters(),
             );
 
             if let Some((impl_law, impl_article)) = implementations.first() {
