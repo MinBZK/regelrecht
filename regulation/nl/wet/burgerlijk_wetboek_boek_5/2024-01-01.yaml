@@ -32,6 +32,24 @@ articles:
     machine_readable:
       # Dit artikel machtigt gemeenten om bij verordening kleinere afstanden toe te staan
       # Dit is het OPTIONELE delegatiepatroon: rijkswet heeft defaults, gemeente KAN afwijken
+      open_terms:
+        - id: minimale_afstand_cm
+          type: number
+          required: false
+          delegated_to: gemeenteraad
+          delegation_type: GEMEENTELIJKE_VERORDENING
+          legal_basis: artikel 5:42 lid 2 Burgerlijk Wetboek
+          default:
+            actions:
+              - output: minimale_afstand_cm
+                value:
+                  operation: IF
+                  when:
+                    operation: EQUALS
+                    subject: $type_beplanting
+                    value: boom
+                  then: 200
+                  else: 50
       legal_basis_for:
         - regulatory_layer: GEMEENTELIJKE_VERORDENING
           subject: erfgrens_beplanting

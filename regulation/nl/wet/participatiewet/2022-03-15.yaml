@@ -66,6 +66,19 @@ articles:
       betrekking op de hoogte en de frequentie van de betaling van de individuele studietoeslag.
     url: https://wetten.overheid.nl/BWBR0015703/2022-03-15#Artikel8
     machine_readable:
+      open_terms:
+        - id: verlaging_percentage
+          type: number
+          required: true
+          delegated_to: gemeenteraad
+          delegation_type: GEMEENTELIJKE_VERORDENING
+          legal_basis: artikel 8 lid 1 onderdeel a Participatiewet
+        - id: duur_maanden
+          type: number
+          required: true
+          delegated_to: gemeenteraad
+          delegation_type: GEMEENTELIJKE_VERORDENING
+          legal_basis: artikel 8 lid 1 onderdeel a Participatiewet
       legal_basis_for:
         - regulatory_layer: GEMEENTELIJKE_VERORDENING
           subject: afstemming_bijstand
