@@ -78,21 +78,20 @@ pub fn resolve_candidate<'a>(
             );
         } else if candidate_priority == best_priority {
             // Same layer: compare valid_from dates (lex posterior)
-            let best_date = best.law.valid_from.as_deref().unwrap_or("");
-            let candidate_date = candidate.law.valid_from.as_deref().unwrap_or("");
-
-            if best_date.is_empty() {
-                eprintln!(
-                    "warning: law '{}' has no valid_from date; treated as oldest candidate in lex posterior comparison",
+            let best_date = best.law.valid_from.as_deref().ok_or_else(|| {
+                EngineError::ResolutionError(format!(
+                    "Cannot resolve priority: law '{}' has no valid_from date — \
+                     lex posterior comparison requires valid_from on all candidates",
                     best.law.id
-                );
-            }
-            if candidate_date.is_empty() {
-                eprintln!(
-                    "warning: law '{}' has no valid_from date; treated as oldest candidate in lex posterior comparison",
+                ))
+            })?;
+            let candidate_date = candidate.law.valid_from.as_deref().ok_or_else(|| {
+                EngineError::ResolutionError(format!(
+                    "Cannot resolve priority: law '{}' has no valid_from date — \
+                     lex posterior comparison requires valid_from on all candidates",
                     candidate.law.id
-                );
-            }
+                ))
+            })?;
 
             if candidate_date > best_date {
                 let prev_id = best.law.id.clone();
@@ -264,7 +263,7 @@ articles:
     }
 
     #[test]
-    fn test_resolve_candidate_missing_valid_from_treated_as_oldest() {
+    fn test_resolve_candidate_missing_valid_from_is_error() {
         let without_date = ArticleBasedLaw::from_yaml_str(
             r#"
 $id: no_date_regulation
@@ -301,8 +300,11 @@ articles:
             },
         ];
 
-        let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
-        assert_eq!(winner.id, "dated_regulation");
-        assert!(reason.contains("lex posterior"));
+        let err = resolve_candidate(&candidates).unwrap_err();
+        assert!(
+            err.to_string().contains("no valid_from date"),
+            "Expected error about missing valid_from, got: {}",
+            err
+        );
     }
 }
