@@ -439,6 +439,11 @@ articles:
             required: true
             description: 'Heeft voldoende middelen voor levensonderhoud (bron: middelentoets)'
 
+          - name: gedragscategorie
+            type: number
+            required: false
+            description: Gedragscategorie (0=geen, 1, 2 of 3) voor afstemmingsverordening
+
         input:
           - name: verlaging_percentage_uit_verordening
             type: number

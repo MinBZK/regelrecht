@@ -5,6 +5,14 @@
 //!
 //! 1. **Lex superior**: Higher regulatory layers take precedence
 //! 2. **Lex posterior**: Among equal layers, later effective dates win
+//!
+//! ## TODO: Resolve `#` internal references at load time
+//!
+//! Laws may declare `valid_from: '#datum_inwerkingtreding'` — an internal
+//! reference to an article output. Currently, priority comparison rejects
+//! these with an error. The proper fix is to resolve `#` references when
+//! loading laws into the resolver, so that `valid_from` always contains a
+//! concrete date by the time priority comparison runs.
 
 use crate::article::ArticleBasedLaw;
 use crate::error::EngineError;
@@ -43,6 +51,31 @@ pub struct Candidate<'a> {
     pub article_number: String,
 }
 
+/// Validate that a law's `valid_from` is a concrete YYYY-MM-DD date suitable
+/// for lex posterior comparison. Rejects missing dates and unresolved `#`
+/// internal references.
+fn validate_date_for_comparison<'a>(
+    law_id: &str,
+    valid_from: &'a Option<String>,
+) -> Result<&'a str> {
+    let date = valid_from.as_deref().ok_or_else(|| {
+        EngineError::ResolutionError(format!(
+            "Cannot resolve priority: law '{law_id}' has no valid_from date — \
+             lex posterior comparison requires valid_from on all candidates"
+        ))
+    })?;
+
+    if date.starts_with('#') {
+        return Err(EngineError::ResolutionError(format!(
+            "Cannot resolve priority: law '{law_id}' has unresolved valid_from \
+             reference '{date}' — internal references must be resolved before \
+             priority comparison"
+        )));
+    }
+
+    Ok(date)
+}
+
 /// Pick the winning candidate from a list of implementations.
 ///
 /// Resolution rules:
@@ -78,20 +111,9 @@ pub fn resolve_candidate<'a>(
             );
         } else if candidate_priority == best_priority {
             // Same layer: compare valid_from dates (lex posterior)
-            let best_date = best.law.valid_from.as_deref().ok_or_else(|| {
-                EngineError::ResolutionError(format!(
-                    "Cannot resolve priority: law '{}' has no valid_from date — \
-                     lex posterior comparison requires valid_from on all candidates",
-                    best.law.id
-                ))
-            })?;
-            let candidate_date = candidate.law.valid_from.as_deref().ok_or_else(|| {
-                EngineError::ResolutionError(format!(
-                    "Cannot resolve priority: law '{}' has no valid_from date — \
-                     lex posterior comparison requires valid_from on all candidates",
-                    candidate.law.id
-                ))
-            })?;
+            let best_date = validate_date_for_comparison(&best.law.id, &best.law.valid_from)?;
+            let candidate_date =
+                validate_date_for_comparison(&candidate.law.id, &candidate.law.valid_from)?;
 
             if candidate_date > best_date {
                 let prev_id = best.law.id.clone();
@@ -304,6 +326,53 @@ articles:
         assert!(
             err.to_string().contains("no valid_from date"),
             "Expected error about missing valid_from, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_resolve_candidate_unresolved_reference_is_error() {
+        let with_ref = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: ref_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '#datum_inwerkingtreding'
+articles:
+  - number: '1'
+    text: Has unresolved reference
+"#,
+        )
+        .unwrap();
+
+        let with_date = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: dated_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Has valid_from
+"#,
+        )
+        .unwrap();
+
+        let candidates = vec![
+            Candidate {
+                law: &with_ref,
+                article_number: "1".to_string(),
+            },
+            Candidate {
+                law: &with_date,
+                article_number: "1".to_string(),
+            },
+        ];
+
+        let err = resolve_candidate(&candidates).unwrap_err();
+        assert!(
+            err.to_string().contains("unresolved valid_from reference"),
+            "Expected error about unresolved reference, got: {}",
             err
         );
     }
