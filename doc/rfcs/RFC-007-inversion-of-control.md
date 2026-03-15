@@ -1,6 +1,6 @@
 # RFC-007: Inversion of Control for Delegated Legislation
 
-**Status:** Accepted
+**Status:** Proposed
 **Date:** 2026-03-15
 **Authors:** RegelRecht team
 

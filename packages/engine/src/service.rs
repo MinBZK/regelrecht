@@ -660,6 +660,14 @@ impl LawExecutionService {
                 ) {
                     Ok(r) => r,
                     Err(e) => {
+                        if let Some(ref tb) = res_ctx.trace {
+                            let mut tb = tb.borrow_mut();
+                            tb.set_message(format!(
+                                "Open term '{}': implementation execution failed: {}",
+                                term.id, e
+                            ));
+                            tb.pop();
+                        }
                         res_ctx.leave(&ot_key);
                         return Err(e);
                     }
@@ -711,6 +719,14 @@ impl LawExecutionService {
                             {
                                 Ok(v) => v,
                                 Err(e) => {
+                                    if let Some(ref tb) = res_ctx.trace {
+                                        let mut tb = tb.borrow_mut();
+                                        tb.set_message(format!(
+                                            "Open term '{}': default evaluation failed: {}",
+                                            term.id, e
+                                        ));
+                                        tb.pop();
+                                    }
                                     res_ctx.leave(&ot_key);
                                     return Err(e);
                                 }
@@ -1149,7 +1165,17 @@ impl LawExecutionService {
         }
 
         // Build parameters for the target article
-        let target_params = self.build_target_parameters(source_parameters, context)?;
+        let target_params = match self.build_target_parameters(source_parameters, context) {
+            Ok(p) => p,
+            Err(e) => {
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!("Failed to build parameters: {}", e));
+                    tb.pop();
+                }
+                return Err(e);
+            }
+        };
 
         // Enter cross-law resolution scope
         res_ctx.enter(key.clone());
@@ -1160,15 +1186,33 @@ impl LawExecutionService {
         // Leave scope (even on error, for correct cycle tracking)
         res_ctx.leave(&key);
 
-        let value =
-            result?
-                .outputs
-                .get(output)
-                .cloned()
-                .ok_or_else(|| EngineError::OutputNotFound {
-                    law_id: regulation.to_string(),
-                    output: output.to_string(),
-                })?;
+        let value = match result {
+            Ok(r) => match r.outputs.get(output).cloned() {
+                Some(v) => v,
+                None => {
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_message(format!(
+                            "Output '{}' not found in result from {}",
+                            output, regulation
+                        ));
+                        tb.pop();
+                    }
+                    return Err(EngineError::OutputNotFound {
+                        law_id: regulation.to_string(),
+                        output: output.to_string(),
+                    });
+                }
+            },
+            Err(e) => {
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!("Execution failed: {}", e));
+                    tb.pop();
+                }
+                return Err(e);
+            }
+        };
 
         // Complete trace node
         if let Some(ref tb) = res_ctx.trace {

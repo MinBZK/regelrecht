@@ -412,7 +412,16 @@ impl<'a> ArticleEngine<'a> {
                 context.trace_set_message(format!("Computing {}", output_name));
             }
 
-            let value = self.evaluate_action(action, context)?;
+            let value = match self.evaluate_action(action, context) {
+                Ok(v) => v,
+                Err(e) => {
+                    if tracing_active {
+                        context.trace_set_message(format!("Action failed: {}", e));
+                        context.trace_pop();
+                    }
+                    return Err(e);
+                }
+            };
 
             if tracing_active {
                 context.trace_set_result(value.clone());
