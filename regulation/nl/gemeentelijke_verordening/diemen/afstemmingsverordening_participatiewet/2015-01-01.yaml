@@ -1,5 +1,6 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
 $id: afstemmingsverordening_participatiewet_diemen
 regulatory_layer: GEMEENTELIJKE_VERORDENING
 publication_date: '2014-12-18'
@@ -57,6 +58,15 @@ articles:
       belanghebbende daartoe aanleiding geven.
     url: https://lokaleregelgeving.overheid.nl/CVDR345917/1#Artikel9
     machine_readable:
+      implements:
+        - law: participatiewet
+          article: '8'
+          open_term: verlaging_percentage
+          gelet_op: Gelet op artikel 8, eerste lid, onderdeel a van de Participatiewet
+        - law: participatiewet
+          article: '8'
+          open_term: duur_maanden
+          gelet_op: Gelet op artikel 8, eerste lid, onderdeel a van de Participatiewet
       definitions:
         # Categorie 1 en 2: gemeente bepaalt percentage
         PERCENTAGE_CATEGORIE_1:
