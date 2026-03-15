@@ -50,11 +50,27 @@ machine_readable:
 
 1. Engine indexes all `implements` declarations at law load time
 2. When executing an article with `open_terms`, the engine looks up implementations
-3. Priority resolution: **lex superior** (higher regulatory layer wins) then **lex posterior** (newer `valid_from` wins)
+3. Priority resolution: **lex superior** (higher regulatory layer wins) then **lex posterior** (newer `valid_from` wins). When candidates have the same layer and date, the first match is used and a warning is emitted in trace
 4. If found: execute the implementing article to get the value
 5. If not found + has `default`: execute the default actions block
-6. If not found + `required: true` + no default: error
-7. If not found + `required: false` + no default: skip
+6. If not found + `required: true` + no default: `DelegationError`
+7. If not found + `required: false` + no default: skip (traced)
+8. **Cycle detection**: if an open term is already being resolved (via `ResolutionContext.visited`), a `CircularReference` error is raised — circular dependencies are a law authoring problem, not something the engine should fix
+
+### Same-law routing via `source.output`
+
+When multiple articles in the same law need an open term value, only one article should declare the `open_terms` and serve as the single point of delegation. Other articles reference it via `source.output` (without `source.regulation`):
+
+```yaml
+# Article 2 gets standaardpremie from article 4 (same law)
+input:
+  - name: standaardpremie
+    type: amount
+    source:
+      output: standaardpremie  # resolved from article 4
+```
+
+This ensures the flow is: **article 2 → article 4 → IoC → regeling**, rather than article 2 bypassing article 4 and reaching into the regeling directly.
 
 ### Default pattern
 
@@ -81,11 +97,11 @@ This pattern is more common at lower regulatory layers (a policy rule with a rea
 - **Decoupled**: Adding a new implementing regulation doesn't require changes to the higher law
 - **Discoverable**: The engine builds an index; implementations are found automatically
 - **Traceable**: Each resolution produces trace output showing which implementations were found, which won, and why
-- **Backward compatible**: Existing `resolve` actions and `source.delegation` continue to work; IoC is an additional resolution path
+- **Backward compatible**: Existing `source.delegation` patterns continue to work; IoC is an additional resolution path
 
 ### Tradeoffs
 
-- **Two resolution paths**: The engine now supports both top-down (`resolve`) and bottom-up (IoC). Both are needed — `resolve` for cases where `select_on` criteria are required (e.g., gemeente-specific regulations), IoC for simple delegation chains
+- **Two delegation paths**: The engine now supports both selection-based delegation (`source.delegation` + `select_on`) and IoC. Both are needed — selection-based for cases where runtime criteria determine which regulation applies (e.g., gemeente-specific regulations), IoC for simple delegation chains
 - **Index maintenance**: The implements index must be kept in sync when laws are loaded/unloaded
 
 ### Alternatives Considered
@@ -117,7 +133,7 @@ This pattern is more common at lower regulatory layers (a policy rule with a rea
 |---------|----------|
 | **IoC** (`open_terms` + `implements`) | Simple delegation: higher law delegates a value to a lower regulation |
 | **Delegation** (`source.delegation` + `select_on`) | Selection-based delegation: need to pick one regulation based on runtime criteria (e.g., gemeente_code) |
-| **Resolve** (`resolve` action) | Legacy pattern: explicit search for matching regulations via legal_basis |
+| **Same-law reference** (`source.output`) | Internal: one article needs a value produced by another article in the same law |
 | **External reference** (`source.regulation`) | Direct reference: one law needs a value from a specific other law |
 
 ## References
