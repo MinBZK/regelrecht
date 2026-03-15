@@ -81,6 +81,19 @@ pub fn resolve_candidate<'a>(
             let best_date = best.law.valid_from.as_deref().unwrap_or("");
             let candidate_date = candidate.law.valid_from.as_deref().unwrap_or("");
 
+            if best_date.is_empty() {
+                eprintln!(
+                    "warning: law '{}' has no valid_from date; treated as oldest candidate in lex posterior comparison",
+                    best.law.id
+                );
+            }
+            if candidate_date.is_empty() {
+                eprintln!(
+                    "warning: law '{}' has no valid_from date; treated as oldest candidate in lex posterior comparison",
+                    candidate.law.id
+                );
+            }
+
             if candidate_date > best_date {
                 let prev_id = best.law.id.clone();
                 let prev_date = best_date.to_string();
@@ -247,6 +260,49 @@ articles:
 
         let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
         assert_eq!(winner.id, "newer_regulation");
+        assert!(reason.contains("lex posterior"));
+    }
+
+    #[test]
+    fn test_resolve_candidate_missing_valid_from_treated_as_oldest() {
+        let without_date = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: no_date_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2024-01-01'
+articles:
+  - number: '1'
+    text: No valid_from
+"#,
+        )
+        .unwrap();
+
+        let with_date = ArticleBasedLaw::from_yaml_str(
+            r#"
+$id: dated_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Has valid_from
+"#,
+        )
+        .unwrap();
+
+        let candidates = vec![
+            Candidate {
+                law: &without_date,
+                article_number: "1".to_string(),
+            },
+            Candidate {
+                law: &with_date,
+                article_number: "1".to_string(),
+            },
+        ];
+
+        let (winner, reason) = resolve_candidate(&candidates).unwrap().unwrap();
+        assert_eq!(winner.id, "dated_regulation");
         assert!(reason.contains("lex posterior"));
     }
 }
