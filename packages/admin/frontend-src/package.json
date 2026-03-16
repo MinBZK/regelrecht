@@ -11,6 +11,6 @@
     "@minbzk/storybook": "^0.8.1"
   },
   "devDependencies": {
-    "vite": "^7.3.1"
+    "vite": "^8.0.0"
   }
 }
