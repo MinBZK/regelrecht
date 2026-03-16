@@ -476,10 +476,8 @@ async function onHarvestSubmit(e) {
     btn.disabled = false;
     setTimeout(() => { btn.textContent = 'Harvest'; }, 2000);
     fetchData();
-    return;
   } catch (err) {
     alert('Harvest failed: ' + err.message);
-  } finally {
     btn.disabled = false;
     btn.textContent = 'Harvest';
   }

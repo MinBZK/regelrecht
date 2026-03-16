@@ -273,7 +273,7 @@ where
             SELECT 1 FROM jobs
             WHERE job_type = 'harvest'
               AND law_id = $2
-              AND (payload->>'date') = $6
+              AND (payload->>'date' = $6 OR payload->>'date' IS NULL)
               AND status != 'failed'
         )
         RETURNING *
