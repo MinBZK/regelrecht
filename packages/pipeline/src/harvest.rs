@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use regelrecht_harvester::manifest;
 
+/// Maximum recursion depth for follow-up harvest jobs.
+/// Prevents unbounded job creation from circular or deeply nested law references.
+pub const MAX_HARVEST_DEPTH: u32 = 3;
+
 /// Payload for a harvest job, stored as JSON in the job queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarvestPayload {
@@ -16,6 +20,9 @@ pub struct HarvestPayload {
     pub date: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_size_mb: Option<u64>,
+    /// Current recursion depth for follow-up harvests. `None` or `0` means this is a root job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
 }
 
 /// Result of a successful harvest execution.
@@ -89,7 +96,7 @@ pub async fn execute_harvest(
     let warning_count = law.warning_count();
     let warnings = law.warnings.clone();
 
-    let referenced_bwb_ids: Vec<String> = law
+    let mut referenced_bwb_ids: Vec<String> = law
         .articles
         .iter()
         .flat_map(|a| a.references.iter())
@@ -98,6 +105,7 @@ pub async fn execute_harvest(
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
+    referenced_bwb_ids.sort();
 
     let output_base_path = repo_path.join(output_base);
     let law_for_save = law;
@@ -158,6 +166,7 @@ mod tests {
             bwb_id: "BWBR0018451".to_string(),
             date: Some("2025-01-01".to_string()),
             max_size_mb: Some(100),
+            depth: Some(2),
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -166,6 +175,7 @@ mod tests {
         assert_eq!(deserialized.bwb_id, "BWBR0018451");
         assert_eq!(deserialized.date.as_deref(), Some("2025-01-01"));
         assert_eq!(deserialized.max_size_mb, Some(100));
+        assert_eq!(deserialized.depth, Some(2));
     }
 
     #[test]
@@ -176,6 +186,7 @@ mod tests {
         assert_eq!(payload.bwb_id, "BWBR0018451");
         assert!(payload.date.is_none());
         assert!(payload.max_size_mb.is_none());
+        assert!(payload.depth.is_none());
     }
 
     #[test]
@@ -199,6 +210,8 @@ mod tests {
 
         let refs = json["referenced_bwb_ids"].as_array().unwrap();
         assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0], "BWBR0002629");
+        assert_eq!(refs[1], "BWBR0018450");
     }
 
     #[test]

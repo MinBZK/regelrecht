@@ -274,6 +274,51 @@ where
     Ok(exists)
 }
 
+/// Atomically create a harvest job only if no non-failed harvest job exists
+/// for the same (law_id, date) combination.
+///
+/// Uses `INSERT ... WHERE NOT EXISTS` to avoid the TOCTOU race condition
+/// that would occur with a separate `harvest_job_exists` + `create_job` sequence.
+///
+/// Returns `Some(Job)` if a new job was created, `None` if a matching job already exists.
+pub async fn create_harvest_job_if_not_exists<'e, E>(
+    executor: E,
+    req: CreateJobRequest,
+    date: &str,
+) -> Result<Option<Job>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let job = sqlx::query_as::<_, Job>(
+        r#"
+        INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts)
+        SELECT $1, $2, $3, $4, $5
+        WHERE NOT EXISTS (
+            SELECT 1 FROM jobs
+            WHERE job_type = 'harvest'
+              AND law_id = $2
+              AND (payload->>'date') = $6
+              AND status != 'failed'
+        )
+        RETURNING *
+        "#,
+    )
+    .bind(req.job_type)
+    .bind(&req.law_id)
+    .bind(req.priority.value())
+    .bind(&req.payload)
+    .bind(req.max_attempts)
+    .bind(date)
+    .fetch_optional(executor)
+    .await?;
+
+    if let Some(ref j) = job {
+        tracing::info!(job_id = %j.id, law_id = %j.law_id, "follow-up harvest job created");
+    }
+
+    Ok(job)
+}
+
 /// Get a job by ID.
 pub async fn get_job<'e, E>(executor: E, job_id: Uuid) -> Result<Job>
 where

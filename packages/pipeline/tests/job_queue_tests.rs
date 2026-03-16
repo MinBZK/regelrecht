@@ -275,6 +275,104 @@ async fn test_reap_orphaned_jobs_returns_zero_when_none_orphaned() {
 }
 
 #[tokio::test]
+async fn test_harvest_job_exists_no_match() {
+    let db = common::TestDb::new().await;
+
+    let exists = job_queue::harvest_job_exists(&db.pool, "BWBR0001840", "2025-01-01")
+        .await
+        .unwrap();
+    assert!(!exists);
+}
+
+#[tokio::test]
+async fn test_harvest_job_exists_matches_pending() {
+    let db = common::TestDb::new().await;
+
+    let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload);
+    job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let exists = job_queue::harvest_job_exists(&db.pool, "BWBR0001840", "2025-01-01")
+        .await
+        .unwrap();
+    assert!(exists);
+}
+
+#[tokio::test]
+async fn test_harvest_job_exists_ignores_failed() {
+    let db = common::TestDb::new().await;
+
+    let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
+        .with_payload(payload)
+        .with_max_attempts(1);
+    let job = job_queue::create_job(&db.pool, req).await.unwrap();
+
+    // Claim and fail the job so it becomes permanently failed
+    job_queue::claim_job(&db.pool, Some(JobType::Harvest))
+        .await
+        .unwrap();
+    job_queue::fail_job(&db.pool, job.id, Some(json!({"error": "test"})))
+        .await
+        .unwrap();
+
+    let exists = job_queue::harvest_job_exists(&db.pool, "BWBR0001840", "2025-01-01")
+        .await
+        .unwrap();
+    assert!(!exists, "failed jobs should not count as existing");
+}
+
+#[tokio::test]
+async fn test_harvest_job_exists_different_date() {
+    let db = common::TestDb::new().await;
+
+    let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload);
+    job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let exists = job_queue::harvest_job_exists(&db.pool, "BWBR0001840", "2025-06-15")
+        .await
+        .unwrap();
+    assert!(!exists, "different date should not match");
+}
+
+#[tokio::test]
+async fn test_create_harvest_job_if_not_exists_creates_new() {
+    let db = common::TestDb::new().await;
+
+    let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
+        .with_priority(Priority::new(30))
+        .with_payload(payload);
+
+    let result = job_queue::create_harvest_job_if_not_exists(&db.pool, req, "2025-01-01")
+        .await
+        .unwrap();
+    assert!(result.is_some(), "should create job when none exists");
+
+    let job = result.unwrap();
+    assert_eq!(job.law_id, "BWBR0001840");
+    assert_eq!(job.status, JobStatus::Pending);
+}
+
+#[tokio::test]
+async fn test_create_harvest_job_if_not_exists_skips_duplicate() {
+    let db = common::TestDb::new().await;
+
+    let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload.clone());
+    job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let req2 = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
+        .with_priority(Priority::new(30))
+        .with_payload(payload);
+    let result = job_queue::create_harvest_job_if_not_exists(&db.pool, req2, "2025-01-01")
+        .await
+        .unwrap();
+    assert!(result.is_none(), "should not create duplicate job");
+}
+
+#[tokio::test]
 async fn test_concurrent_claim_safety() {
     let db = common::TestDb::new().await;
 
