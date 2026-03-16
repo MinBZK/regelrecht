@@ -34,21 +34,6 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   │   │   │   ├──Resolving $GELDIGE_INRICHTINGSTYPEN
 ║   ║   ║   │   │   │   │   ├──Resolving from DEFINITION: ['PENITENTIAIRE_INRICHTING', 'HUIS_VAN_BEWARING']
 ║   ║   ║   ├──Result of is_gedetineerd: False
-║   ║   ├──URI call: wet_forensische_zorg#is_forensisch
-║   ║   ║   ├──Resolving $BSN
-║   ║   ║   │   ├──Resolving from PARAMETERS: '999993653'
-║   ║   ║   ├──Resolving $ZORGTYPE
-║   ║   ║   │   ├──Resolving from DATA_SOURCE: None
-║   ║   ║   ├──Resolving $JURIDISCHE_GRONDSLAG
-║   ║   ║   │   ├──Resolving from DATA_SOURCE: None
-║   ║   ║   ├──Computing is_forensisch
-║   ║   ║   │   ├──Compute AND(...) = False
-║   ║   ║   │   │   ├──Compute IN(...) = False
-║   ║   ║   │   │   │   ├──Resolving $ZORGTYPE
-║   ║   ║   │   │   │   │   ├──Resolving from PARAMETERS: None
-║   ║   ║   │   │   │   ├──Resolving $FORENSISCHE_ZORGTYPEN
-║   ║   ║   │   │   │   │   ├──Resolving from DEFINITION: ['GGZ', 'VERSLAVINGSZORG', 'VG_ZORG']
-║   ║   ║   ├──Result of is_forensisch: False
 ║   ║   ├──Computing is_verzekerd
 ║   ║   │   ├──Compute AND(...) = True
 ║   ║   │   │   ├──Compute OR(...) = True
@@ -60,10 +45,22 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │   │   ├──Compute NOTEQUALS(...) = True
 ║   ║   │   │   │   ├──Resolving $IS_GEDETINEERD
 ║   ║   │   │   │   │   ├──Resolving from PARAMETERS: False
-║   ║   │   │   ├──Compute NOTEQUALS(...) = True
-║   ║   │   │   │   ├──Resolving $IS_FORENSISCH
-║   ║   │   │   │   │   ├──Resolving from PARAMETERS: False
 ║   ║   ├──Result of is_verzekerd: True
+║   ├──URI call: wet_forensische_zorg#is_forensisch
+║   ║   ├──Resolving $BSN
+║   ║   │   ├──Resolving from PARAMETERS: '999993653'
+║   ║   ├──Resolving $ZORGTYPE
+║   ║   │   ├──Resolving from DATA_SOURCE: None
+║   ║   ├──Resolving $JURIDISCHE_GRONDSLAG
+║   ║   │   ├──Resolving from DATA_SOURCE: None
+║   ║   ├──Computing is_forensisch
+║   ║   │   ├──Compute AND(...) = False
+║   ║   │   │   ├──Compute IN(...) = False
+║   ║   │   │   │   ├──Resolving $ZORGTYPE
+║   ║   │   │   │   │   ├──Resolving from PARAMETERS: None
+║   ║   │   │   │   ├──Resolving $FORENSISCHE_ZORGTYPEN
+║   ║   │   │   │   │   ├──Resolving from DEFINITION: ['GGZ', 'VERSLAVINGSZORG', 'VG_ZORG']
+║   ║   ├──Result of is_forensisch: False
 ║   ├──URI call: algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner
 ║   ║   ├──Resolving $BSN
 ║   ║   │   ├──Resolving from PARAMETERS: '999993653'
@@ -309,6 +306,9 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   │   │   ├──Compute EQUALS(...) = True
 ║   │   │   │   ├──Resolving $IS_VERZEKERDE
 ║   │   │   │   │   ├──Resolving from PARAMETERS: True
+║   │   │   ├──Compute NOTEQUALS(...) = True
+║   │   │   │   ├──Resolving $IS_FORENSISCH
+║   │   │   │   │   ├──Resolving from PARAMETERS: False
 ║   │   │   ├──Compute EQUALS(...) = True
 ║   │   │   │   ├──Resolving $VERMOGEN_ONDER_GRENS
 ║   │   │   │   │   ├──Resolving from PARAMETERS: True

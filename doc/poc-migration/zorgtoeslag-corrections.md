@@ -112,9 +112,7 @@ The engine silently coerced `None` values to 0 in ADD operations.
 
 The 2025 version combined insurance and detention into a single `IS_VERZEKERDE` check.
 
-**MVP correction**: Both 2024 and 2025 use a unified approach through `zorgverzekeringswet#is_verzekerd`, which computes `AND(IN(polis_status, actieve_statussen), NOT(is_gedetineerd))`. This is structurally consistent and easier to maintain.
-
-**Note**: The forensische zorg check (`wet_forensische_zorg`) present in the POC 2024 is not yet modelled in the MVP. See [open items](#open-items).
+**MVP correction**: Both 2024 and 2025 use a unified approach through `zorgverzekeringswet#is_verzekerd`, which computes `AND(IN(polis_status, actieve_statussen), NOT(is_gedetineerd), NOT(is_forensisch))`. This is structurally consistent and easier to maintain. See section 12 for the forensische zorg integration.
 
 ## 10. WIB 2025 Metadata Errors
 
@@ -136,14 +134,14 @@ The 2025 version combined insurance and detention into a single `IS_VERZEKERDE` 
 
 **POC behaviour**: The POC 2024 checks `IS_FORENSISCH` via `DJI.wet_forensische_zorg` in the zorgtoeslag requirements.
 
-**MVP correction**: Added `wet_forensische_zorg` regulation (`regulation/nl/wet/wet_forensische_zorg/2025-01-01.yaml`) with `is_forensisch` output based on zorgtype and juridische grondslag. Extended `zorgverzekeringswet` article 2 `is_verzekerd` logic to include `AND NOT(is_forensisch)`.
+**MVP correction**: Added `wet_forensische_zorg` regulation (`regulation/nl/wet/wet_forensische_zorg/2019-01-01.yaml`) with `is_forensisch` output based on zorgtype and juridische grondslag. The `is_forensisch` check is placed in `wet_op_de_zorgtoeslag` article 2 `heeft_recht_op_zorgtoeslag` (matching the POC placement in zorgtoeslag requirements), not in `zorgverzekeringswet` `is_verzekerd`. This is legally correct: WFZ art. 6.1 excludes forensische zorg costs from ZVW reimbursement, but does not remove the person's ZVW insurance status.
 
-**Impact on results**: None for current test scenarios (no forensic care in test data), but correctly excludes persons receiving forensische zorg from insurance status.
+**Impact on results**: None for current test scenarios (no forensic care in test data), but correctly excludes persons receiving forensische zorg from zorgtoeslag eligibility while preserving their ZVW insurance status for cross-law resolution.
 
 ## 13. Verdragsinschrijving in zorgverzekeringswet
 
 **POC behaviour**: The POC `is_verzekerde` check included a path for `VERDRAGSINSCHRIJVING` (treaty-based insurance for people living abroad, ZVW art. 69).
 
-**MVP correction**: Added `verdragsinschrijving` as input (with empty source) to `zorgverzekeringswet` article 2. The `is_verzekerd` logic is now: `(IN(polis_status, actief) OR verdragsinschrijving = true) AND NOT(is_gedetineerd) AND NOT(is_forensisch)`.
+**MVP correction**: Added `verdragsinschrijving` as input (with empty source) to `zorgverzekeringswet` article 2. The `is_verzekerd` logic is now: `(IN(polis_status, actief) OR verdragsinschrijving = true) AND NOT(is_gedetineerd)`.
 
 **Impact on results**: None for current test scenarios (no treaty registrations in test data), but correctly models the legal requirement for persons insured via international treaties.

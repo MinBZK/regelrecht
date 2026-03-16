@@ -253,8 +253,7 @@ fn run_scenario(scenario: &Scenario) {
                 *n as f64 / 100.0
             ),
             Value::Float(f) => {
-                // Display-only: safe to use `as i64` since zorgtoeslag values are small eurocent amounts
-            let rounded = f.round() as i64;
+                let rounded = if f.is_finite() { f.round() as i64 } else { 0 };
                 println!(
                     "  {}: {:.5} (rounded: {} eurocent = {:.2} euro)",
                     key,

@@ -128,13 +128,6 @@ articles:
               output: is_gedetineerd
               parameters:
                 bsn: $bsn
-          - name: is_forensisch
-            type: boolean
-            source:
-              regulation: wet_forensische_zorg
-              output: is_forensisch
-              parameters:
-                bsn: $bsn
         output:
           - name: is_verzekerd
             type: boolean
@@ -153,9 +146,6 @@ articles:
                       value: true
                 - operation: NOT_EQUALS
                   subject: $is_gedetineerd
-                  value: true
-                - operation: NOT_EQUALS
-                  subject: $is_forensisch
                   value: true
   - number: Artikel 3
     text: |-

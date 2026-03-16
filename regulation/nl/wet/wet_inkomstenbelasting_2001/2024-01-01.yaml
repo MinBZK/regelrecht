@@ -222,14 +222,18 @@ articles:
             required: true
         input:
           - name: box1_inkomen
-            type: number
+            type: amount
+            type_spec:
+              unit: eurocent
             source:
               regulation: wet_inkomstenbelasting_2001
               output: box1_inkomen
               parameters:
                 bsn: $bsn
           - name: box2_inkomen
-            type: number
+            type: amount
+            type_spec:
+              unit: eurocent
             source:
               regulation: wet_inkomstenbelasting_2001
               output: box2_inkomen

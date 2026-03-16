@@ -269,7 +269,7 @@ Feature: Healthcare allowance calculation
     Then the citizen has the right to healthcare allowance
     And the allowance amount is "2107.26" euro
 
-  Scenario: Forensische zorg excludes person from insurance coverage (2025)
+  Scenario: Forensische zorg excludes person from zorgtoeslag eligibility (2025)
     Given the calculation date is "2025-01-01"
     And the following RVIG "personal_data" data:
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
