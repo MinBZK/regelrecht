@@ -74,7 +74,7 @@ function selectArticle(number) {
     <rr-side-by-side-split-view>
 
       <!-- Left Pane: Text -->
-      <div slot="start" style="background: #F4F6F9;">
+      <div slot="pane-1" style="background: #F4F6F9;">
         <rr-page header-sticky>
           <rr-toolbar slot="header" size="md">
             <rr-toolbar-start-area>
@@ -119,7 +119,7 @@ function selectArticle(number) {
       </div>
 
       <!-- Right Pane: Machine / YAML -->
-      <div slot="end">
+      <div slot="pane-2">
         <rr-page header-sticky>
           <rr-toolbar slot="header" size="md">
             <rr-toolbar-start-area>
