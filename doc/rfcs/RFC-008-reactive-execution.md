@@ -8,24 +8,24 @@
 
 The engine currently supports **active execution**: someone requests a legal determination, the engine evaluates with specific parameters, and produces a result. This covers laws like the Zorgtoeslagwet, Participatiewet, and BW5.
 
-But a significant class of law operates differently. The Algemene wet bestuursrecht (AWB) doesn't wait to be asked — it *reacts* to events. When any government body makes a besluit (decision), AWB activates: article 6:7 sets a bezwaartermijn of six weeks, article 7:1 establishes the right to bezwaar. When a bezwaarschrift is subsequently filed, article 7:10 sets a beslistermijn for the beslissing op bezwaar. The trigger is an event, not a citizen's request.
+But a large class of law operates differently. The Algemene wet bestuursrecht (AWB) reacts to events. When any government body makes a besluit (decision), AWB activates: article 6:7 sets a bezwaartermijn of six weeks, article 7:1 establishes the right to bezwaar. When a bezwaarschrift is subsequently filed, article 7:10 sets a beslistermijn for the beslissing op bezwaar. The trigger is always an event.
 
-This is **reactive execution**: the law fires when a specific state transition occurs. It is edge-triggered (fires on the transition, not the resulting state).
+This is **reactive execution**: the law fires when a state transition occurs. Edge-triggered, not level-triggered.
 
 ### Execution modes
 
 This is one of four identified execution modes:
 
-1. **Active execution** — request-response (current engine, RFC-007 IoC)
-2. **Reactive execution** — event-triggered (this RFC)
-3. **Generative execution** — law that creates other law (git workflow, out of scope)
-4. **Verificative execution** — continuous invariant checking (out of scope)
+1. **Active execution**: request-response (current engine, RFC-007 IoC)
+2. **Reactive execution**: event-triggered (this RFC)
+3. **Generative execution**: law that creates other law (git workflow, out of scope)
+4. **Verificative execution**: continuous invariant checking (out of scope)
 
 The specification (YAML) is the same across all modes. The modes differ in triggering mechanism and required infrastructure.
 
 ### Current state
 
-The engine has no way to declare that a law reacts to events. Reactive behaviour exists in the PoC (`poc-machine-law`) via event sourcing with a `Case` aggregate and `ProcessApplication` that listens to domain events, but this is tightly coupled to infrastructure (aggregates, event types, update methods).
+The engine has no way to declare that a law reacts to events. The PoC (`poc-machine-law`) has reactive behaviour via event sourcing with a `Case` aggregate and `ProcessApplication`, but this is tightly coupled to infrastructure (aggregates, event types, update methods).
 
 ## Decision
 
@@ -49,7 +49,7 @@ Introduce `reacts_to` on article-level `machine_readable`:
           value: 6
 ```
 
-The `reacts_to` declaration is metadata — the engine does not subscribe to events or manage event routing. It declares the *kind* of event this article responds to, enabling the orchestration layer to set up the reactive wiring.
+The `reacts_to` declaration is metadata. The engine does not subscribe to events or manage event routing. It declares which event type this article responds to; the orchestration layer does the actual wiring.
 
 ### Event types
 
@@ -61,12 +61,38 @@ An event type is a semantic label for a state transition. Initial types:
 | `bezwaarschrift` | An objection is filed against a besluit | Citizen objects to zorgtoeslag decision |
 | `aanvraag` | An application is submitted | Zorgtoeslag application submitted |
 
-Event types are not an exhaustive taxonomy — they grow as new reactive laws are modelled.
+Event types are not an exhaustive taxonomy. They grow as new reactive laws are modelled.
+
+### Event production
+
+A `reacts_to` declaration says which event an article listens to. The other side is production: which article produces an event. This is declared with `produces`:
+
+```yaml
+# Zorgtoeslag artikel 2 (simplified)
+- number: '2'
+  text: |-
+    Aanspraak op een zorgtoeslag heeft degene...
+  machine_readable:
+    execution:
+      output:
+        - name: zorgtoeslag_besluit
+          type: boolean
+      produces:
+        event_type: besluit
+      actions:
+        - output: zorgtoeslag_besluit
+          value:
+            operation: LESS_THAN_OR_EQUAL
+            subject: $toetsingsinkomen
+            value: $drempelinkomen
+```
+
+When an article with `produces` is executed, the engine marks the result as a `besluit` event. The orchestration layer then triggers all articles with `reacts_to: besluit`.
 
 ### What the engine does
 
-1. **At load time**: indexes all `reacts_to` declarations, keyed by `event_type`
-2. **At execution time**: when an article produces an output whose type matches an `event_type`, the engine includes reactive metadata in the result — which laws and articles react to this event
+1. **At load time**: indexes all `reacts_to` declarations (keyed by `event_type`) and all `produces` declarations
+2. **At execution time**: when an article with `produces` completes, the engine annotates the result with reactive metadata (which laws and articles react to this event type)
 3. **The engine does not route events**. The orchestration layer uses the metadata to trigger reactive evaluations
 
 ### What the orchestration layer does
@@ -121,7 +147,7 @@ articles:
         output:
           - name: beslistermijn_weken
             type: number
-          - name: verdagingstermijn_weken
+          - name: maximale_verdagingstermijn_weken
             type: number
         actions:
           - output: beslistermijn_weken
@@ -133,7 +159,7 @@ articles:
                 value: true
               then: 12
               else: 6
-          - output: verdagingstermijn_weken
+          - output: maximale_verdagingstermijn_weken
             value: 6
 ```
 
@@ -141,29 +167,31 @@ articles:
 
 ### Benefits
 
-- **Matches legal reality**: AWB reacts to besluiten — the schema now captures this
-- **No coupling to infrastructure**: `reacts_to` declares the event type, not the event bus, aggregate, or update method
-- **Same YAML, different runtime**: the law specification is identical whether executed actively or reactively — only the trigger mechanism differs
-- **Discoverable**: the engine can answer "which articles react to a besluit?" without external configuration
+AWB reacts to besluiten. The schema should capture that. With `reacts_to`, it does.
+
+Because `reacts_to` only declares the event type (not the event bus, aggregate, or update method), the law specification stays the same whether executed actively or reactively. Only the trigger mechanism differs.
+
+The engine can also answer "which articles react to a besluit?" by querying its index, without external configuration.
 
 ### Tradeoffs
 
-- **Orchestration layer required**: the engine declares reactive relationships but doesn't implement event routing — a separate orchestration layer must exist
-- **Event type taxonomy**: needs to be defined and maintained, though it can grow incrementally
+The engine declares reactive relationships but does not implement event routing. A separate orchestration layer must exist to do the actual wiring.
+
+Event types (`besluit`, `bezwaarschrift`, `aanvraag`) need to be defined and maintained, though the taxonomy can grow incrementally.
 
 ### Alternatives Considered
 
 **Alternative 1: Infrastructure-coupled events (PoC approach)**
 - `applies: { aggregate: "Case", events: [{ type: "Decided" }], update: [{ method: "determine_objection_status" }] }`
-- Rejected: couples the law specification to a specific event sourcing implementation (aggregates, methods). The law should declare *what* it reacts to, not *how* the wiring works
+- Rejected: couples the law specification to a specific event sourcing implementation (aggregates, methods).
 
-**Alternative 2: No schema support — purely orchestration**
-- The orchestration layer hardcodes which laws to trigger on which events
-- Rejected: makes the reactive relationship invisible in the law YAML. The law text says the article reacts to besluiten — the machine readable version should too
+**Alternative 2: No schema support, purely orchestration**
+- The orchestration layer hardcodes which laws to trigger on which events.
+- Rejected: makes the reactive relationship invisible in the law YAML. The law text says the article reacts to besluiten; the machine readable version should too.
 
 ## References
 
-- RFC-007: Inversion of Control for Delegated Legislation
-- RFC-009: Lex Specialis Overrides (companion RFC — `overrides` mechanism)
+- RFC-007: Inversion of Control for Delegated Legislation (PR #246)
+- RFC-009: Lex Specialis Overrides (companion RFC, `overrides` mechanism, this PR)
 - AWB article 6:7: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7
 - PoC implementation: `poc-machine-law/laws/awb/bezwaar/JenV-2024-01-01.yaml`
