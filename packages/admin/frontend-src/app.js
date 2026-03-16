@@ -502,41 +502,22 @@ function switchTab(tabKey) {
   fetchData();
 }
 
-async function onResetJobs() {
-  if (!confirm('Are you sure? This will delete all non-processing jobs from the database.')) return;
-
-  const btn = $('#reset-jobs-btn');
-  btn.disabled = true;
-  btn.textContent = 'Deleting\u2026';
-
-  try {
-    const response = await fetch('api/jobs', { method: 'DELETE' });
-    if (response.status === 401) {
-      window.location.href = '/auth/login';
-      return;
-    }
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      throw new Error(text || `HTTP ${response.status}`);
-    }
-    const result = await response.json();
-    btn.textContent = `Deleted ${result.deleted} jobs`;
-    setTimeout(() => { btn.textContent = 'Reset Jobs'; }, 2000);
-    fetchData();
-  } catch (err) {
-    alert('Reset failed: ' + err.message);
-    btn.textContent = 'Reset Jobs';
-  } finally {
-    btn.disabled = false;
-  }
+function getTextFieldValue(el) {
+  // rr-text-field may expose .value on host or only on the inner <input>
+  if (el.value !== undefined && el.value !== '') return el.value;
+  const inner = el.shadowRoot?.querySelector('input');
+  return inner?.value ?? '';
 }
 
-async function onHarvestSubmit(e) {
-  e.preventDefault();
+async function onHarvestSubmit() {
   const input = $('#harvest-bwb-id');
   const btn = $('#harvest-btn');
-  const bwbId = (input.value || '').trim();
+  const bwbId = getTextFieldValue(input).trim();
   if (!bwbId) return;
+  if (!/^BWBR\d{7}$/.test(bwbId)) {
+    alert('BWB ID format: BWBR followed by 7 digits (e.g. BWBR0018451)');
+    return;
+  }
 
   btn.setAttribute('disabled', '');
   btn.textContent = 'Submitting\u2026';
@@ -973,11 +954,10 @@ async function init() {
 
   void fetchPlatformInfo().then(showDeploymentBadge);
 
-
-  // Bind harvest form
-  const harvestForm = $('#harvest-form');
-  if (harvestForm) {
-    harvestForm.addEventListener('submit', onHarvestSubmit);
+  // Bind harvest button (rr-button is not form-associated, so we use click)
+  const harvestBtn = $('#harvest-btn');
+  if (harvestBtn) {
+    harvestBtn.addEventListener('click', onHarvestSubmit);
   }
 
   // Bind reset jobs button
