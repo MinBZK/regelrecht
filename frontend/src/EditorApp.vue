@@ -12,6 +12,7 @@ const activeAction = ref(null);
 const rightPaneView = ref('machine');
 
 function selectArticle(number) {
+  activeAction.value = null;
   selectedArticleNumber.value = String(number);
 }
 </script>
@@ -123,18 +124,10 @@ function selectArticle(number) {
           <rr-toolbar slot="header" size="md">
             <rr-toolbar-start-area>
               <rr-toolbar-item>
-                <rr-button-bar size="md">
-                  <rr-button
-                    :variant="rightPaneView === 'machine' ? 'accent-filled' : 'neutral-tinted'"
-                    size="md"
-                    @click="rightPaneView = 'machine'"
-                  >Machine</rr-button>
-                  <rr-button
-                    :variant="rightPaneView === 'yaml' ? 'accent-filled' : 'neutral-tinted'"
-                    size="md"
-                    @click="rightPaneView = 'yaml'"
-                  >YAML</rr-button>
-                </rr-button-bar>
+                <rr-segmented-control size="md" value="machine" @change="rightPaneView = $event.detail.value">
+                  <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
+                  <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                </rr-segmented-control>
               </rr-toolbar-item>
             </rr-toolbar-start-area>
           </rr-toolbar>

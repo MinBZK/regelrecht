@@ -57,7 +57,8 @@ const operationValues = computed(() => {
     const vals = [];
     if (Array.isArray(node.cases)) {
       node.cases.forEach((c, i) => {
-        vals.push({ _label: `Geval ${i + 1}`, _value: c, _kind: 'case' });
+        if (c.when !== undefined) vals.push({ _label: `Geval ${i + 1} — als`, _value: c.when, _kind: 'value' });
+        if (c.then !== undefined) vals.push({ _label: `Geval ${i + 1} — dan`, _value: c.then, _kind: 'value' });
       });
     }
     if (node.default !== undefined) vals.push({ _label: 'Standaard', _value: node.default, _kind: 'value' });
@@ -82,7 +83,7 @@ function isNestedOperation(val) {
 }
 
 function isLiteralValue(val) {
-  return typeof val === 'number' || typeof val === 'boolean' || (typeof val === 'string' && !val.startsWith('$'));
+  return val === null || typeof val === 'number' || typeof val === 'boolean' || (typeof val === 'string' && !val.startsWith('$'));
 }
 
 function valueDropdownOptions(val) {

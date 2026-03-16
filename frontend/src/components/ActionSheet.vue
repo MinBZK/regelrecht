@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { buildOperationTree } from '../utils/operationTree.js';
 import OperationSettings from './OperationSettings.vue';
 
@@ -26,7 +26,7 @@ const selectedOpIndex = ref(0);
 watch(() => props.action, () => {
   const tree = operationTree.value;
   selectedOpIndex.value = tree.length > 0 ? tree.length - 1 : 0;
-});
+}, { immediate: true });
 
 const selectedOperation = computed(() => operationTree.value[selectedOpIndex.value] ?? null);
 
@@ -47,6 +47,20 @@ function selectOperationByNode(node) {
   const idx = operationTree.value.findIndex(op => op.node === node);
   if (idx >= 0) selectedOpIndex.value = idx;
 }
+
+function handleKeydown(e) {
+  if (e.key === 'Escape' && props.action) {
+    emit('close');
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
 <template>
@@ -109,7 +123,7 @@ function selectOperationByNode(node) {
       <!-- Footer -->
       <div class="action-sheet-footer">
         <rr-button variant="accent-filled" size="md" style="width: 100%;" @click="emit('close')">
-          Opslaan
+          Sluiten
         </rr-button>
       </div>
     </div>

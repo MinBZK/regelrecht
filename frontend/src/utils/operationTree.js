@@ -29,14 +29,6 @@ export const OPERATION_LABELS = {
   SUBTRACT_DATE: 'datum aftrekken',
 };
 
-export const OPERATION_CATEGORIES = {
-  Vergelijking: ['EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL', 'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'NOT_NULL', 'IN', 'NOT_IN'],
-  Rekenkundig: ['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'MIN', 'MAX', 'CONCAT'],
-  Logisch: ['AND', 'OR', 'NOT'],
-  Conditioneel: ['IF', 'SWITCH'],
-  Overig: ['FOREACH', 'SUBTRACT_DATE'],
-};
-
 export function collectAvailableVariables(article) {
   if (!article?.machine_readable) return [];
   const mr = article.machine_readable;
@@ -130,6 +122,14 @@ function getChildOperations(node) {
   if (isOperationNode(node.then)) children.push(node.then);
   if (isOperationNode(node.else)) children.push(node.else);
 
+  if (Array.isArray(node.cases)) {
+    for (const c of node.cases) {
+      if (isOperationNode(c.when)) children.push(c.when);
+      if (isOperationNode(c.then)) children.push(c.then);
+    }
+  }
+  if (isOperationNode(node.default)) children.push(node.default);
+
   return children;
 }
 
@@ -158,6 +158,17 @@ export function describeSubtitle(node) {
     for (const c of node.conditions) {
       args.push(formatArgName(c));
     }
+  }
+
+  if (node.operation === 'IF') {
+    if (node.when) args.push(`als ${formatArgName(node.when)}`);
+    if (node.then !== undefined) args.push(`dan ${formatArgName(node.then)}`);
+    if (node.else !== undefined) args.push(`anders ${formatArgName(node.else)}`);
+  }
+
+  if (node.operation === 'SWITCH' && Array.isArray(node.cases)) {
+    args.push(`${node.cases.length} gevallen`);
+    if (node.default !== undefined) args.push(`standaard ${formatArgName(node.default)}`);
   }
 
   if (args.length === 0) return label;
