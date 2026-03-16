@@ -112,7 +112,7 @@ graph TB
 
     subgraph pipeline["Legislative Pipeline"]
         CI["CI<br/>Schema validation<br/>engine tests · linting"]
-        BOT["Bot creates MR<br/><i>alleen MR</i>"]
+        BOT["Bot creates MR<br/><i>MR only, no direct pushes</i>"]
         REVIEW["Human Review<br/>Legal specialist approves"]
         CD["CD<br/>Deploy + publish"]
     end
@@ -189,7 +189,7 @@ Key internals:
 - **LawExecutionService** — top-level API, loads laws, resolves cross-law references
 - **RuleResolver** — law registry and output index for fast lookup
 - **ArticleEngine** — single-article executor
-- **Operations** — 16 operation types (arithmetic, comparison, logical, conditional)
+- **Operations** — 19 operation types (arithmetic, comparison, logical, conditional, aggregate, null-checking, membership, date)
 - **RuleContext** — variable resolution with priority-based lookup
 - **Trace** — execution audit trail for explainability
 
@@ -236,7 +236,7 @@ The git workflow mirrors the Dutch legislative process:
 
 1. Lawmaker creates a branch (= legislative proposal)
 2. **CI** validates: schema compliance, engine tests, linting
-3. **Bot** creates a Merge Request (alleen MR — only MR, no direct pushes)
+3. **Bot** creates a Merge Request (MR only, no direct pushes)
 4. **Human review** — legal specialist approves
 5. Final merge is gated on **official publication**
 6. **CD** deploys and the change becomes part of the Corpus Juris
