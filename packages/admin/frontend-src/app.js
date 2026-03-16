@@ -470,8 +470,7 @@ async function onHarvestSubmit(e) {
       const text = await response.text().catch(() => '');
       throw new Error(text || `HTTP ${response.status}`);
     }
-    const result = await response.json();
-    alert(`Created harvest job: ${result.job_id}`);
+    await response.json();
     input.value = '';
     fetchData();
   } catch (err) {
@@ -556,6 +555,9 @@ async function init() {
   renderTabs();
   renderAll();
   fetchData();
+
+  // Auto-refresh data every 20 seconds
+  setInterval(() => fetchData(), 20_000);
 }
 
 // Start when DOM is ready
