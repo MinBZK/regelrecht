@@ -59,7 +59,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: regelrecht_laws{status="harvested"}
+              expr: max(regelrecht_laws{status="harvested"})
               refId: A
           - refId: B
             relativeTimeRange:
@@ -67,7 +67,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: regelrecht_laws{status="enriched"}
+              expr: max(regelrecht_laws{status="enriched"})
               refId: B
           - refId: C
             relativeTimeRange:
@@ -108,7 +108,7 @@ groups:
             datasourceUid: PBFA97CFB590B2093
             model:
               # Detect NEW failures in the last hour, not cumulative total.
-              expr: increase(regelrecht_jobs{status="failed"}[1h])
+              expr: sum(increase(regelrecht_jobs{status="failed"}[1h]))
               refId: A
           - refId: C
             relativeTimeRange:
