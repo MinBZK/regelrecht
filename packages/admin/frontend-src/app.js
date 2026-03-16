@@ -18,6 +18,8 @@ const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'];
 
 const JOB_TYPES = ['harvest', 'enrich'];
 
+const ENRICHABLE_STATUSES = ['harvested', 'enriched', 'enrich_failed'];
+
 const TAB_CONFIG = {
   law_entries: {
     endpoint: 'api/law_entries',
@@ -27,6 +29,7 @@ const TAB_CONFIG = {
       { key: 'status', label: 'Status', sortable: true },
       { key: 'coverage_score', label: 'Coverage', sortable: true },
       { key: 'updated_at', label: 'Updated', sortable: true },
+      { key: '_actions', label: 'Actions', sortable: false },
     ],
     defaultSort: 'updated_at',
     filters: [
@@ -48,6 +51,7 @@ const TAB_CONFIG = {
     filters: [
       { key: 'status', label: 'Status', options: JOB_STATUSES },
       { key: 'job_type', label: 'Type', options: JOB_TYPES },
+      { key: 'law_id', label: 'Law ID', type: 'text' },
     ],
   },
 };
@@ -201,33 +205,46 @@ function renderFilters() {
     label.textContent = filter.label + ':';
     label.setAttribute('for', `filter-${filter.key}`);
 
-    const select = document.createElement('select');
-    select.className = 'toolbar__select';
-    select.id = `filter-${filter.key}`;
-    select.dataset.filterKey = filter.key;
-
-    // "All" option
-    const allOption = document.createElement('option');
-    allOption.value = '';
-    allOption.textContent = `All`;
-    select.appendChild(allOption);
-
-    for (const optionValue of filter.options) {
-      const option = document.createElement('option');
-      option.value = optionValue;
-      option.textContent = optionValue;
-      if (state.filters[filter.key] === optionValue) {
-        option.selected = true;
-      }
-      select.appendChild(option);
-    }
-
-    select.addEventListener('change', (e) => {
-      onFilterChange(filter.key, e.target.value);
-    });
-
     filtersEl.appendChild(label);
-    filtersEl.appendChild(select);
+
+    if (filter.type === 'text') {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'toolbar__input';
+      input.id = `filter-${filter.key}`;
+      input.placeholder = filter.label;
+      input.value = state.filters[filter.key] || '';
+      input.addEventListener('change', (e) => {
+        onFilterChange(filter.key, e.target.value.trim());
+      });
+      filtersEl.appendChild(input);
+    } else {
+      const select = document.createElement('select');
+      select.className = 'toolbar__select';
+      select.id = `filter-${filter.key}`;
+      select.dataset.filterKey = filter.key;
+
+      const allOption = document.createElement('option');
+      allOption.value = '';
+      allOption.textContent = `All`;
+      select.appendChild(allOption);
+
+      for (const optionValue of filter.options) {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = optionValue;
+        if (state.filters[filter.key] === optionValue) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      }
+
+      select.addEventListener('change', (e) => {
+        onFilterChange(filter.key, e.target.value);
+      });
+
+      filtersEl.appendChild(select);
+    }
   }
 }
 
@@ -307,7 +324,23 @@ function renderTableBody() {
     const tr = document.createElement('tr');
     for (const col of config.columns) {
       const td = document.createElement('td');
-      td.innerHTML = formatCell(row[col.key], col.key);
+      if (col.key === '_actions' && state.activeTab === 'law_entries') {
+        td.appendChild(renderRowActions(row));
+      } else if (col.key === 'law_id' && state.activeTab === 'law_entries') {
+        // Clickable law_id to view jobs for this law
+        const link = document.createElement('a');
+        link.className = 'cell-mono law-id-link';
+        link.textContent = row.law_id;
+        link.title = 'View jobs for this law';
+        link.href = '#';
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          viewJobsForLaw(row.law_id);
+        });
+        td.appendChild(link);
+      } else {
+        td.innerHTML = formatCell(row[col.key], col.key);
+      }
       tr.appendChild(td);
     }
     tbody.appendChild(tr);
@@ -326,6 +359,35 @@ function renderPagination() {
 
   prevBtn.disabled = currentPage <= 1;
   nextBtn.disabled = currentPage >= totalPages;
+}
+
+const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvested', 'enriched', 'enrich_failed'];
+
+function renderRowActions(row) {
+  const container = document.createElement('span');
+  container.className = 'action-btns';
+
+  // Re-harvest: available for most statuses (not while actively processing)
+  if (RE_HARVESTABLE_STATUSES.includes(row.status)) {
+    const harvestBtn = document.createElement('button');
+    harvestBtn.className = 'action-btn action-btn--harvest';
+    harvestBtn.textContent = 'Harvest';
+    harvestBtn.title = `Re-harvest ${row.law_id}`;
+    harvestBtn.addEventListener('click', () => onRowHarvestClick(row.law_id, harvestBtn));
+    container.appendChild(harvestBtn);
+  }
+
+  // Enrich: available after harvest completes
+  if (ENRICHABLE_STATUSES.includes(row.status)) {
+    const enrichBtn = document.createElement('button');
+    enrichBtn.className = 'action-btn action-btn--enrich';
+    enrichBtn.textContent = 'Enrich';
+    enrichBtn.title = `Trigger enrichment for ${row.law_id}`;
+    enrichBtn.addEventListener('click', () => onEnrichClick(row.law_id, enrichBtn));
+    container.appendChild(enrichBtn);
+  }
+
+  return container;
 }
 
 function renderAll() {
@@ -431,10 +493,10 @@ function switchTab(tabKey) {
   state.totalCount = 0;
   state.error = null;
 
-  // Show harvest form only on jobs tab
+  // Show harvest form on both law_entries and jobs tabs
   const harvestForm = $('#harvest-form');
   if (harvestForm) {
-    harvestForm.style.display = tabKey === 'jobs' ? '' : 'none';
+    harvestForm.style.display = '';
   }
 
   renderTabs();
@@ -480,6 +542,92 @@ async function onHarvestSubmit(e) {
     btn.disabled = false;
     btn.textContent = 'Harvest';
   }
+}
+
+async function onRowHarvestClick(lawId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Submitting\u2026';
+
+  try {
+    const response = await fetch('api/harvest-jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bwb_id: lawId }),
+    });
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+    if (response.status === 409) {
+      alert('A harvest job for this law is already pending or processing.');
+      return;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    const result = await response.json();
+    alert(`Created harvest job: ${result.job_id}`);
+    fetchData();
+  } catch (err) {
+    alert('Harvest failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Harvest';
+  }
+}
+
+async function onEnrichClick(lawId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Submitting\u2026';
+
+  try {
+    const response = await fetch('api/enrich-jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ law_id: lawId }),
+    });
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+    if (response.status === 409) {
+      alert('Enrich jobs for this law are already pending or processing.');
+      return;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    const result = await response.json();
+    alert(`Created ${result.job_ids.length} enrich job(s) for ${result.providers.join(', ')}`);
+    fetchData();
+  } catch (err) {
+    alert('Enrich failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Enrich';
+  }
+}
+
+function viewJobsForLaw(lawId) {
+  state.activeTab = 'jobs';
+  state.sort = TAB_CONFIG.jobs.defaultSort;
+  state.order = 'desc';
+  state.offset = 0;
+  state.filters = { law_id: lawId };
+  state.data = [];
+  state.totalCount = 0;
+  state.error = null;
+
+  const harvestForm = $('#harvest-form');
+  if (harvestForm) {
+    harvestForm.style.display = '';
+  }
+
+  renderTabs();
+  renderAll();
+  fetchData();
 }
 
 function onSort(key) {
