@@ -204,6 +204,19 @@ async fn process_next_job(
                         .with_payload(payload_json);
                     match job_queue::create_enrich_job_if_not_exists(pool, enrich_req).await {
                         Ok(Some(enrich_job)) => {
+                            // Link the first created enrich job to the law entry.
+                            // With dual providers only one enrich_job_id column exists,
+                            // so the first provider's job wins.
+                            if let Err(e) =
+                                law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await
+                            {
+                                tracing::warn!(
+                                    error = %e,
+                                    law_id = %job.law_id,
+                                    enrich_job_id = %enrich_job.id,
+                                    "failed to link enrich job to law entry"
+                                );
+                            }
                             tracing::info!(
                                 enrich_job_id = %enrich_job.id,
                                 law_id = %job.law_id,
@@ -413,8 +426,22 @@ async fn process_next_enrich_job(
         "processing enrich job"
     );
 
-    if let Err(e) = law_status::update_status(pool, &job.law_id, LawStatusValue::Enriching).await {
-        tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
+    // Only transition to Enriching if the law is not already Enriched
+    // (another provider may have completed while this job was queued).
+    match law_status::get_law(pool, &job.law_id).await {
+        Ok(entry) if entry.status == LawStatusValue::Enriched => {
+            tracing::info!(
+                law_id = %job.law_id,
+                "skipping Enriching transition: law already Enriched by another provider"
+            );
+        }
+        _ => {
+            if let Err(e) =
+                law_status::update_status(pool, &job.law_id, LawStatusValue::Enriching).await
+            {
+                tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
+            }
+        }
     }
 
     // Create a branch-specific corpus client for this enrichment.
@@ -441,7 +468,10 @@ async fn process_next_enrich_job(
         .map(|c| c.repo_path().to_path_buf())
         .unwrap_or_else(|| repo_path.to_path_buf());
 
-    match execute_enrich(&payload, &effective_repo, &effective_config).await {
+    // Capture the per-job checkout path for cleanup after the job completes.
+    let checkout_path = enrich_corpus.as_ref().map(|c| c.repo_path().to_path_buf());
+
+    let job_result = match execute_enrich(&payload, &effective_repo, &effective_config).await {
         Ok((result, written_files)) => {
             tracing::info!(
                 job_id = %job.id,
@@ -551,7 +581,23 @@ async fn process_next_enrich_job(
 
             Ok(true)
         }
+    };
+
+    // Clean up the per-job corpus checkout directory (regardless of outcome).
+    // Each enrich job creates a full git clone; without cleanup these accumulate.
+    if let Some(path) = checkout_path {
+        if let Err(e) = tokio::fs::remove_dir_all(&path).await {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to clean up per-job corpus checkout"
+            );
+        } else {
+            tracing::debug!(path = %path.display(), "cleaned up per-job corpus checkout");
+        }
     }
+
+    job_result
 }
 
 /// Execute the harvest and write results to the output directory.
