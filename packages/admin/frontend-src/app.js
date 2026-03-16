@@ -346,7 +346,7 @@ function renderPagination() {
 
   const info = document.createElement('span');
   info.className = 'pagination-info';
-  info.textContent = `${currentPage} / ${totalPages} (${state.totalCount})`;
+  info.textContent = `${currentPage} / ${totalPages} (${state.totalCount} results)`;
 
   const nextBtn = document.createElement('rr-button');
   nextBtn.setAttribute('variant', 'neutral-tinted');
@@ -504,7 +504,7 @@ function switchTab(tabKey) {
 
 function getTextFieldValue(el) {
   // rr-text-field may expose .value on host or only on the inner <input>
-  if (el.value !== undefined && el.value !== '') return el.value;
+  if (el.value != null && el.value !== '') return el.value;
   const inner = el.shadowRoot?.querySelector('input');
   return inner?.value ?? '';
 }
@@ -529,11 +529,15 @@ async function onHarvestSubmit() {
       body: JSON.stringify({ bwb_id: bwbId }),
     });
     if (response.status === 401) {
+      btn.removeAttribute('disabled');
+      btn.textContent = 'Harvest';
       window.location.href = '/auth/login';
       return;
     }
     if (response.status === 409) {
       alert('A harvest job for this law is already pending or processing.');
+      btn.removeAttribute('disabled');
+      btn.textContent = 'Harvest';
       return;
     }
     if (!response.ok) {
@@ -960,10 +964,12 @@ async function init() {
     harvestBtn.addEventListener('click', onHarvestSubmit);
   }
 
-  // Bind reset jobs button
-  const resetBtn = $('#reset-jobs-btn');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', onResetJobs);
+  // Re-enable Enter-to-submit on the BWB ID input (no <form> to handle it)
+  const harvestInput = $('#harvest-bwb-id');
+  if (harvestInput) {
+    harvestInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') onHarvestSubmit();
+    });
   }
 
   // Bind detail panel close
