@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -27,6 +28,10 @@ pub struct HarvestResult {
     pub article_count: usize,
     pub warning_count: usize,
     pub warnings: Vec<String>,
+    /// Unique BWB IDs referenced by this law's articles (excluding self-references).
+    pub referenced_bwb_ids: Vec<String>,
+    /// The resolved effective date used for this harvest.
+    pub harvest_date: String,
 }
 
 /// Status file written alongside the law YAML.
@@ -84,6 +89,16 @@ pub async fn execute_harvest(
     let warning_count = law.warning_count();
     let warnings = law.warnings.clone();
 
+    let referenced_bwb_ids: Vec<String> = law
+        .articles
+        .iter()
+        .flat_map(|a| a.references.iter())
+        .map(|r| r.bwb_id.clone())
+        .filter(|id| id != &payload.bwb_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+
     let output_base_path = repo_path.join(output_base);
     let law_for_save = law;
     let date_for_save = effective_date.clone();
@@ -107,7 +122,7 @@ pub async fn execute_harvest(
         slug: slug.clone(),
         status: "harvested".to_string(),
         last_harvested: Utc::now().to_rfc3339(),
-        harvest_date: effective_date,
+        harvest_date: effective_date.clone(),
         article_count,
         warning_count,
         warnings: warnings.clone(),
@@ -125,6 +140,8 @@ pub async fn execute_harvest(
         article_count,
         warning_count,
         warnings,
+        referenced_bwb_ids,
+        harvest_date: effective_date,
     };
 
     let written_files = vec![yaml_path, status_file_path];
@@ -171,11 +188,17 @@ mod tests {
             article_count: 10,
             warning_count: 2,
             warnings: vec!["warning1".to_string(), "warning2".to_string()],
+            referenced_bwb_ids: vec!["BWBR0002629".to_string(), "BWBR0018450".to_string()],
+            harvest_date: "2025-01-01".to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["law_name"], "Wet op de zorgtoeslag");
         assert_eq!(json["article_count"], 10);
+        assert_eq!(json["harvest_date"], "2025-01-01");
+
+        let refs = json["referenced_bwb_ids"].as_array().unwrap();
+        assert_eq!(refs.len(), 2);
     }
 
     #[test]

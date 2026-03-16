@@ -247,6 +247,33 @@ where
     Ok(count)
 }
 
+/// Check if a non-failed harvest job already exists for the given (law_id, date) combination.
+///
+/// Returns `true` if a pending, processing, or completed harvest job exists,
+/// preventing duplicate jobs for the same law and consolidation date.
+pub async fn harvest_job_exists<'e, E>(executor: E, law_id: &str, date: &str) -> Result<bool>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM jobs
+            WHERE job_type = 'harvest'
+              AND law_id = $1
+              AND (payload->>'date') = $2
+              AND status != 'failed'
+        )
+        "#,
+    )
+    .bind(law_id)
+    .bind(date)
+    .fetch_one(executor)
+    .await?;
+
+    Ok(exists)
+}
+
 /// Get a job by ID.
 pub async fn get_job<'e, E>(executor: E, job_id: Uuid) -> Result<Job>
 where
