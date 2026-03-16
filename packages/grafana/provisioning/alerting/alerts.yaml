@@ -45,7 +45,7 @@ groups:
   - orgId: 1
     name: regelrecht
     folder: Regelrecht
-    interval: 1h
+    interval: 10m
     rules:
       - uid: daily-summary
         title: Dagelijkse Regelrecht Update
