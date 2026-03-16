@@ -111,8 +111,12 @@ impl CorpusClient {
             // The harvested files are still on disk (written by the harvest step),
             // so the next retry can re-stage and commit them cleanly.
             let remote_ref = format!("origin/{}", self.config.branch);
-            let _ = self.run_git(&["fetch", "origin", &self.config.branch]).await;
-            let _ = self.run_git(&["reset", "--hard", &remote_ref]).await;
+            if let Err(e) = self.run_git(&["fetch", "origin", &self.config.branch]).await {
+                tracing::warn!(error = %e, "fetch failed during rebase recovery");
+            }
+            if let Err(e) = self.run_git(&["reset", "--hard", &remote_ref]).await {
+                tracing::warn!(error = %e, "hard-reset failed during rebase recovery");
+            }
             return Err(e);
         }
 
