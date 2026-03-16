@@ -4,6 +4,7 @@ export default defineConfig({
   base: './',
   root: '.',
   build: {
+    cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: '../static',
     emptyOutDir: true,
   },
