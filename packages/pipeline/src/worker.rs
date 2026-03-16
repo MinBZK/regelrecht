@@ -478,39 +478,61 @@ async fn process_next_enrich_job(
                 "enrichment completed successfully"
             );
 
-            // Push to enrichment branch — fail the job if push fails so it
-            // gets retried rather than silently losing the enrichment result.
-            if let Some(ref corpus) = enrich_corpus {
-                let message = format!(
-                    "enrich({}): {} ({})",
-                    result.provider, result.law_id, result.yaml_path
-                );
-                corpus.commit_and_push(&written_files, &message).await.map_err(|e| {
-                    tracing::error!(error = %e, "failed to push enrichment to corpus — failing job for retry");
-                    PipelineError::Enrich(format!("corpus push failed: {e}"))
-                })?;
+            // Push to corpus, complete the job in DB, and update law status.
+            // If any of these fail, mark the job as failed so it gets retried
+            // instead of orphaning it in 'processing' state for 30 minutes.
+            let commit_result: std::result::Result<(), PipelineError> = async {
+                if let Some(ref corpus) = enrich_corpus {
+                    let message = format!(
+                        "enrich({}): {} ({})",
+                        result.provider, result.law_id, result.yaml_path
+                    );
+                    corpus
+                        .commit_and_push(&written_files, &message)
+                        .await
+                        .map_err(|e| PipelineError::Enrich(format!("corpus push failed: {e}")))?;
+                }
+
+                let result_json = serde_json::to_value(&result).ok();
+
+                let mut tx = pool.begin().await?;
+                job_queue::complete_job(&mut *tx, job.id, result_json).await?;
+                law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
+                tx.commit().await?;
+                Ok(())
             }
+            .await;
 
-            let result_json = serde_json::to_value(&result).ok();
-
-            let mut tx = pool.begin().await?;
-            job_queue::complete_job(&mut *tx, job.id, result_json).await?;
-            law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Enriched).await?;
-            tx.commit().await?;
-
-            // Set coverage score outside the transaction (non-critical).
-            // With dual providers, whichever finishes last writes the score.
-            if let Err(e) =
-                law_status::set_coverage_score(pool, &job.law_id, result.coverage_score).await
-            {
-                tracing::warn!(error = %e, provider = %result.provider, "failed to set coverage score");
-            } else {
-                tracing::info!(
-                    law_id = %job.law_id,
-                    provider = %result.provider,
-                    coverage_score = result.coverage_score,
-                    "coverage score updated"
-                );
+            match commit_result {
+                Err(e) => {
+                    tracing::error!(
+                        job_id = %job.id,
+                        error = %e,
+                        "post-enrichment commit failed, marking job as failed for retry"
+                    );
+                    let error_json = serde_json::json!({ "error": e.to_string() });
+                    if let Err(fail_err) = job_queue::fail_job(pool, job.id, Some(error_json)).await
+                    {
+                        tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+                    }
+                }
+                Ok(()) => {
+                    // Set coverage score outside the transaction (non-critical).
+                    // With dual providers, whichever finishes last writes the score.
+                    if let Err(e) =
+                        law_status::set_coverage_score(pool, &job.law_id, result.coverage_score)
+                            .await
+                    {
+                        tracing::warn!(error = %e, provider = %result.provider, "failed to set coverage score");
+                    } else {
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            provider = %result.provider,
+                            coverage_score = result.coverage_score,
+                            "coverage score updated"
+                        );
+                    }
+                }
             }
 
             Ok(true)
@@ -524,32 +546,37 @@ async fn process_next_enrich_job(
             );
 
             let error_json = serde_json::json!({ "error": e.to_string() });
-            let failed_job = job_queue::fail_job(pool, job.id, Some(error_json)).await?;
-
-            if failed_job.status == crate::models::JobStatus::Failed {
-                // Atomically set EnrichFailed only if not already Enriched.
-                if let Err(status_err) = law_status::update_status_unless(
-                    pool,
-                    &job.law_id,
-                    LawStatusValue::Enriched,
-                    LawStatusValue::EnrichFailed,
-                )
-                .await
-                {
-                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+            match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                Ok(failed_job) => {
+                    if failed_job.status == crate::models::JobStatus::Failed {
+                        // Atomically set EnrichFailed only if not already Enriched.
+                        if let Err(status_err) = law_status::update_status_unless(
+                            pool,
+                            &job.law_id,
+                            LawStatusValue::Enriched,
+                            LawStatusValue::EnrichFailed,
+                        )
+                        .await
+                        {
+                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                        }
+                    } else {
+                        // Job will be retried — atomically reset to Harvested only if
+                        // status is currently Enriching. Cannot regress from Enriched.
+                        if let Err(status_err) = law_status::update_status_if(
+                            pool,
+                            &job.law_id,
+                            LawStatusValue::Enriching,
+                            LawStatusValue::Harvested,
+                        )
+                        .await
+                        {
+                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+                        }
+                    }
                 }
-            } else {
-                // Job will be retried — atomically reset to Harvested only if
-                // status is currently Enriching. Cannot regress from Enriched.
-                if let Err(status_err) = law_status::update_status_if(
-                    pool,
-                    &job.law_id,
-                    LawStatusValue::Enriching,
-                    LawStatusValue::Harvested,
-                )
-                .await
-                {
-                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
+                Err(fail_err) => {
+                    tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
                 }
             }
 

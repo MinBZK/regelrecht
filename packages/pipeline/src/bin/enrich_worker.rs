@@ -58,7 +58,7 @@ async fn main() {
                                 as &[u8]
                         }
                         Err(_) => {
-                            b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 13\r\n\r\nDB unreachable"
+                            b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 14\r\n\r\nDB unreachable"
                         }
                     };
                 let _ = stream.write_all(response).await;
