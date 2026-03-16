@@ -133,6 +133,77 @@ where
     Ok(entry)
 }
 
+/// Atomically update status only if the current status matches `expected`.
+///
+/// Returns `Ok(Some(entry))` if the row was updated, `Ok(None)` if the current
+/// status didn't match (no row modified). This avoids TOCTOU races that occur
+/// with separate get_law + update_status calls.
+#[tracing::instrument(skip(executor))]
+pub async fn update_status_if<'e, E>(
+    executor: E,
+    law_id: &str,
+    expected: LawStatusValue,
+    new_status: LawStatusValue,
+) -> Result<Option<LawEntry>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let entry = sqlx::query_as::<_, LawEntry>(
+        r#"
+        UPDATE law_entries SET status = $3
+        WHERE law_id = $1 AND status = $2
+        RETURNING *
+        "#,
+    )
+    .bind(law_id)
+    .bind(expected)
+    .bind(new_status)
+    .fetch_optional(executor)
+    .await?;
+
+    if let Some(ref e) = entry {
+        tracing::info!(law_id = %e.law_id, from = ?expected, to = ?new_status, "law status conditionally updated");
+    } else {
+        tracing::debug!(law_id = %law_id, expected = ?expected, to = ?new_status, "conditional status update skipped (status mismatch)");
+    }
+    Ok(entry)
+}
+
+/// Atomically update status only if the current status is NOT the given value.
+///
+/// Returns `Ok(Some(entry))` if the row was updated, `Ok(None)` if the current
+/// status matched `not_status` (no row modified).
+#[tracing::instrument(skip(executor))]
+pub async fn update_status_unless<'e, E>(
+    executor: E,
+    law_id: &str,
+    not_status: LawStatusValue,
+    new_status: LawStatusValue,
+) -> Result<Option<LawEntry>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let entry = sqlx::query_as::<_, LawEntry>(
+        r#"
+        UPDATE law_entries SET status = $3
+        WHERE law_id = $1 AND status != $2
+        RETURNING *
+        "#,
+    )
+    .bind(law_id)
+    .bind(not_status)
+    .bind(new_status)
+    .fetch_optional(executor)
+    .await?;
+
+    if let Some(ref e) = entry {
+        tracing::info!(law_id = %e.law_id, to = ?new_status, "law status updated (was not {:?})", not_status);
+    } else {
+        tracing::debug!(law_id = %law_id, not_status = ?not_status, to = ?new_status, "status update skipped (status is {:?})", not_status);
+    }
+    Ok(entry)
+}
+
 /// Get a law entry by ID.
 pub async fn get_law<'e, E>(executor: E, law_id: &str) -> Result<LawEntry>
 where

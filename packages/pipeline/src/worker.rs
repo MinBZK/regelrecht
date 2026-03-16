@@ -426,22 +426,17 @@ async fn process_next_enrich_job(
         "processing enrich job"
     );
 
-    // Only transition to Enriching if the law is not already Enriched
-    // (another provider may have completed while this job was queued).
-    match law_status::get_law(pool, &job.law_id).await {
-        Ok(entry) if entry.status == LawStatusValue::Enriched => {
-            tracing::info!(
-                law_id = %job.law_id,
-                "skipping Enriching transition: law already Enriched by another provider"
-            );
-        }
-        _ => {
-            if let Err(e) =
-                law_status::update_status(pool, &job.law_id, LawStatusValue::Enriching).await
-            {
-                tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
-            }
-        }
+    // Atomically transition to Enriching only if not already Enriched.
+    // Uses a conditional UPDATE to avoid the TOCTOU race of get-then-update.
+    if let Err(e) = law_status::update_status_unless(
+        pool,
+        &job.law_id,
+        LawStatusValue::Enriched,
+        LawStatusValue::Enriching,
+    )
+    .await
+    {
+        tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
     }
 
     // Create a branch-specific corpus client for this enrichment.
@@ -532,50 +527,29 @@ async fn process_next_enrich_job(
             let failed_job = job_queue::fail_job(pool, job.id, Some(error_json)).await?;
 
             if failed_job.status == crate::models::JobStatus::Failed {
-                // Only set EnrichFailed if the current status is not already
-                // Enriched (another provider may have succeeded).
-                match law_status::get_law(pool, &job.law_id).await {
-                    Ok(entry) if entry.status == LawStatusValue::Enriched => {
-                        tracing::info!(
-                            law_id = %job.law_id,
-                            "not setting enrich_failed: another provider already enriched successfully"
-                        );
-                    }
-                    _ => {
-                        if let Err(status_err) = law_status::update_status(
-                            pool,
-                            &job.law_id,
-                            LawStatusValue::EnrichFailed,
-                        )
-                        .await
-                        {
-                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
-                        }
-                    }
+                // Atomically set EnrichFailed only if not already Enriched.
+                if let Err(status_err) = law_status::update_status_unless(
+                    pool,
+                    &job.law_id,
+                    LawStatusValue::Enriched,
+                    LawStatusValue::EnrichFailed,
+                )
+                .await
+                {
+                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
                 }
             } else {
-                // Job will be retried — only reset to Harvested if the current
-                // status is Enriching. If another provider already enriched
-                // successfully (status = Enriched), we must not overwrite that.
-                match law_status::get_law(pool, &job.law_id).await {
-                    Ok(entry) if entry.status == LawStatusValue::Enriching => {
-                        if let Err(status_err) =
-                            law_status::update_status(pool, &job.law_id, LawStatusValue::Harvested)
-                                .await
-                        {
-                            tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
-                        }
-                    }
-                    Ok(entry) => {
-                        tracing::info!(
-                            law_id = %job.law_id,
-                            current_status = ?entry.status,
-                            "not resetting status to harvested: current status is not enriching"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to get law entry for status check");
-                    }
+                // Job will be retried — atomically reset to Harvested only if
+                // status is currently Enriching. Cannot regress from Enriched.
+                if let Err(status_err) = law_status::update_status_if(
+                    pool,
+                    &job.law_id,
+                    LawStatusValue::Enriching,
+                    LawStatusValue::Harvested,
+                )
+                .await
+                {
+                    tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to reset status to harvested for retry");
                 }
             }
 
