@@ -50,14 +50,16 @@ machine_readable:
 
 1. Engine indexes all `implements` declarations at law load time
 2. When executing an article with `open_terms`, the engine looks up implementations
-3. Priority resolution: **lex superior** (higher regulatory layer wins) then **lex posterior** (newer `valid_from` wins). When candidates have the same layer and date, this is ambiguous — the engine returns a `DelegationError` rather than silently picking one. This is a law authoring error that needs fixing
-4. If found: execute the implementing article to get the value
-5. If not found + has `default`: execute the default actions block
-6. If not found + `required: true` + no default: `DelegationError`
-7. If not found + `required: false` + no default: skip (traced)
-8. **Cycle detection**: if an open term is already being resolved (via `ResolutionContext.visited`), a `CircularReference` error is raised — circular dependencies are a law authoring problem, not something the engine should fix. The cycle detection key uses `\0` (null byte) as separator to prevent key collisions when law IDs or article numbers contain `#`
-9. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a gemeente verordening tries to implement a term delegated to a minister, the engine rejects it with a clear error
-10. **Array size validation**: `open_terms` and `implements` arrays are validated against `MAX_ARRAY_SIZE` at law load time, preventing resource exhaustion
+3. **Temporal filtering**: for each candidate, the engine selects the version valid for the calculation date (`valid_from <= calculation_date`). Candidates with no valid version for the requested date are excluded. This ensures that e.g. the 2025 standaardpremie is used for a 2025 calculation, even if a 2026 version is also loaded
+4. **Scope filtering**: candidates are filtered against the execution scope (e.g., `gemeente_code`). A scoped regulation only matches when the execution parameters contain the same value. Unscoped (national) regulations always match
+5. **Priority resolution**: among remaining candidates, **lex superior** (higher regulatory layer wins) then **lex posterior** (newer `valid_from` wins). When candidates have the same layer and date, this is ambiguous — the engine returns an error rather than silently picking one. This is a law authoring error that needs fixing
+6. If found: execute the implementing article to get the value
+7. If not found + has `default`: execute the default actions block
+8. If not found + `required: true` + no default: error
+9. If not found + `required: false` + no default: skip (traced)
+10. **Cycle detection**: if an open term is already being resolved (via `ResolutionContext.visited`), a `CircularReference` error is raised — circular dependencies are a law authoring problem, not something the engine should fix. The cycle detection key uses `\0` (null byte) as separator to prevent key collisions when law IDs or article numbers contain `#`
+11. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a gemeente verordening tries to implement a term delegated to a minister, the engine rejects it with a clear error
+12. **Array size validation**: `open_terms` and `implements` arrays are validated against `MAX_ARRAY_SIZE` at law load time, preventing resource exhaustion
 
 ### Same-law routing via `source.output`
 

@@ -2094,4 +2094,100 @@ articles:
 
         assert_eq!(result.outputs.get("percentage"), Some(&Value::Int(4)));
     }
+
+    #[test]
+    fn test_ioc_temporal_filtering() {
+        // Two versions of the same implementing regulation (same $id, different valid_from).
+        // The engine should select the version valid for the calculation date.
+        let higher_law = r#"
+$id: test_higher_law
+regulatory_layer: WET
+publication_date: '2024-01-01'
+articles:
+  - number: '1'
+    text: Test article with open term
+    machine_readable:
+      open_terms:
+        - id: yearly_amount
+          type: number
+          required: true
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $yearly_amount
+"#;
+
+        let impl_v2025 = r#"
+$id: test_impl_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2024-11-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: 2025 amount
+    machine_readable:
+      implements:
+        - law: test_higher_law
+          article: '1'
+          open_term: yearly_amount
+      execution:
+        output:
+          - name: yearly_amount
+            type: number
+        actions:
+          - output: yearly_amount
+            value: 211200
+"#;
+
+        let impl_v2026 = r#"
+$id: test_impl_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-11-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '1'
+    text: 2026 amount
+    machine_readable:
+      implements:
+        - law: test_higher_law
+          article: '1'
+          open_term: yearly_amount
+      execution:
+        output:
+          - name: yearly_amount
+            type: number
+        actions:
+          - output: yearly_amount
+            value: 220000
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(higher_law).unwrap();
+        service.load_law(impl_v2025).unwrap();
+        service.load_law(impl_v2026).unwrap();
+
+        // Calculate for 2025: should use the 2025 version
+        let result = service
+            .evaluate_law_output("test_higher_law", "result", HashMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(211200)),
+            "2025 calculation should use 2025 version"
+        );
+
+        // Calculate for 2026: should use the 2026 version
+        let result = service
+            .evaluate_law_output("test_higher_law", "result", HashMap::new(), "2026-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(220000)),
+            "2026 calculation should use 2026 version"
+        );
+    }
 }
