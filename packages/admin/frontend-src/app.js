@@ -472,7 +472,11 @@ async function onHarvestSubmit(e) {
     }
     await response.json();
     input.value = '';
+    btn.textContent = 'Queued \u2713';
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = 'Harvest'; }, 2000);
     fetchData();
+    return;
   } catch (err) {
     alert('Harvest failed: ' + err.message);
   } finally {

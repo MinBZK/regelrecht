@@ -247,38 +247,14 @@ where
     Ok(count)
 }
 
-/// Check if a non-failed harvest job already exists for the given (law_id, date) combination.
-///
-/// Returns `true` if a pending, processing, or completed harvest job exists,
-/// preventing duplicate jobs for the same law and consolidation date.
-pub async fn harvest_job_exists<'e, E>(executor: E, law_id: &str, date: &str) -> Result<bool>
-where
-    E: sqlx::PgExecutor<'e>,
-{
-    let exists: bool = sqlx::query_scalar(
-        r#"
-        SELECT EXISTS(
-            SELECT 1 FROM jobs
-            WHERE job_type = 'harvest'
-              AND law_id = $1
-              AND (payload->>'date') = $2
-              AND status != 'failed'
-        )
-        "#,
-    )
-    .bind(law_id)
-    .bind(date)
-    .fetch_one(executor)
-    .await?;
-
-    Ok(exists)
-}
-
-/// Atomically create a harvest job only if no non-failed harvest job exists
+/// Create a harvest job only if no non-failed harvest job exists
 /// for the same (law_id, date) combination.
 ///
-/// Uses `INSERT ... WHERE NOT EXISTS` to avoid the TOCTOU race condition
-/// that would occur with a separate `harvest_job_exists` + `create_job` sequence.
+/// Uses `INSERT ... WHERE NOT EXISTS` to reduce duplicates compared to a
+/// separate check + insert. Note: under READ COMMITTED isolation, concurrent
+/// transactions can still both insert if they evaluate the subquery before
+/// either commits. This is acceptable for the single-worker MVP — duplicates
+/// only cause redundant work, not data corruption.
 ///
 /// Returns `Some(Job)` if a new job was created, `None` if a matching job already exists.
 pub async fn create_harvest_job_if_not_exists<'e, E>(
