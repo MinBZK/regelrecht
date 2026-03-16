@@ -14,6 +14,7 @@ export default defineConfig({
     }),
   ],
   build: {
+    cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',
     rollupOptions: {
       input: {
