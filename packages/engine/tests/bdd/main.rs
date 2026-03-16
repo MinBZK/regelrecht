@@ -45,9 +45,10 @@ async fn main() {
     }
 
     // Run cucumber with all features
+    // run_and_exit() exits with non-zero code on test failures (unlike run())
     world::RegelrechtWorld::cucumber()
         .max_concurrent_scenarios(1) // Run scenarios sequentially for predictable state
         .with_default_cli()
-        .run(features_dir)
+        .run_and_exit(features_dir)
         .await;
 }

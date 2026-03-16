@@ -523,16 +523,46 @@ impl LawExecutionService {
         }
 
         // Use traced evaluation if trace is available
-        if let Some(ref tb) = res_ctx.trace {
+        let mut result = if let Some(ref tb) = res_ctx.trace {
             engine.evaluate_with_trace(
                 combined_params,
                 res_ctx.calculation_date,
                 requested_output,
                 Rc::clone(tb),
-            )
+            )?
         } else {
-            engine.evaluate_with_output(combined_params, res_ctx.calculation_date, requested_output)
+            engine.evaluate_with_output(
+                combined_params,
+                res_ctx.calculation_date,
+                requested_output,
+            )?
+        };
+
+        // Enforce TypeSpec: round eurocent outputs to integer.
+        // This applies only to top-level article outputs (the API boundary).
+        // Intermediate values within article logic remain as Float to preserve
+        // precision during calculation; rounding happens here at the output edge.
+        if let Some(exec) = article.get_execution_spec() {
+            if let Some(outputs) = &exec.output {
+                for output_spec in outputs {
+                    let is_eurocent = output_spec
+                        .type_spec
+                        .as_ref()
+                        .and_then(|ts| ts.unit.as_deref())
+                        == Some("eurocent");
+                    if is_eurocent {
+                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
+                            let rounded = crate::operations::f64_to_i64_safe(f.round())?;
+                            result
+                                .outputs
+                                .insert(output_spec.name.clone(), Value::Int(rounded));
+                        }
+                    }
+                }
+            }
         }
+
+        Ok(result)
     }
 
     /// Pre-resolve all resolve actions in an article.

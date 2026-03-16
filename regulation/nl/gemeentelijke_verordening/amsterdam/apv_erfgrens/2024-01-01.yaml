@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: apv_erfgrens_amsterdam
 uuid: a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a00363
 regulatory_layer: GEMEENTELIJKE_VERORDENING

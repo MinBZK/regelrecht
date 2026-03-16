@@ -105,6 +105,20 @@ fn set_dji_detenties_data(world: &mut RegelrechtWorld, step: &Step) {
     }
 }
 
+#[given(regex = r#"the following DUO "inschrijvingen" data:"#)]
+fn set_duo_inschrijvingen_data(world: &mut RegelrechtWorld, step: &Step) {
+    if let Some(table) = &step.table {
+        parse_external_data_table(table, &mut world.external_data.duo_inschrijvingen);
+    }
+}
+
+#[given(regex = r#"the following DUO "studiefinanciering" data:"#)]
+fn set_duo_studiefinanciering_data(world: &mut RegelrechtWorld, step: &Step) {
+    if let Some(table) = &step.table {
+        parse_external_data_table(table, &mut world.external_data.duo_studiefinanciering);
+    }
+}
+
 /// Parse an external data table with headers.
 ///
 /// Table format:

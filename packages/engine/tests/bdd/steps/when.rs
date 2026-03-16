@@ -68,6 +68,16 @@ fn execute_healthcare_allowance(world: &mut RegelrechtWorld) {
         "detenties",
         &world.external_data.dji_detenties,
     );
+    register_if_present(
+        &mut world.service,
+        "inschrijvingen",
+        &world.external_data.duo_inschrijvingen,
+    );
+    register_if_present(
+        &mut world.service,
+        "studiefinanciering",
+        &world.external_data.duo_studiefinanciering,
+    );
 
     // Execute — engine resolves through cross-law references automatically.
     // BSN stays in parameters (set by set_rvig_personal_data in given.rs).
