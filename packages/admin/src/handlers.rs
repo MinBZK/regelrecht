@@ -562,13 +562,19 @@ pub async fn create_enrich_jobs(
 
         match create_enrich_job_if_not_exists(&mut *tx, enrich_req).await {
             Ok(Some(enrich_job)) => {
-                if let Err(e) = set_enrich_job(&mut *tx, &law_id, enrich_job.id).await {
-                    tracing::warn!(
-                        error = %e,
-                        law_id = %law_id,
-                        "failed to link enrich job to law entry"
-                    );
-                }
+                set_enrich_job(&mut *tx, &law_id, enrich_job.id)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!(
+                            error = %e,
+                            law_id = %law_id,
+                            "failed to link enrich job to law entry"
+                        );
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "failed to link enrich job".to_string(),
+                        )
+                    })?;
                 job_ids.push(enrich_job.id.to_string());
                 providers.push(provider_name.to_string());
             }
