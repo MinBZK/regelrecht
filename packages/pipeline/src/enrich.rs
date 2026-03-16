@@ -379,11 +379,12 @@ pub async fn create_enrich_corpus(
     // Use a separate checkout directory per branch + job to avoid conflicts
     // between concurrent workers processing different laws on the same branch.
     let dir_name = format!("{}-{}", branch.replace('/', "-"), job_id);
-    config.repo_path = config
+    let base_dir = config
         .repo_path
         .parent()
-        .unwrap_or(Path::new("/tmp"))
-        .join(dir_name);
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("/tmp"));
+    config.repo_path = base_dir.join(dir_name);
 
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;

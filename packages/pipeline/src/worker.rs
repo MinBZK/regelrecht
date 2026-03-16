@@ -199,46 +199,56 @@ async fn process_next_job(
                     yaml_path: result.file_path.clone(),
                     provider: Some((*provider_name).to_string()),
                 };
-                if let Ok(payload_json) = serde_json::to_value(&enrich_payload) {
-                    let enrich_req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
-                        .with_payload(payload_json);
-                    match job_queue::create_enrich_job_if_not_exists(pool, enrich_req).await {
-                        Ok(Some(enrich_job)) => {
-                            // Link the first created enrich job to the law entry.
-                            // With dual providers only one enrich_job_id column exists,
-                            // so the first provider's job wins.
-                            if let Err(e) =
-                                law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await
-                            {
-                                tracing::warn!(
-                                    error = %e,
-                                    law_id = %job.law_id,
-                                    enrich_job_id = %enrich_job.id,
-                                    "failed to link enrich job to law entry"
-                                );
-                            }
-                            tracing::info!(
-                                enrich_job_id = %enrich_job.id,
-                                law_id = %job.law_id,
-                                provider = %provider_name,
-                                "auto-created enrich job after harvest"
-                            );
-                        }
-                        Ok(None) => {
-                            tracing::info!(
-                                law_id = %job.law_id,
-                                provider = %provider_name,
-                                "skipping enrich job creation: active job already exists"
-                            );
-                        }
-                        Err(e) => {
+                let payload_json = match serde_json::to_value(&enrich_payload) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            law_id = %job.law_id,
+                            provider = %provider_name,
+                            "failed to serialize enrich payload, skipping"
+                        );
+                        continue;
+                    }
+                };
+                let enrich_req =
+                    CreateJobRequest::new(JobType::Enrich, &job.law_id).with_payload(payload_json);
+                match job_queue::create_enrich_job_if_not_exists(pool, enrich_req).await {
+                    Ok(Some(enrich_job)) => {
+                        // Link the first created enrich job to the law entry.
+                        // With dual providers only one enrich_job_id column exists,
+                        // so the first provider's job wins.
+                        if let Err(e) =
+                            law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await
+                        {
                             tracing::warn!(
                                 error = %e,
                                 law_id = %job.law_id,
-                                provider = %provider_name,
-                                "failed to auto-create enrich job (harvest still succeeded)"
+                                enrich_job_id = %enrich_job.id,
+                                "failed to link enrich job to law entry"
                             );
                         }
+                        tracing::info!(
+                            enrich_job_id = %enrich_job.id,
+                            law_id = %job.law_id,
+                            provider = %provider_name,
+                            "auto-created enrich job after harvest"
+                        );
+                    }
+                    Ok(None) => {
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            provider = %provider_name,
+                            "skipping enrich job creation: active job already exists"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            law_id = %job.law_id,
+                            provider = %provider_name,
+                            "failed to auto-create enrich job (harvest still succeeded)"
+                        );
                     }
                 }
             }
@@ -511,9 +521,28 @@ async fn process_next_enrich_job(
                         "post-enrichment commit failed, marking job as failed for retry"
                     );
                     let error_json = serde_json::json!({ "error": e.to_string() });
-                    if let Err(fail_err) = job_queue::fail_job(pool, job.id, Some(error_json)).await
-                    {
-                        tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+                    match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                        Ok(failed_job) if failed_job.status == crate::models::JobStatus::Failed => {
+                            let _ = law_status::update_status_unless(
+                                pool,
+                                &job.law_id,
+                                LawStatusValue::Enriched,
+                                LawStatusValue::EnrichFailed,
+                            )
+                            .await;
+                        }
+                        Ok(_) => {
+                            let _ = law_status::update_status_if(
+                                pool,
+                                &job.law_id,
+                                LawStatusValue::Enriching,
+                                LawStatusValue::Harvested,
+                            )
+                            .await;
+                        }
+                        Err(fail_err) => {
+                            tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");
+                        }
                     }
                 }
                 Ok(()) => {

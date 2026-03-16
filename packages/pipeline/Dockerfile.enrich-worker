@@ -47,7 +47,7 @@ COPY packages/pipeline/opencode.json /etc/opencode/opencode.json
 RUN mkdir -p /opt/opencode-plugins && \
     cd /opt/opencode-plugins && \
     npm init -y && \
-    npm install @ai-sdk/openai-compatible@2.0.35 && \
+    npm install --ignore-scripts @ai-sdk/openai-compatible@2.0.35 && \
     npm cache clean --force
 
 COPY --from=builder /build/target/release/regelrecht-enrich-worker /usr/local/bin/
