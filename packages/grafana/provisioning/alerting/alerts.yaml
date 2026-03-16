@@ -60,6 +60,7 @@ groups:
             datasourceUid: PBFA97CFB590B2093
             model:
               expr: max(regelrecht_laws{status="harvested"})
+              instant: true
               refId: A
           - refId: B
             relativeTimeRange:
@@ -68,6 +69,7 @@ groups:
             datasourceUid: PBFA97CFB590B2093
             model:
               expr: max(regelrecht_laws{status="enriched"})
+              instant: true
               refId: B
           - refId: C
             relativeTimeRange:
@@ -109,6 +111,7 @@ groups:
             model:
               # Detect NEW failures in the last hour, not cumulative total.
               expr: sum(increase(regelrecht_jobs{status="failed"}[1h]))
+              instant: true
               refId: A
           - refId: C
             relativeTimeRange:
