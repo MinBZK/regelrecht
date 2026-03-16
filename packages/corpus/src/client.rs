@@ -107,10 +107,12 @@ impl CorpusClient {
         {
             tracing::warn!(error = %e, "pull --rebase failed, aborting rebase");
             let _ = self.run_git(&["rebase", "--abort"]).await;
-            // Reset the local commit to avoid orphaned commits accumulating.
-            // Uses mixed reset: undoes the commit but keeps working tree changes
-            // so they can be re-committed on the next call.
-            let _ = self.run_git(&["reset", "HEAD~1"]).await;
+            // Hard-reset to remote to recover from force-pushes or diverged history.
+            // The harvested files are still on disk (written by the harvest step),
+            // so the next retry can re-stage and commit them cleanly.
+            let remote_ref = format!("origin/{}", self.config.branch);
+            let _ = self.run_git(&["fetch", "origin", &self.config.branch]).await;
+            let _ = self.run_git(&["reset", "--hard", &remote_ref]).await;
             return Err(e);
         }
 
