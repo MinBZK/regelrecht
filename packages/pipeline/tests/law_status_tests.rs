@@ -17,7 +17,7 @@ async fn test_upsert_law() {
     assert_eq!(entry.law_id, "zorgtoeslagwet");
     assert_eq!(entry.law_name, Some("Zorgtoeslagwet".to_string()));
     assert_eq!(entry.status, LawStatusValue::Unknown);
-    assert!(entry.quality_score.is_none());
+    assert!(entry.coverage_score.is_none());
 
     let updated = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet v2"))
         .await
@@ -98,49 +98,49 @@ async fn test_set_job_links() {
 }
 
 #[tokio::test]
-async fn test_set_quality_score() {
+async fn test_set_coverage_score() {
     let db = common::TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "test_law", None)
         .await
         .unwrap();
 
-    let entry = law_status::set_quality_score(&db.pool, "test_law", 0.85)
+    let entry = law_status::set_coverage_score(&db.pool, "test_law", 0.85)
         .await
         .unwrap();
-    assert_eq!(entry.quality_score, Some(0.85));
+    assert_eq!(entry.coverage_score, Some(0.85));
 }
 
 #[tokio::test]
-async fn test_set_quality_score_validation() {
+async fn test_set_coverage_score_validation() {
     let db = common::TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "test_law", None)
         .await
         .unwrap();
 
-    assert!(law_status::set_quality_score(&db.pool, "test_law", 1.5)
+    assert!(law_status::set_coverage_score(&db.pool, "test_law", 1.5)
         .await
         .is_err());
-    assert!(law_status::set_quality_score(&db.pool, "test_law", -0.1)
+    assert!(law_status::set_coverage_score(&db.pool, "test_law", -0.1)
         .await
         .is_err());
 
     assert!(
-        law_status::set_quality_score(&db.pool, "test_law", f64::NAN)
+        law_status::set_coverage_score(&db.pool, "test_law", f64::NAN)
             .await
             .is_err()
     );
     assert!(
-        law_status::set_quality_score(&db.pool, "test_law", f64::INFINITY)
+        law_status::set_coverage_score(&db.pool, "test_law", f64::INFINITY)
             .await
             .is_err()
     );
 
-    assert!(law_status::set_quality_score(&db.pool, "test_law", 0.0)
+    assert!(law_status::set_coverage_score(&db.pool, "test_law", 0.0)
         .await
         .is_ok());
-    assert!(law_status::set_quality_score(&db.pool, "test_law", 1.0)
+    assert!(law_status::set_coverage_score(&db.pool, "test_law", 1.0)
         .await
         .is_ok());
 }

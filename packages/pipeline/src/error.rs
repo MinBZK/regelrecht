@@ -32,6 +32,9 @@ pub enum PipelineError {
     #[error("corpus error: {0}")]
     Corpus(#[from] regelrecht_corpus::CorpusError),
 
+    #[error("enrichment error: {0}")]
+    Enrich(String),
+
     #[error("worker error: {0}")]
     Worker(String),
 

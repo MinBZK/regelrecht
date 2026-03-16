@@ -25,7 +25,7 @@ const TAB_CONFIG = {
       { key: 'law_id', label: 'Law ID', sortable: true },
       { key: 'law_name', label: 'Name', sortable: true },
       { key: 'status', label: 'Status', sortable: true },
-      { key: 'quality_score', label: 'Quality', sortable: true },
+      { key: 'coverage_score', label: 'Coverage', sortable: true },
       { key: 'updated_at', label: 'Updated', sortable: true },
     ],
     defaultSort: 'updated_at',
@@ -145,7 +145,7 @@ function formatCell(value, key) {
   }
 
   // Quality score as percentage
-  if (key === 'quality_score') {
+  if (key === 'coverage_score') {
     const num = Number(value);
     if (Number.isFinite(num)) {
       return `${Math.round(num * 100)}%`;

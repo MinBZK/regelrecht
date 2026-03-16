@@ -16,7 +16,7 @@ pub struct LawEntry {
     pub law_id: String,
     pub law_name: Option<String>,
     pub status: LawStatusValue,
-    pub quality_score: Option<f64>,
+    pub coverage_score: Option<f64>,
     pub harvest_job_id: Option<sqlx::types::Uuid>,
     pub enrich_job_id: Option<sqlx::types::Uuid>,
     pub created_at: DateTime<Utc>,
