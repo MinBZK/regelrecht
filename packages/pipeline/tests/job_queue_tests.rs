@@ -275,6 +275,65 @@ async fn test_reap_orphaned_jobs_returns_zero_when_none_orphaned() {
 }
 
 #[tokio::test]
+async fn test_create_harvest_job_if_not_exists_creates_new() {
+    let db = common::TestDb::new().await;
+
+    let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
+        .with_priority(Priority::new(30))
+        .with_payload(payload);
+
+    let result = job_queue::create_harvest_job_if_not_exists(&db.pool, req, "2025-01-01")
+        .await
+        .unwrap();
+    assert!(result.is_some(), "should create job when none exists");
+
+    let job = result.unwrap();
+    assert_eq!(job.law_id, "BWBR0001840");
+    assert_eq!(job.status, JobStatus::Pending);
+}
+
+#[tokio::test]
+async fn test_create_harvest_job_if_not_exists_skips_duplicate() {
+    let db = common::TestDb::new().await;
+
+    let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload.clone());
+    job_queue::create_job(&db.pool, req).await.unwrap();
+
+    let req2 = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
+        .with_priority(Priority::new(30))
+        .with_payload(payload);
+    let result = job_queue::create_harvest_job_if_not_exists(&db.pool, req2, "2025-01-01")
+        .await
+        .unwrap();
+    assert!(result.is_none(), "should not create duplicate job");
+}
+
+#[tokio::test]
+async fn test_create_harvest_job_if_not_exists_skips_dateless_job() {
+    let db = common::TestDb::new().await;
+
+    // Simulate admin-created job without a date (payload has no "date" key)
+    let payload = json!({"bwb_id": "BWBR0001840"});
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload);
+    job_queue::create_job(&db.pool, req).await.unwrap();
+
+    // Follow-up tries to create a dated job for the same law
+    let follow_up = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
+    let req2 = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
+        .with_priority(Priority::new(30))
+        .with_payload(follow_up);
+    let result = job_queue::create_harvest_job_if_not_exists(&db.pool, req2, "2025-01-01")
+        .await
+        .unwrap();
+    assert!(
+        result.is_none(),
+        "should skip when a dateless job already exists for the same law"
+    );
+}
+
+#[tokio::test]
 async fn test_concurrent_claim_safety() {
     let db = common::TestDb::new().await;
 

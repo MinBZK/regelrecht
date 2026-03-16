@@ -394,6 +394,7 @@ pub async fn create_harvest_job(
         bwb_id: bwb_id.clone(),
         date: body.date,
         max_size_mb: None,
+        depth: None,
     };
 
     let priority = Priority::new(body.priority.unwrap_or(50));

@@ -12,10 +12,10 @@ use crate::enrich::{
     create_enrich_corpus, enrich_branch_name, execute_enrich, EnrichConfig, EnrichPayload,
 };
 use crate::error::{PipelineError, Result};
-use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult};
+use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
 use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
-use crate::models::{JobType, LawStatusValue};
+use crate::models::{JobType, LawStatusValue, Priority};
 
 /// Jobs stuck in 'processing' for longer than this are considered orphaned.
 const ORPHAN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -150,6 +150,7 @@ async fn process_next_job(
             bwb_id: job.law_id.clone(),
             date: None,
             max_size_mb: None,
+            depth: None,
         },
     };
 
@@ -251,6 +252,66 @@ async fn process_next_job(
                         );
                     }
                 }
+            }
+
+            // Create follow-up harvest jobs for referenced laws (best-effort).
+            // Respects a depth limit to prevent unbounded recursive harvesting.
+            let current_depth = payload.depth.unwrap_or(0);
+            if !result.referenced_bwb_ids.is_empty() && current_depth < MAX_HARVEST_DEPTH {
+                let next_depth = current_depth + 1;
+                let mut created = 0u32;
+                for bwb_id in &result.referenced_bwb_ids {
+                    let follow_up_payload = HarvestPayload {
+                        bwb_id: bwb_id.clone(),
+                        date: Some(result.harvest_date.clone()),
+                        max_size_mb: payload.max_size_mb,
+                        depth: Some(next_depth),
+                    };
+                    let payload_json = match serde_json::to_value(&follow_up_payload) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!(bwb_id = %bwb_id, error = %e, "failed to serialize follow-up payload");
+                            continue;
+                        }
+                    };
+                    let req = CreateJobRequest::new(JobType::Harvest, bwb_id.as_str())
+                        .with_priority(Priority::new(30))
+                        .with_payload(payload_json);
+                    match job_queue::create_harvest_job_if_not_exists(
+                        pool,
+                        req,
+                        &result.harvest_date,
+                    )
+                    .await
+                    {
+                        Ok(Some(_)) => created += 1,
+                        Ok(None) => {} // already exists, skip
+                        Err(e) => tracing::warn!(
+                            bwb_id = %bwb_id,
+                            error = %e,
+                            "failed to create follow-up harvest job"
+                        ),
+                    }
+                }
+                if created > 0 {
+                    tracing::info!(
+                        count = created,
+                        total_refs = result.referenced_bwb_ids.len(),
+                        parent_job_id = %job.id,
+                        parent_law_id = %job.law_id,
+                        depth = next_depth,
+                        "created follow-up harvest jobs for referenced laws"
+                    );
+                }
+            } else if !result.referenced_bwb_ids.is_empty() {
+                tracing::info!(
+                    depth = current_depth,
+                    max_depth = MAX_HARVEST_DEPTH,
+                    refs = result.referenced_bwb_ids.len(),
+                    parent_job_id = %job.id,
+                    parent_law_id = %job.law_id,
+                    "skipping follow-up harvest jobs: max depth reached"
+                );
             }
 
             Ok(true)

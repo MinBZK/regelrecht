@@ -12,6 +12,7 @@ fn test_harvest_payload_from_json_full() {
     assert_eq!(payload.bwb_id, "BWBR0018451");
     assert_eq!(payload.date.as_deref(), Some("2025-01-01"));
     assert_eq!(payload.max_size_mb, Some(100));
+    assert!(payload.depth.is_none());
 }
 
 #[test]
@@ -22,6 +23,19 @@ fn test_harvest_payload_from_json_minimal() {
     assert_eq!(payload.bwb_id, "BWBR0018451");
     assert!(payload.date.is_none());
     assert!(payload.max_size_mb.is_none());
+    assert!(payload.depth.is_none());
+}
+
+#[test]
+fn test_harvest_payload_with_depth() {
+    let json = serde_json::json!({
+        "bwb_id": "BWBR0018451",
+        "date": "2025-01-01",
+        "depth": 2
+    });
+
+    let payload: HarvestPayload = serde_json::from_value(json).unwrap();
+    assert_eq!(payload.depth, Some(2));
 }
 
 #[test]
@@ -30,6 +44,7 @@ fn test_harvest_payload_roundtrip() {
         bwb_id: "BWBR0018451".to_string(),
         date: Some("2025-01-01".to_string()),
         max_size_mb: None,
+        depth: Some(1),
     };
 
     let json = serde_json::to_value(&payload).unwrap();
@@ -37,6 +52,7 @@ fn test_harvest_payload_roundtrip() {
     assert_eq!(back.bwb_id, payload.bwb_id);
     assert_eq!(back.date, payload.date);
     assert_eq!(back.max_size_mb, payload.max_size_mb);
+    assert_eq!(back.depth, payload.depth);
 }
 
 #[test]
@@ -45,11 +61,13 @@ fn test_harvest_payload_skip_none_fields() {
         bwb_id: "BWBR0018451".to_string(),
         date: None,
         max_size_mb: None,
+        depth: None,
     };
 
     let json = serde_json::to_string(&payload).unwrap();
     assert!(!json.contains("date"));
     assert!(!json.contains("max_size_mb"));
+    assert!(!json.contains("depth"));
 }
 
 #[test]
@@ -66,6 +84,8 @@ fn test_harvest_result_serialization() {
             "warning 2".to_string(),
             "warning 3".to_string(),
         ],
+        referenced_bwb_ids: vec!["BWBR0002629".to_string()],
+        harvest_date: "2025-01-01".to_string(),
     };
 
     let json = serde_json::to_value(&result).unwrap();
@@ -75,6 +95,8 @@ fn test_harvest_result_serialization() {
     assert_eq!(json["article_count"], 15);
     assert_eq!(json["warning_count"], 3);
     assert_eq!(json["warnings"].as_array().unwrap().len(), 3);
+    assert_eq!(json["harvest_date"], "2025-01-01");
+    assert_eq!(json["referenced_bwb_ids"].as_array().unwrap().len(), 1);
 }
 
 /// Integration test: download and harvest a real law.
@@ -92,6 +114,7 @@ async fn test_execute_harvest_real_law() {
         bwb_id: "BWBR0018451".to_string(),
         date: Some("2025-01-01".to_string()),
         max_size_mb: Some(50),
+        depth: None,
     };
 
     let client = regelrecht_harvester::http::create_client().unwrap();
