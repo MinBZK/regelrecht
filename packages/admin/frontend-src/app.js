@@ -23,6 +23,7 @@ const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvest
 
 const TAB_CONFIG = {
   law_entries: {
+    label: 'Law Entries',
     endpoint: 'api/law_entries',
     columns: [
       { key: 'law_id', label: 'Law ID', sortable: true },
@@ -38,6 +39,7 @@ const TAB_CONFIG = {
     ],
   },
   jobs: {
+    label: 'Jobs',
     endpoint: 'api/jobs',
     columns: [
       { key: 'id', label: 'ID', sortable: true },
@@ -111,10 +113,6 @@ function $(selector, parent = document) {
   return parent.querySelector(selector);
 }
 
-function $$(selector, parent = document) {
-  return parent.querySelectorAll(selector);
-}
-
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -185,12 +183,13 @@ function renderTabs() {
   tabsEl.innerHTML = '';
 
   for (const tabKey of Object.keys(TAB_CONFIG)) {
-    const btn = document.createElement('button');
-    btn.className = 'tab' + (tabKey === state.activeTab ? ' tab--active' : '');
-    btn.textContent = tabKey === 'law_entries' ? 'Law Entries' : 'Jobs';
-    btn.dataset.tab = tabKey;
-    btn.addEventListener('click', () => switchTab(tabKey));
-    tabsEl.appendChild(btn);
+    const item = document.createElement('rr-tab-bar-item');
+    item.textContent = TAB_CONFIG[tabKey].label;
+    if (tabKey === state.activeTab) {
+      item.setAttribute('selected', '');
+    }
+    item.addEventListener('click', () => switchTab(tabKey));
+    tabsEl.appendChild(item);
   }
 }
 
@@ -201,51 +200,26 @@ function renderFilters() {
   const config = TAB_CONFIG[state.activeTab];
 
   for (const filter of config.filters) {
-    const label = document.createElement('label');
-    label.className = 'toolbar__filter-label';
-    label.textContent = filter.label + ':';
-    label.setAttribute('for', `filter-${filter.key}`);
+    const dropdown = document.createElement('rr-drop-down-field');
+    dropdown.setAttribute('size', 'md');
+    dropdown.setAttribute('placeholder', filter.label);
+    dropdown.id = `filter-${filter.key}`;
 
-    filtersEl.appendChild(label);
+    const options = [
+      { value: '', label: `All ${filter.label}` },
+      ...filter.options.map(v => ({ value: v, label: v })),
+    ];
+    dropdown.options = options;
 
-    if (filter.type === 'text') {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'toolbar__input';
-      input.id = `filter-${filter.key}`;
-      input.placeholder = filter.label;
-      input.value = state.filters[filter.key] || '';
-      input.addEventListener('change', (e) => {
-        onFilterChange(filter.key, e.target.value.trim());
-      });
-      filtersEl.appendChild(input);
-    } else {
-      const select = document.createElement('select');
-      select.className = 'toolbar__select';
-      select.id = `filter-${filter.key}`;
-      select.dataset.filterKey = filter.key;
-
-      const allOption = document.createElement('option');
-      allOption.value = '';
-      allOption.textContent = `All`;
-      select.appendChild(allOption);
-
-      for (const optionValue of filter.options) {
-        const option = document.createElement('option');
-        option.value = optionValue;
-        option.textContent = optionValue;
-        if (state.filters[filter.key] === optionValue) {
-          option.selected = true;
-        }
-        select.appendChild(option);
-      }
-
-      select.addEventListener('change', (e) => {
-        onFilterChange(filter.key, e.target.value);
-      });
-
-      filtersEl.appendChild(select);
+    if (state.filters[filter.key]) {
+      dropdown.value = state.filters[filter.key];
     }
+
+    dropdown.addEventListener('change', (e) => {
+      onFilterChange(filter.key, e.detail?.value ?? e.target.value ?? '');
+    });
+
+    filtersEl.appendChild(dropdown);
   }
 }
 
@@ -356,17 +330,35 @@ function renderTableBody() {
 }
 
 function renderPagination() {
+  const container = $('#pagination-container');
+  container.innerHTML = '';
+
   const totalPages = Math.max(1, Math.ceil(state.totalCount / state.limit));
   const currentPage = Math.floor(state.offset / state.limit) + 1;
 
-  const infoEl = $('#pagination-info');
-  infoEl.textContent = `${currentPage} / ${totalPages} (${state.totalCount} results)`;
+  const prevBtn = document.createElement('rr-button');
+  prevBtn.setAttribute('variant', 'neutral-tinted');
+  prevBtn.setAttribute('size', 'md');
+  prevBtn.textContent = '\u2039';
+  prevBtn.title = 'Previous page';
+  if (currentPage <= 1) prevBtn.setAttribute('disabled', '');
+  prevBtn.addEventListener('click', onPrevPage);
 
-  const prevBtn = $('#pagination-prev');
-  const nextBtn = $('#pagination-next');
+  const info = document.createElement('span');
+  info.className = 'pagination-info';
+  info.textContent = `${currentPage} / ${totalPages} (${state.totalCount})`;
 
-  prevBtn.disabled = currentPage <= 1;
-  nextBtn.disabled = currentPage >= totalPages;
+  const nextBtn = document.createElement('rr-button');
+  nextBtn.setAttribute('variant', 'neutral-tinted');
+  nextBtn.setAttribute('size', 'md');
+  nextBtn.textContent = '\u203A';
+  nextBtn.title = 'Next page';
+  if (currentPage >= totalPages) nextBtn.setAttribute('disabled', '');
+  nextBtn.addEventListener('click', onNextPage);
+
+  container.appendChild(prevBtn);
+  container.appendChild(info);
+  container.appendChild(nextBtn);
 }
 
 function renderRowActions(row) {
@@ -499,10 +491,10 @@ function switchTab(tabKey) {
   state.totalCount = 0;
   state.error = null;
 
-  // Show harvest form on both law_entries and jobs tabs
-  const harvestForm = $('#harvest-form');
-  if (harvestForm) {
-    harvestForm.style.display = '';
+  // Show harvest form only on jobs tab
+  const harvestContainer = $('#harvest-form-container');
+  if (harvestContainer) {
+    harvestContainer.style.display = tabKey === 'jobs' ? '' : 'none';
   }
 
   renderTabs();
@@ -542,11 +534,11 @@ async function onResetJobs() {
 async function onHarvestSubmit(e) {
   e.preventDefault();
   const input = $('#harvest-bwb-id');
-  const btn = $('#harvest-form .harvest-form__btn');
-  const bwbId = input.value.trim();
+  const btn = $('#harvest-btn');
+  const bwbId = (input.value || '').trim();
   if (!bwbId) return;
 
-  btn.disabled = true;
+  btn.setAttribute('disabled', '');
   btn.textContent = 'Submitting\u2026';
 
   try {
@@ -570,12 +562,12 @@ async function onHarvestSubmit(e) {
     await response.json();
     input.value = '';
     btn.textContent = 'Queued \u2713';
-    btn.disabled = false;
+    btn.removeAttribute('disabled');
     setTimeout(() => { btn.textContent = 'Harvest'; }, 2000);
     fetchData();
   } catch (err) {
     alert('Harvest failed: ' + err.message);
-    btn.disabled = false;
+    btn.removeAttribute('disabled');
     btn.textContent = 'Harvest';
   }
 }
@@ -981,9 +973,6 @@ async function init() {
 
   void fetchPlatformInfo().then(showDeploymentBadge);
 
-  // Bind pagination buttons
-  $('#pagination-prev').addEventListener('click', onPrevPage);
-  $('#pagination-next').addEventListener('click', onNextPage);
 
   // Bind harvest form
   const harvestForm = $('#harvest-form');

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="nl" style="color-scheme: light;">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,60 +10,45 @@
   <script type="module" src="./app.js"></script>
 </head>
 <body>
-  <div class="app">
-    <!-- Top Navigation Bar -->
-    <rr-top-navigation-bar
-      title="RegelRecht admin"
-      no-logo
-      no-menu
-      utility-no-language-switch
-      utility-account-label="Admin"
-    >
-    </rr-top-navigation-bar>
+  <rr-page header-sticky>
+    <div slot="header">
+      <rr-top-navigation-bar
+        title="RegelRecht admin"
+        no-logo
+        no-menu
+        utility-no-language-switch
+        utility-account-label="Admin"
+      >
+      </rr-top-navigation-bar>
 
-    <!-- Tab Bar -->
-    <nav id="tabs" class="tabs">
-      <!-- Rendered by app.js -->
-    </nav>
+      <rr-toolbar size="md">
+        <rr-toolbar-start-area>
+          <rr-toolbar-item>
+            <rr-tab-bar id="tabs" size="md">
+              <!-- Rendered by app.js -->
+            </rr-tab-bar>
+          </rr-toolbar-item>
+        </rr-toolbar-start-area>
+        <rr-toolbar-center-area>
+          <rr-toolbar-item id="filters">
+            <!-- Rendered by app.js -->
+          </rr-toolbar-item>
+          <rr-toolbar-item id="harvest-form-container" style="display:none">
+            <form id="harvest-form" class="harvest-form">
+              <rr-text-field id="harvest-bwb-id" size="md" placeholder="BWB ID (e.g. BWBR0018451)"></rr-text-field>
+              <rr-button id="harvest-btn" variant="accent-filled" size="md" type="submit">Harvest</rr-button>
+            </form>
+          </rr-toolbar-item>
+        </rr-toolbar-center-area>
+        <rr-toolbar-end-area>
+          <rr-toolbar-item id="pagination-container">
+            <!-- Rendered by app.js -->
+          </rr-toolbar-item>
+        </rr-toolbar-end-area>
+      </rr-toolbar>
+    </div>
 
-    <!-- Main Content -->
-    <main class="app__content">
-      <!-- Toolbar: filters + pagination -->
-      <div class="toolbar">
-        <div id="filters" class="toolbar__filters">
-          <!-- Rendered by app.js -->
-        </div>
-
-        <form id="harvest-form" class="harvest-form" style="display:none">
-          <input
-            id="harvest-bwb-id"
-            class="harvest-form__input"
-            type="text"
-            placeholder="BWB ID (e.g. BWBR0018451)"
-            required
-            pattern="BWBR\d{7}"
-            title="BWB ID format: BWBR0018451"
-          >
-          <button type="submit" class="harvest-form__btn">
-            Harvest
-          </button>
-          <button id="reset-jobs-btn" type="button" class="toolbar__btn--danger" style="margin-left: 8px">
-            Reset Jobs
-          </button>
-        </form>
-
-        <div class="pagination">
-          <button id="pagination-prev" class="pagination__btn" title="Previous page" disabled>
-            <svg viewBox="0 0 16 16"><path d="M10 4l-4 4 4 4"/></svg>
-          </button>
-          <span id="pagination-info" class="pagination__info">1 / 1 (0 results)</span>
-          <button id="pagination-next" class="pagination__btn" title="Next page" disabled>
-            <svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- Data Table -->
+    <rr-simple-section>
       <div class="table-container">
         <table class="data-table">
           <thead id="table-head">
@@ -74,7 +59,7 @@
           </tbody>
         </table>
       </div>
-    </main>
+    </rr-simple-section>
 
     <!-- Job Detail Panel (slide-in from right) -->
     <div id="detail-backdrop" class="detail-backdrop" hidden></div>
@@ -87,6 +72,6 @@
         <!-- Rendered by app.js -->
       </div>
     </aside>
-  </div>
+  </rr-page>
 </body>
 </html>
