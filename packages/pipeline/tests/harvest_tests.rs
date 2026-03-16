@@ -66,6 +66,8 @@ fn test_harvest_result_serialization() {
             "warning 2".to_string(),
             "warning 3".to_string(),
         ],
+        referenced_bwb_ids: vec!["BWBR0002629".to_string()],
+        harvest_date: "2025-01-01".to_string(),
     };
 
     let json = serde_json::to_value(&result).unwrap();
@@ -75,6 +77,8 @@ fn test_harvest_result_serialization() {
     assert_eq!(json["article_count"], 15);
     assert_eq!(json["warning_count"], 3);
     assert_eq!(json["warnings"].as_array().unwrap().len(), 3);
+    assert_eq!(json["harvest_date"], "2025-01-01");
+    assert_eq!(json["referenced_bwb_ids"].as_array().unwrap().len(), 1);
 }
 
 /// Integration test: download and harvest a real law.
