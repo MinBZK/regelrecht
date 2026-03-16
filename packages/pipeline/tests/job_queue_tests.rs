@@ -327,7 +327,10 @@ async fn test_create_harvest_job_if_not_exists_skips_dateless_job() {
     let result = job_queue::create_harvest_job_if_not_exists(&db.pool, req2, "2025-01-01")
         .await
         .unwrap();
-    assert!(result.is_none(), "should skip when a dateless job already exists for the same law");
+    assert!(
+        result.is_none(),
+        "should skip when a dateless job already exists for the same law"
+    );
 }
 
 #[tokio::test]
