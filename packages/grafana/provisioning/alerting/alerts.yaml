@@ -38,8 +38,8 @@ policies:
       - grafana_folder
       - alertname
     group_wait: 30s
-    group_interval: 24h
-    repeat_interval: 24h
+    group_interval: 1h
+    repeat_interval: 1h
 
 groups:
   - orgId: 1
