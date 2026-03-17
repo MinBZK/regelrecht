@@ -10,7 +10,8 @@ use regelrecht_harvester::manifest;
 
 /// Maximum recursion depth for follow-up harvest jobs.
 /// Prevents unbounded job creation from circular or deeply nested law references.
-pub const MAX_HARVEST_DEPTH: u32 = 1000;
+/// Matches the admin API cap so that omitting `max_depth` gives the same ceiling.
+pub const MAX_HARVEST_DEPTH: u32 = 10;
 
 /// Payload for a harvest job, stored as JSON in the job queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]

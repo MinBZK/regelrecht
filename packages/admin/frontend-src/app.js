@@ -664,6 +664,11 @@ async function onRetryJob(jobId, btn) {
       window.location.href = '/auth/login';
       return;
     }
+    if (response.status === 409) {
+      alert('This job is no longer in a failed state. The table will refresh.');
+      fetchData();
+      return;
+    }
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       throw new Error(text || `HTTP ${response.status}`);
@@ -695,7 +700,6 @@ function viewJobsForLaw(lawId) {
   renderAll();
   fetchData();
 }
-
 
 function onSort(key) {
   if (state.sort === key) {

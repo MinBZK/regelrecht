@@ -358,7 +358,7 @@ pub async fn create_harvest_job(
         if depth > 10 {
             return Err((
                 StatusCode::BAD_REQUEST,
-                format!("max_depth must be at most 10, got {depth}"),
+                format!("max_depth must be 0..10 (0 = no recursion), got {depth}"),
             ));
         }
     }
@@ -724,11 +724,16 @@ pub async fn retry_job_handler(
     })?;
 
     // Reset law_entry status so the law isn't stuck on harvest_failed/enrich_failed.
+    // Use update_status_if to avoid regressing a law that has already recovered.
+    let expected_failure = match job.job_type {
+        JobType::Harvest => LawStatusValue::HarvestFailed,
+        JobType::Enrich => LawStatusValue::EnrichFailed,
+    };
     let reset_status = match job.job_type {
         JobType::Harvest => LawStatusValue::Queued,
         JobType::Enrich => LawStatusValue::Harvested,
     };
-    law_status::update_status(&mut *tx, &job.law_id, reset_status)
+    law_status::update_status_if(&mut *tx, &job.law_id, expected_failure, reset_status)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, law_id = %job.law_id, "failed to reset law status on retry");

@@ -585,11 +585,15 @@ body {
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
-.btn-retry:hover {
+.btn-retry:hover:not(:disabled) {
   background-color: var(--color-primary);
   color: var(--color-white);
 }
 
+.btn-retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* ============================================================
    Detail Panel (slide-in from right)
