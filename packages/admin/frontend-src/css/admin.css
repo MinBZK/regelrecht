@@ -231,7 +231,7 @@ body {
   color: #fff;
   background-color: #dc2626;
   border: 1px solid #b91c1c;
-  border-radius: var(--radius-md);
+  border-radius: var(--border-radius-sm);
   cursor: pointer;
   white-space: nowrap;
 }

@@ -445,6 +445,33 @@ pub async fn create_harvest_job(
     ))
 }
 
+#[derive(Serialize)]
+pub struct DeleteJobsResponse {
+    pub deleted: i64,
+}
+
+pub async fn delete_all_jobs(
+    State(state): State<AppState>,
+) -> Result<Json<DeleteJobsResponse>, (StatusCode, String)> {
+    let pool = &state.pool;
+
+    let result = sqlx::query("DELETE FROM jobs")
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to delete jobs");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to delete jobs".to_string(),
+            )
+        })?;
+
+    let deleted = result.rows_affected() as i64;
+    tracing::info!(deleted, "deleted all jobs");
+
+    Ok(Json(DeleteJobsResponse { deleted }))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

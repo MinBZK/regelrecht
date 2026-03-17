@@ -442,6 +442,35 @@ function switchTab(tabKey) {
   fetchData();
 }
 
+async function onResetJobs() {
+  if (!confirm('Are you sure? This will delete ALL jobs from the database.')) return;
+
+  const btn = $('#reset-jobs-btn');
+  btn.disabled = true;
+  btn.textContent = 'Deleting\u2026';
+
+  try {
+    const response = await fetch('api/jobs', { method: 'DELETE' });
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    const result = await response.json();
+    btn.textContent = `Deleted ${result.deleted} jobs`;
+    setTimeout(() => { btn.textContent = 'Reset Jobs'; }, 2000);
+    fetchData();
+  } catch (err) {
+    alert('Reset failed: ' + err.message);
+    btn.textContent = 'Reset Jobs';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function onHarvestSubmit(e) {
   e.preventDefault();
   const input = $('#harvest-bwb-id');
@@ -551,6 +580,12 @@ async function init() {
   const harvestForm = $('#harvest-form');
   if (harvestForm) {
     harvestForm.addEventListener('submit', onHarvestSubmit);
+  }
+
+  // Bind reset jobs button
+  const resetBtn = $('#reset-jobs-btn');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', onResetJobs);
   }
 
   // Initial render
