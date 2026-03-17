@@ -590,7 +590,7 @@ pub async fn create_enrich_jobs(
                 tracing::error!(error = %e, law_id = %law_id, provider = %provider_name, "failed to create enrich job");
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("failed to create enrich job for provider {provider_name}"),
+                    format!("failed to create enrich job for provider {provider_name} (transaction rolled back, no jobs were created)"),
                 ));
             }
         }
