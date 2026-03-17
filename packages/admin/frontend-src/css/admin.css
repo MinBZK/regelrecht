@@ -5,7 +5,8 @@
    Harvest Form (inline in toolbar)
    ============================================================ */
 
-.harvest-form {
+.harvest-form,
+.filter-row {
   display: flex;
   align-items: center;
   gap: var(--primitives-space-8);

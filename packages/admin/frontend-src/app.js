@@ -199,6 +199,9 @@ function renderFilters() {
 
   const config = TAB_CONFIG[state.activeTab];
 
+  const wrapper = document.createElement('div');
+  wrapper.className = 'filter-row';
+
   for (const filter of config.filters) {
     const dropdown = document.createElement('rr-drop-down-field');
     dropdown.setAttribute('size', 'md');
@@ -219,8 +222,10 @@ function renderFilters() {
       onFilterChange(filter.key, e.detail?.value ?? e.target.value ?? '');
     });
 
-    filtersEl.appendChild(dropdown);
+    wrapper.appendChild(dropdown);
   }
+
+  filtersEl.appendChild(wrapper);
 }
 
 function renderTableHead() {
