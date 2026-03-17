@@ -3,9 +3,11 @@ use std::sync::LazyLock;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use regelrecht_pipeline::job_queue::{create_job, CreateJobRequest};
-use regelrecht_pipeline::law_status::set_harvest_job;
-use regelrecht_pipeline::{HarvestPayload, JobType, Priority};
+use regelrecht_pipeline::job_queue::{
+    create_enrich_job_if_not_exists, create_job, CreateJobRequest,
+};
+use regelrecht_pipeline::law_status::{set_enrich_job, set_harvest_job};
+use regelrecht_pipeline::{EnrichPayload, HarvestPayload, JobType, Priority, ENRICH_PROVIDERS};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -170,6 +172,7 @@ pub async fn list_law_entries(
 pub struct JobsQuery {
     pub status: Option<String>,
     pub job_type: Option<String>,
+    pub law_id: Option<String>,
     pub sort: Option<String>,
     pub order: Option<String>,
     pub limit: Option<i64>,
@@ -206,7 +209,7 @@ pub async fn list_jobs(
 
     let order = normalized_order(params.order.as_deref());
 
-    // Build dynamic WHERE clause for dual-filter support.
+    // Build dynamic WHERE clause for multi-filter support.
     let mut where_clauses = Vec::new();
     let mut bind_index: usize = 1;
 
@@ -217,6 +220,11 @@ pub async fn list_jobs(
 
     if params.job_type.is_some() {
         where_clauses.push(format!("job_type::text = ${bind_index}"));
+        bind_index += 1;
+    }
+
+    if params.law_id.is_some() {
+        where_clauses.push(format!("law_id = ${bind_index}"));
         bind_index += 1;
     }
 
@@ -235,6 +243,9 @@ pub async fn list_jobs(
     }
     if let Some(ref job_type) = params.job_type {
         count_query = count_query.bind(job_type);
+    }
+    if let Some(ref law_id) = params.law_id {
+        count_query = count_query.bind(law_id);
     }
 
     let total: i64 = count_query.fetch_one(pool).await.map_err(|e| {
@@ -263,6 +274,9 @@ pub async fn list_jobs(
     }
     if let Some(ref job_type) = params.job_type {
         data_query = data_query.bind(job_type);
+    }
+    if let Some(ref law_id) = params.law_id {
+        data_query = data_query.bind(law_id);
     }
     data_query = data_query.bind(limit).bind(offset);
 
@@ -444,6 +458,179 @@ pub async fn create_harvest_job(
         }),
     ))
 }
+
+// --- Enrich Jobs ---
+
+#[derive(Deserialize)]
+pub struct CreateEnrichBody {
+    pub law_id: String,
+    pub priority: Option<i32>,
+}
+
+#[derive(Serialize)]
+pub struct CreateEnrichResponse {
+    pub job_ids: Vec<String>,
+    pub law_id: String,
+    pub providers: Vec<String>,
+}
+
+pub async fn create_enrich_jobs(
+    State(state): State<AppState>,
+    Json(body): Json<CreateEnrichBody>,
+) -> Result<(StatusCode, Json<CreateEnrichResponse>), (StatusCode, String)> {
+    let law_id = body.law_id.trim().to_string();
+    if law_id.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "law_id must not be empty".to_string(),
+        ));
+    }
+
+    let pool = &state.pool;
+
+    let mut tx = pool.begin().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to begin transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    // Advisory lock to serialize concurrent requests for the same law.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+        .bind(&law_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, law_id = %law_id, "failed to acquire advisory lock");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal server error".to_string(),
+            )
+        })?;
+
+    // Look up the law to find its yaml_path from the most recent completed harvest job.
+    let harvest_result: Option<(serde_json::Value,)> = sqlx::query_as(
+        "SELECT result FROM jobs \
+         WHERE law_id = $1 AND job_type = 'harvest' AND status = 'completed' \
+         ORDER BY completed_at DESC LIMIT 1",
+    )
+    .bind(&law_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, law_id = %law_id, "failed to look up harvest result");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to look up harvest result".to_string(),
+        )
+    })?;
+
+    let yaml_path = harvest_result
+        .as_ref()
+        .and_then(|(result,)| result.get("file_path"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("no completed harvest found for {law_id} — harvest the law first"),
+            )
+        })?
+        .to_string();
+
+    let priority = Priority::new(body.priority.unwrap_or(50));
+    let mut job_ids = Vec::new();
+    let mut providers = Vec::new();
+    let mut last_job_id = None;
+
+    for provider_name in ENRICH_PROVIDERS {
+        let enrich_payload = EnrichPayload {
+            law_id: law_id.clone(),
+            yaml_path: yaml_path.clone(),
+            provider: Some((*provider_name).to_string()),
+        };
+
+        let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {
+            tracing::error!(error = %e, "failed to serialize enrich payload");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to serialize enrich payload".to_string(),
+            )
+        })?;
+
+        let enrich_req = CreateJobRequest::new(JobType::Enrich, &law_id)
+            .with_priority(priority)
+            .with_payload(payload_json);
+
+        match create_enrich_job_if_not_exists(&mut *tx, enrich_req).await {
+            Ok(Some(enrich_job)) => {
+                last_job_id = Some(enrich_job.id);
+                job_ids.push(enrich_job.id.to_string());
+                providers.push(provider_name.to_string());
+            }
+            Ok(None) => {
+                tracing::info!(
+                    law_id = %law_id,
+                    provider = %provider_name,
+                    "skipping: active enrich job already exists"
+                );
+            }
+            Err(e) => {
+                tracing::error!(error = %e, law_id = %law_id, provider = %provider_name, "failed to create enrich job");
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("failed to create enrich job for provider {provider_name} (transaction rolled back, no jobs were created)"),
+                ));
+            }
+        }
+    }
+
+    if job_ids.is_empty() {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("enrich jobs already pending or processing for {law_id}"),
+        ));
+    }
+
+    // Link the last created enrich job to the law entry.
+    // enrich_job_id is a single UUID column, so we store the most recent one.
+    if let Some(job_id) = last_job_id {
+        set_enrich_job(&mut *tx, &law_id, job_id)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    error = %e,
+                    law_id = %law_id,
+                    "failed to link enrich job to law entry"
+                );
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "failed to link enrich job".to_string(),
+                )
+            })?;
+    }
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to commit transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    tracing::info!(law_id = %law_id, jobs = ?job_ids, "created enrich jobs");
+
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateEnrichResponse {
+            job_ids,
+            law_id,
+            providers,
+        }),
+    ))
+}
+
+// --- Delete Jobs ---
 
 #[derive(Serialize)]
 pub struct DeleteJobsResponse {
