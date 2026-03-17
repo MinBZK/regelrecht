@@ -19,6 +19,7 @@ const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'];
 const JOB_TYPES = ['harvest', 'enrich'];
 
 const ENRICHABLE_STATUSES = ['harvested', 'enriched', 'enrich_failed'];
+const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvested', 'enriched', 'enrich_failed'];
 
 const TAB_CONFIG = {
   law_entries: {
@@ -360,8 +361,6 @@ function renderPagination() {
   prevBtn.disabled = currentPage <= 1;
   nextBtn.disabled = currentPage >= totalPages;
 }
-
-const RE_HARVESTABLE_STATUSES = ['unknown', 'queued', 'harvest_failed', 'harvested', 'enriched', 'enrich_failed'];
 
 function renderRowActions(row) {
   const container = document.createElement('span');

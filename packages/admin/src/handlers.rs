@@ -541,6 +541,7 @@ pub async fn create_enrich_jobs(
     let priority = Priority::new(body.priority.unwrap_or(50));
     let mut job_ids = Vec::new();
     let mut providers = Vec::new();
+    let mut last_job_id = None;
 
     for provider_name in ENRICH_PROVIDERS {
         let enrich_payload = EnrichPayload {
@@ -563,19 +564,7 @@ pub async fn create_enrich_jobs(
 
         match create_enrich_job_if_not_exists(&mut *tx, enrich_req).await {
             Ok(Some(enrich_job)) => {
-                set_enrich_job(&mut *tx, &law_id, enrich_job.id)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!(
-                            error = %e,
-                            law_id = %law_id,
-                            "failed to link enrich job to law entry"
-                        );
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "failed to link enrich job".to_string(),
-                        )
-                    })?;
+                last_job_id = Some(enrich_job.id);
                 job_ids.push(enrich_job.id.to_string());
                 providers.push(provider_name.to_string());
             }
@@ -601,6 +590,24 @@ pub async fn create_enrich_jobs(
             StatusCode::CONFLICT,
             format!("enrich jobs already pending or processing for {law_id}"),
         ));
+    }
+
+    // Link the last created enrich job to the law entry.
+    // enrich_job_id is a single UUID column, so we store the most recent one.
+    if let Some(job_id) = last_job_id {
+        set_enrich_job(&mut *tx, &law_id, job_id)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    error = %e,
+                    law_id = %law_id,
+                    "failed to link enrich job to law entry"
+                );
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "failed to link enrich job".to_string(),
+                )
+            })?;
     }
 
     tx.commit().await.map_err(|e| {
