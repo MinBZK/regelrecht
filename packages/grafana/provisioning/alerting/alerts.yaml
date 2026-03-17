@@ -71,23 +71,17 @@ groups:
               expr: max(regelrecht_laws{status="enriched"})
               instant: true
               refId: B
+          # Always-fire: math expression that's always >= 0.
+          # Avoids the threshold reducer which returns 1 (boolean result)
+          # instead of the actual metric value in .Values.
           - refId: C
             relativeTimeRange:
               from: 600
               to: 0
             datasourceUid: __expr__
             model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator:
-                    type: gt
-                    params:
-                      - -1
-                  operator:
-                    type: and
-                  reducer:
-                    type: last
+              type: math
+              expression: $A + $B + 1
               refId: C
         noDataState: OK
         execErrState: Alerting
