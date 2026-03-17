@@ -140,11 +140,17 @@ pub async fn execute_harvest(
     let status_content = format!("---\n{status_yaml}");
     tokio::fs::write(&status_file_path, status_content).await?;
 
+    let relative_path = yaml_path
+        .strip_prefix(repo_path)
+        .unwrap_or(&yaml_path)
+        .to_string_lossy()
+        .to_string();
+
     let result = HarvestResult {
         law_name,
         slug,
         layer,
-        file_path: yaml_path.to_string_lossy().to_string(),
+        file_path: relative_path,
         article_count,
         warning_count,
         warnings,
