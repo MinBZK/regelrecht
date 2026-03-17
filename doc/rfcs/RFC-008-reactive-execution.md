@@ -1,4 +1,4 @@
-# RFC-008: Reactive Execution
+# RFC-008: Execution Lifecycle Hooks
 
 **Status:** Proposed
 **Date:** 2026-03-16
@@ -8,16 +8,18 @@
 
 The engine currently supports **active execution**: someone requests a legal determination, the engine evaluates with specific parameters, and produces a result. This covers laws like the Zorgtoeslagwet, Participatiewet, and BW5.
 
-But a large class of law operates differently. The Algemene wet bestuursrecht (AWB) reacts to events. When any government body makes a besluit (decision), AWB activates: article 6:7 sets a bezwaartermijn of six weeks, article 7:1 establishes the right to bezwaar. When a bezwaarschrift is subsequently filed, article 7:10 sets a beslistermijn for the beslissing op bezwaar. The trigger is always an event.
+But a large class of law operates differently. The Algemene wet bestuursrecht (AWB) applies whenever any government body issues a beschikking. Article 6:7 sets a bezwaartermijn of six weeks. Article 3:46 requires a deugdelijke motivering. Neither article is called explicitly. They fire because the output qualifies as a beschikking, regardless of which law produced it.
 
-This is **reactive execution**: the law fires when a state transition occurs. Edge-triggered, not level-triggered.
+The target law (Zorgtoeslag, Participatiewet) does not know about AWB. AWB does not know about the target law. The relationship is unilateral from AWB's side, triggered by a property of the output.
+
+This is **reactive execution**: law that augments other law's execution without either side declaring a bilateral relationship.
 
 ### Execution modes
 
 This is one of four identified execution modes:
 
 1. **Active execution**: request-response (current engine, RFC-007 IoC)
-2. **Reactive execution**: event-triggered (this RFC)
+2. **Reactive execution**: lifecycle hooks (this RFC)
 3. **Generative execution**: law that creates other law (git workflow, out of scope)
 4. **Verificative execution**: continuous invariant checking (out of scope)
 
@@ -25,11 +27,40 @@ The specification (YAML) is the same across all modes. The modes differ in trigg
 
 ### Current state
 
-The engine has no way to declare that a law reacts to events. The PoC (`poc-machine-law`) has reactive behaviour via event sourcing with a `Case` aggregate and `ProcessApplication`, but this is tightly coupled to infrastructure (aggregates, event types, update methods).
+The engine has no way for a law to inject itself into another law's execution. The PoC (`poc-machine-law`) has reactive behaviour via event sourcing with a `Case` aggregate, but this couples the law specification to infrastructure (aggregates, event types, update methods).
+
+Schema v0.4.0 already has a `produces` block on `execution` with `legal_character` and `decision_type` annotations. These annotations classify the output but the engine does not act on them at runtime. This RFC builds on `produces` as the filter target for hooks.
 
 ## Decision
 
-Introduce `reacts_to` on article-level `machine_readable`:
+The engine has a defined execution lifecycle with four observable points. Laws can register hooks at these points. When a hook's filter matches the executing article's `produces` annotation, the hook fires and its outputs enrich the result.
+
+### Execution lifecycle
+
+The engine evaluates an article in five stages:
+
+1. **Create context** with parameters and calculation_date
+2. **Resolve inputs** from cross-law references and data sources
+3. **Resolve open terms** via IoC (RFC-007, `implements` index)
+4. **Execute actions** that evaluate conditions and set outputs
+5. **Return result** with outputs
+
+In the Rust codebase: `RuleContext::new()`, `resolve_inputs_with_service()`, `resolve_open_terms()`, `ArticleEngine::evaluate_with_trace()`, return `ArticleResult`.
+
+### Hook points
+
+Four hook points interleave with this lifecycle:
+
+| Hook point | Fires between stages | Context available to hook |
+|---|---|---|
+| `pre_input` | 1 and 2 | Parameters |
+| `post_input` | 2 and 3 | Parameters, resolved inputs |
+| `pre_actions` | 3 and 4 | Parameters, inputs, resolved open terms |
+| `post_actions` | 4 and 5 | Parameters, inputs, open terms, outputs |
+
+### YAML construct
+
+Introduce `hooks` on article-level `machine_readable`:
 
 ```yaml
 # AWB artikel 6:7
@@ -38,8 +69,10 @@ Introduce `reacts_to` on article-level `machine_readable`:
     De termijn voor het indienen van een bezwaar- of
     beroepschrift bedraagt zes weken.
   machine_readable:
-    reacts_to:
-      event_type: besluit
+    hooks:
+      - hook_point: post_actions
+        applies_to:
+          legal_character: BESCHIKKING
     execution:
       output:
         - name: bezwaartermijn_weken
@@ -49,60 +82,53 @@ Introduce `reacts_to` on article-level `machine_readable`:
           value: 6
 ```
 
-The `reacts_to` declaration is metadata. The engine does not subscribe to events or manage event routing. It declares which event type this article responds to; the orchestration layer does the actual wiring.
+The `hooks` block is a list. Each entry has:
 
-### Event types
+- `hook_point`: one of `pre_input`, `post_input`, `pre_actions`, `post_actions`
+- `applies_to`: filter predicate matched against the executing article's `produces` block
 
-An event type is a semantic label for a state transition. Initial types:
+Available filter fields:
 
-| Event type | Meaning | Example trigger |
-|-----------|---------|----------------|
-| `besluit` | An administrative decision is made | Zorgtoeslag application decided |
-| `bezwaarschrift` | An objection is filed against a besluit | Citizen objects to zorgtoeslag decision |
-| `aanvraag` | An application is submitted | Zorgtoeslag application submitted |
+| Filter field | Matches against |
+|---|---|
+| `legal_character` | `execution.produces.legal_character` |
+| `decision_type` | `execution.produces.decision_type` |
 
-Event types are not an exhaustive taxonomy. They grow as new reactive laws are modelled.
+When multiple filter fields are present, they are AND-combined. An article with `produces: { legal_character: BESCHIKKING, decision_type: TOEKENNING }` matches a hook with `applies_to: { legal_character: BESCHIKKING }` but also a more specific hook with `applies_to: { legal_character: BESCHIKKING, decision_type: TOEKENNING }`.
 
-### Event production
+### Resolution model
 
-A `reacts_to` declaration says which event an article listens to. The other side is production: which article produces an event. This is declared with `produces`:
+#### At load time
 
-```yaml
-# Zorgtoeslag artikel 2 (simplified)
-- number: '2'
-  text: |-
-    Aanspraak op een zorgtoeslag heeft degene...
-  machine_readable:
-    execution:
-      output:
-        - name: zorgtoeslag_besluit
-          type: boolean
-      produces:
-        event_type: besluit
-      actions:
-        - output: zorgtoeslag_besluit
-          value:
-            operation: LESS_THAN_OR_EQUAL
-            subject: $toetsingsinkomen
-            value: $drempelinkomen
-```
+The engine builds a `hooks_index` when loading laws. For each article with a `hooks` declaration, it indexes the hook by `(hook_point, applies_to)`, mapping to a list of `(law_id, article_number)` entries. This parallels `implements_index` (RFC-007) and `overrides_index` (RFC-009) in `RuleResolver`.
 
-When an article with `produces` is executed, the engine marks the result as a `besluit` event. The orchestration layer then triggers all articles with `reacts_to: besluit`.
+#### At execution time
 
-### What the engine does
+When the engine executes an article that has a `produces` annotation:
 
-1. **At load time**: indexes all `reacts_to` declarations (keyed by `event_type`) and all `produces` declarations
-2. **At execution time**: when an article with `produces` completes, the engine annotates the result with reactive metadata (which laws and articles react to this event type)
-3. **The engine does not route events**. The orchestration layer uses the metadata to trigger reactive evaluations
+1. Query `hooks_index` for `pre_input` hooks matching the article's `produces`. Fire matching hooks. Their outputs enter the execution context as additional parameters.
+2. Resolve inputs (cross-law references, data sources).
+3. Query for matching `post_input` hooks. Fire them. Their outputs enter the context.
+4. Resolve open terms (IoC, RFC-007).
+5. Query for matching `pre_actions` hooks. Fire them. Their outputs enter the context.
+6. Execute the article's own actions.
+7. Query for matching `post_actions` hooks. Fire them. Their outputs are merged into the `ArticleResult`.
 
-### What the orchestration layer does
+Hook articles are executed as ordinary article evaluations. They receive the context available at their hook point as input parameters. They produce outputs.
 
-1. Detects that a result contains event metadata (e.g., output type `besluit`)
-2. Looks up which articles react to this event type
-3. Triggers those articles with the event data as input
-4. Combines results (substantive decision + reactive obligations like bezwaartermijn)
+#### Priority
+
+When multiple hooks produce the same output name, the engine resolves by lex superior (higher regulatory layer wins) then lex posterior (newer `valid_from` wins). This is the same priority model as IoC resolution (RFC-007).
+
+#### Interaction with overrides (RFC-009)
+
+When a hook article fires, it is subject to the same override resolution as any other article. If the contextual law has an `overrides` declaration targeting the hook article's output, the override applies. The contextual law does not change when a hook fires; it remains the root of the call stack.
+
+Example: AWB 6:7 fires as a `post_actions` hook. The contextual law is the Vreemdelingenwet. Vreemdelingenwet article 69 overrides AWB 6:7's `bezwaartermijn_weken` from 6 to 4. The citizen sees 4 weken.
 
 ### Full YAML example
+
+AWB articles that hook into any beschikking:
 
 ```yaml
 ---
@@ -111,13 +137,31 @@ regulatory_layer: WET
 publication_date: '2024-01-01'
 valid_from: '1994-01-01'
 articles:
+  - number: '3:46'
+    text: |-
+      Een besluit dient te berusten op een deugdelijke motivering.
+    machine_readable:
+      hooks:
+        - hook_point: pre_actions
+          applies_to:
+            legal_character: BESCHIKKING
+      execution:
+        output:
+          - name: motivering_vereist
+            type: boolean
+        actions:
+          - output: motivering_vereist
+            value: true
+
   - number: '6:7'
     text: |-
       De termijn voor het indienen van een bezwaar- of
       beroepschrift bedraagt zes weken.
     machine_readable:
-      reacts_to:
-        event_type: besluit
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
       execution:
         output:
           - name: bezwaartermijn_weken
@@ -125,73 +169,120 @@ articles:
         actions:
           - output: bezwaartermijn_weken
             value: 6
-
-  - number: '7:10'
-    text: |-
-      1. Het bestuursorgaan beslist binnen zes weken of – indien
-         een commissie als bedoeld in artikel 7:13 is ingesteld –
-         binnen twaalf weken, gerekend vanaf de dag na die waarop
-         de termijn voor het indienen van het bezwaarschrift is
-         verstreken.
-      3. Het bestuursorgaan kan de beslissing voor ten hoogste
-         zes weken verdagen.
-    machine_readable:
-      reacts_to:
-        event_type: bezwaarschrift
-      execution:
-        parameters:
-          - name: heeft_bezwaarcommissie
-            type: boolean
-            required: false
-            description: Is een commissie als bedoeld in artikel 7:13 ingesteld
-        output:
-          - name: beslistermijn_weken
-            type: number
-          - name: maximale_verdagingstermijn_weken
-            type: number
-        actions:
-          - output: beslistermijn_weken
-            value:
-              operation: IF
-              condition:
-                operation: EQUALS
-                subject: $heeft_bezwaarcommissie
-                value: true
-              then: 12
-              else: 6
-          - output: maximale_verdagingstermijn_weken
-            value: 6
 ```
+
+Zorgtoeslag article that produces a beschikking:
+
+```yaml
+---
+$id: wet_op_de_zorgtoeslag
+regulatory_layer: WET
+publication_date: '2024-01-01'
+articles:
+  - number: '2'
+    text: |-
+      Aanspraak op een zorgtoeslag heeft degene...
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: toetsingsinkomen
+            type: number
+            required: true
+          - name: drempelinkomen
+            type: number
+            required: true
+        output:
+          - name: heeft_recht_op_zorgtoeslag
+            type: boolean
+        actions:
+          - output: heeft_recht_op_zorgtoeslag
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $toetsingsinkomen
+              value: $drempelinkomen
+```
+
+### Walk-through
+
+When the engine executes Zorgtoeslag article 2:
+
+```
+1. Create context: { toetsingsinkomen: 28000, drempelinkomen: 38520 }
+2. Inspect produces: { legal_character: BESCHIKKING }
+3. Query hooks_index for pre_input + BESCHIKKING → no matches
+4. Resolve inputs → none declared
+5. Query hooks_index for post_input + BESCHIKKING → no matches
+6. Resolve open terms → none declared
+7. Query hooks_index for pre_actions + BESCHIKKING:
+   → AWB 3:46 matches
+   → Execute AWB 3:46 → { motivering_vereist: true }
+   → Add to context
+8. Execute Zorgtoeslag art 2 actions:
+   → { heeft_recht_op_zorgtoeslag: true }
+9. Query hooks_index for post_actions + BESCHIKKING:
+   → AWB 6:7 matches
+   → Execute AWB 6:7 → { bezwaartermijn_weken: 6 }
+10. Merge into result
+
+Final ArticleResult outputs:
+  heeft_recht_op_zorgtoeslag: true
+  motivering_vereist: true
+  bezwaartermijn_weken: 6
+```
+
+The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorgtoeslag. The relationship exists purely through `produces` on the target side and `applies_to` on the hook side.
+
+### External processes
+
+Some hook results represent obligations that trigger separate processes: sending a notification, starting a bezwaar procedure, logging for audit. The engine does not implement external process triggering. The annotated result (with hook outputs included) is available to the orchestration layer, which decides what external actions to take. This is out of scope for this RFC.
 
 ## Why
 
 ### Benefits
 
-AWB reacts to besluiten. The schema should capture that. With `reacts_to`, it does.
+AWB 6:7 fires on every beschikking. The schema captures this directly through `hooks` and `applies_to`, without external configuration or a maintained event vocabulary.
 
-Because `reacts_to` only declares the event type (not the event bus, aggregate, or update method), the law specification stays the same whether executed actively or reactively. Only the trigger mechanism differs.
+The engine can answer "which articles hook into BESCHIKKING executions?" by querying its `hooks_index`. This supports impact analysis when law changes.
 
-The engine can also answer "which articles react to a besluit?" by querying its index, without external configuration.
+The mechanism is general. Any article with a `produces` annotation can be hooked into. Adding a new hookable law requires only adding `produces` to its articles, not modifying AWB or any other hooking law.
+
+The declaration is unilateral from the hook side: the target law is not modified. This matches the legal reality where AWB applies to all besluiten without each specific law needing to acknowledge AWB.
 
 ### Tradeoffs
 
-The engine declares reactive relationships but does not implement event routing. A separate orchestration layer must exist to do the actual wiring.
+Every execution of an article with `produces` requires querying the `hooks_index` at four points. For articles without `produces`, there is no overhead.
 
-Event types (`besluit`, `bezwaarschrift`, `aanvraag`) need to be defined and maintained, though the taxonomy can grow incrementally.
+When multiple hooks produce the same output name, priority resolution adds complexity. The lex superior / lex posterior model is proven (RFC-007 uses it for IoC), but the interaction between hook priority and override priority needs careful implementation.
+
+A law that does not annotate its articles with `produces` cannot be hooked into. This is by design (explicit opt-in through annotation), but means that unannotated laws are invisible to hooks.
 
 ### Alternatives Considered
 
-**Alternative 1: Infrastructure-coupled events (PoC approach)**
-- `applies: { aggregate: "Case", events: [{ type: "Decided" }], update: [{ method: "determine_objection_status" }] }`
-- Rejected: couples the law specification to a specific event sourcing implementation (aggregates, methods).
+**Alternative 1: Event-bus model (original RFC-008)**
+- Laws declare `reacts_to: event_type` and `produces: event_type`. The engine annotates results with event metadata. An orchestration layer routes events.
+- Rejected: couples law specification to an event vocabulary (`besluit`, `bezwaarschrift`, `aanvraag`) that needs maintenance, and to an orchestration routing mechanism the engine should not own.
 
-**Alternative 2: No schema support, purely orchestration**
-- The orchestration layer hardcodes which laws to trigger on which events.
-- Rejected: makes the reactive relationship invisible in the law YAML. The law text says the article reacts to besluiten; the machine readable version should too.
+**Alternative 2: Bilateral declaration (IoC-style)**
+- Both the target law and the hooking law declare the relationship.
+- Rejected: AWB is a general law. Requiring every specific law to declare "AWB hooks into me" inverts the legal hierarchy. AWB's generality is the whole point.
+
+**Alternative 3: Service-layer middleware**
+- The service layer always runs AWB after any beschikking, hardcoded outside the law specification.
+- Rejected: makes the reactive relationship invisible in the law YAML. The machine-readable version should capture what the legal text says.
+
+### Implementation Notes
+
+- New structs in `article.rs`: `HookDeclaration { hook_point: HookPoint, applies_to: HookFilter }`, enum `HookPoint { PreInput, PostInput, PreActions, PostActions }`, struct `HookFilter { legal_character: Option<String>, decision_type: Option<String> }`.
+- `hooks_index` in `RuleResolver`, keyed by `(HookPoint, HookFilter)`, mapping to `Vec<(law_id, article_number)>`. Built during `load_law()`.
+- Hook firing in `LawExecutionService::evaluate_article_with_service()`, at each lifecycle stage. The method already has clear separation between stages (resolve inputs, resolve open terms, execute actions).
+- Hook articles execute through the same `evaluate_article_with_service` path, with cycle detection via `ResolutionContext.visited`.
 
 ## References
 
 - RFC-007: Inversion of Control for Delegated Legislation (PR #246)
 - RFC-009: Lex Specialis Overrides (companion RFC, `overrides` mechanism, this PR)
+- AWB article 3:46: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel3:46
 - AWB article 6:7: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7
-- PoC implementation: `poc-machine-law/laws/awb/bezwaar/JenV-2024-01-01.yaml`

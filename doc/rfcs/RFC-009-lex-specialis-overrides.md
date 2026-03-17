@@ -23,12 +23,12 @@ The engine currently has no way to declare lex specialis relationships. The over
 
 ### Scope
 
-Lex specialis overrides apply in both active and reactive execution:
+Lex specialis overrides apply in both active and hook-augmented execution:
 
-- **Active**: AWB article 4:13 sets the beslistermijn for an aanvraag at 8 weeks. The Vreemdelingenwet overrides this to a shorter period. Someone applies, the engine determines the applicable termijn.
-- **Reactive**: AWB article 6:7 sets the bezwaartermijn at 6 weeks, triggered when a besluit is made. The Vreemdelingenwet overrides this to 4 weeks. The override attaches to the besluit event (see RFC-008).
+- **Active execution**: AWB article 4:13 sets the beslistermijn for an aanvraag at 8 weeks. The Vreemdelingenwet overrides this to a shorter period. Someone applies, the engine determines the applicable termijn.
+- **Hook-augmented execution**: AWB article 6:7 hooks into any execution that produces a BESCHIKKING (see RFC-008). When Vreemdelingenwet is the contextual law, its article 69 overrides the bezwaartermijn that AWB 6:7 would produce from 6 to 4 weeks.
 
-The `overrides` mechanism is independent of `reacts_to` (RFC-008). A law can use `overrides` without any reactive execution, and vice versa.
+The `overrides` mechanism is independent of `hooks` (RFC-008). A law can use `overrides` without hooks, and vice versa. Their interaction: overrides affect a hook article's result, not its triggering condition.
 
 ## Decision
 
@@ -87,7 +87,7 @@ In a chain where law A calls law B which calls law C, the contextual law is alwa
 
 ### Resolution model
 
-#### Active execution (no events)
+#### Active execution
 
 When the engine executes a law that has articles with `overrides` declarations:
 
@@ -96,14 +96,16 @@ When the engine executes a law that has articles with `overrides` declarations:
 3. **If an override exists**: execute the overriding article instead of using the target's value for that output
 4. **If no override exists**: execute the target article normally
 
-#### Reactive execution (with events, RFC-008)
+#### Hook-augmented execution (RFC-008)
 
-When a besluit or other event is produced:
+When a hook article fires (e.g., AWB 6:7 at `post_actions`), the override resolution follows the same logic as active execution. The contextual law still governs:
 
-1. The engine scans the producing law for `overrides` declarations
-2. For each override, the engine follows the reference to the target article
-3. If the target article has `reacts_to` (RFC-008), the engine knows this override applies to that event type
-4. The override is attached to the event, so the reactive layer can apply it when triggering the target article
+1. The engine fires AWB 6:7 as a `post_actions` hook on a BESCHIKKING result
+2. Before executing AWB 6:7, the engine queries the `overrides_index` with the contextual law
+3. If the contextual law has an override for AWB 6:7 `bezwaartermijn_weken`, the engine executes the overriding article instead
+4. The overriding value enters the result instead of AWB 6:7's default
+
+The contextual law does not change when a hook fires. The root of the call stack is always the contextual law.
 
 ### Example: active execution
 
@@ -134,24 +136,25 @@ AWB article 4:13 sets the beslistermijn for government decisions on applications
 
 Note: article 4:13 *does* say "bij wettelijk voorschrift bepaalde termijn", acknowledging that specific laws may set their own termijn. It does not use `open_terms` because it also sets a default ("redelijke termijn... acht weken"). This could be modelled as IoC with a default, or as a plain value subject to lex specialis override. Both are valid interpretations.
 
-### Example: reactive execution
+### Example: hook-augmented execution
 
 ```
 Vreemdelingenwet:
   art 69: overrides AWB 6:7 bezwaartermijn_weken
-  art 25: produces output of type besluit
+  art 25: produces { legal_character: BESCHIKKING }
 
 Engine executes Vreemdelingenwet art 25:
-  1. Produces besluit: { approved: false, ... }
-  2. Scans Vreemdelingenwet for overrides declarations
-  3. Finds art 69 → overrides AWB 6:7 bezwaartermijn_weken
-  4. Follows reference → AWB 6:7 has reacts_to: besluit (RFC-008)
-  5. Attaches to event: { overrides: [{ bezwaartermijn_weken: 4 }] }
+  1. Produces BESCHIKKING
+  2. Queries hooks_index for post_actions + BESCHIKKING
+  3. Finds AWB 6:7
 
-Reactive layer:
-  6. Detects besluit event
-  7. Triggers AWB 6:7 with overrides attached
-  8. AWB executes, bezwaartermijn_weken overridden → 4 weken
+Before executing AWB 6:7, engine queries overrides_index:
+  4. Contextual law = vreemdelingenwet
+  5. Target = (algemene_wet_bestuursrecht, 6:7, bezwaartermijn_weken)
+  6. Found: vreemdelingenwet art 69
+
+Engine executes Vreemdelingenwet art 69 instead of AWB 6:7 default:
+  7. bezwaartermijn_weken = 4
 
 Result to citizen:
   "U kunt binnen vier weken bezwaar maken
@@ -167,7 +170,7 @@ The relationship "in afwijking van" becomes machine-readable. The engine can ans
 
 The override declaration lives on the article where the legal text is (article 69 says "in afwijking van", so article 69 carries the declaration), not on a distant besluit-producing article. This is consistent with how `implements` works: same direction (specific → general), different relationship type.
 
-Works for both active and reactive execution.
+Works for both active and hook-augmented execution.
 
 ### Tradeoffs
 
@@ -200,6 +203,6 @@ Some provisions (like AWB 4:13) can be modelled as either IoC with defaults or a
 ## References
 
 - RFC-007: Inversion of Control for Delegated Legislation (PR #246)
-- RFC-008: Reactive Execution (companion RFC, `reacts_to` mechanism, this PR)
+- RFC-008: Execution Lifecycle Hooks (companion RFC, `hooks` mechanism, this PR)
 - AWB article 6:7: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7
 - Vreemdelingenwet article 69: https://wetten.overheid.nl/BWBR0011823/2024-01-01#Artikel69
