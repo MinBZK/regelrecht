@@ -47,6 +47,7 @@ const TAB_CONFIG = {
       { key: 'priority', label: 'Priority', sortable: true },
       { key: 'attempts', label: 'Attempts', sortable: true },
       { key: 'created_at', label: 'Created', sortable: true },
+      { key: '_actions', label: 'Actions', sortable: false },
     ],
     defaultSort: 'created_at',
     filters: [
@@ -334,6 +335,14 @@ function renderTableBody() {
       const td = document.createElement('td');
       if (col.key === '_actions' && state.activeTab === 'law_entries') {
         td.appendChild(renderRowActions(row));
+      } else if (col.key === '_actions' && state.activeTab === 'jobs') {
+        if (row.status === 'failed') {
+          const btn = document.createElement('button');
+          btn.className = 'btn-retry';
+          btn.textContent = 'Retry';
+          btn.addEventListener('click', (e) => onRetryJob(row.id, e.currentTarget));
+          td.appendChild(btn);
+        }
       } else if (col.key === 'law_id' && state.activeTab === 'law_entries') {
         // Clickable law_id to view jobs for this law
         const link = document.createElement('a');
@@ -646,6 +655,27 @@ async function onEnrichClick(lawId, btn) {
   }
 }
 
+async function onRetryJob(jobId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Retrying\u2026';
+  try {
+    const response = await fetch(`api/jobs/${jobId}/retry`, { method: 'POST' });
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    fetchData();
+  } catch (err) {
+    alert('Retry failed: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+  }
+}
+
 function viewJobsForLaw(lawId) {
   state.activeTab = 'jobs';
   state.sort = TAB_CONFIG.jobs.defaultSort;
@@ -665,6 +695,7 @@ function viewJobsForLaw(lawId) {
   renderAll();
   fetchData();
 }
+
 
 function onSort(key) {
   if (state.sort === key) {

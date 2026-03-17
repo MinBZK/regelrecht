@@ -45,6 +45,7 @@ fn test_harvest_payload_roundtrip() {
         date: Some("2025-01-01".to_string()),
         max_size_mb: None,
         depth: Some(1),
+        max_depth: None,
     };
 
     let json = serde_json::to_value(&payload).unwrap();
@@ -53,6 +54,7 @@ fn test_harvest_payload_roundtrip() {
     assert_eq!(back.date, payload.date);
     assert_eq!(back.max_size_mb, payload.max_size_mb);
     assert_eq!(back.depth, payload.depth);
+    assert_eq!(back.max_depth, payload.max_depth);
 }
 
 #[test]
@@ -62,12 +64,14 @@ fn test_harvest_payload_skip_none_fields() {
         date: None,
         max_size_mb: None,
         depth: None,
+        max_depth: None,
     };
 
     let json = serde_json::to_string(&payload).unwrap();
     assert!(!json.contains("date"));
     assert!(!json.contains("max_size_mb"));
     assert!(!json.contains("depth"));
+    assert!(!json.contains("max_depth"));
 }
 
 #[test]
@@ -115,6 +119,7 @@ async fn test_execute_harvest_real_law() {
         date: Some("2025-01-01".to_string()),
         max_size_mb: Some(50),
         depth: None,
+        max_depth: None,
     };
 
     let client = regelrecht_harvester::http::create_client().unwrap();

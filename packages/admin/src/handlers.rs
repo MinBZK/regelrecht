@@ -1,12 +1,13 @@
 use std::sync::LazyLock;
 
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use regelrecht_pipeline::job_queue::{
-    create_enrich_job_if_not_exists, create_job, CreateJobRequest,
+    self, create_enrich_job_if_not_exists, create_job, CreateJobRequest,
 };
-use regelrecht_pipeline::law_status::{set_enrich_job, set_harvest_job};
+use regelrecht_pipeline::law_status::{self, set_enrich_job, set_harvest_job};
+use regelrecht_pipeline::models::LawStatusValue;
 use regelrecht_pipeline::{EnrichPayload, HarvestPayload, JobType, Priority, ENRICH_PROVIDERS};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -316,6 +317,7 @@ pub struct CreateJobBody {
     pub bwb_id: String,
     pub priority: Option<i32>,
     pub date: Option<String>,
+    pub max_depth: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -348,6 +350,15 @@ pub async fn create_harvest_job(
             return Err((
                 StatusCode::BAD_REQUEST,
                 format!("invalid date format: expected YYYY-MM-DD, got '{date}'"),
+            ));
+        }
+    }
+
+    if let Some(depth) = body.max_depth {
+        if depth > 10 {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("max_depth must be at most 10, got {depth}"),
             ));
         }
     }
@@ -424,6 +435,7 @@ pub async fn create_harvest_job(
         date: body.date,
         max_size_mb: None,
         depth: None,
+        max_depth: body.max_depth,
     };
 
     let priority = Priority::new(body.priority.unwrap_or(50));
@@ -676,6 +688,82 @@ pub async fn get_job(
     .ok_or_else(|| (StatusCode::NOT_FOUND, format!("job not found: {job_id}")))?;
 
     Ok(Json(job))
+}
+
+// --- Retry Job ---
+
+pub async fn retry_job_handler(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Job>, (StatusCode, String)> {
+    let job_id: uuid::Uuid = id
+        .parse()
+        .map_err(|_| (StatusCode::BAD_REQUEST, format!("invalid job ID: '{id}'")))?;
+
+    let pool = &state.pool;
+
+    let mut tx = pool.begin().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to begin transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    let job = job_queue::retry_job(&mut *tx, job_id).await.map_err(|e| {
+        tracing::warn!(job_id = %job_id, error = %e, "retry_job failed");
+        match e {
+            regelrecht_pipeline::PipelineError::InvalidStateTransition(_) => {
+                (StatusCode::CONFLICT, e.to_string())
+            }
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal server error".to_string(),
+            ),
+        }
+    })?;
+
+    // Reset law_entry status so the law isn't stuck on harvest_failed/enrich_failed.
+    let reset_status = match job.job_type {
+        JobType::Harvest => LawStatusValue::Queued,
+        JobType::Enrich => LawStatusValue::Harvested,
+    };
+    law_status::update_status(&mut *tx, &job.law_id, reset_status)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, law_id = %job.law_id, "failed to reset law status on retry");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to reset law status".to_string(),
+            )
+        })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to commit retry transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    tracing::info!(job_id = %job_id, law_id = %job.law_id, "job retried via admin");
+
+    Ok(Json(Job {
+        id: job.id,
+        job_type: job.job_type,
+        law_id: job.law_id,
+        status: job.status,
+        priority: job.priority,
+        payload: job.payload,
+        result: job.result,
+        progress: job.progress,
+        attempts: job.attempts,
+        max_attempts: job.max_attempts,
+        created_at: job.created_at,
+        updated_at: job.updated_at,
+        started_at: job.started_at,
+        completed_at: job.completed_at,
+    }))
 }
 
 // --- Delete Jobs ---

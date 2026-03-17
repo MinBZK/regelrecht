@@ -149,6 +149,7 @@ async fn process_next_job(
             date: None,
             max_size_mb: None,
             depth: None,
+            max_depth: None,
         },
     };
 
@@ -255,7 +256,8 @@ async fn process_next_job(
             // Create follow-up harvest jobs for referenced laws (best-effort).
             // Respects a depth limit to prevent unbounded recursive harvesting.
             let current_depth = payload.depth.unwrap_or(0);
-            if !result.referenced_bwb_ids.is_empty() && current_depth < MAX_HARVEST_DEPTH {
+            let effective_max_depth = payload.max_depth.unwrap_or(MAX_HARVEST_DEPTH);
+            if !result.referenced_bwb_ids.is_empty() && current_depth < effective_max_depth {
                 let next_depth = current_depth + 1;
                 let mut created = 0u32;
                 for bwb_id in &result.referenced_bwb_ids {
@@ -264,6 +266,7 @@ async fn process_next_job(
                         date: Some(result.harvest_date.clone()),
                         max_size_mb: payload.max_size_mb,
                         depth: Some(next_depth),
+                        max_depth: payload.max_depth,
                     };
                     let payload_json = match serde_json::to_value(&follow_up_payload) {
                         Ok(v) => v,
@@ -304,7 +307,7 @@ async fn process_next_job(
             } else if !result.referenced_bwb_ids.is_empty() {
                 tracing::info!(
                     depth = current_depth,
-                    max_depth = MAX_HARVEST_DEPTH,
+                    max_depth = effective_max_depth,
                     refs = result.referenced_bwb_ids.len(),
                     parent_job_id = %job.id,
                     parent_law_id = %job.law_id,

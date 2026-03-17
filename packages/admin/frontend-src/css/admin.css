@@ -572,6 +572,24 @@ body {
   color: #1d4ed8;
 }
 
+/* Retry Button */
+.btn-retry {
+  padding: var(--spacing-1) var(--spacing-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.btn-retry:hover {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
 
 /* ============================================================
    Detail Panel (slide-in from right)

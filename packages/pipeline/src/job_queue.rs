@@ -315,6 +315,34 @@ where
     Ok(())
 }
 
+/// Reset a failed job so it can be retried.
+///
+/// Resets status to `pending`, resets `attempts` to 0, and clears `started_at`,
+/// `completed_at`, and `result`. Only works on jobs with status `failed`.
+#[tracing::instrument(skip(executor))]
+pub async fn retry_job<'e, E>(executor: E, job_id: Uuid) -> Result<Job>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let job = sqlx::query_as::<_, Job>(
+        r#"
+        UPDATE jobs
+        SET status = 'pending', attempts = 0, started_at = NULL, completed_at = NULL, result = NULL
+        WHERE id = $1 AND status = 'failed'
+        RETURNING *
+        "#,
+    )
+    .bind(job_id)
+    .fetch_optional(executor)
+    .await?
+    .ok_or(PipelineError::InvalidStateTransition(format!(
+        "job {job_id} is not in failed state (or does not exist)"
+    )))?;
+
+    tracing::info!(job_id = %job.id, law_id = %job.law_id, "job reset for retry");
+    Ok(job)
+}
+
 /// Get a job by ID.
 pub async fn get_job<'e, E>(executor: E, job_id: Uuid) -> Result<Job>
 where
