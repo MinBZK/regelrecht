@@ -111,7 +111,7 @@ function currentDropdownValue(val) {
       </rr-icon-button>
     </div>
 
-    <rr-list variant="box">
+    <rr-list variant="box" class="settings-list">
       <!-- Titel -->
       <rr-list-item size="md">
         <rr-label-cell>Titel</rr-label-cell>
@@ -175,10 +175,31 @@ function currentDropdownValue(val) {
   margin-bottom: 8px;
 }
 
+/* Consistent field widths in settings list */
+.settings-list rr-list-item {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 0 12px;
+  align-items: center;
+}
+.settings-list rr-button-cell {
+  width: 100%;
+}
+.settings-list rr-text-field,
+.settings-list rr-drop-down-field {
+  width: 100%;
+}
+
 .value-row {
   display: flex;
   gap: 8px;
   align-items: center;
+  width: 100%;
+}
+.value-row rr-text-field,
+.value-row rr-drop-down-field {
+  flex: 1;
+  min-width: 0;
 }
 
 .value-help-text {

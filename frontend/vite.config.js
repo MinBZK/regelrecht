@@ -13,6 +13,12 @@ export default defineConfig({
       },
     }),
   ],
+  test: {
+    environment: 'happy-dom',
+    include: ['src/**/*.test.js'],
+    pool: 'vmThreads',
+    testTimeout: 10000,
+  },
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',
@@ -20,6 +26,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         editor: resolve(__dirname, 'editor.html'),
+        dev: resolve(__dirname, 'dev.html'),
       },
     },
   },
