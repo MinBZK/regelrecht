@@ -709,10 +709,18 @@ function onNextPage() {
 // Detail Panel
 // ---------------------------------------------------------------------------
 
+let _closePanelTransitionCleanup = null;
+
 function openDetailPanel(job) {
   const panel = $('#detail-panel');
   const backdrop = $('#detail-backdrop');
   const body = $('#detail-body');
+
+  // Cancel any pending close transition
+  if (_closePanelTransitionCleanup) {
+    _closePanelTransitionCleanup();
+    _closePanelTransitionCleanup = null;
+  }
 
   body.innerHTML = '';
 
@@ -809,15 +817,24 @@ function closeDetailPanel() {
   const panel = $('#detail-panel');
   const backdrop = $('#detail-backdrop');
 
+  if (!panel.classList.contains('is-open')) return;
+
   panel.classList.remove('is-open');
   backdrop.classList.remove('is-open');
 
   // Hide after transition completes
-  panel.addEventListener('transitionend', function hide() {
+  function hide() {
     panel.removeEventListener('transitionend', hide);
+    _closePanelTransitionCleanup = null;
     panel.hidden = true;
     backdrop.hidden = true;
-  });
+  }
+  panel.addEventListener('transitionend', hide, { once: true });
+
+  // Store cleanup so openDetailPanel can cancel a pending close
+  _closePanelTransitionCleanup = () => {
+    panel.removeEventListener('transitionend', hide);
+  };
 }
 
 
@@ -861,6 +878,9 @@ async function init() {
   // Bind detail panel close
   $('#detail-close').addEventListener('click', closeDetailPanel);
   $('#detail-backdrop').addEventListener('click', closeDetailPanel);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDetailPanel();
+  });
 
   // Initial render
   renderTabs();
