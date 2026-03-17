@@ -174,29 +174,44 @@
 
 
 /* ============================================================
-   Action buttons (row-level)
+   Law ID Links
+   ============================================================ */
+
+.law-id-link {
+  color: var(--semantics-accent-color, var(--primitives-color-accent-500));
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.law-id-link:hover {
+  text-decoration: underline;
+}
+
+
+/* ============================================================
+   Row Action Buttons
    ============================================================ */
 
 .action-btns {
-  display: flex;
+  display: inline-flex;
   gap: var(--primitives-space-4);
 }
 
 .action-btn {
-  padding: 2px var(--primitives-space-8);
-  font-size: 12px;
-  font-weight: 700;
+  padding: var(--primitives-space-2) var(--primitives-space-8);
+  font-family: var(--primitives-font-family-body);
+  font-size: var(--primitives-font-size-80);
+  font-weight: var(--primitives-font-weight-body-extra-bold);
   border: 1px solid var(--semantics-dividers-color);
   border-radius: var(--primitives-corner-radius-xs);
-  background: var(--semantics-surfaces-background-color);
-  color: var(--semantics-content-color);
   cursor: pointer;
-  white-space: nowrap;
+  background-color: var(--semantics-surfaces-background-color);
+  color: var(--semantics-content-color);
+  transition: background-color 150ms ease, border-color 150ms ease;
 }
 
-.action-btn:hover:not(:disabled) {
-  background: var(--semantics-surfaces-tinted-background-color);
-  border-color: var(--semantics-content-secondary-color);
+.action-btn:not(:disabled):hover {
+  background-color: var(--semantics-surfaces-tinted-background-color);
 }
 
 .action-btn:disabled {
@@ -204,36 +219,22 @@
   cursor: not-allowed;
 }
 
-.action-btn--enrich {
-  border-color: #3b82f6;
-  color: #1d4ed8;
-}
-
-.action-btn--enrich:hover:not(:disabled) {
-  background: #eff6ff;
-  border-color: #2563eb;
-}
-
 .action-btn--harvest {
-  border-color: #22c55e;
-  color: #166534;
+  border-color: var(--primitives-color-accent-200);
+  color: var(--primitives-color-accent-700);
 }
 
-.action-btn--harvest:hover:not(:disabled) {
-  background: #f0fdf4;
-  border-color: #16a34a;
+.action-btn--harvest:not(:disabled):hover {
+  background-color: var(--primitives-color-accent-75);
 }
 
-/* Clickable law_id link to filtered jobs view */
-.law-id-link {
-  color: var(--semantics-content-color);
-  text-decoration: none;
-  cursor: pointer;
+.action-btn--enrich {
+  border-color: var(--primitives-color-success-200);
+  color: var(--primitives-color-success-700);
 }
 
-.law-id-link:hover {
-  text-decoration: underline;
-  color: #1d4ed8;
+.action-btn--enrich:not(:disabled):hover {
+  background-color: var(--primitives-color-success-75);
 }
 
 
@@ -285,7 +286,7 @@
 
 .detail-panel__title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: var(--primitives-font-weight-body-extra-bold);
   color: var(--semantics-content-color);
 }
 
@@ -317,7 +318,7 @@
 
 .detail-section__title {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: var(--primitives-font-weight-body-extra-bold);
   color: var(--semantics-content-secondary-color);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -328,7 +329,7 @@
   display: grid;
   grid-template-columns: auto 1fr;
   gap: var(--primitives-space-4) var(--primitives-space-16);
-  font-size: 14px;
+  font-size: var(--primitives-font-size-80);
 }
 
 .detail-grid dt {
@@ -347,7 +348,7 @@
   border-radius: var(--primitives-corner-radius-sm);
   padding: var(--primitives-space-8) var(--primitives-space-16);
   color: var(--primitives-color-danger-700);
-  font-size: 14px;
+  font-size: var(--primitives-font-size-80);
   white-space: pre-wrap;
   word-break: break-word;
   font-family: var(--primitives-font-family-monospace);
@@ -398,8 +399,8 @@
 }
 
 .detail-phase__label {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--primitives-font-size-80);
+  font-weight: var(--primitives-font-weight-body-extra-bold);
   color: #1e40af;
 }
 
@@ -419,7 +420,6 @@
 .data-table tbody tr.clickable-row:hover {
   background-color: var(--semantics-surfaces-tinted-background-color);
 }
-}
 
 /* Environment badge for preview deployments */
 .env-badge {
@@ -429,11 +429,11 @@
   z-index: 1000;
   padding: 2px 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: var(--primitives-font-weight-body-extra-bold);
   color: #854d0e;
   background: #fef9c3;
   border: 1px solid #fde68a;
-  border-radius: 4px;
+  border-radius: var(--primitives-corner-radius-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }

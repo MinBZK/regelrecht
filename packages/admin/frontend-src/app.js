@@ -203,26 +203,47 @@ function renderFilters() {
   wrapper.className = 'filter-row';
 
   for (const filter of config.filters) {
-    const dropdown = document.createElement('rr-drop-down-field');
-    dropdown.setAttribute('size', 'md');
-    dropdown.setAttribute('placeholder', filter.label);
-    dropdown.id = `filter-${filter.key}`;
+    if (filter.type === 'text') {
+      const textField = document.createElement('rr-text-field');
+      textField.setAttribute('size', 'md');
+      textField.setAttribute('placeholder', filter.label);
+      textField.id = `filter-${filter.key}`;
 
-    const options = [
-      { value: '', label: `All ${filter.label}` },
-      ...filter.options.map(v => ({ value: v, label: v })),
-    ];
-    dropdown.options = options;
+      if (state.filters[filter.key]) {
+        textField.value = state.filters[filter.key];
+      }
 
-    if (state.filters[filter.key]) {
-      dropdown.value = state.filters[filter.key];
+      let debounceTimer;
+      textField.addEventListener('input', () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          onFilterChange(filter.key, getTextFieldValue(textField));
+        }, 300);
+      });
+
+      wrapper.appendChild(textField);
+    } else {
+      const dropdown = document.createElement('rr-drop-down-field');
+      dropdown.setAttribute('size', 'md');
+      dropdown.setAttribute('placeholder', filter.label);
+      dropdown.id = `filter-${filter.key}`;
+
+      const options = [
+        { value: '', label: `All ${filter.label}` },
+        ...filter.options.map(v => ({ value: v, label: v })),
+      ];
+      dropdown.options = options;
+
+      if (state.filters[filter.key]) {
+        dropdown.value = state.filters[filter.key];
+      }
+
+      dropdown.addEventListener('change', (e) => {
+        onFilterChange(filter.key, e.detail?.value ?? e.target.value ?? '');
+      });
+
+      wrapper.appendChild(dropdown);
     }
-
-    dropdown.addEventListener('change', (e) => {
-      onFilterChange(filter.key, e.detail?.value ?? e.target.value ?? '');
-    });
-
-    wrapper.appendChild(dropdown);
   }
 
   filtersEl.appendChild(wrapper);
@@ -638,9 +659,9 @@ function viewJobsForLaw(lawId) {
   state.totalCount = 0;
   state.error = null;
 
-  const harvestForm = $('#harvest-form');
-  if (harvestForm) {
-    harvestForm.style.display = '';
+  const harvestContainer = $('#harvest-form-container');
+  if (harvestContainer) {
+    harvestContainer.style.display = '';
   }
 
   renderTabs();
