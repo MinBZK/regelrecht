@@ -30,6 +30,8 @@ pub struct Job {
     pub law_id: String,
     pub status: JobStatus,
     pub priority: i32,
+    pub payload: Option<serde_json::Value>,
+    pub result: Option<serde_json::Value>,
     pub attempts: i32,
     pub max_attempts: i32,
     pub created_at: DateTime<Utc>,

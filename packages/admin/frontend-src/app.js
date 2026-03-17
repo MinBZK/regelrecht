@@ -323,6 +323,13 @@ function renderTableBody() {
 
   for (const row of state.data) {
     const tr = document.createElement('tr');
+
+    // Jobs rows are clickable to open the detail panel
+    if (state.activeTab === 'jobs') {
+      tr.classList.add('clickable-row');
+      tr.addEventListener('click', () => openDetailPanel(row));
+    }
+
     for (const col of config.columns) {
       const td = document.createElement('td');
       if (col.key === '_actions' && state.activeTab === 'law_entries') {
@@ -699,6 +706,122 @@ function onNextPage() {
 
 
 // ---------------------------------------------------------------------------
+// Detail Panel
+// ---------------------------------------------------------------------------
+
+function openDetailPanel(job) {
+  const panel = $('#detail-panel');
+  const backdrop = $('#detail-backdrop');
+  const body = $('#detail-body');
+
+  body.innerHTML = '';
+
+  // --- Status & Info section ---
+  const infoSection = document.createElement('div');
+  infoSection.className = 'detail-section';
+  infoSection.innerHTML = `<h3 class="detail-section__title">Info</h3>`;
+
+  const infoGrid = document.createElement('dl');
+  infoGrid.className = 'detail-grid';
+
+  const fields = [
+    ['ID', job.id],
+    ['Type', job.job_type],
+    ['Law ID', job.law_id],
+    ['Status', job.status],
+    ['Priority', job.priority],
+    ['Attempts', `${job.attempts} / ${job.max_attempts}`],
+    ['Created', job.created_at ? DATE_FORMATTER.format(new Date(job.created_at)) : null],
+    ['Started', job.started_at ? DATE_FORMATTER.format(new Date(job.started_at)) : null],
+    ['Completed', job.completed_at ? DATE_FORMATTER.format(new Date(job.completed_at)) : null],
+  ];
+
+  for (const [label, value] of fields) {
+    if (value === null || value === undefined) continue;
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    if (label === 'Status') {
+      const variant = STATUS_BADGE_MAP[value] || 'grey';
+      dd.innerHTML = `<span class="badge badge--${variant}">${escapeHtml(value)}</span>`;
+    } else {
+      dd.textContent = value;
+    }
+    infoGrid.appendChild(dt);
+    infoGrid.appendChild(dd);
+  }
+
+  infoSection.appendChild(infoGrid);
+  body.appendChild(infoSection);
+
+  // --- Error section (only for failed jobs) ---
+  if (job.status === 'failed' && job.result && job.result.error) {
+    const errorSection = document.createElement('div');
+    errorSection.className = 'detail-section';
+    errorSection.innerHTML = `<h3 class="detail-section__title">Error</h3>`;
+
+    const errorBlock = document.createElement('div');
+    errorBlock.className = 'detail-error';
+    errorBlock.textContent = job.result.error;
+
+    errorSection.appendChild(errorBlock);
+    body.appendChild(errorSection);
+  }
+
+  // --- Result section (for completed jobs) ---
+  if (job.status === 'completed' && job.result) {
+    const resultSection = document.createElement('div');
+    resultSection.className = 'detail-section';
+    resultSection.innerHTML = `<h3 class="detail-section__title">Result</h3>`;
+
+    const resultBlock = document.createElement('div');
+    resultBlock.className = 'detail-json';
+    resultBlock.textContent = JSON.stringify(job.result, null, 2);
+
+    resultSection.appendChild(resultBlock);
+    body.appendChild(resultSection);
+  }
+
+  // --- Payload section ---
+  if (job.payload) {
+    const payloadSection = document.createElement('div');
+    payloadSection.className = 'detail-section';
+    payloadSection.innerHTML = `<h3 class="detail-section__title">Payload</h3>`;
+
+    const payloadBlock = document.createElement('div');
+    payloadBlock.className = 'detail-json';
+    payloadBlock.textContent = JSON.stringify(job.payload, null, 2);
+
+    payloadSection.appendChild(payloadBlock);
+    body.appendChild(payloadSection);
+  }
+
+  // Show panel with animation
+  panel.hidden = false;
+  backdrop.hidden = false;
+  // Force reflow before adding class for CSS transition
+  panel.offsetHeight;
+  panel.classList.add('is-open');
+  backdrop.classList.add('is-open');
+}
+
+function closeDetailPanel() {
+  const panel = $('#detail-panel');
+  const backdrop = $('#detail-backdrop');
+
+  panel.classList.remove('is-open');
+  backdrop.classList.remove('is-open');
+
+  // Hide after transition completes
+  panel.addEventListener('transitionend', function hide() {
+    panel.removeEventListener('transitionend', hide);
+    panel.hidden = true;
+    backdrop.hidden = true;
+  });
+}
+
+
+// ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 
@@ -734,6 +857,10 @@ async function init() {
   if (resetBtn) {
     resetBtn.addEventListener('click', onResetJobs);
   }
+
+  // Bind detail panel close
+  $('#detail-close').addEventListener('click', closeDetailPanel);
+  $('#detail-backdrop').addEventListener('click', closeDetailPanel);
 
   // Initial render
   renderTabs();

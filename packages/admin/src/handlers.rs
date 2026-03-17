@@ -263,7 +263,7 @@ pub async fn list_jobs(
 
     let data_sql = format!(
         "SELECT id, job_type, law_id, status, \
-         priority, attempts, max_attempts, created_at, updated_at, started_at, completed_at \
+         priority, payload, result, attempts, max_attempts, created_at, updated_at, started_at, completed_at \
          FROM jobs {where_sql} \
          ORDER BY {sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
     );
