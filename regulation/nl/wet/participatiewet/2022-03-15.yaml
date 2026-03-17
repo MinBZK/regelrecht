@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: participatiewet
 regulatory_layer: WET
 publication_date: '2014-07-15'
@@ -581,20 +581,22 @@ articles:
           # === Stap 10: Bereken verlagingsbedrag ===
           # Verlagingsbedrag = normbedrag * verlaging_percentage / 100
           - output: verlaging_bedrag
-            operation: DIVIDE
-            values:
-              - operation: MULTIPLY
-                values:
-                  - $normbedrag
-                  - $verlaging_percentage
-              - 100
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $normbedrag
+                    - $verlaging_percentage
+                - 100
 
           # === Stap 11: Bereken finale uitkering ===
           - output: uitkering_bedrag
-            operation: SUBTRACT
-            values:
-              - $normbedrag
-              - $verlaging_bedrag
+            value:
+              operation: SUBTRACT
+              values:
+                - $normbedrag
+                - $verlaging_bedrag
 
   - number: '69'
     text: |-

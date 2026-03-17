@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: zorgverzekeringswet
 regulatory_layer: WET
 publication_date: '2020-02-24'
@@ -118,6 +118,9 @@ articles:
           - name: polis_status
             type: string
             source: {}
+          - name: verdragsinschrijving
+            type: boolean
+            source: {}
           - name: is_gedetineerd
             type: boolean
             source:
@@ -133,9 +136,14 @@ articles:
             value:
               operation: AND
               conditions:
-                - operation: IN
-                  subject: $polis_status
-                  value: $actieve_polis_statussen
+                - operation: OR
+                  conditions:
+                    - operation: IN
+                      subject: $polis_status
+                      value: $actieve_polis_statussen
+                    - operation: EQUALS
+                      subject: $verdragsinschrijving
+                      value: true
                 - operation: NOT_EQUALS
                   subject: $is_gedetineerd
                   value: true

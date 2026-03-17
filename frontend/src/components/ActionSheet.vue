@@ -1,64 +1,77 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { buildOperationTree } from '../utils/operationTree.js';
+import OperationSettings from './OperationSettings.vue';
 
 const props = defineProps({
   action: { type: Object, default: null },
+  article: { type: Object, default: null },
+});
+
+const outputOptions = computed(() => {
+  const outputs = props.article?.machine_readable?.execution?.output;
+  if (!Array.isArray(outputs)) return [];
+  return outputs.map(o => ({
+    value: o.name,
+    label: `${o.name.replace(/_/g, ' ')} (${o.type})`,
+  }));
 });
 
 const emit = defineEmits(['close']);
 
-const operations = computed(() => {
-  if (!props.action) return [];
-  return flattenOperations(props.action);
+const operationTree = computed(() => props.action ? buildOperationTree(props.action) : []);
+
+const selectedOpIndex = ref(0);
+
+watch(() => props.action, () => {
+  const tree = operationTree.value;
+  selectedOpIndex.value = tree.length > 0 ? tree.length - 1 : 0;
+}, { immediate: true });
+
+const selectedOperation = computed(() => operationTree.value[selectedOpIndex.value] ?? null);
+
+const parentOperations = computed(() => {
+  const selected = selectedOperation.value;
+  if (!selected) return [];
+  return operationTree.value.filter(op =>
+    op !== selected && selected.number.startsWith(op.number + '.')
+  );
 });
 
-function flattenOperations(node, list = []) {
-  if (!node) return list;
-  if (node.operation) {
-    list.push({ operation: node.operation, values: node.values, subject: node.subject, value: node.value });
-  }
-  if (node.value && typeof node.value === 'object') {
-    flattenOperations(node.value, list);
-  }
-  if (Array.isArray(node.values)) {
-    for (const v of node.values) {
-      if (typeof v === 'object') flattenOperations(v, list);
-    }
-  }
-  if (node.then && typeof node.then === 'object') flattenOperations(node.then, list);
-  if (node.else !== undefined && typeof node.else === 'object') flattenOperations(node.else, list);
-  if (node.when && typeof node.when === 'object') flattenOperations(node.when, list);
-  return list;
+function selectOperation(op) {
+  const idx = operationTree.value.indexOf(op);
+  if (idx >= 0) selectedOpIndex.value = idx;
 }
 
-function describeOperation(op) {
-  if (!op.operation) return '—';
-  const args = [];
-  if (op.subject) args.push(formatArg(op.subject));
-  if (op.value !== undefined) args.push(formatArg(op.value));
-  if (op.values) {
-    for (const v of op.values) args.push(formatArg(v));
-  }
-  return `${op.operation}(${args.join(', ')})`;
+function selectOperationByNode(node) {
+  const idx = operationTree.value.findIndex(op => op.node === node);
+  if (idx >= 0) selectedOpIndex.value = idx;
 }
 
-function formatArg(v) {
-  if (typeof v === 'string') return v.startsWith('$') ? v.slice(1) : v;
-  if (typeof v === 'number') return String(v);
-  if (typeof v === 'boolean') return String(v);
-  if (typeof v === 'object' && v !== null && v.operation) return v.operation + '(...)';
-  return '...';
+function handleKeydown(e) {
+  if (e.key === 'Escape' && props.action) {
+    emit('close');
+  }
 }
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
 <template>
   <div v-if="action" class="action-sheet-overlay" @click.self="emit('close')">
     <div class="action-sheet-backdrop" @click="emit('close')"></div>
     <div class="action-sheet-panel">
+      <!-- Header -->
       <rr-toolbar size="md">
         <rr-toolbar-start-area>
           <rr-toolbar-item>
-            <span class="machine-section-title" style="margin:0">Actie: {{ action.output }}</span>
+            <span class="action-sheet-header-title">Actie</span>
           </rr-toolbar-item>
         </rr-toolbar-start-area>
         <rr-toolbar-end-area>
@@ -68,24 +81,50 @@ function formatArg(v) {
         </rr-toolbar-end-area>
       </rr-toolbar>
 
+      <!-- Body -->
       <div class="action-sheet-body">
         <rr-simple-section>
-          <h3 class="machine-section-title">Operaties</h3>
+          <!-- Output binding -->
+          <h3 class="section-title">Output</h3>
           <rr-list variant="box">
-            <rr-list-item v-for="(op, i) in operations" :key="i" size="md">
-              <rr-text-cell>{{ describeOperation(op) }}</rr-text-cell>
-            </rr-list-item>
-            <rr-list-item v-if="!operations.length" size="md">
-              <rr-text-cell v-if="action.value && typeof action.value === 'string'">{{ action.value }}</rr-text-cell>
-              <rr-text-cell v-else-if="action.resolve">resolve: {{ action.resolve.type }} / {{ action.resolve.output }}</rr-text-cell>
-              <rr-text-cell v-else>Geen operaties</rr-text-cell>
+            <rr-list-item size="md">
+              <rr-label-cell>Verbonden aan</rr-label-cell>
+              <rr-button-cell slot="end">
+                <rr-drop-down-field size="md" :value="action?.output" .options="outputOptions"></rr-drop-down-field>
+              </rr-button-cell>
             </rr-list-item>
           </rr-list>
+
+          <rr-spacer size="16"></rr-spacer>
+
+          <!-- Section A: Bovenliggende operaties -->
+          <template v-if="parentOperations.length">
+            <h3 class="section-title">Bovenliggende operaties</h3>
+            <rr-list variant="box">
+              <rr-list-item v-for="op in parentOperations" :key="op.number" size="md">
+                <div class="op-cell">
+                  <div class="op-cell-title">{{ op.number }}. {{ op.title }}</div>
+                  <div class="op-cell-subtitle">{{ op.subtitle }}</div>
+                </div>
+                <rr-button-cell slot="end">
+                  <rr-button variant="neutral-tinted" size="sm" @click="selectOperation(op)">Bewerk</rr-button>
+                </rr-button-cell>
+              </rr-list-item>
+            </rr-list>
+
+            <rr-spacer size="16"></rr-spacer>
+          </template>
+
+          <!-- Section B: Operation Settings -->
+          <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" @select-operation="selectOperationByNode" />
         </rr-simple-section>
       </div>
 
+      <!-- Footer -->
       <div class="action-sheet-footer">
-        <rr-button variant="accent-filled" size="md" style="width: 100%;" @click="emit('close')">Sluiten</rr-button>
+        <rr-button variant="accent-filled" size="md" style="width: 100%;" @click="emit('close')">
+          Sluiten
+        </rr-button>
       </div>
     </div>
   </div>
@@ -106,7 +145,7 @@ function formatArg(v) {
 }
 .action-sheet-panel {
   position: relative;
-  width: 480px;
+  width: 640px;
   background: #fff;
   display: flex;
   flex-direction: column;
@@ -118,11 +157,44 @@ function formatArg(v) {
               0px 1px 4px 0px rgba(0, 0, 0, 0.03),
               0px 0px 2px 0px rgba(0, 0, 0, 0.02);
 }
+.action-sheet-header-title {
+  font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
+  font-weight: 550;
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--semantics-text-primary-color, #333B44);
+}
 .action-sheet-body {
   flex: 1;
   overflow-y: auto;
 }
 .action-sheet-footer {
   padding: 0 16px 16px;
+}
+.section-title {
+  font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
+  font-weight: 550;
+  font-size: 20px;
+  line-height: 1.4;
+  color: var(--semantics-text-primary-color, #333B44);
+  margin: 0 0 8px 0;
+}
+.op-cell {
+  flex: 1;
+  min-width: 0;
+}
+.op-cell-title {
+  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-weight: 550;
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--semantics-text-primary-color, #333B44);
+}
+.op-cell-subtitle {
+  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.25;
+  color: var(--semantics-text-secondary-color, #545D68);
 }
 </style>

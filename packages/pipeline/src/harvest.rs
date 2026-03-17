@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -7,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::error::Result;
 use regelrecht_harvester::manifest;
 
+/// Maximum recursion depth for follow-up harvest jobs.
+/// Prevents unbounded job creation from circular or deeply nested law references.
+pub const MAX_HARVEST_DEPTH: u32 = 2;
+
 /// Payload for a harvest job, stored as JSON in the job queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarvestPayload {
@@ -15,6 +20,9 @@ pub struct HarvestPayload {
     pub date: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_size_mb: Option<u64>,
+    /// Current recursion depth for follow-up harvests. `None` or `0` means this is a root job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
 }
 
 /// Result of a successful harvest execution.
@@ -27,6 +35,10 @@ pub struct HarvestResult {
     pub article_count: usize,
     pub warning_count: usize,
     pub warnings: Vec<String>,
+    /// Unique BWB IDs referenced by this law's articles (excluding self-references).
+    pub referenced_bwb_ids: Vec<String>,
+    /// The resolved effective date used for this harvest.
+    pub harvest_date: String,
 }
 
 /// Status file written alongside the law YAML.
@@ -84,6 +96,17 @@ pub async fn execute_harvest(
     let warning_count = law.warning_count();
     let warnings = law.warnings.clone();
 
+    let mut referenced_bwb_ids: Vec<String> = law
+        .articles
+        .iter()
+        .flat_map(|a| a.references.iter())
+        .map(|r| r.bwb_id.clone())
+        .filter(|id| id != &payload.bwb_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    referenced_bwb_ids.sort();
+
     let output_base_path = repo_path.join(output_base);
     let law_for_save = law;
     let date_for_save = effective_date.clone();
@@ -107,7 +130,7 @@ pub async fn execute_harvest(
         slug: slug.clone(),
         status: "harvested".to_string(),
         last_harvested: Utc::now().to_rfc3339(),
-        harvest_date: effective_date,
+        harvest_date: effective_date.clone(),
         article_count,
         warning_count,
         warnings: warnings.clone(),
@@ -125,6 +148,8 @@ pub async fn execute_harvest(
         article_count,
         warning_count,
         warnings,
+        referenced_bwb_ids,
+        harvest_date: effective_date,
     };
 
     let written_files = vec![yaml_path, status_file_path];
@@ -141,6 +166,7 @@ mod tests {
             bwb_id: "BWBR0018451".to_string(),
             date: Some("2025-01-01".to_string()),
             max_size_mb: Some(100),
+            depth: Some(2),
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -149,6 +175,7 @@ mod tests {
         assert_eq!(deserialized.bwb_id, "BWBR0018451");
         assert_eq!(deserialized.date.as_deref(), Some("2025-01-01"));
         assert_eq!(deserialized.max_size_mb, Some(100));
+        assert_eq!(deserialized.depth, Some(2));
     }
 
     #[test]
@@ -159,6 +186,7 @@ mod tests {
         assert_eq!(payload.bwb_id, "BWBR0018451");
         assert!(payload.date.is_none());
         assert!(payload.max_size_mb.is_none());
+        assert!(payload.depth.is_none());
     }
 
     #[test]
@@ -171,11 +199,19 @@ mod tests {
             article_count: 10,
             warning_count: 2,
             warnings: vec!["warning1".to_string(), "warning2".to_string()],
+            referenced_bwb_ids: vec!["BWBR0002629".to_string(), "BWBR0018450".to_string()],
+            harvest_date: "2025-01-01".to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["law_name"], "Wet op de zorgtoeslag");
         assert_eq!(json["article_count"], 10);
+        assert_eq!(json["harvest_date"], "2025-01-01");
+
+        let refs = json["referenced_bwb_ids"].as_array().unwrap();
+        assert_eq!(refs.len(), 2);
+        assert_eq!(refs[0], "BWBR0002629");
+        assert_eq!(refs[1], "BWBR0018450");
     }
 
     #[test]

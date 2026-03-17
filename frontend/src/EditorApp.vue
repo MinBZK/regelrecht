@@ -12,6 +12,7 @@ const activeAction = ref(null);
 const rightPaneView = ref('machine');
 
 function selectArticle(number) {
+  activeAction.value = null;
   selectedArticleNumber.value = String(number);
 }
 </script>
@@ -73,7 +74,7 @@ function selectArticle(number) {
     <rr-side-by-side-split-view>
 
       <!-- Left Pane: Text -->
-      <div slot="start" style="background: #F4F6F9;">
+      <div slot="pane-1" style="background: #F4F6F9;">
         <rr-page header-sticky>
           <rr-toolbar slot="header" size="md">
             <rr-toolbar-start-area>
@@ -118,23 +119,15 @@ function selectArticle(number) {
       </div>
 
       <!-- Right Pane: Machine / YAML -->
-      <div slot="end">
+      <div slot="pane-2">
         <rr-page header-sticky>
           <rr-toolbar slot="header" size="md">
             <rr-toolbar-start-area>
               <rr-toolbar-item>
-                <rr-button-bar size="md">
-                  <rr-button
-                    :variant="rightPaneView === 'machine' ? 'accent-filled' : 'neutral-tinted'"
-                    size="md"
-                    @click="rightPaneView = 'machine'"
-                  >Machine</rr-button>
-                  <rr-button
-                    :variant="rightPaneView === 'yaml' ? 'accent-filled' : 'neutral-tinted'"
-                    size="md"
-                    @click="rightPaneView = 'yaml'"
-                  >YAML</rr-button>
-                </rr-button-bar>
+                <rr-segmented-control size="md" value="machine" @change="rightPaneView = $event.detail.value">
+                  <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
+                  <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                </rr-segmented-control>
               </rr-toolbar-item>
             </rr-toolbar-start-area>
           </rr-toolbar>
@@ -151,5 +144,5 @@ function selectArticle(number) {
     </rr-side-by-side-split-view>
   </rr-page>
 
-  <ActionSheet :action="activeAction" @close="activeAction = null" />
+  <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
 </template>

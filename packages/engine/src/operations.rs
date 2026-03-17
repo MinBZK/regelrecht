@@ -957,7 +957,7 @@ fn calculate_years_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
 // =============================================================================
 
 /// Safely convert f64 to i64, returning error on overflow/NaN/Infinity
-fn f64_to_i64_safe(f: f64) -> Result<i64> {
+pub(crate) fn f64_to_i64_safe(f: f64) -> Result<i64> {
     if f.is_nan() {
         return Err(EngineError::ArithmeticOverflow("Result is NaN".to_string()));
     }

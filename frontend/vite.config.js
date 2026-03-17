@@ -14,6 +14,7 @@ export default defineConfig({
     }),
   ],
   build: {
+    cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',
     rollupOptions: {
       input: {
@@ -24,5 +25,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    watch: {
+      usePolling: true,
+      interval: 1000,
+    },
   },
 });

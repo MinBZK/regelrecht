@@ -15,5 +15,5 @@ pub use enrich::{
     ProcessLlmRunner, ENRICH_PROVIDERS,
 };
 pub use error::PipelineError;
-pub use harvest::{HarvestPayload, HarvestResult};
+pub use harvest::{HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
 pub use models::{Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};

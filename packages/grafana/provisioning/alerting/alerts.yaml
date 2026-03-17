@@ -23,8 +23,8 @@ contactPoints:
             {{ if eq .Labels.alertname "Dagelijkse Regelrecht Update" -}}
             | | |
             |:---|:---|
-            | :seedling: **Geharvest** | {{ index .Values "A" }} wetten |
-            | :sparkles: **Verrijkt** | {{ index .Values "B" }} wetten |
+            | :seedling: **Geharvest** | {{ index .Values "RA" }} wetten |
+            | :sparkles: **Verrijkt** | {{ index .Values "RB" }} wetten |
             {{ else if eq .Labels.alertname "Nieuwe mislukte jobs" -}}
             :warning: **{{ .Annotations.summary }}**
             {{ end -}}
@@ -45,7 +45,7 @@ groups:
   - orgId: 1
     name: regelrecht
     folder: Regelrecht
-    interval: 1h
+    interval: 10m
     rules:
       - uid: daily-summary
         title: Dagelijkse Regelrecht Update
@@ -59,16 +59,38 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: regelrecht_laws{status="harvested"}
+              expr: max(regelrecht_laws{status="harvested"})
+              instant: true
               refId: A
+          - refId: RA
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: RA
           - refId: B
             relativeTimeRange:
               from: 86400
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: regelrecht_laws{status="enriched"}
+              expr: max(regelrecht_laws{status="enriched"})
+              instant: true
               refId: B
+          - refId: RB
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: B
+              reducer: last
+              refId: RB
           - refId: C
             relativeTimeRange:
               from: 86400
@@ -76,7 +98,7 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: RA
               conditions:
                 - evaluator:
                     type: gt
@@ -94,8 +116,8 @@ groups:
           severity: info
         annotations:
           summary: >-
-            Geharvest: {{ index $values "A" }} wetten,
-            Verrijkt: {{ index $values "B" }} wetten
+            Geharvest: {{ index $values "RA" }} wetten,
+            Verrijkt: {{ index $values "RB" }} wetten
 
       - uid: failed-jobs
         title: Nieuwe mislukte jobs
@@ -108,8 +130,19 @@ groups:
             datasourceUid: PBFA97CFB590B2093
             model:
               # Detect NEW failures in the last hour, not cumulative total.
-              expr: increase(regelrecht_jobs{status="failed"}[1h])
+              expr: sum(increase(regelrecht_jobs{status="failed"}[1h]))
+              instant: true
               refId: A
+          - refId: RA
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+              refId: RA
           - refId: C
             relativeTimeRange:
               from: 3600
@@ -117,7 +150,7 @@ groups:
             datasourceUid: __expr__
             model:
               type: threshold
-              expression: A
+              expression: RA
               conditions:
                 - evaluator:
                     type: gt

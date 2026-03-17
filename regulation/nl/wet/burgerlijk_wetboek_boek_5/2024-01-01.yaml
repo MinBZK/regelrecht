@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/poc-machine-law/refs/heads/main/schema/v0.3.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
 $id: burgerlijk_wetboek_boek_5
 uuid: 5a42b000-5a42-5a42-5a42-5a42b0000042
 regulatory_layer: WET
@@ -113,7 +113,8 @@ articles:
 
           # Bereken afstand in meters
           - output: minimale_afstand_m
-            operation: DIVIDE
-            values:
-              - $minimale_afstand_cm
-              - 100
+            value:
+              operation: DIVIDE
+              values:
+                - $minimale_afstand_cm
+                - 100

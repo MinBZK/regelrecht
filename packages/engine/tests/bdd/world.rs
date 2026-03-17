@@ -62,6 +62,10 @@ pub struct ExternalData {
     pub bd_box3: HashMap<String, HashMap<String, Value>>,
     /// DJI detenties data
     pub dji_detenties: HashMap<String, HashMap<String, Value>>,
+    /// DUO inschrijvingen data
+    pub duo_inschrijvingen: HashMap<String, HashMap<String, Value>>,
+    /// DUO studiefinanciering data
+    pub duo_studiefinanciering: HashMap<String, HashMap<String, Value>>,
 }
 
 impl Default for RegelrechtWorld {
