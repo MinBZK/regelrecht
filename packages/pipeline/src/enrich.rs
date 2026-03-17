@@ -391,32 +391,52 @@ pub async fn create_enrich_corpus(
     Ok(client)
 }
 
-/// Validate that a yaml_path contains only safe characters.
+/// Known absolute prefixes that may appear in yaml_path values from
+/// older harvest results. Stripped automatically so enrich jobs still work.
+const KNOWN_REPO_PREFIXES: &[&str] = &["/tmp/corpus-repo/", "/tmp/regulation-repo/"];
+
+/// Normalize and validate a yaml_path: strip known absolute prefixes,
+/// then verify the path contains only safe characters.
 ///
 /// Prevents path traversal and injection via crafted job payloads.
-fn validate_yaml_path(yaml_path: &str) -> Result<()> {
+fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
     if yaml_path.is_empty() {
         return Err(PipelineError::Enrich("yaml_path must not be empty".into()));
     }
-    if yaml_path.starts_with('/') {
+
+    // Auto-strip known absolute prefixes from legacy payloads.
+    let mut path = yaml_path.to_string();
+    for prefix in KNOWN_REPO_PREFIXES {
+        if let Some(stripped) = path.strip_prefix(prefix) {
+            tracing::warn!(
+                original = %yaml_path,
+                normalized = %stripped,
+                "yaml_path had absolute prefix, stripped automatically"
+            );
+            path = stripped.to_string();
+            break;
+        }
+    }
+
+    if path.starts_with('/') {
         return Err(PipelineError::Enrich(format!(
             "yaml_path must be relative, not absolute: {yaml_path}"
         )));
     }
-    if !yaml_path
+    if !path
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '_' | '-' | '.'))
     {
         return Err(PipelineError::Enrich(format!(
-            "yaml_path contains invalid characters: {yaml_path}"
+            "yaml_path contains invalid characters: {path}"
         )));
     }
-    if yaml_path.contains("..") {
+    if path.contains("..") {
         return Err(PipelineError::Enrich(format!(
-            "yaml_path must not contain '..': {yaml_path}"
+            "yaml_path must not contain '..': {path}"
         )));
     }
-    Ok(())
+    Ok(path)
 }
 
 /// Execute the enrichment using the default process-based LLM runner.
@@ -440,9 +460,9 @@ pub async fn execute_enrich_with_runner(
     config: &EnrichConfig,
     runner: &dyn LlmRunner,
 ) -> Result<(EnrichResult, Vec<PathBuf>)> {
-    validate_yaml_path(&payload.yaml_path)?;
+    let normalized_path = normalize_yaml_path(&payload.yaml_path)?;
 
-    let yaml_abs = repo_path.join(&payload.yaml_path);
+    let yaml_abs = repo_path.join(&normalized_path);
     if !yaml_abs.exists() {
         return Err(PipelineError::Enrich(format!(
             "law YAML file not found: {}",
@@ -465,7 +485,13 @@ pub async fn execute_enrich_with_runner(
         "starting enrichment"
     );
 
-    runner.run(payload, &yaml_abs, repo_path, config).await?;
+    let normalized_payload = EnrichPayload {
+        yaml_path: normalized_path.clone(),
+        ..payload.clone()
+    };
+    runner
+        .run(&normalized_payload, &yaml_abs, repo_path, config)
+        .await?;
 
     tracing::info!(law_id = %payload.law_id, provider = %provider_name, "enrichment completed");
 
@@ -511,7 +537,7 @@ pub async fn execute_enrich_with_runner(
     // MvT research creates feature files named after the law slug.
     // Only include files whose name contains the law slug to avoid
     // accidentally staging unrelated feature files.
-    let law_slug = Path::new(&payload.yaml_path)
+    let law_slug = Path::new(&normalized_path)
         .parent()
         .and_then(|p| p.file_name())
         .map(|n| n.to_string_lossy().to_string());
@@ -537,7 +563,7 @@ pub async fn execute_enrich_with_runner(
 
     let result = EnrichResult {
         law_id: payload.law_id.clone(),
-        yaml_path: payload.yaml_path.clone(),
+        yaml_path: normalized_path,
         articles_total: articles_before,
         articles_with_machine_readable,
         coverage_score,
@@ -796,22 +822,47 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_yaml_path_valid() {
-        assert!(validate_yaml_path("regulation/nl/wet/zorgtoeslag/2025-01-01.yaml").is_ok());
-        assert!(validate_yaml_path("regulation/nl/ministeriele_regeling/test/file.yaml").is_ok());
+    fn test_normalize_yaml_path_valid() {
+        assert_eq!(
+            normalize_yaml_path("regulation/nl/wet/zorgtoeslag/2025-01-01.yaml").unwrap(),
+            "regulation/nl/wet/zorgtoeslag/2025-01-01.yaml"
+        );
+        assert_eq!(
+            normalize_yaml_path("regulation/nl/ministeriele_regeling/test/file.yaml").unwrap(),
+            "regulation/nl/ministeriele_regeling/test/file.yaml"
+        );
     }
 
     #[test]
-    fn test_validate_yaml_path_rejects_traversal() {
-        assert!(validate_yaml_path("../etc/passwd").is_err());
-        assert!(validate_yaml_path("regulation/../../etc/passwd").is_err());
+    fn test_normalize_yaml_path_strips_known_prefixes() {
+        assert_eq!(
+            normalize_yaml_path("/tmp/corpus-repo/regulation/nl/wet/test/2025-01-01.yaml").unwrap(),
+            "regulation/nl/wet/test/2025-01-01.yaml"
+        );
+        assert_eq!(
+            normalize_yaml_path("/tmp/regulation-repo/regulation/nl/wet/test/2025-01-01.yaml")
+                .unwrap(),
+            "regulation/nl/wet/test/2025-01-01.yaml"
+        );
     }
 
     #[test]
-    fn test_validate_yaml_path_rejects_special_chars() {
-        assert!(validate_yaml_path("regulation/nl/wet/test; rm -rf /").is_err());
-        assert!(validate_yaml_path("regulation/nl/wet/test$(whoami)").is_err());
-        assert!(validate_yaml_path("").is_err());
+    fn test_normalize_yaml_path_rejects_unknown_absolute() {
+        assert!(normalize_yaml_path("/etc/passwd").is_err());
+        assert!(normalize_yaml_path("/other/path/file.yaml").is_err());
+    }
+
+    #[test]
+    fn test_normalize_yaml_path_rejects_traversal() {
+        assert!(normalize_yaml_path("../etc/passwd").is_err());
+        assert!(normalize_yaml_path("regulation/../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_normalize_yaml_path_rejects_special_chars() {
+        assert!(normalize_yaml_path("regulation/nl/wet/test; rm -rf /").is_err());
+        assert!(normalize_yaml_path("regulation/nl/wet/test$(whoami)").is_err());
+        assert!(normalize_yaml_path("").is_err());
     }
 
     #[test]
