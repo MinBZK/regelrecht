@@ -443,7 +443,7 @@ function switchTab(tabKey) {
 }
 
 async function onResetJobs() {
-  if (!confirm('Are you sure? This will delete ALL jobs from the database.')) return;
+  if (!confirm('Are you sure? This will delete all non-processing jobs from the database.')) return;
 
   const btn = $('#reset-jobs-btn');
   btn.disabled = true;

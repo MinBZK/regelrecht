@@ -455,7 +455,7 @@ pub async fn delete_all_jobs(
 ) -> Result<Json<DeleteJobsResponse>, (StatusCode, String)> {
     let pool = &state.pool;
 
-    let result = sqlx::query("DELETE FROM jobs")
+    let result = sqlx::query("DELETE FROM jobs WHERE status != 'processing'")
         .execute(pool)
         .await
         .map_err(|e| {
@@ -467,7 +467,7 @@ pub async fn delete_all_jobs(
         })?;
 
     let deleted = result.rows_affected() as i64;
-    tracing::info!(deleted, "deleted all jobs");
+    tracing::info!(deleted, "deleted non-processing jobs");
 
     Ok(Json(DeleteJobsResponse { deleted }))
 }
