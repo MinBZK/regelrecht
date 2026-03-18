@@ -784,7 +784,6 @@ function openDetailPanel(job) {
     body.appendChild(progressContainer);
 
     // Start auto-refresh to poll progress updates
-    if (_progressPollInterval) clearInterval(_progressPollInterval);
     _progressPollInterval = setInterval(async () => {
       try {
         const resp = await fetch(`api/jobs/${encodeURIComponent(job.id)}`);
