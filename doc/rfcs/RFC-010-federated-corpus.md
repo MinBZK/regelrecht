@@ -153,6 +153,34 @@ Where priority does matter:
 
 When two sources have equal priority and the same `$id`, the engine raises an error. This forces an explicit choice.
 
+**Temporal consistency (reference_date):**
+
+The engine already supports multi-version laws via `valid_from` and `reference_date` (see `resolver.rs`). In a federated model this becomes more important: when executing a law as it was on 2025-01-15, you need all sources at that date, not just the law versions.
+
+Each source in the manifest can optionally pin a Git ref:
+
+```yaml
+sources:
+  - id: minbzk-central
+    name: "MinBZK Central Corpus"
+    type: github
+    github:
+      owner: MinBZK
+      repo: regelrecht-corpus
+      branch: main
+      path: regulation/nl
+      ref: "v2025.1"  # optional: tag, branch, or commit SHA
+    scopes: []
+    priority: 100
+```
+
+When `ref` is absent, the engine uses the `branch` head (latest). When a `reference_date` is passed to the engine at execution time, the engine resolves each source to the Git state at that date:
+
+1. **GitHub sources**: use the GitHub Commits API (`GET /repos/{owner}/{repo}/commits?sha={branch}&until={reference_date}`) to find the latest commit before the reference date, then fetch the tree at that commit.
+2. **Local sources**: local sources are always at their current filesystem state. For reproducible historical execution, use GitHub sources or pin a `ref`.
+
+This means a single engine invocation with `reference_date: 2025-01-15` will fetch every source's state as it was on that date, then apply the existing `valid_from` filtering within each source. The two mechanisms work together: Git history gives you the right file versions, `valid_from` gives you the right law versions within those files.
+
 ### 3. Authentication
 
 Credentials are **completely separate** from the registry manifest. The manifest contains no tokens, passwords, or secrets. The only auth-related field in the manifest is an optional `auth_ref`: a string that refers to an entry in a separate auth file. Without `auth_ref`, the engine assumes the source is public.
@@ -332,3 +360,4 @@ Scope validation, schema version compatibility checks, collision reporting, and 
 - RFC-003: Delegation Pattern for Multi-Level Regulations (remains valid for delegation; this RFC addresses federation)
 - GitHub Trees API: `GET /repos/{owner}/{repo}/git/trees/{tree_sha}?recursive=1`
 - GitHub Contents API: `GET /repos/{owner}/{repo}/contents/{path}`, `PUT /repos/{owner}/{repo}/contents/{path}`
+- GitHub Commits API: `GET /repos/{owner}/{repo}/commits?sha={branch}&until={date}` (for temporal consistency)
