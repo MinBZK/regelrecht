@@ -97,15 +97,27 @@ admin-test:
 
 # Start the full local development stack
 dev:
-    docker compose -f docker-compose.dev.yml up --build -d
-    @echo ""
-    @echo "  Frontend (editor): http://localhost:${FRONTEND_PORT:-3000}"
-    @echo "  Admin:             http://localhost:${ADMIN_PORT:-8000}"
-    @echo "  Grafana:           http://localhost:${GRAFANA_PORT:-3001}"
-    @echo "  Prometheus:        http://localhost:${PROMETHEUS_PORT:-9090}"
-    @echo "  PostgreSQL:        internal (use 'just dev-psql' to connect)"
-    @echo ""
-    @echo "Logs: just dev-logs"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    logfile=$(mktemp)
+    printf "\033[1m=> Building and starting dev stack…\033[0m "
+    if docker compose -f docker-compose.dev.yml up --build -d > "$logfile" 2>&1; then
+        printf "\033[32mdone\033[0m\n\n"
+        echo "  Frontend:   http://localhost:${FRONTEND_PORT:-3000}"
+        echo "  Admin:      http://localhost:${ADMIN_PORT:-8000}"
+        echo "  Grafana:    http://localhost:${GRAFANA_PORT:-3001}"
+        echo "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
+        echo "  PostgreSQL: internal (use 'just dev-psql' to connect)"
+        echo ""
+        printf "  \033[2mLogs:\033[0m just dev-logs\n"
+        printf "  \033[2mStop:\033[0m just dev-down\n"
+    else
+        printf "\033[31mfailed\033[0m\n\n"
+        cat "$logfile"
+        rm -f "$logfile"
+        exit 1
+    fi
+    rm -f "$logfile"
 
 # Stop the local development stack
 dev-down:
@@ -125,14 +137,25 @@ dev-ps:
 
 # Start only infra (postgres + prometheus + grafana) for hybrid development
 dev-infra:
-    docker compose -f docker-compose.dev.yml up --build -d postgres prometheus grafana
-    @echo ""
-    @echo "  PostgreSQL:  internal (use 'just dev-psql' to connect)"
-    @echo "  Prometheus:  http://localhost:${PROMETHEUS_PORT:-9090}"
-    @echo "  Grafana:     http://localhost:${GRAFANA_PORT:-3001}"
-    @echo ""
-    @echo "Run admin natively:    just admin"
-    @echo "Run frontend natively: cd frontend && npm run dev"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    logfile=$(mktemp)
+    printf "\033[1m=> Starting infra services…\033[0m "
+    if docker compose -f docker-compose.dev.yml up --build -d postgres prometheus grafana > "$logfile" 2>&1; then
+        printf "\033[32mdone\033[0m\n\n"
+        echo "  PostgreSQL:  internal (use 'just dev-psql' to connect)"
+        echo "  Prometheus:  http://localhost:${PROMETHEUS_PORT:-9090}"
+        echo "  Grafana:     http://localhost:${GRAFANA_PORT:-3001}"
+        echo ""
+        printf "  \033[2mRun admin natively:\033[0m    just admin\n"
+        printf "  \033[2mRun frontend natively:\033[0m cd frontend && npm run dev\n"
+    else
+        printf "\033[31mfailed\033[0m\n\n"
+        cat "$logfile"
+        rm -f "$logfile"
+        exit 1
+    fi
+    rm -f "$logfile"
 
 # Connect to the dev database via psql
 dev-psql:
