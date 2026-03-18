@@ -1,7 +1,7 @@
 ---
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17.4-alpine
     environment:
       POSTGRES_USER: regelrecht
       POSTGRES_PASSWORD: regelrecht_dev
@@ -44,7 +44,7 @@ services:
       WORKER_MAX_POLL_INTERVAL_SECS: ${WORKER_MAX_POLL_INTERVAL_SECS:-60}
       RUST_LOG: info
     volumes:
-      - corpus-repo:/tmp/regulation-repo
+      - regulation-repo-harvester:/tmp/regulation-repo
 
   enrich-worker:
     build:
@@ -55,6 +55,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://regelrecht:regelrecht_dev@postgres:5432/regelrecht_pipeline
+      # LLM credentials required for enrich jobs (set in .env)
       LLM_PROVIDER: ${LLM_PROVIDER:-opencode}
       OPENCODE_MODEL: ${OPENCODE_MODEL:-vlam/ubiops-deployment/bzk-dig-mistralmedium-flexibel//chat-model}
       VLAM_API_KEY: ${VLAM_API_KEY:-}
@@ -66,7 +67,7 @@ services:
       WORKER_MAX_POLL_INTERVAL_SECS: ${WORKER_MAX_POLL_INTERVAL_SECS:-60}
       RUST_LOG: info
     volumes:
-      - corpus-repo:/tmp/regulation-repo
+      - regulation-repo-enrich:/tmp/regulation-repo
 
   frontend:
     build:
@@ -112,6 +113,7 @@ secrets:
 
 volumes:
   pgdata:
-  corpus-repo:
+  regulation-repo-harvester:
+  regulation-repo-enrich:
   prometheus-data:
   grafana-data:
