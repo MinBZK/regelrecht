@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: regelrecht_dev
       POSTGRES_DB: regelrecht_pipeline
     ports:
-      - 5432:5432
+      - ${POSTGRES_PORT:-5432}:5432
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

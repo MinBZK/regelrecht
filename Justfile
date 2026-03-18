@@ -103,7 +103,7 @@ dev:
     @echo "  Admin:             http://localhost:8000"
     @echo "  Grafana:           http://localhost:3001"
     @echo "  Prometheus:        http://localhost:9090"
-    @echo "  PostgreSQL:        localhost:5432"
+    @echo "  PostgreSQL:        localhost:${POSTGRES_PORT:-5432}"
     @echo ""
     @echo "Logs: just dev-logs"
 
@@ -127,7 +127,7 @@ dev-ps:
 dev-infra:
     docker compose -f docker-compose.dev.yml up --build -d postgres prometheus grafana
     @echo ""
-    @echo "  PostgreSQL:  localhost:5432"
+    @echo "  PostgreSQL:  localhost:${POSTGRES_PORT:-5432}"
     @echo "  Prometheus:  http://localhost:9090"
     @echo "  Grafana:     http://localhost:3001"
     @echo ""
