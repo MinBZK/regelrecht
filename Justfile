@@ -103,7 +103,7 @@ dev:
     @echo "  Admin:             http://localhost:8000"
     @echo "  Grafana:           http://localhost:3001"
     @echo "  Prometheus:        http://localhost:9090"
-    @echo "  PostgreSQL:        localhost:${POSTGRES_PORT:-5432}"
+    @echo "  PostgreSQL:        internal (use 'just dev-psql' to connect)"
     @echo ""
     @echo "Logs: just dev-logs"
 
@@ -127,12 +127,16 @@ dev-ps:
 dev-infra:
     docker compose -f docker-compose.dev.yml up --build -d postgres prometheus grafana
     @echo ""
-    @echo "  PostgreSQL:  localhost:${POSTGRES_PORT:-5432}"
+    @echo "  PostgreSQL:  internal (use 'just dev-psql' to connect)"
     @echo "  Prometheus:  http://localhost:9090"
     @echo "  Grafana:     http://localhost:3001"
     @echo ""
     @echo "Run admin natively:    just admin"
     @echo "Run frontend natively: cd frontend && npm run dev"
+
+# Connect to the dev database via psql
+dev-psql:
+    docker compose -f docker-compose.dev.yml exec postgres psql -U regelrecht regelrecht_pipeline
 
 # Remove all dev data (volumes)
 dev-clean:
