@@ -93,7 +93,7 @@ The manifest has two layers, similar to `.env` + `.env.local` or `docker-compose
 - `corpus-registry.yaml` - checked into the repo, versioned. Contains the "official" source list.
 - `corpus-registry.local.yaml` - gitignored, personal. Contains overrides for local development.
 
-The engine merges both files: all sources from the central manifest plus all sources from the local file. If a local entry has the same `id` as a central entry, the local one replaces it.
+The engine merges both files: all sources from the central manifest plus all sources from the local file. If a local entry has the same `id` as a central entry, the local one **replaces it entirely** - there is no field-level inheritance. Any field not repeated in the local entry is dropped, including `auth_ref`. A local override must be a complete source definition.
 
 Example: you want to point the Amsterdam source to your own fork and add a directory with test laws. Put this in `corpus-registry.local.yaml`:
 
@@ -151,7 +151,7 @@ Where priority does matter:
 - **Development**: your local source (priority 200) contains a modified version of a central law (priority 100). The local version wins, so you can test without modifying the central manifest.
 - **Migration**: when moving laws between sources, temporary overlap may occur.
 
-When two sources have equal priority and the same `$id`, the engine raises an error. This forces an explicit choice.
+When two sources have equal priority and the same `$id`, the engine raises an error at load time. This is detected when sources are fetched and indexed, not deferred to per-request execution. A misconfigured source fails clearly at startup, not when a citizen's request hits it.
 
 **Temporal consistency (reference_date):**
 
@@ -218,7 +218,7 @@ minbzk-central:
 
 Lookup order: env var first, then auth config file. Env vars work well in CI/CD and containers; the config file is more convenient when developing locally with multiple sources.
 
-**Editor auth:** the editor stores a GitHub token in the browser (localStorage or sessionStorage). This token is not part of the registry manifest or auth config - it's per-user and only used client-side for the write path.
+**Editor auth:** the editor stores a GitHub token in the browser using `sessionStorage` (not `localStorage`, to avoid persisting tokens across sessions and reducing XSS exposure). This token is not part of the registry manifest or auth config - it's per-user and only used client-side for the write path.
 
 ### 4. Discovery, loading, and writing
 
@@ -246,7 +246,7 @@ corpus-registry.yaml
 ```
 
 - `CorpusRegistry` parses the manifest and dispatches to the appropriate fetcher per source
-- `GitHubFetcher` uses the GitHub Trees API (1 call per repo for directory structure) and the Contents API (per file, for YAML content)
+- `GitHubFetcher` uses the GitHub Trees API (1 call per repo for directory structure) and the Contents API (per file, for YAML content). Note: the Trees API with `recursive=1` truncates responses exceeding 100,000 entries or 7 MB (`truncated: true`). The fetcher must detect this and fall back to per-directory traversal.
 - ETag caching: the fetcher stores ETags and sends `If-None-Match` headers, so a 304 costs no bandwidth
 - Rate limit tracking: the fetcher reads `X-RateLimit-Remaining` headers and warns when limits are low
 - `RuleResolver` gets a `source_map: HashMap<String, SourceId>` tracking which source each loaded law came from
