@@ -62,7 +62,7 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
     .await?;
 
     let avg_duration: (Option<f64>,) = sqlx::query_as(
-        "SELECT AVG(EXTRACT(EPOCH FROM (completed_at - started_at))) \
+        "SELECT AVG(EXTRACT(EPOCH FROM (completed_at - started_at)))::float8 \
          FROM jobs WHERE status = 'completed' \
          AND completed_at > NOW() - INTERVAL '24 hours'",
     )
