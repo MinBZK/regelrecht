@@ -1,6 +1,6 @@
 # RFC-007: Inversion of Control for Delegated Legislation
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-03-15
 **Authors:** Eelco Hotting
 
