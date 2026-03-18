@@ -1,4 +1,4 @@
-# RFC-010: Federated Corpus — Clean Forks voor Decentrale Regelgeving
+# RFC-010: Federated Corpus — Decentralized Regulation Sources
 
 **Status:** Proposed
 **Date:** 2026-03-18
@@ -6,36 +6,54 @@
 
 ## Context
 
-Het corpus (`regulation/nl/`) zit in de regelrecht-mvp repo, samen met de engine, pipeline, admin en editor. Dat werkt voor een MVP, maar past niet bij de wetgevende realiteit: regelgeving is decentraal. Gemeenten, provincies, waterschappen en ministeries maken hun eigen regelgeving, vaak als invulling van hogere wetten.
+The corpus (`regulation/nl/`) lives in the regelrecht-mvp repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities, provinces, water boards, and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
 
-RFC-007 introduceert Inversion of Control (IoC) met `open_terms` en `implements`. Hiermee kan een gemeente een hogere wet invullen zonder die hogere wet aan te raken. Technisch werkt dat al cross-repo, mits de engine alle relevante wetten laadt. Wat ontbreekt is de infrastructuur daarvoor:
+RFC-007 introduces Inversion of Control (IoC) with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
 
-- **Discovery**: hoe vindt de engine gemeentelijke regelgeving?
-- **Laden**: hoe haalt de engine wetten op uit meerdere bronnen?
-- **Scope-validatie**: hoe voorkomt de engine dat een gemeente zich als een andere gemeente voordoet?
-- **Write-back**: hoe kan een gemeente via de editor regelgeving bijhouden in hun eigen repo?
+- **Discovery**: how does the engine find municipal regulations?
+- **Loading**: how does the engine fetch laws from multiple sources?
+- **Scope validation**: how does the engine detect that a source claims to represent a jurisdiction it shouldn't?
+- **Write-back**: how can a municipality maintain regulations in their own repo via the editor?
 
-De delegation-benadering uit RFC-003 gaat uit van een centraal corpus met `select_on`-criteria. Dat patroon blijft geldig voor delegatie, maar voor het federatiemodel is een ander mechanisme nodig: meerdere bronnen met elk hun eigen eigenaarschap.
+The delegation approach from RFC-003 assumes a single central corpus with `select_on` criteria. That pattern remains valid for delegation, but federation requires a different mechanism: multiple sources, each with their own ownership.
 
 ## Decision
 
-Vier samenhangende beslissingen vormen het federatiemodel.
+Four interconnected decisions form the federation model.
 
-### 1. Corpus als eigen repo
+### 1. Corpus as a separate repo
 
-Het corpus (`regulation/nl/`) verhuist naar een eigen repository, bijvoorbeeld `MinBZK/regelrecht-corpus`. De regelrecht-mvp repo bevat dan alleen de engine, pipeline, admin en editor.
+The corpus (`regulation/nl/`) moves to its own repository, e.g. `MinBZK/regelrecht-corpus`. The regelrecht-mvp repo then contains only the engine, pipeline, admin, and editor.
 
-Clean forks zijn forks of clones van regelrecht-corpus, of eigen repos die hetzelfde YAML-schema volgen. Een gemeente als Amsterdam maakt een repo `gemeente-amsterdam/regelrecht-amsterdam` met daarin hun gemeentelijke verordeningen die `implements` declareren op wetten uit het centrale corpus.
+External sources are any Git repository that follows the required directory structure. They don't need to be forks or clones of the central corpus. A municipality like Amsterdam creates a repo `gemeente-amsterdam/regelrecht-amsterdam` containing their municipal regulations that declare `implements` on laws from the central corpus.
 
-### 2. Registry-manifest
+#### Required source structure
 
-Een YAML-manifest beschrijft welke bronnen de engine moet laden:
+A source repository must follow this layout:
+
+```
+regulation/nl/
+  {law_type}/           # e.g. wet/, ministeriele_regeling/, verordening/
+    {law_name}/
+      {law_name}.yaml   # law file conforming to the regelrecht YAML schema
+```
+
+Each YAML file must:
+- Conform to the regelrecht YAML schema (referenced via `$schema`)
+- Have a unique `$id` across all loaded sources
+- Declare `implements` (per RFC-007) when filling in open terms from a higher-level law
+
+The `path` field in the registry manifest points to the root of this structure within the repo. This allows repos to keep regulations in a subdirectory (e.g. `regulation/nl/`) or at the root.
+
+### 2. Registry manifest
+
+A YAML manifest describes which sources the engine should load:
 
 ```yaml
 schema_version: "1.0"
 sources:
   - id: minbzk-central
-    name: "MinBZK Centraal Corpus"
+    name: "MinBZK Central Corpus"
     type: github
     github:
       owner: MinBZK
@@ -60,7 +78,7 @@ sources:
     auth_ref: amsterdam
 
   - id: local-dev
-    name: "Lokale ontwikkelomgeving"
+    name: "Local development"
     type: local
     local:
       path: ./regulation/nl
@@ -68,37 +86,37 @@ sources:
     priority: 200
 ```
 
-**Manifest-bestanden:**
+**Manifest files:**
 
-Het manifest bestaat uit twee lagen, vergelijkbaar met `.env` + `.env.local` of `docker-compose.yaml` + `docker-compose.override.yaml`:
+The manifest has two layers, similar to `.env` + `.env.local` or `docker-compose.yaml` + `docker-compose.override.yaml`:
 
-- `corpus-registry.yaml` - in de repo, geversioned. Bevat de "officiële" bronnenlijst.
-- `corpus-registry.local.yaml` - gitignored, persoonlijk. Bevat afwijkingen voor lokale ontwikkeling.
+- `corpus-registry.yaml` - checked into the repo, versioned. Contains the "official" source list.
+- `corpus-registry.local.yaml` - gitignored, personal. Contains overrides for local development.
 
-De engine merged beide bestanden: alle sources uit het centrale manifest plus alle sources uit het lokale bestand. Als een lokale entry dezelfde `id` heeft als een centrale entry, vervangt de lokale de centrale.
+The engine merges both files: all sources from the central manifest plus all sources from the local file. If a local entry has the same `id` as a central entry, the local one replaces it.
 
-Voorbeeld: je wilt lokaal de Amsterdam-bron naar je eigen fork pointen en een map met test-wetten toevoegen. Dan zet je in `corpus-registry.local.yaml`:
+Example: you want to point the Amsterdam source to your own fork and add a directory with test laws. Put this in `corpus-registry.local.yaml`:
 
 ```yaml
 schema_version: "1.0"
 sources:
-  # Vervangt de centrale amsterdam-entry (zelfde id)
+  # Replaces the central amsterdam entry (same id)
   - id: amsterdam
-    name: "Amsterdam (mijn fork)"
+    name: "Amsterdam (my fork)"
     type: github
     github:
-      owner: mijn-github-user
+      owner: my-github-user
       repo: regelrecht-amsterdam
-      branch: feature/nieuwe-verordening
+      branch: feature/new-ordinance
       path: regulation/nl
     scopes:
       - type: gemeente_code
         value: "GM0363"
     priority: 50
 
-  # Nieuwe entry, wordt toegevoegd aan de lijst
-  - id: lokale-tests
-    name: "Lokale test-wetten"
+  # New entry, added to the list
+  - id: local-tests
+    name: "Local test laws"
     type: local
     local:
       path: ./test-regulation
@@ -108,14 +126,14 @@ sources:
 
 **Scopes:**
 
-Scopes zijn **claims**: een bron declareert voor welke jurisdictie(s) zij regelgeving levert. Een scope is geen routing-mechanisme ("gebruik deze bron als iemand om GM0363 vraagt") maar een eigenaarschapsverklaring ("deze bron bevat regelgeving van gemeente Amsterdam").
+Scopes are **claims**: a source declares which jurisdiction(s) it provides regulations for. A scope is not a routing mechanism ("use this source when someone asks for GM0363") but an ownership declaration ("this source contains regulations from the municipality of Amsterdam").
 
-De engine gebruikt scopes voor twee dingen:
+The engine uses scopes for two things:
 
-1. **Validatie** - als een wet uit een bron met scope `gemeente_code: GM0363` zelf `gemeente_code: GM0518` declareert, genereert de engine een warning. De bron claimt Amsterdam te zijn maar levert een wet voor een andere gemeente.
-2. **Filtering** - als je de engine draait voor een specifieke gemeente, kun je op basis van scopes bepalen welke bronnen relevant zijn en welke je kunt overslaan.
+1. **Validation** - if a law from a source with scope `gemeente_code: GM0363` declares `gemeente_code: GM0518` in the law itself, the engine generates a warning. The source claims to be Amsterdam but delivers a law for a different municipality.
+2. **Filtering** - when running the engine for a specific municipality, scopes determine which sources are relevant and which can be skipped.
 
-Een bron zonder scopes (zoals het centrale corpus) levert wetten zonder jurisdictie-beperking. Een bron kan meerdere scopes hebben, bijvoorbeeld een provincie die regelgeving levert voor meerdere scope-types:
+A source without scopes (like the central corpus) delivers laws without jurisdictional restrictions. A source can have multiple scopes, for example a province that delivers regulations for multiple scope types:
 
 ```yaml
 scopes:
@@ -127,27 +145,27 @@ scopes:
 
 **Priority:**
 
-Priority lost conflicten op wanneer twee bronnen een wet met dezelfde `$id` leveren. Dat is een uitzonderingsgeval, geen normaal gebruik. Normaal gesproken levert elke bron unieke wetten: het centrale corpus heeft de Participatiewet, Amsterdam heeft de Amsterdamse verordeningen. Ze overlappen niet.
+Priority resolves conflicts when two sources deliver a law with the same `$id`. This is an edge case, not normal usage. Normally each source delivers unique laws: the central corpus has the Participatiewet, Amsterdam has Amsterdam's ordinances. They don't overlap.
 
-Waar priority wel speelt:
-- **Development**: je lokale bron (priority 200) bevat een aangepaste versie van een centrale wet (priority 100). De lokale versie wint, zodat je kunt testen zonder het centrale manifest aan te passen.
-- **Migratie**: bij het verhuizen van wetten tussen bronnen kan tijdelijk overlap ontstaan.
+Where priority does matter:
+- **Development**: your local source (priority 200) contains a modified version of a central law (priority 100). The local version wins, so you can test without modifying the central manifest.
+- **Migration**: when moving laws between sources, temporary overlap may occur.
 
-Bij gelijke priority en gelijke `$id` genereert de engine een fout. Dat dwingt expliciete keuze af.
+When two sources have equal priority and the same `$id`, the engine raises an error. This forces an explicit choice.
 
-### 3. Authenticatie
+### 3. Authentication
 
-Credentials staan **volledig los** van het registry-manifest. Het manifest bevat geen tokens, wachtwoorden of secrets. Het enige wat het manifest bevat is een optionele `auth_ref`: een string die verwijst naar een entry in een apart auth-bestand. Zonder `auth_ref` gaat de engine ervan uit dat de bron publiek is.
+Credentials are **completely separate** from the registry manifest. The manifest contains no tokens, passwords, or secrets. The only auth-related field in the manifest is an optional `auth_ref`: a string that refers to an entry in a separate auth file. Without `auth_ref`, the engine assumes the source is public.
 
 **Auth types** (enum):
 
-| Type | Beschrijving |
+| Type | Description |
 |------|-------------|
-| `none` | Publieke repo, geen auth nodig (default als `auth_ref` ontbreekt) |
+| `none` | Public repo, no auth needed (default when `auth_ref` is absent) |
 | `github_pat` | GitHub Personal Access Token |
-| `github_app` | GitHub App installation token (voor organisaties) |
+| `github_app` | GitHub App installation token (for organizations) |
 
-Twee mechanismen om credentials te configureren, allebei geldig:
+Two mechanisms for configuring credentials, both valid:
 
 **Convention-based environment variables:**
 ```
@@ -155,7 +173,7 @@ CORPUS_AUTH_AMSTERDAM_TOKEN=ghp_abc123...
 CORPUS_AUTH_MINBZK_CENTRAL_TOKEN=ghp_def456...
 ```
 
-De naamconventie is `CORPUS_AUTH_{SOURCE_ID_UPPERCASE}_TOKEN`, waarbij streepjes in de source ID underscores worden. Bij env vars is het type altijd `github_pat`.
+The naming convention is `CORPUS_AUTH_{SOURCE_ID_UPPERCASE}_TOKEN`, where hyphens in the source ID become underscores. With env vars, the type is always `github_pat`.
 
 **Auth config file** (`corpus-auth.yaml`, gitignored):
 ```yaml
@@ -170,147 +188,147 @@ minbzk-central:
   installation_id: 67890
 ```
 
-De lookup-volgorde is: env var eerst, dan auth config file. Env vars zijn handig in CI/CD en containers; het auth config file is handiger bij lokaal ontwikkelen met meerdere bronnen.
+Lookup order: env var first, then auth config file. Env vars work well in CI/CD and containers; the config file is more convenient when developing locally with multiple sources.
 
-**Editor auth:** de editor slaat een GitHub token op in de browser (localStorage of sessionStorage). Dit token staat niet in het registry-manifest of de auth config - het is per-gebruiker en wordt alleen client-side gebruikt voor de write path.
+**Editor auth:** the editor stores a GitHub token in the browser (localStorage or sessionStorage). This token is not part of the registry manifest or auth config - it's per-user and only used client-side for the write path.
 
-### 4. Discovery, laden en schrijven
+### 4. Discovery, loading, and writing
 
 #### Read path (engine + admin)
 
 ```
 corpus-registry.yaml
-        │
-        ▼
-┌─────────────────┐
-│ CorpusRegistry   │  parsed manifest, merged met lokale overrides
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌────────┐ ┌──────────┐
-│GitHub  │ │Filesystem│
-│Fetcher │ │Fetcher   │
-└───┬────┘ └────┬─────┘
-    │           │
-    ▼           ▼
-┌─────────────────┐
-│  RuleResolver    │  +source_map, +load_sourced_law()
-└─────────────────┘
+        |
+        v
++-------------------+
+| CorpusRegistry    |  parses manifest, merges with local overrides
++--------+----------+
+         |
+    +----+----+
+    v         v
++--------+ +----------+
+|GitHub  | |Filesystem|
+|Fetcher | |Fetcher   |
++---+----+ +----+-----+
+    |           |
+    v           v
++-------------------+
+|  RuleResolver     |  +source_map, +load_sourced_law()
++-------------------+
 ```
 
-- `CorpusRegistry` parsed het manifest en dispatcht naar de juiste fetcher per bron
-- `GitHubFetcher` gebruikt de GitHub Trees API (1 call per repo voor de directory-structuur) en de Contents API (per bestand, voor de YAML-inhoud)
-- ETag-caching: de fetcher slaat ETags op en stuurt `If-None-Match` headers mee, zodat een 304 geen bandbreedte kost
-- Rate limit tracking: de fetcher leest `X-RateLimit-Remaining` headers en waarschuwt bij lage limieten
-- `RuleResolver` krijgt een `source_map: HashMap<String, SourceId>` die per geladen wet bijhoudt uit welke bron die komt
-- `load_sourced_law(law_id, source_id)`: laadt een specifieke wet uit een specifieke bron
-- Bij conflicten (zelfde `$id` uit meerdere bronnen) wint de bron met de hoogste priority
+- `CorpusRegistry` parses the manifest and dispatches to the appropriate fetcher per source
+- `GitHubFetcher` uses the GitHub Trees API (1 call per repo for directory structure) and the Contents API (per file, for YAML content)
+- ETag caching: the fetcher stores ETags and sends `If-None-Match` headers, so a 304 costs no bandwidth
+- Rate limit tracking: the fetcher reads `X-RateLimit-Remaining` headers and warns when limits are low
+- `RuleResolver` gets a `source_map: HashMap<String, SourceId>` tracking which source each loaded law came from
+- `load_sourced_law(law_id, source_id)`: loads a specific law from a specific source
+- On conflicts (same `$id` from multiple sources), the source with the highest priority wins
 
-**Scope-validatie:** scopes zijn claims, geen hard afdwingbare grenzen. Een wet uit een bron met scope `gemeente_code: GM0363` die zelf `gemeente_code: GM0518` declareert genereert een warning, geen fout. De engine vertrouwt de bron maar signaleert afwijkingen.
+**Scope validation:** scopes are claims, not hard-enforced boundaries. A law from a source with scope `gemeente_code: GM0363` that declares `gemeente_code: GM0518` generates a warning, not an error. The engine trusts the source but signals deviations.
 
 #### Write path (editor)
 
-De editor kan direct naar een GitHub-fork schrijven via de GitHub Contents API, zonder tussenkomst van een backend.
+The editor can write directly to a GitHub repo via the GitHub Contents API, without a backend intermediary.
 
 Flow:
-1. Gebruiker bewerkt YAML in de editor
-2. Preview en validatie tegen het schema
-3. Commit via `PUT /repos/{owner}/{repo}/contents/{path}` met het GitHub token uit de browser
-4. Branch management: de editor werkt op een feature branch en kan een PR aanmaken via de GitHub API (`POST /repos/{owner}/{repo}/pulls`)
+1. User edits YAML in the editor
+2. Preview and validation against the schema
+3. Commit via `PUT /repos/{owner}/{repo}/contents/{path}` using the GitHub token from the browser
+4. Branch management: the editor works on a feature branch and can create a PR via the GitHub API (`POST /repos/{owner}/{repo}/pulls`)
 
-Dit maakt de editor een volwaardige YAML-editor voor gemeenten: bewerken, valideren, committen, PR maken, zonder dat ze een lokale ontwikkelomgeving nodig hebben.
+This makes the editor a full YAML editor for municipalities: edit, validate, commit, create PR, without needing a local development environment.
 
 #### Admin API
 
-Nieuwe endpoints op de admin service:
+New endpoints on the admin service:
 
-| Endpoint | Methode | Beschrijving |
-|----------|---------|-------------|
-| `/api/sources` | GET | Bronnenlijst met status (laatst gesynchroniseerd, aantal wetten, errors) |
-| `/api/corpus/laws` | GET | Alle geladen wetten met source-metadata (bron-ID, priority, scopes) |
-| `/api/sources/{id}/sync` | POST | Forceer re-fetch van een specifieke bron |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sources` | GET | Source list with status (last synced, law count, errors) |
+| `/api/corpus/laws` | GET | All loaded laws with source metadata (source ID, priority, scopes) |
+| `/api/sources/{id}/sync` | POST | Force re-fetch of a specific source |
 
 #### Editor UI
 
-- **Source badge**: elke wet toont een badge met de bronnaam (bijv. "MinBZK Centraal" of "Gemeente Amsterdam")
-- **Source picker**: dropdown of sidebar om tussen bronnen te wisselen
-- **Bron toevoegen**: dialoog om een GitHub owner/repo in te voeren en als bron toe te voegen
-- **Cross-source `implements` visualisatie**: toon welke gemeentelijke wet welke hogere wet invult
-- **Opslaan naar fork**: knop die de commit-dialoog opent (branch kiezen, commit message, PR aanmaken)
+- **Source badge**: each law shows a badge with the source name (e.g. "MinBZK Central" or "Gemeente Amsterdam")
+- **Source picker**: dropdown or sidebar to switch between sources
+- **Add source**: dialog to enter a GitHub owner/repo and add it as a source
+- **Cross-source `implements` visualization**: show which municipal law fills in which national law
+- **Save to repo**: button that opens a commit dialog (choose branch, commit message, create PR)
 
 ## Why
 
 ### Benefits
 
-- **Past bij IoC**: het `implements`-mechanisme uit RFC-007 werkt cross-repo zodra je de wetten maar laadt. Het registry maakt dat laden expliciet en configureerbaar.
-- **Decentraal eigenaarschap**: gemeenten, provincies en waterschappen beheren hun regelgeving in hun eigen repo. Geen PR naar een centrale repo nodig om een gemeentelijke verordening te wijzigen.
-- **Transparant**: het registry-manifest is een YAML-bestand in Git. Wie wil zien welke bronnen de engine laadt, kijkt in het manifest.
-- **Scope-validatie als trust boundary**: zonder complexe PKI-infra kan de engine via scopes valideren dat een bron geen wetten levert buiten haar jurisdictie.
-- **Incrementeel adopteerbaar**: begin met het centrale corpus en voeg bronnen toe als gemeenten er klaar voor zijn. De `type: local` optie maakt lokale ontwikkeling makkelijk.
+- **Fits IoC**: the `implements` mechanism from RFC-007 works cross-repo as long as the laws are loaded. The registry makes that loading explicit and configurable.
+- **Decentralized ownership**: municipalities, provinces, and water boards manage their regulations in their own repo. No PR to a central repo needed to change a municipal ordinance.
+- **Transparent**: the registry manifest is a YAML file in Git. Anyone who wants to see which sources the engine loads can look at the manifest.
+- **Scope validation as trust boundary**: without complex PKI infrastructure, the engine can validate via scopes that a source doesn't deliver laws outside its jurisdiction.
+- **Incrementally adoptable**: start with the central corpus and add sources as municipalities are ready. The `type: local` option makes local development easy.
 
 ### Tradeoffs
 
-- **GitHub API rate limits**: 60 requests per uur zonder auth, 5.000 met een token. Bij veel bronnen of grote repos kan dit een bottleneck zijn. Mitigatie: ETag-caching, Trees API (1 call per repo), en tokens per bron.
-- **Complexiteit write path**: branch management, merge conflicts, en PR-afhandeling in de editor is niet triviaal. Dit is bewust in een latere fase gepland.
-- **Schema-versie compatibiliteit**: als het YAML-schema verandert, moeten alle bronnen meebewegen. De engine moet omgaan met bronnen die op een oudere schema-versie zitten.
-- **Dependency op GitHub**: het hele model leunt op GitHub als hosting-platform. De `type: local` fallback en het feit dat het manifest een simpel YAML-bestand is maken het uitbreidbaar naar andere platforms (GitLab, Gitea), maar dat is nu geen prioriteit.
+- **GitHub API rate limits**: 60 requests per hour without auth, 5,000 with a token. With many sources or large repos this can become a bottleneck. Mitigation: ETag caching, Trees API (1 call per repo), and tokens per source.
+- **Write path complexity**: branch management, merge conflicts, and PR handling in the editor is non-trivial. This is deliberately planned for a later phase.
+- **Schema version compatibility**: when the YAML schema changes, all sources need to follow. The engine must handle sources on an older schema version.
+- **GitHub dependency**: the entire model relies on GitHub as hosting platform. The `type: local` fallback and the fact that the manifest is a simple YAML file make it extensible to other platforms (GitLab, Gitea), but that's not a priority now.
 
 ### Alternatives Considered
 
-**Alternative 1: Git clone in plaats van API**
+**Alternative 1: Git clone instead of API**
 
-Clone de hele repo naar het filesystem en lees de bestanden lokaal. Simpeler conceptueel, maar vereist een git binary in de container, meer disk space, en maakt het lastiger om de editor direct naar een fork te schrijven zonder backend. De GitHub API-benadering is lichter en werkt zowel vanuit de engine (server-side) als de editor (client-side).
+Clone the entire repo to the filesystem and read files locally. Conceptually simpler, but requires a git binary in the container, more disk space, and makes it harder for the editor to write directly to a repo without a backend. The GitHub API approach is lighter and works both from the engine (server-side) and the editor (client-side).
 
-**Alternative 2: Centraal discovery service**
+**Alternative 2: Central discovery service**
 
-Een aparte service die bijhoudt welke repos er zijn en hun metadata cachet. Introduceert een extra component om te beheren en deployen. Het manifest-in-Git patroon is transparanter, reviewbaar, en heeft geen runtime dependency op een extra service.
+A separate service that tracks which repos exist and caches their metadata. Introduces an extra component to manage and deploy. The manifest-in-Git pattern is more transparent, reviewable, and has no runtime dependency on an additional service.
 
 **Alternative 3: Git submodules**
 
-Gebruik submodules om externe repos in het corpus op te nemen. Te rigide: elke toevoeging of update van een bron vereist een commit in de parent repo. Bij tientallen gemeenten wordt dat onbeheersbaar. Het registry-manifest ontkoppelt het registreren van bronnen van het laden ervan.
+Use submodules to include external repos in the corpus. Too rigid: every addition or update of a source requires a commit in the parent repo. With dozens of municipalities this becomes unmanageable. The registry manifest decouples registering sources from loading them.
 
 ### Implementation Notes
 
-De implementatie is in zeven fases gepland, elke fase levert een werkend geheel op.
+Implementation is planned in seven phases, each delivering a working whole.
 
-**Fase 1 - Corpus loskoppelen**
-Verplaats `regulation/nl/` naar een eigen repo (`MinBZK/regelrecht-corpus`). Pas CI, tests en engine-configuratie aan om vanuit de nieuwe repo te laden.
+**Phase 1 - Decouple corpus**
+Move `regulation/nl/` to its own repo (`MinBZK/regelrecht-corpus`). Update CI, tests, and engine configuration to load from the new repo.
 
-**Fase 2 - Registry + lokale multi-source**
-Implementeer `CorpusRegistry` en `corpus-registry.yaml` parsing. Breid `RuleResolver` uit met `source_map` en priority-based conflict resolution. Ondersteun `type: local` zodat de huidige workflow blijft werken.
+**Phase 2 - Registry + local multi-source**
+Implement `CorpusRegistry` and `corpus-registry.yaml` parsing. Extend `RuleResolver` with `source_map` and priority-based conflict resolution. Support `type: local` so the current workflow keeps working.
 
-**Fase 3 - GitHub fetcher**
-Implementeer `GitHubFetcher` met Trees API, Contents API, ETag-caching en rate limit tracking. Auth via environment variables en `corpus-auth.yaml`.
+**Phase 3 - GitHub fetcher**
+Implement `GitHubFetcher` with Trees API, Contents API, ETag caching, and rate limit tracking. Auth via environment variables and `corpus-auth.yaml`.
 
-**Fase 4 - Admin API**
-Voeg `/api/sources`, `/api/corpus/laws` en `/api/sources/{id}/sync` endpoints toe aan de admin service.
+**Phase 4 - Admin API**
+Add `/api/sources`, `/api/corpus/laws`, and `/api/sources/{id}/sync` endpoints to the admin service.
 
-**Fase 5 - Editor multi-source lezen**
-Source picker, source badge per wet, en direct GitHub-access vanuit de editor (via de GitHub API, niet via de admin backend).
+**Phase 5 - Editor multi-source reading**
+Source picker, source badge per law, and direct GitHub access from the editor (via the GitHub API, not via the admin backend).
 
-**Fase 6 - Editor schrijven**
-Commit via GitHub Contents API, branch management, en PR-aanmaak vanuit de editor.
+**Phase 6 - Editor writing**
+Commit via GitHub Contents API, branch management, and PR creation from the editor.
 
-**Fase 7 - Validatie en polish**
-Scope-validatie, schema-versie compatibiliteit checks, collision reporting, en edge case afhandeling.
+**Phase 7 - Validation and polish**
+Scope validation, schema version compatibility checks, collision reporting, and edge case handling.
 
-### Geraakt door deze RFC
+### Affected components
 
-| Bestand | Rol | Wijziging |
-|---------|-----|-----------|
+| File | Role | Change |
+|------|------|--------|
 | `packages/engine/src/resolver.rs` | Law registry + indexes | +`source_map`, +`load_sourced_law()` |
-| `packages/engine/src/article.rs` | `ArticleBasedLaw` struct | Ongewijzigd (source is metadata op resolver, niet op law) |
+| `packages/engine/src/article.rs` | `ArticleBasedLaw` struct | Unchanged (source is metadata on resolver, not on law) |
 | `packages/engine/src/service.rs` | `LawExecutionService` | +registry loading, +source in trace output |
-| `packages/engine/src/uri.rs` | `regelrecht://` URI parsing | Ongewijzigd (URIs verwijzen naar law_id, niet naar source) |
-| `packages/corpus/src/config.rs` | Bestaande corpus config | Patroon hergebruiken voor auth config |
+| `packages/engine/src/uri.rs` | `regelrecht://` URI parsing | Unchanged (URIs refer to law_id, not source) |
+| `packages/corpus/src/config.rs` | Existing corpus config | Reuse pattern for auth config |
 | `packages/admin/src/handlers.rs` | Admin API endpoints | +`/api/sources`, +`/api/corpus/laws` |
 | `frontend/src/composables/useLaw.js` | Law loading | +multi-source, +GitHub direct access |
 | `frontend/src/EditorApp.vue` | Editor UI | +source picker, +badge, +write-back |
 
 ## References
 
-- RFC-007: Inversion of Control met `open_terms` en `implements`
-- RFC-003: Delegation Pattern for Multi-Level Regulations (blijft geldig voor delegatie; deze RFC adresseert federatie)
+- RFC-007: Inversion of Control with `open_terms` and `implements`
+- RFC-003: Delegation Pattern for Multi-Level Regulations (remains valid for delegation; this RFC addresses federation)
 - GitHub Trees API: `GET /repos/{owner}/{repo}/git/trees/{tree_sha}?recursive=1`
 - GitHub Contents API: `GET /repos/{owner}/{repo}/contents/{path}`, `PUT /repos/{owner}/{repo}/contents/{path}`
