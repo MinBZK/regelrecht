@@ -33,6 +33,9 @@ __pycache__/
 # Mutation testing
 mutants.out/
 
+# Dev stack
+.dev-pids
+
 # Environment
 .env
 
