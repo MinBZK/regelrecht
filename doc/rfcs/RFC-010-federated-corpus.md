@@ -1,4 +1,4 @@
-# RFC-008: Federated Corpus — Clean Forks voor Decentrale Regelgeving
+# RFC-010: Federated Corpus — Clean Forks voor Decentrale Regelgeving
 
 **Status:** Proposed
 **Date:** 2026-03-18
@@ -8,7 +8,7 @@
 
 Het corpus (`regulation/nl/`) zit in de regelrecht-mvp repo, samen met de engine, pipeline, admin en editor. Dat werkt voor een MVP, maar past niet bij de wetgevende realiteit: regelgeving is decentraal. Gemeenten, provincies, waterschappen en ministeries maken hun eigen regelgeving, vaak als invulling van hogere wetten.
 
-PR #246 introduceert Inversion of Control (IoC) met `open_terms` en `implements`. Hiermee kan een gemeente een hogere wet invullen zonder die hogere wet aan te raken. Technisch werkt dat al cross-repo, mits de engine alle relevante wetten laadt. Wat ontbreekt is de infrastructuur daarvoor:
+RFC-007 introduceert Inversion of Control (IoC) met `open_terms` en `implements`. Hiermee kan een gemeente een hogere wet invullen zonder die hogere wet aan te raken. Technisch werkt dat al cross-repo, mits de engine alle relevante wetten laadt. Wat ontbreekt is de infrastructuur daarvoor:
 
 - **Discovery**: hoe vindt de engine gemeentelijke regelgeving?
 - **Laden**: hoe haalt de engine wetten op uit meerdere bronnen?
@@ -78,7 +78,22 @@ sources:
 
 **Scopes:**
 
-Scopes bepalen welke jurisdictie een bron vertegenwoordigt. Een bron zonder scopes (zoals het centrale corpus) levert wetten zonder jurisdictie-beperking. Een bron met `gemeente_code: GM0363` levert alleen Amsterdamse regelgeving. De engine gebruikt scopes voor validatie: een wet uit een scoped bron met een afwijkende `gemeente_code` genereert een warning.
+Scopes zijn **claims**: een bron declareert voor welke jurisdictie(s) zij regelgeving levert. Een scope is geen routing-mechanisme ("gebruik deze bron als iemand om GM0363 vraagt") maar een eigenaarschapsverklaring ("deze bron bevat regelgeving van gemeente Amsterdam").
+
+De engine gebruikt scopes voor twee dingen:
+
+1. **Validatie** - als een wet uit een bron met scope `gemeente_code: GM0363` zelf `gemeente_code: GM0518` declareert, genereert de engine een warning. De bron claimt Amsterdam te zijn maar levert een wet voor een andere gemeente.
+2. **Filtering** - als je de engine draait voor een specifieke gemeente, kun je op basis van scopes bepalen welke bronnen relevant zijn en welke je kunt overslaan.
+
+Een bron zonder scopes (zoals het centrale corpus) levert wetten zonder jurisdictie-beperking. Een bron kan meerdere scopes hebben, bijvoorbeeld een provincie die regelgeving levert voor meerdere scope-types:
+
+```yaml
+scopes:
+  - type: provincie_code
+    value: "PV27"
+  - type: waterschap_code
+    value: "WS0155"
+```
 
 **Priority:**
 
@@ -86,9 +101,17 @@ Hogere priority wint bij conflicten. Als twee bronnen dezelfde wet-ID leveren, w
 
 ### 3. Authenticatie
 
-Auth staat los van het registry-manifest om credentials buiten versiebeheer te houden.
+Credentials staan **volledig los** van het registry-manifest. Het manifest bevat geen tokens, wachtwoorden of secrets. Het enige wat het manifest bevat is een optionele `auth_ref`: een string die verwijst naar een entry in een apart auth-bestand. Zonder `auth_ref` gaat de engine ervan uit dat de bron publiek is.
 
-Twee mechanismen, allebei geldig:
+**Auth types** (enum):
+
+| Type | Beschrijving |
+|------|-------------|
+| `none` | Publieke repo, geen auth nodig (default als `auth_ref` ontbreekt) |
+| `github_pat` | GitHub Personal Access Token |
+| `github_app` | GitHub App installation token (voor organisaties) |
+
+Twee mechanismen om credentials te configureren, allebei geldig:
 
 **Convention-based environment variables:**
 ```
@@ -96,7 +119,7 @@ CORPUS_AUTH_AMSTERDAM_TOKEN=ghp_abc123...
 CORPUS_AUTH_MINBZK_CENTRAL_TOKEN=ghp_def456...
 ```
 
-De naamconventie is `CORPUS_AUTH_{SOURCE_ID_UPPERCASE}_TOKEN`, waarbij streepjes in de source ID underscores worden.
+De naamconventie is `CORPUS_AUTH_{SOURCE_ID_UPPERCASE}_TOKEN`, waarbij streepjes in de source ID underscores worden. Bij env vars is het type altijd `github_pat`.
 
 **Auth config file** (`corpus-auth.yaml`, gitignored):
 ```yaml
@@ -105,13 +128,15 @@ amsterdam:
   token: ghp_abc123...
 
 minbzk-central:
-  type: github_pat
-  token: ghp_def456...
+  type: github_app
+  app_id: 12345
+  private_key_path: /etc/regelrecht/keys/minbzk.pem
+  installation_id: 67890
 ```
 
-Publieke repos hebben geen auth nodig. De `auth_ref` in het registry-manifest verwijst naar een entry in de auth config; ontbreekt de entry en is de repo publiek, dan werkt het gewoon.
+De lookup-volgorde is: env var eerst, dan auth config file. Env vars zijn handig in CI/CD en containers; het auth config file is handiger bij lokaal ontwikkelen met meerdere bronnen.
 
-**Editor auth:** de editor slaat een GitHub token op in de browser (localStorage of sessionStorage). Dit token wordt niet in het registry-manifest of de auth config opgeslagen, het is per-gebruiker.
+**Editor auth:** de editor slaat een GitHub token op in de browser (localStorage of sessionStorage). Dit token staat niet in het registry-manifest of de auth config - het is per-gebruiker en wordt alleen client-side gebruikt voor de write path.
 
 ### 4. Discovery, laden en schrijven
 
@@ -146,7 +171,7 @@ corpus-registry.yaml
 - `load_sourced_law(law_id, source_id)`: laadt een specifieke wet uit een specifieke bron
 - Bij conflicten (zelfde `$id` uit meerdere bronnen) wint de bron met de hoogste priority
 
-**Scope-validatie:** een wet uit een bron met `scopes: [{ type: gemeente_code, value: GM0363 }]` die zelf `gemeente_code: GM0518` declareert, genereert een warning. Dit is geen harde fout (de bron kan bewust wetten voor andere gemeenten bevatten), maar een signaal.
+**Scope-validatie:** scopes zijn claims, geen hard afdwingbare grenzen. Een wet uit een bron met scope `gemeente_code: GM0363` die zelf `gemeente_code: GM0518` declareert genereert een warning, geen fout. De engine vertrouwt de bron maar signaleert afwijkingen.
 
 #### Write path (editor)
 
@@ -182,7 +207,7 @@ Nieuwe endpoints op de admin service:
 
 ### Benefits
 
-- **Past bij IoC**: het `implements`-mechanisme uit PR #246 werkt cross-repo zodra je de wetten maar laadt. Het registry maakt dat laden expliciet en configureerbaar.
+- **Past bij IoC**: het `implements`-mechanisme uit RFC-007 werkt cross-repo zodra je de wetten maar laadt. Het registry maakt dat laden expliciet en configureerbaar.
 - **Decentraal eigenaarschap**: gemeenten, provincies en waterschappen beheren hun regelgeving in hun eigen repo. Geen PR naar een centrale repo nodig om een gemeentelijke verordening te wijzigen.
 - **Transparant**: het registry-manifest is een YAML-bestand in Git. Wie wil zien welke bronnen de engine laadt, kijkt in het manifest.
 - **Scope-validatie als trust boundary**: zonder complexe PKI-infra kan de engine via scopes valideren dat een bron geen wetten levert buiten haar jurisdictie.
@@ -249,7 +274,7 @@ Scope-validatie, schema-versie compatibiliteit checks, collision reporting, en e
 
 ## References
 
-- PR #246: Inversion of Control met `open_terms` en `implements`
+- RFC-007: Inversion of Control met `open_terms` en `implements`
 - RFC-003: Delegation Pattern for Multi-Level Regulations (blijft geldig voor delegatie; deze RFC adresseert federatie)
 - GitHub Trees API: `GET /repos/{owner}/{repo}/git/trees/{tree_sha}?recursive=1`
 - GitHub Contents API: `GET /repos/{owner}/{repo}/contents/{path}`, `PUT /repos/{owner}/{repo}/contents/{path}`
