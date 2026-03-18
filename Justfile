@@ -1,6 +1,8 @@
 # Justfile voor regelrecht-mvp
 # Gebruik: just <task>
 
+set dotenv-load := true
+
 # Default task - toon beschikbare tasks
 default:
     @just --list
@@ -93,74 +95,215 @@ admin-fmt:
 admin-test:
     cd packages && cargo test --package regelrecht-admin
 
-# --- Local development stack ---
+# --- Development (native with hot reload) ---
 
-# Start the full local development stack
+compose := "docker compose -f docker-compose.dev.yml"
+compose-local := compose + " -f dev/compose.local.yaml"
+compose-native := compose + " -f dev/compose.native.yaml"
+pidfile := ".dev-pids"
+
+# Start development: infra in Docker, services native with hot reload
 dev:
     #!/usr/bin/env bash
     set -euo pipefail
-    logfile=$(mktemp)
-    printf "\033[1m=> Building and starting dev stack…\033[0m "
-    if docker compose -f docker-compose.dev.yml up --build -d > "$logfile" 2>&1; then
-        printf "\033[32mdone\033[0m\n\n"
-        echo "  Frontend:   http://localhost:${FRONTEND_PORT:-3000}"
-        echo "  Admin:      http://localhost:${ADMIN_PORT:-8000}"
-        echo "  Grafana:    http://localhost:${GRAFANA_PORT:-3001}"
-        echo "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
-        echo "  PostgreSQL: internal (use 'just dev-psql' to connect)"
-        echo ""
-        printf "  \033[2mLogs:\033[0m just dev-logs\n"
-        printf "  \033[2mStop:\033[0m just dev-down\n"
-    else
-        printf "\033[31mfailed\033[0m\n\n"
-        cat "$logfile"
-        rm -f "$logfile"
+
+    bold="\033[1m"  dim="\033[2m"  reset="\033[0m"
+    green="\033[32m"  red="\033[31m"  cyan="\033[36m"  yellow="\033[33m"
+
+    # -- preflight checks --
+    missing=()
+    command -v cargo >/dev/null || missing+=("cargo (rustup.rs)")
+    command -v node >/dev/null  || missing+=("node")
+    command -v docker >/dev/null || missing+=("docker")
+    if ! cargo watch --version >/dev/null 2>&1; then
+        printf "${yellow}=> Installing cargo-watch…${reset} "
+        if cargo install cargo-watch --quiet 2>/dev/null; then
+            printf "${green}done${reset}\n"
+        else
+            missing+=("cargo-watch (cargo install cargo-watch)")
+        fi
+    fi
+    if [ ${#missing[@]} -gt 0 ]; then
+        printf "${red}Missing dependencies:${reset}\n"
+        for dep in "${missing[@]}"; do echo "  - $dep"; done
         exit 1
+    fi
+
+    # -- start infra --
+    logfile=$(mktemp)
+    printf "${bold}=> Starting infra (postgres, prometheus, grafana)…${reset} "
+    if {{ compose-native }} up -d postgres prometheus grafana > "$logfile" 2>&1; then
+        printf "${green}done${reset}\n"
+    else
+        printf "${red}failed${reset}\n"
+        cat "$logfile"; rm -f "$logfile"; exit 1
     fi
     rm -f "$logfile"
 
-# Stop the local development stack
+    # -- wait for postgres --
+    printf "${bold}=> Waiting for postgres…${reset} "
+    for i in $(seq 1 30); do
+        if {{ compose-native }} exec -T postgres pg_isready -U regelrecht -d regelrecht_pipeline >/dev/null 2>&1; then
+            printf "${green}ready${reset}\n"
+            break
+        fi
+        if [ "$i" -eq 30 ]; then
+            printf "${red}timeout${reset}\n"; exit 1
+        fi
+        sleep 1
+    done
+
+    # -- install frontend deps if needed --
+    admin_fe=true
+    editor_fe=true
+
+    if [ ! -d packages/admin/frontend-src/node_modules ]; then
+        printf "${bold}=> Installing admin frontend deps…${reset} "
+        if (cd packages/admin/frontend-src && npm ci --silent) > /dev/null 2>&1; then
+            printf "${green}done${reset}\n"
+        else
+            printf "${yellow}skipped${reset} (set GITHUB_TOKEN in .env for private packages)\n"
+            admin_fe=false
+        fi
+    fi
+    if [ ! -d frontend/node_modules ]; then
+        printf "${bold}=> Installing editor frontend deps…${reset} "
+        if (cd frontend && npm ci --silent) > /dev/null 2>&1; then
+            printf "${green}done${reset}\n"
+        else
+            printf "${yellow}skipped${reset} (set GITHUB_TOKEN in .env for private packages)\n"
+            editor_fe=false
+        fi
+    fi
+
+    # -- start native services in background --
+    rm -f {{ pidfile }}
+
+    printf "${bold}=> Starting admin API (cargo watch on :8000)…${reset}\n"
+    DATABASE_URL="postgres://regelrecht:regelrecht_dev@localhost:${POSTGRES_PORT:-5433}/regelrecht_pipeline" \
+    RUST_LOG="${RUST_LOG:-info}" \
+      cargo watch -C packages -x 'run --package regelrecht-admin' \
+      > .dev-admin.log 2>&1 &
+    echo "$!" >> {{ pidfile }}
+
+    if [ "$admin_fe" = true ]; then
+        printf "${bold}=> Starting admin frontend (vite on :3001)…${reset}\n"
+        (cd packages/admin/frontend-src && npx vite) > .dev-admin-frontend.log 2>&1 &
+        echo "$!" >> {{ pidfile }}
+    fi
+
+    if [ "$editor_fe" = true ]; then
+        printf "${bold}=> Starting editor frontend (vite on :3000)…${reset}\n"
+        (cd frontend && npx vite) > .dev-editor.log 2>&1 &
+        echo "$!" >> {{ pidfile }}
+    fi
+
+    # -- wait for services to come up --
+    printf "${bold}=> Waiting for services…${reset} "
+    sleep 4
+    printf "${green}done${reset}\n"
+
+    printf "\n"
+    printf "${bold}${green}  Dev stack is running with hot reload${reset}\n\n"
+    if [ "$editor_fe" = true ]; then
+        echo "  Editor:     http://localhost:3000     (hot reload)"
+    fi
+    if [ "$admin_fe" = true ]; then
+        echo "  Admin UI:   http://localhost:3001     (hot reload, proxies API to :8000)"
+    fi
+    echo   "  Admin API:  http://localhost:8000     (auto-recompile on save)"
+    echo   "  Grafana:    http://localhost:${GRAFANA_PORT:-3002}"
+    echo   "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
+    echo   "  PostgreSQL: localhost:${POSTGRES_PORT:-5433}"
+    printf "\n"
+    printf "  ${dim}Admin API log:${reset}      tail -f .dev-admin.log\n"
+    if [ "$admin_fe" = true ]; then
+        printf "  ${dim}Admin frontend log:${reset} tail -f .dev-admin-frontend.log\n"
+    fi
+    if [ "$editor_fe" = true ]; then
+        printf "  ${dim}Editor log:${reset}         tail -f .dev-editor.log\n"
+    fi
+    printf "  ${dim}Infra logs:${reset}         just dev-logs\n"
+    printf "  ${dim}Database:${reset}           just dev-psql\n"
+    printf "  ${dim}Stop everything:${reset}    just dev-down\n"
+
+# Stop dev: kill native processes and stop infra
 dev-down:
-    docker compose -f docker-compose.dev.yml down
-
-# Follow logs from dev services (optionally filter: just dev-logs admin)
-dev-logs *ARGS:
-    docker compose -f docker-compose.dev.yml logs -f {{ARGS}}
-
-# Rebuild and restart a specific service (e.g., just dev-restart admin)
-dev-restart SERVICE:
-    docker compose -f docker-compose.dev.yml up --build -d {{SERVICE}}
-
-# Show status of dev services
-dev-ps:
-    docker compose -f docker-compose.dev.yml ps
-
-# Start only infra (postgres + prometheus + grafana) for hybrid development
-dev-infra:
     #!/usr/bin/env bash
     set -euo pipefail
-    logfile=$(mktemp)
-    printf "\033[1m=> Starting infra services…\033[0m "
-    if docker compose -f docker-compose.dev.yml up --build -d postgres prometheus grafana > "$logfile" 2>&1; then
-        printf "\033[32mdone\033[0m\n\n"
-        echo "  PostgreSQL:  internal (use 'just dev-psql' to connect)"
-        echo "  Prometheus:  http://localhost:${PROMETHEUS_PORT:-9090}"
-        echo "  Grafana:     http://localhost:${GRAFANA_PORT:-3001}"
-        echo ""
-        printf "  \033[2mRun admin natively:\033[0m    just admin\n"
-        printf "  \033[2mRun frontend natively:\033[0m cd frontend && npm run dev\n"
-    else
-        printf "\033[31mfailed\033[0m\n\n"
-        cat "$logfile"
-        rm -f "$logfile"
-        exit 1
+    bold="\033[1m"  reset="\033[0m"  green="\033[32m"
+
+    printf "${bold}=> Stopping native services…${reset} "
+    if [ -f {{ pidfile }} ]; then
+        while read -r pid; do
+            # Kill children first (node, cargo, etc.), then the parent
+            pkill -P "$pid" 2>/dev/null || true
+            kill "$pid" 2>/dev/null || true
+        done < {{ pidfile }}
+        rm -f {{ pidfile }}
+        sleep 1
     fi
-    rm -f "$logfile"
+    rm -f .dev-admin.log .dev-admin-frontend.log .dev-editor.log
+    printf "${green}done${reset}\n"
+
+    printf "${bold}=> Stopping infra…${reset} "
+    {{ compose-native }} down > /dev/null 2>&1
+    printf "${green}done${reset}\n"
+
+# Follow infra logs in dev mode
+dev-logs *ARGS:
+    {{ compose-native }} logs -f {{ARGS}}
 
 # Connect to the dev database via psql
 dev-psql:
-    docker compose -f docker-compose.dev.yml exec postgres psql -U regelrecht regelrecht_pipeline
+    {{ compose-native }} exec postgres psql -U regelrecht regelrecht_pipeline
 
-# Remove all dev data (volumes)
-dev-clean:
-    docker compose -f docker-compose.dev.yml down -v
+# --- Full local stack (everything in Docker) ---
+
+# Run the complete stack in Docker (no hot reload)
+local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    logfile=$(mktemp)
+    printf "\033[1m=> Building and starting full stack…\033[0m "
+    if {{ compose-local }} up --build -d > "$logfile" 2>&1; then
+        printf "\033[32mdone\033[0m\n\n"
+        echo "  Editor:     http://localhost:${FRONTEND_PORT:-3000}"
+        echo "  Admin:      http://localhost:${ADMIN_PORT:-8000}"
+        echo "  Grafana:    http://localhost:${GRAFANA_PORT:-3001}"
+        echo "  Prometheus: http://localhost:${PROMETHEUS_PORT:-9090}"
+        echo "  PostgreSQL: internal (use 'just local-psql' to connect)"
+        echo ""
+        printf "  \033[2mLogs:\033[0m just local-logs\n"
+        printf "  \033[2mStop:\033[0m just local-down\n"
+    else
+        printf "\033[31mfailed\033[0m\n\n"
+        cat "$logfile"
+        rm -f "$logfile"
+        exit 1
+    fi
+    rm -f "$logfile"
+
+# Stop the full local stack
+local-down:
+    {{ compose-local }} down
+
+# Follow logs from local services (optionally filter: just local-logs admin)
+local-logs *ARGS:
+    {{ compose-local }} logs -f {{ARGS}}
+
+# Rebuild and restart a specific local service (e.g., just local-restart admin)
+local-restart SERVICE:
+    {{ compose-local }} up --build -d {{SERVICE}}
+
+# Show status of local services
+local-ps:
+    {{ compose-local }} ps
+
+# Connect to the local database via psql
+local-psql:
+    {{ compose-local }} exec postgres psql -U regelrecht regelrecht_pipeline
+
+# Remove all local data (volumes)
+local-clean:
+    {{ compose-local }} down -v

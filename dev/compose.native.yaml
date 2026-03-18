@@ -1,0 +1,13 @@
+---
+# Override for native dev (just dev):
+# - expose postgres to host (port 5433 to avoid conflicts)
+# - move grafana to 3002 (3001 is used by admin vite dev server)
+services:
+  postgres:
+    ports:
+      - ${POSTGRES_PORT:-5433}:5432
+  grafana:
+    ports:
+      - ${GRAFANA_PORT:-3002}:3000
+    environment:
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3002}

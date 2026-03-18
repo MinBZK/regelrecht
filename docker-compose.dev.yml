@@ -104,8 +104,7 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
       # Placeholder so alerting provisioning doesn't fail on missing webhook
       MATTERMOST_WEBHOOK_URL: http://localhost:0/webhook-not-configured
-    ports:
-      - ${GRAFANA_PORT:-3001}:3000
+      # Port mapping set via override files (compose.local.yaml / compose.native.yaml)
 
 secrets:
   GITHUB_TOKEN:
