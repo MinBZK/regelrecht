@@ -540,7 +540,7 @@ async fn process_next_enrich_job(
 
     // Compute the progress file path and spawn a background polling task.
     // The LLM writes phase info to this file; we relay it to the DB every 10s.
-    let normalized_yaml_path = crate::enrich::normalize_yaml_path_public(&payload.yaml_path).ok();
+    let normalized_yaml_path = crate::enrich::normalize_yaml_path(&payload.yaml_path).ok();
     let progress_path = normalized_yaml_path
         .as_ref()
         .map(|p| progress_file_path(&effective_repo.join(p)));
@@ -750,6 +750,13 @@ async fn poll_progress_file(
 
         if let Err(e) = job_queue::update_progress(pool, job_id, value).await {
             tracing::warn!(job_id = %job_id, error = %e, "failed to update job progress");
+        }
+    }
+
+    // Final read to capture the last phase the LLM wrote before the job finished.
+    if let Ok(content) = tokio::fs::read_to_string(path).await {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+            let _ = job_queue::update_progress(pool, job_id, value).await;
         }
     }
 }

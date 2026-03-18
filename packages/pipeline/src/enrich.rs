@@ -419,16 +419,11 @@ pub async fn create_enrich_corpus(
 /// older harvest results. Stripped automatically so enrich jobs still work.
 const KNOWN_REPO_PREFIXES: &[&str] = &["/tmp/corpus-repo/", "/tmp/regulation-repo/"];
 
-/// Public wrapper around `normalize_yaml_path` for use by the worker.
-pub fn normalize_yaml_path_public(yaml_path: &str) -> Result<String> {
-    normalize_yaml_path(yaml_path)
-}
-
 /// Normalize and validate a yaml_path: strip known absolute prefixes,
 /// then verify the path contains only safe characters.
 ///
 /// Prevents path traversal and injection via crafted job payloads.
-fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
+pub(crate) fn normalize_yaml_path(yaml_path: &str) -> Result<String> {
     if yaml_path.is_empty() {
         return Err(PipelineError::Enrich("yaml_path must not be empty".into()));
     }
