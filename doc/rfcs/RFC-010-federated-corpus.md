@@ -68,13 +68,43 @@ sources:
     priority: 200
 ```
 
-**Merging-regels:**
+**Manifest-bestanden:**
 
-- Centraal manifest: `corpus-registry.yaml` (in de repo, geversioned)
-- Lokale overrides: `corpus-registry.local.yaml` (gitignored)
-- Merge: lokale sources worden toegevoegd aan de centrale lijst
-- Bij zelfde `id`: lokale entry vervangt de centrale
-- `type: local` voor filesystem-bronnen (handig bij ontwikkeling)
+Het manifest bestaat uit twee lagen, vergelijkbaar met `.env` + `.env.local` of `docker-compose.yaml` + `docker-compose.override.yaml`:
+
+- `corpus-registry.yaml` - in de repo, geversioned. Bevat de "officiële" bronnenlijst.
+- `corpus-registry.local.yaml` - gitignored, persoonlijk. Bevat afwijkingen voor lokale ontwikkeling.
+
+De engine merged beide bestanden: alle sources uit het centrale manifest plus alle sources uit het lokale bestand. Als een lokale entry dezelfde `id` heeft als een centrale entry, vervangt de lokale de centrale.
+
+Voorbeeld: je wilt lokaal de Amsterdam-bron naar je eigen fork pointen en een map met test-wetten toevoegen. Dan zet je in `corpus-registry.local.yaml`:
+
+```yaml
+schema_version: "1.0"
+sources:
+  # Vervangt de centrale amsterdam-entry (zelfde id)
+  - id: amsterdam
+    name: "Amsterdam (mijn fork)"
+    type: github
+    github:
+      owner: mijn-github-user
+      repo: regelrecht-amsterdam
+      branch: feature/nieuwe-verordening
+      path: regulation/nl
+    scopes:
+      - type: gemeente_code
+        value: "GM0363"
+    priority: 50
+
+  # Nieuwe entry, wordt toegevoegd aan de lijst
+  - id: lokale-tests
+    name: "Lokale test-wetten"
+    type: local
+    local:
+      path: ./test-regulation
+    scopes: []
+    priority: 200
+```
 
 **Scopes:**
 
@@ -97,7 +127,13 @@ scopes:
 
 **Priority:**
 
-Hogere priority wint bij conflicten. Als twee bronnen dezelfde wet-ID leveren, wordt de versie uit de bron met de hoogste priority geladen. Lokale bronnen krijgen standaard de hoogste priority (handig voor development).
+Priority lost conflicten op wanneer twee bronnen een wet met dezelfde `$id` leveren. Dat is een uitzonderingsgeval, geen normaal gebruik. Normaal gesproken levert elke bron unieke wetten: het centrale corpus heeft de Participatiewet, Amsterdam heeft de Amsterdamse verordeningen. Ze overlappen niet.
+
+Waar priority wel speelt:
+- **Development**: je lokale bron (priority 200) bevat een aangepaste versie van een centrale wet (priority 100). De lokale versie wint, zodat je kunt testen zonder het centrale manifest aan te passen.
+- **Migratie**: bij het verhuizen van wetten tussen bronnen kan tijdelijk overlap ontstaan.
+
+Bij gelijke priority en gelijke `$id` genereert de engine een fout. Dat dwingt expliciete keuze af.
 
 ### 3. Authenticatie
 
