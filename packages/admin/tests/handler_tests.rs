@@ -16,8 +16,9 @@ use tower::ServiceExt;
 use regelrecht_admin::config::AppConfig;
 use regelrecht_admin::handlers;
 use regelrecht_admin::metrics;
+use regelrecht_admin::metrics::fetch_metrics;
 use regelrecht_admin::state::AppState;
-use regelrecht_pipeline::job_queue;
+use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::JobType;
 
 fn test_app(pool: sqlx::PgPool) -> Router {
@@ -377,4 +378,68 @@ async fn list_jobs_after_creation() {
     let json = body_json(response).await;
     assert_eq!(json["total"], 1);
     assert_eq!(json["data"][0]["law_id"], "BWBR0018451");
+}
+
+// --- fetch_metrics ---
+
+#[tokio::test]
+async fn fetch_metrics_on_empty_db() {
+    let db = common::TestDb::new().await;
+    let snapshot = fetch_metrics(&db.pool).await.unwrap();
+
+    assert!(snapshot.jobs_by_status.is_empty());
+    assert!(snapshot.laws_by_status.is_empty());
+    assert_eq!(snapshot.avg_job_duration_secs, None);
+}
+
+#[tokio::test]
+async fn fetch_metrics_with_only_pending_jobs() {
+    let db = common::TestDb::new().await;
+    let pool = db.pool.clone();
+
+    // Create a pending job but don't complete it - AVG query returns NULL
+    // because no jobs match status='completed'. This is the scenario that
+    // triggered a NUMERIC vs float8 mismatch in production.
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0018451");
+    job_queue::create_job(&pool, req).await.unwrap();
+
+    let snapshot = fetch_metrics(&pool).await.unwrap();
+
+    assert_eq!(snapshot.avg_job_duration_secs, None);
+    assert!(
+        snapshot
+            .jobs_by_status
+            .iter()
+            .any(|(s, c)| s == "pending" && *c == 1),
+        "should have 1 pending job"
+    );
+}
+
+#[tokio::test]
+async fn fetch_metrics_avg_duration_with_completed_jobs() {
+    let db = common::TestDb::new().await;
+    let pool = db.pool.clone();
+
+    // Create and complete a job so AVG(EXTRACT(EPOCH ...)) returns a value.
+    let req = CreateJobRequest::new(JobType::Harvest, "BWBR0018451");
+    job_queue::create_job(&pool, req).await.unwrap();
+    let job = job_queue::claim_job(&pool, Some(JobType::Harvest))
+        .await
+        .unwrap()
+        .unwrap();
+    job_queue::complete_job(&pool, job.id, None).await.unwrap();
+
+    let snapshot = fetch_metrics(&pool).await.unwrap();
+
+    assert!(
+        snapshot.avg_job_duration_secs.is_some(),
+        "should have avg duration for completed jobs"
+    );
+    assert!(
+        snapshot
+            .jobs_by_status
+            .iter()
+            .any(|(s, c)| s == "completed" && *c == 1),
+        "should have 1 completed job"
+    );
 }
