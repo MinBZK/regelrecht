@@ -36,7 +36,8 @@ impl LlmRunner for ProcessLlmRunner {
         repo_path: &Path,
         config: &EnrichConfig,
     ) -> Result<()> {
-        let prompt = build_prompt(&payload.yaml_path);
+        let progress_path = progress_file_path(yaml_abs);
+        let prompt = build_prompt(&payload.yaml_path, &progress_path.to_string_lossy());
         let provider_name = config.provider.name().to_string();
 
         let mut cmd = build_command(&config.provider, &prompt, yaml_abs, repo_path);
@@ -260,7 +261,7 @@ pub fn enrich_branch_name(provider_name: &str) -> String {
 }
 
 /// Build the prompt that tells the LLM to follow the skill pipeline.
-fn build_prompt(yaml_path: &str) -> String {
+fn build_prompt(yaml_path: &str, progress_file_path: &str) -> String {
     format!(
         r#"You are interpreting a Dutch law to make it machine-executable.
 
@@ -283,8 +284,31 @@ each executable article.
 Read .claude/skills/law-reverse-validate/SKILL.md and follow its instructions
 to verify every element in machine_readable traces back to the original legal text.
 
-Write all changes to disk. Do not ask questions — proceed autonomously."#
+Write all changes to disk. Do not ask questions — proceed autonomously.
+
+## Progress tracking
+Before starting each step, write a JSON progress file to report your current phase.
+Write to: {progress_file_path}
+
+Write this file at these moments:
+- Before Step 1: {{"phase": "mvt_research", "step": 1, "total_steps": 3}}
+- Before Step 2: {{"phase": "generating", "step": 2, "total_steps": 3, "article_count": N}}
+- After validation in Step 2: {{"phase": "validating", "step": 2, "total_steps": 3, "iteration": M}}
+- Before Step 3: {{"phase": "reverse_validating", "step": 3, "total_steps": 3}}
+
+Use the Write tool. Keep it brief — just one write per phase transition."#
     )
+}
+
+/// Compute the path of the progress file for a given law YAML file.
+///
+/// The progress file sits next to the YAML (e.g.
+/// `regulation/nl/wet/foo/.enrichment-progress.json`).
+pub fn progress_file_path(yaml_abs: &Path) -> PathBuf {
+    yaml_abs
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(".enrichment-progress.json")
 }
 
 /// Allowlisted environment variable prefixes/names that are safe to pass to the
@@ -394,6 +418,11 @@ pub async fn create_enrich_corpus(
 /// Known absolute prefixes that may appear in yaml_path values from
 /// older harvest results. Stripped automatically so enrich jobs still work.
 const KNOWN_REPO_PREFIXES: &[&str] = &["/tmp/corpus-repo/", "/tmp/regulation-repo/"];
+
+/// Public wrapper around `normalize_yaml_path` for use by the worker.
+pub fn normalize_yaml_path_public(yaml_path: &str) -> Result<String> {
+    normalize_yaml_path(yaml_path)
+}
 
 /// Normalize and validate a yaml_path: strip known absolute prefixes,
 /// then verify the path contains only safe characters.
@@ -786,11 +815,15 @@ mod tests {
 
     #[test]
     fn test_build_prompt_contains_skill_paths() {
-        let prompt = build_prompt("regulation/nl/wet/test/2025-01-01.yaml");
+        let prompt = build_prompt(
+            "regulation/nl/wet/test/2025-01-01.yaml",
+            "/tmp/repo/regulation/nl/wet/test/.enrichment-progress.json",
+        );
         assert!(prompt.contains("law-mvt-research/SKILL.md"));
         assert!(prompt.contains("law-generate/SKILL.md"));
         assert!(prompt.contains("law-reverse-validate/SKILL.md"));
         assert!(prompt.contains("regulation/nl/wet/test/2025-01-01.yaml"));
+        assert!(prompt.contains(".enrichment-progress.json"));
     }
 
     #[test]

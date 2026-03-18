@@ -710,6 +710,14 @@ function onNextPage() {
 // ---------------------------------------------------------------------------
 
 let _closePanelTransitionCleanup = null;
+let _progressPollInterval = null;
+
+const PHASE_LABELS = {
+  mvt_research: 'MvT Research',
+  generating: 'Generating',
+  validating: 'Validating',
+  reverse_validating: 'Reverse Validating',
+};
 
 function openDetailPanel(job) {
   const panel = $('#detail-panel');
@@ -762,6 +770,34 @@ function openDetailPanel(job) {
   infoSection.appendChild(infoGrid);
   body.appendChild(infoSection);
 
+  // --- Progress section (for processing jobs) ---
+  if (job.status === 'processing') {
+    const progressContainer = document.createElement('div');
+    progressContainer.id = 'detail-progress';
+    renderProgressSection(progressContainer, job.progress);
+    body.appendChild(progressContainer);
+
+    // Start auto-refresh to poll progress updates
+    if (_progressPollInterval) clearInterval(_progressPollInterval);
+    _progressPollInterval = setInterval(async () => {
+      try {
+        const resp = await fetch(`api/jobs/${encodeURIComponent(job.id)}`);
+        if (!resp.ok) return;
+        const updated = await resp.json();
+        const container = document.getElementById('detail-progress');
+        if (container) renderProgressSection(container, updated.progress);
+        // If job is no longer processing, stop polling and refresh detail
+        if (updated.status !== 'processing') {
+          clearInterval(_progressPollInterval);
+          _progressPollInterval = null;
+          openDetailPanel(updated);
+        }
+      } catch {
+        // ignore fetch errors during polling
+      }
+    }, 10_000);
+  }
+
   // --- Error section (only for failed jobs) ---
   if (job.status === 'failed' && job.result && job.result.error) {
     const errorSection = document.createElement('div');
@@ -813,7 +849,66 @@ function openDetailPanel(job) {
   backdrop.classList.add('is-open');
 }
 
+function renderProgressSection(container, progress) {
+  container.innerHTML = '';
+
+  const section = document.createElement('div');
+  section.className = 'detail-section';
+  section.innerHTML = '<h3 class="detail-section__title">Progress</h3>';
+
+  if (!progress || !progress.phase) {
+    const msg = document.createElement('div');
+    msg.className = 'detail-phase';
+    msg.innerHTML = '<span class="detail-phase__label">Processing\u2026</span>';
+    section.appendChild(msg);
+    container.appendChild(section);
+    return;
+  }
+
+  const phaseEl = document.createElement('div');
+  phaseEl.className = 'detail-phase';
+
+  const totalSteps = progress.total_steps || 3;
+  const currentStep = progress.step || 1;
+  const phaseLabel = PHASE_LABELS[progress.phase] || progress.phase;
+
+  // Step indicator dots
+  const dotsEl = document.createElement('span');
+  dotsEl.className = 'detail-phase__steps';
+  for (let i = 1; i <= totalSteps; i++) {
+    const dot = document.createElement('span');
+    dot.className = 'detail-phase__dot' + (i <= currentStep ? ' detail-phase__dot--active' : '');
+    dotsEl.appendChild(dot);
+  }
+
+  const labelEl = document.createElement('span');
+  labelEl.className = 'detail-phase__label';
+  labelEl.textContent = `Step ${currentStep} / ${totalSteps}: ${phaseLabel}`;
+
+  phaseEl.appendChild(dotsEl);
+  phaseEl.appendChild(labelEl);
+  section.appendChild(phaseEl);
+
+  // Extra details
+  const details = [];
+  if (progress.article_count) details.push(`${progress.article_count} articles`);
+  if (progress.iteration) details.push(`iteration ${progress.iteration}`);
+  if (details.length > 0) {
+    const detailsEl = document.createElement('div');
+    detailsEl.className = 'detail-phase__meta';
+    detailsEl.textContent = details.join(' \u00B7 ');
+    section.appendChild(detailsEl);
+  }
+
+  container.appendChild(section);
+}
+
 function closeDetailPanel() {
+  if (_progressPollInterval) {
+    clearInterval(_progressPollInterval);
+    _progressPollInterval = null;
+  }
+
   const panel = $('#detail-panel');
   const backdrop = $('#detail-backdrop');
 

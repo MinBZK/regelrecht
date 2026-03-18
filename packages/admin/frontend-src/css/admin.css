@@ -701,6 +701,50 @@ body {
   overflow-y: auto;
 }
 
+/* ============================================================
+   Progress Phase Indicator (detail panel)
+   ============================================================ */
+
+.detail-phase {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--border-radius-md);
+}
+
+.detail-phase__steps {
+  display: flex;
+  gap: var(--spacing-1);
+}
+
+.detail-phase__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-slate-300);
+}
+
+.detail-phase__dot--active {
+  background: #3b82f6;
+}
+
+.detail-phase__label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: #1e40af;
+}
+
+.detail-phase__meta {
+  margin-top: var(--spacing-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  padding-left: var(--spacing-4);
+}
+
+
 /* Clickable job rows */
 .data-table tbody tr.clickable-row {
   cursor: pointer;

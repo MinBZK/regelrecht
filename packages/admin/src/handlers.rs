@@ -263,7 +263,7 @@ pub async fn list_jobs(
 
     let data_sql = format!(
         "SELECT id, job_type, law_id, status, \
-         priority, payload, result, attempts, max_attempts, created_at, updated_at, started_at, completed_at \
+         priority, payload, result, progress, attempts, max_attempts, created_at, updated_at, started_at, completed_at \
          FROM jobs {where_sql} \
          ORDER BY {sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
     );
@@ -628,6 +628,39 @@ pub async fn create_enrich_jobs(
             providers,
         }),
     ))
+}
+
+// --- Get single Job ---
+
+pub async fn get_job(
+    State(state): State<AppState>,
+    axum::extract::Path(job_id): axum::extract::Path<String>,
+) -> Result<Json<Job>, (StatusCode, String)> {
+    let pool = &state.pool;
+
+    let uuid: sqlx::types::Uuid = job_id
+        .parse()
+        .map_err(|_| (StatusCode::BAD_REQUEST, format!("invalid job id: {job_id}")))?;
+
+    let job = sqlx::query_as::<_, Job>(
+        "SELECT id, job_type, law_id, status, \
+         priority, payload, result, progress, attempts, max_attempts, \
+         created_at, updated_at, started_at, completed_at \
+         FROM jobs WHERE id = $1",
+    )
+    .bind(uuid)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "get_job query failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, format!("job not found: {job_id}")))?;
+
+    Ok(Json(job))
 }
 
 // --- Delete Jobs ---
