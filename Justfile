@@ -92,3 +92,48 @@ admin-fmt:
 # Run admin tests
 admin-test:
     cd packages && cargo test --package regelrecht-admin
+
+# --- Local development stack ---
+
+# Start the full local development stack
+dev:
+    docker compose -f docker-compose.dev.yml up --build -d
+    @echo ""
+    @echo "  Frontend (editor): http://localhost:3000"
+    @echo "  Admin:             http://localhost:8000"
+    @echo "  Grafana:           http://localhost:3001"
+    @echo "  Prometheus:        http://localhost:9090"
+    @echo "  PostgreSQL:        localhost:5432"
+    @echo ""
+    @echo "Logs: just dev-logs"
+
+# Stop the local development stack
+dev-down:
+    docker compose -f docker-compose.dev.yml down
+
+# Follow logs from dev services (optionally filter: just dev-logs admin)
+dev-logs *ARGS:
+    docker compose -f docker-compose.dev.yml logs -f {{ARGS}}
+
+# Rebuild and restart a specific service (e.g., just dev-restart admin)
+dev-restart SERVICE:
+    docker compose -f docker-compose.dev.yml up --build -d {{SERVICE}}
+
+# Show status of dev services
+dev-ps:
+    docker compose -f docker-compose.dev.yml ps
+
+# Start only infra (postgres + prometheus + grafana) for hybrid development
+dev-infra:
+    docker compose -f docker-compose.dev.yml up --build -d postgres prometheus grafana
+    @echo ""
+    @echo "  PostgreSQL:  localhost:5432"
+    @echo "  Prometheus:  http://localhost:9090"
+    @echo "  Grafana:     http://localhost:3001"
+    @echo ""
+    @echo "Run admin natively:    just admin"
+    @echo "Run frontend natively: cd frontend && npm run dev"
+
+# Remove all dev data (volumes)
+dev-clean:
+    docker compose -f docker-compose.dev.yml down -v
