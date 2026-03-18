@@ -32,6 +32,7 @@ pub struct Job {
     pub priority: i32,
     pub payload: Option<serde_json::Value>,
     pub result: Option<serde_json::Value>,
+    pub progress: Option<serde_json::Value>,
     pub attempts: i32,
     pub max_attempts: i32,
     pub created_at: DateTime<Utc>,

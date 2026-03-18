@@ -295,6 +295,26 @@ where
     Ok(job)
 }
 
+/// Update the progress field of a running job.
+///
+/// Used by the enrich worker to report live phase information
+/// (e.g. "mvt_research", "generating", "validating") while the LLM runs.
+pub async fn update_progress<'e, E>(
+    executor: E,
+    job_id: Uuid,
+    progress: serde_json::Value,
+) -> Result<()>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    sqlx::query("UPDATE jobs SET progress = $2, updated_at = NOW() WHERE id = $1")
+        .bind(job_id)
+        .bind(&progress)
+        .execute(executor)
+        .await?;
+    Ok(())
+}
+
 /// Get a job by ID.
 pub async fn get_job<'e, E>(executor: E, job_id: Uuid) -> Result<Job>
 where

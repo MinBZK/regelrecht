@@ -9,7 +9,8 @@ use tokio::signal::unix::{signal, SignalKind};
 use crate::config::WorkerConfig;
 use crate::db;
 use crate::enrich::{
-    create_enrich_corpus, enrich_branch_name, execute_enrich, EnrichConfig, EnrichPayload,
+    create_enrich_corpus, enrich_branch_name, execute_enrich, progress_file_path, EnrichConfig,
+    EnrichPayload,
 };
 use crate::error::{PipelineError, Result};
 use crate::harvest::{execute_harvest, HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
@@ -537,6 +538,26 @@ async fn process_next_enrich_job(
     // Capture the per-job checkout path for cleanup after the job completes.
     let checkout_path = enrich_corpus.as_ref().map(|c| c.repo_path().to_path_buf());
 
+    // Compute the progress file path and spawn a background polling task.
+    // The LLM writes phase info to this file; we relay it to the DB every 10s.
+    let normalized_yaml_path = crate::enrich::normalize_yaml_path(&payload.yaml_path).ok();
+    let progress_path = normalized_yaml_path
+        .as_ref()
+        .map(|p| progress_file_path(&effective_repo.join(p)));
+
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let poll_handle = if let Some(ref ppath) = progress_path {
+        let token = cancel_token.clone();
+        let pool = pool.clone();
+        let job_id = job.id;
+        let ppath = ppath.clone();
+        Some(tokio::spawn(async move {
+            poll_progress_file(&pool, job_id, &ppath, token).await;
+        }))
+    } else {
+        None
+    };
+
     let job_result = match execute_enrich(&payload, &effective_repo, &effective_config).await {
         Ok((result, written_files)) => {
             tracing::info!(
@@ -674,6 +695,15 @@ async fn process_next_enrich_job(
         }
     };
 
+    // Stop the progress polling task and clean up the progress file.
+    cancel_token.cancel();
+    if let Some(handle) = poll_handle {
+        let _ = handle.await;
+    }
+    if let Some(ref ppath) = progress_path {
+        let _ = tokio::fs::remove_file(ppath).await;
+    }
+
     // Clean up the per-job corpus checkout directory (regardless of outcome).
     // Each enrich job creates a full git clone; without cleanup these accumulate.
     if let Some(path) = checkout_path {
@@ -689,6 +719,46 @@ async fn process_next_enrich_job(
     }
 
     job_result
+}
+
+/// Poll the progress file written by the LLM and relay its contents to the DB.
+///
+/// Runs until the cancellation token is cancelled. Reads the file every 10
+/// seconds; parse errors are silently ignored (the file may be half-written).
+async fn poll_progress_file(
+    pool: &PgPool,
+    job_id: uuid::Uuid,
+    path: &Path,
+    cancel: tokio_util::sync::CancellationToken,
+) {
+    let interval = Duration::from_secs(10);
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = tokio::time::sleep(interval) => {}
+        }
+
+        let content = match tokio::fs::read_to_string(path).await {
+            Ok(c) => c,
+            Err(_) => continue, // file doesn't exist yet
+        };
+
+        let value: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(v) => v,
+            Err(_) => continue, // half-written or invalid JSON
+        };
+
+        if let Err(e) = job_queue::update_progress(pool, job_id, value).await {
+            tracing::warn!(job_id = %job_id, error = %e, "failed to update job progress");
+        }
+    }
+
+    // Final read to capture the last phase the LLM wrote before the job finished.
+    if let Ok(content) = tokio::fs::read_to_string(path).await {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&content) {
+            let _ = job_queue::update_progress(pool, job_id, value).await;
+        }
+    }
 }
 
 /// Execute the harvest and write results to the output directory.
