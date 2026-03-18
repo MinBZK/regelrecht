@@ -99,10 +99,10 @@ admin-test:
 dev:
     docker compose -f docker-compose.dev.yml up --build -d
     @echo ""
-    @echo "  Frontend (editor): http://localhost:3000"
-    @echo "  Admin:             http://localhost:8000"
-    @echo "  Grafana:           http://localhost:3001"
-    @echo "  Prometheus:        http://localhost:9090"
+    @echo "  Frontend (editor): http://localhost:${FRONTEND_PORT:-3000}"
+    @echo "  Admin:             http://localhost:${ADMIN_PORT:-8000}"
+    @echo "  Grafana:           http://localhost:${GRAFANA_PORT:-3001}"
+    @echo "  Prometheus:        http://localhost:${PROMETHEUS_PORT:-9090}"
     @echo "  PostgreSQL:        internal (use 'just dev-psql' to connect)"
     @echo ""
     @echo "Logs: just dev-logs"
@@ -128,8 +128,8 @@ dev-infra:
     docker compose -f docker-compose.dev.yml up --build -d postgres prometheus grafana
     @echo ""
     @echo "  PostgreSQL:  internal (use 'just dev-psql' to connect)"
-    @echo "  Prometheus:  http://localhost:9090"
-    @echo "  Grafana:     http://localhost:3001"
+    @echo "  Prometheus:  http://localhost:${PROMETHEUS_PORT:-9090}"
+    @echo "  Grafana:     http://localhost:${GRAFANA_PORT:-3001}"
     @echo ""
     @echo "Run admin natively:    just admin"
     @echo "Run frontend natively: cd frontend && npm run dev"

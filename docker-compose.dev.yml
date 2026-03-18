@@ -27,7 +27,7 @@ services:
       STATIC_DIR: /app/static
       RUST_LOG: info
     ports:
-      - 8000:8000
+      - ${ADMIN_PORT:-8000}:8000
 
   harvester-worker:
     build:
@@ -75,7 +75,7 @@ services:
       secrets:
         - GITHUB_TOKEN
     ports:
-      - 3000:8000
+      - ${FRONTEND_PORT:-3000}:8000
 
   prometheus:
     image: prom/prometheus:v3.2.1
@@ -83,7 +83,7 @@ services:
       - ./dev/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     ports:
-      - 9090:9090
+      - ${PROMETHEUS_PORT:-9090}:9090
 
   grafana:
     image: grafana/grafana-oss:12.4.0
@@ -94,7 +94,7 @@ services:
       - grafana-data:/var/lib/grafana
     environment:
       GF_SERVER_HTTP_PORT: '3000'
-      GF_SERVER_ROOT_URL: http://localhost:3001
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3001}
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: 'false'
@@ -105,7 +105,7 @@ services:
       # Placeholder so alerting provisioning doesn't fail on missing webhook
       MATTERMOST_WEBHOOK_URL: http://localhost:0/webhook-not-configured
     ports:
-      - 3001:3000
+      - ${GRAFANA_PORT:-3001}:3000
 
 secrets:
   GITHUB_TOKEN:
