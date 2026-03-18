@@ -1,0 +1,9 @@
+---
+# Override for full local stack (just local):
+# - expose grafana on 3001 (no conflict since admin runs in Docker on 8000)
+services:
+  grafana:
+    ports:
+      - ${GRAFANA_PORT:-3001}:3000
+    environment:
+      GF_SERVER_ROOT_URL: http://localhost:${GRAFANA_PORT:-3001}
