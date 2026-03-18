@@ -46,7 +46,7 @@ services:
       WORKER_MAX_POLL_INTERVAL_SECS: ${WORKER_MAX_POLL_INTERVAL_SECS:-60}
       RUST_LOG: info
     volumes:
-      - corpus-repo:/tmp/corpus-repo
+      - corpus-repo:/tmp/regulation-repo
 
   enrich-worker:
     build:
@@ -68,7 +68,7 @@ services:
       WORKER_MAX_POLL_INTERVAL_SECS: ${WORKER_MAX_POLL_INTERVAL_SECS:-60}
       RUST_LOG: info
     volumes:
-      - corpus-repo:/tmp/corpus-repo
+      - corpus-repo:/tmp/regulation-repo
 
   frontend:
     build:
@@ -80,7 +80,7 @@ services:
       - 3000:8000
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.2.1
     volumes:
       - ./dev/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
