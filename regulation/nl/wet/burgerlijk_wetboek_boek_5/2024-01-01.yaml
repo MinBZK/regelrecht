@@ -1,6 +1,5 @@
 ---
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
 $id: burgerlijk_wetboek_boek_5
 uuid: 5a42b000-5a42-5a42-5a42-5a42b0000042
 regulatory_layer: WET
