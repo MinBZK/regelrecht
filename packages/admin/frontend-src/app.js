@@ -724,6 +724,12 @@ function openDetailPanel(job) {
   const backdrop = $('#detail-backdrop');
   const body = $('#detail-body');
 
+  // Always cancel any in-flight progress poll from a previous panel.
+  if (_progressPollInterval) {
+    clearInterval(_progressPollInterval);
+    _progressPollInterval = null;
+  }
+
   // Cancel any pending close transition
   if (_closePanelTransitionCleanup) {
     _closePanelTransitionCleanup();
