@@ -201,6 +201,11 @@ mod tests {
     }
 
     #[test]
+    fn resolve_branch_uses_corpus_branch_without_deployment() {
+        assert_eq!(resolve_branch(Some("custom".into()), None), "custom");
+    }
+
+    #[test]
     fn resolve_branch_uses_deployment_name_for_preview() {
         assert_eq!(resolve_branch(None, Some("pr42".into())), "pr42");
     }
