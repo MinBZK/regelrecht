@@ -979,8 +979,7 @@ async function init() {
     setupLogout();
   }
 
-  const platformInfo = await fetchPlatformInfo();
-  showDeploymentBadge(platformInfo);
+  void fetchPlatformInfo().then(showDeploymentBadge);
 
   // Bind pagination buttons
   $('#pagination-prev').addEventListener('click', onPrevPage);
