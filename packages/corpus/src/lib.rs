@@ -7,6 +7,7 @@ pub mod github;
 pub mod models;
 pub mod registry;
 pub mod source_map;
+pub mod validation;
 
 pub use client::CorpusClient;
 pub use config::CorpusConfig;
