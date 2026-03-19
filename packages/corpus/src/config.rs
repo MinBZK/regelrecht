@@ -25,6 +25,21 @@ impl std::fmt::Debug for CorpusConfig {
     }
 }
 
+/// Resolve the corpus branch from explicit config and platform variables.
+///
+/// Priority: `CORPUS_BRANCH` > `DEPLOYMENT_NAME` (if preview) > `"development"`.
+/// Production deployment name (`"regelrecht"`) is ignored so it falls through
+/// to the default `"development"` branch.
+fn resolve_branch(corpus_branch: Option<String>, deployment_name: Option<String>) -> String {
+    if let Some(branch) = corpus_branch.filter(|b| !b.is_empty()) {
+        return branch;
+    }
+    if let Some(name) = deployment_name.filter(|n| !n.is_empty() && n != "regelrecht") {
+        return name;
+    }
+    "development".into()
+}
+
 impl CorpusConfig {
     /// Create a new `CorpusConfig` without authentication.
     pub fn new(repo_url: impl Into<String>, repo_path: impl Into<PathBuf>) -> Self {
@@ -42,7 +57,7 @@ impl CorpusConfig {
     ///
     /// Required: `CORPUS_REPO_URL`
     /// Optional: `CORPUS_REPO_PATH` (default: `/tmp/corpus-repo`),
-    ///           `CORPUS_BRANCH` (default: `main`),
+    ///           `CORPUS_BRANCH` (default: `DEPLOYMENT_NAME` in previews, else `development`),
     ///           `CORPUS_GIT_AUTHOR_NAME` (default: `regelrecht-harvester`),
     ///           `CORPUS_GIT_AUTHOR_EMAIL` (default: `noreply@minbzk.nl`),
     ///           `CORPUS_GIT_TOKEN` (for authentication)
@@ -54,7 +69,10 @@ impl CorpusConfig {
             .unwrap_or_else(|_| "/tmp/corpus-repo".into())
             .into();
 
-        let branch = std::env::var("CORPUS_BRANCH").unwrap_or_else(|_| "development".into());
+        let branch = resolve_branch(
+            std::env::var("CORPUS_BRANCH").ok(),
+            std::env::var("DEPLOYMENT_NAME").ok(),
+        );
 
         let git_author_name = std::env::var("CORPUS_GIT_AUTHOR_NAME")
             .unwrap_or_else(|_| "regelrecht-harvester".into());
@@ -167,6 +185,34 @@ mod tests {
             config.clone_url(),
             "git@github.com:MinBZK/regelrecht-corpus.git"
         );
+    }
+
+    #[test]
+    fn resolve_branch_defaults_to_development() {
+        assert_eq!(resolve_branch(None, None), "development");
+    }
+
+    #[test]
+    fn resolve_branch_uses_corpus_branch() {
+        assert_eq!(
+            resolve_branch(Some("custom".into()), Some("pr42".into())),
+            "custom"
+        );
+    }
+
+    #[test]
+    fn resolve_branch_uses_deployment_name_for_preview() {
+        assert_eq!(resolve_branch(None, Some("pr42".into())), "pr42");
+    }
+
+    #[test]
+    fn resolve_branch_ignores_production_deployment() {
+        assert_eq!(resolve_branch(None, Some("regelrecht".into())), "development");
+    }
+
+    #[test]
+    fn resolve_branch_ignores_empty_values() {
+        assert_eq!(resolve_branch(Some("".into()), Some("".into())), "development");
     }
 
     #[test]
