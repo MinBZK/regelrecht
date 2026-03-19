@@ -33,7 +33,7 @@ Schema v0.4.0 already has a `produces` block on `execution` with `legal_characte
 
 ## Decision
 
-The engine has a defined execution lifecycle with four observable points. Laws can register hooks at these points. When a hook's filter matches the executing article's `produces` annotation, the hook fires and its outputs enrich the result.
+The engine has a defined execution lifecycle with two observable points. Laws can register hooks at these points. When a hook's filter matches the executing article's `produces` annotation, the hook fires and its outputs enrich the result.
 
 ### Execution lifecycle
 
@@ -49,14 +49,18 @@ In the Rust codebase: `RuleContext::new()`, `resolve_inputs_with_service()`, `re
 
 ### Hook points
 
-Four hook points interleave with this lifecycle:
+Two hook points interleave with this lifecycle:
 
 | Hook point | Fires between stages | Context available to hook |
 |---|---|---|
-| `pre_input` | 1 and 2 | Parameters |
-| `post_input` | 2 and 3 | Parameters, resolved inputs |
 | `pre_actions` | 3 and 4 | Parameters, inputs, resolved open terms |
 | `post_actions` | 4 and 5 | Parameters, inputs, open terms, outputs |
+
+#### Why only two hook points
+
+Earlier drafts included `pre_input` (between stages 1-2) and `post_input` (between stages 2-3). These were removed because the legal requirements that operate on the input phase tend to be either application-layer concerns (authorization per AWB 2:1), authoring-time concerns (data minimization per AVG art. 5), or process-management concerns (completeness checks per AWB 4:5 with hersteltermijn). None of these map cleanly to a runtime engine hook. The strongest candidate — AWB 4:5's input completeness check — belongs in the pipeline/orchestration layer where process state (notification deadlines, hersteltermijn) is tracked, not in the stateless execution engine.
+
+The two remaining hook points cover the compelling use cases: `pre_actions` for decision requirements (motiveringsplicht, AWB 3:46) and `post_actions` for procedural consequences (bezwaartermijn, AWB 6:7). Input-phase hooks can be added as a backward-compatible extension if a concrete engine-level need emerges.
 
 ### YAML construct
 
@@ -84,7 +88,7 @@ Introduce `hooks` on article-level `machine_readable`:
 
 The `hooks` block is a list. Each entry has:
 
-- `hook_point`: one of `pre_input`, `post_input`, `pre_actions`, `post_actions`
+- `hook_point`: one of `pre_actions`, `post_actions`
 - `applies_to`: filter predicate matched against the executing article's `produces` block
 
 Available filter fields:
@@ -100,31 +104,45 @@ When multiple filter fields are present, they are AND-combined. An article with 
 
 #### At load time
 
-The engine builds a `hooks_index` when loading laws. For each article with a `hooks` declaration, it indexes the hook by `(hook_point, applies_to)`, mapping to a list of `(law_id, article_number)` entries. This parallels `implements_index` (RFC-007) and `overrides_index` (RFC-009) in `RuleResolver`.
+The engine builds a `hooks_index` when loading laws. For each article with a `hooks` declaration, it indexes the hook by `(hook_point, legal_character)`, mapping to a list of `(law_id, article_number, HookFilter)` entries. This parallels `implements_index` (RFC-007) in `RuleResolver`.
+
+At query time, the engine looks up by `(hook_point, legal_character)` and then post-filters candidates by `decision_type` if the hook's `applies_to` specifies one. This avoids requiring exact-match on `Option` fields while keeping the common case (filter by `legal_character` only) fast.
 
 #### At execution time
 
 When the engine executes an article that has a `produces` annotation:
 
-1. Query `hooks_index` for `pre_input` hooks matching the article's `produces`. Fire matching hooks. Their outputs enter the execution context as additional parameters.
-2. Resolve inputs (cross-law references, data sources).
-3. Query for matching `post_input` hooks. Fire them. Their outputs enter the context.
-4. Resolve open terms (IoC, RFC-007).
-5. Query for matching `pre_actions` hooks. Fire them. Their outputs enter the context.
-6. Execute the article's own actions.
-7. Query for matching `post_actions` hooks. Fire them. Their outputs are merged into the `ArticleResult`.
+1. Resolve inputs (cross-law references, data sources).
+2. Resolve open terms (IoC, RFC-007).
+3. Query `hooks_index` for `pre_actions` hooks matching the article's `produces`. Fire matching hooks. Their outputs enter the execution context.
+4. Execute the article's own actions.
+5. Query `hooks_index` for `post_actions` hooks matching the article's `produces`. Fire matching hooks. Their outputs are merged into the `ArticleResult`.
 
-Hook articles are executed as ordinary article evaluations. They receive the context available at their hook point as input parameters. They produce outputs.
+Hook articles are executed as ordinary article evaluations. They produce outputs.
+
+#### Parameter passing
+
+Hook articles do not receive the target article's execution context as input parameters. Each hook article declares its own `parameters` and `input` sections (or none, for constant-producing hooks like AWB 3:46 and AWB 6:7). The engine passes only the parameters declared in the hook article's `execution.parameters` section, consistent with RFC-007's principle of least privilege (`filter_parameters_for_article`).
+
+This means:
+- **Constant hooks** (no parameters declared): execute standalone, producing fixed values. Most AWB hooks fall in this category.
+- **Context-aware hooks** (parameters declared): receive only the parameters they explicitly request. For example, a hook that needs `bsn` to look up audit data declares `bsn` as a parameter.
 
 #### Priority
 
 When multiple hooks produce the same output name, the engine resolves by lex superior (higher regulatory layer wins) then lex posterior (newer `valid_from` wins). This is the same priority model as IoC resolution (RFC-007).
 
-#### Interaction with overrides (RFC-009)
+#### Execution order
 
-When a hook article fires, it is subject to the same override resolution as any other article. If the contextual law has an `overrides` declaration targeting the hook article's output, the override applies. The contextual law does not change when a hook fires; it remains the root of the call stack.
+When multiple hooks match at the same hook point, they execute independently — there are no inter-hook dependencies. The engine does not guarantee a specific execution order among hooks at the same point. If hook A's output is needed by hook B, they must be at different hook points (e.g., A at `pre_actions`, B at `post_actions`).
+
+#### Interaction with overrides (RFC-009, conditional)
+
+If RFC-009 (Lex Specialis Overrides) is accepted: when a hook article fires, it is subject to the same override resolution as any other article. If the contextual law has an `overrides` declaration targeting the hook article's output, the override applies. The contextual law does not change when a hook fires; it remains the root of the call stack.
 
 Example: AWB 6:7 fires as a `post_actions` hook. The contextual law is the Vreemdelingenwet. Vreemdelingenwet article 69 overrides AWB 6:7's `bezwaartermijn_weken` from 6 to 4. The citizen sees 4 weken.
+
+Without RFC-009, hooks fire and produce their default values unconditionally. The override interaction is an enhancement, not a prerequisite for hooks to function.
 
 ### Full YAML example
 
@@ -212,20 +230,18 @@ When the engine executes Zorgtoeslag article 2:
 ```
 1. Create context: { toetsingsinkomen: 28000, drempelinkomen: 38520 }
 2. Inspect produces: { legal_character: BESCHIKKING }
-3. Query hooks_index for pre_input + BESCHIKKING → no matches
-4. Resolve inputs → none declared
-5. Query hooks_index for post_input + BESCHIKKING → no matches
-6. Resolve open terms → none declared
-7. Query hooks_index for pre_actions + BESCHIKKING:
+3. Resolve inputs → none declared
+4. Resolve open terms → none declared
+5. Query hooks_index for pre_actions + BESCHIKKING:
    → AWB 3:46 matches
    → Execute AWB 3:46 → { motivering_vereist: true }
    → Add to context
-8. Execute Zorgtoeslag art 2 actions:
+6. Execute Zorgtoeslag art 2 actions:
    → { heeft_recht_op_zorgtoeslag: true }
-9. Query hooks_index for post_actions + BESCHIKKING:
+7. Query hooks_index for post_actions + BESCHIKKING:
    → AWB 6:7 matches
    → Execute AWB 6:7 → { bezwaartermijn_weken: 6 }
-10. Merge into result
+8. Merge into result
 
 Final ArticleResult outputs:
   heeft_recht_op_zorgtoeslag: true
@@ -253,7 +269,7 @@ The declaration is unilateral from the hook side: the target law is not modified
 
 ### Tradeoffs
 
-Every execution of an article with `produces` requires querying the `hooks_index` at four points. For articles without `produces`, there is no overhead.
+Every execution of an article with `produces` requires querying the `hooks_index` at two points. For articles without `produces`, there is no overhead.
 
 When multiple hooks produce the same output name, priority resolution adds complexity. The lex superior / lex posterior model is proven (RFC-007 uses it for IoC), but the interaction between hook priority and override priority needs careful implementation.
 
@@ -275,10 +291,11 @@ A law that does not annotate its articles with `produces` cannot be hooked into.
 
 ### Implementation Notes
 
-- New structs in `article.rs`: `HookDeclaration { hook_point: HookPoint, applies_to: HookFilter }`, enum `HookPoint { PreInput, PostInput, PreActions, PostActions }`, struct `HookFilter { legal_character: Option<String>, decision_type: Option<String> }`.
-- `hooks_index` in `RuleResolver`, keyed by `(HookPoint, HookFilter)`, mapping to `Vec<(law_id, article_number)>`. Built during `load_law()`.
-- Hook firing in `LawExecutionService::evaluate_article_with_service()`, at each lifecycle stage. The method already has clear separation between stages (resolve inputs, resolve open terms, execute actions).
+- New structs in `article.rs`: `HookDeclaration { hook_point: HookPoint, applies_to: HookFilter }`, enum `HookPoint { PreActions, PostActions }`, struct `HookFilter { legal_character: Option<String>, decision_type: Option<String> }`.
+- `hooks_index` in `RuleResolver`, keyed by `(HookPoint, String)` where the String is `legal_character`, mapping to `Vec<(law_id, article_number, HookFilter)>`. Post-filtered by `decision_type` at query time. Built during `load_law()`.
+- Hook firing in `LawExecutionService::evaluate_article_with_service()`, at the `pre_actions` and `post_actions` stages. The method already has clear separation between stages (set definitions, resolve inputs, resolve open terms, execute actions).
 - Hook articles execute through the same `evaluate_article_with_service` path, with cycle detection via `ResolutionContext.visited`.
+- New trace types: `PathNodeType::HookResolution`, `ResolveType::Hook`.
 
 ## References
 
