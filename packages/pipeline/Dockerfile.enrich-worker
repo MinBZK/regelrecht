@@ -54,6 +54,12 @@ COPY --from=builder /build/target/release/regelrecht-enrich-worker /usr/local/bi
 COPY packages/pipeline/entrypoint-enrich.sh /usr/local/bin/entrypoint-enrich.sh
 RUN chmod +x /usr/local/bin/entrypoint-enrich.sh
 
+# Bake skill files into the image so the LLM can read them at runtime.
+# ensure_skills() in enrich.rs symlinks these into each corpus checkout.
+COPY .claude/skills/law-generate/   /opt/skills/.claude/skills/law-generate/
+COPY .claude/skills/law-mvt-research/ /opt/skills/.claude/skills/law-mvt-research/
+COPY .claude/skills/law-reverse-validate/ /opt/skills/.claude/skills/law-reverse-validate/
+
 USER app
 EXPOSE 8000
 
