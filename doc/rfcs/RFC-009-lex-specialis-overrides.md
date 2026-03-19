@@ -4,7 +4,7 @@
 **Date:** 2026-03-16
 **Authors:** Eelco Hotting
 
-> **Note:** This RFC is under active research and may change significantly. The interaction between overrides, hooks (RFC-008), and temporal computation (RFC-011) is being explored. See the [bezwaartermijn chain analysis](../analysis/bezwaartermijn-chain-analysis.md) for the current design exploration.
+> **Note:** This RFC is under active research and may change significantly. The interaction between overrides, hooks (RFC-008), and temporal computation (RFC-011) is being explored. See RFC-011 (Temporal Computation) for the current design exploration.
 
 ## Context
 
