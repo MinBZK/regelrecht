@@ -63,6 +63,12 @@ pub struct WorkerConfig {
     pub poll_interval: Duration,
     pub max_poll_interval: Duration,
     pub corpus_config: Option<CorpusConfig>,
+    /// Maximum time a single job may run before being aborted by the worker.
+    /// Default: 20 minutes. Configurable via `WORKER_JOB_TIMEOUT_SECS`.
+    pub job_timeout: Duration,
+    /// Jobs stuck in 'processing' longer than this are reaped (reset or failed).
+    /// Default: 30 minutes. Configurable via `WORKER_ORPHAN_TIMEOUT_SECS`.
+    pub orphan_timeout: Duration,
 }
 
 impl std::fmt::Debug for WorkerConfig {
@@ -75,6 +81,8 @@ impl std::fmt::Debug for WorkerConfig {
             .field("poll_interval", &self.poll_interval)
             .field("max_poll_interval", &self.max_poll_interval)
             .field("corpus_config", &self.corpus_config)
+            .field("job_timeout", &self.job_timeout)
+            .field("orphan_timeout", &self.orphan_timeout)
             .finish()
     }
 }
@@ -103,6 +111,16 @@ impl WorkerConfig {
 
         let corpus_config = CorpusConfig::from_env_optional();
 
+        let job_timeout_secs: u64 = std::env::var("WORKER_JOB_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20 * 60); // 20 minutes
+
+        let orphan_timeout_secs: u64 = std::env::var("WORKER_ORPHAN_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30 * 60); // 30 minutes
+
         Ok(Self {
             database_url,
             max_connections,
@@ -111,6 +129,8 @@ impl WorkerConfig {
             poll_interval: Duration::from_secs(poll_interval_secs),
             max_poll_interval: Duration::from_secs(max_poll_interval_secs),
             corpus_config,
+            job_timeout: Duration::from_secs(job_timeout_secs),
+            orphan_timeout: Duration::from_secs(orphan_timeout_secs),
         })
     }
 

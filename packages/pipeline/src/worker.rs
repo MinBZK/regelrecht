@@ -18,9 +18,6 @@ use crate::job_queue::{self, CreateJobRequest};
 use crate::law_status;
 use crate::models::{JobType, LawStatusValue, Priority};
 
-/// Jobs stuck in 'processing' for longer than this are considered orphaned.
-const ORPHAN_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-
 /// Run the harvest worker loop.
 ///
 /// Polls the job queue for harvest jobs and executes them.
@@ -84,7 +81,7 @@ pub async fn run_harvest_worker(config: WorkerConfig) -> Result<()> {
         }
 
         // Reap orphaned jobs stuck in 'processing' (cheap single-query check)
-        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, ORPHAN_TIMEOUT).await {
+        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, config.orphan_timeout).await {
             tracing::warn!(error = %e, "failed to reap orphaned jobs");
         }
 
@@ -383,6 +380,8 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         repo_path = %repo_path.display(),
         provider = %enrich_config.provider.name(),
         poll_interval = ?config.poll_interval,
+        job_timeout = ?config.job_timeout,
+        orphan_timeout = ?config.orphan_timeout,
         "starting enrich worker"
     );
 
@@ -409,7 +408,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             }
         }
 
-        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, ORPHAN_TIMEOUT).await {
+        if let Err(e) = job_queue::reap_orphaned_jobs(&pool, config.orphan_timeout).await {
             tracing::warn!(error = %e, "failed to reap orphaned jobs");
         }
 
@@ -418,6 +417,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             &repo_path,
             &enrich_config,
             config.corpus_config.as_ref(),
+            config.job_timeout,
         )
         .await
         {
@@ -455,6 +455,7 @@ async fn process_next_enrich_job(
     repo_path: &Path,
     enrich_config: &EnrichConfig,
     corpus_config: Option<&CorpusConfig>,
+    job_timeout: Duration,
 ) -> Result<bool> {
     let job = match job_queue::claim_job(pool, Some(JobType::Enrich)).await? {
         Some(job) => job,
@@ -535,6 +536,13 @@ async fn process_next_enrich_job(
         .map(|c| c.repo_path().to_path_buf())
         .unwrap_or_else(|| repo_path.to_path_buf());
 
+    // Ensure skill files are available in the repo checkout so the LLM can
+    // read them. In the container the skills are baked into /opt/skills/;
+    // this symlinks them into the per-job checkout.
+    if let Err(e) = crate::enrich::ensure_skills(&effective_repo).await {
+        tracing::warn!(error = %e, "failed to set up skill symlinks");
+    }
+
     // Capture the per-job checkout path for cleanup after the job completes.
     let checkout_path = enrich_corpus.as_ref().map(|c| c.repo_path().to_path_buf());
 
@@ -558,8 +566,53 @@ async fn process_next_enrich_job(
         None
     };
 
-    let job_result = match execute_enrich(&payload, &effective_repo, &effective_config).await {
-        Ok((result, written_files)) => {
+    let enrich_outcome = tokio::time::timeout(
+        job_timeout,
+        execute_enrich(&payload, &effective_repo, &effective_config),
+    )
+    .await;
+
+    let job_result = match enrich_outcome {
+        Err(_elapsed) => {
+            // Job timed out
+            tracing::error!(
+                job_id = %job.id,
+                law_id = %job.law_id,
+                timeout = ?job_timeout,
+                "enrich job timed out"
+            );
+
+            let error_json = serde_json::json!({
+                "error": format!("job timed out after {}s", job_timeout.as_secs())
+            });
+            match job_queue::fail_job(pool, job.id, Some(error_json)).await {
+                Ok(failed_job) => {
+                    if failed_job.status == crate::models::JobStatus::Failed {
+                        let _ = law_status::update_status_unless(
+                            pool,
+                            &job.law_id,
+                            LawStatusValue::Enriched,
+                            LawStatusValue::EnrichFailed,
+                        )
+                        .await;
+                    } else {
+                        let _ = law_status::update_status_if(
+                            pool,
+                            &job.law_id,
+                            LawStatusValue::Enriching,
+                            LawStatusValue::Harvested,
+                        )
+                        .await;
+                    }
+                }
+                Err(fail_err) => {
+                    tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark timed-out job as failed");
+                }
+            }
+
+            Ok(true)
+        }
+        Ok(Ok((result, written_files))) => {
             tracing::info!(
                 job_id = %job.id,
                 articles_total = result.articles_total,
@@ -648,7 +701,7 @@ async fn process_next_enrich_job(
 
             Ok(true)
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             tracing::error!(
                 job_id = %job.id,
                 law_id = %job.law_id,
