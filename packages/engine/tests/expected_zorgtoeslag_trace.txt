@@ -189,11 +189,15 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │   │   ├──Resolving $BUITENLANDS_INKOMEN
 ║   ║   │   │   │   ├──Resolving from PARAMETERS: 0
 ║   ║   ├──Result of toetsingsinkomen: 79547
-║   ├──URI call: regeling_standaardpremie#standaardpremie
-║   ║   ├──Computing standaardpremie
-║   ║   ├──Result of standaardpremie: 211200
-║   ║   ├──Computing berekeningsjaar
-║   ║   ├──Result of berekeningsjaar: 2025
+║   ├──OPEN_TERM: Open term 'standaardpremie' resolved from regeling_standaardpremie article 1: 211200
+║   │   ├──Computing standaardpremie
+║   ║──Result of standaardpremie: 211200
+║   │   ├──Computing berekeningsjaar
+║   ║──Result of berekeningsjaar: 2025
+║   ├──Computing standaardpremie
+║   │   ├──Resolving $STANDAARDPREMIE
+║   │   │   ├──Resolving from PARAMETERS: 211200
+║   ├──Result of standaardpremie: 211200
 ║   ├──URI call: wet_inkomstenbelasting_2001#rendementsgrondslag
 ║   ║   ├──Resolving $BSN
 ║   ║   │   ├──Resolving from PARAMETERS: '999993653'

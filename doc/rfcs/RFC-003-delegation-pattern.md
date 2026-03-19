@@ -1,8 +1,8 @@
 # RFC-003: Delegation Pattern for Multi-Level Regulations
 
-**Status:** Accepted
+**Status:** Superseded by [RFC-007](RFC-007-inversion-of-control.md)
 **Date:** 2025-12-09
-**Authors:** Claude Code
+**Authors:** Regelrecht Team
 
 ## Context
 

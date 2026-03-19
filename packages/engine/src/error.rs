@@ -81,22 +81,9 @@ pub enum EngineError {
     #[error("Maximum operation depth exceeded: {0} levels")]
     MaxDepthExceeded(usize),
 
-    /// Delegation error (generic)
-    #[error("Delegation error: {0}")]
-    DelegationError(String),
-
-    /// Delegation not resolved - requires ServiceProvider
-    #[error(
-        "Delegation not resolved: input '{input_name}' requires delegation lookup \
-         (law_id: {law_id}, article: {article}, select_on: [{select_on}]). \
-         Pass the value as a parameter or implement ServiceProvider."
-    )]
-    DelegationNotResolved {
-        input_name: String,
-        law_id: String,
-        article: String,
-        select_on: String,
-    },
+    /// Resolution error (IoC open term resolution, priority conflicts, etc.)
+    #[error("Resolution error: {0}")]
+    ResolutionError(String),
 
     /// Data source error
     #[error("Data source error: {0}")]
@@ -199,9 +186,9 @@ pub enum ExternalError {
     #[error("Maximum nesting depth exceeded")]
     MaxDepthExceeded,
 
-    /// Delegation error
-    #[error("Delegation resolution failed")]
-    DelegationError,
+    /// Resolution error (IoC open term resolution failed)
+    #[error("Resolution failed")]
+    ResolutionError,
 
     /// External reference not resolved
     #[error("External reference not resolved: {0}")]
@@ -238,9 +225,7 @@ impl From<EngineError> for ExternalError {
             EngineError::MissingParameter(name) => ExternalError::MissingParameter(name),
             EngineError::ArithmeticOverflow(_) => ExternalError::ArithmeticOverflow,
             EngineError::MaxDepthExceeded(_) => ExternalError::MaxDepthExceeded,
-            EngineError::DelegationError(_) | EngineError::DelegationNotResolved { .. } => {
-                ExternalError::DelegationError
-            }
+            EngineError::ResolutionError(_) => ExternalError::ResolutionError,
             EngineError::ExternalReferenceNotResolved { input_name, .. } => {
                 ExternalError::ExternalReferenceNotResolved(input_name)
             }
