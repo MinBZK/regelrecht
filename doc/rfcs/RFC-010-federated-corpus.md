@@ -8,14 +8,14 @@
 
 The corpus (`regulation/nl/`) lives in the regelrecht-mvp repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities, provinces, water boards, and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
 
-RFC-007 introduces Inversion of Control (IoC) with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
+RFC-007 (currently PR #246, not yet merged) introduces Inversion of Control (IoC) with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
 
 - **Discovery**: how does the engine find municipal regulations?
 - **Loading**: how does the engine fetch laws from multiple sources?
 - **Scope validation**: how does the engine detect that a source claims to represent a jurisdiction it shouldn't?
 - **Write-back**: how can a municipality maintain regulations in their own repo via the editor?
 
-The delegation approach from RFC-003 assumes a single central corpus with `select_on` criteria. That pattern remains valid for delegation, but federation requires a different mechanism: multiple sources, each with their own ownership.
+The delegation approach from RFC-003 has been superseded by RFC-007's IoC mechanism. This RFC builds on RFC-007 by adding the infrastructure for multiple sources, each with their own ownership.
 
 ## Decision
 
@@ -40,7 +40,7 @@ regulation/nl/
 
 Each YAML file must:
 - Conform to the regelrecht YAML schema (referenced via `$schema`)
-- Have a unique `$id` across all loaded sources
+- Have a `$id` that identifies the law (does not need to be globally unique - see Priority below for conflict resolution when multiple sources provide the same `$id`)
 - Declare `implements` (per RFC-007) when filling in open terms from a higher-level law
 
 The `path` field in the registry manifest points to the root of this structure within the repo. This allows repos to keep regulations in a subdirectory (e.g. `regulation/nl/`) or at the root.
@@ -145,13 +145,16 @@ scopes:
 
 **Priority:**
 
-Priority resolves conflicts when two sources deliver a law with the same `$id`. This is an edge case, not normal usage. Normally each source delivers unique laws: the central corpus has the Participatiewet, Amsterdam has Amsterdam's ordinances. They don't overlap.
+Multiple sources may provide a law with the same `$id`. This is allowed and expected: a local development source may override a central law for testing, or a municipality may provide a patched version of a national law during a transition period. Higher `priority` value wins - the law from the source with the highest priority is the one the engine uses.
 
-Where priority does matter:
+Where this matters in practice:
 - **Development**: your local source (priority 200) contains a modified version of a central law (priority 100). The local version wins, so you can test without modifying the central manifest.
-- **Migration**: when moving laws between sources, temporary overlap may occur.
+- **Migration**: when moving laws between sources, temporary overlap is normal.
+- **Patches**: a municipality may temporarily override a central law with a corrected version.
 
 When two sources have equal priority and the same `$id`, the engine raises an error at load time. This is detected when sources are fetched and indexed, not deferred to per-request execution. A misconfigured source fails clearly at startup, not when a citizen's request hits it.
+
+All `$id` collisions (including resolved ones) are logged and surfaced via the `/api/sources` admin endpoint, so operators have visibility into which laws are being shadowed and by which source.
 
 **Temporal consistency (reference_date):**
 
@@ -174,12 +177,15 @@ sources:
     priority: 100
 ```
 
-When `ref` is absent, the engine uses the `branch` head (latest). When a `reference_date` is passed to the engine at execution time, the engine resolves each source to the Git state at that date:
+When `ref` is absent, the engine uses the `branch` head (latest). For reproducible historical execution, sources should use tags following a date-based convention (e.g. `v2025.1`, `v2025-01-15`). Tags are explicit, immutable, and don't depend on commit timestamp semantics.
 
-1. **GitHub sources**: use the GitHub Commits API (`GET /repos/{owner}/{repo}/commits?sha={branch}&until={reference_date}`) to find the latest commit before the reference date, then fetch the tree at that commit.
-2. **Local sources**: local sources are always at their current filesystem state. For reproducible historical execution, use GitHub sources or pin a `ref`.
+The engine resolves temporal consistency as follows:
 
-This means a single engine invocation with `reference_date: 2025-01-15` will fetch every source's state as it was on that date, then apply the existing `valid_from` filtering within each source. The two mechanisms work together: Git history gives you the right file versions, `valid_from` gives you the right law versions within those files.
+1. **Pinned ref**: if `ref` is set, use that exact tag or commit SHA. This is the recommended approach for production.
+2. **Branch head**: if only `branch` is set and no `ref`, use the latest commit on that branch. Suitable for development but not reproducible.
+3. **Local sources**: always at their current filesystem state.
+
+Within each source, the existing `valid_from` filtering still applies: the engine selects the law version valid at the `reference_date`. The two mechanisms work together: Git tags give you the right file versions, `valid_from` gives you the right law versions within those files.
 
 ### 3. Authentication
 
@@ -356,8 +362,7 @@ Scope validation, schema version compatibility checks, collision reporting, and 
 
 ## References
 
-- RFC-007: Inversion of Control with `open_terms` and `implements`
-- RFC-003: Delegation Pattern for Multi-Level Regulations (remains valid for delegation; this RFC addresses federation)
+- RFC-007: Inversion of Control with `open_terms` and `implements` (supersedes RFC-003)
+- RFC-003: Delegation Pattern for Multi-Level Regulations (superseded by RFC-007)
 - GitHub Trees API: `GET /repos/{owner}/{repo}/git/trees/{tree_sha}?recursive=1`
 - GitHub Contents API: `GET /repos/{owner}/{repo}/contents/{path}`, `PUT /repos/{owner}/{repo}/contents/{path}`
-- GitHub Commits API: `GET /repos/{owner}/{repo}/commits?sha={branch}&until={date}` (for temporal consistency)
