@@ -8,9 +8,6 @@ import ActionSheet from './components/ActionSheet.vue';
 
 const { articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
 
-const deploymentName = window.__ENV?.DEPLOYMENT_NAME || '';
-const isPreview = deploymentName && deploymentName !== 'regelrecht';
-
 const activeAction = ref(null);
 const rightPaneView = ref('machine');
 
@@ -42,9 +39,6 @@ function selectArticle(number) {
           <rr-icon-button variant="neutral-tinted" size="m" title="Notificaties">
             <img slot="__icon" src="/assets/icons/bell.svg" alt="Notificaties" width="24" height="24">
           </rr-icon-button>
-        </rr-toolbar-item>
-        <rr-toolbar-item v-if="isPreview">
-          <span class="env-badge">{{ deploymentName }}</span>
         </rr-toolbar-item>
         <rr-toolbar-item>
           <rr-button-bar size="md">
@@ -152,18 +146,3 @@ function selectArticle(number) {
 
   <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
 </template>
-
-<style scoped>
-.env-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  font-size: var(--font-size-xs, 12px);
-  font-weight: var(--font-weight-semibold, 700);
-  color: #854d0e;
-  background: #fef9c3;
-  border: 1px solid #fde68a;
-  border-radius: var(--border-radius-sm, 4px);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-</style>

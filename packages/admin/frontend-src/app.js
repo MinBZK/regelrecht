@@ -942,6 +942,26 @@ function closeDetailPanel() {
 // Initialization
 // ---------------------------------------------------------------------------
 
+async function fetchPlatformInfo() {
+  try {
+    const response = await fetch('/api/info');
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+function showDeploymentBadge(info) {
+  if (!info || !info.deployment_name || info.deployment_name === 'regelrecht') return;
+  const nav = $('rr-top-navigation-bar');
+  if (!nav) return;
+  const badge = document.createElement('span');
+  badge.className = 'env-badge';
+  badge.textContent = info.deployment_name;
+  nav.after(badge);
+}
+
 async function init() {
   const authStatus = await checkAuth();
 
@@ -958,6 +978,9 @@ async function init() {
     }
     setupLogout();
   }
+
+  const platformInfo = await fetchPlatformInfo();
+  showDeploymentBadge(platformInfo);
 
   // Bind pagination buttons
   $('#pagination-prev').addEventListener('click', onPrevPage);
