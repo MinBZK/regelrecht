@@ -566,9 +566,24 @@ async fn process_next_enrich_job(
         None
     };
 
+    // Ensure the LLM's internal timeout fires before the outer job timeout
+    // so ProcessLlmRunner can kill the child process cleanly. Without this,
+    // if LLM_TIMEOUT_SECS > WORKER_JOB_TIMEOUT_SECS, the outer timeout would
+    // drop the future while the OS subprocess keeps running.
+    let mut bounded_config = effective_config.clone();
+    if bounded_config.timeout >= job_timeout {
+        bounded_config.timeout = job_timeout.saturating_sub(Duration::from_secs(30));
+        tracing::warn!(
+            llm_timeout = ?effective_config.timeout,
+            job_timeout = ?job_timeout,
+            adjusted_to = ?bounded_config.timeout,
+            "LLM timeout >= job timeout, reducing LLM timeout to leave headroom"
+        );
+    }
+
     let enrich_outcome = tokio::time::timeout(
         job_timeout,
-        execute_enrich(&payload, &effective_repo, &effective_config),
+        execute_enrich(&payload, &effective_repo, &bounded_config),
     )
     .await;
 

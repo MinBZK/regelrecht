@@ -445,8 +445,16 @@ pub async fn ensure_skills(repo_path: &Path) -> Result<()> {
         if entry_path.is_dir() {
             let name = entry.file_name();
             let link_path = target_skills_dir.join(&name);
-            // Remove existing symlink/dir to ensure a clean link
-            let _ = tokio::fs::remove_file(&link_path).await;
+            // Remove existing symlink, file, or directory to ensure a clean link.
+            // remove_file handles symlinks and regular files; remove_dir_all
+            // handles real directories left by a previous partial run.
+            if let Ok(meta) = tokio::fs::symlink_metadata(&link_path).await {
+                if meta.is_dir() && !meta.file_type().is_symlink() {
+                    let _ = tokio::fs::remove_dir_all(&link_path).await;
+                } else {
+                    let _ = tokio::fs::remove_file(&link_path).await;
+                }
+            }
             tokio::fs::symlink(&entry_path, &link_path)
                 .await
                 .map_err(|e| {
