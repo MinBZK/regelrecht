@@ -132,7 +132,7 @@ Get the engine version.
 This WASM interface has some limitations compared to the full Rust engine:
 
 - **No cross-law resolution:** External references (`source.regulation`) require a ServiceProvider which is not available in WASM. **Workaround:** pre-resolve external values and pass them as parameters.
-- **No delegation resolution:** Delegation with `select_on` criteria requires a ServiceProvider. **Workaround:** pre-resolve delegated values and pass them as parameters.
+- **No open term resolution:** Open terms (`open_terms`/`implements` IoC) require a ServiceProvider which is not available in WASM. **Workaround:** pre-resolve open term values and pass them as parameters.
 
 ## TypeScript
 

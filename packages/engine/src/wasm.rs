@@ -10,7 +10,7 @@
 //!
 //! # Limitations
 //!
-//! The WASM environment cannot perform cross-law resolution or delegation lookups because
+//! The WASM environment cannot perform cross-law resolution or IoC open term resolution because
 //! these require a ServiceProvider implementation (filesystem access, database queries, etc.)
 //! that is not available in browser environments.
 //!
@@ -39,45 +39,6 @@
 //! // Then pass it as a parameter to the dependent law
 //! const result = engine.execute('zorgtoeslagwet', 'hoogte_zorgtoeslag', {
 //!     standaardpremie: standaardpremie,  // Pre-resolved value
-//!     // ... other parameters
-//! }, '2025-01-01');
-//! ```
-//!
-//! ## Delegation (`source.delegation`)
-//!
-//! When an article delegates to local regulations:
-//!
-//! ```yaml
-//! input:
-//!   - name: verlaging_percentage
-//!     source:
-//!       delegation:
-//!         law_id: participatiewet
-//!         article: '8'
-//!         select_on:
-//!           - name: gemeente_code
-//!             value: $gemeente_code
-//!       output: verlaging_percentage
-//! ```
-//!
-//! **WASM cannot look up delegated regulations**. Instead:
-//!
-//! 1. Determine which local regulation applies (using `gemeente_code`, etc.)
-//! 2. Load and execute that regulation
-//! 3. Pass the result as a parameter:
-//!
-//! ```javascript
-//! // Load the applicable local regulation
-//! const localLawId = engine.loadLaw(localVerordeningYaml);
-//!
-//! // Execute to get the delegated value
-//! const delegatedResult = engine.execute(localLawId, 'verlaging_percentage', {
-//!     gemeente_code: 'GM0363'
-//! }, '2025-01-01');
-//!
-//! // Pass it to the parent law
-//! const result = engine.execute('participatiewet', 'bijstandsnorm', {
-//!     verlaging_percentage: delegatedResult.outputs.verlaging_percentage,
 //!     // ... other parameters
 //! }, '2025-01-01');
 //! ```
@@ -154,23 +115,10 @@ fn engine_error_to_wasm(err: EngineError) -> JsValue {
                 input_name, regulation, output, input_name
             ))
         }
-        EngineError::DelegationNotResolved {
-            input_name,
-            law_id,
-            article,
-            select_on,
-        } => {
+        EngineError::ResolutionError(msg) => {
             wasm_error(&format!(
-                "Delegation resolution not supported in WASM: input '{}' requires lookup from '{}' article '{}' \
-                 (select_on: [{}]). Load the delegated regulation, execute it, and pass the result as a parameter: \
-                 {{ \"{}\": <resolved_value> }}",
-                input_name, law_id, article, select_on, input_name
-            ))
-        }
-        EngineError::DelegationError(msg) => {
-            wasm_error(&format!(
-                "Delegation error: {}. In WASM, delegation must be pre-resolved. \
-                 Load and execute the delegated regulation, then pass results as parameters.",
+                "Resolution error: {}. In WASM, open term resolution is not supported. \
+                 Load and execute implementing regulations, then pass results as parameters.",
                 msg
             ))
         }

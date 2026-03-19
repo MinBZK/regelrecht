@@ -1,6 +1,6 @@
 # Law Generate - Usage Examples
 
-All examples below conform to schema v0.3.2 and pass `just validate`.
+All examples below conform to schema v0.4.0 and pass `just validate`.
 
 ## Example 1: Simple Constant (direct value assignment)
 
@@ -254,10 +254,21 @@ machine_readable:
 
 ---
 
-## Example 5: Resolve from Ministeriele Regeling
+## Example 5: Open Terms — Higher Law (IoC declaration)
+
+When a law delegates a value to a lower regulation ("bij ministeriële regeling"),
+the higher law declares an `open_term`:
 
 ```yaml
+# wet_op_de_zorgtoeslag article 4
 machine_readable:
+  open_terms:
+    - id: standaardpremie
+      type: amount
+      required: true
+      delegated_to: minister
+      delegation_type: MINISTERIELE_REGELING
+      legal_basis: artikel 4 Wet op de zorgtoeslag
   execution:
     output:
       - name: standaardpremie
@@ -266,71 +277,50 @@ machine_readable:
           unit: eurocent
     actions:
       - output: standaardpremie
-        resolve:
-          type: ministeriele_regeling
-          output: standaardpremie
-          match:
-            output: berekeningsjaar
-            value: $referencedate.year
+        value: $standaardpremie   # Resolved by engine via implements_index
 ```
 
 **Key points:**
-- `resolve` pattern for dynamic lookups from ministeriele regelingen
-- `match` specifies which regeling to select
-- `$referencedate.year` uses dot notation for property access
+- `open_terms` declares what the higher law expects from lower regulations
+- `$standaardpremie` references the open term as a variable
+- The engine resolves it by finding the regulation that `implements` this term
+- `delegation_type` constrains which regulatory layer may fill it
+- `required: true` means execution fails if no implementing regulation is found
 
 ---
 
-## Example 6: Delegated Regulation (gemeentelijke verordening)
+## Example 6: Open Terms — Lower Regulation (IoC implementation)
+
+The lower regulation registers as implementing the open term:
 
 ```yaml
+# regeling_standaardpremie article 1
 machine_readable:
+  implements:
+    - law: zorgtoeslagwet
+      article: '4'
+      open_term: standaardpremie
+      gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
   execution:
-    parameters:
-      - name: bsn
-        type: string
-        required: true
-      - name: gemeente_code
-        type: string
-        required: true
-    input:
-      - name: normbedrag
-        type: amount
-        source:
-          output: normbedrag  # Internal reference from another article
-        type_spec:
-          unit: eurocent
-      - name: verlaging_percentage
-        type: number
-        source:
-          delegation:
-            law_id: participatiewet
-            article: "8"
-            select_on:
-              - name: gemeente_code
-                value: $gemeente_code
-          output: verlaging_percentage
-          parameters:
-            bsn: $bsn
     output:
-      - name: uitkering_bedrag
+      - name: standaardpremie
         type: amount
         type_spec:
           unit: eurocent
+      - name: berekeningsjaar
+        type: number
     actions:
-      - output: uitkering_bedrag
-        value:
-          operation: SUBTRACT
-          values:
-            - $normbedrag
-            - operation: MULTIPLY
-              values:
-                - $normbedrag
-                - operation: DIVIDE
-                  values:
-                    - $verlaging_percentage
-                    - 100
+      - output: standaardpremie
+        value: 211200
+      - output: berekeningsjaar
+        value: 2025
 ```
+
+**Key points:**
+- `implements` links back to the higher law, article, and open_term id
+- `gelet_op` provides legal traceability ("Considering article X of law Y")
+- The output name must match the open term `id` so the engine can resolve it
+- Priority is resolved via lex superior (regulatory layer) and lex posterior (date)
 
 ---
 

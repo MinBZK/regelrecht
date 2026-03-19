@@ -38,35 +38,6 @@ pub struct LegalBasis {
     pub description: Option<String>,
 }
 
-/// Contract specification for legal_basis_for delegations
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LegalBasisForContract {
-    #[serde(default)]
-    pub parameters: Option<Vec<Parameter>>,
-    #[serde(default)]
-    pub output: Option<Vec<Output>>,
-}
-
-/// Defaults specification for optional delegations
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LegalBasisForDefaults {
-    #[serde(default)]
-    pub definitions: Option<HashMap<String, Definition>>,
-    #[serde(default)]
-    pub actions: Option<Vec<Action>>,
-}
-
-/// Legal basis for specification - defines what lower regulations can provide
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LegalBasisFor {
-    pub regulatory_layer: RegulatoryLayer,
-    pub subject: String,
-    #[serde(default)]
-    pub contract: Option<LegalBasisForContract>,
-    #[serde(default)]
-    pub defaults: Option<LegalBasisForDefaults>,
-}
-
 /// Type specification for input/output fields.
 ///
 /// Currently only contains unit specification, but may be extended
@@ -78,57 +49,16 @@ pub struct TypeSpec {
     pub unit: Option<String>,
 }
 
-/// Selection criteria for delegation matching
-///
-/// Used in `select_on` to specify which criteria must match when
-/// selecting among multiple candidate regulations (e.g., gemeente_code).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SelectOnCriteria {
-    /// Name of the criteria field (e.g., "gemeente_code")
-    pub name: String,
-    /// Value to match (can be a variable reference like "$gemeente_code")
-    pub value: ActionValue,
-}
-
-/// Delegation specification for cross-law references
-///
-/// Specifies how to find and call a delegated regulation. Used when a higher law
-/// (e.g., Participatiewet) delegates to a lower regulation (e.g., gemeentelijke verordening).
-///
-/// # Example
-///
-/// ```yaml
-/// delegation:
-///   law_id: participatiewet
-///   article: '8'
-///   select_on:
-///     - name: gemeente_code
-///       value: $gemeente_code
-/// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Delegation {
-    /// Law ID that establishes the delegation (e.g., "participatiewet")
-    pub law_id: String,
-    /// Article number that contains the delegation authority
-    pub article: String,
-    /// Selection criteria for matching the correct regulation
-    #[serde(default)]
-    pub select_on: Option<Vec<SelectOnCriteria>>,
-}
-
 /// Source specification for input fields
 ///
 /// Defines where an input value comes from. Can be:
 /// - Simple regulation reference: `regulation: "other_law"` + `output: "field_name"`
-/// - Delegation: Complex lookup based on legal_basis and select_on criteria
+/// - Same-law reference: `output: "field_name"` (resolved within the same law)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     /// Simple cross-law reference (law ID)
     #[serde(default)]
     pub regulation: Option<String>,
-    /// Delegation specification for complex cross-law lookups
-    #[serde(default)]
-    pub delegation: Option<Delegation>,
     /// Output field to retrieve from the source.
     /// When None (e.g. `source: {}`), the input is resolved from the DataSourceRegistry.
     #[serde(default)]
@@ -188,23 +118,6 @@ pub struct Produces {
     /// Type of decision (e.g., "TOEKENNING", "GOEDKEURING")
     #[serde(default)]
     pub decision_type: Option<String>,
-}
-
-/// Resolve specification for delegation
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Resolve {
-    #[serde(rename = "type")]
-    pub resolve_type: String,
-    pub output: String,
-    #[serde(rename = "match", default)]
-    pub match_spec: Option<ResolveMatch>,
-}
-
-/// Match specification for resolve
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ResolveMatch {
-    pub output: String,
-    pub value: ActionValue,
 }
 
 /// A single case in a SWITCH operation
@@ -295,9 +208,6 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
-    /// Resolve specification for delegation
-    #[serde(default)]
-    pub resolve: Option<Resolve>,
     /// Unit for SUBTRACT_DATE operation ("days", "months", "years")
     #[serde(default)]
     pub unit: Option<String>,
@@ -338,6 +248,65 @@ impl Definition {
     }
 }
 
+/// Default execution block for an open term (used when no implementing regulation exists)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenTermDefault {
+    #[serde(default)]
+    pub actions: Option<Vec<Action>>,
+}
+
+/// Open term declared by an article — a value that can or must be filled by
+/// implementing regulations at a lower level.
+///
+/// Any regulatory layer can declare open_terms. A law (`WET`) typically has
+/// `required: true` with no default, while lower layers often provide defaults
+/// that can be refined further down.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OpenTerm {
+    /// Identifier for this open term (e.g., "standaardpremie")
+    pub id: String,
+    /// Human-readable description
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Data type of the expected value
+    #[serde(rename = "type")]
+    pub term_type: String,
+    /// Whether an implementation is mandatory (default: true)
+    #[serde(default = "default_true")]
+    pub required: bool,
+    /// Who is authorized to fill this term (e.g., "minister")
+    #[serde(default)]
+    pub delegated_to: Option<String>,
+    /// Expected regulatory layer of the implementation
+    #[serde(default)]
+    pub delegation_type: Option<String>,
+    /// Legal basis text
+    #[serde(default)]
+    pub legal_basis: Option<String>,
+    /// Default execution if no implementing regulation exists
+    #[serde(default)]
+    pub default: Option<OpenTermDefault>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Declares that this article fills an open term from a higher-level law.
+/// Maps to the "Gelet op" clause in Dutch legislation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImplementsDeclaration {
+    /// The $id of the higher-level law being implemented
+    pub law: String,
+    /// Article number in the higher law that declares the open_term
+    pub article: String,
+    /// The open_term id being filled
+    pub open_term: String,
+    /// Legal reference text (e.g., "Gelet op artikel 4 van de Wet op de zorgtoeslag")
+    #[serde(default)]
+    pub gelet_op: Option<String>,
+}
+
 /// Machine-readable section of an article
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineReadable {
@@ -349,8 +318,12 @@ pub struct MachineReadable {
     pub requires: Option<Vec<String>>,
     #[serde(default)]
     pub competent_authority: Option<CompetentAuthority>,
+    /// Open terms that can or must be filled by implementing regulations
     #[serde(default)]
-    pub legal_basis_for: Option<Vec<LegalBasisFor>>,
+    pub open_terms: Option<Vec<OpenTerm>>,
+    /// Declares which open terms from higher-level laws this article fills
+    #[serde(default)]
+    pub implements: Option<Vec<ImplementsDeclaration>>,
 }
 
 /// Represents a single article in a law
@@ -427,14 +400,18 @@ impl Article {
             .and_then(|mr| mr.competent_authority.as_ref())
     }
 
-    /// Get legal_basis_for specifications from this article.
-    ///
-    /// These define what lower-level regulations can provide and optionally
-    /// include default values if no delegated regulation exists.
-    pub fn get_legal_basis_for(&self) -> Option<&Vec<LegalBasisFor>> {
+    /// Get open terms declared by this article.
+    pub fn get_open_terms(&self) -> Option<&Vec<OpenTerm>> {
         self.machine_readable
             .as_ref()
-            .and_then(|mr| mr.legal_basis_for.as_ref())
+            .and_then(|mr| mr.open_terms.as_ref())
+    }
+
+    /// Get implements declarations from this article.
+    pub fn get_implements(&self) -> Option<&Vec<ImplementsDeclaration>> {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.implements.as_ref())
     }
 }
 
@@ -609,6 +586,30 @@ impl ArticleBasedLaw {
         // Check each article's nested arrays
         for article in &self.articles {
             if let Some(mr) = &article.machine_readable {
+                // Check open_terms array
+                if let Some(open_terms) = &mr.open_terms {
+                    if open_terms.len() > config::MAX_ARRAY_SIZE {
+                        return Err(EngineError::LoadError(format!(
+                            "Too many open_terms in article {} ({}, max {})",
+                            article.number,
+                            open_terms.len(),
+                            config::MAX_ARRAY_SIZE
+                        )));
+                    }
+                }
+
+                // Check implements array
+                if let Some(implements) = &mr.implements {
+                    if implements.len() > config::MAX_ARRAY_SIZE {
+                        return Err(EngineError::LoadError(format!(
+                            "Too many implements in article {} ({}, max {})",
+                            article.number,
+                            implements.len(),
+                            config::MAX_ARRAY_SIZE
+                        )));
+                    }
+                }
+
                 if let Some(exec) = &mr.execution {
                     // Check parameters
                     if let Some(params) = &exec.parameters {
@@ -1338,6 +1339,153 @@ articles:
 
             // Test that nonexistent outputs return None
             assert!(law.find_article_by_output("nonexistent_output").is_none());
+        }
+    }
+
+    // IoC: open_terms and implements parsing tests
+    mod ioc {
+        use super::*;
+
+        const LAW_WITH_OPEN_TERMS: &str = r#"
+$id: test_wet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: "De minister stelt de standaardpremie vast."
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: "artikel 4 Wet op de zorgtoeslag"
+      execution:
+        output:
+          - name: standaardpremie
+            type: amount
+        actions:
+          - output: standaardpremie
+            value: 0
+"#;
+
+        const LAW_WITH_OPEN_TERMS_AND_DEFAULT: &str = r#"
+$id: test_beleidsregel
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: "Redelijke kosten bedragen 6%."
+    machine_readable:
+      open_terms:
+        - id: redelijke_kosten
+          type: amount
+          required: false
+          description: "Percentage redelijke kosten"
+          default:
+            actions:
+              - output: redelijke_kosten
+                value: 600
+      execution:
+        output:
+          - name: redelijke_kosten
+            type: amount
+        actions:
+          - output: redelijke_kosten
+            value: 600
+"#;
+
+        const REGELING_WITH_IMPLEMENTS: &str = r#"
+$id: regeling_test
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+bwb_id: BWBR0050536
+legal_basis:
+  - law_id: test_wet
+    article: '4'
+articles:
+  - number: '1'
+    text: "De standaardpremie bedraagt 2112 euro."
+    machine_readable:
+      implements:
+        - law: test_wet
+          article: '4'
+          open_term: standaardpremie
+          gelet_op: "Gelet op artikel 4 van de test wet"
+      execution:
+        output:
+          - name: standaardpremie
+            type: amount
+        actions:
+          - output: standaardpremie
+            value: 211200
+"#;
+
+        #[test]
+        fn test_parse_open_terms() {
+            let law = ArticleBasedLaw::from_yaml_str(LAW_WITH_OPEN_TERMS).unwrap();
+            let article = &law.articles[0];
+            let open_terms = article.get_open_terms().unwrap();
+
+            assert_eq!(open_terms.len(), 1);
+            assert_eq!(open_terms[0].id, "standaardpremie");
+            assert_eq!(open_terms[0].term_type, "amount");
+            assert!(open_terms[0].required);
+            assert_eq!(open_terms[0].delegated_to.as_deref(), Some("minister"));
+            assert_eq!(
+                open_terms[0].delegation_type.as_deref(),
+                Some("MINISTERIELE_REGELING")
+            );
+            assert!(open_terms[0].default.is_none());
+        }
+
+        #[test]
+        fn test_parse_open_terms_with_default() {
+            let law = ArticleBasedLaw::from_yaml_str(LAW_WITH_OPEN_TERMS_AND_DEFAULT).unwrap();
+            let article = &law.articles[0];
+            let open_terms = article.get_open_terms().unwrap();
+
+            assert_eq!(open_terms.len(), 1);
+            assert_eq!(open_terms[0].id, "redelijke_kosten");
+            assert!(!open_terms[0].required);
+
+            let default = open_terms[0].default.as_ref().unwrap();
+            let actions = default.actions.as_ref().unwrap();
+            assert_eq!(actions.len(), 1);
+            assert_eq!(actions[0].output.as_deref(), Some("redelijke_kosten"));
+        }
+
+        #[test]
+        fn test_parse_implements() {
+            let law = ArticleBasedLaw::from_yaml_str(REGELING_WITH_IMPLEMENTS).unwrap();
+            let article = &law.articles[0];
+            let implements = article.get_implements().unwrap();
+
+            assert_eq!(implements.len(), 1);
+            assert_eq!(implements[0].law, "test_wet");
+            assert_eq!(implements[0].article, "4");
+            assert_eq!(implements[0].open_term, "standaardpremie");
+            assert_eq!(
+                implements[0].gelet_op.as_deref(),
+                Some("Gelet op artikel 4 van de test wet")
+            );
+        }
+
+        #[test]
+        fn test_backward_compat_no_open_terms() {
+            let law = ArticleBasedLaw::from_yaml_str(MINIMAL_LAW_YAML).unwrap();
+            assert!(law.articles[0].get_open_terms().is_none());
+            assert!(law.articles[0].get_implements().is_none());
+        }
+
+        #[test]
+        fn test_backward_compat_existing_law_with_outputs() {
+            let law = ArticleBasedLaw::from_yaml_str(LAW_WITH_OUTPUTS_YAML).unwrap();
+            assert!(law.articles[0].get_open_terms().is_none());
+            assert!(law.articles[0].get_implements().is_none());
+            // Existing functionality still works
+            assert!(law.articles[0].has_output("test_output"));
         }
     }
 
