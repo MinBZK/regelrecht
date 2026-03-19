@@ -2967,11 +2967,14 @@ dependencies = [
 name = "regelrecht-corpus"
 version = "0.1.0"
 dependencies = [
+ "regelrecht-engine",
  "serde",
+ "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+ "walkdir",
 ]
 
 [[package]]

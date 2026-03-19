@@ -1,0 +1,17 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
+$id: test_verordening_a
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2025-01-01'
+gemeente_code: GM0363
+articles:
+  - number: '1'
+    text: Test gemeentelijke verordening A
+    machine_readable:
+      execution:
+        output:
+          - name: local_rate
+            type: number
+        actions:
+          - output: local_rate
+            value: 42

@@ -16,10 +16,12 @@ tracing = "0.1"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
+walkdir = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "fs"] }
 tempfile = "3"
+regelrecht-engine = { path = "../engine" }
 
 [lints.clippy]
 unwrap_used = "warn"
