@@ -5,10 +5,12 @@ import { useLaw } from './composables/useLaw.js';
 import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ActionSheet from './components/ActionSheet.vue';
+import EditSheet from './components/EditSheet.vue';
 
 const { articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
 
 const activeAction = ref(null);
+const activeEditItem = ref(null);
 const parseError = ref(null);
 
 // ── Reactive data model (single source of truth) ──
@@ -236,7 +238,7 @@ function selectArticle(number) {
             <MachineReadable
               :article="editedArticle"
               :editable="true"
-              @save="handleSave"
+              @open-edit="activeEditItem = $event"
               @open-action="activeAction = $event"
             />
           </rr-simple-section>
@@ -247,6 +249,7 @@ function selectArticle(number) {
   </rr-page>
 
   <ActionSheet :action="activeAction" :article="editedArticle" @close="activeAction = null" />
+  <EditSheet :item="activeEditItem" @save="handleSave" @close="activeEditItem = null" />
 </template>
 
 <style>
