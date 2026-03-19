@@ -158,6 +158,33 @@ impl SourceMap {
         Ok(())
     }
 
+    /// Load a single fetched file (from GitHub or other remote) into the map.
+    pub fn load_fetched_file(
+        &mut self,
+        content: &str,
+        file_path: &str,
+        source_id: &str,
+        source_name: &str,
+        source_priority: u32,
+    ) -> Result<bool> {
+        let law_id = match extract_law_id(content) {
+            Some(id) => id,
+            None => return Ok(false),
+        };
+
+        let loaded = LoadedLaw {
+            law_id: law_id.clone(),
+            yaml_content: content.to_string(),
+            file_path: file_path.to_string(),
+            source_id: source_id.to_string(),
+            source_name: source_name.to_string(),
+            source_priority,
+        };
+
+        self.insert(loaded)?;
+        Ok(true)
+    }
+
     /// Get all loaded laws.
     pub fn laws(&self) -> impl Iterator<Item = &LoadedLaw> {
         self.laws.values()

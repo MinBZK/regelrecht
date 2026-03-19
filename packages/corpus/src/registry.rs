@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use crate::error::{CorpusError, Result};
-use crate::models::{RegistryManifest, Source};
+use crate::models::{RegistryManifest, Source, SourceType};
+use crate::source_map::SourceMap;
 
 /// Corpus registry that manages source definitions.
 ///
@@ -83,6 +84,59 @@ impl CorpusRegistry {
     /// Get a source by ID.
     pub fn get_source(&self, id: &str) -> Option<&Source> {
         self.sources.iter().find(|s| s.id == id)
+    }
+
+    /// Load all local sources into a SourceMap.
+    ///
+    /// GitHub sources are skipped — use [`load_all_sources_async`] to include them.
+    pub fn load_local_sources(&self) -> Result<SourceMap> {
+        let mut map = SourceMap::new();
+        for source in &self.sources {
+            match &source.source_type {
+                SourceType::Local { .. } => {
+                    map.load_source(source)?;
+                }
+                SourceType::GitHub { .. } => {
+                    tracing::debug!(
+                        source_id = %source.id,
+                        "Skipping GitHub source in sync load"
+                    );
+                }
+            }
+        }
+        Ok(map)
+    }
+
+    /// Load all sources (local + GitHub) into a SourceMap.
+    ///
+    /// Fetches GitHub sources using the provided auth file for token lookup.
+    #[cfg(feature = "github")]
+    pub async fn load_all_sources_async(&self, auth_file: Option<&Path>) -> Result<SourceMap> {
+        let mut map = SourceMap::new();
+        let mut fetcher = crate::github::GitHubFetcher::new()?;
+
+        for source in &self.sources {
+            match &source.source_type {
+                SourceType::Local { .. } => {
+                    map.load_source(source)?;
+                }
+                SourceType::GitHub { github } => {
+                    let token = crate::auth::resolve_token(&source.id, auth_file)?;
+                    let files = fetcher.fetch_source(github, token.as_deref()).await?;
+
+                    for file in &files {
+                        map.load_fetched_file(
+                            &file.content,
+                            &file.path,
+                            &source.id,
+                            &source.name,
+                            source.priority,
+                        )?;
+                    }
+                }
+            }
+        }
+        Ok(map)
     }
 }
 
