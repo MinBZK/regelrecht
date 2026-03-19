@@ -14,6 +14,21 @@ use serde::{Deserialize, Serialize};
 use crate::models::{Job, LawEntry, PaginatedResponse};
 use crate::state::AppState;
 
+// --- Platform info ---
+
+#[derive(Serialize)]
+pub struct PlatformInfo {
+    pub deployment_name: String,
+    pub component_name: String,
+}
+
+pub async fn platform_info() -> Json<PlatformInfo> {
+    Json(PlatformInfo {
+        deployment_name: std::env::var("DEPLOYMENT_NAME").unwrap_or_default(),
+        component_name: std::env::var("COMPONENT_NAME").unwrap_or_default(),
+    })
+}
+
 #[allow(clippy::expect_used)]
 static BWB_ID_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));

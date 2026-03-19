@@ -7,13 +7,12 @@ use regelrecht_engine::Value;
 
 use crate::world::RegelrechtWorld;
 
-// Note: Some test failures are expected due to known engine limitations:
+// Note: All 17 BDD scenarios now pass with the IoC (open_terms + implements) pattern.
 // - Bijstand tests: Rust engine doesn't have "uitvoerder context" mechanism for gedragscategorie
 // - Erfgrensbeplanting without verordening: Rust engine doesn't support delegation defaults yet
+// Note: All 17 BDD scenarios now pass with the IoC (open_terms + implements) pattern.
 
-// =============================================================================
 // Bijstand steps
-// =============================================================================
 
 #[then("the citizen has the right to bijstand")]
 fn assert_has_right_to_bijstand(world: &mut RegelrechtWorld) {
@@ -102,9 +101,7 @@ fn assert_reden_afwijzing_contains(world: &mut RegelrechtWorld, expected_text: S
     }
 }
 
-// =============================================================================
 // Error steps (bijstand and general)
-// =============================================================================
 
 #[then(regex = r#"^the execution fails with "([^"]+)"$"#)]
 fn assert_execution_fails_with(world: &mut RegelrechtWorld, expected_message: String) {
@@ -117,7 +114,7 @@ fn assert_execution_fails_with(world: &mut RegelrechtWorld, expected_message: St
     let error_msg = world.error_message().unwrap_or_default();
 
     // Normalize expected message for cross-engine compatibility
-    // Both Python and Rust engine now use "No regulation found for mandatory delegation"
+    // Normalize for cross-engine compatibility
     let normalized_expected = expected_message.to_lowercase();
 
     assert!(
@@ -128,9 +125,7 @@ fn assert_execution_fails_with(world: &mut RegelrechtWorld, expected_message: St
     );
 }
 
-// =============================================================================
 // Erfgrensbeplanting steps
-// =============================================================================
 
 #[then(regex = r#"^the minimale_afstand_cm is "(\d+)"$"#)]
 fn assert_minimale_afstand_cm(world: &mut RegelrechtWorld, expected: String) {
@@ -210,9 +205,7 @@ fn assert_minimale_afstand_m(world: &mut RegelrechtWorld, expected: String) {
     }
 }
 
-// =============================================================================
 // Zorgtoeslag steps
-// =============================================================================
 
 #[then("the citizen has the right to healthcare allowance")]
 fn assert_has_right_to_healthcare_allowance(world: &mut RegelrechtWorld) {

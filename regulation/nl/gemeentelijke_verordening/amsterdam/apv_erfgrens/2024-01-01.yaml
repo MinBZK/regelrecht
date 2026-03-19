@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
 $id: apv_erfgrens_amsterdam
 uuid: a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a00363
 regulatory_layer: GEMEENTELIJKE_VERORDENING
@@ -30,6 +30,11 @@ articles:
 
     machine_readable:
       # Dit artikel implementeert de interface uit BW 5:42
+      implements:
+        - law: burgerlijk_wetboek_boek_5
+          article: '42'
+          open_term: minimale_afstand_cm
+          gelet_op: Gelet op artikel 5:42 lid 2 van het Burgerlijk Wetboek
       execution:
         parameters:
           - name: type_beplanting

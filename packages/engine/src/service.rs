@@ -1,7 +1,7 @@
 //! Service layer for cross-law resolution
 //!
 //! Provides the `ServiceProvider` trait and `LawExecutionService` implementation
-//! for resolving cross-law references and delegation lookups.
+//! for resolving cross-law references and IoC open-term resolution.
 //!
 //! # Example
 //!
@@ -25,18 +25,12 @@
 //! )?;
 //! ```
 
-use crate::article::{
-    Action, Article, ArticleBasedLaw, Input, LegalBasisForDefaults, Resolve, SelectOnCriteria,
-};
+use crate::article::{Article, ArticleBasedLaw, Execution, Input, MachineReadable};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
-use crate::engine::{
-    evaluate_select_on_criteria, get_delegation_info, ArticleEngine, ArticleResult,
-};
+use crate::engine::{ArticleEngine, ArticleResult};
 use crate::error::{EngineError, Result};
-use crate::operations::evaluate_value;
-use crate::operations::values_equal;
 use crate::operations::ValueResolver;
 use crate::resolver::RuleResolver;
 use crate::trace::TraceBuilder;
@@ -130,20 +124,7 @@ fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -
     format!("{}#{}({})", law_id, output_name, params_str)
 }
 
-/// Reference to a delegation source for resolution.
-///
-/// Bundles the delegation-specific parameters to reduce argument count
-/// in delegation resolution functions.
-struct DelegationRef<'a> {
-    /// The law that grants the delegation
-    law_id: &'a str,
-    /// The article that grants the delegation
-    article: &'a str,
-    /// Criteria for selecting the delegated regulation
-    select_on: Option<&'a [SelectOnCriteria]>,
-}
-
-/// Trait for resolving cross-law references and delegations.
+/// Trait for resolving cross-law references.
 ///
 /// Implement this trait to provide custom law loading and resolution strategies.
 /// The default implementation is `LawExecutionService`.
@@ -164,24 +145,6 @@ pub trait ServiceProvider {
         calculation_date: &str,
     ) -> Result<ArticleResult>;
 
-    /// Find a delegated regulation matching the given criteria.
-    ///
-    /// # Arguments
-    /// * `law_id` - The law that grants the delegation
-    /// * `article` - The article number that grants the delegation
-    /// * `criteria` - Evaluated select_on criteria to match
-    /// * `reference_date` - Optional date to select the appropriate law version
-    ///
-    /// # Returns
-    /// Reference to the matching regulation, if found.
-    fn find_delegated_regulation(
-        &self,
-        law_id: &str,
-        article: &str,
-        criteria: &HashMap<String, Value>,
-        reference_date: Option<NaiveDate>,
-    ) -> Result<Option<&ArticleBasedLaw>>;
-
     /// Get a law by ID.
     fn get_law(&self, law_id: &str) -> Option<&ArticleBasedLaw>;
 
@@ -198,31 +161,6 @@ pub trait ServiceProvider {
     fn resolve_external_input(
         &self,
         regulation: &str,
-        output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
-        context: &RuleContext,
-        calculation_date: &str,
-    ) -> Result<Value>;
-
-    /// Resolve a delegation input source.
-    ///
-    /// This resolves `source.delegation` references by finding the matching
-    /// regulation and executing its article.
-    ///
-    /// # Arguments
-    /// * `delegation_law_id` - The law that grants the delegation
-    /// * `delegation_article` - The article that grants the delegation
-    /// * `select_on` - Criteria for selecting the delegated regulation
-    /// * `output` - The output name to resolve
-    /// * `source_parameters` - Parameters mapping from source
-    /// * `context` - Current execution context
-    /// * `calculation_date` - Date for calculations
-    #[allow(clippy::too_many_arguments)]
-    fn resolve_delegation_input(
-        &self,
-        delegation_law_id: &str,
-        delegation_article: &str,
-        select_on: Option<&[SelectOnCriteria]>,
         output: &str,
         source_parameters: Option<&HashMap<String, String>>,
         context: &RuleContext,
@@ -251,38 +189,17 @@ pub struct LawInfo {
     pub article_count: usize,
 }
 
-/// Parse a resolve type string to a `RegulatoryLayer` for filtering.
-///
-/// Maps resolve type strings (from YAML `resolve.type` fields) to the
-/// corresponding `RegulatoryLayer` enum variant.
-fn parse_regulatory_layer(resolve_type: &str) -> Option<RegulatoryLayer> {
-    match resolve_type.to_lowercase().as_str() {
-        "grondwet" => Some(RegulatoryLayer::Grondwet),
-        "wet" => Some(RegulatoryLayer::Wet),
-        "amvb" => Some(RegulatoryLayer::Amvb),
-        "ministeriele_regeling" => Some(RegulatoryLayer::MinisterieleRegeling),
-        "beleidsregel" => Some(RegulatoryLayer::Beleidsregel),
-        "eu_verordening" => Some(RegulatoryLayer::EuVerordening),
-        "eu_richtlijn" => Some(RegulatoryLayer::EuRichtlijn),
-        "verdrag" => Some(RegulatoryLayer::Verdrag),
-        "uitvoeringsbeleid" => Some(RegulatoryLayer::Uitvoeringsbeleid),
-        "gemeentelijke_verordening" => Some(RegulatoryLayer::GemeentelijkeVerordening),
-        "provinciale_verordening" => Some(RegulatoryLayer::ProvincialeVerordening),
-        _ => None,
-    }
-}
-
 /// High-level service for executing laws with automatic cross-law resolution.
 ///
 /// `LawExecutionService` wraps a `RuleResolver` and implements `ServiceProvider`
-/// to enable automatic resolution of external references and delegations.
+/// to enable automatic resolution of external references and open term implementations.
 /// It also supports external data sources via `DataSourceRegistry`.
 pub struct LawExecutionService {
     resolver: RuleResolver,
     /// Registry for external data sources. Queried during law execution
     /// to resolve inputs before falling back to cross-law resolution.
     /// Acts as an override layer: if a data source provides a field,
-    /// it's used instead of triggering cross-law/delegation resolution.
+    /// it's used instead of triggering cross-law/IoC resolution.
     data_registry: DataSourceRegistry,
 }
 
@@ -505,8 +422,8 @@ impl LawExecutionService {
         // Resolve inputs with sources using ServiceProvider
         self.resolve_inputs_with_service(article, law, &mut context, &parameters, res_ctx)?;
 
-        // Pre-resolve any resolve actions in this article
-        let resolved_actions = self.pre_resolve_actions(article, law, &context, res_ctx)?;
+        // Resolve open terms via IoC (implements index lookup)
+        let open_term_values = self.resolve_open_terms(article, law, &context, res_ctx)?;
 
         // Use ArticleEngine for action execution (it handles the internal logic)
         let engine = ArticleEngine::new(article, law);
@@ -517,8 +434,8 @@ impl LawExecutionService {
         for (name, value) in context.resolved_inputs() {
             combined_params.insert(name.clone(), value.clone());
         }
-        // Merge pre-resolved action outputs so the engine can pick them up
-        for (name, value) in resolved_actions {
+        // Merge open term values (IoC resolved)
+        for (name, value) in open_term_values {
             combined_params.insert(name, value);
         }
 
@@ -565,12 +482,15 @@ impl LawExecutionService {
         Ok(result)
     }
 
-    /// Pre-resolve all resolve actions in an article.
+    /// Resolve open terms declared on an article via IoC (implements index).
     ///
-    /// Scans the article's actions for `resolve:` specifications and resolves
-    /// each one using `resolve_resolve_action()`. Returns a map of output names
-    /// to resolved values.
-    fn pre_resolve_actions(
+    /// For each open term:
+    /// 1. Look up implementations in the resolver's implements_index
+    /// 2. If found: execute the implementing article to get the value
+    /// 3. If not found + has default: execute the default actions
+    /// 4. If not found + required + no default: error
+    /// 5. If not found + not required + no default: skip
+    fn resolve_open_terms(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
@@ -579,222 +499,285 @@ impl LawExecutionService {
     ) -> Result<HashMap<String, Value>> {
         let mut resolved = HashMap::new();
 
-        let actions = article
-            .get_execution_spec()
-            .and_then(|exec| exec.actions.as_deref())
-            .unwrap_or(&[]);
-
-        for action in actions {
-            if let Some(resolve) = &action.resolve {
-                if let Some(output_name) = &action.output {
-                    let value = self.resolve_resolve_action(
-                        resolve,
-                        &law.id,
-                        &article.number,
-                        context,
-                        res_ctx,
-                    )?;
-                    resolved.insert(output_name.clone(), value);
-                }
-            }
-        }
-
-        Ok(resolved)
-    }
-
-    /// Resolve a single resolve action.
-    ///
-    /// Implements the Python `_evaluate_resolve()` algorithm:
-    /// 1. Find regulations by legal basis (filtered by resolve type)
-    /// 2. If match criteria exist, evaluate expected value from context
-    /// 3. For each candidate: execute to get match output, compare, skip on mismatch
-    /// 4. Execute matching candidate for requested output
-    /// 5. Require exactly 1 match (error on 0 or 2+)
-    fn resolve_resolve_action(
-        &self,
-        resolve: &Resolve,
-        law_id: &str,
-        article_number: &str,
-        context: &RuleContext,
-        res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<Value> {
-        let layer_filter = parse_regulatory_layer(&resolve.resolve_type);
-
-        tracing::debug!(
-            law_id = %law_id,
-            article = %article_number,
-            resolve_type = %resolve.resolve_type,
-            output = %resolve.output,
-            "Resolving action via legal basis"
-        );
-
-        // Find regulations that have this article as their legal_basis
-        let candidates = self.resolver.find_regulations_by_legal_basis(
-            law_id,
-            article_number,
-            layer_filter.as_ref(),
-            res_ctx.reference_date(),
-        );
-
-        if candidates.is_empty() {
-            return Err(EngineError::DelegationError(format!(
-                "No regulations found with legal_basis {}#{} (type={})",
-                law_id, article_number, resolve.resolve_type
-            )));
-        }
-
-        tracing::debug!(
-            candidates = candidates.len(),
-            ids = ?candidates.iter().map(|c| &c.id).collect::<Vec<_>>(),
-            "Found candidate regulations"
-        );
-
-        // Evaluate expected match value if match criteria exist
-        let expected_match_value = if let Some(match_spec) = &resolve.match_spec {
-            Some(evaluate_value(&match_spec.value, context, 0)?)
-        } else {
-            None
+        let open_terms = match article.get_open_terms() {
+            Some(terms) => terms,
+            None => return Ok(resolved),
         };
 
-        // Track matches: we need exactly one
-        let mut first_match: Option<(&str, Value)> = None;
+        for term in open_terms {
+            // Cycle detection: check if we're already resolving this open term
+            // Use \0 as separator to prevent key collisions when IDs contain #
+            let ot_key = format!("open_term:{}\0{}\0{}", law.id, article.number, term.id);
+            if res_ctx.is_visited(&ot_key) {
+                tracing::warn!(
+                    law_id = %law.id,
+                    article = %article.number,
+                    open_term = %term.id,
+                    "Circular open term dependency detected"
+                );
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.push(&term.id, PathNodeType::OpenTermResolution);
+                    tb.set_message(format!(
+                        "Circular dependency: open term '{}' on {}#{} is already being resolved",
+                        term.id, law.id, article.number
+                    ));
+                    tb.pop();
+                }
+                return Err(EngineError::CircularReference(format!(
+                    "Circular open term dependency: '{}' on {} article {} is already being resolved",
+                    term.id, law.id, article.number
+                )));
+            }
+            res_ctx.enter(ot_key.clone());
 
-        for candidate_law in &candidates {
-            let candidate_id = &candidate_law.id;
+            tracing::debug!(
+                law_id = %law.id,
+                article = %article.number,
+                open_term = %term.id,
+                "Resolving open term"
+            );
 
-            // Find the article that produces the requested output
-            let candidate_article = match candidate_law.find_article_by_output(&resolve.output) {
-                Some(a) => a,
-                None => {
-                    tracing::debug!(
-                        candidate = %candidate_id,
-                        output = %resolve.output,
-                        "Candidate has no article with requested output, skipping"
-                    );
-                    continue;
+            // Trace the open term resolution
+            if let Some(ref tb) = res_ctx.trace {
+                let mut tb = tb.borrow_mut();
+                tb.push(&term.id, PathNodeType::OpenTermResolution);
+                tb.set_resolve_type(ResolveType::OpenTerm);
+            }
+
+            // Look up implementations (filtered by execution scope)
+            let implementations = match self.resolver.find_implementations(
+                &law.id,
+                &article.number,
+                &term.id,
+                res_ctx.reference_date(),
+                context.parameters(),
+            ) {
+                Ok(impls) => impls,
+                Err(e) => {
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_message(format!(
+                            "Open term '{}': implementation lookup failed: {}",
+                            term.id, e
+                        ));
+                        tb.pop();
+                    }
+                    res_ctx.leave(&ot_key);
+                    return Err(e);
                 }
             };
 
-            // Phase 1: Check match criteria if present
-            if let (Some(match_spec), Some(expected)) = (&resolve.match_spec, &expected_match_value)
-            {
-                let match_result = self.try_evaluate_candidate(
-                    candidate_article,
-                    candidate_law,
-                    Some(&match_spec.output),
+            if let Some((impl_law, impl_article)) = implementations.first() {
+                // Validate that the implementing regulation's layer matches the
+                // delegation_type declared on the open term (if specified).
+                if let Some(ref expected_type) = term.delegation_type {
+                    let actual_layer = impl_law.regulatory_layer.as_str();
+                    if actual_layer != expected_type {
+                        if let Some(ref tb) = res_ctx.trace {
+                            let mut tb = tb.borrow_mut();
+                            tb.set_message(format!(
+                                "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
+                                term.id, impl_law.id, actual_layer, expected_type
+                            ));
+                            tb.pop();
+                        }
+                        res_ctx.leave(&ot_key);
+                        return Err(EngineError::ResolutionError(format!(
+                            "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
+                            impl_law.id, term.id, actual_layer, expected_type
+                        )));
+                    }
+                }
+
+                tracing::debug!(
+                    open_term = %term.id,
+                    implementing_law = %impl_law.id,
+                    implementing_article = %impl_article.number,
+                    "Found implementation for open term"
+                );
+
+                // Execute the implementing article to get the value.
+                // Only forward parameters that the implementing article declares
+                // in its execution.parameters — principle of least privilege.
+                let impl_params =
+                    Self::filter_parameters_for_article(impl_article, context.parameters());
+                let result = match self.evaluate_article_with_service(
+                    impl_article,
+                    impl_law,
+                    impl_params,
+                    Some(&term.id),
                     res_ctx,
-                );
-
-                match match_result {
-                    Ok(result) => {
-                        let match_value = result.outputs.get(&match_spec.output);
-                        match match_value {
-                            Some(actual) if values_equal(actual, expected) => {
-                                tracing::debug!(
-                                    candidate = %candidate_id,
-                                    "Match criteria satisfied"
-                                );
-                            }
-                            Some(actual) => {
-                                tracing::debug!(
-                                    candidate = %candidate_id,
-                                    expected = %expected,
-                                    actual = %actual,
-                                    "Match criteria not met, skipping"
-                                );
-                                continue;
-                            }
-                            None => {
-                                tracing::debug!(
-                                    candidate = %candidate_id,
-                                    match_output = %match_spec.output,
-                                    "Match output not found, skipping"
-                                );
-                                continue;
-                            }
-                        }
-                    }
+                ) {
+                    Ok(r) => r,
                     Err(e) => {
-                        tracing::debug!(
-                            candidate = %candidate_id,
-                            error = %e,
-                            "Error evaluating match criteria, skipping"
-                        );
-                        continue;
-                    }
-                }
-            }
-
-            // Phase 2: Get the actual requested output
-            let output_result = self.try_evaluate_candidate(
-                candidate_article,
-                candidate_law,
-                Some(&resolve.output),
-                res_ctx,
-            );
-
-            match output_result {
-                Ok(result) => {
-                    if let Some(value) = result.outputs.get(&resolve.output).cloned() {
-                        // Check for multiple matches
-                        if let Some((prev_id, _)) = &first_match {
-                            return Err(EngineError::DelegationError(format!(
-                                "Multiple regulations match for {}#{} with resolve type '{}'. \
-                                 Found at least: [{}, {}]. \
-                                 Add more specific match criteria to ensure deterministic resolution.",
-                                law_id, article_number, resolve.resolve_type, prev_id, candidate_id
-                            )));
+                        if let Some(ref tb) = res_ctx.trace {
+                            let mut tb = tb.borrow_mut();
+                            tb.set_message(format!(
+                                "Open term '{}': implementation execution failed: {}",
+                                term.id, e
+                            ));
+                            tb.pop();
                         }
-                        first_match = Some((candidate_id, value));
-                    } else {
-                        tracing::debug!(
-                            candidate = %candidate_id,
-                            output = %resolve.output,
-                            "Output not found in result, skipping"
-                        );
+                        res_ctx.leave(&ot_key);
+                        return Err(e);
                     }
-                }
-                Err(e) => {
-                    tracing::debug!(
-                        candidate = %candidate_id,
-                        error = %e,
-                        "Error evaluating candidate, skipping"
-                    );
-                    continue;
-                }
-            }
-        }
+                };
 
-        match first_match {
-            Some((matched_id, value)) => {
-                tracing::info!(
-                    law_id = %law_id,
-                    article = %article_number,
-                    matched = %matched_id,
-                    "Resolved to unique regulation"
+                if let Some(value) = result.outputs.get(&term.id) {
+                    // Trace success
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_result(value.clone());
+                        tb.set_message(format!(
+                            "Open term '{}' resolved from {} article {}",
+                            term.id, impl_law.id, impl_article.number
+                        ));
+                        tb.pop();
+                    }
+
+                    resolved.insert(term.id.clone(), value.clone());
+                } else {
+                    // Implementation executed but didn't produce the expected output
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_message(format!(
+                            "Open term '{}': implementation {} article {} produced no matching output",
+                            term.id, impl_law.id, impl_article.number
+                        ));
+                        tb.pop();
+                    }
+                    res_ctx.leave(&ot_key);
+                    return Err(EngineError::InvalidOperation(format!(
+                        "Implementation {} article {} for open term '{}' did not produce output named '{}'",
+                        impl_law.id, impl_article.number, term.id, term.id
+                    )));
+                }
+            } else if let Some(ref default) = term.default {
+                // No implementation found — execute default actions
+                tracing::debug!(
+                    open_term = %term.id,
+                    "No implementation found, using default"
                 );
-                Ok(value)
-            }
-            None => Err(EngineError::DelegationError(format!(
-                "No matching regulation found for {}#{} with resolve type '{}' and match criteria {:?}",
-                law_id, article_number, resolve.resolve_type,
-                resolve.match_spec.as_ref().map(|m| &m.output)
-            ))),
-        }
-    }
 
-    /// Try to evaluate a candidate regulation's article.
-    ///
-    /// Used by resolve_resolve_action to evaluate match criteria and output values.
-    /// Returns the execution result, or an error if evaluation fails.
-    fn try_evaluate_candidate(
-        &self,
-        article: &Article,
-        law: &ArticleBasedLaw,
-        requested_output: Option<&str>,
-        res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<ArticleResult> {
-        self.evaluate_article_with_service(article, law, HashMap::new(), requested_output, res_ctx)
+                if let Some(ref actions) = default.actions {
+                    // Build a synthetic article from the default actions and evaluate
+                    // it through ArticleEngine — this correctly handles action.output,
+                    // intermediate variables, and all operation patterns.
+                    let synthetic_article = Article {
+                        number: format!("default:{}", term.id),
+                        text: String::new(),
+                        url: None,
+                        machine_readable: Some(MachineReadable {
+                            definitions: None,
+                            execution: Some(Execution {
+                                produces: None,
+                                parameters: None,
+                                input: None,
+                                output: None,
+                                actions: Some(actions.clone()),
+                            }),
+                            requires: None,
+                            competent_authority: None,
+                            open_terms: None,
+                            implements: None,
+                        }),
+                    };
+
+                    let engine = ArticleEngine::new(&synthetic_article, law);
+
+                    // Pass current context parameters so default actions can
+                    // reference variables like $type_beplanting
+                    let mut default_params = context.parameters().clone();
+                    // Include already-resolved open terms from this evaluation
+                    for (k, v) in &resolved {
+                        default_params.insert(k.clone(), v.clone());
+                    }
+
+                    let default_result = match engine.evaluate_with_output(
+                        default_params,
+                        res_ctx.calculation_date,
+                        Some(&term.id),
+                    ) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            if let Some(ref tb) = res_ctx.trace {
+                                let mut tb = tb.borrow_mut();
+                                tb.set_message(format!(
+                                    "Open term '{}': default evaluation failed: {}",
+                                    term.id, e
+                                ));
+                                tb.pop();
+                            }
+                            res_ctx.leave(&ot_key);
+                            return Err(e);
+                        }
+                    };
+
+                    let default_value = default_result
+                        .outputs
+                        .get(&term.id)
+                        .cloned()
+                        .unwrap_or(Value::Null);
+
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_result(default_value.clone());
+                        tb.set_message(format!("Open term '{}' resolved from default", term.id));
+                        tb.pop();
+                    }
+
+                    resolved.insert(term.id.clone(), default_value);
+                } else {
+                    // Default exists but has no actions — treat as null
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_result(Value::Null);
+                        tb.set_message(format!(
+                            "Open term '{}' resolved from empty default",
+                            term.id
+                        ));
+                        tb.pop();
+                    }
+                    resolved.insert(term.id.clone(), Value::Null);
+                }
+            } else if term.required {
+                // Required but no implementation and no default
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!(
+                        "Open term '{}' is required but no implementation found",
+                        term.id
+                    ));
+                    tb.pop();
+                }
+
+                res_ctx.leave(&ot_key);
+                return Err(EngineError::ResolutionError(format!(
+                    "Required open term '{}' on {}#{} has no implementation and no default",
+                    term.id, law.id, article.number
+                )));
+            } else {
+                // Not required, no implementation, no default — skip
+                tracing::debug!(
+                    open_term = %term.id,
+                    "Optional open term not implemented, skipping"
+                );
+
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!(
+                        "Open term '{}' not required, no implementation, skipped",
+                        term.id
+                    ));
+                    tb.pop();
+                }
+            }
+
+            res_ctx.leave(&ot_key);
+        }
+
+        Ok(resolved)
     }
 
     /// Resolve input sources using ServiceProvider.
@@ -846,28 +829,10 @@ impl LawExecutionService {
                 }
             }
 
-            // For cross-law/delegation resolution, output defaults to input name
+            // For cross-law resolution, output defaults to input name
             let output_name = source.output.as_deref().unwrap_or(&input.name);
 
-            if let Some(delegation) = &source.delegation {
-                // Delegation reference
-                let (del_law_id, del_article, select_on) = get_delegation_info(delegation);
-                let del_ref = DelegationRef {
-                    law_id: del_law_id,
-                    article: del_article,
-                    select_on,
-                };
-
-                let value = self.resolve_delegation_input_internal(
-                    &del_ref,
-                    output_name,
-                    source.parameters.as_ref(),
-                    context,
-                    res_ctx,
-                )?;
-
-                context.set_resolved_input(&input.name, value);
-            } else if let Some(regulation) = &source.regulation {
+            if let Some(regulation) = &source.regulation {
                 // External reference
                 let value = self.resolve_external_input_internal(
                     regulation,
@@ -936,7 +901,17 @@ impl LawExecutionService {
         }
 
         // Build parameters for the target article
-        let target_params = self.build_target_parameters(source_parameters, context)?;
+        let target_params = match self.build_target_parameters(source_parameters, context) {
+            Ok(p) => p,
+            Err(e) => {
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!("Failed to build parameters: {}", e));
+                    tb.pop();
+                }
+                return Err(e);
+            }
+        };
 
         // Enter cross-law resolution scope
         res_ctx.enter(key.clone());
@@ -947,15 +922,33 @@ impl LawExecutionService {
         // Leave scope (even on error, for correct cycle tracking)
         res_ctx.leave(&key);
 
-        let value =
-            result?
-                .outputs
-                .get(output)
-                .cloned()
-                .ok_or_else(|| EngineError::OutputNotFound {
-                    law_id: regulation.to_string(),
-                    output: output.to_string(),
-                })?;
+        let value = match result {
+            Ok(r) => match r.outputs.get(output).cloned() {
+                Some(v) => v,
+                None => {
+                    if let Some(ref tb) = res_ctx.trace {
+                        let mut tb = tb.borrow_mut();
+                        tb.set_message(format!(
+                            "Output '{}' not found in result from {}",
+                            output, regulation
+                        ));
+                        tb.pop();
+                    }
+                    return Err(EngineError::OutputNotFound {
+                        law_id: regulation.to_string(),
+                        output: output.to_string(),
+                    });
+                }
+            },
+            Err(e) => {
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.set_message(format!("Execution failed: {}", e));
+                    tb.pop();
+                }
+                return Err(e);
+            }
+        };
 
         // Complete trace node
         if let Some(ref tb) = res_ctx.trace {
@@ -967,244 +960,30 @@ impl LawExecutionService {
         Ok(value)
     }
 
-    /// Internal method for delegation input resolution with depth tracking.
-    fn resolve_delegation_input_internal(
-        &self,
-        delegation: &DelegationRef<'_>,
-        output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
-        context: &RuleContext,
-        res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<Value> {
-        // Evaluate selection criteria
-        let criteria = if let Some(criteria_spec) = delegation.select_on {
-            evaluate_select_on_criteria(criteria_spec, context)?
-        } else {
-            HashMap::new()
+    /// Filter execution parameters to only those declared by the target article.
+    ///
+    /// When resolving open terms, we don't want to forward all parameters from
+    /// the calling context (which may include sensitive data like BSN). Instead,
+    /// we only pass parameters that the implementing article declares in its
+    /// execution.parameters section.
+    fn filter_parameters_for_article(
+        article: &Article,
+        all_params: &HashMap<String, Value>,
+    ) -> HashMap<String, Value> {
+        let Some(exec) = article.get_execution_spec() else {
+            return HashMap::new();
+        };
+        let Some(declared_params) = &exec.parameters else {
+            return HashMap::new();
         };
 
-        // Format criteria for logging
-        let criteria_str: Vec<String> = criteria
-            .iter()
-            .map(|(k, v)| format!("{}={:?}", k, v))
-            .collect();
-
-        tracing::debug!(
-            law_id = %delegation.law_id,
-            article = %delegation.article,
-            criteria = ?criteria_str,
-            "Resolving delegation"
-        );
-
-        // Find matching regulation
-        let regulation_opt = self.find_delegated_regulation(
-            delegation.law_id,
-            delegation.article,
-            &criteria,
-            res_ctx.reference_date(),
-        )?;
-
-        match regulation_opt {
-            Some(regulation) => {
-                tracing::debug!(
-                    delegation_from = %delegation.law_id,
-                    delegation_article = %delegation.article,
-                    found_regulation = %regulation.id,
-                    "Found delegated regulation"
-                );
-                // Found a delegated regulation - execute it
-                self.execute_delegated_regulation(
-                    regulation,
-                    output,
-                    source_parameters,
-                    context,
-                    res_ctx,
-                )
-            }
-            None => {
-                tracing::debug!(
-                    delegation_from = %delegation.law_id,
-                    delegation_article = %delegation.article,
-                    "No matching regulation found, checking for defaults"
-                );
-                // No delegated regulation found - try to use defaults from the delegating article
-                self.try_execute_defaults(
-                    delegation,
-                    output,
-                    source_parameters,
-                    context,
-                    &criteria,
-                    res_ctx,
-                )
+        let mut filtered = HashMap::new();
+        for param in declared_params {
+            if let Some(value) = all_params.get(&param.name) {
+                filtered.insert(param.name.clone(), value.clone());
             }
         }
-    }
-
-    /// Execute a found delegated regulation.
-    fn execute_delegated_regulation(
-        &self,
-        regulation: &ArticleBasedLaw,
-        output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
-        context: &RuleContext,
-        res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<Value> {
-        // Check for circular reference
-        let key = format!("{}#{}", regulation.id, output);
-        if res_ctx.is_visited(&key) {
-            return Err(EngineError::CircularReference(format!(
-                "Circular delegation reference detected: {} is already being resolved",
-                key
-            )));
-        }
-
-        // Build parameters for the delegated regulation
-        let target_params = self.build_target_parameters(source_parameters, context)?;
-
-        tracing::debug!(
-            regulation_id = %regulation.id,
-            output = %output,
-            params = ?target_params.keys().collect::<Vec<_>>(),
-            "Executing delegated regulation"
-        );
-
-        // Enter cross-law resolution scope
-        res_ctx.enter(key.clone());
-
-        // Execute the delegated regulation with cycle tracking
-        let result =
-            self.evaluate_law_output_internal(&regulation.id, output, target_params, res_ctx);
-
-        // Leave scope (even on error, for correct cycle tracking)
-        res_ctx.leave(&key);
-
-        let value =
-            result?
-                .outputs
-                .get(output)
-                .cloned()
-                .ok_or_else(|| EngineError::OutputNotFound {
-                    law_id: regulation.id.clone(),
-                    output: output.to_string(),
-                })?;
-
-        tracing::debug!(
-            regulation_id = %regulation.id,
-            "Delegation result: {} = {}", output, value
-        );
-
-        Ok(value)
-    }
-
-    /// Try to execute defaults from the delegating article's legal_basis_for section.
-    ///
-    /// This is called when no delegated regulation is found. If the delegating
-    /// article has defaults defined, those are executed instead.
-    fn try_execute_defaults(
-        &self,
-        delegation: &DelegationRef<'_>,
-        output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
-        context: &RuleContext,
-        criteria: &HashMap<String, Value>,
-        res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<Value> {
-        // Get the delegating law and article (version-aware)
-        let law = self
-            .resolver
-            .get_law_for_date(delegation.law_id, res_ctx.reference_date())
-            .ok_or_else(|| EngineError::LawNotFound(delegation.law_id.to_string()))?;
-
-        let article = law
-            .find_article_by_number(delegation.article)
-            .ok_or_else(|| EngineError::ArticleNotFound {
-                law_id: delegation.law_id.to_string(),
-                article: delegation.article.to_string(),
-            })?;
-
-        // Look for legal_basis_for with defaults
-        let defaults = article
-            .get_legal_basis_for()
-            .and_then(|basis_list| basis_list.iter().find_map(|basis| basis.defaults.as_ref()));
-
-        match defaults {
-            Some(defaults) => {
-                tracing::info!(
-                    law_id = %delegation.law_id,
-                    article = %delegation.article,
-                    "Using defaults (optional delegation)"
-                );
-                self.execute_defaults(defaults, output, source_parameters, context)
-            }
-            None => {
-                // No defaults available - this is an error (mandatory delegation)
-                let criteria_str = criteria
-                    .iter()
-                    .map(|(k, v)| format!("{}={:?}", k, v))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                tracing::error!(
-                    law_id = %delegation.law_id,
-                    article = %delegation.article,
-                    criteria = %criteria_str,
-                    "No regulation found for mandatory delegation"
-                );
-                Err(EngineError::DelegationError(format!(
-                    "No regulation found for mandatory delegation from {}#{} with criteria [{}]",
-                    delegation.law_id, delegation.article, criteria_str
-                )))
-            }
-        }
-    }
-
-    /// Execute defaults actions to produce the requested output.
-    fn execute_defaults(
-        &self,
-        defaults: &LegalBasisForDefaults,
-        output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
-        context: &RuleContext,
-    ) -> Result<Value> {
-        // Build a new context for defaults execution
-        // Start with the source parameters resolved
-        let target_params = self.build_target_parameters(source_parameters, context)?;
-        let mut defaults_context = RuleContext::new(target_params, context.get_calculation_date())?;
-
-        // Set definitions from defaults
-        if let Some(definitions) = &defaults.definitions {
-            defaults_context.set_definitions(definitions);
-        }
-
-        // Execute actions
-        if let Some(actions) = &defaults.actions {
-            for action in actions {
-                if let Some(output_name) = &action.output {
-                    let value = self.evaluate_default_action(action, &defaults_context)?;
-                    tracing::debug!("Output {} = {}", output_name, value);
-                    defaults_context.set_output(output_name, value);
-                }
-            }
-        }
-
-        // Extract the requested output
-        defaults_context
-            .get_output(output)
-            .cloned()
-            .ok_or_else(|| EngineError::OutputNotFound {
-                law_id: "defaults".to_string(),
-                output: output.to_string(),
-            })
-    }
-
-    /// Evaluate a single action from defaults.
-    fn evaluate_default_action(&self, action: &Action, context: &RuleContext) -> Result<Value> {
-        // Check for direct value
-        if let Some(value) = &action.value {
-            return evaluate_value(value, context, 0);
-        }
-
-        // No value specified - return null
-        Ok(Value::Null)
+        filtered
     }
 
     /// Build parameters for a target article from source parameter mapping.
@@ -1403,18 +1182,6 @@ impl ServiceProvider for LawExecutionService {
         )
     }
 
-    fn find_delegated_regulation(
-        &self,
-        law_id: &str,
-        article: &str,
-        criteria: &HashMap<String, Value>,
-        reference_date: Option<NaiveDate>,
-    ) -> Result<Option<&ArticleBasedLaw>> {
-        Ok(self
-            .resolver
-            .find_delegated_regulation(law_id, article, criteria, reference_date))
-    }
-
     fn get_law(&self, law_id: &str) -> Option<&ArticleBasedLaw> {
         self.resolver.get_law(law_id)
     }
@@ -1430,31 +1197,6 @@ impl ServiceProvider for LawExecutionService {
         let mut res_ctx = ResolutionContext::new(calculation_date);
         self.resolve_external_input_internal(
             regulation,
-            output,
-            source_parameters,
-            context,
-            &mut res_ctx,
-        )
-    }
-
-    fn resolve_delegation_input(
-        &self,
-        delegation_law_id: &str,
-        delegation_article: &str,
-        select_on: Option<&[SelectOnCriteria]>,
-        output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
-        context: &RuleContext,
-        calculation_date: &str,
-    ) -> Result<Value> {
-        let mut res_ctx = ResolutionContext::new(calculation_date);
-        let del_ref = DelegationRef {
-            law_id: delegation_law_id,
-            article: delegation_article,
-            select_on,
-        };
-        self.resolve_delegation_input_internal(
-            &del_ref,
             output,
             source_parameters,
             context,
@@ -1514,90 +1256,6 @@ articles:
             values:
               - $external_base
               - 2
-"#
-    }
-
-    fn make_delegating_law() -> &'static str {
-        r#"
-$id: participatiewet
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '8'
-    text: Delegation authority
-    machine_readable:
-      execution:
-        output:
-          - name: delegation_granted
-            type: boolean
-        actions:
-          - output: delegation_granted
-            value: true
-"#
-    }
-
-    fn make_delegated_verordening(gemeente_code: &str, percentage: i32) -> String {
-        format!(
-            r#"
-$id: {gemeente_code}_verordening
-regulatory_layer: GEMEENTELIJKE_VERORDENING
-publication_date: '2025-01-01'
-gemeente_code: "{gemeente_code}"
-legal_basis:
-  - law_id: participatiewet
-    article: '8'
-articles:
-  - number: '1'
-    text: Local regulation
-    machine_readable:
-      execution:
-        output:
-          - name: verlaging_percentage
-            type: number
-        actions:
-          - output: verlaging_percentage
-            value: {percentage}
-"#
-        )
-    }
-
-    fn make_law_using_delegation() -> &'static str {
-        r#"
-$id: using_delegation_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Uses delegated value
-    machine_readable:
-      execution:
-        parameters:
-          - name: gemeente_code
-            type: string
-            required: true
-        input:
-          - name: local_percentage
-            type: number
-            source:
-              delegation:
-                law_id: participatiewet
-                article: '8'
-                select_on:
-                  - name: gemeente_code
-                    value: $gemeente_code
-              output: verlaging_percentage
-        output:
-          - name: adjusted_amount
-            type: number
-        actions:
-          - output: adjusted_amount
-            operation: MULTIPLY
-            values:
-              - 1000
-              - operation: DIVIDE
-                values:
-                  - $local_percentage
-                  - 100
 "#
     }
 
@@ -1669,97 +1327,6 @@ articles:
         assert!(
             matches!(result, Err(EngineError::LawNotFound(_))),
             "Expected LawNotFound error, got: {:?}",
-            result
-        );
-    }
-
-    // -------------------------------------------------------------------------
-    // Delegation Tests
-    // -------------------------------------------------------------------------
-
-    #[test]
-    fn test_service_delegation_resolution() {
-        let mut service = LawExecutionService::new();
-        service.load_law(make_delegating_law()).unwrap();
-        service
-            .load_law(&make_delegated_verordening("0363", 20))
-            .unwrap();
-        service
-            .load_law(&make_delegated_verordening("0518", 15))
-            .unwrap();
-        service.load_law(make_law_using_delegation()).unwrap();
-
-        // Execute with Amsterdam (0363)
-        let mut params = HashMap::new();
-        params.insert(
-            "gemeente_code".to_string(),
-            Value::String("0363".to_string()),
-        );
-
-        let result = service
-            .evaluate_law_output(
-                "using_delegation_law",
-                "adjusted_amount",
-                params,
-                "2025-01-01",
-            )
-            .unwrap();
-
-        // adjusted_amount = 1000 * (20 / 100) = 200.0 (DIVIDE produces float)
-        assert_eq!(
-            result.outputs.get("adjusted_amount"),
-            Some(&Value::Float(200.0))
-        );
-
-        // Execute with Den Haag (0518)
-        let mut params = HashMap::new();
-        params.insert(
-            "gemeente_code".to_string(),
-            Value::String("0518".to_string()),
-        );
-
-        let result = service
-            .evaluate_law_output(
-                "using_delegation_law",
-                "adjusted_amount",
-                params,
-                "2025-01-01",
-            )
-            .unwrap();
-
-        // adjusted_amount = 1000 * (15 / 100) = 150.0 (DIVIDE produces float)
-        assert_eq!(
-            result.outputs.get("adjusted_amount"),
-            Some(&Value::Float(150.0))
-        );
-    }
-
-    #[test]
-    fn test_service_delegation_no_match() {
-        let mut service = LawExecutionService::new();
-        service.load_law(make_delegating_law()).unwrap();
-        service
-            .load_law(&make_delegated_verordening("0363", 20))
-            .unwrap();
-        service.load_law(make_law_using_delegation()).unwrap();
-
-        // Execute with non-existent gemeente
-        let mut params = HashMap::new();
-        params.insert(
-            "gemeente_code".to_string(),
-            Value::String("9999".to_string()),
-        );
-
-        let result = service.evaluate_law_output(
-            "using_delegation_law",
-            "adjusted_amount",
-            params,
-            "2025-01-01",
-        );
-
-        assert!(
-            matches!(result, Err(EngineError::DelegationError(_))),
-            "Expected DelegationError, got: {:?}",
             result
         );
     }
@@ -1850,111 +1417,6 @@ articles:
         );
     }
 
-    #[test]
-    fn test_service_delegation_circular_reference() {
-        // Test that delegation circular references are properly detected
-        // Law A delegates to B, B references A
-        let law_a = r#"
-$id: law_a
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '8'
-    text: Delegation authority
-    machine_readable:
-      execution:
-        output:
-          - name: delegation_granted
-            type: boolean
-        actions:
-          - output: delegation_granted
-            value: true
-"#;
-
-        let regulation_b = r#"
-$id: regulation_b
-regulatory_layer: GEMEENTELIJKE_VERORDENING
-publication_date: '2025-01-01'
-gemeente_code: "0363"
-legal_basis:
-  - law_id: law_a
-    article: '8'
-articles:
-  - number: '1'
-    text: References back to law_a via external reference
-    machine_readable:
-      execution:
-        input:
-          - name: from_a
-            type: boolean
-            source:
-              regulation: law_a
-              output: output_from_delegation
-        output:
-          - name: local_value
-            type: number
-        actions:
-          - output: local_value
-            value: 100
-"#;
-
-        let law_using_delegation = r#"
-$id: law_using_delegation
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Uses delegation that creates circular reference
-    machine_readable:
-      execution:
-        parameters:
-          - name: gemeente_code
-            type: string
-        input:
-          - name: local_value
-            type: number
-            source:
-              delegation:
-                law_id: law_a
-                article: '8'
-                select_on:
-                  - name: gemeente_code
-                    value: $gemeente_code
-              output: local_value
-        output:
-          - name: output_from_delegation
-            type: number
-        actions:
-          - output: output_from_delegation
-            value: $local_value
-"#;
-
-        let mut service = LawExecutionService::new();
-        service.load_law(law_a).unwrap();
-        service.load_law(regulation_b).unwrap();
-        service.load_law(law_using_delegation).unwrap();
-
-        let mut params = HashMap::new();
-        params.insert(
-            "gemeente_code".to_string(),
-            Value::String("0363".to_string()),
-        );
-
-        // This should fail with circular reference since:
-        // law_using_delegation -> delegation to regulation_b -> external ref to law_a
-        // But the output_from_delegation doesn't exist in law_a, so it will fail with OutputNotFound
-        // That's fine - the important thing is we don't get infinite recursion
-        let result = service.evaluate_law_output(
-            "law_using_delegation",
-            "output_from_delegation",
-            params,
-            "2025-01-01",
-        );
-
-        // Should fail (either circular reference or output not found, but not stack overflow)
-        assert!(result.is_err());
-    }
-
     // -------------------------------------------------------------------------
     // Parameter Override Tests
     // -------------------------------------------------------------------------
@@ -2007,298 +1469,6 @@ articles:
         assert_eq!(result.outputs.get("result"), Some(&Value::Int(100)));
     }
 
-    #[test]
-    fn test_service_delegation_parameter_override() {
-        // When a parameter is provided that matches a delegation input name,
-        // the parameter value should be used instead of delegation resolution
-        let mut service = LawExecutionService::new();
-        service.load_law(make_delegating_law()).unwrap();
-        // Note: we don't load any verordening - delegation would fail
-        service.load_law(make_law_using_delegation()).unwrap();
-
-        // Provide local_percentage directly - should skip delegation
-        let mut params = HashMap::new();
-        params.insert(
-            "gemeente_code".to_string(),
-            Value::String("9999".to_string()), // Non-existent gemeente
-        );
-        params.insert("local_percentage".to_string(), Value::Int(25)); // Pre-resolved
-
-        let result = service
-            .evaluate_law_output(
-                "using_delegation_law",
-                "adjusted_amount",
-                params,
-                "2025-01-01",
-            )
-            .unwrap();
-
-        // adjusted_amount = 1000 * (25 / 100) = 250.0
-        assert_eq!(
-            result.outputs.get("adjusted_amount"),
-            Some(&Value::Float(250.0))
-        );
-    }
-
-    // -------------------------------------------------------------------------
-    // Resolve Action Tests
-    // -------------------------------------------------------------------------
-
-    fn make_resolve_parent_law() -> &'static str {
-        r#"
-$id: parent_law
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '4'
-    text: Article with resolve action
-    machine_readable:
-      execution:
-        output:
-          - name: standaardpremie
-            type: number
-        actions:
-          - output: standaardpremie
-            resolve:
-              type: ministeriele_regeling
-              output: standaardpremie
-              match:
-                output: berekeningsjaar
-                value: $referencedate.year
-"#
-    }
-
-    fn make_matching_regeling(year: i64, premium: i64) -> String {
-        format!(
-            r#"
-$id: regeling_{year}
-regulatory_layer: MINISTERIELE_REGELING
-publication_date: '2025-01-01'
-legal_basis:
-  - law_id: parent_law
-    article: '4'
-articles:
-  - number: '1'
-    text: Regeling for {year}
-    machine_readable:
-      execution:
-        output:
-          - name: standaardpremie
-            type: number
-          - name: berekeningsjaar
-            type: number
-        actions:
-          - output: standaardpremie
-            value: {premium}
-          - output: berekeningsjaar
-            value: {year}
-"#
-        )
-    }
-
-    #[test]
-    fn test_service_resolve_action_standaardpremie() {
-        let mut service = LawExecutionService::new();
-        service.load_law(make_resolve_parent_law()).unwrap();
-        service
-            .load_law(&make_matching_regeling(2025, 211200))
-            .unwrap();
-        service
-            .load_law(&make_matching_regeling(2024, 197200))
-            .unwrap();
-
-        // Execute for 2025 - should resolve to regeling_2025
-        let result = service
-            .evaluate_law_output(
-                "parent_law",
-                "standaardpremie",
-                HashMap::new(),
-                "2025-01-01",
-            )
-            .unwrap();
-
-        assert_eq!(
-            result.outputs.get("standaardpremie"),
-            Some(&Value::Int(211200))
-        );
-
-        // Execute for 2024 - should resolve to regeling_2024
-        let result = service
-            .evaluate_law_output(
-                "parent_law",
-                "standaardpremie",
-                HashMap::new(),
-                "2024-06-15",
-            )
-            .unwrap();
-
-        assert_eq!(
-            result.outputs.get("standaardpremie"),
-            Some(&Value::Int(197200))
-        );
-    }
-
-    #[test]
-    fn test_resolve_action_no_match() {
-        let mut service = LawExecutionService::new();
-        service.load_law(make_resolve_parent_law()).unwrap();
-        // Load a regeling for 2023 only - no match for 2025
-        service
-            .load_law(&make_matching_regeling(2023, 180000))
-            .unwrap();
-
-        let result = service.evaluate_law_output(
-            "parent_law",
-            "standaardpremie",
-            HashMap::new(),
-            "2025-01-01",
-        );
-
-        assert!(
-            matches!(result, Err(EngineError::DelegationError(_))),
-            "Expected DelegationError for no match, got: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_resolve_action_multiple_matches() {
-        let mut service = LawExecutionService::new();
-        service.load_law(make_resolve_parent_law()).unwrap();
-        // Load two regelingen that both match 2025
-        service
-            .load_law(&make_matching_regeling(2025, 211200))
-            .unwrap();
-
-        // Create a second regeling with same year but different name
-        let duplicate = r#"
-$id: regeling_2025_alt
-regulatory_layer: MINISTERIELE_REGELING
-publication_date: '2025-01-01'
-legal_basis:
-  - law_id: parent_law
-    article: '4'
-articles:
-  - number: '1'
-    text: Alternate regeling for 2025
-    machine_readable:
-      execution:
-        output:
-          - name: standaardpremie
-            type: number
-          - name: berekeningsjaar
-            type: number
-        actions:
-          - output: standaardpremie
-            value: 999999
-          - output: berekeningsjaar
-            value: 2025
-"#;
-        service.load_law(duplicate).unwrap();
-
-        let result = service.evaluate_law_output(
-            "parent_law",
-            "standaardpremie",
-            HashMap::new(),
-            "2025-01-01",
-        );
-
-        assert!(
-            matches!(result, Err(EngineError::DelegationError(_))),
-            "Expected DelegationError for multiple matches, got: {:?}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_resolve_action_without_match_criteria() {
-        // Resolve action without match spec - should match if exactly one candidate
-        let parent = r#"
-$id: simple_parent
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Simple resolve without match
-    machine_readable:
-      execution:
-        output:
-          - name: some_value
-            type: number
-        actions:
-          - output: some_value
-            resolve:
-              type: ministeriele_regeling
-              output: some_value
-"#;
-        let regeling = r#"
-$id: simple_regeling
-regulatory_layer: MINISTERIELE_REGELING
-publication_date: '2025-01-01'
-legal_basis:
-  - law_id: simple_parent
-    article: '1'
-articles:
-  - number: '1'
-    text: Simple regeling
-    machine_readable:
-      execution:
-        output:
-          - name: some_value
-            type: number
-        actions:
-          - output: some_value
-            value: 42
-"#;
-        let mut service = LawExecutionService::new();
-        service.load_law(parent).unwrap();
-        service.load_law(regeling).unwrap();
-
-        let result = service
-            .evaluate_law_output("simple_parent", "some_value", HashMap::new(), "2025-01-01")
-            .unwrap();
-
-        assert_eq!(result.outputs.get("some_value"), Some(&Value::Int(42)));
-    }
-
-    #[test]
-    fn test_resolve_action_no_regulations() {
-        // Resolve action when no regulations have this legal basis
-        let parent = r#"
-$id: orphan_parent
-regulatory_layer: WET
-publication_date: '2025-01-01'
-articles:
-  - number: '1'
-    text: Resolve with no candidates
-    machine_readable:
-      execution:
-        output:
-          - name: orphan_output
-            type: number
-        actions:
-          - output: orphan_output
-            resolve:
-              type: ministeriele_regeling
-              output: orphan_output
-"#;
-        let mut service = LawExecutionService::new();
-        service.load_law(parent).unwrap();
-
-        let result = service.evaluate_law_output(
-            "orphan_parent",
-            "orphan_output",
-            HashMap::new(),
-            "2025-01-01",
-        );
-
-        assert!(
-            matches!(result, Err(EngineError::DelegationError(_))),
-            "Expected DelegationError, got: {:?}",
-            result
-        );
-    }
-
     // -------------------------------------------------------------------------
     // API Method Tests
     // -------------------------------------------------------------------------
@@ -2343,53 +1513,6 @@ articles:
 
         service.load_law(make_dependent_law()).unwrap();
         assert_eq!(service.get_output_count(), 2);
-    }
-
-    #[test]
-    fn test_parse_regulatory_layer_helper() {
-        assert_eq!(
-            parse_regulatory_layer("ministeriele_regeling"),
-            Some(RegulatoryLayer::MinisterieleRegeling)
-        );
-        assert_eq!(
-            parse_regulatory_layer("MINISTERIELE_REGELING"),
-            Some(RegulatoryLayer::MinisterieleRegeling)
-        );
-        assert_eq!(parse_regulatory_layer("wet"), Some(RegulatoryLayer::Wet));
-        assert_eq!(parse_regulatory_layer("amvb"), Some(RegulatoryLayer::Amvb));
-        assert_eq!(
-            parse_regulatory_layer("gemeentelijke_verordening"),
-            Some(RegulatoryLayer::GemeentelijkeVerordening)
-        );
-        assert_eq!(
-            parse_regulatory_layer("beleidsregel"),
-            Some(RegulatoryLayer::Beleidsregel)
-        );
-        assert_eq!(
-            parse_regulatory_layer("grondwet"),
-            Some(RegulatoryLayer::Grondwet)
-        );
-        assert_eq!(
-            parse_regulatory_layer("eu_verordening"),
-            Some(RegulatoryLayer::EuVerordening)
-        );
-        assert_eq!(
-            parse_regulatory_layer("eu_richtlijn"),
-            Some(RegulatoryLayer::EuRichtlijn)
-        );
-        assert_eq!(
-            parse_regulatory_layer("verdrag"),
-            Some(RegulatoryLayer::Verdrag)
-        );
-        assert_eq!(
-            parse_regulatory_layer("uitvoeringsbeleid"),
-            Some(RegulatoryLayer::Uitvoeringsbeleid)
-        );
-        assert_eq!(
-            parse_regulatory_layer("provinciale_verordening"),
-            Some(RegulatoryLayer::ProvincialeVerordening)
-        );
-        assert_eq!(parse_regulatory_layer("unknown_type"), None);
     }
 
     // -------------------------------------------------------------------------
@@ -2731,5 +1854,340 @@ articles:
 
         // Parameter value (50) should win over registry value (100)
         assert_eq!(result.outputs.get("result"), Some(&Value::Int(50)));
+    }
+
+    // -------------------------------------------------------------------------
+    // IoC (open_terms + implements) Tests
+    // -------------------------------------------------------------------------
+
+    fn make_law_with_open_term() -> &'static str {
+        r#"
+$id: zorgtoeslag_ioc
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '4'
+    text: De standaardpremie wordt vastgesteld bij ministeriele regeling
+    machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: "$standaardpremie"
+"#
+    }
+
+    fn make_implementing_regulation() -> &'static str {
+        r#"
+$id: regeling_sp_ioc
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: De standaardpremie bedraagt 1928
+    machine_readable:
+      implements:
+        - law: zorgtoeslag_ioc
+          article: '4'
+          open_term: standaardpremie
+          gelet_op: "Gelet op artikel 4 van de Wet op de zorgtoeslag"
+      execution:
+        output:
+          - name: standaardpremie
+            type: number
+        actions:
+          - output: standaardpremie
+            value: 1928
+"#
+    }
+
+    #[test]
+    fn test_ioc_resolve_open_term() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        service.load_law(make_implementing_regulation()).unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "zorgtoeslag_ioc",
+                "standaardpremie",
+                HashMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("standaardpremie"),
+            Some(&Value::Int(1928))
+        );
+    }
+
+    #[test]
+    fn test_ioc_required_no_implementation() {
+        let mut service = LawExecutionService::new();
+        service.load_law(make_law_with_open_term()).unwrap();
+        // No implementing regulation loaded
+
+        let result = service.evaluate_law_output(
+            "zorgtoeslag_ioc",
+            "standaardpremie",
+            HashMap::new(),
+            "2025-01-01",
+        );
+
+        assert!(
+            matches!(result, Err(EngineError::ResolutionError(_))),
+            "Expected ResolutionError for missing required implementation, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_ioc_optional_no_implementation() {
+        let yaml = r#"
+$id: optional_term_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Optional open term
+    machine_readable:
+      open_terms:
+        - id: bijzondere_premie
+          type: amount
+          required: false
+      execution:
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: 42
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        // Should succeed — optional term not implemented is fine
+        let result = service
+            .evaluate_law_output("optional_term_law", "result", HashMap::new(), "2025-01-01")
+            .unwrap();
+
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(42)));
+    }
+
+    #[test]
+    fn test_ioc_with_default() {
+        let yaml = r#"
+$id: default_term_law
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Default open term
+    machine_readable:
+      open_terms:
+        - id: redelijk_percentage
+          type: number
+          required: true
+          default:
+            actions:
+              - output: redelijk_percentage
+                value: 6
+      execution:
+        output:
+          - name: redelijk_percentage
+            type: number
+        actions:
+          - output: redelijk_percentage
+            value: "$redelijk_percentage"
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+
+        // No implementation loaded — should fall back to default
+        let result = service
+            .evaluate_law_output(
+                "default_term_law",
+                "redelijk_percentage",
+                HashMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(
+            result.outputs.get("redelijk_percentage"),
+            Some(&Value::Int(6))
+        );
+    }
+
+    #[test]
+    fn test_ioc_implementation_overrides_default() {
+        let law_yaml = r#"
+$id: default_override_law
+regulatory_layer: BELEIDSREGEL
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Default open term
+    machine_readable:
+      open_terms:
+        - id: percentage
+          type: number
+          required: true
+          default:
+            actions:
+              - output: percentage
+                value: 6
+      execution:
+        output:
+          - name: percentage
+            type: number
+        actions:
+          - output: percentage
+            value: "$percentage"
+"#;
+
+        let impl_yaml = r#"
+$id: override_implementation
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2025-06-01'
+valid_from: '2025-06-01'
+articles:
+  - number: '1'
+    text: Override percentage
+    machine_readable:
+      implements:
+        - law: default_override_law
+          article: '1'
+          open_term: percentage
+      execution:
+        output:
+          - name: percentage
+            type: number
+        actions:
+          - output: percentage
+            value: 4
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(law_yaml).unwrap();
+        service.load_law(impl_yaml).unwrap();
+
+        // Implementation should override default
+        let result = service
+            .evaluate_law_output(
+                "default_override_law",
+                "percentage",
+                HashMap::new(),
+                "2025-07-01",
+            )
+            .unwrap();
+
+        assert_eq!(result.outputs.get("percentage"), Some(&Value::Int(4)));
+    }
+
+    #[test]
+    fn test_ioc_temporal_filtering() {
+        // Two versions of the same implementing regulation (same $id, different valid_from).
+        // The engine should select the version valid for the calculation date.
+        let higher_law = r#"
+$id: test_higher_law
+regulatory_layer: WET
+publication_date: '2024-01-01'
+articles:
+  - number: '1'
+    text: Test article with open term
+    machine_readable:
+      open_terms:
+        - id: yearly_amount
+          type: number
+          required: true
+          delegation_type: MINISTERIELE_REGELING
+      execution:
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $yearly_amount
+"#;
+
+        let impl_v2025 = r#"
+$id: test_impl_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2024-11-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: 2025 amount
+    machine_readable:
+      implements:
+        - law: test_higher_law
+          article: '1'
+          open_term: yearly_amount
+      execution:
+        output:
+          - name: yearly_amount
+            type: number
+        actions:
+          - output: yearly_amount
+            value: 211200
+"#;
+
+        let impl_v2026 = r#"
+$id: test_impl_regulation
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-11-01'
+valid_from: '2026-01-01'
+articles:
+  - number: '1'
+    text: 2026 amount
+    machine_readable:
+      implements:
+        - law: test_higher_law
+          article: '1'
+          open_term: yearly_amount
+      execution:
+        output:
+          - name: yearly_amount
+            type: number
+        actions:
+          - output: yearly_amount
+            value: 220000
+"#;
+
+        let mut service = LawExecutionService::new();
+        service.load_law(higher_law).unwrap();
+        service.load_law(impl_v2025).unwrap();
+        service.load_law(impl_v2026).unwrap();
+
+        // Calculate for 2025: should use the 2025 version
+        let result = service
+            .evaluate_law_output("test_higher_law", "result", HashMap::new(), "2025-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(211200)),
+            "2025 calculation should use 2025 version"
+        );
+
+        // Calculate for 2026: should use the 2026 version
+        let result = service
+            .evaluate_law_output("test_higher_law", "result", HashMap::new(), "2026-06-01")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(220000)),
+            "2026 calculation should use 2026 version"
+        );
     }
 }

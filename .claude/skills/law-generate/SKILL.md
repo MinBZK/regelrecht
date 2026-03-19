@@ -34,10 +34,10 @@ working examples in `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
 
 For each article with computable logic, generate the `machine_readable` section.
 
-### Action Format (CRITICAL — three valid patterns)
+### Action Format (CRITICAL — two valid patterns)
 
 Actions are the core of the execution logic. Each action MUST have an `output` field.
-There are **three valid patterns** for specifying what to compute:
+There are **two valid patterns** for specifying what to compute:
 
 **Pattern 1: `value` — for assignments, comparisons, conditionals, and logical ops**
 ```yaml
@@ -63,16 +63,47 @@ actions:
     value: $SOME_DEFINITION
 ```
 
-**Pattern 3: `resolve` — for ministeriele regeling lookups**
+**Pattern 3: Open terms (IoC) — higher law declares, lower regulation fills**
+
+The higher law declares an `open_term` and references it as `$variable`:
 ```yaml
-actions:
-  - output: standaardpremie
-    resolve:
-      type: ministeriele_regeling
-      output: standaardpremie
-      match:
-        output: berekeningsjaar
-        value: $referencedate.year
+# In the higher law (e.g., wet_op_de_zorgtoeslag article 4)
+machine_readable:
+  open_terms:
+    - id: standaardpremie
+      type: amount
+      required: true
+      delegated_to: minister
+      delegation_type: MINISTERIELE_REGELING
+  execution:
+    output:
+      - name: standaardpremie
+        type: amount
+        type_spec:
+          unit: eurocent
+    actions:
+      - output: standaardpremie
+        value: $standaardpremie
+```
+
+The lower regulation registers as implementing it:
+```yaml
+# In the lower regulation (e.g., regeling_standaardpremie article 1)
+machine_readable:
+  implements:
+    - law: zorgtoeslagwet
+      article: '4'
+      open_term: standaardpremie
+      gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
+  execution:
+    output:
+      - name: standaardpremie
+        type: amount
+        type_spec:
+          unit: eurocent
+    actions:
+      - output: standaardpremie
+        value: 211200
 ```
 
 ### Operation Syntax by Category
@@ -180,21 +211,24 @@ input:
       output: vermogen_onder_grens
 ```
 
-For **delegated regulations** (e.g., gemeentelijke verordeningen):
+For **delegated values** (filled by lower regulations via IoC), the higher law
+declares an `open_term` and the engine resolves it automatically:
 ```yaml
-input:
-  - name: verlaging_percentage
-    type: number
-    source:
-      delegation:
-        law_id: participatiewet
-        article: "8"
-        select_on:
-          - name: gemeente_code
-            value: $gemeente_code
-      output: verlaging_percentage
-      parameters:
-        bsn: $bsn
+# Higher law declares the open term
+machine_readable:
+  open_terms:
+    - id: verlaging_percentage
+      type: number
+      required: true
+      delegated_to: gemeenteraad
+      delegation_type: GEMEENTELIJKE_VERORDENING
+  execution:
+    output:
+      - name: verlaging_percentage
+        type: number
+    actions:
+      - output: verlaging_percentage
+        value: $verlaging_percentage
 ```
 
 ### Field Types

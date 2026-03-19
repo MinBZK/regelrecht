@@ -415,6 +415,61 @@ pub async fn create_enrich_corpus(
     Ok(client)
 }
 
+/// Ensure `.claude/skills/` exist in the target repo directory.
+///
+/// If `SKILLS_DIR` is set (default `/opt/skills` in the container image),
+/// symlinks each skill subdirectory into `repo_path/.claude/skills/`.
+/// This makes baked-in skill files available to the LLM subprocess.
+///
+/// No-op when `SKILLS_DIR` doesn't exist (e.g. local development where
+/// skills are already in the working tree).
+pub async fn ensure_skills(repo_path: &Path) -> Result<()> {
+    let skills_source =
+        PathBuf::from(std::env::var("SKILLS_DIR").unwrap_or_else(|_| "/opt/skills".into()));
+    let source_skills_dir = skills_source.join(".claude/skills");
+
+    if !source_skills_dir.exists() {
+        tracing::debug!(
+            path = %source_skills_dir.display(),
+            "skills source directory not found, skipping symlink"
+        );
+        return Ok(());
+    }
+
+    let target_skills_dir = repo_path.join(".claude/skills");
+    tokio::fs::create_dir_all(&target_skills_dir).await?;
+
+    let mut entries = tokio::fs::read_dir(&source_skills_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            let name = entry.file_name();
+            let link_path = target_skills_dir.join(&name);
+            // Remove existing symlink, file, or directory to ensure a clean link.
+            // remove_file handles symlinks and regular files; remove_dir_all
+            // handles real directories left by a previous partial run.
+            if let Ok(meta) = tokio::fs::symlink_metadata(&link_path).await {
+                if meta.is_dir() && !meta.file_type().is_symlink() {
+                    let _ = tokio::fs::remove_dir_all(&link_path).await;
+                } else {
+                    let _ = tokio::fs::remove_file(&link_path).await;
+                }
+            }
+            tokio::fs::symlink(&entry_path, &link_path)
+                .await
+                .map_err(|e| {
+                    PipelineError::Enrich(format!(
+                        "failed to symlink skill {:?} -> {:?}: {e}",
+                        entry_path, link_path
+                    ))
+                })?;
+            tracing::debug!(skill = ?name, "symlinked skill into repo");
+        }
+    }
+
+    Ok(())
+}
+
 /// Known absolute prefixes that may appear in yaml_path values from
 /// older harvest results. Stripped automatically so enrich jobs still work.
 const KNOWN_REPO_PREFIXES: &[&str] = &["/tmp/corpus-repo/", "/tmp/regulation-repo/"];
@@ -532,6 +587,15 @@ pub async fn execute_enrich_with_runner(
     } else {
         0.0
     };
+
+    // If the LLM ran successfully but didn't enrich any articles, treat it as
+    // an error so the job gets retried or marked as failed instead of silently
+    // committing a zero-coverage result.
+    if articles_needing_enrichment > 0 && newly_enriched == 0 {
+        return Err(PipelineError::Enrich(format!(
+            "LLM produced no machine_readable sections ({articles_needing_enrichment} articles needed enrichment)"
+        )));
+    }
 
     // Write enrichment metadata
     let metadata = EnrichmentMetadata {
@@ -1051,5 +1115,52 @@ articles:
             .unwrap_err();
 
         assert!(err.to_string().contains("simulated LLM failure"));
+    }
+
+    /// Runner that succeeds but doesn't modify the file — should fail with
+    /// zero-coverage error.
+    struct NoopLlmRunner;
+
+    #[async_trait::async_trait]
+    impl LlmRunner for NoopLlmRunner {
+        async fn run(
+            &self,
+            _payload: &EnrichPayload,
+            _yaml_abs: &Path,
+            _repo_path: &Path,
+            _config: &EnrichConfig,
+        ) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_enrich_zero_coverage_is_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let law_dir = dir.path().join("regulation/nl/wet/test_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+
+        let yaml_content = "articles:\n  - id: art1\n    name: Article 1\n";
+        let yaml_path = "regulation/nl/wet/test_law/2025-01-01.yaml";
+        tokio::fs::write(dir.path().join(yaml_path), yaml_content)
+            .await
+            .unwrap();
+
+        let payload = EnrichPayload {
+            law_id: "BWBR0000001".into(),
+            yaml_path: yaml_path.into(),
+            provider: None,
+        };
+
+        let config = test_config(LlmProvider::OpenCode {
+            path: "fake".into(),
+            model: None,
+        });
+
+        let err = execute_enrich_with_runner(&payload, dir.path(), &config, &NoopLlmRunner)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("no machine_readable sections"));
     }
 }
