@@ -1,8 +1,8 @@
 #!/bin/sh
 # Generate runtime environment config from platform variables.
-# Placed in /docker-entrypoint.d/ so the nginx base image executes
-# it automatically before starting nginx.
-cat > /usr/share/nginx/html/env-config.js <<EOF
+# Written to /tmp/ because RIG mounts the root filesystem read-only.
+# Nginx serves this file via an alias directive.
+cat > /tmp/env-config.js <<EOF
 window.__ENV = {
   DEPLOYMENT_NAME: "${DEPLOYMENT_NAME:-}",
   COMPONENT_NAME: "${COMPONENT_NAME:-}"
