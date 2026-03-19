@@ -280,7 +280,7 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
       </rr-list-item>
     </rr-list>
 
-    <rr-spacer v-if="produces" size="24"></rr-spacer>
+    <rr-spacer v-if="produces" size="12"></rr-spacer>
 
     <!-- Definities -->
     <template v-if="definitions.length || editable">
@@ -339,7 +339,7 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
           <button class="add-button" @click="addDef">+ Nieuwe definitie</button>
         </rr-list-item>
       </rr-list>
-      <rr-spacer size="24"></rr-spacer>
+      <rr-spacer size="12"></rr-spacer>
     </template>
 
     <!-- Parameters -->
@@ -392,7 +392,7 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
           <button class="add-button" @click="addParam">+ Nieuwe parameter</button>
         </rr-list-item>
       </rr-list>
-      <rr-spacer size="24"></rr-spacer>
+      <rr-spacer size="12"></rr-spacer>
     </template>
 
     <!-- Inputs -->
@@ -449,7 +449,7 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
           <button class="add-button" @click="addInput">+ Nieuwe input</button>
         </rr-list-item>
       </rr-list>
-      <rr-spacer size="24"></rr-spacer>
+      <rr-spacer size="12"></rr-spacer>
     </template>
 
     <!-- Outputs -->
@@ -498,7 +498,7 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
           <button class="add-button" @click="addOutput">+ Nieuwe output</button>
         </rr-list-item>
       </rr-list>
-      <rr-spacer size="24"></rr-spacer>
+      <rr-spacer size="12"></rr-spacer>
     </template>
 
     <!-- Acties -->
@@ -512,7 +512,7 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
           </rr-button-cell>
         </rr-list-item>
       </rr-list>
-      <rr-spacer size="32"></rr-spacer>
+      <rr-spacer size="12"></rr-spacer>
     </template>
   </template>
 </template>
@@ -521,17 +521,17 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
 .machine-section-title {
   font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
   font-weight: 550;
-  font-size: 20px;
-  line-height: 1.4;
+  font-size: 16px;
+  line-height: 1.3;
   color: var(--semantics-text-primary-color, #333B44);
-  margin: 0 0 8px 0;
+  margin: 0 0 4px 0;
 }
 rr-list-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
-  min-height: 44px;
+  padding: 6px 12px;
+  min-height: 36px;
 }
 rr-list[variant="box"] rr-list-item + rr-list-item {
   border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
