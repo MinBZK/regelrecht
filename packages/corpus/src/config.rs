@@ -207,12 +207,18 @@ mod tests {
 
     #[test]
     fn resolve_branch_ignores_production_deployment() {
-        assert_eq!(resolve_branch(None, Some("regelrecht".into())), "development");
+        assert_eq!(
+            resolve_branch(None, Some("regelrecht".into())),
+            "development"
+        );
     }
 
     #[test]
     fn resolve_branch_ignores_empty_values() {
-        assert_eq!(resolve_branch(Some("".into()), Some("".into())), "development");
+        assert_eq!(
+            resolve_branch(Some("".into()), Some("".into())),
+            "development"
+        );
     }
 
     #[test]
