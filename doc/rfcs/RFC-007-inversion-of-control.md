@@ -61,6 +61,18 @@ machine_readable:
 11. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a gemeente verordening tries to implement a term delegated to a minister, the engine rejects it with a clear error
 12. **Array size validation**: `open_terms` and `implements` arrays are validated against `MAX_ARRAY_SIZE` at law load time, preventing resource exhaustion
 
+### Temporal model for open term resolution
+
+Temporal filtering is critical for correctness when multiple versions of an implementing regulation are loaded (e.g., the 2024 and 2025 standaardpremie). The mechanism works at two levels:
+
+**Same `$id`, multiple versions.** The resolver stores multiple versions of the same law (keyed by `$id`), sorted newest-first. `get_law_for_date` filters these by `valid_from <= calculation_date` and returns the most recent valid version. So for a 2025-01-15 calculation with both `regeling_standaardpremie` versions loaded, the 2025 version is selected. A 2026 version with `valid_from: 2026-01-01` would be excluded because `2026-01-01 <= 2025-01-15` is false.
+
+**Different `$id`s implementing the same term.** If two separate law IDs both declare `implements` for the same open term, the `implements_index` contains entries for both. At resolution time, `find_implementations` calls `get_law_for_date` for each candidate independently — so a future-dated law is excluded before it ever reaches priority resolution.
+
+**Invariant: `valid_from` must be present on implementing regulations.** The temporal filter uses `is_none_or`, meaning a regulation *without* `valid_from` passes the date check unconditionally — it matches every calculation date. This is by design for laws where the effective date is unknown, but for implementing regulations it undermines temporal correctness. Law authors must ensure that every regulation with an `implements` declaration has an explicit `valid_from` date. The schema does not enforce this (since `valid_from` is optional for other use cases), so this is a convention that must be maintained through review.
+
+**Why not filter in the index?** The `implements_index` is built at load time and is date-independent — it records *all* implementing relationships across all loaded versions. Temporal filtering happens at query time in `find_implementations`, which is the correct place because the calculation date is only known at execution time.
+
 ### Same-law routing via `source.output`
 
 When multiple articles in the same law need an open term value, only one article should declare the `open_terms` and serve as the single point of delegation. Other articles reference it via `source.output` (without `source.regulation`):
