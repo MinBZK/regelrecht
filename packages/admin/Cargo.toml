@@ -29,7 +29,7 @@ regex = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 openidconnect = "4.0"
-tower-sessions = "0.14"
+tower-sessions = "0.15"
 tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tower = "0.5"
