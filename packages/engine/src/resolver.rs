@@ -1225,16 +1225,21 @@ articles:
     }
 
     #[test]
-    fn test_resolver_load_from_directory() {
-        let regulation_path = std::env::var("REGULATION_PATH")
+    fn get_regulation_path() -> std::path::PathBuf {
+        std::env::var("REGULATION_PATH")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|_| {
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("..")
                     .join("..")
+                    .join("corpus")
+                    .join("central")
                     .join("regulation")
             })
-            .join("nl");
+    }
+
+    fn test_resolver_load_from_directory() {
+        let regulation_path = get_regulation_path().join("nl");
 
         let mut resolver = RuleResolver::new();
         let count = resolver.load_from_directory(&regulation_path).unwrap();

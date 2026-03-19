@@ -1530,6 +1530,8 @@ articles:
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                         .join("..")
                         .join("..")
+                        .join("corpus")
+                        .join("central")
                         .join("regulation")
                 })
         }
