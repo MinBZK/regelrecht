@@ -12,6 +12,5 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:alpine
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --chown=nginx:nginx --from=builder /app/dist /usr/share/nginx/html
-COPY --chmod=755 frontend/docker-entrypoint.sh /docker-entrypoint.sh
+COPY --chmod=755 frontend/docker-entrypoint.sh /docker-entrypoint.d/20-env-config.sh
 EXPOSE 8000
-CMD ["/docker-entrypoint.sh"]
