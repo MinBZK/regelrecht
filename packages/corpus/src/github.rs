@@ -273,7 +273,6 @@ mod inner {
             self.rate_limit_remaining
         }
     }
-
 }
 
 #[cfg(feature = "github")]
