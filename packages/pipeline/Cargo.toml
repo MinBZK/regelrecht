@@ -38,8 +38,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-testcontainers = "0.24"
-testcontainers-modules = { version = "0.12", features = ["postgres"] }
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 pretty_assertions = "1.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
 tempfile = "3"
