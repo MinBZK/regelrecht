@@ -251,12 +251,22 @@ describe('MachineReadable', () => {
   });
 
   describe('non-editable mode', () => {
-    it('does not emit open-edit when editable is false', async () => {
+    it('only shows Bewerk button for actions when editable is false', () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: false },
+      });
+      const buttons = findBewerkButtons(wrapper);
+      // Only the action Bewerk button is rendered
+      expect(buttons.length).toBe(1);
+    });
+
+    it('action Bewerk emits open-action even when not editable', async () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
       const buttons = findBewerkButtons(wrapper);
       await buttons[0].trigger('click');
+      expect(wrapper.emitted('open-action')).toHaveLength(1);
       expect(wrapper.emitted('open-edit')).toBeUndefined();
     });
   });

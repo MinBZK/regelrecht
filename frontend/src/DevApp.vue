@@ -21,6 +21,7 @@ const dumpOpts = { lineWidth: 80, noRefs: true };
 // Initialize from article
 watch(selectedArticle, (article) => {
   activeAction.value = null;
+  activeEditItem.value = null;
   const mr = article?.machine_readable;
   machineReadable.value = mr ? JSON.parse(JSON.stringify(mr)) : null;
   yamlSource.value = mr ? yaml.dump(mr, dumpOpts) : '';
@@ -47,8 +48,8 @@ function onYamlInput(event) {
 
 // Right-panel save → update model → re-dump YAML
 function handleSave({ section, key, newKey, index, data }) {
-  const mr = machineReadable.value;
-  if (!mr) return;
+  if (!machineReadable.value) return;
+  const mr = JSON.parse(JSON.stringify(machineReadable.value));
 
   // Ensure structure exists for adds
   if (!mr.definitions) mr.definitions = {};
@@ -79,7 +80,7 @@ function handleSave({ section, key, newKey, index, data }) {
   }
 
   // Trigger reactivity + sync YAML
-  machineReadable.value = JSON.parse(JSON.stringify(mr));
+  machineReadable.value = mr;
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
 }

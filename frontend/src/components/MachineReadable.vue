@@ -53,7 +53,7 @@ function formatValue(val, unit) {
     if (unit === 'eurocent') {
       return (val / 100).toLocaleString('nl-NL', { style: 'currency', currency: 'EUR' });
     }
-    if (val > 0 && val < 1) {
+    if (val > 0 && val < 1 && !unit) {
       return (val * 100).toLocaleString('nl-NL', { maximumFractionDigits: 3 }) + '%';
     }
   }
@@ -63,7 +63,7 @@ function formatValue(val, unit) {
 // Open edit sheet for existing items
 function editDef(name) {
   const rawDef = mr.value?.definitions?.[name];
-  emit('open-edit', { section: 'definition', key: name, rawDef });
+  emit('open-edit', { section: 'definition', key: name, rawDef: JSON.parse(JSON.stringify(rawDef)) });
 }
 
 function editParam(index) {
@@ -100,11 +100,11 @@ function addOutput() {
 </script>
 
 <template>
-  <div v-if="!mr" style="padding: 32px; color: #999; text-align: center;">
+  <div v-if="!mr" class="machine-readable" style="padding: 32px; color: #999; text-align: center;">
     Geen machine-leesbare gegevens voor dit artikel
   </div>
 
-  <template v-else>
+  <div v-else class="machine-readable">
     <!-- Metadata: produces -->
     <rr-list v-if="produces" variant="box">
       <rr-list-item v-if="produces.legal_character" size="md">
@@ -135,8 +135,8 @@ function addOutput() {
       <rr-list variant="box">
         <rr-list-item v-for="def in definitions" :key="def.name" size="md">
           <rr-text-cell>{{ def.name }} = {{ formatValue(def.value, def.unit) }}</rr-text-cell>
-          <rr-button-cell slot="end">
-            <rr-button variant="neutral-tinted" size="sm" @click="editable && editDef(def.name)">Bewerk</rr-button>
+          <rr-button-cell v-if="editable" slot="end">
+            <rr-button variant="neutral-tinted" size="sm" @click="editDef(def.name)">Bewerk</rr-button>
           </rr-button-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
@@ -152,8 +152,8 @@ function addOutput() {
       <rr-list variant="box">
         <rr-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
           <rr-text-cell>{{ param.name }} ({{ param.type }})</rr-text-cell>
-          <rr-button-cell slot="end">
-            <rr-button variant="neutral-tinted" size="sm" @click="editable && editParam(index)">Bewerk</rr-button>
+          <rr-button-cell v-if="editable" slot="end">
+            <rr-button variant="neutral-tinted" size="sm" @click="editParam(index)">Bewerk</rr-button>
           </rr-button-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
@@ -169,8 +169,8 @@ function addOutput() {
       <rr-list variant="box">
         <rr-list-item v-for="(input, index) in inputs" :key="input.name" size="md">
           <rr-text-cell>{{ input.name }} ({{ input.type }})<template v-if="input.source"> — {{ input.source }}</template></rr-text-cell>
-          <rr-button-cell slot="end">
-            <rr-button variant="neutral-tinted" size="sm" @click="editable && editInput(index)">Bewerk</rr-button>
+          <rr-button-cell v-if="editable" slot="end">
+            <rr-button variant="neutral-tinted" size="sm" @click="editInput(index)">Bewerk</rr-button>
           </rr-button-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
@@ -186,8 +186,8 @@ function addOutput() {
       <rr-list variant="box">
         <rr-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
           <rr-text-cell>{{ output.name }} ({{ output.type }})</rr-text-cell>
-          <rr-button-cell slot="end">
-            <rr-button variant="neutral-tinted" size="sm" @click="editable && editOutput(index)">Bewerk</rr-button>
+          <rr-button-cell v-if="editable" slot="end">
+            <rr-button variant="neutral-tinted" size="sm" @click="editOutput(index)">Bewerk</rr-button>
           </rr-button-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
@@ -210,7 +210,7 @@ function addOutput() {
       </rr-list>
       <rr-spacer size="12"></rr-spacer>
     </template>
-  </template>
+  </div>
 </template>
 
 <style>
@@ -222,14 +222,14 @@ function addOutput() {
   color: var(--semantics-text-primary-color, #333B44);
   margin: 0 0 4px 0;
 }
-rr-list-item {
+.machine-readable rr-list-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
   min-height: 36px;
 }
-rr-list[variant="box"] rr-list-item + rr-list-item {
+.machine-readable rr-list[variant="box"] rr-list-item + rr-list-item {
   border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 .add-button {

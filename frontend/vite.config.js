@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 export default defineConfig({
   root: '.',
   plugins: [
@@ -26,7 +28,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         editor: resolve(__dirname, 'editor.html'),
-        dev: resolve(__dirname, 'dev.html'),
+        ...(isDev ? { dev: resolve(__dirname, 'dev.html') } : {}),
       },
     },
   },
