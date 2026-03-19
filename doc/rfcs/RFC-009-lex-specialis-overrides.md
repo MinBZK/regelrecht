@@ -4,6 +4,8 @@
 **Date:** 2026-03-16
 **Authors:** Eelco Hotting
 
+> **Note:** This RFC is under active research and may change significantly. The interaction between overrides, hooks (RFC-008), and temporal computation (RFC-011) is being explored. See the [bezwaartermijn chain analysis](../analysis/bezwaartermijn-chain-analysis.md) for the current design exploration.
+
 ## Context
 
 Dutch law follows the principle of *lex specialis derogat legi generali*: a more specific law prevails over a more general one. This is an unwritten legal principle; the general law does not need to grant permission.
