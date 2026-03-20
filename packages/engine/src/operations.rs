@@ -72,6 +72,11 @@ pub trait ValueResolver {
     /// Set message on current trace node. No-op by default.
     fn trace_set_message(&self, _msg: String) {}
 
+    /// Get message from current trace node. Returns None by default.
+    fn trace_get_message(&self) -> Option<String> {
+        None
+    }
+
     /// Check if tracing is active. Returns false by default.
     fn has_trace(&self) -> bool {
         false
@@ -134,11 +139,27 @@ pub fn execute_operation<R: ValueResolver>(
         match &result {
             Ok(value) => {
                 resolver.trace_set_result(value.clone());
-                resolver.trace_set_message(format!(
-                    "Compute {}(...) = {}",
-                    op_name,
-                    format_value_for_trace(value)
-                ));
+                // For IF, execute_if already set a message with branch info;
+                // incorporate it instead of overwriting.
+                let existing_msg = resolver.trace_get_message();
+                let msg = if op.operation == Operation::If {
+                    if let Some(branch) = existing_msg {
+                        format!("IF({}) = {}", branch, format_value_for_trace(value))
+                    } else {
+                        format!(
+                            "Compute {}(...) = {}",
+                            op_name,
+                            format_value_for_trace(value)
+                        )
+                    }
+                } else {
+                    format!(
+                        "Compute {}(...) = {}",
+                        op_name,
+                        format_value_for_trace(value)
+                    )
+                };
+                resolver.trace_set_message(msg);
             }
             Err(e) => {
                 resolver.trace_set_message(format!("Error in {}: {}", op_name, e));
@@ -609,24 +630,44 @@ fn execute_if<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize
         .as_ref()
         .ok_or_else(|| EngineError::InvalidOperation("IF requires 'then'".to_string()))?;
 
+    let tracing = resolver.has_trace();
+
+    // Wrap condition evaluation in a WHEN label node
+    if tracing {
+        resolver.trace_push("WHEN", PathNodeType::Operation);
+    }
     let condition_result = evaluate_value(when, resolver, depth)?;
+    if tracing {
+        resolver.trace_set_result(condition_result.clone());
+        resolver.trace_set_message(format!(
+            "WHEN: {}",
+            format_value_for_trace(&condition_result)
+        ));
+        resolver.trace_pop();
+    }
 
     if condition_result.to_bool() {
+        if tracing {
+            resolver.trace_push("THEN", PathNodeType::Operation);
+        }
         let result = evaluate_value(then, resolver, depth)?;
-        if resolver.has_trace() {
-            resolver.trace_set_message(format!(
-                "THEN condition: {}",
-                format_value_for_trace(&result)
-            ));
+        if tracing {
+            resolver.trace_set_result(result.clone());
+            resolver.trace_set_message(format!("THEN: {}", format_value_for_trace(&result)));
+            resolver.trace_pop();
+            resolver.trace_set_message("took THEN".to_string());
         }
         Ok(result)
     } else if let Some(else_branch) = &op.else_branch {
+        if tracing {
+            resolver.trace_push("ELSE", PathNodeType::Operation);
+        }
         let result = evaluate_value(else_branch, resolver, depth)?;
-        if resolver.has_trace() {
-            resolver.trace_set_message(format!(
-                "ELSE condition: {}",
-                format_value_for_trace(&result)
-            ));
+        if tracing {
+            resolver.trace_set_result(result.clone());
+            resolver.trace_set_message(format!("ELSE: {}", format_value_for_trace(&result)));
+            resolver.trace_pop();
+            resolver.trace_set_message("took ELSE".to_string());
         }
         Ok(result)
     } else {
