@@ -14,6 +14,13 @@ pub struct CorpusRegistry {
 }
 
 impl CorpusRegistry {
+    /// Create an empty registry (for tests that don't need corpus).
+    pub fn empty() -> Self {
+        Self {
+            sources: Vec::new(),
+        }
+    }
+
     /// Load the registry from a manifest file, optionally merging a local override.
     ///
     /// The local override file replaces sources with the same `id` entirely.

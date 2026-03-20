@@ -639,6 +639,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             end_session_url: end_session_url.map(String::from),
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
+            corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }
 
@@ -656,6 +657,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             end_session_url: None,
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
+            corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }
 

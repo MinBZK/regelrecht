@@ -1,8 +1,8 @@
 ---
-schema_version: "1.0"
+schema_version: '1.0'
 sources:
   - id: local
-    name: "Local Test Corpus"
+    name: Local Test Corpus
     type: local
     local:
       path: corpus/regulation/nl

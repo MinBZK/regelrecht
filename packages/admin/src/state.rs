@@ -24,3 +24,14 @@ pub struct CorpusState {
     pub registry: regelrecht_corpus::CorpusRegistry,
     pub source_map: SourceMap,
 }
+
+impl CorpusState {
+    /// Create an empty corpus state (used by tests).
+    #[allow(dead_code)]
+    pub fn empty() -> Self {
+        Self {
+            registry: regelrecht_corpus::CorpusRegistry::empty(),
+            source_map: SourceMap::new(),
+        }
+    }
+}
