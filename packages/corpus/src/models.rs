@@ -18,6 +18,9 @@ pub struct Source {
     /// Priority value. Lower value = higher priority.
     /// The central corpus uses priority 1.
     pub priority: u32,
+    /// Reference to auth configuration. When absent, source is public.
+    #[serde(default)]
+    pub auth_ref: Option<String>,
 }
 
 /// Source type discriminator with configuration.
@@ -43,7 +46,9 @@ pub struct LocalSource {
 /// Configuration for a GitHub repository source.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubSource {
-    /// GitHub repository in `owner/repo` format.
+    /// GitHub repository owner (organization or user).
+    pub owner: String,
+    /// GitHub repository name.
     pub repo: String,
     /// Branch to read from.
     #[serde(default = "default_branch")]
@@ -51,6 +56,22 @@ pub struct GitHubSource {
     /// Path within the repository to the regulation directory.
     #[serde(default)]
     pub path: Option<String>,
+    /// Optional Git ref (tag, branch, or commit SHA) for pinning.
+    /// When set, overrides `branch` for fetching.
+    #[serde(default, rename = "ref")]
+    pub git_ref: Option<String>,
+}
+
+impl GitHubSource {
+    /// Returns the `owner/repo` string for GitHub API calls.
+    pub fn full_repo(&self) -> String {
+        format!("{}/{}", self.owner, self.repo)
+    }
+
+    /// Returns the effective ref to fetch: `git_ref` if set, otherwise `branch`.
+    pub fn effective_ref(&self) -> &str {
+        self.git_ref.as_deref().unwrap_or(&self.branch)
+    }
 }
 
 fn default_branch() -> String {
@@ -60,11 +81,11 @@ fn default_branch() -> String {
 /// Jurisdictional scope definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scope {
-    /// Scope type (e.g., "gemeente", "provincie", "waterschap").
+    /// Scope type (e.g., "gemeente_code", "provincie_code", "waterschap_code").
     #[serde(rename = "type")]
     pub scope_type: String,
-    /// Scope code (e.g., "GM0363" for Amsterdam).
-    pub code: String,
+    /// Scope value (e.g., "GM0363" for Amsterdam).
+    pub value: String,
 }
 
 /// Top-level corpus registry manifest.
@@ -118,26 +139,57 @@ sources:
     name: "Gemeente Amsterdam"
     type: github
     github:
-      repo: amsterdam/regelrecht-corpus
+      owner: gemeente-amsterdam
+      repo: regelrecht-amsterdam
       branch: main
       path: regulation/nl
     scopes:
-      - type: gemeente
-        code: GM0363
+      - type: gemeente_code
+        value: GM0363
     priority: 10
+    auth_ref: amsterdam
 "#;
         let manifest: RegistryManifest = serde_yaml::from_str(yaml).unwrap();
         let source = &manifest.sources[0];
         assert_eq!(source.id, "amsterdam");
         assert_eq!(source.priority, 10);
         assert_eq!(source.scopes.len(), 1);
-        assert_eq!(source.scopes[0].code, "GM0363");
+        assert_eq!(source.scopes[0].value, "GM0363");
+        assert_eq!(source.auth_ref.as_deref(), Some("amsterdam"));
 
         match &source.source_type {
             SourceType::GitHub { github } => {
-                assert_eq!(github.repo, "amsterdam/regelrecht-corpus");
+                assert_eq!(github.owner, "gemeente-amsterdam");
+                assert_eq!(github.repo, "regelrecht-amsterdam");
+                assert_eq!(github.full_repo(), "gemeente-amsterdam/regelrecht-amsterdam");
                 assert_eq!(github.branch, "main");
                 assert_eq!(github.path, Some("regulation/nl".to_string()));
+                assert_eq!(github.effective_ref(), "main"); // no ref set, falls back to branch
+            }
+            _ => panic!("Expected GitHub source type"),
+        }
+    }
+
+    #[test]
+    fn test_github_source_with_ref() {
+        let yaml = r#"
+schema_version: "1.0"
+sources:
+  - id: pinned
+    name: "Pinned Source"
+    type: github
+    github:
+      owner: MinBZK
+      repo: regelrecht-corpus
+      branch: main
+      ref: v2025.1
+    priority: 1
+"#;
+        let manifest: RegistryManifest = serde_yaml::from_str(yaml).unwrap();
+        match &manifest.sources[0].source_type {
+            SourceType::GitHub { github } => {
+                assert_eq!(github.git_ref.as_deref(), Some("v2025.1"));
+                assert_eq!(github.effective_ref(), "v2025.1");
             }
             _ => panic!("Expected GitHub source type"),
         }
@@ -157,6 +209,7 @@ sources:
                 },
                 scopes: vec![],
                 priority: 5,
+                auth_ref: None,
             }],
         };
 

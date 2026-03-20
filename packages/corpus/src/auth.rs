@@ -17,8 +17,27 @@ pub struct SourceAuth {
 
 /// Look up a GitHub token for a source.
 ///
+/// Uses `auth_ref` as the lookup key when provided, otherwise falls back
+/// to `source_id`. This matches the RFC-010 design where `auth_ref` in the
+/// manifest references an entry in the auth config.
+///
 /// Resolution order:
-/// 1. Environment variable `CORPUS_AUTH_{ID}_TOKEN` (uppercased, hyphens → underscores)
+/// 1. Environment variable `CORPUS_AUTH_{KEY}_TOKEN` (uppercased, hyphens → underscores)
+/// 2. `corpus-auth.yaml` file (if it exists)
+/// 3. None (unauthenticated, lower rate limits)
+pub fn resolve_token_for_source(
+    source_id: &str,
+    auth_ref: Option<&str>,
+    auth_file: Option<&Path>,
+) -> Result<Option<String>> {
+    let key = auth_ref.unwrap_or(source_id);
+    resolve_token(key, auth_file)
+}
+
+/// Look up a GitHub token by key.
+///
+/// Resolution order:
+/// 1. Environment variable `CORPUS_AUTH_{KEY}_TOKEN` (uppercased, hyphens → underscores)
 /// 2. `corpus-auth.yaml` file (if it exists)
 /// 3. None (unauthenticated, lower rate limits)
 pub fn resolve_token(source_id: &str, auth_file: Option<&Path>) -> Result<Option<String>> {

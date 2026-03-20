@@ -82,7 +82,7 @@ mod inner {
 
             // Step 1: Get the tree to find all YAML files
             let yaml_paths = match self
-                .list_yaml_files(&source.repo, &source.branch, base_path, token)
+                .list_yaml_files(&source.full_repo(), source.effective_ref(), base_path, token)
                 .await?
             {
                 Some(paths) => paths,
@@ -97,7 +97,7 @@ mod inner {
             let mut files = Vec::new();
             for path in &yaml_paths {
                 match self
-                    .fetch_file_content(&source.repo, &source.branch, path, token)
+                    .fetch_file_content(&source.full_repo(), source.effective_ref(), path, token)
                     .await
                 {
                     Ok(content) => {

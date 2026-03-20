@@ -26,6 +26,7 @@ fn make_local_source(id: &str, name: &str, path: PathBuf, priority: u32) -> Sour
         },
         scopes: vec![],
         priority,
+        auth_ref: None,
     }
 }
 

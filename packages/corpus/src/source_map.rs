@@ -263,6 +263,7 @@ mod tests {
             },
             scopes: vec![],
             priority,
+            auth_ref: None,
         }
     }
 

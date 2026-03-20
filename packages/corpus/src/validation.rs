@@ -42,7 +42,7 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
                     expected_scopes: source
                         .scopes
                         .iter()
-                        .map(|s| format!("{}:{}", s.scope_type, s.code))
+                        .map(|s| format!("{}:{}", s.scope_type, s.value))
                         .collect(),
                     actual_gemeente_code: gemeente_code.clone(),
                     message: format!(
@@ -50,7 +50,7 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
                         law.law_id,
                         source.id,
                         code,
-                        source.scopes.iter().map(|s| &s.code).collect::<Vec<_>>()
+                        source.scopes.iter().map(|s| &s.value).collect::<Vec<_>>()
                     ),
                 });
             }
@@ -68,7 +68,7 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
 fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
     let gemeente_scopes: Vec<_> = scopes
         .iter()
-        .filter(|s| s.scope_type == "gemeente")
+        .filter(|s| s.scope_type == "gemeente_code")
         .collect();
 
     // If the source has no gemeente scopes, we cannot validate by
@@ -79,7 +79,7 @@ fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
 
     gemeente_scopes
         .iter()
-        .any(|scope| scope.code == gemeente_code)
+        .any(|scope| scope.value == gemeente_code)
 }
 
 /// Extract top-level gemeente_code from YAML content using line-based parsing.
@@ -121,6 +121,7 @@ mod tests {
             },
             scopes,
             priority,
+            auth_ref: None,
         }
     }
 
@@ -157,8 +158,8 @@ mod tests {
             "amsterdam",
             dir.path(),
             vec![Scope {
-                scope_type: "gemeente".to_string(),
-                code: "GM0363".to_string(),
+                scope_type: "gemeente_code".to_string(),
+                value: "GM0363".to_string(),
             }],
             10,
         );
@@ -180,8 +181,8 @@ mod tests {
             "amsterdam",
             dir.path(),
             vec![Scope {
-                scope_type: "gemeente".to_string(),
-                code: "GM0363".to_string(),
+                scope_type: "gemeente_code".to_string(),
+                value: "GM0363".to_string(),
             }],
             10,
         );
@@ -219,8 +220,8 @@ mod tests {
             "amsterdam",
             dir.path(),
             vec![Scope {
-                scope_type: "gemeente".to_string(),
-                code: "GM0363".to_string(),
+                scope_type: "gemeente_code".to_string(),
+                value: "GM0363".to_string(),
             }],
             10,
         );
