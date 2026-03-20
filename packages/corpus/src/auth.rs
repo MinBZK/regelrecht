@@ -9,10 +9,19 @@ pub struct AuthConfig {
 }
 
 /// Auth entry for a single source.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 pub struct SourceAuth {
     pub id: String,
     pub token: String,
+}
+
+impl std::fmt::Debug for SourceAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SourceAuth")
+            .field("id", &self.id)
+            .field("token", &"***")
+            .finish()
+    }
 }
 
 /// Look up a GitHub token for a source.

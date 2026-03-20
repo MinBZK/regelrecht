@@ -141,19 +141,27 @@ pub async fn sync_source(
         ));
     }
 
-    // Reload: remove old laws, load fresh. Rollback on failure.
-    let snapshot: Vec<_> = corpus
+    // Reload: snapshot laws + conflicts, remove, reload. Rollback on failure.
+    let law_snapshot: Vec<_> = corpus
         .source_map
         .laws()
         .filter(|l| l.source_id == source_id)
         .cloned()
         .collect();
+    let conflict_snapshot: Vec<_> = corpus
+        .source_map
+        .resolved_conflicts()
+        .iter()
+        .filter(|c| c.winner_source_id == source_id || c.loser_source_id == source_id)
+        .cloned()
+        .collect();
     corpus.source_map.remove_source(&source_id);
     if let Err(e) = corpus.source_map.load_source(&source) {
-        // Restore snapshot on failure
-        for law in snapshot {
+        // Restore snapshot on failure (laws + conflict records)
+        for law in law_snapshot {
             corpus.source_map.restore_law(law);
         }
+        corpus.source_map.restore_conflicts(conflict_snapshot);
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to reload source '{}': {}", source_id, e),

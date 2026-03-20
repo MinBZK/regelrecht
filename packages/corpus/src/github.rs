@@ -59,6 +59,8 @@ mod inner {
         pub fn new() -> Result<Self> {
             let client = reqwest::Client::builder()
                 .user_agent("regelrecht-corpus/0.1")
+                .connect_timeout(std::time::Duration::from_secs(30))
+                .timeout(std::time::Duration::from_secs(60))
                 .build()
                 .map_err(|e| CorpusError::Config(format!("Failed to create HTTP client: {}", e)))?;
 

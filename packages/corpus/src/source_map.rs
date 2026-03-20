@@ -233,6 +233,11 @@ impl SourceMap {
         self.laws.insert(law.law_id.clone(), law);
     }
 
+    /// Restore previously removed conflict records (for rollback).
+    pub fn restore_conflicts(&mut self, conflicts: Vec<ConflictResolution>) {
+        self.resolved_conflicts.extend(conflicts);
+    }
+
     /// Get all conflict resolutions that occurred during loading.
     pub fn resolved_conflicts(&self) -> &[ConflictResolution] {
         &self.resolved_conflicts
