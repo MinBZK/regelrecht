@@ -630,18 +630,44 @@ fn execute_if<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize
         .as_ref()
         .ok_or_else(|| EngineError::InvalidOperation("IF requires 'then'".to_string()))?;
 
+    let tracing = resolver.has_trace();
+
+    // Wrap condition evaluation in a WHEN label node
+    if tracing {
+        resolver.trace_push("WHEN", PathNodeType::Operation);
+    }
     let condition_result = evaluate_value(when, resolver, depth)?;
+    if tracing {
+        resolver.trace_set_result(condition_result.clone());
+        resolver.trace_set_message(format!(
+            "WHEN: {}",
+            format_value_for_trace(&condition_result)
+        ));
+        resolver.trace_pop();
+    }
 
     if condition_result.to_bool() {
+        if tracing {
+            resolver.trace_push("THEN", PathNodeType::Operation);
+        }
         let result = evaluate_value(then, resolver, depth)?;
-        if resolver.has_trace() {
-            resolver.trace_set_message("when: True, took then".to_string());
+        if tracing {
+            resolver.trace_set_result(result.clone());
+            resolver.trace_set_message(format!("THEN: {}", format_value_for_trace(&result)));
+            resolver.trace_pop();
+            resolver.trace_set_message("took THEN".to_string());
         }
         Ok(result)
     } else if let Some(else_branch) = &op.else_branch {
+        if tracing {
+            resolver.trace_push("ELSE", PathNodeType::Operation);
+        }
         let result = evaluate_value(else_branch, resolver, depth)?;
-        if resolver.has_trace() {
-            resolver.trace_set_message("when: False, took else".to_string());
+        if tracing {
+            resolver.trace_set_result(result.clone());
+            resolver.trace_set_message(format!("ELSE: {}", format_value_for_trace(&result)));
+            resolver.trace_pop();
+            resolver.trace_set_message("took ELSE".to_string());
         }
         Ok(result)
     } else {

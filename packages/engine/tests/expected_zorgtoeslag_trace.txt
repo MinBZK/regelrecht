@@ -102,15 +102,19 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   ║   ║   │       │   ├──Resolving from PARAMETERS: $BELEGGINGEN = 0
 ║   ║   ║   ║   ║   │       │   └──Resolving from PARAMETERS: $ONROEREND_GOED = 0
 ║   ║   ║   ║   ║   │       ├──Resolving from PARAMETERS: $SCHULDEN = 0
-║   ║   ║   ║   ║   │       └──IF(when: False, took else) = 5768400
-║   ║   ║   ║   ║   │           ├──Compute EQUALS(...) = False
-║   ║   ║   ║   ║   │           │   └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   ║   ║   ║   │           └──Resolving from DEFINITION: $HEFFINGSVRIJE_VOET_ALLEENSTAAND = 5768400
+║   ║   ║   ║   ║   │       └──IF(took ELSE) = 5768400
+║   ║   ║   ║   ║   │           ├──WHEN: False
+║   ║   ║   ║   ║   │           │   └──Compute EQUALS(...) = False
+║   ║   ║   ║   ║   │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   ║   ║   ║   │           └──ELSE: 5768400
+║   ║   ║   ║   ║   │               └──Resolving from DEFINITION: $HEFFINGSVRIJE_VOET_ALLEENSTAAND = 5768400
 ║   ║   ║   ║   ║   └──Result: box3_bezittingen = 0
 ║   ║   ║   ║   ╙──Computing box3_inkomen
-║   ║   ║   ║       ├──IF(when: False, took else) = 0
-║   ║   ║   ║       │   └──Compute GREATERTHAN(...) = False
-║   ║   ║   ║       │       └──Resolving from OUTPUT: $RENDEMENTSGRONDSLAG = 0
+║   ║   ║   ║       ├──IF(took ELSE) = 0
+║   ║   ║   ║       │   ├──WHEN: False
+║   ║   ║   ║       │   │   └──Compute GREATERTHAN(...) = False
+║   ║   ║   ║       │   │       └──Resolving from OUTPUT: $RENDEMENTSGRONDSLAG = 0
+║   ║   ║   ║       │   └──ELSE: 0
 ║   ║   ║   ║       └──Result: box3_inkomen = 0
 ║   ║   ║   ╙──Computing toetsingsinkomen
 ║   ║   ║       ├──Compute ADD(...) = 79547
@@ -157,15 +161,19 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ║   │       │   ├──Resolving from PARAMETERS: $BELEGGINGEN = 0
 ║   ║   ║   │       │   └──Resolving from PARAMETERS: $ONROEREND_GOED = 0
 ║   ║   ║   │       ├──Resolving from PARAMETERS: $SCHULDEN = 0
-║   ║   ║   │       └──IF(when: False, took else) = 5768400
-║   ║   ║   │           ├──Compute EQUALS(...) = False
-║   ║   ║   │           │   └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   ║   │           └──Resolving from DEFINITION: $HEFFINGSVRIJE_VOET_ALLEENSTAAND = 5768400
+║   ║   ║   │       └──IF(took ELSE) = 5768400
+║   ║   ║   │           ├──WHEN: False
+║   ║   ║   │           │   └──Compute EQUALS(...) = False
+║   ║   ║   │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   ║   │           └──ELSE: 5768400
+║   ║   ║   │               └──Resolving from DEFINITION: $HEFFINGSVRIJE_VOET_ALLEENSTAAND = 5768400
 ║   ║   ║   └──Result: box3_bezittingen = 0
 ║   ║   ╙──Computing box3_inkomen
-║   ║       ├──IF(when: False, took else) = 0
-║   ║       │   └──Compute GREATERTHAN(...) = False
-║   ║       │       └──Resolving from OUTPUT: $RENDEMENTSGRONDSLAG = 0
+║   ║       ├──IF(took ELSE) = 0
+║   ║       │   ├──WHEN: False
+║   ║       │   │   └──Compute GREATERTHAN(...) = False
+║   ║       │   │       └──Resolving from OUTPUT: $RENDEMENTSGRONDSLAG = 0
+║   ║       │   └──ELSE: 0
 ║   ║       └──Result: box3_inkomen = 0
 ║   ╟──URI call: algemene_wet_inkomensafhankelijke_regelingen#heeft_toeslagpartner
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
@@ -173,37 +181,49 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ╟──Computing vermogen_onder_grens
 ║   ║   ├──Compute LESSTHANOREQUAL(...) = True
 ║   ║   │   ├──Resolving from PARAMETERS: $VERMOGEN = 0
-║   ║   │   └──IF(when: False, took else) = 14189600
-║   ║   │       ├──Compute EQUALS(...) = False
-║   ║   │       │   └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │       └──Resolving from DEFINITION: $VERMOGENSGRENS_ALLEENSTAAND = 14189600
+║   ║   │   └──IF(took ELSE) = 14189600
+║   ║   │       ├──WHEN: False
+║   ║   │       │   └──Compute EQUALS(...) = False
+║   ║   │       │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │       └──ELSE: 14189600
+║   ║   │           └──Resolving from DEFINITION: $VERMOGENSGRENS_ALLEENSTAAND = 14189600
 ║   ║   └──Result: vermogen_onder_grens = True
 ║   ╟──Computing hoogte_zorgtoeslag
 ║   ║   ├──Compute MAX(...) = 209691.78888
 ║   ║   │   └──Compute SUBTRACT(...) = 209691.78888
-║   ║   │       ├──IF(when: False, took else) = 211200
-║   ║   │       │   ├──Compute EQUALS(...) = False
-║   ║   │       │   │   └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │       │   └──Resolving from PARAMETERS: $STANDAARDPREMIE = 211200
+║   ║   │       ├──IF(took ELSE) = 211200
+║   ║   │       │   ├──WHEN: False
+║   ║   │       │   │   └──Compute EQUALS(...) = False
+║   ║   │       │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │       │   └──ELSE: 211200
+║   ║   │       │       └──Resolving from PARAMETERS: $STANDAARDPREMIE = 211200
 ║   ║   │       └──Compute ADD(...) = 1508.2111200000002
 ║   ║   │           ├──Compute MULTIPLY(...) = 1508.2111200000002
-║   ║   │           │   ├──IF(when: False, took else) = 0.01896
-║   ║   │           │   │   ├──Compute EQUALS(...) = False
-║   ║   │           │   │   │   └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │           │   │   └──Resolving from DEFINITION: $PERCENTAGE_DREMPELINKOMEN_ALLEENSTAANDE = 0.01896
+║   ║   │           │   ├──IF(took ELSE) = 0.01896
+║   ║   │           │   │   ├──WHEN: False
+║   ║   │           │   │   │   └──Compute EQUALS(...) = False
+║   ║   │           │   │   │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │           │   │   └──ELSE: 0.01896
+║   ║   │           │   │       └──Resolving from DEFINITION: $PERCENTAGE_DREMPELINKOMEN_ALLEENSTAANDE = 0.01896
 ║   ║   │           │   └──Compute MIN(...) = 79547
 ║   ║   │           │       ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
-║   ║   │           │       └──IF(when: False, took else) = 3971900
-║   ║   │           │           ├──Compute EQUALS(...) = False
-║   ║   │           │           │   └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │           │           └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
-║   ║   │           └──IF(when: False, took else) = 0
-║   ║   │               └──Compute GREATERTHAN(...) = False
-║   ║   │                   ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
-║   ║   │                   └──IF(when: False, took else) = 3971900
-║   ║   │                       ├──Compute EQUALS(...) = False
-║   ║   │                       │   └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
-║   ║   │                       └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
+║   ║   │           │       └──IF(took ELSE) = 3971900
+║   ║   │           │           ├──WHEN: False
+║   ║   │           │           │   └──Compute EQUALS(...) = False
+║   ║   │           │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │           │           └──ELSE: 3971900
+║   ║   │           │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
+║   ║   │           └──IF(took ELSE) = 0
+║   ║   │               ├──WHEN: False
+║   ║   │               │   └──Compute GREATERTHAN(...) = False
+║   ║   │               │       ├──Resolving from PARAMETERS: $TOETSINGSINKOMEN = 79547
+║   ║   │               │       └──IF(took ELSE) = 3971900
+║   ║   │               │           ├──WHEN: False
+║   ║   │               │           │   └──Compute EQUALS(...) = False
+║   ║   │               │           │       └──Resolving from PARAMETERS: $HEEFT_TOESLAGPARTNER = False
+║   ║   │               │           └──ELSE: 3971900
+║   ║   │               │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
+║   ║   │               └──ELSE: 0
 ║   ║   └──Result: hoogte_zorgtoeslag = 209691.78888
 ║   ╙──Computing heeft_recht_op_zorgtoeslag
 ║       ├──Compute AND(...) = True
