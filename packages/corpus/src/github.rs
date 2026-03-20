@@ -82,7 +82,12 @@ mod inner {
 
             // Step 1: Get the tree to find all YAML files
             let yaml_paths = match self
-                .list_yaml_files(&source.full_repo(), source.effective_ref(), base_path, token)
+                .list_yaml_files(
+                    &source.full_repo(),
+                    source.effective_ref(),
+                    base_path,
+                    token,
+                )
                 .await?
             {
                 Some(paths) => paths,

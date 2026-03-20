@@ -269,7 +269,12 @@ fn execute_law(
     output: &str,
 ) -> Option<regelrecht_engine::Value> {
     service
-        .evaluate_law_output(law_id, output, std::collections::HashMap::new(), "2025-01-01")
+        .evaluate_law_output(
+            law_id,
+            output,
+            std::collections::HashMap::new(),
+            "2025-01-01",
+        )
         .ok()
         .and_then(|r| r.outputs.get(output).cloned())
 }

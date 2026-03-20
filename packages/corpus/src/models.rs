@@ -161,7 +161,10 @@ sources:
             SourceType::GitHub { github } => {
                 assert_eq!(github.owner, "gemeente-amsterdam");
                 assert_eq!(github.repo, "regelrecht-amsterdam");
-                assert_eq!(github.full_repo(), "gemeente-amsterdam/regelrecht-amsterdam");
+                assert_eq!(
+                    github.full_repo(),
+                    "gemeente-amsterdam/regelrecht-amsterdam"
+                );
                 assert_eq!(github.branch, "main");
                 assert_eq!(github.path, Some("regulation/nl".to_string()));
                 assert_eq!(github.effective_ref(), "main"); // no ref set, falls back to branch
