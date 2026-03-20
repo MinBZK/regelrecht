@@ -707,6 +707,14 @@ impl TraceBuilder {
         }
     }
 
+    /// Get the message on the current node, if set.
+    pub fn get_message(&self) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        self.stack.last().and_then(|s| s.node.message.clone())
+    }
+
     /// Set the resolve type for the current node.
     pub fn set_resolve_type(&mut self, resolve_type: ResolveType) {
         if !self.enabled {
@@ -1067,5 +1075,162 @@ mod tests {
                 rendered
             );
         }
+    }
+
+    // --- Box-drawing rendering tests ---
+
+    #[test]
+    fn test_box_drawing_last_child_uses_corner() {
+        let node = PathNode::new(PathNodeType::Operation, "ADD")
+            .with_result(Value::Int(3))
+            .with_message("Compute ADD(...) = 3")
+            .with_child(PathNode::new(PathNodeType::Resolve, "a").with_result(Value::Int(1)))
+            .with_child(PathNode::new(PathNodeType::Resolve, "b").with_result(Value::Int(2)));
+
+        let rendered = node.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // First child uses ├──, last child uses └──
+        assert!(
+            lines.iter().any(|l| l.contains("├──")),
+            "Expected ├── for non-last child in:\n{}",
+            rendered
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("└──")),
+            "Expected └── for last child in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_single_child_uses_corner() {
+        // Wrap in a parent to avoid root-node rendering artifacts
+        let child = PathNode::new(PathNodeType::Resolve, "x").with_result(Value::Null);
+        let op = PathNode::new(PathNodeType::Operation, "ISNULL")
+            .with_result(Value::Bool(true))
+            .with_message("Compute ISNULL(...) = True")
+            .with_child(child);
+        let parent = PathNode::new(PathNodeType::Operation, "wrapper")
+            .with_result(Value::Bool(true))
+            .with_message("Compute wrapper(...) = True")
+            .with_child(op);
+
+        let rendered = parent.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // The ISNULL's single child (x) should use └──
+        let x_line = lines.iter().find(|l| l.contains("Resolving $X")).unwrap();
+        assert!(
+            x_line.contains("└──"),
+            "Single child should use └── in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_no_children() {
+        // Wrap in parent to test leaf rendering within a tree
+        let leaf = PathNode::new(PathNodeType::Resolve, "simple_var").with_result(Value::Int(42));
+        let parent = PathNode::new(PathNodeType::Operation, "wrapper")
+            .with_result(Value::Int(42))
+            .with_message("Compute wrapper(...) = 42")
+            .with_child(leaf);
+
+        let rendered = parent.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // The leaf node line itself should use └── (last child of parent)
+        let leaf_line = lines.iter().find(|l| l.contains("SIMPLE_VAR")).unwrap();
+        assert!(
+            leaf_line.contains("└──"),
+            "Leaf should use └── as last child in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_uri_call_double_lines() {
+        let child = PathNode::new(PathNodeType::Resolve, "param").with_result(Value::Int(1));
+        let uri_node = PathNode::new(PathNodeType::UriCall, "other_law#output")
+            .with_message("URI call: other_law#output")
+            .with_child(child);
+
+        let rendered = uri_node.render_box_drawing();
+        // UriCall children should use double-line connectors
+        assert!(
+            rendered.contains("╙──") || rendered.contains("╟──"),
+            "UriCall children should use double-line connectors in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_article_scope_continues() {
+        let action = PathNode::new(PathNodeType::Action, "compute_x")
+            .with_result(Value::Int(10))
+            .with_message("Computing compute_x")
+            .with_child(PathNode::new(PathNodeType::Resolve, "a").with_result(Value::Int(10)));
+
+        let article = PathNode::new(PathNodeType::Article, "test_law (output)")
+            .with_result(Value::Int(10))
+            .with_child(action);
+
+        let rendered = article.render_box_drawing();
+        // Article should have ╟── for "Evaluating rules" and ╙── for "Result"
+        assert!(
+            rendered.contains("╟──Evaluating"),
+            "Article should have ╟──Evaluating in:\n{}",
+            rendered
+        );
+        assert!(
+            rendered.contains("╙──Result:"),
+            "Article should have ╙──Result in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_continuation_not_interrupted() {
+        // Two children under a UriCall: the first child's subtree should show ║
+        // continuation for the second child
+        let child1 = PathNode::new(PathNodeType::Resolve, "first").with_result(Value::Int(1));
+        let child2 = PathNode::new(PathNodeType::Resolve, "second").with_result(Value::Int(2));
+        let uri_node = PathNode::new(PathNodeType::UriCall, "law#out")
+            .with_message("URI call: law#out")
+            .with_child(child1)
+            .with_child(child2);
+
+        let rendered = uri_node.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // Between the two children, the ║ continuation should be present
+        let has_double_continuation = lines.iter().any(|l| l.contains("║"));
+        assert!(
+            has_double_continuation,
+            "UriCall with multiple children should show ║ continuation in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_cached_node() {
+        let cached =
+            PathNode::new(PathNodeType::Cached, "some_law#output").with_result(Value::Bool(false));
+
+        let rendered = cached.render_box_drawing();
+        assert!(
+            rendered.contains("CACHED:"),
+            "Cached node should show CACHED label in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_result_format() {
+        let action = PathNode::new(PathNodeType::Action, "my_output").with_result(Value::Int(42));
+
+        let rendered = action.render_box_drawing();
+        assert!(
+            rendered.contains("Result: my_output = 42"),
+            "Action result should show 'Result: name = value' in:\n{}",
+            rendered
+        );
     }
 }
