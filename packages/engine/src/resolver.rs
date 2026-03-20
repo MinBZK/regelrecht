@@ -1224,7 +1224,6 @@ articles:
         assert_eq!(resolver.law_count(), 1);
     }
 
-    #[test]
     fn get_regulation_path() -> std::path::PathBuf {
         std::env::var("REGULATION_PATH")
             .map(std::path::PathBuf::from)
@@ -1238,6 +1237,7 @@ articles:
             })
     }
 
+    #[test]
     fn test_resolver_load_from_directory() {
         let regulation_path = get_regulation_path().join("nl");
 
