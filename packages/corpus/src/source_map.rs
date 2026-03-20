@@ -215,29 +215,6 @@ impl SourceMap {
         self.laws.is_empty()
     }
 
-    /// Remove all laws from a specific source.
-    ///
-    /// Used when reloading a single source: remove its laws first,
-    /// then reload from disk. Also removes related conflict records.
-    pub fn remove_source(&mut self, source_id: &str) {
-        self.laws.retain(|_, law| law.source_id != source_id);
-        self.resolved_conflicts
-            .retain(|c| c.winner_source_id != source_id && c.loser_source_id != source_id);
-    }
-
-    /// Restore a previously removed law (for rollback on reload failure).
-    ///
-    /// Inserts the law directly without conflict resolution. Only use
-    /// to restore a snapshot after `remove_source` + failed `load_source`.
-    pub fn restore_law(&mut self, law: LoadedLaw) {
-        self.laws.insert(law.law_id.clone(), law);
-    }
-
-    /// Restore previously removed conflict records (for rollback).
-    pub fn restore_conflicts(&mut self, conflicts: Vec<ConflictResolution>) {
-        self.resolved_conflicts.extend(conflicts);
-    }
-
     /// Get all conflict resolutions that occurred during loading.
     pub fn resolved_conflicts(&self) -> &[ConflictResolution] {
         &self.resolved_conflicts

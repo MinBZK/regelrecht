@@ -105,28 +105,25 @@ pub async fn list_corpus_laws(
     Ok(Json(paginated))
 }
 
-/// POST /api/sources/{id}/sync — reload a single local corpus source.
+/// POST /api/sources/{id}/sync — rebuild all local corpus sources.
 ///
-/// Validates that the given source exists and is local, then reloads
-/// only that source into the existing source map. Other sources
-/// (including GitHub-fetched laws) are preserved.
+/// Validates that the given source exists and is local, then does a
+/// full rebuild of the source map from all local sources. This ensures
+/// conflict resolution is correct: if a winning source drops a law,
+/// the previously-shadowed version from another source gets promoted.
 pub async fn sync_source(
     State(state): State<AppState>,
     Path(source_id): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     let mut corpus = state.corpus.write().await;
 
-    // Clone the source definition (to release the borrow on corpus)
-    let source = corpus
-        .registry
-        .get_source(&source_id)
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Source '{}' not found", source_id),
-            )
-        })?
-        .clone();
+    // Verify source exists
+    let source = corpus.registry.get_source(&source_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Source '{}' not found", source_id),
+        )
+    })?;
 
     if matches!(
         source.source_type,
@@ -141,32 +138,23 @@ pub async fn sync_source(
         ));
     }
 
-    // Reload: snapshot laws + conflicts, remove, reload. Rollback on failure.
-    let law_snapshot: Vec<_> = corpus
-        .source_map
-        .laws()
-        .filter(|l| l.source_id == source_id)
-        .cloned()
-        .collect();
-    let conflict_snapshot: Vec<_> = corpus
-        .source_map
-        .resolved_conflicts()
-        .iter()
-        .filter(|c| c.winner_source_id == source_id || c.loser_source_id == source_id)
-        .cloned()
-        .collect();
-    corpus.source_map.remove_source(&source_id);
-    if let Err(e) = corpus.source_map.load_source(&source) {
-        // Clean any partially-loaded laws, then restore snapshot
-        corpus.source_map.remove_source(&source_id);
-        for law in law_snapshot {
-            corpus.source_map.restore_law(law);
+    // Full rebuild: reload all local sources from scratch.
+    // This is the only correct approach because conflict resolution
+    // depends on all sources being present (a removed law in source A
+    // must promote source B's previously-shadowed version).
+    let previous_map = std::mem::take(&mut corpus.source_map);
+    match corpus.registry.load_local_sources() {
+        Ok(new_map) => {
+            corpus.source_map = new_map;
         }
-        corpus.source_map.restore_conflicts(conflict_snapshot);
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to reload source '{}': {}", source_id, e),
-        ));
+        Err(e) => {
+            // Restore previous state on failure
+            corpus.source_map = previous_map;
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to reload sources: {}", e),
+            ));
+        }
     }
 
     let law_count = corpus
