@@ -212,6 +212,198 @@ fn test_invalid_yaml_skipped() {
     assert_eq!(count, 0);
 }
 
+// --- Multi-repo integration: full execution through engine ---
+//
+// Two git repos with overlapping and exclusive laws:
+//   repo1 (priority 1): shared_law → origin=1, only_in_repo1 → origin=1
+//   repo2 (priority 10): shared_law → origin=2, only_in_repo2 → origin=2
+//
+// Fixture YAML files live in tests/fixtures/federation/repo{1,2}/.
+// Tests copy them into temp dirs and `git init` to create real repos.
+
+use std::process::Command;
+
+/// Copy fixture dir into a temp dir and init it as a git repo.
+fn make_git_repo(fixture_name: &str) -> tempfile::TempDir {
+    let src = fixtures_dir().join(fixture_name);
+    let tmp = tempfile::TempDir::new().unwrap();
+
+    // Copy all fixture files into the temp dir
+    for entry in walkdir::WalkDir::new(&src)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let rel = entry.path().strip_prefix(&src).unwrap();
+        let dest = tmp.path().join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&dest).unwrap();
+        } else {
+            std::fs::copy(entry.path(), &dest).unwrap();
+        }
+    }
+
+    // Init as git repo
+    Command::new("git")
+        .args(["init"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(tmp.path())
+        .output()
+        .unwrap();
+
+    tmp
+}
+
+fn execute_law(
+    service: &regelrecht_engine::LawExecutionService,
+    law_id: &str,
+    output: &str,
+) -> Option<regelrecht_engine::Value> {
+    service
+        .evaluate_law_output(law_id, output, std::collections::HashMap::new(), "2025-01-01")
+        .ok()
+        .and_then(|r| r.outputs.get(output).cloned())
+}
+
+fn load_into_engine(map: &SourceMap) -> regelrecht_engine::LawExecutionService {
+    let mut service = regelrecht_engine::LawExecutionService::new();
+    for law in map.laws() {
+        service
+            .load_law_with_source(&law.yaml_content, &law.source_id, &law.source_name)
+            .unwrap();
+    }
+    service
+}
+
+#[test]
+fn test_multi_repo_only_repo1() {
+    let repo1 = make_git_repo("repo1");
+    let source = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 1);
+
+    let mut map = SourceMap::new();
+    map.load_source(&source).unwrap();
+
+    let service = load_into_engine(&map);
+
+    assert_eq!(
+        execute_law(&service, "shared_law", "origin"),
+        Some(regelrecht_engine::Value::Int(1))
+    );
+    assert_eq!(
+        execute_law(&service, "only_in_repo1", "origin"),
+        Some(regelrecht_engine::Value::Int(1))
+    );
+    assert_eq!(execute_law(&service, "only_in_repo2", "origin"), None);
+}
+
+#[test]
+fn test_multi_repo_only_repo2() {
+    let repo2 = make_git_repo("repo2");
+    let source = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 1);
+
+    let mut map = SourceMap::new();
+    map.load_source(&source).unwrap();
+
+    let service = load_into_engine(&map);
+
+    assert_eq!(
+        execute_law(&service, "shared_law", "origin"),
+        Some(regelrecht_engine::Value::Int(2))
+    );
+    assert_eq!(
+        execute_law(&service, "only_in_repo2", "origin"),
+        Some(regelrecht_engine::Value::Int(2))
+    );
+    assert_eq!(execute_law(&service, "only_in_repo1", "origin"), None);
+}
+
+#[test]
+fn test_multi_repo_both_repos_priority_wins() {
+    let repo1 = make_git_repo("repo1");
+    let repo2 = make_git_repo("repo2");
+
+    let source1 = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 1);
+    let source2 = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 10);
+
+    let mut map = SourceMap::new();
+    map.load_source(&source1).unwrap();
+    map.load_source(&source2).unwrap();
+
+    let service = load_into_engine(&map);
+
+    // shared_law: repo1 wins (priority 1 < 10)
+    assert_eq!(
+        execute_law(&service, "shared_law", "origin"),
+        Some(regelrecht_engine::Value::Int(1))
+    );
+    assert_eq!(
+        service.get_law_source("shared_law"),
+        Some(("repo1", "Repo 1"))
+    );
+
+    // exclusive laws from both repos are available
+    assert_eq!(
+        execute_law(&service, "only_in_repo1", "origin"),
+        Some(regelrecht_engine::Value::Int(1))
+    );
+    assert_eq!(
+        execute_law(&service, "only_in_repo2", "origin"),
+        Some(regelrecht_engine::Value::Int(2))
+    );
+
+    // conflict was recorded
+    assert!(map
+        .resolved_conflicts()
+        .iter()
+        .any(|c| c.law_id == "shared_law"
+            && c.winner_source_id == "repo1"
+            && c.loser_source_id == "repo2"));
+}
+
+#[test]
+fn test_multi_repo_reversed_priority() {
+    let repo1 = make_git_repo("repo1");
+    let repo2 = make_git_repo("repo2");
+
+    // Flip priorities: repo2 now has higher priority
+    let source1 = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 10);
+    let source2 = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 1);
+
+    let mut map = SourceMap::new();
+    map.load_source(&source1).unwrap();
+    map.load_source(&source2).unwrap();
+
+    let service = load_into_engine(&map);
+
+    // shared_law: repo2 wins now (priority 1 < 10)
+    assert_eq!(
+        execute_law(&service, "shared_law", "origin"),
+        Some(regelrecht_engine::Value::Int(2))
+    );
+    assert_eq!(
+        service.get_law_source("shared_law"),
+        Some(("repo2", "Repo 2"))
+    );
+
+    // exclusive laws still both available
+    assert_eq!(
+        execute_law(&service, "only_in_repo1", "origin"),
+        Some(regelrecht_engine::Value::Int(1))
+    );
+    assert_eq!(
+        execute_law(&service, "only_in_repo2", "origin"),
+        Some(regelrecht_engine::Value::Int(2))
+    );
+}
+
 // --- Scenario 9: Source map fed into engine ---
 
 #[test]

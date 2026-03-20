@@ -30,12 +30,13 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Stage 4: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
 COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/admin",\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/admin",\n    "packages/corpus",\n    "packages/engine",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY packages/admin/ packages/admin/
 COPY packages/corpus/ packages/corpus/
+COPY packages/engine/ packages/engine/
 COPY packages/pipeline/ packages/pipeline/
 COPY packages/harvester/ packages/harvester/
 COPY packages/shared/ packages/shared/
