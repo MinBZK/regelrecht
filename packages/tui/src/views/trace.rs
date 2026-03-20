@@ -1,0 +1,340 @@
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::prelude::*;
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+};
+use regelrecht_engine::{PathNode, PathNodeType, ResolveType, Value};
+use std::collections::HashSet;
+
+/// A flattened trace node for rendering.
+struct FlatNode {
+    depth: usize,
+    path: Vec<usize>,
+    name: String,
+    node_type: PathNodeType,
+    resolve_type: Option<ResolveType>,
+    result: Option<Value>,
+    duration_us: Option<u64>,
+    message: Option<String>,
+    has_children: bool,
+    is_collapsed: bool,
+}
+
+pub struct TraceView {
+    trace: Option<PathNode>,
+    flat_nodes: Vec<FlatNode>,
+    collapsed: HashSet<Vec<usize>>,
+    selected: usize,
+    scroll_offset: usize,
+}
+
+impl TraceView {
+    pub fn new() -> Self {
+        Self {
+            trace: None,
+            flat_nodes: Vec::new(),
+            collapsed: HashSet::new(),
+            selected: 0,
+            scroll_offset: 0,
+        }
+    }
+
+    pub fn set_trace(&mut self, trace: PathNode) {
+        self.trace = Some(trace);
+        self.collapsed.clear();
+        self.selected = 0;
+        self.scroll_offset = 0;
+        self.rebuild_flat();
+    }
+
+    #[allow(dead_code)]
+    pub fn has_trace(&self) -> bool {
+        self.trace.is_some()
+    }
+
+    pub fn handle_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                if self.selected < self.flat_nodes.len().saturating_sub(1) {
+                    self.selected += 1;
+                    self.ensure_visible();
+                }
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.selected = self.selected.saturating_sub(1);
+                self.ensure_visible();
+            }
+            KeyCode::Char('g') => {
+                self.selected = 0;
+                self.scroll_offset = 0;
+            }
+            KeyCode::Char('G') => {
+                if !self.flat_nodes.is_empty() {
+                    self.selected = self.flat_nodes.len() - 1;
+                    self.ensure_visible();
+                }
+            }
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                self.toggle_collapse();
+            }
+            KeyCode::Char('e') => {
+                // Expand all
+                self.collapsed.clear();
+                self.rebuild_flat();
+            }
+            KeyCode::Char('c') => {
+                // Collapse all at depth 1
+                self.collapse_all();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn render(&self, frame: &mut Frame, area: Rect) {
+        if self.trace.is_none() {
+            let block = Block::default().borders(Borders::ALL).title(Span::styled(
+                " Execution Trace ",
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
+            let content = Paragraph::new(vec![
+                Line::from(""),
+                Line::from("  No trace loaded."),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  Evaluate a law in the Engine tab (2) to generate a trace.",
+                    Style::default().add_modifier(Modifier::DIM),
+                )),
+            ])
+            .block(block);
+            frame.render_widget(content, area);
+            return;
+        }
+
+        let inner_height = area.height.saturating_sub(2) as usize;
+
+        let lines: Vec<Line> = self
+            .flat_nodes
+            .iter()
+            .enumerate()
+            .skip(self.scroll_offset)
+            .take(inner_height)
+            .map(|(i, node)| {
+                let indent = "  ".repeat(node.depth);
+                let expand_icon = if node.has_children {
+                    if node.is_collapsed {
+                        "▸ "
+                    } else {
+                        "▾ "
+                    }
+                } else {
+                    "  "
+                };
+
+                let type_label = type_label(&node.node_type);
+                let resolve_label = node
+                    .resolve_type
+                    .as_ref()
+                    .map(|rt| format!(" [{}]", resolve_label(rt)))
+                    .unwrap_or_default();
+
+                let result_str = node
+                    .result
+                    .as_ref()
+                    .map(|v| format!(" = {}", format_value_compact(v)))
+                    .unwrap_or_default();
+
+                let duration_str = node
+                    .duration_us
+                    .filter(|&d| d >= 100)
+                    .map(|d| format!(" ({d}μs)"))
+                    .unwrap_or_default();
+
+                let display_name = node
+                    .message
+                    .as_deref()
+                    .unwrap_or(&node.name);
+
+                let text = format!(
+                    "{indent}{expand_icon}{display_name} ({type_label}){resolve_label}{result_str}{duration_str}"
+                );
+
+                let style = if i == self.selected {
+                    Style::default().add_modifier(Modifier::REVERSED)
+                } else {
+                    match node.node_type {
+                        PathNodeType::Article => Style::default().add_modifier(Modifier::BOLD),
+                        PathNodeType::Requirement => Style::default(),
+                        PathNodeType::Cached => Style::default().add_modifier(Modifier::DIM),
+                        _ => Style::default(),
+                    }
+                };
+
+                Line::styled(text, style)
+            })
+            .collect();
+
+        let total = self.flat_nodes.len();
+        let title =
+            format!(" Execution Trace ({total} nodes) — Space:toggle  e:expand  c:collapse ");
+
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            title,
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+
+        let paragraph = Paragraph::new(lines).block(block);
+        frame.render_widget(paragraph, area);
+
+        // Scrollbar
+        if total > inner_height {
+            let mut state = ScrollbarState::new(total.saturating_sub(inner_height))
+                .position(self.scroll_offset);
+            frame.render_stateful_widget(
+                Scrollbar::new(ScrollbarOrientation::VerticalRight),
+                area.inner(Margin {
+                    vertical: 1,
+                    horizontal: 0,
+                }),
+                &mut state,
+            );
+        }
+    }
+
+    fn toggle_collapse(&mut self) {
+        if let Some(node) = self.flat_nodes.get(self.selected) {
+            if node.has_children {
+                let path = node.path.clone();
+                if self.collapsed.contains(&path) {
+                    self.collapsed.remove(&path);
+                } else {
+                    self.collapsed.insert(path);
+                }
+                self.rebuild_flat();
+            }
+        }
+    }
+
+    fn collapse_all(&mut self) {
+        // Collect paths of all nodes with children at depth 0 and 1
+        if let Some(ref trace) = self.trace {
+            let mut paths_to_collapse = Vec::new();
+            collect_parent_paths(trace, &[], &mut paths_to_collapse);
+            for path in paths_to_collapse {
+                self.collapsed.insert(path);
+            }
+            self.rebuild_flat();
+        }
+    }
+
+    fn rebuild_flat(&mut self) {
+        self.flat_nodes.clear();
+        if let Some(ref trace) = self.trace {
+            flatten_node(trace, 0, &[], &self.collapsed, &mut self.flat_nodes);
+        }
+        // Clamp selection
+        if self.selected >= self.flat_nodes.len() && !self.flat_nodes.is_empty() {
+            self.selected = self.flat_nodes.len() - 1;
+        }
+    }
+
+    fn ensure_visible(&mut self) {
+        if self.selected < self.scroll_offset {
+            self.scroll_offset = self.selected;
+        }
+        // We'll use a rough estimate since we don't know terminal height here
+        let estimated_height = 20;
+        if self.selected >= self.scroll_offset + estimated_height {
+            self.scroll_offset = self.selected - estimated_height + 1;
+        }
+    }
+}
+
+fn flatten_node(
+    node: &PathNode,
+    depth: usize,
+    path: &[usize],
+    collapsed: &HashSet<Vec<usize>>,
+    out: &mut Vec<FlatNode>,
+) {
+    let current_path = path.to_vec();
+    let is_collapsed = collapsed.contains(&current_path);
+
+    out.push(FlatNode {
+        depth,
+        path: current_path.clone(),
+        name: node.name.clone(),
+        node_type: node.node_type.clone(),
+        resolve_type: node.resolve_type.clone(),
+        result: node.result.clone(),
+        duration_us: node.duration_us,
+        message: node.message.clone(),
+        has_children: !node.children.is_empty(),
+        is_collapsed,
+    });
+
+    if !is_collapsed {
+        for (i, child) in node.children.iter().enumerate() {
+            let mut child_path = current_path.clone();
+            child_path.push(i);
+            flatten_node(child, depth + 1, &child_path, collapsed, out);
+        }
+    }
+}
+
+fn collect_parent_paths(node: &PathNode, path: &[usize], out: &mut Vec<Vec<usize>>) {
+    if !node.children.is_empty() {
+        out.push(path.to_vec());
+    }
+    for (i, child) in node.children.iter().enumerate() {
+        let mut child_path = path.to_vec();
+        child_path.push(i);
+        collect_parent_paths(child, &child_path, out);
+    }
+}
+
+fn type_label(t: &PathNodeType) -> &'static str {
+    match t {
+        PathNodeType::Resolve => "resolve",
+        PathNodeType::Operation => "op",
+        PathNodeType::Action => "action",
+        PathNodeType::Requirement => "req",
+        PathNodeType::UriCall => "uri",
+        PathNodeType::Article => "article",
+        PathNodeType::Cached => "cached",
+        PathNodeType::OpenTermResolution => "open_term",
+    }
+}
+
+fn resolve_label(rt: &ResolveType) -> &'static str {
+    match rt {
+        ResolveType::Uri => "uri",
+        ResolveType::Parameter => "param",
+        ResolveType::Definition => "def",
+        ResolveType::Output => "output",
+        ResolveType::Input => "input",
+        ResolveType::Local => "local",
+        ResolveType::Context => "ctx",
+        ResolveType::ResolvedInput => "res_input",
+        ResolveType::DataSource => "data",
+        ResolveType::OpenTerm => "open_term",
+    }
+}
+
+fn format_value_compact(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Int(i) => i.to_string(),
+        Value::Float(f) => format!("{f:.2}"),
+        Value::String(s) => {
+            if s.chars().count() > 30 {
+                let truncated: String = s.chars().take(27).collect();
+                format!("\"{truncated}...\"")
+            } else {
+                format!("\"{s}\"")
+            }
+        }
+        Value::Array(arr) => format!("[{} items]", arr.len()),
+        Value::Object(obj) => format!("{{{} keys}}", obj.len()),
+    }
+}
