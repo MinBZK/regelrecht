@@ -93,21 +93,24 @@ pub async fn sync_source(
     let mut corpus = state.corpus.write().await;
 
     // Verify that the source exists
-    let source = corpus
-        .registry
-        .get_source(&source_id)
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Source '{}' not found", source_id),
-            )
-        })?;
+    let source = corpus.registry.get_source(&source_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Source '{}' not found", source_id),
+        )
+    })?;
 
-    let is_github = matches!(source.source_type, regelrecht_corpus::SourceType::GitHub { .. });
+    let is_github = matches!(
+        source.source_type,
+        regelrecht_corpus::SourceType::GitHub { .. }
+    );
     if is_github {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!("Source '{}' is a GitHub source — sync is not yet supported for remote sources", source_id),
+            format!(
+                "Source '{}' is a GitHub source — sync is not yet supported for remote sources",
+                source_id
+            ),
         ));
     }
 

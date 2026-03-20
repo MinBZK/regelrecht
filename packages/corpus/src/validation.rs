@@ -77,7 +77,9 @@ fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
         return true;
     }
 
-    gemeente_scopes.iter().any(|scope| scope.code == gemeente_code)
+    gemeente_scopes
+        .iter()
+        .any(|scope| scope.code == gemeente_code)
 }
 
 /// Extract top-level gemeente_code from YAML content using line-based parsing.

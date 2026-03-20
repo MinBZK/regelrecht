@@ -200,8 +200,8 @@ async fn main() {
 /// - `CORPUS_REGISTRY_PATH` (default: `corpus-registry.yaml`)
 /// - `CORPUS_REGISTRY_LOCAL_PATH` (default: `corpus-registry.local.yaml`)
 fn init_corpus() -> state::CorpusState {
-    let manifest_str = env::var("CORPUS_REGISTRY_PATH")
-        .unwrap_or_else(|_| "corpus-registry.yaml".to_string());
+    let manifest_str =
+        env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
     let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
         .unwrap_or_else(|_| "corpus-registry.local.yaml".to_string());
     let manifest_path = std::path::PathBuf::from(&manifest_str);
