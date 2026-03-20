@@ -199,5 +199,5 @@ RFC-003 (Delegation Pattern) is superseded by this RFC. The top-down delegation 
 ## References
 
 - Schema v0.4.0: `schema/v0.4.0/schema.json`
-- Zorgtoeslag proof: `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` and `regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml`
-- Gemeente implements: `regulation/nl/gemeentelijke_verordening/amsterdam/apv_erfgrens/2024-01-01.yaml` and `regulation/nl/gemeentelijke_verordening/diemen/afstemmingsverordening_participatiewet/2015-01-01.yaml`
+- Zorgtoeslag proof: `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` and `corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml`
+- Gemeente implements: `corpus/regulation/nl/gemeentelijke_verordening/amsterdam/apv_erfgrens/2024-01-01.yaml` and `corpus/regulation/nl/gemeentelijke_verordening/diemen/afstemmingsverordening_participatiewet/2015-01-01.yaml`

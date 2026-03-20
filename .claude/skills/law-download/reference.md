@@ -188,14 +188,14 @@ All identifiers (`bwb_id`, `url`) are top-level, not nested.
 
 **Pattern:**
 ```
-regulation/nl/{regulatory_layer}/{law_id}/{valid_from}.yaml
+corpus/regulation/nl/{regulatory_layer}/{law_id}/{valid_from}.yaml
 ```
 
 **Examples:**
 ```
-regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
-regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
-regulation/nl/amvb/besluit_zorgverzekering/2024-01-01.yaml
+corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
+corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
+corpus/regulation/nl/amvb/besluit_zorgverzekering/2024-01-01.yaml
 ```
 
 **Law ID Generation:**

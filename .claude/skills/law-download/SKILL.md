@@ -32,7 +32,7 @@ to add machine-readable execution logic to it.
 3. Downloads the XML from the official repository
 4. Parses the XML to extract articles and metadata
 5. Converts to YAML format with **text only** (no machine_readable sections)
-6. Saves to `regulation/nl/{layer}/{law_id}/{date}.yaml`
+6. Saves to `corpus/regulation/nl/{layer}/{law_id}/{date}.yaml`
 
 ## Supported Regulation Types
 
@@ -258,13 +258,13 @@ articles:
 
 **Directory Structure:**
 ```
-regulation/nl/{regulatory_layer_lowercase}/{law_id}/{valid_from}.yaml
+corpus/regulation/nl/{regulatory_layer_lowercase}/{law_id}/{valid_from}.yaml
 ```
 
 **Example:**
 ```
-regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
-regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
+corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
+corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml
 ```
 
 Create directories if they don't exist.

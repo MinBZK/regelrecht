@@ -173,7 +173,7 @@ graph TB
 
 The single source of truth: all Dutch law, version-controlled in git. Contains both the natural language legal text and machine-readable execution logic per article. The git history captures the full legislative evolution. This is the project's core proposition — law as code, version-controlled.
 
-**Status:** The current repo (`regulation/nl/`) contains a small number of laws. The vision is to grow this into the complete Corpus Juris.
+**Status:** The current repo (`corpus/regulation/nl/`) contains a small number of laws. The vision is to grow this into the complete Corpus Juris.
 
 ### Execution Engine (`packages/engine`)
 

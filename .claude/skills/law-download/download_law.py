@@ -217,7 +217,7 @@ def save_yaml(law_id, law_data, regulatory_layer, effective_date):
     """Save YAML file to appropriate directory."""
     # Determine directory structure
     layer_dir = regulatory_layer.lower()
-    output_dir = Path(f"regulation/nl/{layer_dir}/{law_id}")
+    output_dir = Path(f"corpus/regulation/nl/{layer_dir}/{law_id}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_file = output_dir / f"{effective_date}.yaml"

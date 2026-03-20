@@ -17,13 +17,13 @@ cycle of creation, validation, and BDD testing.
 
 **CRITICAL**: All generated YAML MUST pass `just validate <file>`. The schema is the
 single source of truth. When in doubt, consult `schema/latest/schema.json` and study
-working examples in `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
+working examples in `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
 
 ## Setup
 
 1. Read the target law YAML file
 2. Read the zorgtoeslag example as few-shot reference:
-   `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
+   `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
 3. Read the schema reference: `.claude/skills/law-generate/reference.md`
 4. Read the examples: `.claude/skills/law-generate/examples.md`
 5. Read an existing feature file as Gherkin reference:
@@ -358,7 +358,7 @@ packages/engine/tests/bdd/
 │   ├── when.rs          # Action steps (law execution)
 │   └── then.rs          # Assertion steps (output checks)
 └── helpers/
-    ├── regulation_loader.rs  # Loads all YAML from regulation/nl/
+    ├── regulation_loader.rs  # Loads all YAML from corpus/regulation/nl/
     └── value_conversion.rs   # Gherkin string → Value conversion
 ```
 
@@ -506,7 +506,7 @@ The JSON payload format (written to the temp file):
 
 ### Cross-law Dependencies
 - If the law references other laws via `source.regulation`, find those law files
-  in `regulation/nl/` and include their YAML content in `extra_laws`:
+  in `corpus/regulation/nl/` and include their YAML content in `extra_laws`:
   ```json
   "extra_laws": [
     {"id": "wet_op_de_zorgtoeslag", "yaml": "<content>"}
