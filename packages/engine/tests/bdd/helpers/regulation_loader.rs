@@ -2,21 +2,9 @@
 //!
 //! Loads all YAML regulation files from the regulation/nl directory.
 
+use crate::common::regulation_base_path;
 use regelrecht_engine::{EngineError, LawExecutionService};
-use std::path::PathBuf;
 use walkdir::WalkDir;
-
-/// Get the regulation base path from `REGULATION_PATH` env var or default relative path.
-fn regulation_base_path() -> PathBuf {
-    std::env::var("REGULATION_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("..")
-                .join("regulation")
-        })
-}
 
 /// Load all regulation YAML files into the service.
 ///

@@ -17,6 +17,8 @@
 // Allow panic/expect in test code - these are appropriate for test setup
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
+#[path = "../common/mod.rs"]
+mod common;
 mod helpers;
 mod steps;
 mod world;
