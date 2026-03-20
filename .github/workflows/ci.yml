@@ -34,7 +34,7 @@ jobs:
               - packages/harvester/**
               - packages/pipeline/**
               - features/**
-              - regulation/**
+              - corpus/regulation/**
               - schema/**
               - script/**
               - Justfile

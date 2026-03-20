@@ -23,7 +23,7 @@ When `machine_readable` sections are added or changed:
 
 ### Cross-law reference integrity (regulation YAML changes)
 
-- Do `source.regulation` values reference valid law `$id` slugs that exist in `regulation/`?
+- Do `source.regulation` values reference valid law `$id` slugs that exist in `corpus/regulation/`?
 - Do `source.output` values match actual `output.name` fields in the referenced law?
 - Are `source.parameters` passed correctly (matching the referenced law's parameter names)?
 - Are `regelrecht://` URIs well-formed: `regelrecht://{law_id}/{output_name}#{field}`?

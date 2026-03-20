@@ -56,7 +56,7 @@ test-all: test harvester-test pipeline-test pipeline-integration-test
 
 # --- Mutation testing ---
 
-# Run mutation testing on engine (in-place because tests use relative paths to regulation/)
+# Run mutation testing on engine (in-place because tests use relative paths to corpus/)
 mutants *ARGS:
     cd packages/engine && cargo mutants --in-place --timeout-multiplier 3 {{ARGS}}
 

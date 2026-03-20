@@ -10,6 +10,7 @@ pub fn regulation_base_path() -> PathBuf {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("..")
                 .join("..")
+                .join("corpus")
                 .join("regulation")
         })
 }

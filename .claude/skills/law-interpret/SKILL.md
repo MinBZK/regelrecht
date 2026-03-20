@@ -79,7 +79,7 @@ modifications to the sub-skills).
 Before the final report, scan the generated `machine_readable` sections for
 `source.regulation` references. For each referenced regulation:
 
-1. Check if it exists in `regulation/nl/` using Glob
+1. Check if it exists in `corpus/regulation/nl/` using Glob
 2. If missing, add it to the TODOs list with a note to run `/law-download` for it
 3. If present but lacking `machine_readable`, note it needs `/law-interpret`
 

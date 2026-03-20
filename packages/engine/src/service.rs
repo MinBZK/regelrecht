@@ -1530,6 +1530,7 @@ articles:
                     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                         .join("..")
                         .join("..")
+                        .join("corpus")
                         .join("regulation")
                 })
         }
@@ -1581,7 +1582,7 @@ articles:
             // Should load all YAML files from the regulation directory
             assert!(
                 count >= 10,
-                "Expected at least 10 laws loaded from regulation/nl, got {}",
+                "Expected at least 10 laws loaded from corpus/regulation/nl, got {}",
                 count
             );
 

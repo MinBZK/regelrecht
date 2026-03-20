@@ -374,6 +374,6 @@ This is the opposite of English. So `€1.234,56` means one thousand two hundred
 ## External Resources
 
 - **Schema**: `schema/latest/schema.json` (v0.4.0)
-- **Working example**: `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
+- **Working example**: `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
 - **Engine source**: `packages/engine/src/`
 - **Validation binary**: `packages/engine/src/bin/validate.rs`

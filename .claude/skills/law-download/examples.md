@@ -46,7 +46,7 @@ Download the Wet op de Zorgtoeslag
 
 6. **Save File:**
    ```
-   regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
+   corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
    ```
 
 7. **Confirm:**
@@ -54,7 +54,7 @@ Download the Wet op de Zorgtoeslag
    ✓ Downloaded and converted Wet op de zorgtoeslag
      BWBR ID: BWBR0018451
      Articles: 23
-     Saved to: regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
+     Saved to: corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
 
    The YAML file contains the legal text only.
    To add machine-readable execution logic, use the law-interpret skill.
@@ -87,7 +87,7 @@ Get BWBR0018451 for date 2024-07-01
 
 4. **Save File:**
    ```
-   regulation/nl/wet/wet_op_de_zorgtoeslag/2024-07-01.yaml
+   corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2024-07-01.yaml
    ```
 
 ---
@@ -122,7 +122,7 @@ Download the Regeling standaardpremie
 
 4. **Save File:**
    ```
-   regulation/nl/ministeriele_regeling/regeling_standaardpremie_zorgverzekeringswet/2025-01-01.yaml
+   corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie_zorgverzekeringswet/2025-01-01.yaml
    ```
 
 ---
@@ -217,7 +217,7 @@ Download all versions of BWBR0018451 from 2020 onwards
 
 4. **Result:**
    ```
-   regulation/nl/wet/wet_op_de_zorgtoeslag/
+   corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/
    ├── 2020-01-01.yaml
    ├── 2021-01-01.yaml
    ├── 2021-07-01.yaml

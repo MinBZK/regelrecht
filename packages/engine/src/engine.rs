@@ -1180,6 +1180,7 @@ articles:
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .join("..")
                     .join("..")
+                    .join("corpus")
                     .join("regulation")
             })
     }

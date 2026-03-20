@@ -41,5 +41,5 @@ repos:
         entry: just validate
         language: system
         pass_filenames: true
-        files: ^regulation/.*\.yaml$
+        files: ^corpus/regulation/.*\.yaml$
         types: [yaml]
