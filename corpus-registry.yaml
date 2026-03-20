@@ -1,10 +1,10 @@
 ---
 schema_version: "1.0"
 sources:
-  - id: central
-    name: "MinBZK Central Corpus"
+  - id: local
+    name: "Local Test Corpus"
     type: local
     local:
-      path: corpus/central/regulation/nl
+      path: corpus/regulation/nl
     scopes: []
     priority: 1  # 1 = highest priority

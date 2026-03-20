@@ -195,7 +195,7 @@ sources:
     name: "MinBZK Central Corpus"
     type: local
     local:
-      path: corpus/central/regulation/nl
+      path: corpus/regulation/nl
     scopes: []
     priority: 1
 "#;
@@ -216,7 +216,7 @@ sources:
     name: "MinBZK Central Corpus"
     type: local
     local:
-      path: corpus/central/regulation/nl
+      path: corpus/regulation/nl
     scopes: []
     priority: 1
   - id: amsterdam
@@ -264,7 +264,7 @@ sources:
     name: "Central"
     type: local
     local:
-      path: corpus/central/regulation/nl
+      path: corpus/regulation/nl
     scopes: []
     priority: 1
 "#;

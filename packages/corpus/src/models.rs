@@ -90,7 +90,7 @@ sources:
     name: "MinBZK Central Corpus"
     type: local
     local:
-      path: corpus/central/regulation/nl
+      path: corpus/regulation/nl
     scopes: []
     priority: 1
 "#;
@@ -103,7 +103,7 @@ sources:
         assert_eq!(source.priority, 1);
         match &source.source_type {
             SourceType::Local { local } => {
-                assert_eq!(local.path, PathBuf::from("corpus/central/regulation/nl"));
+                assert_eq!(local.path, PathBuf::from("corpus/regulation/nl"));
             }
             _ => panic!("Expected local source type"),
         }
