@@ -195,12 +195,20 @@ async fn main() {
 }
 
 /// Initialize the corpus registry and load local sources.
+///
+/// Registry file paths can be configured via environment variables:
+/// - `CORPUS_REGISTRY_PATH` (default: `corpus-registry.yaml`)
+/// - `CORPUS_REGISTRY_LOCAL_PATH` (default: `corpus-registry.local.yaml`)
 fn init_corpus() -> state::CorpusState {
-    let manifest_path = std::path::Path::new("corpus-registry.yaml");
-    let local_path = std::path::Path::new("corpus-registry.local.yaml");
+    let manifest_str = env::var("CORPUS_REGISTRY_PATH")
+        .unwrap_or_else(|_| "corpus-registry.yaml".to_string());
+    let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
+        .unwrap_or_else(|_| "corpus-registry.local.yaml".to_string());
+    let manifest_path = std::path::PathBuf::from(&manifest_str);
+    let local_path = std::path::PathBuf::from(&local_str);
 
     let registry = if manifest_path.exists() {
-        match regelrecht_corpus::CorpusRegistry::load(manifest_path, Some(local_path)) {
+        match regelrecht_corpus::CorpusRegistry::load(&manifest_path, Some(&local_path)) {
             Ok(r) => {
                 tracing::info!(sources = r.sources().len(), "Loaded corpus registry");
                 r

@@ -15,6 +15,15 @@ mod inner {
     use crate::error::{CorpusError, Result};
     use crate::models::GitHubSource;
 
+    /// Result of fetching a GitHub source.
+    #[derive(Debug)]
+    pub enum FetchResult {
+        /// New or updated content was fetched.
+        Fetched(Vec<FetchedFile>),
+        /// Content has not changed since last fetch (HTTP 304).
+        NotModified,
+    }
+
     /// A fetched file from GitHub.
     #[derive(Debug, Clone)]
     pub struct FetchedFile {
@@ -61,20 +70,27 @@ mod inner {
         }
 
         /// Fetch all YAML regulation files from a GitHub source.
+        ///
+        /// Returns `FetchResult::NotModified` when the tree has not changed
+        /// (HTTP 304) so callers can preserve previously loaded data.
         pub async fn fetch_source(
             &mut self,
             source: &GitHubSource,
             token: Option<&str>,
-        ) -> Result<Vec<FetchedFile>> {
+        ) -> Result<FetchResult> {
             let base_path = source.path.as_deref().unwrap_or("");
 
             // Step 1: Get the tree to find all YAML files
-            let yaml_paths = self
+            let yaml_paths = match self
                 .list_yaml_files(&source.repo, &source.branch, base_path, token)
-                .await?;
+                .await?
+            {
+                Some(paths) => paths,
+                None => return Ok(FetchResult::NotModified),
+            };
 
             if yaml_paths.is_empty() {
-                return Ok(Vec::new());
+                return Ok(FetchResult::Fetched(Vec::new()));
             }
 
             // Step 2: Fetch each YAML file's content
@@ -96,17 +112,20 @@ mod inner {
                 }
             }
 
-            Ok(files)
+            Ok(FetchResult::Fetched(files))
         }
 
         /// List all YAML files in a repo path using the Trees API.
+        ///
+        /// Returns `None` when the server responds with 304 Not Modified,
+        /// indicating the tree has not changed since the last fetch.
         async fn list_yaml_files(
             &mut self,
             repo: &str,
             branch: &str,
             base_path: &str,
             token: Option<&str>,
-        ) -> Result<Vec<String>> {
+        ) -> Result<Option<Vec<String>>> {
             let url = format!(
                 "https://api.github.com/repos/{}/git/trees/{}?recursive=1",
                 repo, branch
@@ -134,7 +153,7 @@ mod inner {
 
             if response.status() == reqwest::StatusCode::NOT_MODIFIED {
                 tracing::debug!(repo = %repo, "Tree unchanged (ETag match)");
-                return Ok(Vec::new());
+                return Ok(None);
             }
 
             if !response.status().is_success() {
@@ -181,7 +200,7 @@ mod inner {
                 "Found YAML files in tree"
             );
 
-            Ok(yaml_files)
+            Ok(Some(yaml_files))
         }
 
         /// Fetch a single file's content using the Contents API.

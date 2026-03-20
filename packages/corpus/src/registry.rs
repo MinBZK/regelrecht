@@ -110,6 +110,12 @@ impl CorpusRegistry {
     /// Load all sources (local + GitHub) into a SourceMap.
     ///
     /// Fetches GitHub sources using the provided auth file for token lookup.
+    ///
+    /// **Note:** A fresh `GitHubFetcher` is created on each call, so the
+    /// `NotModified` branch is currently unreachable (no prior ETag exists).
+    /// If caching is added later, callers must ensure that `NotModified`
+    /// sources are merged from a previous `SourceMap` instead of silently
+    /// dropped.
     #[cfg(feature = "github")]
     pub async fn load_all_sources_async(&self, auth_file: Option<&Path>) -> Result<SourceMap> {
         let mut map = SourceMap::new();
@@ -122,16 +128,24 @@ impl CorpusRegistry {
                 }
                 SourceType::GitHub { github } => {
                     let token = crate::auth::resolve_token(&source.id, auth_file)?;
-                    let files = fetcher.fetch_source(github, token.as_deref()).await?;
-
-                    for file in &files {
-                        map.load_fetched_file(
-                            &file.content,
-                            &file.path,
-                            &source.id,
-                            &source.name,
-                            source.priority,
-                        )?;
+                    match fetcher.fetch_source(github, token.as_deref()).await? {
+                        crate::github::FetchResult::Fetched(files) => {
+                            for file in &files {
+                                map.load_fetched_file(
+                                    &file.content,
+                                    &file.path,
+                                    &source.id,
+                                    &source.name,
+                                    source.priority,
+                                )?;
+                            }
+                        }
+                        crate::github::FetchResult::NotModified => {
+                            tracing::debug!(
+                                source_id = %source.id,
+                                "GitHub source unchanged, skipping"
+                            );
+                        }
                     }
                 }
             }

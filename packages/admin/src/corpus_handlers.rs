@@ -81,13 +81,18 @@ pub async fn list_corpus_laws(
     Ok(Json(entries))
 }
 
-/// POST /api/sources/{id}/sync — reload a specific source.
+/// POST /api/sources/{id}/sync — reload all local corpus sources.
+///
+/// Validates that the given source exists, then rebuilds the entire
+/// source map from all local sources. GitHub sources are not included
+/// in the sync — they require async fetching.
 pub async fn sync_source(
     State(state): State<AppState>,
     Path(source_id): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     let mut corpus = state.corpus.write().await;
 
+    // Verify that the source exists
     let source = corpus
         .registry
         .get_source(&source_id)
@@ -96,10 +101,17 @@ pub async fn sync_source(
                 StatusCode::NOT_FOUND,
                 format!("Source '{}' not found", source_id),
             )
-        })?
-        .clone();
+        })?;
 
-    // Rebuild source map from all sources
+    let is_github = matches!(source.source_type, regelrecht_corpus::SourceType::GitHub { .. });
+    if is_github {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("Source '{}' is a GitHub source — sync is not yet supported for remote sources", source_id),
+        ));
+    }
+
+    // Rebuild source map from all local sources
     let new_map = corpus.registry.load_local_sources().map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -113,7 +125,7 @@ pub async fn sync_source(
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({
-            "source_id": source.id,
+            "source_id": source_id,
             "law_count": law_count,
             "status": "synced"
         })),

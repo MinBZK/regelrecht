@@ -82,7 +82,17 @@ impl SourceMap {
         for entry in WalkDir::new(dir)
             .follow_links(true)
             .into_iter()
-            .filter_map(|e| e.ok())
+            .filter_map(|e| match e {
+                Ok(entry) => Some(entry),
+                Err(err) => {
+                    tracing::warn!(
+                        path = ?err.path(),
+                        error = %err,
+                        "Failed to read directory entry, skipping"
+                    );
+                    None
+                }
+            })
         {
             let path = entry.path();
             if !path.is_file() || path.extension().is_none_or(|ext| ext != "yaml") {
@@ -217,13 +227,14 @@ impl Default for SourceMap {
     }
 }
 
-/// Extract the `$id` field from a YAML string.
+/// Extract the top-level `$id` field from a YAML string.
 ///
 /// Uses a simple line-based approach to avoid full YAML parsing overhead.
+/// Only matches `$id:` at the start of a line (no leading whitespace) to
+/// avoid matching nested `$id:` fields.
 fn extract_law_id(yaml: &str) -> Option<String> {
     for line in yaml.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("$id:") {
+        if let Some(rest) = line.strip_prefix("$id:") {
             let value = rest.trim().trim_matches('"').trim_matches('\'');
             if !value.is_empty() {
                 return Some(value.to_string());
@@ -278,6 +289,17 @@ mod tests {
             Some("quoted_id".to_string())
         );
         assert_eq!(extract_law_id("foo: bar\nbaz: qux"), None);
+    }
+
+    #[test]
+    fn test_extract_law_id_ignores_indented() {
+        // Nested $id: should not be matched
+        let yaml = "name: test\narticles:\n  - $id: nested_id\n";
+        assert_eq!(extract_law_id(yaml), None);
+
+        // But top-level $id: should still work
+        let yaml = "$id: top_level\narticles:\n  - $id: nested_id\n";
+        assert_eq!(extract_law_id(yaml), Some("top_level".to_string()));
     }
 
     #[test]

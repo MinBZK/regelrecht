@@ -3,10 +3,10 @@
 //! Tests multi-source loading, priority-based conflict resolution,
 //! and the full registry → source map → engine pipeline.
 
-use regelrecht_corpus::models::{LocalSource, Scope, Source, SourceType};
+use regelrecht_corpus::models::{LocalSource, Source, SourceType};
 use regelrecht_corpus::source_map::SourceMap;
 use regelrecht_corpus::CorpusRegistry;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

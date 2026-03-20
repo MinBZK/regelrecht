@@ -2938,6 +2938,7 @@ dependencies = [
  "openidconnect",
  "pretty_assertions",
  "prometheus-client",
+ "regelrecht-corpus",
  "regelrecht-pipeline",
  "regex",
  "reqwest 0.12.28",
@@ -2968,6 +2969,7 @@ name = "regelrecht-corpus"
 version = "0.1.0"
 dependencies = [
  "regelrecht-engine",
+ "reqwest 0.12.28",
  "serde",
  "serde_yaml",
  "tempfile",

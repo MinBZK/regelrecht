@@ -60,18 +60,33 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
     warnings
 }
 
-/// Check if a gemeente_code matches any of the source's scopes.
+/// Check if a gemeente_code matches any of the source's gemeente scopes.
+///
+/// Only `gemeente` scope types are matched against `gemeente_code`.
+/// Other scope types (e.g., `provincie`, `waterschap`) are not yet
+/// supported for validation and are ignored.
 fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
-    scopes
+    let gemeente_scopes: Vec<_> = scopes
         .iter()
-        .any(|scope| scope.scope_type == "gemeente" && scope.code == gemeente_code)
+        .filter(|s| s.scope_type == "gemeente")
+        .collect();
+
+    // If the source has no gemeente scopes, we cannot validate by
+    // gemeente_code — treat as matching (no warning).
+    if gemeente_scopes.is_empty() {
+        return true;
+    }
+
+    gemeente_scopes.iter().any(|scope| scope.code == gemeente_code)
 }
 
-/// Extract gemeente_code from YAML content using line-based parsing.
+/// Extract top-level gemeente_code from YAML content using line-based parsing.
+///
+/// Only matches `gemeente_code:` at the start of a line (no leading whitespace)
+/// to avoid matching nested fields, consistent with `extract_law_id`.
 fn extract_gemeente_code(yaml: &str) -> Option<String> {
     for line in yaml.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("gemeente_code:") {
+        if let Some(rest) = line.strip_prefix("gemeente_code:") {
             let value = rest.trim().trim_matches('"').trim_matches('\'');
             if !value.is_empty() {
                 return Some(value.to_string());
@@ -86,7 +101,6 @@ fn extract_gemeente_code(yaml: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::models::{LocalSource, SourceType};
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn make_scoped_source(
