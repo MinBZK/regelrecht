@@ -239,13 +239,11 @@ impl PathNode {
     /// SVB: zorgtoeslagwet (2025-01-01 {BSN: 999993653} hoogte_zorgtoeslag)
     /// ║──Evaluating rules for SVB zorgtoeslagwet (2025-01-01 hoogte_zorgtoeslag)
     /// ║──Requirements {'all': [...]}
-    /// ║   ├──Resolving $LEEFTIJD
-    /// ║   │   ├──Resolving from DATA_SOURCE: 20
+    /// ║   ├──Resolving from DATA_SOURCE: $LEEFTIJD = 20
     /// ║   ├──Compute GREATER_OR_EQUAL(20, 18) = True
     /// ║   ├──Requirement met
     /// ║──Computing hoogte_zorgtoeslag
-    /// ║   ├──Resolving $TOETSINGSINKOMEN
-    /// ║   │   ├──Resolving from DATA_SOURCE: 79547
+    /// ║   ├──Resolving from DATA_SOURCE: $TOETSINGSINKOMEN = 79547
     /// ╙──Result: hoogte_zorgtoeslag = 209692
     /// ```
     pub fn render_box_drawing(&self) -> String {
@@ -377,43 +375,70 @@ impl PathNode {
             }
 
             PathNodeType::Resolve => {
-                lines.push(format!(
-                    "{}{}Resolving ${}",
-                    prefix,
-                    connector,
-                    self.name.to_uppercase()
-                ));
-
-                let child_prefix = format!("{}{}", child_base, continuation);
                 let child_count = self.children.len();
 
-                if let Some(ref rt) = self.resolve_type {
-                    let rt_name = resolve_type_name(rt);
-                    let val_str = self
-                        .result
-                        .as_ref()
-                        .map(format_value_display)
-                        .unwrap_or_else(|| "?".to_string());
-                    let source_connector = if child_count == 0 {
-                        "└──"
+                // Collapse simple resolves (source known, no children) into one line
+                if child_count == 0 {
+                    if let Some(ref rt) = self.resolve_type {
+                        let rt_name = resolve_type_name(rt);
+                        let val_str = self
+                            .result
+                            .as_ref()
+                            .map(format_value_display)
+                            .unwrap_or_else(|| "?".to_string());
+                        lines.push(format!(
+                            "{}{}Resolving from {}: ${} = {}",
+                            prefix,
+                            connector,
+                            rt_name,
+                            self.name.to_uppercase(),
+                            val_str
+                        ));
+                    } else if let Some(ref msg) = self.message {
+                        lines.push(format!("{}{}{}", prefix, connector, msg));
                     } else {
-                        "├──"
-                    };
+                        lines.push(format!(
+                            "{}{}Resolving ${}",
+                            prefix,
+                            connector,
+                            self.name.to_uppercase()
+                        ));
+                    }
+                } else {
+                    // Complex resolve: keep the two-level structure
                     lines.push(format!(
-                        "{}{}Resolving from {}: {}",
-                        child_prefix, source_connector, rt_name, val_str
+                        "{}{}Resolving ${}",
+                        prefix,
+                        connector,
+                        self.name.to_uppercase()
                     ));
-                } else if let Some(ref msg) = self.message {
-                    let source_connector = if child_count == 0 {
-                        "└──"
-                    } else {
-                        "├──"
-                    };
-                    lines.push(format!("{}{}{}", child_prefix, source_connector, msg));
-                }
 
-                for (i, child) in self.children.iter().enumerate() {
-                    child.render_box_node(lines, &child_prefix, i == child_count - 1, false, None);
+                    let child_prefix = format!("{}{}", child_base, continuation);
+
+                    if let Some(ref rt) = self.resolve_type {
+                        let rt_name = resolve_type_name(rt);
+                        let val_str = self
+                            .result
+                            .as_ref()
+                            .map(format_value_display)
+                            .unwrap_or_else(|| "?".to_string());
+                        lines.push(format!(
+                            "{}├──Resolving from {}: {}",
+                            child_prefix, rt_name, val_str
+                        ));
+                    } else if let Some(ref msg) = self.message {
+                        lines.push(format!("{}├──{}", child_prefix, msg));
+                    }
+
+                    for (i, child) in self.children.iter().enumerate() {
+                        child.render_box_node(
+                            lines,
+                            &child_prefix,
+                            i == child_count - 1,
+                            false,
+                            None,
+                        );
+                    }
                 }
             }
 
