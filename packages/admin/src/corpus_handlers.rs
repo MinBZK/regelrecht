@@ -133,7 +133,7 @@ pub async fn sync_source(
         regelrecht_corpus::SourceType::GitHub { .. }
     ) {
         return Err((
-            StatusCode::BAD_REQUEST,
+            StatusCode::NOT_IMPLEMENTED,
             format!(
                 "Source '{}' is a GitHub source — sync is not yet supported for remote sources",
                 source_id
@@ -141,14 +141,24 @@ pub async fn sync_source(
         ));
     }
 
-    // Remove existing laws from this source, then reload it
+    // Reload: remove old laws, load fresh. Rollback on failure.
+    let snapshot: Vec<_> = corpus
+        .source_map
+        .laws()
+        .filter(|l| l.source_id == source_id)
+        .cloned()
+        .collect();
     corpus.source_map.remove_source(&source_id);
-    corpus.source_map.load_source(&source).map_err(|e| {
-        (
+    if let Err(e) = corpus.source_map.load_source(&source) {
+        // Restore snapshot on failure
+        for law in snapshot {
+            let _ = corpus.source_map.restore_law(law);
+        }
+        return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to reload source '{}': {}", source_id, e),
-        )
-    })?;
+        ));
+    }
 
     let law_count = corpus
         .source_map

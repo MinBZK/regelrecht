@@ -111,6 +111,18 @@ impl CorpusRegistry {
                 }
             }
         }
+
+        // Validate scopes and log warnings
+        let warnings = crate::validation::validate_scopes(&map, &self.sources);
+        for w in &warnings {
+            tracing::warn!(
+                law_id = %w.law_id,
+                source_id = %w.source_id,
+                "{}",
+                w.message
+            );
+        }
+
         Ok(map)
     }
 
@@ -152,6 +164,10 @@ impl CorpusRegistry {
                             }
                         }
                         crate::github::FetchResult::NotModified => {
+                            // INVARIANT: currently unreachable because GitHubFetcher
+                            // is created fresh (no prior ETag). When ETag persistence
+                            // is added, this branch must merge laws from the previous
+                            // SourceMap — otherwise unchanged sources lose their laws.
                             tracing::debug!(
                                 source_id = %source.id,
                                 "GitHub source unchanged, skipping"

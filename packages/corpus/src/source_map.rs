@@ -225,6 +225,14 @@ impl SourceMap {
             .retain(|c| c.winner_source_id != source_id && c.loser_source_id != source_id);
     }
 
+    /// Restore a previously removed law (for rollback on reload failure).
+    ///
+    /// Inserts the law directly without conflict resolution. Only use
+    /// to restore a snapshot after `remove_source` + failed `load_source`.
+    pub fn restore_law(&mut self, law: LoadedLaw) {
+        self.laws.insert(law.law_id.clone(), law);
+    }
+
     /// Get all conflict resolutions that occurred during loading.
     pub fn resolved_conflicts(&self) -> &[ConflictResolution] {
         &self.resolved_conflicts

@@ -222,14 +222,14 @@ fn test_invalid_yaml_skipped() {
 // Fixture YAML files live in tests/fixtures/federation/repo{1,2}/.
 // Tests copy them into temp dirs and `git init` to create real repos.
 
-use std::process::Command;
-
-/// Copy fixture dir into a temp dir and init it as a git repo.
-fn make_git_repo(fixture_name: &str) -> tempfile::TempDir {
+/// Copy fixture dir into an isolated temp dir.
+///
+/// Uses a temp dir so tests don't interfere with each other and the
+/// source map sees a clean directory without `.git/` metadata.
+fn make_test_source(fixture_name: &str) -> tempfile::TempDir {
     let src = fixtures_dir().join(fixture_name);
     let tmp = tempfile::TempDir::new().unwrap();
 
-    // Copy all fixture files into the temp dir
     for entry in walkdir::WalkDir::new(&src)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -242,23 +242,6 @@ fn make_git_repo(fixture_name: &str) -> tempfile::TempDir {
             std::fs::copy(entry.path(), &dest).unwrap();
         }
     }
-
-    // Init as git repo
-    Command::new("git")
-        .args(["init"])
-        .current_dir(tmp.path())
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["add", "."])
-        .current_dir(tmp.path())
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["commit", "-m", "init"])
-        .current_dir(tmp.path())
-        .output()
-        .unwrap();
 
     tmp
 }
@@ -291,7 +274,7 @@ fn load_into_engine(map: &SourceMap) -> regelrecht_engine::LawExecutionService {
 
 #[test]
 fn test_multi_repo_only_repo1() {
-    let repo1 = make_git_repo("repo1");
+    let repo1 = make_test_source("repo1");
     let source = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 1);
 
     let mut map = SourceMap::new();
@@ -312,7 +295,7 @@ fn test_multi_repo_only_repo1() {
 
 #[test]
 fn test_multi_repo_only_repo2() {
-    let repo2 = make_git_repo("repo2");
+    let repo2 = make_test_source("repo2");
     let source = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 1);
 
     let mut map = SourceMap::new();
@@ -333,8 +316,8 @@ fn test_multi_repo_only_repo2() {
 
 #[test]
 fn test_multi_repo_both_repos_priority_wins() {
-    let repo1 = make_git_repo("repo1");
-    let repo2 = make_git_repo("repo2");
+    let repo1 = make_test_source("repo1");
+    let repo2 = make_test_source("repo2");
 
     let source1 = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 1);
     let source2 = make_local_source("repo2", "Repo 2", repo2.path().to_path_buf(), 10);
@@ -376,8 +359,8 @@ fn test_multi_repo_both_repos_priority_wins() {
 
 #[test]
 fn test_multi_repo_reversed_priority() {
-    let repo1 = make_git_repo("repo1");
-    let repo2 = make_git_repo("repo2");
+    let repo1 = make_test_source("repo1");
+    let repo2 = make_test_source("repo2");
 
     // Flip priorities: repo2 now has higher priority
     let source1 = make_local_source("repo1", "Repo 1", repo1.path().to_path_buf(), 10);
