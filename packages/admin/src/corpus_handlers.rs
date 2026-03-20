@@ -152,7 +152,7 @@ pub async fn sync_source(
     if let Err(e) = corpus.source_map.load_source(&source) {
         // Restore snapshot on failure
         for law in snapshot {
-            let _ = corpus.source_map.restore_law(law);
+            corpus.source_map.restore_law(law);
         }
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
