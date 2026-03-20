@@ -182,10 +182,11 @@ mod inner {
                 .map_err(|e| CorpusError::Git(format!("Failed to parse tree response: {}", e)))?;
 
             if tree.truncated {
-                tracing::warn!(
-                    repo = %repo,
-                    "Tree response was truncated — some files may be missing"
-                );
+                return Err(CorpusError::Git(format!(
+                    "GitHub Trees API response for '{}' was truncated — repository has too many files. \
+                     Reduce the number of files or use a narrower `path` in the registry manifest.",
+                    repo
+                )));
             }
 
             let yaml_files: Vec<String> = tree

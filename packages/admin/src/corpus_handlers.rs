@@ -1,9 +1,22 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::state::AppState;
+
+/// Default and maximum page size for list endpoints.
+const DEFAULT_LIMIT: usize = 100;
+const MAX_LIMIT: usize = 1000;
+
+/// Pagination query parameters.
+#[derive(Debug, Deserialize)]
+pub struct PaginationParams {
+    #[serde(default)]
+    pub offset: usize,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
 
 /// Summary of a corpus source.
 #[derive(Debug, Serialize)]
@@ -59,11 +72,16 @@ pub async fn list_sources(
     Ok(Json(summaries))
 }
 
-/// GET /api/corpus/laws — list all loaded laws with source metadata.
+/// GET /api/corpus/laws — list loaded laws with source metadata.
+///
+/// Supports pagination via `?offset=0&limit=100`. Default limit is 100,
+/// maximum is 1000.
 pub async fn list_corpus_laws(
     State(state): State<AppState>,
+    Query(params): Query<PaginationParams>,
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
     let corpus = state.corpus.read().await;
+    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
 
     let mut entries: Vec<CorpusLawEntry> = corpus
         .source_map
@@ -78,33 +96,42 @@ pub async fn list_corpus_laws(
 
     entries.sort_by(|a, b| a.law_id.cmp(&b.law_id));
 
-    Ok(Json(entries))
+    let paginated: Vec<CorpusLawEntry> = entries
+        .into_iter()
+        .skip(params.offset)
+        .take(limit)
+        .collect();
+
+    Ok(Json(paginated))
 }
 
-/// POST /api/sources/{id}/sync — reload all local corpus sources.
+/// POST /api/sources/{id}/sync — reload a single local corpus source.
 ///
-/// Validates that the given source exists, then rebuilds the entire
-/// source map from all local sources. GitHub sources are not included
-/// in the sync — they require async fetching.
+/// Validates that the given source exists and is local, then reloads
+/// only that source into the existing source map. Other sources
+/// (including GitHub-fetched laws) are preserved.
 pub async fn sync_source(
     State(state): State<AppState>,
     Path(source_id): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
     let mut corpus = state.corpus.write().await;
 
-    // Verify that the source exists
-    let source = corpus.registry.get_source(&source_id).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("Source '{}' not found", source_id),
-        )
-    })?;
+    // Clone the source definition (to release the borrow on corpus)
+    let source = corpus
+        .registry
+        .get_source(&source_id)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Source '{}' not found", source_id),
+            )
+        })?
+        .clone();
 
-    let is_github = matches!(
+    if matches!(
         source.source_type,
         regelrecht_corpus::SourceType::GitHub { .. }
-    );
-    if is_github {
+    ) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!(
@@ -114,16 +141,20 @@ pub async fn sync_source(
         ));
     }
 
-    // Rebuild source map from all local sources
-    let new_map = corpus.registry.load_local_sources().map_err(|e| {
+    // Remove existing laws from this source, then reload it
+    corpus.source_map.remove_source(&source_id);
+    corpus.source_map.load_source(&source).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to reload sources: {}", e),
+            format!("Failed to reload source '{}': {}", source_id, e),
         )
     })?;
 
-    let law_count = new_map.laws().filter(|l| l.source_id == source_id).count();
-    corpus.source_map = new_map;
+    let law_count = corpus
+        .source_map
+        .laws()
+        .filter(|l| l.source_id == source_id)
+        .count();
 
     Ok((
         StatusCode::OK,

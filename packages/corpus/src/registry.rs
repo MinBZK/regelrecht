@@ -134,7 +134,11 @@ impl CorpusRegistry {
                     map.load_source(source)?;
                 }
                 SourceType::GitHub { github } => {
-                    let token = crate::auth::resolve_token(&source.id, auth_file)?;
+                    let token = crate::auth::resolve_token_for_source(
+                        &source.id,
+                        source.auth_ref.as_deref(),
+                        auth_file,
+                    )?;
                     match fetcher.fetch_source(github, token.as_deref()).await? {
                         crate::github::FetchResult::Fetched(files) => {
                             for file in &files {
