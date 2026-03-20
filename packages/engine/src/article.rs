@@ -1151,7 +1151,6 @@ articles:
                         .join("..")
                         .join("..")
                         .join("corpus")
-                        .join("central")
                         .join("regulation")
                 })
         }

@@ -1232,7 +1232,6 @@ articles:
                     .join("..")
                     .join("..")
                     .join("corpus")
-                    .join("central")
                     .join("regulation")
             })
     }
@@ -1246,7 +1245,7 @@ articles:
 
         assert!(
             count >= 10,
-            "Expected at least 10 laws from regulation/nl, got {}",
+            "Expected at least 10 laws from corpus/regulation/nl, got {}",
             count
         );
         assert!(resolver.has_law("zorgtoeslagwet"));

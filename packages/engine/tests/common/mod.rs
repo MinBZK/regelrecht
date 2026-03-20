@@ -11,7 +11,6 @@ pub fn regulation_base_path() -> PathBuf {
                 .join("..")
                 .join("..")
                 .join("corpus")
-                .join("central")
                 .join("regulation")
         })
 }

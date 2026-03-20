@@ -1531,7 +1531,6 @@ articles:
                         .join("..")
                         .join("..")
                         .join("corpus")
-                        .join("central")
                         .join("regulation")
                 })
         }
@@ -1583,7 +1582,7 @@ articles:
             // Should load all YAML files from the regulation directory
             assert!(
                 count >= 10,
-                "Expected at least 10 laws loaded from regulation/nl, got {}",
+                "Expected at least 10 laws loaded from corpus/regulation/nl, got {}",
                 count
             );
 
