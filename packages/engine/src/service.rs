@@ -1524,11 +1524,14 @@ articles:
         use std::path::PathBuf;
 
         fn get_regulation_path() -> PathBuf {
-            let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            PathBuf::from(manifest_dir)
-                .join("..")
-                .join("..")
-                .join("regulation")
+            std::env::var("REGULATION_PATH")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("..")
+                        .join("..")
+                        .join("regulation")
+                })
         }
 
         #[test]

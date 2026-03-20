@@ -1185,11 +1185,14 @@ articles:
         fn test_parse_participatiewet_ioc() {
             // Test that participatiewet uses IoC: article 8 has open_terms,
             // article 43 references article 8 via source.output
-            let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            let path = PathBuf::from(manifest_dir)
-                .join("..")
-                .join("..")
-                .join("regulation")
+            let path = std::env::var("REGULATION_PATH")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("..")
+                        .join("..")
+                        .join("regulation")
+                })
                 .join("nl/wet/participatiewet/2022-03-15.yaml");
 
             let law = ArticleBasedLaw::from_yaml_file(&path).unwrap();
@@ -1224,11 +1227,14 @@ articles:
         use std::path::PathBuf;
 
         fn get_regulation_path() -> PathBuf {
-            let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            PathBuf::from(manifest_dir)
-                .join("..")
-                .join("..")
-                .join("regulation")
+            std::env::var("REGULATION_PATH")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("..")
+                        .join("..")
+                        .join("regulation")
+                })
         }
 
         #[test]

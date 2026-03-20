@@ -3,19 +3,15 @@
 //! Verifies that the trace output matches the expected box-drawing format
 //! for the zorgtoeslag (healthcare allowance) scenario.
 
+mod common;
+
 use regelrecht_engine::{LawExecutionService, Value};
 use std::collections::HashMap;
-use std::path::Path;
 use walkdir::WalkDir;
 
 /// Load all regulation YAML files into the service.
 fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, String> {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let regulation_dir = Path::new(manifest_dir)
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("regulation").join("nl"))
-        .ok_or_else(|| "Could not find regulation directory".to_string())?;
+    let regulation_dir = common::regulation_base_path().join("nl");
 
     if !regulation_dir.exists() {
         return Err(format!(

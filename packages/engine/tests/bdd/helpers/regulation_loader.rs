@@ -3,21 +3,27 @@
 //! Loads all YAML regulation files from the regulation/nl directory.
 
 use regelrecht_engine::{EngineError, LawExecutionService};
-use std::path::Path;
+use std::path::PathBuf;
 use walkdir::WalkDir;
+
+/// Get the regulation base path from `REGULATION_PATH` env var or default relative path.
+fn regulation_base_path() -> PathBuf {
+    std::env::var("REGULATION_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join("regulation")
+        })
+}
 
 /// Load all regulation YAML files into the service.
 ///
-/// Scans the `regulation/nl/` directory relative to the package manifest
+/// Scans the `regulation/nl/` directory (or `REGULATION_PATH` env var base)
 /// and loads all `.yaml` files found.
 pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, EngineError> {
-    // Find the regulation directory relative to Cargo.toml
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let regulation_dir = Path::new(manifest_dir)
-        .parent() // packages/
-        .and_then(|p| p.parent()) // project root
-        .map(|p| p.join("regulation").join("nl"))
-        .ok_or_else(|| EngineError::LoadError("Could not find regulation directory".to_string()))?;
+    let regulation_dir = regulation_base_path().join("nl");
 
     if !regulation_dir.exists() {
         return Err(EngineError::LoadError(format!(
@@ -65,13 +71,7 @@ pub fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, 
 /// Get the path to a specific regulation file.
 #[allow(dead_code)]
 pub fn get_regulation_path(relative_path: &str) -> Option<std::path::PathBuf> {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let path = Path::new(manifest_dir)
-        .parent()?
-        .parent()?
-        .join("regulation")
-        .join("nl")
-        .join(relative_path);
+    let path = regulation_base_path().join("nl").join(relative_path);
 
     if path.exists() {
         Some(path)

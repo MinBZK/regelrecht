@@ -1226,11 +1226,14 @@ articles:
 
     #[test]
     fn test_resolver_load_from_directory() {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let regulation_path = std::path::PathBuf::from(manifest_dir)
-            .join("..")
-            .join("..")
-            .join("regulation")
+        let regulation_path = std::env::var("REGULATION_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join("regulation")
+            })
             .join("nl");
 
         let mut resolver = RuleResolver::new();
