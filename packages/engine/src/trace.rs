@@ -236,19 +236,19 @@ impl PathNode {
     ///
     /// Produces output like:
     /// ```text
-    /// SVB: zorgtoeslagwet (2025-01-01 {BSN: 999993653} hoogte_zorgtoeslag)
-    /// ║──Evaluating rules for SVB zorgtoeslagwet (2025-01-01 hoogte_zorgtoeslag)
-    /// ║──Requirements {'all': [...]}
-    /// ║   ├──Resolving from DATA_SOURCE: $LEEFTIJD = 20
-    /// ║   ├──Compute GREATER_OR_EQUAL(20, 18) = True
-    /// ║   ├──Requirement met
-    /// ║──Computing hoogte_zorgtoeslag
-    /// ║   ├──Resolving from DATA_SOURCE: $TOETSINGSINKOMEN = 79547
+    /// zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
+    /// ╟──Evaluating rules for zorgtoeslagwet (hoogte_zorgtoeslag)
+    /// ║   ╟──URI call: wet_basisregistratie_personen#leeftijd
+    /// ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+    /// ║   ║   ╙──Computing leeftijd
+    /// ║   ║       └──Result: leeftijd = 20
+    /// ║   ╟──Computing hoogte_zorgtoeslag
+    /// ║   ║   └──Result: hoogte_zorgtoeslag = 209692
     /// ╙──Result: hoogte_zorgtoeslag = 209692
     /// ```
     pub fn render_box_drawing(&self) -> String {
         let mut lines = Vec::new();
-        self.render_box_node(&mut lines, "", false, false, None);
+        self.render_box_node(&mut lines, "", true, false, None);
         lines.join("\n")
     }
 
@@ -414,6 +414,11 @@ impl PathNode {
                     ));
 
                     let child_prefix = format!("{}{}", child_base, continuation);
+                    let source_connector = if child_count == 0 {
+                        "└──"
+                    } else {
+                        "├──"
+                    };
 
                     if let Some(ref rt) = self.resolve_type {
                         let rt_name = resolve_type_name(rt);
@@ -423,11 +428,11 @@ impl PathNode {
                             .map(format_value_display)
                             .unwrap_or_else(|| "?".to_string());
                         lines.push(format!(
-                            "{}├──Resolving from {}: {}",
-                            child_prefix, rt_name, val_str
+                            "{}{}Resolving from {}: {}",
+                            child_prefix, source_connector, rt_name, val_str
                         ));
                     } else if let Some(ref msg) = self.message {
-                        lines.push(format!("{}├──{}", child_prefix, msg));
+                        lines.push(format!("{}{}{}", child_prefix, source_connector, msg));
                     }
 
                     for (i, child) in self.children.iter().enumerate() {

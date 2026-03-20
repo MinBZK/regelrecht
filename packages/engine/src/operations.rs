@@ -636,7 +636,11 @@ fn execute_if<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize
     if tracing {
         resolver.trace_push("WHEN", PathNodeType::Operation);
     }
-    let condition_result = evaluate_value(when, resolver, depth)?;
+    let condition_result = evaluate_value(when, resolver, depth).inspect_err(|_| {
+        if tracing {
+            resolver.trace_pop();
+        }
+    })?;
     if tracing {
         resolver.trace_set_result(condition_result.clone());
         resolver.trace_set_message(format!(
@@ -650,7 +654,11 @@ fn execute_if<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize
         if tracing {
             resolver.trace_push("THEN", PathNodeType::Operation);
         }
-        let result = evaluate_value(then, resolver, depth)?;
+        let result = evaluate_value(then, resolver, depth).inspect_err(|_| {
+            if tracing {
+                resolver.trace_pop();
+            }
+        })?;
         if tracing {
             resolver.trace_set_result(result.clone());
             resolver.trace_set_message(format!("THEN: {}", format_value_for_trace(&result)));
@@ -662,7 +670,11 @@ fn execute_if<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize
         if tracing {
             resolver.trace_push("ELSE", PathNodeType::Operation);
         }
-        let result = evaluate_value(else_branch, resolver, depth)?;
+        let result = evaluate_value(else_branch, resolver, depth).inspect_err(|_| {
+            if tracing {
+                resolver.trace_pop();
+            }
+        })?;
         if tracing {
             resolver.trace_set_result(result.clone());
             resolver.trace_set_message(format!("ELSE: {}", format_value_for_trace(&result)));
