@@ -157,7 +157,8 @@ pub async fn sync_source(
         .collect();
     corpus.source_map.remove_source(&source_id);
     if let Err(e) = corpus.source_map.load_source(&source) {
-        // Restore snapshot on failure (laws + conflict records)
+        // Clean any partially-loaded laws, then restore snapshot
+        corpus.source_map.remove_source(&source_id);
         for law in law_snapshot {
             corpus.source_map.restore_law(law);
         }
