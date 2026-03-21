@@ -28,6 +28,18 @@ The lifecycle of a beschikking is not defined by the Vreemdelingenwet or the Zor
 
 The AWB defines stages. Specific laws fill in the content at each stage. Other laws (Termijnenwet, KB gelijkgestelde dagen) hook into specific stages. This relationship already exists in law — it needs to be expressed in the schema.
 
+### Terminology: procedure vs. lifecycle
+
+In AWB terminology, what we describe here is a **procedure** — the bezwaarprocedure, the beroepsprocedure, the voorbereidingsprocedure. The AWB never uses the word "lifecycle"; that is software engineering jargon.
+
+However, in the AWB "procedure" typically refers to one phase (the bezwaarprocedure, the beroepsprocedure). The entire journey from aanvraag to onherroepelijk spans *multiple* procedures. In engineering, "lifecycle" captures this overarching concept: the full life of a besluit from birth (aanvraag) to final state (onherroepelijk, ingetrokken, verlopen).
+
+This RFC uses both terms deliberately:
+- **Procedure** (`procedure:` in YAML): the domain term, used in the machine-readable specification because the YAML is a law specification and should speak the language of law.
+- **Lifecycle**: used in prose when discussing the engineering concept of an entity progressing through states over time.
+
+Both refer to the same thing: the AWB-defined sequence of stages that a besluit progresses through.
+
 ### What goes wrong without lifecycle stages
 
 1. **Semantic confusion**: AWB 6:8 hooks on BESCHIKKING but should only fire when bekendmaking has occurred. Without stages, parameter absence becomes implicit control flow.
@@ -55,7 +67,7 @@ The AWB defines the lifecycle for BESCHIKKING as a machine-readable construct:
 # algemene_wet_bestuursrecht.yaml
 $id: algemene_wet_bestuursrecht
 
-lifecycle:
+procedure:
   - id: beschikking
     applies_to:
       legal_character: BESCHIKKING
@@ -217,7 +229,7 @@ A **besluit** progresses through the AWB lifecycle and accumulates outputs at ea
 
 ```
 Besluit {
-    lifecycle: "beschikking"          -- which AWB lifecycle
+    procedure: "beschikking"          -- which AWB procedure
     contextual_law: "vreemdelingenwet_2000"  -- lex specialis context
     current_stage: BEKENDMAKING       -- where we are
     outputs: {                        -- accumulated from all stages
@@ -273,7 +285,7 @@ The besluit state consists of:
 |-----------|-----------|---------------|
 | **Accumulated outputs** | All outputs from completed stages | Besluit record |
 | **Current stage** | Which lifecycle stage the besluit is at | Besluit record |
-| **Pending inputs** | What external data is needed to advance | Derived from lifecycle definition |
+| **Pending inputs** | What external data is needed to advance | Derived from procedure definition |
 | **Contextual law** | The lex specialis context for overrides | Set at creation, immutable |
 | **Parameters** | Original parameters from the initial execution | Besluit record |
 
@@ -334,10 +346,10 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 ### Implementation Notes
 
-The lifecycle is a new top-level construct in the schema, defined at the law level (not article level). It references stages, and hooks reference stages.
+The procedure is a new top-level construct in the schema (`procedure:` key), defined at the law level (not article level). It references stages, and hooks reference stages.
 
 The engine needs:
-- **Lifecycle index**: maps `(legal_character) → lifecycle_definition`, loaded from AWB YAML.
+- **Procedure index**: maps `(legal_character) → procedure_definition`, loaded from AWB YAML.
 - **Stage-aware hook resolution**: `find_hooks` gains a `stage` parameter. Hooks without `stage` default to BESLUIT.
 - **Besluit state**: a struct carrying accumulated outputs, current stage, and context. Passed in and returned by the engine.
 - **Yield mechanism**: the engine returns either a completed result or a "waiting for input" signal with the next stage's requirements.
