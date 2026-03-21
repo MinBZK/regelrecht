@@ -11,7 +11,7 @@ The law execution engine requires a language that supports:
 1. **Browser deployment**: The engine must run in the frontend editor via WebAssembly (WASM)
 2. **Deterministic execution**: Legal requirement - identical inputs must always produce identical outputs
 3. **Type safety**: Schema conformance should be verifiable at compile time
-4. **AI-aided development**: The team uses Claude Code as primary development tool
+4. **AI-aided development**: The team uses an AI coding agent as primary development tool
 
 A Python prototype exists (`engine/`) demonstrating the execution model. The question is which language to use for the production implementation.
 
@@ -35,7 +35,7 @@ Use **Rust** for the law execution engine.
 - Memory safety without garbage collector (important for WASM performance)
 - No runtime exceptions from null/undefined
 - Pattern matching aligns well with rule-based logic
-- `serde` provides robust YAML/JSON parsing with compile-time validation
+- `serde` provides reliable YAML/JSON parsing with compile-time validation
 
 ### Tradeoffs
 
@@ -88,3 +88,4 @@ The generate → compile → fix cycle with Rust is faster than generate → run
 - [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen) - JS interop
 - [Pyodide](https://pyodide.org/) - Python in WASM (for size comparison)
 - [serde](https://serde.rs/) - Serialization framework
+- [Glossary of Dutch Legal Terms](../glossary.md)
