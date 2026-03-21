@@ -68,17 +68,17 @@ function editDef(name) {
 
 function editParam(index) {
   const p = execution.value?.parameters?.[index];
-  if (p) emit('open-edit', { section: 'parameter', index, data: p });
+  if (p) emit('open-edit', { section: 'parameter', index, data: JSON.parse(JSON.stringify(p)) });
 }
 
 function editInput(index) {
   const raw = execution.value?.input?.[index];
-  if (raw) emit('open-edit', { section: 'input', index, data: raw });
+  if (raw) emit('open-edit', { section: 'input', index, data: JSON.parse(JSON.stringify(raw)) });
 }
 
 function editOutput(index) {
   const raw = execution.value?.output?.[index];
-  if (raw) emit('open-edit', { section: 'output', index, data: raw });
+  if (raw) emit('open-edit', { section: 'output', index, data: JSON.parse(JSON.stringify(raw)) });
 }
 
 // Open edit sheet for new items

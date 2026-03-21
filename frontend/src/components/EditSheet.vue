@@ -141,7 +141,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
 </script>
 
 <template>
-  <div v-if="item" class="edit-sheet-overlay" @click.self="emit('close')">
+  <div v-if="item" class="edit-sheet-overlay">
     <div class="edit-sheet-backdrop" @click="emit('close')"></div>
     <div class="edit-sheet-panel">
       <!-- Header -->
