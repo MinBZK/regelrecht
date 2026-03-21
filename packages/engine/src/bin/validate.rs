@@ -26,18 +26,24 @@ fn load_schemas() -> Result<HashMap<&'static str, serde_json::Value>, String> {
     let v040: serde_json::Value =
         serde_json::from_str(include_str!("../../../../schema/v0.4.0/schema.json"))
             .map_err(|e| format!("invalid v0.4.0 schema JSON: {e}"))?;
+    let v050: serde_json::Value =
+        serde_json::from_str(include_str!("../../../../schema/v0.5.0/schema.json"))
+            .map_err(|e| format!("invalid v0.5.0 schema JSON: {e}"))?;
     schemas.insert("v0.2.0", v020);
     schemas.insert("v0.3.0", v030);
     schemas.insert("v0.3.1", v031);
     schemas.insert("v0.3.2", v032);
     schemas.insert("v0.4.0", v040);
+    schemas.insert("v0.5.0", v050);
     Ok(schemas)
 }
 
 /// Detect schema version from the `$schema` field in the YAML document.
 fn detect_version(value: &serde_json::Value) -> Option<&str> {
     let schema_url = value.get("$schema")?.as_str()?;
-    if schema_url.contains("v0.4.0") {
+    if schema_url.contains("v0.5.0") {
+        Some("v0.5.0")
+    } else if schema_url.contains("v0.4.0") {
         Some("v0.4.0")
     } else if schema_url.contains("v0.3.2") {
         Some("v0.3.2")

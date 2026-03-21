@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: wet_langdurige_zorg
 regulatory_layer: WET
 publication_date: '2014-12-12'
@@ -164,7 +164,7 @@ articles:
         actions:
           - output: is_verzekerd_wlz_inclusief_verdrag
             value:
-              operation: SWITCH
+              operation: IF
               cases:
                 - when:
                     operation: EQUALS

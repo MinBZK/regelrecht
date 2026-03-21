@@ -36,12 +36,13 @@ fn layer_priority(layer: &RegulatoryLayer) -> u8 {
         RegulatoryLayer::EuRichtlijn => 2,
         RegulatoryLayer::Grondwet => 3,
         RegulatoryLayer::Wet => 4,
-        RegulatoryLayer::Amvb => 5,
-        RegulatoryLayer::MinisterieleRegeling => 6,
-        RegulatoryLayer::ProvincialeVerordening => 7,
-        RegulatoryLayer::GemeentelijkeVerordening => 8,
-        RegulatoryLayer::Beleidsregel => 9,
-        RegulatoryLayer::Uitvoeringsbeleid => 10,
+        RegulatoryLayer::KoninklijkBesluit => 5,
+        RegulatoryLayer::Amvb => 6,
+        RegulatoryLayer::MinisterieleRegeling => 7,
+        RegulatoryLayer::ProvincialeVerordening => 8,
+        RegulatoryLayer::GemeentelijkeVerordening => 9,
+        RegulatoryLayer::Beleidsregel => 10,
+        RegulatoryLayer::Uitvoeringsbeleid => 11,
     }
 }
 

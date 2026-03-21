@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: wet_inkomstenbelasting_2001
 regulatory_layer: WET
 publication_date: '2001-12-15'
@@ -165,49 +165,51 @@ articles:
                         - $onroerend_goed
                     - $schulden
                     - operation: IF
-                      when:
-                        operation: EQUALS
-                        subject: $heeft_toeslagpartner
-                        value: true
-                      then: $heffingsvrije_voet_partners
-                      else: $heffingsvrije_voet_alleenstaand
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_toeslagpartner
+                            value: true
+                          then: $heffingsvrije_voet_partners
+                      default: $heffingsvrije_voet_alleenstaand
           - output: box3_inkomen
             value:
               operation: IF
-              when:
-                operation: GREATER_THAN
-                subject: $rendementsgrondslag
-                value: 0
-              then:
-                operation: MAX
-                values:
-                  - 0
-                  - operation: MULTIPLY
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $rendementsgrondslag
+                    value: 0
+                  then:
+                    operation: MAX
                     values:
-                      - $box3_bezittingen
-                      - operation: DIVIDE
+                      - 0
+                      - operation: MULTIPLY
                         values:
-                          - operation: SUBTRACT
+                          - $box3_bezittingen
+                          - operation: DIVIDE
                             values:
-                              - operation: ADD
+                              - operation: SUBTRACT
                                 values:
-                                  - operation: MULTIPLY
+                                  - operation: ADD
                                     values:
-                                      - $spaargeld
-                                      - $rendement_spaargeld
-                                  - operation: MULTIPLY
-                                    values:
-                                      - operation: ADD
+                                      - operation: MULTIPLY
                                         values:
-                                          - $beleggingen
-                                          - $onroerend_goed
-                                      - $rendement_overige_bezittingen
-                              - operation: MULTIPLY
-                                values:
-                                  - $schulden
-                                  - $rendement_schulden
-                          - $rendementsgrondslag
-              else: 0
+                                          - $spaargeld
+                                          - $rendement_spaargeld
+                                      - operation: MULTIPLY
+                                        values:
+                                          - operation: ADD
+                                            values:
+                                              - $beleggingen
+                                              - $onroerend_goed
+                                          - $rendement_overige_bezittingen
+                                  - operation: MULTIPLY
+                                    values:
+                                      - $schulden
+                                      - $rendement_schulden
+                              - $rendementsgrondslag
+              default: 0
 
   - number: '2.18'
     text: |-

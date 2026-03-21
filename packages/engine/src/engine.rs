@@ -440,20 +440,15 @@ impl<'a> ArticleEngine<'a> {
     ///
     /// # Limitations
     ///
-    /// SWITCH operations at the action level are NOT supported because the
-    /// `Action` struct doesn't have `cases` and `default` fields. SWITCH must
-    /// be nested inside `value` as an `ActionValue::Operation`. Example:
+    /// IF (cases/default), date operations, and LIST at the action level are
+    /// NOT supported because the `Action` struct doesn't have those fields.
+    /// They must be nested inside `value` as an `ActionValue::Operation`.
     ///
     /// ```yaml
-    /// # INCORRECT - won't work:
-    /// - output: result
-    ///   operation: SWITCH
-    ///   cases: [...]  # Action doesn't have this field
-    ///
     /// # CORRECT - use value wrapper:
     /// - output: result
     ///   value:
-    ///     operation: SWITCH
+    ///     operation: IF
     ///     cases: [...]
     /// ```
     fn action_to_operation(
@@ -466,15 +461,26 @@ impl<'a> ArticleEngine<'a> {
             subject: action.subject.clone(),
             value: action.value.clone(),
             values: action.values.clone(),
+            conditions: action.conditions.clone(),
+            // IF-specific fields: Action struct doesn't have these,
+            // so IF (cases/default) must be nested inside `value`
+            cases: None,
+            default: None,
+            // Date operation fields: must be nested inside `value`
+            date: None,
+            days: None,
+            weeks: None,
+            year: None,
+            month: None,
+            day: None,
+            date_of_birth: None,
+            reference_date: None,
+            // LIST items: must be nested inside `value`
+            items: None,
+            // Backward compatibility fields
             when: action.when.clone(),
             then: action.then.clone(),
             else_branch: action.else_branch.clone(),
-            conditions: action.conditions.clone(),
-            // SWITCH-specific fields: Action struct doesn't have these,
-            // so SWITCH must be nested inside `value` to work correctly
-            cases: None,
-            default: None,
-            // Unit for SUBTRACT_DATE
             unit: action.unit.clone(),
         })
     }
@@ -525,12 +531,13 @@ articles:
           - output: age_check_result
             value:
               operation: IF
-              when:
-                operation: GREATER_THAN_OR_EQUAL
-                subject: $age
-                value: $MIN_AGE
-              then: "adult"
-              else: "minor"
+              cases:
+                - when:
+                    operation: GREATER_THAN_OR_EQUAL
+                    subject: $age
+                    value: $MIN_AGE
+                  then: "adult"
+              default: "minor"
 "#;
         ArticleBasedLaw::from_yaml_str(yaml).unwrap()
     }

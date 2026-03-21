@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: burgerlijk_wetboek_boek_5
 uuid: 5a42b000-5a42-5a42-5a42-5a42b0000042
 regulatory_layer: WET
@@ -43,12 +43,13 @@ articles:
               - output: minimale_afstand_cm
                 value:
                   operation: IF
-                  when:
-                    operation: EQUALS
-                    subject: $type_beplanting
-                    value: boom
-                  then: 200
-                  else: 50
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $type_beplanting
+                        value: boom
+                      then: 200
+                  default: 50
       # Publiek endpoint om de minimale afstand te bepalen
       execution:
         produces:

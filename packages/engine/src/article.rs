@@ -120,9 +120,9 @@ pub struct Produces {
     pub decision_type: Option<String>,
 }
 
-/// A single case in a SWITCH operation
+/// A single case in an IF operation (cases/default syntax)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SwitchCase {
+pub struct Case {
     /// Condition to evaluate
     pub when: ActionValue,
     /// Value to return if condition is true
@@ -157,25 +157,53 @@ pub struct ActionOperation {
     /// Multiple values for aggregate/arithmetic operations
     #[serde(default)]
     pub values: Option<Vec<ActionValue>>,
-    /// Condition for IF operations
-    #[serde(default)]
-    pub when: Option<ActionValue>,
-    /// Then branch for IF operations
-    #[serde(default)]
-    pub then: Option<ActionValue>,
-    /// Else branch for IF operations
-    #[serde(rename = "else", default)]
-    pub else_branch: Option<ActionValue>,
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
-    /// Cases for SWITCH operations
+    /// Cases for IF operations (cases/default syntax)
     #[serde(default)]
-    pub cases: Option<Vec<SwitchCase>>,
-    /// Default value for SWITCH operations
+    pub cases: Option<Vec<Case>>,
+    /// Default value for IF operations (cases/default syntax)
     #[serde(default)]
     pub default: Option<ActionValue>,
-    /// Unit for SUBTRACT_DATE operation ("days", "months", "years")
+    /// Date value for DATE_ADD, DAY_OF_WEEK operations
+    #[serde(default)]
+    pub date: Option<ActionValue>,
+    /// Days to add for DATE_ADD
+    #[serde(default)]
+    pub days: Option<ActionValue>,
+    /// Weeks to add for DATE_ADD
+    #[serde(default)]
+    pub weeks: Option<ActionValue>,
+    /// Year component for DATE operation
+    #[serde(default)]
+    pub year: Option<ActionValue>,
+    /// Month component for DATE operation
+    #[serde(default)]
+    pub month: Option<ActionValue>,
+    /// Day component for DATE operation
+    #[serde(default)]
+    pub day: Option<ActionValue>,
+    /// Date of birth for AGE operation
+    #[serde(default)]
+    pub date_of_birth: Option<ActionValue>,
+    /// Reference date for AGE operation
+    #[serde(default)]
+    pub reference_date: Option<ActionValue>,
+    /// Items for LIST operation
+    #[serde(default)]
+    pub items: Option<Vec<ActionValue>>,
+    // Backward compatibility fields (v0.4.0 and earlier)
+    /// Condition for old IF operations (when/then/else syntax)
+    #[serde(default)]
+    pub when: Option<ActionValue>,
+    /// Then branch for old IF operations
+    #[serde(default)]
+    pub then: Option<ActionValue>,
+    /// Else branch for old IF operations
+    #[serde(rename = "else", default)]
+    pub else_branch: Option<ActionValue>,
+    /// Unit for old SUBTRACT_DATE operation ("days", "months", "years")
     #[serde(default)]
     pub unit: Option<String>,
 }
@@ -196,19 +224,20 @@ pub struct Action {
     /// Subject for comparison operations
     #[serde(default)]
     pub subject: Option<ActionValue>,
-    /// Condition for IF operations
-    #[serde(default)]
-    pub when: Option<ActionValue>,
-    /// Then branch for IF operations
-    #[serde(default)]
-    pub then: Option<ActionValue>,
-    /// Else branch for IF operations
-    #[serde(rename = "else", default)]
-    pub else_branch: Option<ActionValue>,
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
-    /// Unit for SUBTRACT_DATE operation ("days", "months", "years")
+    // Backward compatibility fields (v0.4.0 and earlier)
+    /// Condition for old IF operations (when/then/else syntax)
+    #[serde(default)]
+    pub when: Option<ActionValue>,
+    /// Then branch for old IF operations
+    #[serde(default)]
+    pub then: Option<ActionValue>,
+    /// Else branch for old IF operations
+    #[serde(rename = "else", default)]
+    pub else_branch: Option<ActionValue>,
+    /// Unit for old SUBTRACT_DATE operation
     #[serde(default)]
     pub unit: Option<String>,
 }
@@ -1040,12 +1069,13 @@ articles:
           - output: result
             value:
               operation: IF
-              when:
-                operation: EQUALS
-                subject: $has_partner
-                value: true
-              then: 100
-              else: 50
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $has_partner
+                    value: true
+                  then: 100
+              default: 50
 "#;
         let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
         let article = &law.articles[0];
@@ -1056,9 +1086,8 @@ articles:
         match &actions[0].value {
             Some(ActionValue::Operation(op)) => {
                 assert_eq!(op.operation, Operation::If);
-                assert!(op.when.is_some());
-                assert!(op.then.is_some());
-                assert!(op.else_branch.is_some());
+                assert!(op.cases.is_some());
+                assert!(op.default.is_some());
             }
             _ => panic!("Expected operation value"),
         }

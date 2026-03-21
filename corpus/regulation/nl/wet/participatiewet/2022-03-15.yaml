@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: participatiewet
 regulatory_layer: WET
 publication_date: '2014-07-15'
@@ -282,12 +282,13 @@ articles:
           - output: normbedrag_artikel_21
             value:
               operation: IF
-              when:
-                operation: EQUALS
-                subject: $is_alleenstaande
-                value: true
-              then: $norm_alleenstaande
-              else: $norm_gehuwden
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_alleenstaande
+                    value: true
+                  then: $norm_alleenstaande
+              default: $norm_gehuwden
   - number: '22'
     text: |-
       **Normen pensioengerechtigden**
@@ -530,7 +531,7 @@ articles:
           # === Stap 7: Bepaal reden afwijzing indien geen recht ===
           - output: reden_afwijzing
             value:
-              operation: SWITCH
+              operation: IF
               cases:
                 - when:
                     operation: EQUALS
@@ -566,7 +567,7 @@ articles:
           # === Stap 8: Bepaal normbedrag (art. 21) ===
           - output: normbedrag
             value:
-              operation: SWITCH
+              operation: IF
               cases:
                 - when:
                     operation: EQUALS
