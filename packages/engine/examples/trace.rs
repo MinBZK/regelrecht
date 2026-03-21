@@ -51,7 +51,13 @@ fn main() {
     {
         let path = entry.path();
         if path.is_file() && path.extension().is_some_and(|ext| ext == "yaml") {
-            let content = std::fs::read_to_string(path).expect("Failed to read YAML file");
+            let content = match std::fs::read_to_string(path) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("Warning: could not read {}: {}", path.display(), e);
+                    continue;
+                }
+            };
             if service.load_law(&content).is_ok() {
                 count += 1;
             }
