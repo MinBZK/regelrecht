@@ -20,7 +20,7 @@ But an individual decision (*beschikking*) is not an instant computation. It is 
 
 If hooks fire without awareness of lifecycle stages, all AWB obligations trigger at once — including AWB 6:8 (objection period date calculation), which needs `bekendmaking_datum`. But notification (*bekendmaking*) hasn't happened yet at decision time. Treating a missing `bekendmaking_datum` as "skip this hook gracefully" is a workaround, not a design.
 
-The fundamental problem: **the decision and the notification (*bekendmaking*) are different moments in time, with different inputs, producing different outputs, governed by different articles of law.** They must not fire in the same execution step.
+The problem: **the decision and the notification (*bekendmaking*) are different moments in time, with different inputs, producing different outputs, governed by different articles of law.** They must not fire in the same execution step.
 
 ### Who defines the lifecycle?
 
@@ -392,7 +392,7 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 ### Tradeoffs
 
-**Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage decision (*besluit*) state persistence. This is significant implementation effort.
+**Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage decision (*besluit*) state persistence. This is a lot of implementation work.
 
 **Backwards compatibility.** Existing laws that produce BESCHIKKING without a lifecycle still work — they complete in a single stage. But new laws should use the lifecycle model. RFC-007 hooks without `stage` default to BESLUIT for backward compatibility.
 

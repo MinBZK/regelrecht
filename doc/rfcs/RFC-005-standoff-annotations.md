@@ -9,7 +9,7 @@
 Legal texts are stored as verbatim text in YAML files. We want to add annotations
 at word or character level, without modifying the legal text itself. Annotations
 must be version-resilient: when text changes or moves, an annotation should
-automatically find its new location. Crucially, annotations should resolve on
+automatically find its new location. Annotations should resolve on
 **any version** of a law where the annotated text exists - both older and newer
 versions - without requiring migration logic or change tracking.
 

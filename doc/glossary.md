@@ -32,7 +32,7 @@ translated.
 | English | Dutch | Definition |
 |---------|-------|------------|
 | Administrative decision | *besluit* | A written decision by an administrative body (*bestuursorgaan*) with external legal effect (AWB 1:3). The central concept of Dutch administrative law. |
-| Permit / grant decision | *beschikking* | An administrative decision (*besluit*) directed at one or more specific individuals, as opposed to a generally applicable rule (AWB 1:3 lid 2). |
+| Individual decision | *beschikking* | An administrative decision (*besluit*) directed at one or more specific individuals, as opposed to a generally applicable rule (AWB 1:3 lid 2). Includes both grants (*toekenningen*) and rejections (*afwijzingen*). |
 | General rule | *besluit van algemene strekking* | An administrative decision that applies generally (e.g., a regulation or policy rule), not directed at specific individuals. |
 | Assessment | *toets* | Evaluation of whether legal conditions are met. |
 | Grant / award | *toekenning* | Positive decision granting a benefit or right. |
@@ -69,6 +69,7 @@ translated.
 | Final / irrevocable | *onherroepelijk* | State where a decision can no longer be challenged through regular legal remedies. |
 | Admissibility check | *ontvankelijkheidstoets* | Preliminary check whether an objection or appeal meets formal requirements (filed on time, by an interested party, against a proper decision). |
 | Direct appeal (skipping objection) | *rechtstreeks beroep* | Procedure where the objection phase is skipped and the case goes directly to the administrative court (AWB 7:1a). |
+| Residence permit | *verblijfsvergunning* | Permit granting a foreign national the right to reside in the Netherlands, issued under the Aliens Act (*Vreemdelingenwet*). |
 
 ## Uniform Public Preparation Procedure (UOV)
 
@@ -98,8 +99,7 @@ translated.
 | English | Dutch | Definition |
 |---------|-------|------------|
 | Deadline / term | *termijn* | A legally defined time period within which an action must be taken. |
-| Public holidays | *feestdagen* | Officially recognized holidays listed in the General Deadlines Act (*Algemene Termijnenwet*) article 3. |
-| Equivalent days / bridge days | *gelijkgestelde dagen* | Additional days designated by royal decree (*KB*) as equivalent to public holidays for deadline calculation purposes (Algemene Termijnenwet article 3 lid 3). |
+| Public holidays | *feestdagen* | Officially recognized holidays listed in the General Deadlines Act (*Algemene Termijnenwet*) article 3. See the Public Holidays section for the full list. |
 | Effective date | *inwerkingtredingsdatum* | The date on which a law or regulation takes effect. |
 | Publication date | *publicatiedatum* | The date on which a law or regulation is officially published. |
 | Calculation date | *berekeningsdatum* | The reference date used for temporal filtering — determines which version of a law applies. |
@@ -121,6 +121,20 @@ translated.
 | Government Gazette | *Staatscourant* (Stcrt.) | Publication channel for ministerial regulations, royal decrees, and other government announcements. |
 | Municipal gazette | *gemeenteblad* | Publication channel for municipal regulations and announcements. |
 | Provincial gazette | *provincieblad* | Publication channel for provincial regulations and announcements. |
+
+## Public Holidays
+
+| English | Dutch | Definition |
+|---------|-------|------------|
+| New Year's Day | *Nieuwjaarsdag* | 1 January. |
+| King's Day | *Koningsdag* | 27 April (shifted to 26 April when the 27th falls on a Sunday). |
+| Liberation Day | *Bevrijdingsdag* | 5 May. |
+| Christmas Days | *Kerstdagen* | 25 and 26 December (First and Second Christmas Day). |
+| Good Friday | *Goede Vrijdag* | Friday before Easter Sunday. |
+| Easter Monday | *Tweede Paasdag* | Monday after Easter Sunday. |
+| Ascension Day | *Hemelvaartsdag* | 39 days after Easter Sunday (always a Thursday). |
+| Whit Monday | *Tweede Pinksterdag* | 50 days after Easter Sunday. |
+| Equivalent days / bridge days | *gelijkgestelde dagen* | Additional days designated by royal decree (*KB*) as equivalent to public holidays for deadline calculation purposes (Algemene Termijnenwet article 3 lid 3). |
 
 ## Key Laws Referenced
 
@@ -149,7 +163,7 @@ translated. Their meaning is defined here for reference.
 
 | Identifier | English equivalent | Used in |
 |------------|-------------------|---------|
-| `BESCHIKKING` | Permit / individual decision | `legal_character` enum |
+| `BESCHIKKING` | Individual decision | `legal_character` enum |
 | `TOETS` | Assessment | `legal_character` enum |
 | `VASTSTELLING` | Determination | `legal_character` enum |
 | `TOEKENNING` | Grant / award | `decision_type` enum |

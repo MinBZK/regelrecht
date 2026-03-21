@@ -58,7 +58,7 @@ machine_readable:
 8. If not found + `required: true` + no default: error
 9. If not found + `required: false` + no default: skip (traced)
 10. **Cycle detection**: if an open term is already being resolved (via `ResolutionContext.visited`), a `CircularReference` error is raised — circular dependencies are a law authoring problem, not something the engine should fix. The cycle detection key uses `\0` (null byte) as separator to prevent key collisions when law IDs or article numbers contain `#`
-11. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a municipal ordinance (*gemeente verordening*) tries to implement a term delegated to a minister, the engine rejects it with a clear error
+11. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a municipal ordinance (*gemeentelijke verordening*) tries to implement a term delegated to a minister, the engine rejects it with a clear error
 12. **Array size validation**: `open_terms` and `implements` arrays are validated against `MAX_ARRAY_SIZE` at law load time, preventing resource exhaustion
 
 ### Temporal model for open term resolution
@@ -133,7 +133,7 @@ source:
   output: verlaging_percentage
 ```
 
-This is backwards. The Participatiewet doesn't know which municipalities (*gemeenten*) have ordinances (*verordeningen*) — it just delegates. The municipal ordinance (*gemeente verordening*) knows which law (*wet*) it implements. IoC corrects this by letting the implementing regulation declare the relationship:
+This is backwards. The Participatiewet doesn't know which municipalities (*gemeenten*) have ordinances (*verordeningen*) — it just delegates. The municipal ordinance (*gemeentelijke verordening*) knows which law (*wet*) it implements. IoC corrects this by letting the implementing regulation declare the relationship:
 
 ```yaml
 # New pattern: lower regulation registers itself

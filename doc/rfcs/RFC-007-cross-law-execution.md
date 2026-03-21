@@ -295,9 +295,9 @@ graph LR
 
 **Layer 1: Fixed dates** — Defined in the law text (art 3 lid 1). Modeled as `DATE` operations with the `jaar` parameter. King's Day (*Koningsdag*) has a Sunday-shift rule modeled as an `IF`/`DAY_OF_WEEK` expression in law YAML — not as engine knowledge.
 
-**Layer 2: Easter-dependent dates** — Good Friday (*Goede Vrijdag*), Tweede Paasdag, Ascension Day (*Hemelvaartsdag*), Whit Monday (*Tweede Pinksterdag*). Fixed offsets from Easter Sunday. The engine receives `pasen_datum` as a parameter. The computus is not in the engine — whoever calls the engine provides the date.
+**Layer 2: Easter-dependent dates** — Good Friday (*Goede Vrijdag*), Easter Monday (*Tweede Paasdag*), Ascension Day (*Hemelvaartsdag*), Whit Monday (*Tweede Pinksterdag*). Fixed offsets from Easter Sunday. The engine receives `pasen_datum` as a parameter. The computus is not in the engine — whoever calls the engine provides the date.
 
-**Layer 3: Equivalent days (*gelijkgestelde dagen*)** — days designated by royal decree as equivalent to public holidays (*feestdagen*). Artikel 3 lid 3 delegates to the Crown. KB's from the Government Gazette (*Staatscourant*) (e.g., Stcrt. 2025, 24713 covers 2026-2028) implement this via IoC (RFC-003), same pattern as BW5 art 42 with gemeente verordeningen.
+**Layer 3: Equivalent days (*gelijkgestelde dagen*)** — days designated by royal decree as equivalent to public holidays (*feestdagen*). Artikel 3 lid 3 delegates to the Crown. KB's from the Government Gazette (*Staatscourant*) (e.g., Stcrt. 2025, 24713 covers 2026-2028) implement this via IoC (RFC-003), same pattern as BW5 art 42 with municipal ordinances (*gemeentelijke verordeningen*).
 
 ### How the mechanisms compose
 
@@ -671,7 +671,7 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 
 **Contextual law threading.** The engine needs to know which law initiated the execution chain to determine which overrides apply. This requires threading `contextual_law_id` through `ResolutionContext`.
 
-**New types and operations.** `date`, `array`, plus `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `NEXT_WORKING_DAY`, `LIST`, `CONCAT`. Significant expansion of the operation set.
+**New types and operations.** `date`, `array`, plus `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `NEXT_WORKING_DAY`, `LIST`, `CONCAT`. This is a large expansion of the operation set.
 
 **Semantic annotations.** `semantic` on outputs introduces a new schema dimension. The set of valid values needs definition (initially just deadline (*termijn*)).
 
