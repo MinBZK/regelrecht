@@ -8,12 +8,13 @@ import ActionSheet from './components/ActionSheet.vue';
 
 const laws = ref([]);
 const loading = ref(true);
-const error = ref(null);
+const indexError = ref(null);
 const search = ref('');
 
 const selectedLawPath = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
+const lawError = ref(null);
 const selectedArticleNumber = ref(null);
 const detailView = ref('machine');
 const activeAction = ref(null);
@@ -72,7 +73,7 @@ async function loadIndex() {
       selectLaw(laws.value[0].path);
     }
   } catch (e) {
-    error.value = e;
+    indexError.value = e;
   } finally {
     loading.value = false;
   }
@@ -90,7 +91,7 @@ async function loadLaw(path) {
     }
   } catch (e) {
     selectedLaw.value = null;
-    error.value = e;
+    lawError.value = e;
   } finally {
     selectedLawLoading.value = false;
   }
@@ -100,6 +101,7 @@ function selectLaw(path) {
   selectedLawPath.value = path;
   selectedArticleNumber.value = null;
   activeAction.value = null;
+  lawError.value = null;
   loadLaw(path);
 }
 
@@ -154,7 +156,7 @@ loadIndex();
 
           <rr-simple-section container="sm">
             <div v-if="loading" style="padding: 32px; text-align: center;">Laden...</div>
-            <div v-else-if="error" style="padding: 32px; text-align: center; color: #c00;">{{ error.message }}</div>
+            <div v-else-if="indexError" style="padding: 32px; text-align: center; color: #c00;">{{ indexError.message }}</div>
             <rr-list v-else variant="simple">
               <rr-list-item
                 v-for="law in filteredLaws"
@@ -210,6 +212,7 @@ loadIndex();
 
           <rr-simple-section container="sm">
             <div v-if="selectedLawLoading" style="padding: 32px; text-align: center;">Laden...</div>
+            <div v-else-if="lawError" style="padding: 32px; text-align: center; color: #c00;">{{ lawError.message }}</div>
             <div v-else-if="!selectedLaw" style="padding: 32px; text-align: center;">Selecteer een wet</div>
             <rr-list v-else variant="simple">
               <rr-list-item
