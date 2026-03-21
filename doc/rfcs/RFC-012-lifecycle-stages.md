@@ -7,11 +7,9 @@
 
 ## Context
 
-RFC-008 introduced hooks: articles that fire when another article's `produces` annotation matches. AWB 3:46 (motiveringsplicht) fires on any BESCHIKKING, AWB 6:7 (bezwaartermijn) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING. All fire synchronously, in the same execution.
+RFC-008 introduced hooks: articles that fire when another article's `produces` annotation matches. This enables reactive execution — AWB 3:46 (motiveringsplicht) fires on any BESCHIKKING, AWB 6:7 (bezwaartermijn) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING.
 
-This is wrong.
-
-A beschikking is not an instant computation. It is an administrative process that progresses through stages over time:
+But a beschikking is not an instant computation. It is an administrative process that progresses through stages over time:
 
 1. The belanghebbende submits an **aanvraag** (application, AWB 4:1).
 2. The bestuursorgaan investigates during the **behandeling** (processing) phase, possibly requesting additional information (AWB 4:5), possibly extending the beslistermijn (AWB 4:14). This can take weeks, months, or in complex cases years.
@@ -20,22 +18,22 @@ A beschikking is not an instant computation. It is an administrative process tha
 5. The **bezwaartermijn** starts the day after bekendmaking (AWB 6:8 lid 1) and runs for six weeks (AWB 6:7).
 6. The belanghebbende may file a **bezwaar** (objection, AWB 6:4).
 
-The current engine treats all of this as a single synchronous execution. When Vreemdelingenwet art 14 produces a BESCHIKKING, AWB 6:8 fires immediately and tries to calculate the bezwaartermijn einddatum — but it needs `bekendmaking_datum`, which doesn't exist yet because bekendmaking hasn't happened. The engine handles this by "gracefully skipping" the hook when the parameter is missing. This is a workaround, not a design.
+If hooks fire without awareness of lifecycle stages, all AWB obligations trigger at once — including AWB 6:8 (bezwaartermijn date calculation), which needs `bekendmaking_datum`. But bekendmaking hasn't happened yet at decision time. Treating a missing `bekendmaking_datum` as "skip this hook gracefully" is a workaround, not a design.
 
-The fundamental problem: **the decision and the bekendmaking are different moments in time, with different inputs, producing different outputs, governed by different articles of law.** They should not fire in the same execution step.
+The fundamental problem: **the decision and the bekendmaking are different moments in time, with different inputs, producing different outputs, governed by different articles of law.** They must not fire in the same execution step.
 
 ### Who defines the lifecycle?
 
-The lifecycle of a beschikking is not defined by the Vreemdelingenwet or the Zorgtoeslagwet. It is defined by the **Algemene wet bestuursrecht (AWB)**. That is literally the purpose of the AWB: to define the general administrative procedure that all bestuursorganen follow, regardless of which specific law they are executing.
+The lifecycle of a beschikking is not defined by the Vreemdelingenwet or the Zorgtoeslagwet. It is defined by the **Algemene wet bestuursrecht (AWB)**. That is the purpose of the AWB: to define the general administrative procedure that all bestuursorganen follow, regardless of which specific law they are executing.
 
-The AWB defines stages. Specific laws fill in the content at each stage. Other laws (Termijnenwet, KB gelijkgestelde dagen) hook into specific stages. This relationship already exists in law — we just need to express it in the schema.
+The AWB defines stages. Specific laws fill in the content at each stage. Other laws (Termijnenwet, KB gelijkgestelde dagen) hook into specific stages. This relationship already exists in law — it needs to be expressed in the schema.
 
-### Consequences of the current (stateless) model
+### What goes wrong without lifecycle stages
 
-1. **Semantic confusion**: AWB 6:8 hooks on BESCHIKKING but should only fire when bekendmaking has occurred. The `bekendmaking_datum` parameter acts as an implicit "has bekendmaking happened?" flag.
+1. **Semantic confusion**: AWB 6:8 hooks on BESCHIKKING but should only fire when bekendmaking has occurred. Without stages, parameter absence becomes implicit control flow.
 2. **Incorrect composition**: hooks that belong to different stages fire in the same execution, mixing outputs from different moments in time.
-3. **No way to model waiting**: the engine cannot express "the besluit is taken, now waiting for bekendmaking."
-4. **Manual actions invisible**: a bestuursorgaan's investigation, decision-making, and notification are real-world actions that the law regulates (beslistermijn per AWB 4:13) but the engine cannot represent.
+3. **No way to model waiting**: an engine without stages cannot express "the besluit is taken, now waiting for bekendmaking."
+4. **Manual actions invisible**: a bestuursorgaan's investigation, decision-making, and notification are real-world actions that the law regulates (beslistermijn per AWB 4:13) but cannot be represented without stages.
 
 ## Decision
 
@@ -96,7 +94,7 @@ lifecycle:
 
 ### Hooks bind to stages, not just legal_character
 
-The current `applies_to` in hooks gains a `stage` field:
+The `applies_to` in hooks (RFC-008) gains a `stage` field:
 
 ```yaml
 # AWB 3:46 — motiveringsplicht
@@ -242,7 +240,7 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 ### Alternatives Considered
 
 **Alternative 1: Implicit stages via parameter presence**
-- The current approach: AWB 6:8 hooks on BESCHIKKING and skips when `bekendmaking_datum` is absent.
+- AWB 6:8 hooks on BESCHIKKING and skips when `bekendmaking_datum` is absent.
 - Rejected: uses parameter absence as control flow. Semantically wrong — the hook doesn't "fail to fire," it fires at the wrong time. Silently skipping hooks hides the lifecycle.
 
 **Alternative 2: Multiple explicit executions (no lifecycle)**
