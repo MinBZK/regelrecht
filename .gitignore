@@ -24,11 +24,13 @@ target/
 **/*.rs.bk
 *.pdb
 
-# Python (legacy, may exist in contributor environments)
+# Python (pre-commit uses a venv)
+.venv/
 venv/
 ENV/
 __pycache__/
 *.py[cod]
+.ruff_cache/
 
 # Mutation testing
 mutants.out/
