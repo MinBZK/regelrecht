@@ -83,15 +83,41 @@ impl EngineView {
             }
             EngineResponse::EvalResult { result, trace } => {
                 self.trace = trace;
-                self.focus = Focus::Result;
                 match result {
                     Ok(r) => {
                         self.error = None;
                         self.result = Some(r);
+                        self.focus = Focus::Result;
                     }
                     Err(e) => {
+                        // If a variable is missing, auto-add it as a parameter
+                        // and focus on the value field so the user can type it
+                        if let Some(var_name) = e.strip_prefix("Variable not found: ") {
+                            let var_name = var_name.trim().to_string();
+                            // Don't add duplicates
+                            let already_exists = self
+                                .params
+                                .iter()
+                                .any(|p| p.name == var_name && !p.value.is_empty());
+                            if !already_exists {
+                                // Remove empty placeholder entries
+                                self.params.retain(|p| !p.name.is_empty());
+                                self.params.push(ParamEntry {
+                                    name: var_name,
+                                    value: String::new(),
+                                });
+                                self.param_cursor = self.params.len() - 1;
+                                self.editing_date = false;
+                                self.focus = Focus::ParamForm;
+                                self.error = Some(e);
+                                self.result = None;
+                                self.result_scroll = 0;
+                                return;
+                            }
+                        }
                         self.error = Some(e);
                         self.result = None;
+                        self.focus = Focus::Result;
                     }
                 }
                 self.result_scroll = 0;
@@ -441,10 +467,11 @@ impl EngineView {
     fn render_param_form(&self, frame: &mut Frame, area: Rect) {
         let is_focused = self.focus == Focus::ParamForm;
         let dim = Style::default().add_modifier(Modifier::DIM);
+        let bold = Style::default().add_modifier(Modifier::BOLD);
         let mut lines: Vec<Line> = Vec::new();
 
         lines.push(Line::styled(
-            " +/- add/remove  ↑↓ navigate  Enter evaluate",
+            " Enter:evaluate  ↑↓:navigate  +/-:params",
             dim,
         ));
 
@@ -452,21 +479,34 @@ impl EngineView {
             let is_selected = is_focused && !self.editing_date && i == self.param_cursor;
             let cursor = if is_selected { "▸ " } else { "  " };
 
-            let style = if is_selected {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                dim
-            };
-
-            let display = if param.name.is_empty() {
-                format!("{cursor}(name:value)")
+            if param.name.is_empty() {
+                let style = if is_selected {
+                    Style::default().add_modifier(Modifier::REVERSED)
+                } else {
+                    dim
+                };
+                lines.push(Line::styled(format!("{cursor}(type name:value)"), style));
             } else if param.value.is_empty() {
-                format!("{cursor}{}:_", param.name)
+                // Highlight: we're asking for this value
+                lines.push(Line::from(vec![
+                    Span::styled(cursor, if is_selected { bold } else { dim }),
+                    Span::styled(format!("{}: ", param.name), bold),
+                    Span::styled(
+                        "▏",
+                        if is_selected {
+                            Style::default().add_modifier(Modifier::BOLD)
+                        } else {
+                            dim
+                        },
+                    ),
+                ]));
             } else {
-                format!("{cursor}{}:{}", param.name, param.value)
-            };
-
-            lines.push(Line::styled(display, style));
+                lines.push(Line::from(vec![
+                    Span::styled(cursor, dim),
+                    Span::styled(format!("{}: ", param.name), dim),
+                    Span::styled(&param.value, if is_selected { bold } else { dim }),
+                ]));
+            }
         }
 
         // Date input
@@ -510,7 +550,14 @@ impl EngineView {
         let mut lines: Vec<Line> = Vec::new();
 
         if let Some(ref err) = self.error {
-            lines.push(Line::styled(format!("  ✗ {err}"), bold));
+            if err.starts_with("Variable not found:") {
+                lines.push(Line::styled(
+                    format!("  ● {err} — fill in the value above, then Enter"),
+                    bold,
+                ));
+            } else {
+                lines.push(Line::styled(format!("  ✗ {err}"), bold));
+            }
         } else if let Some(ref result) = self.result {
             lines.push(Line::styled(" Outputs:", bold));
             for (name, value) in &result.outputs {
