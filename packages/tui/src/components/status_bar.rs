@@ -15,13 +15,22 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Tab::Actions => "f:fmt  l:lint  b:build  v:validate  c:check  t:test",
     };
 
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+
+    // Build branch display
+    let branch_display = match &app.corpus_branch {
+        Some(corpus_branch) => format!(" {} corpus:{}", app.repo_branch, corpus_branch),
+        None => format!(" {}", app.repo_branch),
+    };
+
     let line = Line::from(vec![
-        Span::styled(
-            " q:quit  ?:help  ",
-            Style::default().add_modifier(Modifier::DIM),
-        ),
-        Span::styled("│ ", Style::default().add_modifier(Modifier::DIM)),
-        Span::styled(hints, Style::default().add_modifier(Modifier::DIM)),
+        Span::styled(" q:quit ?:help ", dim),
+        Span::styled("│ ", dim),
+        Span::styled(hints, dim),
+        // Right-align the branch info
+        Span::styled("│ ", dim),
+        Span::styled(branch_display, bold),
     ]);
 
     frame.render_widget(line, area);

@@ -5,7 +5,7 @@ use crate::views::{
     deps::DepsView, engine::EngineView, logs::LogsView, pipeline::PipelineView, trace::TraceView,
     validation::ValidationView,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -110,6 +110,8 @@ pub struct App {
     pub project_root: PathBuf,
     pub process_runner: ProcessRunner,
     pub engine_handle: EngineHandle,
+    pub repo_branch: String,
+    pub corpus_branch: Option<String>,
 
     // Views
     pub dashboard: DashboardView,
@@ -127,6 +129,16 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         let project_root = find_project_root();
+        let repo_branch = git_branch(&project_root);
+        let corpus_branch = find_corpus_dir(&project_root).and_then(|d| {
+            let b = git_branch(&d);
+            // Only show separately if it differs from repo branch
+            if b != repo_branch {
+                Some(b)
+            } else {
+                None
+            }
+        });
         let process_runner = ProcessRunner::new(project_root.clone());
         let engine_handle = EngineHandle::spawn(&project_root);
 
@@ -155,6 +167,8 @@ impl App {
             project_root,
             process_runner,
             engine_handle,
+            repo_branch,
+            corpus_branch,
             dashboard,
             bdd,
             engine: EngineView::new(),
@@ -180,4 +194,33 @@ fn find_project_root() -> PathBuf {
             return std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         }
     }
+}
+
+/// Get the current git branch for a directory.
+fn git_branch(dir: &Path) -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(dir)
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                String::from_utf8(o.stdout)
+                    .ok()
+                    .map(|s| s.trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Find the corpus regulation directory.
+fn find_corpus_dir(project_root: &Path) -> Option<PathBuf> {
+    let candidates = [
+        project_root.join("corpus/regulation"),
+        project_root.join("corpus/central"),
+        project_root.join("corpus"),
+    ];
+    candidates.into_iter().find(|p| p.is_dir())
 }
