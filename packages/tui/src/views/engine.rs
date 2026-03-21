@@ -246,21 +246,6 @@ impl EngineView {
                     self.param_cursor = self.param_cursor.saturating_sub(1);
                 }
             }
-            KeyCode::Char('+') => {
-                self.params.push(ParamEntry {
-                    name: String::new(),
-                    value: String::new(),
-                });
-                self.param_cursor = self.params.len() - 1;
-            }
-            KeyCode::Char('-') => {
-                if self.params.len() > 1 {
-                    self.params.remove(self.param_cursor);
-                    if self.param_cursor >= self.params.len() {
-                        self.param_cursor = self.params.len() - 1;
-                    }
-                }
-            }
             KeyCode::Backspace => {
                 if self.editing_date {
                     self.date_input.pop();
@@ -285,14 +270,31 @@ impl EngineView {
             KeyCode::Char(c) => {
                 if self.editing_date {
                     self.date_input.push(c);
-                } else if let Some(param) = self.params.get_mut(self.param_cursor) {
-                    if param.value.is_empty() && !param.name.is_empty() {
-                        // Start value
-                        param.value.push(c);
-                    } else if param.value.is_empty() {
-                        param.name.push(c);
-                    } else {
-                        param.value.push(c);
+                } else {
+                    // +/- are add/remove only when no param is being edited
+                    let is_editing = self
+                        .params
+                        .get(self.param_cursor)
+                        .is_some_and(|p| !p.name.is_empty());
+                    if c == '+' && !is_editing {
+                        self.params.push(ParamEntry {
+                            name: String::new(),
+                            value: String::new(),
+                        });
+                        self.param_cursor = self.params.len() - 1;
+                    } else if c == '-' && !is_editing && self.params.len() > 1 {
+                        self.params.remove(self.param_cursor);
+                        if self.param_cursor >= self.params.len() {
+                            self.param_cursor = self.params.len() - 1;
+                        }
+                    } else if let Some(param) = self.params.get_mut(self.param_cursor) {
+                        if param.value.is_empty() && !param.name.is_empty() {
+                            param.value.push(c);
+                        } else if param.value.is_empty() {
+                            param.name.push(c);
+                        } else {
+                            param.value.push(c);
+                        }
                     }
                 }
             }
