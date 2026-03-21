@@ -11,14 +11,14 @@ RFC-008 introduced hooks: articles that fire when another article's `produces` a
 
 This is wrong.
 
-A beschikking is not an instant computation. It is an administrative process — a **zaak** (case) — that progresses through stages over time:
+A beschikking is not an instant computation. It is an administrative process that progresses through stages over time:
 
-1. The citizen submits an **aanvraag** (application).
-2. The bestuursorgaan investigates during the **behandeling** (processing) phase, possibly requesting additional information (AWB 4:5), possibly extending the decision deadline (AWB 4:14). This can take weeks, months, or in complex cases years.
-3. The bestuursorgaan makes a **besluit** (decision).
-4. The besluit is communicated to the citizen: **bekendmaking** (notification, AWB 3:41).
+1. The belanghebbende submits an **aanvraag** (application, AWB 4:1).
+2. The bestuursorgaan investigates during the **behandeling** (processing) phase, possibly requesting additional information (AWB 4:5), possibly extending the beslistermijn (AWB 4:14). This can take weeks, months, or in complex cases years.
+3. The bestuursorgaan makes a **besluit** (decision, AWB 1:3).
+4. The besluit is communicated to the belanghebbende: **bekendmaking** (notification, AWB 3:41).
 5. The **bezwaartermijn** starts the day after bekendmaking (AWB 6:8 lid 1) and runs for six weeks (AWB 6:7).
-6. The citizen may file a **bezwaar** (objection).
+6. The belanghebbende may file a **bezwaar** (objection, AWB 6:4).
 
 The current engine treats all of this as a single synchronous execution. When Vreemdelingenwet art 14 produces a BESCHIKKING, AWB 6:8 fires immediately and tries to calculate the bezwaartermijn einddatum — but it needs `bekendmaking_datum`, which doesn't exist yet because bekendmaking hasn't happened. The engine handles this by "gracefully skipping" the hook when the parameter is missing. This is a workaround, not a design.
 
@@ -34,7 +34,7 @@ The AWB defines stages. Specific laws fill in the content at each stage. Other l
 
 1. **Semantic confusion**: AWB 6:8 hooks on BESCHIKKING but should only fire when bekendmaking has occurred. The `bekendmaking_datum` parameter acts as an implicit "has bekendmaking happened?" flag.
 2. **Incorrect composition**: hooks that belong to different stages fire in the same execution, mixing outputs from different moments in time.
-3. **No way to model waiting**: the engine cannot express "I've made the decision, now I'm waiting for bekendmaking to happen."
+3. **No way to model waiting**: the engine cannot express "the besluit is taken, now waiting for bekendmaking."
 4. **Manual actions invisible**: a bestuursorgaan's investigation, decision-making, and notification are real-world actions that the law regulates (beslistermijn per AWB 4:13) but the engine cannot represent.
 
 ## Decision
@@ -63,7 +63,7 @@ lifecycle:
       legal_character: BESCHIKKING
     stages:
       - name: AANVRAAG
-        description: Burger dient aanvraag in (AWB 4:1)
+        description: Belanghebbende dient aanvraag in (AWB 4:1)
         requires:
           - name: aanvraag_datum
             type: date
@@ -132,12 +132,12 @@ The current `applies_to` in hooks gains a `stage` field:
 
 This is the key insight: **hooks apply to the AWB's lifecycle, not to the specific law's decision.** The Vreemdelingenwet produces a BESCHIKKING and thereby enters the AWB lifecycle. The Vreemdelingenwet does not know about AWB 6:8. AWB 6:8 does not know about the Vreemdelingenwet. They are connected through the lifecycle defined by the AWB.
 
-### Zaak as state container
+### The besluit as state container
 
-A **zaak** (case) is the runtime representation of a lifecycle instance. When a law produces a BESCHIKKING, a zaak is created. The zaak accumulates outputs as it progresses through stages.
+A **besluit** progresses through the AWB lifecycle and accumulates outputs at each stage. The besluit itself is the state container — there is no separate "case" or "zaak" abstraction. This follows the AWB, which defines everything in terms of the besluit.
 
 ```
-Zaak {
+Besluit {
     lifecycle: "beschikking"          -- which AWB lifecycle
     contextual_law: "vreemdelingenwet_2000"  -- lex specialis context
     current_stage: BEKENDMAKING       -- where we are
@@ -184,23 +184,23 @@ The engine **yields** between stages, returning:
 - What stage it's at
 - What inputs are needed to advance to the next stage
 
-The orchestration layer (pipeline, case management system) stores the zaak state and feeds new inputs when they become available.
+The orchestration layer persists the besluit state and feeds new inputs when they become available.
 
 ### What is state, precisely?
 
-The zaak state consists of:
+The besluit state consists of:
 
 | Component | What it is | Where it lives |
 |-----------|-----------|---------------|
-| **Accumulated outputs** | All outputs from completed stages | Zaak record |
-| **Current stage** | Which lifecycle stage the zaak is at | Zaak record |
+| **Accumulated outputs** | All outputs from completed stages | Besluit record |
+| **Current stage** | Which lifecycle stage the besluit is at | Besluit record |
 | **Pending inputs** | What external data is needed to advance | Derived from lifecycle definition |
-| **Contextual law** | The lex specialis context for overrides | Set at zaak creation, immutable |
-| **Parameters** | Original parameters from the initial execution | Zaak record |
+| **Contextual law** | The lex specialis context for overrides | Set at creation, immutable |
+| **Parameters** | Original parameters from the initial execution | Besluit record |
 
-The engine itself remains **stateless** in the sense that it does not maintain zaak state internally. The zaak state is an external record (database row, event store, file) managed by the orchestration layer. The engine receives the zaak state as input and returns the updated state as output.
+The engine itself remains **stateless** in the sense that it does not maintain besluit state internally. The besluit state is an external record (database row, event store, file) managed by the orchestration layer. The engine receives the besluit state as input and returns the updated state as output.
 
-This is important: the engine is still a pure function per stage. But the **composition** of stages into a zaak is now explicit, governed by the AWB lifecycle definition, and persisted externally.
+This is important: the engine is still a pure function per stage. But the **composition** of stages into a besluit lifecycle is now explicit, governed by the AWB lifecycle definition, and persisted externally.
 
 ### Automatic vs. manual stage transitions
 
@@ -219,13 +219,13 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 ### Benefits
 
-**Conceptual correctness.** The model matches the legal reality: a beschikking is a process with stages, not an instant computation. The AWB defines the process, specific laws fill in the content.
+**Conceptual correctness.** The model matches the legal reality: a besluit is a process with stages, not an instant computation. The AWB defines the process, specific laws fill in the content.
 
 **Separation of concerns.** Decision logic (Vreemdelingenwet) is separate from procedural logic (AWB lifecycle). Each law does what it's supposed to do. The lifecycle connects them.
 
 **Temporal accuracy.** Outputs are computed at the right moment. The bezwaartermijn einddatum is calculated when the bekendmaking happens, not when the decision is made. The feestdagenkalender uses the correct year for the bekendmaking date, not the decision date.
 
-**Auditability.** The zaak record shows exactly what happened at each stage, when, and with what inputs. This supports the motiveringsplicht (AWB 3:46) and provides a complete administrative trail.
+**Auditability.** The besluit record shows exactly what happened at each stage, when, and with what inputs. This supports the motiveringsplicht (AWB 3:46) and provides a complete administrative trail.
 
 **Extensibility.** New lifecycle stages can be added by the AWB without changing specific laws. New hooks can bind to any stage. The lifecycle is data (YAML), not code.
 
@@ -233,11 +233,11 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 ### Tradeoffs
 
-**Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage zaak persistence. This is significant implementation effort.
+**Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage besluit state persistence. This is significant implementation effort.
 
 **Backwards compatibility.** Existing laws that produce BESCHIKKING without a lifecycle still work — they complete in a single stage. But new laws should use the lifecycle model. RFC-008 hooks without `stage` default to BESLUIT for backward compatibility.
 
-**State management.** Zaak state must be persisted somewhere. The engine doesn't dictate where (database, event store, file system), but the orchestration layer must handle it.
+**State management.** Besluit state must be persisted somewhere. The engine doesn't dictate where (database, event store, file system), but the orchestration layer must handle it.
 
 ### Alternatives Considered
 
@@ -251,7 +251,7 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 **Alternative 3: Event sourcing / CQRS**
 - The original poc-machine-law approach: a `Case` aggregate with event sourcing.
-- Rejected: couples the law specification to infrastructure (aggregates, event types, projections). The lifecycle should be expressed in law YAML, not in infrastructure code. However, an event-sourced persistence layer is a valid *implementation* of zaak state management.
+- Rejected: couples the law specification to infrastructure (aggregates, event types, projections). The lifecycle should be expressed in law YAML, not in infrastructure code. However, an event-sourced persistence layer is a valid *implementation* of besluit state management.
 
 ### Implementation Notes
 
@@ -260,10 +260,10 @@ The lifecycle is a new top-level construct in the schema, defined at the law lev
 The engine needs:
 - **Lifecycle index**: maps `(legal_character) → lifecycle_definition`, loaded from AWB YAML.
 - **Stage-aware hook resolution**: `find_hooks` gains a `stage` parameter. Hooks without `stage` default to BESLUIT.
-- **Zaak representation**: a struct carrying accumulated outputs, current stage, and context. Passed in and returned by the engine.
+- **Besluit state**: a struct carrying accumulated outputs, current stage, and context. Passed in and returned by the engine.
 - **Yield mechanism**: the engine returns either a completed result or a "waiting for input" signal with the next stage's requirements.
 
-The zaak state is *not* stored in the engine. It is passed in by the caller and returned with updates. The engine remains a library, not a service.
+The besluit state is *not* stored in the engine. It is passed in by the caller and returned with updates. The engine remains a library, not a service.
 
 ## Open Questions
 
