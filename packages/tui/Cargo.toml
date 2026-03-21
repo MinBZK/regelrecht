@@ -1,0 +1,40 @@
+[package]
+name = "regelrecht-tui"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "RegelRecht TUI dashboard for law execution, testing, and monitoring"
+license = "MIT"
+repository = "https://github.com/MinBZK/regelrecht-mvp"
+
+[[bin]]
+name = "rrtui"
+path = "src/main.rs"
+
+[dependencies]
+# TUI framework
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# Async runtime
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "process", "fs", "io-util", "time"] }
+
+# Workspace crates
+regelrecht-engine = { path = "../engine" }
+
+# File system
+walkdir = "2"
+
+# Error handling
+anyhow = "1"
+
+# Date handling
+chrono = "0.4"
+
+# Logging
+tracing = "0.1"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
