@@ -197,7 +197,7 @@ Key internals:
 
 Backfills the Corpus Juris by crawling wetten.nl (the official BWB repository). Downloads laws by BWB ID, parses XML metadata and content, splits articles according to Dutch law hierarchy (Deel → Hoofdstuk → Paragraaf → Artikel → Lid), and writes schema-compliant YAML. Processes historical versions to reconstruct the full legislative timeline.
 
-**Status:** In development on `feature/rust-harvester` branch.
+**Status:** Merged into `main`.
 
 ### Editor / Browser (`frontend/`)
 

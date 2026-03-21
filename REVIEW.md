@@ -30,7 +30,7 @@ When `machine_readable` sections are added or changed:
 
 ### Schema and format compliance (regulation YAML changes)
 
-- Does the YAML structure conform to the schema (v0.3.0)?
+- Does the YAML structure conform to the schema (v0.4.0)?
 - Are required fields present (`$schema`, `$id`, `regulatory_layer`, `valid_from`, etc.)?
 - Are operation names valid (`IF`, `AND`, `OR`, `ADD`, `SUBTRACT`, `MULTIPLY`, etc.)?
 - Are type declarations correct (`string`, `number`, `boolean`, `amount` with `type_spec.unit`)?
