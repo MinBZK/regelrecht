@@ -223,7 +223,7 @@ output:
 
 #### Date arithmetic operations
 
-All operations are pure functions. No domain knowledge.
+All operations are pure functions. No domain knowledge. These six operations (`DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `NEXT_WORKING_DAY`, `LIST`, `CONCAT`) extend the operation set defined in RFC-004 (Uniform Operation Syntax). Date operations use named parameters (`date`, `days`, `weeks`) rather than RFC-004's positional `values` array, because their operands are heterogeneous (a date and a duration are not interchangeable list items).
 
 | Operation | Input | Output | Example |
 |-----------|-------|--------|---------|
@@ -335,27 +335,9 @@ graph TB
 
 #### AWB 6:7 — Duration (hook)
 
-```yaml
-# algemene_wet_bestuursrecht
-- number: '6:7'
-  text: |-
-    De termijn voor het indienen van een bezwaar- of
-    beroepschrift bedraagt zes weken.
-  machine_readable:
-    hooks:
-      - hook_point: post_actions
-        applies_to:
-          legal_character: BESCHIKKING
-    execution:
-      output:
-        - name: bezwaartermijn_weken
-          type: number
-      actions:
-        - output: bezwaartermijn_weken
-          value: 6
-```
+See Section 1 above for the full YAML. Key point:
 
-> Note: `bezwaartermijn_weken` is a duration (number), not a deadline (date). The `semantic: termijn` annotation belongs on `bezwaartermijn_einddatum` in AWB 6:8, where the Termijnenwet can meaningfully extend the date.
+> `bezwaartermijn_weken` is a duration (number), not a deadline (date). The `semantic: termijn` annotation belongs on `bezwaartermijn_einddatum` in AWB 6:8, where the Termijnenwet can meaningfully extend the date.
 
 #### AWB 3:46 — Motiveringsplicht (hook)
 
@@ -720,10 +702,12 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 **Hooks:**
 - New structs: `HookDeclaration { hook_point, applies_to }`, `HookPoint { PreActions, PostActions }`, `HookFilter { legal_character, decision_type, output_semantic }`.
 - `hooks_index` in `RuleResolver`, keyed by `(HookPoint, String)`.
+- The `hooks_index` key should include `stage: Option<String>` from the start. RFC-008 (Bestuursrecht) will add stage-aware filtering; designing the index with this field avoids reworking the data structure later. Hooks without `stage` default to matching any stage.
 - Hook firing in `LawExecutionService::evaluate_article_with_service()`.
 - Trace types: `PathNodeType::HookResolution`, `ResolveType::Hook`.
 
 **Overrides:**
+- The override check must be part of the core `evaluate_article_with_service` execution path, not a separate hook-dispatch concern. Overrides must apply whenever an article is executed — via cross-law reference, via hook, or directly. The Vw art 69 example demonstrates this: when AWB 6:8 resolves AWB 6:7 via `regelrecht://` reference, the Vw override must still apply to AWB 6:7.
 - `overrides_index` in `RuleResolver`, keyed by `(target_law, target_article, output)`.
 - `contextual_law_id: Option<String>` in `ResolutionContext`. Set once at root, immutable.
 - Cycle detection via `ResolutionContext.visited`.
@@ -738,6 +722,12 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 - `semantic` on outputs indexed by `RuleResolver` for hook matching.
 - Trigger-parameterized hooks bind `$trigger_output` and `$trigger_output_name` per matching output.
 - Staatscourant KB's: new source type in harvester.
+
+**Trigger variable resolution:**
+- `$trigger_output` and `$trigger_output_name` are meta-variables injected by the engine when a semantic hook fires. They differ from regular parameters (which are declared in `parameters`).
+- Resolution requires either a new scope in `RuleContext` (checked between parameters and other scopes) or injection as synthetic parameters before hook execution. The former is cleaner; the latter requires less structural change.
+- Dynamic output names (`name: $trigger_output_name`) require resolving the variable before article execution begins. This is a change to the current static output name model: the engine must substitute trigger variables in the output declarations before evaluating actions.
+- Per-output firing loop: for each output on the target article with a matching `semantic` annotation, the engine fires the hook once, binding `$trigger_output` to that output's value and `$trigger_output_name` to that output's name. The hook's result replaces the original output value.
 
 ## References
 

@@ -52,6 +52,8 @@ The POC v0.1.6 schema had several top-level "regulation discovery" fields. This 
 - Article 2 may produce a BESCHIKKING (toekenning) while Article 3 produces a TOETS (goedkeuring)
 - This matches the legal reality better than a single service-level classification
 
+The `produces` construct on an article's `execution` block declares what legal artifact the article produces when executed. `legal_character` (e.g. BESCHIKKING, VASTSTELLING) classifies the type of legal act; `decision_type` (e.g. TOEKENNING, AFWIJZING) classifies the outcome. These fields serve as filter targets for reactive hooks (see RFC-007) and lifecycle stages (see RFC-008).
+
 **Open question: Single vs multiple executions per article?**
 
 Currently `execution` is an object (one per article). Should we allow multiple executions per article?
@@ -97,6 +99,20 @@ Used in execution context (actions, conditions, source parameters).
 **Reason:** Make properties traceable to the source.
 
 This is a convention, not enforced by the schema.
+
+#### The `regelrecht://` URI Scheme
+
+Cross-law references use the `regelrecht://` URI scheme:
+
+```
+regelrecht://{law_id}/{output_name}#{field}
+```
+
+- `law_id` — the `$id` slug of the target law
+- `output_name` — the name of an output produced by one of the law's articles
+- `#field` (optional fragment) — extracts a specific field from the output (e.g. `#value`)
+
+The engine resolves these URIs by finding the law by `$id`, locating the article that produces the named output, executing it, and extracting the requested field. This scheme is used for cross-law input references (RFC-003, RFC-007) and as annotation targets (RFC-005).
 
 ### 7. UUID Field: Removed
 

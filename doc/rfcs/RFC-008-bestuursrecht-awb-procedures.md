@@ -426,6 +426,15 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 
 **Schema version:** The `procedure:` top-level key and the `procedure_id` field on `produces` are new constructs not present in schema v0.4.0. Implementation requires a schema version bump (v0.5.0 or later). AWB YAML files using `procedure:` will fail validation against the current schema until the schema is extended.
 
+**Yield mechanism.** The largest architectural change is the yield mechanism. The current engine returns `Result<ArticleResult>` — a terminal result. Multi-stage execution needs the engine to return either a completed result or a "yielded" state waiting for input to proceed to the next stage. Two implementation approaches:
+
+1. **New return type**: `enum ExecutionOutcome { Complete(ArticleResult), Yielded(StageState) }` — replaces `Result<ArticleResult>` at the stage execution boundary. `StageState` carries accumulated outputs, current stage, and required inputs for the next stage.
+2. **Separate method**: add `execute_stage` alongside the existing `evaluate_article_with_service`. The existing method remains unchanged for single-stage laws; `execute_stage` handles lifecycle-aware execution.
+
+Besluit state is external (passed in, returned out), which is compatible with the stateless engine design. The engine uses `&self` (immutable borrows) for execution, so there is no architectural conflict with multi-stage execution — each invocation is still a pure function over its inputs.
+
+**Nested lifecycle recursion.** A besluit op bezwaar is itself a besluit, creating recursive nesting. The engine's cycle detection (`ResolutionContext.visited`) operates within a single invocation; cross-invocation nesting is the orchestration layer's responsibility. The engine should provide a `max_nesting_depth` configuration to help the orchestration layer detect excessive recursion. In practice the AWB chain is naturally finite (beschikking, BOB, beroep, hoger beroep), but a configurable depth limit provides a safety net.
+
 ## Open Questions
 
 1. ~~**Do all besluiten share the same lifecycle?**~~ **Resolved:** No. Each legal_character has its own lifecycle, defined by the relevant AWB chapters. A BESCHIKKING has aanvraag → behandeling → besluit → bekendmaking → bezwaar. A BESLUIT_VAN_ALGEMENE_STREKKING has a different procedure (AWB afdeling 3.4, Staatscourant publication, no bezwaar, direct beroep). The AWB defines these different procedures — the lifecycle definition in YAML follows the AWB structure per type.
