@@ -76,11 +76,16 @@ const pathData = computed(() => {
   }
 
   if (type === 'branch-off' || type === 'merge-in' || type === 'ci-fork' || type === 'ci-return') {
-    // Curve that always bows downward (south), even for same-row or upward connections
     const dy = to.y - from.y;
-    const bottomY = Math.max(from.y, to.y);
-    const arcOffset = Math.abs(dy) < 10 ? 50 : Math.abs(dy) * 0.5;
-    const midY = bottomY + arcOffset;
+    let midY;
+    if (dy > 20) {
+      // Normal downward: S-curve with control point halfway between
+      midY = from.y + dy * 0.5;
+    } else {
+      // Same row or upward: arc below both points
+      const bottomY = Math.max(from.y, to.y);
+      midY = bottomY + 50;
+    }
     return `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
   }
 
