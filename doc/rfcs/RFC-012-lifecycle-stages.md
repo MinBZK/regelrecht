@@ -327,16 +327,16 @@ Yields: "Waiting for BEKENDMAKING — need: bekendmaking_datum"
 
 **Step 2: BEKENDMAKING stage** (days/weeks later)
 ```
-Input:  { bekendmaking_datum: "2026-03-23" }
+Input:  { bekendmaking_datum: "2026-03-23", pasen_datum: "2026-04-05" }
 Engine: fires BEKENDMAKING-stage hooks (AWB 6:8 → Termijnenwet art 1)
-        Termijnenwet art 1 resolves feestdagen via cross-law reference
-        to feestdagenkalender (pasen_datum etc. are NOT external inputs)
+        Termijnenwet art 1 resolves feestdagen from pasen_datum parameter
+        + gelijkgestelde_dagen via IoC (KB's from Staatscourant)
 Output: { bezwaartermijn_startdatum: "2026-03-24",
           bezwaartermijn_einddatum: "2026-04-20" }
 Yields: "BEZWAAR stage — bezwaartermijn running until 2026-04-20"
 ```
 
-Only `bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). Calendar data like `pasen_datum` is resolved internally by the engine through cross-law references to the feestdagenkalender, as established in RFC-007 and RFC-011.
+`bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). `pasen_datum` is also an external parameter — the computus algorithm is not in Dutch statute law, so the caller provides Easter Sunday's date, consistent with the zero-domain-knowledge principle (RFC-011). Gelijkgestelde dagen (bridge days) are resolved internally via IoC from harvested KB's.
 
 The engine **yields** between stages, returning:
 - What it computed so far (accumulated outputs)
