@@ -148,9 +148,9 @@ scopes:
 Multiple sources may provide a law with the same `$id`. This is allowed and expected: a local development source may override a central law for testing, or a municipality may provide a patched version of a national law during a transition period. **Lower priority value = higher priority** — the law from the source with the lowest priority number is the one the engine uses. Think of it as rank: priority 1 outranks priority 10.
 
 Where this matters in practice:
-- **Central corpus** (priority 1): the authoritative source, always wins over municipal sources.
-- **Municipality** (priority 10): provides local regulations and can temporarily override central laws.
-- **Development** (priority 100): your local source overrides nothing by default, but you can lower its priority to test overrides.
+- **Development**: your local source (priority 100) contains a modified version of a central law (priority 1). Lower the local priority to 0 to make it win, so you can test without modifying the central manifest.
+- **Migration**: when moving laws between sources, temporary overlap is normal.
+- **Patches**: a municipality may temporarily override a central law with a corrected version by using a lower priority number.
 
 When two sources have equal priority and the same `$id`, the engine raises an error at load time. This is detected when sources are fetched and indexed, not deferred to per-request execution. A misconfigured source fails clearly at startup, not when a citizen's request hits it.
 
