@@ -14,3 +14,7 @@ members = [
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
+
+[profile.bench]
+opt-level = 3
+lto = false

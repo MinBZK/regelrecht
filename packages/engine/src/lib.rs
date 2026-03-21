@@ -43,6 +43,9 @@ pub mod uri;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+#[cfg(feature = "otel")]
+pub mod telemetry;
+
 // Re-export commonly used items
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Execution, MachineReadable,

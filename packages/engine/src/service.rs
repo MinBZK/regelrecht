@@ -279,6 +279,7 @@ impl LawExecutionService {
     ///
     /// # Returns
     /// The execution result with outputs and metadata.
+    #[tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name))]
     pub fn evaluate_law_output(
         &self,
         law_id: &str,
@@ -345,6 +346,7 @@ impl LawExecutionService {
     }
 
     /// Internal method with cycle tracking.
+    #[tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth))]
     fn evaluate_law_output_internal(
         &self,
         law_id: &str,
@@ -521,6 +523,7 @@ impl LawExecutionService {
     /// 3. If not found + has default: execute the default actions
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
+    #[tracing::instrument(skip(self, article, law, context, res_ctx), fields(law_id = %law.id, article = %article.number))]
     fn resolve_open_terms(
         &self,
         article: &Article,
@@ -1217,6 +1220,7 @@ impl ServiceProvider for LawExecutionService {
         self.resolver.get_law(law_id)
     }
 
+    #[tracing::instrument(skip(self, source_parameters, context), fields(regulation = %regulation, output = %output))]
     fn resolve_external_input(
         &self,
         regulation: &str,

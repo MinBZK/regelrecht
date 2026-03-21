@@ -50,6 +50,29 @@ harness = false
 [features]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
 validate = ["dep:jsonschema"]
+otel = ["dep:tracing-opentelemetry", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-subscriber"]
+
+[dependencies.tracing-subscriber]
+version = "0.3"
+features = ["env-filter", "registry"]
+optional = true
+
+[dependencies.tracing-opentelemetry]
+version = "0.32"
+optional = true
+
+[dependencies.opentelemetry]
+version = "0.31"
+optional = true
+
+[dependencies.opentelemetry_sdk]
+version = "0.31"
+features = ["rt-tokio"]
+optional = true
+
+[dependencies.opentelemetry-otlp]
+version = "0.31"
+optional = true
 
 [dev-dependencies]
 pretty_assertions = "1.4"
@@ -58,10 +81,40 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures = "0.3"
 walkdir = "2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "uri_parsing"
+harness = false
+
+[[bench]]
+name = "variable_resolution"
+harness = false
+
+[[bench]]
+name = "operations"
+harness = false
+
+[[bench]]
+name = "article_evaluation"
+harness = false
+
+[[bench]]
+name = "law_loading"
+harness = false
+
+[[bench]]
+name = "priority"
+harness = false
+
+[[bench]]
+name = "service_e2e"
+harness = false
 
 [profile.release]
 lto = true
 opt-level = "z"
+
 
 [lints.clippy]
 unwrap_used = "warn"
