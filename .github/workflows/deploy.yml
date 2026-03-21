@@ -420,7 +420,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Preview)
         if: needs.changes.outputs.lawmaking == 'true' && needs.build-lawmaking.result == 'success'
-        continue-on-error: true
+        continue-on-error: true  # TODO: remove after lawmaking component is registered in RIG
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -510,7 +510,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Production)
         if: needs.build-lawmaking.result == 'success'
-        continue-on-error: true
+        continue-on-error: true  # TODO: remove after lawmaking component is registered in RIG
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
