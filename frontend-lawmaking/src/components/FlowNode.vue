@@ -112,7 +112,7 @@
 
 <script setup>
 import { computed } from 'vue';
-import { typeColors, typeShapes } from '../data/flowData.js';
+import { typeColors, typeShapes } from '../data/flowConstants.js';
 
 const props = defineProps({
   stage: { type: Object, required: true },

@@ -40,7 +40,7 @@
 </template>
 
 <script setup>
-import { legend } from '../data/flowData.js';
+import { legend } from '../data/flowConstants.js';
 </script>
 
 <style>

@@ -13,10 +13,10 @@
 
 <script setup>
 import { computed } from 'vue';
-import { stages } from '../data/flowData.js';
 
 const props = defineProps({
   connection: { type: Object, required: true },
+  stages: { type: Array, required: true },
   isActive: { type: Boolean, default: false },
   columnWidth: { type: Number, default: 220 },
   rowHeight: { type: Number, default: 80 },
@@ -26,7 +26,7 @@ const offsetX = 80;
 const offsetY = 50;
 
 function getPos(stageId) {
-  const stage = stages.find((s) => s.id === stageId);
+  const stage = props.stages.find((s) => s.id === stageId);
   if (!stage) return { x: 0, y: 0 };
   return {
     x: offsetX + stage.col * props.columnWidth,
@@ -44,7 +44,7 @@ const strokeColor = computed(() => {
   if (type === 'main-continues') return 'var(--color-branch-main)';
 
   // Determine from the "from" node
-  const from = stages.find((s) => s.id === props.connection.from);
+  const from = props.stages.find((s) => s.id === props.connection.from);
   if (from?.branch === 'feature') return 'var(--color-branch-feature)';
   return 'var(--color-branch-main)';
 });
@@ -75,28 +75,13 @@ const pathData = computed(() => {
     return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
   }
 
-  if (type === 'branch-off') {
-    // Curve from main to feature branch
-    const midY = from.y + (to.y - from.y) * 0.5;
+  if (type === 'branch-off' || type === 'merge-in' || type === 'ci-fork' || type === 'ci-return') {
+    // Curve that always bows downward (south), even for same-row or upward connections
+    const dy = to.y - from.y;
+    const bottomY = Math.max(from.y, to.y);
+    const arcOffset = Math.abs(dy) < 10 ? 50 : Math.abs(dy) * 0.5;
+    const midY = bottomY + arcOffset;
     return `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
-  }
-
-  if (type === 'merge-in') {
-    // Curve from feature back to main
-    const midY = from.y + (to.y - from.y) * 0.5;
-    return `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
-  }
-
-  if (type === 'ci-fork') {
-    // Curve from feature branch to CI column
-    const midX = from.x + (to.x - from.x) * 0.5;
-    return `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`;
-  }
-
-  if (type === 'ci-return') {
-    // Curve from CI column back to feature branch
-    const midX = from.x + (to.x - from.x) * 0.5;
-    return `M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`;
   }
 
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
