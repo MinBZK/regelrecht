@@ -12,11 +12,11 @@ const values = ref({});
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
 
 // Type inference for controls
-function inferControlType(value, unit, declaredType) {
-  if (declaredType === 'boolean' || typeof value === 'boolean') return 'boolean';
+function inferControlType(value, unit) {
+  if (typeof value === 'boolean') return 'boolean';
   if (unit === 'eurocent') return 'currency';
   if (typeof value === 'number' && value > 0 && value < 1 && !unit) return 'percentage';
-  if (declaredType === 'number' || declaredType === 'amount' || typeof value === 'number') return 'number';
+  if (typeof value === 'number') return 'number';
   return 'text';
 }
 
@@ -28,7 +28,7 @@ function toDisplay(value, controlType) {
 
 function fromDisplay(value, controlType) {
   if (controlType === 'currency') return Math.round(value * 100);
-  if (controlType === 'percentage') return value / 100;
+  if (controlType === 'percentage') return parseFloat((value / 100).toPrecision(15));
   return value;
 }
 
