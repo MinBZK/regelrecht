@@ -10,6 +10,9 @@ pub enum CorpusError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("YAML parse error: {0}")]
+    Yaml(#[from] serde_yaml::Error),
 }
 
 pub type Result<T> = std::result::Result<T, CorpusError>;

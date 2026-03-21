@@ -1,0 +1,16 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
+$id: only_in_repo1
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Returns 1 (exclusive to repo1)
+    machine_readable:
+      execution:
+        output:
+          - name: origin
+            type: number
+        actions:
+          - output: origin
+            value: 1

@@ -15,10 +15,18 @@ tokio = { version = "1", features = ["process", "fs"] }
 tracing = "0.1"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+walkdir = "2"
+
+[features]
+default = ["github"]
+github = ["dep:reqwest"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "fs"] }
 tempfile = "3"
+regelrecht-engine = { path = "../engine" }
 
 [lints.clippy]
 unwrap_used = "warn"
