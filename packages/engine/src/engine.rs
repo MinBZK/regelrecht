@@ -27,7 +27,7 @@ use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Result of article execution
@@ -103,8 +103,7 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
         // Initialize visited set with current article to detect circular references
-        let mut visited = HashSet::new();
-        visited.insert(self.article.number.clone());
+        let visited = vec![self.article.number.clone()];
 
         self.evaluate_internal(parameters, calculation_date, requested_output, visited, 0)
     }
@@ -119,8 +118,7 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        let mut visited = HashSet::new();
-        visited.insert(self.article.number.clone());
+        let visited = vec![self.article.number.clone()];
 
         self.evaluate_internal_traced(
             parameters,
@@ -145,7 +143,7 @@ impl<'a> ArticleEngine<'a> {
         parameters: HashMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
-        visited: HashSet<String>,
+        visited: Vec<String>,
         depth: usize,
     ) -> Result<ArticleResult> {
         self.evaluate_internal_traced(
@@ -164,7 +162,7 @@ impl<'a> ArticleEngine<'a> {
         parameters: HashMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
-        visited: HashSet<String>,
+        visited: Vec<String>,
         depth: usize,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
     ) -> Result<ArticleResult> {
@@ -246,7 +244,7 @@ impl<'a> ArticleEngine<'a> {
         context: &mut RuleContext,
         parameters: &HashMap<String, Value>,
         calculation_date: &str,
-        visited: &HashSet<String>,
+        visited: &[String],
         depth: usize,
     ) -> Result<()> {
         let inputs = self.get_inputs();
@@ -317,7 +315,7 @@ impl<'a> ArticleEngine<'a> {
         output_name: &str,
         parameters: &HashMap<String, Value>,
         calculation_date: &str,
-        visited: &HashSet<String>,
+        visited: &[String],
         depth: usize,
     ) -> Result<Value> {
         // Find the article that produces this output
@@ -340,8 +338,8 @@ impl<'a> ArticleEngine<'a> {
         }
 
         // Add the target article to visited set for the recursive call
-        let mut new_visited = visited.clone();
-        new_visited.insert(article.number.clone());
+        let mut new_visited = visited.to_vec();
+        new_visited.push(article.number.clone());
 
         // Execute the referenced article with updated visited set
         let engine = ArticleEngine::new(article, self.law);

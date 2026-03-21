@@ -39,6 +39,7 @@ use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 // =============================================================================
@@ -62,8 +63,8 @@ struct ResolutionContext<'a> {
     depth: usize,
     /// Optional shared trace builder
     trace: Option<Rc<RefCell<TraceBuilder>>>,
-    /// Per-execution memoization cache: canonical key → outputs map
-    cache: HashMap<String, HashMap<String, Value>>,
+    /// Per-execution memoization cache: hash key → outputs map
+    cache: HashMap<u64, HashMap<String, Value>>,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -113,15 +114,52 @@ impl<'a> ResolutionContext<'a> {
 }
 
 /// Build a deterministic cache key from law_id, output_name, and parameters.
-fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -> String {
-    let mut sorted: Vec<_> = params.iter().collect();
-    sorted.sort_by_key(|(k, _)| k.as_str());
-    let params_str: String = sorted
-        .iter()
-        .map(|(k, v)| format!("{}={:?}", k, v))
-        .collect::<Vec<_>>()
-        .join(",");
-    format!("{}#{}({})", law_id, output_name, params_str)
+///
+/// Uses hashing instead of String building to avoid allocations.
+/// Parameters are sorted by key before hashing for determinism.
+fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    law_id.hash(&mut hasher);
+    output_name.hash(&mut hasher);
+    // Sort params by key for deterministic hashing
+    let mut keys: Vec<&String> = params.keys().collect();
+    keys.sort_unstable();
+    for key in keys {
+        key.hash(&mut hasher);
+        if let Some(value) = params.get(key) {
+            hash_value(value, &mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+/// Hash a Value for cache key purposes.
+fn hash_value(value: &Value, hasher: &mut impl Hasher) {
+    std::mem::discriminant(value).hash(hasher);
+    match value {
+        Value::Null => {}
+        Value::Bool(b) => b.hash(hasher),
+        Value::Int(i) => i.hash(hasher),
+        Value::Float(f) => f.to_bits().hash(hasher),
+        Value::String(s) => s.hash(hasher),
+        Value::Array(arr) => {
+            arr.len().hash(hasher);
+            for v in arr {
+                hash_value(v, hasher);
+            }
+        }
+        Value::Object(map) => {
+            map.len().hash(hasher);
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort_unstable();
+            for key in keys {
+                key.hash(hasher);
+                if let Some(v) = map.get(key) {
+                    hash_value(v, hasher);
+                }
+            }
+        }
+    }
 }
 
 /// Trait for resolving cross-law references.

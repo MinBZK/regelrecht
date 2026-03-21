@@ -93,9 +93,9 @@ impl RuleContext {
         Ok(Self {
             definitions: Rc::new(HashMap::new()),
             parameters: Rc::new(parameters),
-            outputs: Rc::new(HashMap::new()),
+            outputs: Rc::new(HashMap::with_capacity(8)),
             local: HashMap::new(),
-            resolved_inputs: Rc::new(HashMap::new()),
+            resolved_inputs: Rc::new(HashMap::with_capacity(8)),
             reference_date,
             reference_date_value,
             trace: None,
@@ -272,7 +272,7 @@ impl RuleContext {
     pub fn trace_get_message(&self) -> Option<String> {
         self.trace
             .as_ref()
-            .and_then(|trace| trace.borrow().get_message())
+            .and_then(|trace| trace.borrow().get_message().map(String::from))
     }
 
     /// Check if tracing is active.
@@ -321,6 +321,18 @@ impl RuleContext {
     fn resolve_variable_internal(&self, path: &str) -> Result<Value> {
         // Handle dot notation for property access
         if let Some((base, property)) = path.split_once('.') {
+            // Fast-path for referencedate sub-properties — avoids cloning the Object
+            if base == "referencedate" {
+                return match property {
+                    "year" => Ok(Value::Int(i64::from(self.reference_date.year()))),
+                    "month" => Ok(Value::Int(i64::from(self.reference_date.month()))),
+                    "day" => Ok(Value::Int(i64::from(self.reference_date.day()))),
+                    _ => {
+                        let base_value = self.resolve_variable(base)?;
+                        get_property(&base_value, property, 0)
+                    }
+                };
+            }
             let base_value = self.resolve_variable(base)?;
             return get_property(&base_value, property, 0);
         }

@@ -223,19 +223,13 @@ impl RuleResolver {
         versions: &'a [ArticleBasedLaw],
         reference_date: NaiveDate,
     ) -> Option<&'a ArticleBasedLaw> {
-        // Filter valid versions (valid_from <= reference_date)
-        let valid_versions: Vec<&ArticleBasedLaw> = versions
-            .iter()
-            .filter(|v| {
-                v.valid_from
-                    .as_ref()
-                    .and_then(|s| parse_date(s).ok())
-                    .is_none_or(|valid_from| valid_from <= reference_date)
-            })
-            .collect();
-
         // Return the first valid version (already sorted newest first)
-        valid_versions.first().copied()
+        versions.iter().find(|v| {
+            v.valid_from
+                .as_ref()
+                .and_then(|s| parse_date(s).ok())
+                .is_none_or(|valid_from| valid_from <= reference_date)
+        })
     }
 
     /// Get an article by law ID and output name.
@@ -254,7 +248,19 @@ impl RuleResolver {
         reference_date: Option<NaiveDate>,
     ) -> Option<&Article> {
         let law = self.get_law_for_date(law_id, reference_date)?;
-        // Search directly in the version-specific law for the article with this output
+        // Try indexed lookup first (O(1)), fall back to linear scan
+        if let Some(article_number) = self
+            .output_index
+            .get(&(law_id.to_string(), output.to_string()))
+        {
+            if let Some(article) = law.find_article_by_number(article_number) {
+                // Verify the article in this version actually has the output
+                if article.has_output(output) {
+                    return Some(article);
+                }
+            }
+        }
+        // Fallback: linear scan (handles version-specific differences)
         law.find_article_by_output(output)
     }
 
