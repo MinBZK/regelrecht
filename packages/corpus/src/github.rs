@@ -197,7 +197,9 @@ mod inner {
                 .filter(|e| {
                     e.entry_type == "blob"
                         && e.path.ends_with(".yaml")
-                        && (base_path.is_empty() || e.path.starts_with(base_path))
+                        && (base_path.is_empty()
+                            || e.path == base_path
+                            || e.path.starts_with(&format!("{}/", base_path)))
                 })
                 .map(|e| e.path)
                 .collect();

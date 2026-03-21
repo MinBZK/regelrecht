@@ -157,17 +157,19 @@ pub async fn sync_source(
         }
     }
 
-    let law_count = corpus
+    let source_law_count = corpus
         .source_map
         .laws()
         .filter(|l| l.source_id == source_id)
         .count();
+    let total_law_count = corpus.source_map.len();
 
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({
             "source_id": source_id,
-            "law_count": law_count,
+            "source_law_count": source_law_count,
+            "total_law_count": total_law_count,
             "status": "synced"
         })),
     ))
