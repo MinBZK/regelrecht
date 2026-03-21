@@ -323,10 +323,14 @@ impl RuleContext {
         if let Some((base, property)) = path.split_once('.') {
             // Fast-path for referencedate sub-properties — avoids cloning the Object
             if base == "referencedate" {
+                self.trace_set_resolve_type(ResolveType::Context);
                 return match property {
                     "year" => Ok(Value::Int(i64::from(self.reference_date.year()))),
                     "month" => Ok(Value::Int(i64::from(self.reference_date.month()))),
                     "day" => Ok(Value::Int(i64::from(self.reference_date.day()))),
+                    "iso" => Ok(Value::String(
+                        self.reference_date.format("%Y-%m-%d").to_string(),
+                    )),
                     _ => {
                         let base_value = self.resolve_variable(base)?;
                         get_property(&base_value, property, 0)

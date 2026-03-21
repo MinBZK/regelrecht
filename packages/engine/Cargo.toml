@@ -67,7 +67,6 @@ optional = true
 
 [dependencies.opentelemetry_sdk]
 version = "0.31"
-features = ["rt-tokio"]
 optional = true
 
 [dependencies.opentelemetry-otlp]

@@ -24,15 +24,15 @@ fn bench_yaml_parsing(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("law_loading");
 
-    group.bench_function("simple_72_lines", |b| {
+    group.bench_function("small_standaardpremie", |b| {
         b.iter(|| ArticleBasedLaw::from_yaml_str(black_box(&simple)))
     });
 
-    group.bench_function("medium_336_lines", |b| {
+    group.bench_function("medium_zorgtoeslag", |b| {
         b.iter(|| ArticleBasedLaw::from_yaml_str(black_box(&medium)))
     });
 
-    group.bench_function("large_1000_plus_lines", |b| {
+    group.bench_function("large_zorgverzekeringswet", |b| {
         b.iter(|| ArticleBasedLaw::from_yaml_str(black_box(&large)))
     });
 

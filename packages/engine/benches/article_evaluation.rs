@@ -110,37 +110,33 @@ fn bench_article_evaluate(c: &mut Criterion) {
     group.bench_function("simple_conditional", |b| {
         let article = &simple_law.articles[0];
         let engine = ArticleEngine::new(article, &simple_law);
-        b.iter(|| {
-            let mut params = HashMap::new();
-            params.insert("inkomen".to_string(), Value::Int(35000));
-            params.insert("drempel".to_string(), Value::Int(25000));
-            engine.evaluate(black_box(params), "2025-01-01")
-        })
+        let mut params = HashMap::new();
+        params.insert("inkomen".to_string(), Value::Int(35000));
+        params.insert("drempel".to_string(), Value::Int(25000));
+        b.iter(|| engine.evaluate(black_box(params.clone()), "2025-01-01"))
     });
 
     // Arithmetic: multiple nested operations
     group.bench_function("nested_arithmetic", |b| {
         let article = &arithmetic_law.articles[0];
         let engine = ArticleEngine::new(article, &arithmetic_law);
-        b.iter(|| {
-            let mut params = HashMap::new();
-            params.insert("a".to_string(), Value::Int(100));
-            params.insert("b".to_string(), Value::Int(200));
-            params.insert("c".to_string(), Value::Int(300));
-            engine.evaluate(black_box(params), "2025-01-01")
-        })
+        let mut params = HashMap::new();
+        params.insert("a".to_string(), Value::Int(100));
+        params.insert("b".to_string(), Value::Int(200));
+        params.insert("c".to_string(), Value::Int(300));
+        b.iter(|| engine.evaluate(black_box(params.clone()), "2025-01-01"))
     });
 
     // With tracing enabled
     group.bench_function("simple_with_trace", |b| {
         let article = &simple_law.articles[0];
         let engine = ArticleEngine::new(article, &simple_law);
+        let mut params = HashMap::new();
+        params.insert("inkomen".to_string(), Value::Int(35000));
+        params.insert("drempel".to_string(), Value::Int(25000));
         b.iter(|| {
-            let mut params = HashMap::new();
-            params.insert("inkomen".to_string(), Value::Int(35000));
-            params.insert("drempel".to_string(), Value::Int(25000));
             engine.evaluate_with_trace(
-                black_box(params),
+                black_box(params.clone()),
                 "2025-01-01",
                 None,
                 std::rc::Rc::new(std::cell::RefCell::new(

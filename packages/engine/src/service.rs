@@ -63,8 +63,9 @@ struct ResolutionContext<'a> {
     depth: usize,
     /// Optional shared trace builder
     trace: Option<Rc<RefCell<TraceBuilder>>>,
-    /// Per-execution memoization cache: hash key → outputs map
-    cache: HashMap<u64, HashMap<String, Value>>,
+    /// Per-execution memoization cache: hash key → (law_id, output_name, outputs)
+    /// Stores identity for collision detection via debug_assert.
+    cache: HashMap<u64, (String, String, HashMap<String, Value>)>,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -317,7 +318,7 @@ impl LawExecutionService {
     ///
     /// # Returns
     /// The execution result with outputs and metadata.
-    #[tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
     pub fn evaluate_law_output(
         &self,
         law_id: &str,
@@ -384,7 +385,7 @@ impl LawExecutionService {
     }
 
     /// Internal method with cycle tracking.
-    #[tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth)))]
     fn evaluate_law_output_internal(
         &self,
         law_id: &str,
@@ -394,7 +395,16 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
-        if let Some(cached_outputs) = res_ctx.cache.get(&key) {
+        if let Some((cached_law, cached_output, cached_outputs)) = res_ctx.cache.get(&key) {
+            debug_assert_eq!(
+                (cached_law.as_str(), cached_output.as_str()),
+                (law_id, output_name),
+                "Cache key hash collision: ({}, {}) vs ({}, {})",
+                cached_law,
+                cached_output,
+                law_id,
+                output_name
+            );
             tracing::debug!(law_id, output_name, "Cache hit");
             if let Some(ref tb) = res_ctx.trace {
                 let mut tb = tb.borrow_mut();
@@ -463,7 +473,14 @@ impl LawExecutionService {
         )?;
 
         // --- Cache store (only on success) ---
-        res_ctx.cache.insert(key, result.outputs.clone());
+        res_ctx.cache.insert(
+            key,
+            (
+                law_id.to_string(),
+                output_name.to_string(),
+                result.outputs.clone(),
+            ),
+        );
 
         Ok(result)
     }
@@ -561,7 +578,7 @@ impl LawExecutionService {
     /// 3. If not found + has default: execute the default actions
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
-    #[tracing::instrument(skip(self, article, law, context, res_ctx), fields(law_id = %law.id, article = %article.number))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, law, context, res_ctx), fields(law_id = %law.id, article = %article.number)))]
     fn resolve_open_terms(
         &self,
         article: &Article,
@@ -1258,7 +1275,7 @@ impl ServiceProvider for LawExecutionService {
         self.resolver.get_law(law_id)
     }
 
-    #[tracing::instrument(skip(self, source_parameters, context), fields(regulation = %regulation, output = %output))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, source_parameters, context), fields(regulation = %regulation, output = %output)))]
     fn resolve_external_input(
         &self,
         regulation: &str,

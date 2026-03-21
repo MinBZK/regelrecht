@@ -62,17 +62,19 @@ mutants *ARGS:
 
 # --- Benchmarks ---
 
+_bench_flags := "--bench uri_parsing --bench variable_resolution --bench operations --bench article_evaluation --bench law_loading --bench priority --bench service_e2e"
+
 # Run criterion benchmarks (skips unit test harness, runs only criterion benches)
 bench *ARGS:
-    cd packages/engine && cargo bench --bench uri_parsing --bench variable_resolution --bench operations --bench article_evaluation --bench law_loading --bench priority --bench service_e2e {{ARGS}}
+    cd packages/engine && cargo bench {{_bench_flags}} {{ARGS}}
 
 # Run benchmarks and save baseline
 bench-save NAME:
-    cd packages/engine && cargo bench --bench uri_parsing --bench variable_resolution --bench operations --bench article_evaluation --bench law_loading --bench priority --bench service_e2e -- --save-baseline {{NAME}}
+    cd packages/engine && cargo bench {{_bench_flags}} -- --save-baseline {{NAME}}
 
 # Compare against saved baseline
 bench-compare BASE:
-    cd packages/engine && cargo bench --bench uri_parsing --bench variable_resolution --bench operations --bench article_evaluation --bench law_loading --bench priority --bench service_e2e -- --baseline {{BASE}}
+    cd packages/engine && cargo bench {{_bench_flags}} -- --baseline {{BASE}}
 
 # --- Security ---
 
