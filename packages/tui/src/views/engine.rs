@@ -94,11 +94,8 @@ impl EngineView {
                         // and focus on the value field so the user can type it
                         if let Some(var_name) = e.strip_prefix("Variable not found: ") {
                             let var_name = var_name.trim().to_string();
-                            // Don't add duplicates
-                            let already_exists = self
-                                .params
-                                .iter()
-                                .any(|p| p.name == var_name && !p.value.is_empty());
+                            // Don't add duplicates — check by name only
+                            let already_exists = self.params.iter().any(|p| p.name == var_name);
                             if !already_exists {
                                 // Remove empty placeholder entries
                                 self.params.retain(|p| !p.name.is_empty());

@@ -8,7 +8,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         Tab::Engine => "Enter:eval  j/k:nav  Tab:field",
         Tab::Corpus => "Enter:open  Space:expand  j/k:nav  Tab:focus",
         Tab::Pipeline => "r:refresh  j/k:nav",
-        Tab::Validation => "Enter:validate  a:all  j/k:nav",
+        Tab::Validation => "Enter/a:validate all  j/k:nav",
         Tab::Trace => "Space:collapse  j/k:nav  e:expand  c:collapse",
         Tab::Dependencies => "j/k:nav  J/K:scroll detail",
         Tab::Logs => "e/w/i/d:filter  f:follow  j/k:nav",

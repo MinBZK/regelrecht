@@ -61,6 +61,7 @@ pub struct ActionsView {
     scroll_offset: usize,
     running: Option<String>,
     last_exit_code: Option<Option<i32>>,
+    follow: bool,
 }
 
 #[derive(Clone)]
@@ -76,14 +77,24 @@ impl ActionsView {
             scroll_offset: 0,
             running: None,
             last_exit_code: None,
+            follow: true,
         }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent, runner: &mut ProcessRunner) {
         match key.code {
-            KeyCode::Down | KeyCode::Char('j') => self.scroll_down(1),
-            KeyCode::Up | KeyCode::Char('k') => self.scroll_up(1),
-            KeyCode::Char('G') => self.scroll_to_bottom(),
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.scroll_down(1);
+                self.follow = false;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.scroll_up(1);
+                self.follow = false;
+            }
+            KeyCode::Char('G') => {
+                self.scroll_to_bottom();
+                self.follow = true;
+            }
             KeyCode::Char('g') => self.scroll_offset = 0,
             KeyCode::Char(c) => {
                 if runner.is_running() {
@@ -94,6 +105,7 @@ impl ActionsView {
                     self.scroll_offset = 0;
                     self.last_exit_code = None;
                     self.running = Some(cmd.name.to_string());
+                    self.follow = true;
                     let task_id = format!("action:{}", cmd.just_target);
                     runner.run_just(task_id, cmd.just_target);
                 }
@@ -243,6 +255,8 @@ impl ActionsView {
             self.output.drain(..self.output.len() - MAX_OUTPUT_LINES);
             self.scroll_offset = self.scroll_offset.saturating_sub(1);
         }
-        self.scroll_to_bottom();
+        if self.follow {
+            self.scroll_to_bottom();
+        }
     }
 }

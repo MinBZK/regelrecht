@@ -145,10 +145,10 @@ impl LogsView {
         if self.lines.is_empty() {
             let content = Paragraph::new(vec![
                 Line::from(""),
-                Line::from("  No log output yet."),
+                Line::from("  Not yet wired up."),
                 Line::from(""),
                 Line::from(Span::styled(
-                    "  Worker logs will appear here when workers are running.",
+                    "  This tab will show worker logs once tracing integration is added.",
                     Style::default().add_modifier(Modifier::DIM),
                 )),
                 Line::from(Span::styled(

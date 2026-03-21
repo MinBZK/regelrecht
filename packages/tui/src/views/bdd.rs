@@ -32,6 +32,7 @@ pub struct BddView {
     skipped: usize,
     scanned: bool,
     focus: Focus,
+    follow: bool,
 }
 
 #[derive(Clone)]
@@ -53,6 +54,7 @@ impl BddView {
             skipped: 0,
             scanned: false,
             focus: Focus::Features,
+            follow: true,
         }
     }
 
@@ -113,12 +115,20 @@ impl BddView {
             Focus::Output => match key.code {
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.output_scroll = self.output_scroll.saturating_add(3);
+                    self.follow = false;
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.output_scroll = self.output_scroll.saturating_sub(3);
+                    self.follow = false;
                 }
-                KeyCode::Char('g') => self.output_scroll = 0,
-                KeyCode::Char('G') => self.scroll_to_bottom(),
+                KeyCode::Char('g') => {
+                    self.output_scroll = 0;
+                    self.follow = false;
+                }
+                KeyCode::Char('G') => {
+                    self.scroll_to_bottom();
+                    self.follow = true;
+                }
                 _ => {}
             },
         }
@@ -131,6 +141,7 @@ impl BddView {
         self.failed = 0;
         self.skipped = 0;
         self.running = true;
+        self.follow = true;
         self.focus = Focus::Output;
         runner.run_just("bdd:all".to_string(), "bdd");
     }
@@ -294,6 +305,8 @@ impl BddView {
             self.output.drain(..self.output.len() - MAX_OUTPUT_LINES);
             self.output_scroll = self.output_scroll.saturating_sub(1);
         }
-        self.scroll_to_bottom();
+        if self.follow {
+            self.scroll_to_bottom();
+        }
     }
 }

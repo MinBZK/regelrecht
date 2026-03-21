@@ -90,6 +90,11 @@ impl ProcessRunner {
     }
 }
 
+/// Run a command and stream its output line-by-line via the channel.
+///
+/// Note: stdout and stderr are consumed in parallel tasks, so lines from
+/// each stream may interleave non-deterministically. This is inherent to
+/// the approach and acceptable for TUI display purposes.
 async fn run_streaming(
     project_root: PathBuf,
     program: &str,
