@@ -264,13 +264,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2  # v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -278,7 +278,7 @@ jobs:
 
       - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GRAFANA }}
           tags: |
@@ -287,7 +287,7 @@ jobs:
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294  # v7.0.0
         with:
           context: ./packages/grafana
           push: true
@@ -316,7 +316,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Preview)
         if: needs.changes.outputs.backend == 'true' && needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -331,7 +331,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Preview)
         if: needs.changes.outputs.backend == 'true' && needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -346,7 +346,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Preview)
         if: needs.changes.outputs.backend == 'true' && needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -361,7 +361,7 @@ jobs:
 
       - name: Deploy editor to ZAD (Preview)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -394,7 +394,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Production)
         if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -405,7 +405,7 @@ jobs:
       - name: Deploy editor to ZAD (Production)
         if: needs.build.result == 'success'
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -415,7 +415,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Production)
         if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -425,7 +425,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Production)
         if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -435,7 +435,7 @@ jobs:
 
       - name: Deploy grafana to ZAD (Production)
         if: needs.build-grafana.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v2.4.0
+        uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -453,7 +453,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD Deployment
-        uses: RijksICTGilde/zad-actions/cleanup@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -469,7 +469,7 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Cleanup admin container image
-        uses: RijksICTGilde/zad-actions/cleanup@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -483,7 +483,7 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Cleanup harvester-worker container image
-        uses: RijksICTGilde/zad-actions/cleanup@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -497,7 +497,7 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Cleanup enrich-worker container image
-        uses: RijksICTGilde/zad-actions/cleanup@24ceebf6808a7ac506a3215e67997171b79a4a1a  # v2.4.0
+        uses: RijksICTGilde/zad-actions/cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}

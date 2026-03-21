@@ -239,25 +239,82 @@ impl PathNode {
     /// SVB: zorgtoeslagwet (2025-01-01 {BSN: 999993653} hoogte_zorgtoeslag)
     /// ║──Evaluating rules for SVB zorgtoeslagwet (2025-01-01 hoogte_zorgtoeslag)
     /// ║──Requirements {'all': [...]}
-    /// ║   ├──Resolving $LEEFTIJD
-    /// ║   │   ├──Resolving from DATA_SOURCE: 20
+    /// ║   ├──Resolving from DATA_SOURCE: $LEEFTIJD = 20
     /// ║   ├──Compute GREATER_OR_EQUAL(20, 18) = True
     /// ║   ├──Requirement met
     /// ║──Computing hoogte_zorgtoeslag
-    /// ║   ├──Resolving $TOETSINGSINKOMEN
-    /// ║   │   ├──Resolving from DATA_SOURCE: 79547
-    /// ║──Result of hoogte_zorgtoeslag: 209692
+    /// ║   ├──Resolving from DATA_SOURCE: $TOETSINGSINKOMEN = 79547
+    /// ╙──Result: hoogte_zorgtoeslag = 209692
     /// ```
     pub fn render_box_drawing(&self) -> String {
         let mut lines = Vec::new();
-        self.render_box_node(&mut lines, "");
+        self.render_box_node(&mut lines, "", false, false, None);
         lines.join("\n")
+    }
+
+    /// Render children that live inside a double-line (cross-document) scope.
+    ///
+    /// `node_continuation` is the continuation string for the node that owns
+    /// this scope (e.g., `"║   "` if it has more siblings, `"    "` if last).
+    /// This ensures the parent's continuation line remains visible through
+    /// the last child's subtree.
+    fn render_double_children(
+        &self,
+        lines: &mut Vec<String>,
+        prefix: &str,
+        scope_continues: bool,
+        node_continuation: &str,
+    ) {
+        let child_count = self.children.len();
+        let double_prefix = format!("{}║   ", prefix);
+        let ended_prefix = format!("{}{}", prefix, node_continuation);
+        for (i, child) in self.children.iter().enumerate() {
+            let is_last = i == child_count - 1;
+            if is_last && !scope_continues {
+                // Last child, scope ends: header at ║ column, subtree uses
+                // the node's own continuation (preserving parent's ║ if needed).
+                child.render_box_node(lines, &double_prefix, is_last, true, Some(&ended_prefix));
+            } else {
+                // Non-last, or last with continuing scope: header and subtree at ║ column.
+                child.render_box_node(lines, &double_prefix, is_last, true, None);
+            }
+        }
     }
 
     /// Internal recursive renderer for box-drawing format.
     ///
-    /// `prefix` is the leading string for continuation lines (e.g., "║   ").
-    fn render_box_node(&self, lines: &mut Vec<String>, prefix: &str) {
+    /// `prefix` is the leading string for this node's header line.
+    /// `is_last` indicates whether this node is the last child of its parent.
+    /// `parent_is_double` controls connector characters: single context uses
+    /// `├──` / `└──`, double context (cross-document scope) uses `╟──` / `╙──`.
+    /// `child_base_override` when `Some(base)` uses that base instead of `prefix`
+    /// for computing children's prefix, handling the case where the header renders
+    /// at a `║` column (for `╙──`) but the subtree should use spaces because the
+    /// double-line scope has ended.
+    fn render_box_node(
+        &self,
+        lines: &mut Vec<String>,
+        prefix: &str,
+        is_last: bool,
+        parent_is_double: bool,
+        child_base_override: Option<&str>,
+    ) {
+        let connector = match (parent_is_double, is_last) {
+            (true, true) => "╙──",
+            (true, false) => "╟──",
+            (false, true) => "└──",
+            (false, false) => "├──",
+        };
+        // Base for computing children's prefix: use override if provided
+        let child_base = child_base_override.unwrap_or(prefix);
+        // Continuation prefix for this node's children.
+        // Double-line context uses ║ instead of │ for visual consistency.
+        let continuation = match (parent_is_double, is_last) {
+            (_, true) => "    ",
+            (true, false) => "║   ",
+            (false, false) => "│   ",
+        };
+
         match self.node_type {
             PathNodeType::Article => {
                 // Header line: "AGENCY: law_id (date {params} output_name)"
@@ -267,25 +324,25 @@ impl PathNode {
                     lines.push(self.name.clone());
                 }
 
-                // Evaluating rules line
-                lines.push(format!("{}║──Evaluating rules for {}", prefix, self.name));
+                // Evaluating rules line (use child_base for internal lines)
+                lines.push(format!(
+                    "{}╟──Evaluating rules for {}",
+                    child_base, self.name
+                ));
 
-                let child_prefix = format!("{}║   ", prefix);
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
-                }
+                // Article children are in double-line scope; scope continues for Result line
+                self.render_double_children(lines, child_base, true, continuation);
 
-                // Result line
+                // Result line (last branch of the article scope)
                 if let Some(ref result) = self.result {
-                    // Extract the output name from "law_id (output_name)" format
                     let output_name = self
                         .name
                         .split_once(' ')
                         .map(|(_, rest)| rest.trim_matches(|c| c == '(' || c == ')'))
                         .unwrap_or(&self.name);
                     lines.push(format!(
-                        "{}║──Result of {}: {}",
-                        prefix,
+                        "{}╙──Result: {} = {}",
+                        child_base,
                         output_name,
                         format_value_display(result)
                     ));
@@ -293,64 +350,101 @@ impl PathNode {
             }
 
             PathNodeType::Requirement => {
-                // Requirements line
                 if let Some(ref msg) = self.message {
-                    lines.push(format!("{}├──{}", prefix, msg));
+                    lines.push(format!("{}{}{}", prefix, connector, msg));
                 } else {
-                    lines.push(format!("{}├──Requirements", prefix));
+                    lines.push(format!("{}{}Requirements", prefix, connector));
                 }
 
-                let child_prefix = format!("{}│   ", prefix);
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
+                let child_prefix = format!("{}{}", child_base, continuation);
+                let child_count = self.children.len();
+                let has_result = self.result.is_some();
+
+                for (i, child) in self.children.iter().enumerate() {
+                    let child_is_last = i == child_count - 1 && !has_result;
+                    child.render_box_node(lines, &child_prefix, child_is_last, false, None);
                 }
 
-                // Requirement met/not met
                 if let Some(ref result) = self.result {
                     if result.to_bool() {
-                        lines.push(format!("{}├──Requirement met", prefix));
+                        lines.push(format!("{}└──Requirement met", child_prefix));
                     } else {
-                        lines.push(format!("{}├──Requirement NOT met", prefix));
+                        lines.push(format!("{}└──Requirement NOT met", child_prefix));
                     }
                 }
             }
 
             PathNodeType::Resolve => {
-                // Resolving $VAR
-                lines.push(format!(
-                    "{}├──Resolving ${}",
-                    prefix,
-                    self.name.to_uppercase()
-                ));
+                let child_count = self.children.len();
 
-                let child_prefix = format!("{}│   ", prefix);
-
-                // Show resolution source
-                if let Some(ref rt) = self.resolve_type {
-                    let rt_name = resolve_type_name(rt);
-                    let val_str = self
-                        .result
-                        .as_ref()
-                        .map(format_value_display)
-                        .unwrap_or_else(|| "?".to_string());
+                // Collapse simple resolves (source known, no children) into one line
+                if child_count == 0 {
+                    if let Some(ref rt) = self.resolve_type {
+                        let rt_name = resolve_type_name(rt);
+                        let val_str = self
+                            .result
+                            .as_ref()
+                            .map(format_value_display)
+                            .unwrap_or_else(|| "?".to_string());
+                        lines.push(format!(
+                            "{}{}Resolving from {}: ${} = {}",
+                            prefix,
+                            connector,
+                            rt_name,
+                            self.name.to_uppercase(),
+                            val_str
+                        ));
+                    } else if let Some(ref msg) = self.message {
+                        lines.push(format!("{}{}{}", prefix, connector, msg));
+                    } else {
+                        lines.push(format!(
+                            "{}{}Resolving ${}",
+                            prefix,
+                            connector,
+                            self.name.to_uppercase()
+                        ));
+                    }
+                } else {
+                    // Complex resolve: keep the two-level structure
                     lines.push(format!(
-                        "{}├──Resolving from {}: {}",
-                        child_prefix, rt_name, val_str
+                        "{}{}Resolving ${}",
+                        prefix,
+                        connector,
+                        self.name.to_uppercase()
                     ));
-                } else if let Some(ref msg) = self.message {
-                    lines.push(format!("{}├──{}", child_prefix, msg));
-                }
 
-                // Render children (sub-resolutions)
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
+                    let child_prefix = format!("{}{}", child_base, continuation);
+
+                    if let Some(ref rt) = self.resolve_type {
+                        let rt_name = resolve_type_name(rt);
+                        let val_str = self
+                            .result
+                            .as_ref()
+                            .map(format_value_display)
+                            .unwrap_or_else(|| "?".to_string());
+                        lines.push(format!(
+                            "{}├──Resolving from {}: {}",
+                            child_prefix, rt_name, val_str
+                        ));
+                    } else if let Some(ref msg) = self.message {
+                        lines.push(format!("{}├──{}", child_prefix, msg));
+                    }
+
+                    for (i, child) in self.children.iter().enumerate() {
+                        child.render_box_node(
+                            lines,
+                            &child_prefix,
+                            i == child_count - 1,
+                            false,
+                            None,
+                        );
+                    }
                 }
             }
 
             PathNodeType::Operation => {
-                // Compute OP(args) = result
                 if let Some(ref msg) = self.message {
-                    lines.push(format!("{}├──{}", prefix, msg));
+                    lines.push(format!("{}{}{}", prefix, connector, msg));
                 } else {
                     let result_str = self
                         .result
@@ -358,42 +452,38 @@ impl PathNode {
                         .map(format_value_display)
                         .unwrap_or_else(|| "?".to_string());
                     lines.push(format!(
-                        "{}├──Compute {} = {}",
-                        prefix, self.name, result_str
+                        "{}{}Compute {} = {}",
+                        prefix, connector, self.name, result_str
                     ));
                 }
 
-                let child_prefix = format!("{}│   ", prefix);
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
+                let child_prefix = format!("{}{}", child_base, continuation);
+                let child_count = self.children.len();
+                for (i, child) in self.children.iter().enumerate() {
+                    child.render_box_node(lines, &child_prefix, i == child_count - 1, false, None);
                 }
             }
 
             PathNodeType::Action => {
-                // Computing output_name
                 if let Some(ref msg) = self.message {
-                    lines.push(format!("{}├──{}", prefix, msg));
+                    lines.push(format!("{}{}{}", prefix, connector, msg));
                 } else {
-                    lines.push(format!("{}├──Computing {}", prefix, self.name));
+                    lines.push(format!("{}{}Computing {}", prefix, connector, self.name));
                 }
 
-                let child_prefix = format!("{}│   ", prefix);
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
+                let child_prefix = format!("{}{}", child_base, continuation);
+                let child_count = self.children.len();
+                let has_result = self.result.is_some();
+
+                for (i, child) in self.children.iter().enumerate() {
+                    let child_is_last = i == child_count - 1 && !has_result;
+                    child.render_box_node(lines, &child_prefix, child_is_last, false, None);
                 }
 
-                // Result of output_name: value
                 if let Some(ref result) = self.result {
-                    // Use the top-level article prefix (║──) for results instead of branch prefix
-                    // Pop the last 4 chars ("│   ") from prefix and replace with "║──"
-                    let result_prefix = if let Some(stripped) = prefix.strip_suffix("│   ") {
-                        format!("{}║──", stripped)
-                    } else {
-                        format!("{}├──", prefix)
-                    };
                     lines.push(format!(
-                        "{}Result of {}: {}",
-                        result_prefix,
+                        "{}└──Result: {} = {}",
+                        child_prefix,
                         self.name,
                         format_value_display(result)
                     ));
@@ -401,17 +491,14 @@ impl PathNode {
             }
 
             PathNodeType::UriCall => {
-                // Nested sub-law call: render with its own ║ scope
                 if let Some(ref msg) = self.message {
-                    lines.push(format!("{}├──{}", prefix, msg));
+                    lines.push(format!("{}{}{}", prefix, connector, msg));
                 } else {
-                    lines.push(format!("{}├──URI call: {}", prefix, self.name));
+                    lines.push(format!("{}{}URI call: {}", prefix, connector, self.name));
                 }
 
-                let child_prefix = format!("{}║   ", prefix);
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
-                }
+                // UriCall children are in double-line scope (cross-document)
+                self.render_double_children(lines, child_base, false, continuation);
             }
 
             PathNodeType::Cached => {
@@ -420,7 +507,10 @@ impl PathNode {
                     .as_ref()
                     .map(|v| format!(": {}", format_value_display(v)))
                     .unwrap_or_default();
-                lines.push(format!("{}├──CACHED: {}{}", prefix, self.name, result_str));
+                lines.push(format!(
+                    "{}{}CACHED: {}{}",
+                    prefix, connector, self.name, result_str
+                ));
             }
 
             PathNodeType::OpenTermResolution => {
@@ -430,12 +520,13 @@ impl PathNode {
                     .map(|v| format!(": {}", format_value_display(v)))
                     .unwrap_or_default();
                 let msg = self.message.as_deref().unwrap_or(&self.name);
-                lines.push(format!("{}├──OPEN_TERM: {}{}", prefix, msg, result_str));
+                lines.push(format!(
+                    "{}{}OPEN_TERM: {}{}",
+                    prefix, connector, msg, result_str
+                ));
 
-                let child_prefix = format!("{}│   ", prefix);
-                for child in &self.children {
-                    child.render_box_node(lines, &child_prefix);
-                }
+                // OpenTerm children are in double-line scope (cross-document)
+                self.render_double_children(lines, child_base, false, continuation);
             }
         }
     }
@@ -639,6 +730,14 @@ impl TraceBuilder {
         if let Some(current) = self.stack.last_mut() {
             current.node.message = Some(msg.into());
         }
+    }
+
+    /// Get the message on the current node, if set.
+    pub fn get_message(&self) -> Option<String> {
+        if !self.enabled {
+            return None;
+        }
+        self.stack.last().and_then(|s| s.node.message.clone())
     }
 
     /// Set the resolve type for the current node.
@@ -1001,5 +1100,162 @@ mod tests {
                 rendered
             );
         }
+    }
+
+    // --- Box-drawing rendering tests ---
+
+    #[test]
+    fn test_box_drawing_last_child_uses_corner() {
+        let node = PathNode::new(PathNodeType::Operation, "ADD")
+            .with_result(Value::Int(3))
+            .with_message("Compute ADD(...) = 3")
+            .with_child(PathNode::new(PathNodeType::Resolve, "a").with_result(Value::Int(1)))
+            .with_child(PathNode::new(PathNodeType::Resolve, "b").with_result(Value::Int(2)));
+
+        let rendered = node.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // First child uses ├──, last child uses └──
+        assert!(
+            lines.iter().any(|l| l.contains("├──")),
+            "Expected ├── for non-last child in:\n{}",
+            rendered
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("└──")),
+            "Expected └── for last child in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_single_child_uses_corner() {
+        // Wrap in a parent to avoid root-node rendering artifacts
+        let child = PathNode::new(PathNodeType::Resolve, "x").with_result(Value::Null);
+        let op = PathNode::new(PathNodeType::Operation, "ISNULL")
+            .with_result(Value::Bool(true))
+            .with_message("Compute ISNULL(...) = True")
+            .with_child(child);
+        let parent = PathNode::new(PathNodeType::Operation, "wrapper")
+            .with_result(Value::Bool(true))
+            .with_message("Compute wrapper(...) = True")
+            .with_child(op);
+
+        let rendered = parent.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // The ISNULL's single child (x) should use └──
+        let x_line = lines.iter().find(|l| l.contains("Resolving $X")).unwrap();
+        assert!(
+            x_line.contains("└──"),
+            "Single child should use └── in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_no_children() {
+        // Wrap in parent to test leaf rendering within a tree
+        let leaf = PathNode::new(PathNodeType::Resolve, "simple_var").with_result(Value::Int(42));
+        let parent = PathNode::new(PathNodeType::Operation, "wrapper")
+            .with_result(Value::Int(42))
+            .with_message("Compute wrapper(...) = 42")
+            .with_child(leaf);
+
+        let rendered = parent.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // The leaf node line itself should use └── (last child of parent)
+        let leaf_line = lines.iter().find(|l| l.contains("SIMPLE_VAR")).unwrap();
+        assert!(
+            leaf_line.contains("└──"),
+            "Leaf should use └── as last child in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_uri_call_double_lines() {
+        let child = PathNode::new(PathNodeType::Resolve, "param").with_result(Value::Int(1));
+        let uri_node = PathNode::new(PathNodeType::UriCall, "other_law#output")
+            .with_message("URI call: other_law#output")
+            .with_child(child);
+
+        let rendered = uri_node.render_box_drawing();
+        // UriCall children should use double-line connectors
+        assert!(
+            rendered.contains("╙──") || rendered.contains("╟──"),
+            "UriCall children should use double-line connectors in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_article_scope_continues() {
+        let action = PathNode::new(PathNodeType::Action, "compute_x")
+            .with_result(Value::Int(10))
+            .with_message("Computing compute_x")
+            .with_child(PathNode::new(PathNodeType::Resolve, "a").with_result(Value::Int(10)));
+
+        let article = PathNode::new(PathNodeType::Article, "test_law (output)")
+            .with_result(Value::Int(10))
+            .with_child(action);
+
+        let rendered = article.render_box_drawing();
+        // Article should have ╟── for "Evaluating rules" and ╙── for "Result"
+        assert!(
+            rendered.contains("╟──Evaluating"),
+            "Article should have ╟──Evaluating in:\n{}",
+            rendered
+        );
+        assert!(
+            rendered.contains("╙──Result:"),
+            "Article should have ╙──Result in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_continuation_not_interrupted() {
+        // Two children under a UriCall: the first child's subtree should show ║
+        // continuation for the second child
+        let child1 = PathNode::new(PathNodeType::Resolve, "first").with_result(Value::Int(1));
+        let child2 = PathNode::new(PathNodeType::Resolve, "second").with_result(Value::Int(2));
+        let uri_node = PathNode::new(PathNodeType::UriCall, "law#out")
+            .with_message("URI call: law#out")
+            .with_child(child1)
+            .with_child(child2);
+
+        let rendered = uri_node.render_box_drawing();
+        let lines: Vec<&str> = rendered.lines().collect();
+        // Between the two children, the ║ continuation should be present
+        let has_double_continuation = lines.iter().any(|l| l.contains("║"));
+        assert!(
+            has_double_continuation,
+            "UriCall with multiple children should show ║ continuation in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_cached_node() {
+        let cached =
+            PathNode::new(PathNodeType::Cached, "some_law#output").with_result(Value::Bool(false));
+
+        let rendered = cached.render_box_drawing();
+        assert!(
+            rendered.contains("CACHED:"),
+            "Cached node should show CACHED label in:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn test_box_drawing_result_format() {
+        let action = PathNode::new(PathNodeType::Action, "my_output").with_result(Value::Int(42));
+
+        let rendered = action.render_box_drawing();
+        assert!(
+            rendered.contains("Result: my_output = 42"),
+            "Action result should show 'Result: name = value' in:\n{}",
+            rendered
+        );
     }
 }

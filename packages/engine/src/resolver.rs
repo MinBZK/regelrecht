@@ -1224,21 +1224,28 @@ articles:
         assert_eq!(resolver.law_count(), 1);
     }
 
+    fn get_regulation_path() -> std::path::PathBuf {
+        std::env::var("REGULATION_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join("corpus")
+                    .join("regulation")
+            })
+    }
+
     #[test]
     fn test_resolver_load_from_directory() {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let regulation_path = std::path::PathBuf::from(manifest_dir)
-            .join("..")
-            .join("..")
-            .join("regulation")
-            .join("nl");
+        let regulation_path = get_regulation_path().join("nl");
 
         let mut resolver = RuleResolver::new();
         let count = resolver.load_from_directory(&regulation_path).unwrap();
 
         assert!(
             count >= 10,
-            "Expected at least 10 laws from regulation/nl, got {}",
+            "Expected at least 10 laws from corpus/regulation/nl, got {}",
             count
         );
         assert!(resolver.has_law("zorgtoeslagwet"));

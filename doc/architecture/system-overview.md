@@ -173,7 +173,7 @@ graph TB
 
 The single source of truth: all Dutch law, version-controlled in git. Contains both the natural language legal text and machine-readable execution logic per article. The git history captures the full legislative evolution. This is the project's core proposition — law as code, version-controlled.
 
-**Status:** The current repo (`regulation/nl/`) contains a small number of laws. The vision is to grow this into the complete Corpus Juris.
+**Status:** The current repo (`corpus/regulation/nl/`) contains a small number of laws. The vision is to grow this into the complete Corpus Juris.
 
 ### Execution Engine (`packages/engine`)
 
@@ -197,7 +197,7 @@ Key internals:
 
 Backfills the Corpus Juris by crawling wetten.nl (the official BWB repository). Downloads laws by BWB ID, parses XML metadata and content, splits articles according to Dutch law hierarchy (Deel → Hoofdstuk → Paragraaf → Artikel → Lid), and writes schema-compliant YAML. Processes historical versions to reconstruct the full legislative timeline.
 
-**Status:** In development on `feature/rust-harvester` branch.
+**Status:** Merged into `main`.
 
 ### Editor / Browser (`frontend/`)
 

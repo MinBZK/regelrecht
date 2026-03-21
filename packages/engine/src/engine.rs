@@ -1173,24 +1173,30 @@ articles:
         }
     }
 
+    fn get_regulation_path() -> std::path::PathBuf {
+        std::env::var("REGULATION_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("..")
+                    .join("..")
+                    .join("corpus")
+                    .join("regulation")
+            })
+    }
+
     // -------------------------------------------------------------------------
     // IoC Integration Tests
     // -------------------------------------------------------------------------
 
     mod ioc {
         use super::*;
-        use std::path::PathBuf;
 
         #[test]
         fn test_parse_participatiewet_ioc() {
             // Test that participatiewet uses IoC: article 8 has open_terms,
             // article 43 references article 8 via source.output
-            let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            let path = PathBuf::from(manifest_dir)
-                .join("..")
-                .join("..")
-                .join("regulation")
-                .join("nl/wet/participatiewet/2022-03-15.yaml");
+            let path = get_regulation_path().join("nl/wet/participatiewet/2022-03-15.yaml");
 
             let law = ArticleBasedLaw::from_yaml_file(&path).unwrap();
 
@@ -1221,15 +1227,6 @@ articles:
 
     mod integration {
         use super::*;
-        use std::path::PathBuf;
-
-        fn get_regulation_path() -> PathBuf {
-            let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            PathBuf::from(manifest_dir)
-                .join("..")
-                .join("..")
-                .join("regulation")
-        }
 
         #[test]
         fn test_execute_zorgtoeslagwet_vermogen_check() {

@@ -23,14 +23,14 @@ When `machine_readable` sections are added or changed:
 
 ### Cross-law reference integrity (regulation YAML changes)
 
-- Do `source.regulation` values reference valid law `$id` slugs that exist in `regulation/`?
+- Do `source.regulation` values reference valid law `$id` slugs that exist in `corpus/regulation/`?
 - Do `source.output` values match actual `output.name` fields in the referenced law?
 - Are `source.parameters` passed correctly (matching the referenced law's parameter names)?
 - Are `regelrecht://` URIs well-formed: `regelrecht://{law_id}/{output_name}#{field}`?
 
 ### Schema and format compliance (regulation YAML changes)
 
-- Does the YAML structure conform to the schema (v0.3.0)?
+- Does the YAML structure conform to the schema (v0.4.0)?
 - Are required fields present (`$schema`, `$id`, `regulatory_layer`, `valid_from`, etc.)?
 - Are operation names valid (`IF`, `AND`, `OR`, `ADD`, `SUBTRACT`, `MULTIPLY`, etc.)?
 - Are type declarations correct (`string`, `number`, `boolean`, `amount` with `type_spec.unit`)?

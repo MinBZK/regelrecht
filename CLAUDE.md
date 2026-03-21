@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **regelrecht-mvp** is an MVP for machine-readable Dutch law execution. Components:
 - `packages/engine/` - Rust law execution engine
 - `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
-- `regulation/` - Dutch legal regulations in machine-readable YAML format
+- `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
 - `frontend/` - Static HTML/CSS law editor prototype
 - `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
 
@@ -44,7 +44,7 @@ This repository uses pre-commit hooks for code quality:
 - **yamllint**: YAML linting (config in `.yamllint`)
 - **Rust formatting**: `just format` (on `.rs` files)
 - **Rust linting**: `just lint` (on `.rs` files)
-- **Schema validation**: `just validate` (on `regulation/**/*.yaml` files)
+- **Schema validation**: `just validate` (on `corpus/regulation/**/*.yaml` files)
 
 **NEVER use `--no-verify` when committing.** Fix the underlying problem instead of bypassing hooks.
 
@@ -76,7 +76,7 @@ git worktree add .worktrees/feature-branch feature-branch
   - `editor.html` - Law editor page
   - `Dockerfile` - Multi-stage build (Node.js + nginx-unprivileged)
   - `nginx.conf` - Nginx config (port 8000, gzip, caching)
-- **regulation/nl/** - Dutch legal regulations in machine-readable format
+- **corpus/regulation/nl/** - Dutch legal regulations in machine-readable format
   - `wet/` - Formal laws (wetten)
   - `ministeriele_regeling/` - Ministerial regulations
 - **features/** - Gherkin feature files for BDD testing
@@ -100,7 +100,7 @@ source:
 
 For delegated values (e.g., "bij ministeriële regeling"), laws use the IoC pattern:
 higher laws declare `open_terms`, lower regulations declare `implements`.
-See `regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
+See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a working example.
 
 ## RFC Process
 

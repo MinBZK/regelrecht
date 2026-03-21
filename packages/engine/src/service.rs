@@ -1524,11 +1524,15 @@ articles:
         use std::path::PathBuf;
 
         fn get_regulation_path() -> PathBuf {
-            let manifest_dir = env!("CARGO_MANIFEST_DIR");
-            PathBuf::from(manifest_dir)
-                .join("..")
-                .join("..")
-                .join("regulation")
+            std::env::var("REGULATION_PATH")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| {
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("..")
+                        .join("..")
+                        .join("corpus")
+                        .join("regulation")
+                })
         }
 
         #[test]
@@ -1578,7 +1582,7 @@ articles:
             // Should load all YAML files from the regulation directory
             assert!(
                 count >= 10,
-                "Expected at least 10 laws loaded from regulation/nl, got {}",
+                "Expected at least 10 laws loaded from corpus/regulation/nl, got {}",
                 count
             );
 

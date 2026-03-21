@@ -268,6 +268,13 @@ impl RuleContext {
         }
     }
 
+    /// Get message from the current trace node. Returns None if trace is None.
+    pub fn trace_get_message(&self) -> Option<String> {
+        self.trace
+            .as_ref()
+            .and_then(|trace| trace.borrow().get_message())
+    }
+
     /// Check if tracing is active.
     pub fn has_trace(&self) -> bool {
         self.trace.is_some()
@@ -378,6 +385,10 @@ impl ValueResolver for RuleContext {
 
     fn trace_set_message(&self, msg: String) {
         RuleContext::trace_set_message(self, msg);
+    }
+
+    fn trace_get_message(&self) -> Option<String> {
+        RuleContext::trace_get_message(self)
     }
 
     fn has_trace(&self) -> bool {
