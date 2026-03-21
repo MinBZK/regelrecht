@@ -59,16 +59,43 @@ A lifecycle is a sequence of **stages**. Each stage:
 - May require **inputs** that come from external events (human decisions, real-world actions)
 - May have **hooks** from other laws that fire when the stage is reached
 
-### Lifecycle definition in AWB
+### Procedure selection
 
-The AWB defines the lifecycle for BESCHIKKING as a machine-readable construct:
+A single `legal_character` can have multiple procedure variants. Both a regular beschikking and a UOV beschikking have `legal_character: BESCHIKKING`, but they follow different AWB procedures — the UOV omits bezwaar entirely (AWB 7:1 lid 1 sub d). Selecting the wrong procedure produces a legally invalid outcome.
+
+The `produces` annotation gains an optional `procedure_id` field to disambiguate:
+
+```yaml
+# Regular beschikking — uses default AWB procedure
+produces:
+  legal_character: BESCHIKKING
+  # procedure_id defaults to "beschikking" when omitted
+
+# UOV beschikking — explicit procedure selection
+produces:
+  legal_character: BESCHIKKING
+  procedure_id: beschikking_uov
+```
+
+When `procedure_id` is omitted, the engine selects the default procedure for the `legal_character`. The AWB defines which procedure is the default.
+
+### Procedure definition in AWB
+
+The AWB defines procedures for BESCHIKKING as machine-readable constructs. Multiple procedures can apply to the same `legal_character`:
 
 ```yaml
 # algemene_wet_bestuursrecht.yaml
 $id: algemene_wet_bestuursrecht
 
+# The stages below are the normative definition for the engine.
+# Appendix A describes additional sub-stages (ONTVANGSTBEVESTIGING,
+# AANVULLING, BESLISTERMIJN) that exist in the AWB but are not
+# modeled as discrete engine stages in v1 — they are subsumed
+# into the stages listed here.
+
 procedure:
   - id: beschikking
+    default: true
     applies_to:
       legal_character: BESCHIKKING
     stages:
@@ -102,6 +129,43 @@ procedure:
         description: Bezwaarperiode (AWB 6:4 e.v.)
         # This stage is entered automatically after BEKENDMAKING
         # and runs for the duration of the bezwaartermijn
+
+  - id: beschikking_uov
+    applies_to:
+      legal_character: BESCHIKKING
+    # UOV replaces regular preparation with public consultation
+    # and eliminates bezwaar (AWB 7:1 lid 1 sub d)
+    stages:
+      - name: AANVRAAG
+        description: Aanvraag of ambtshalve initiatief
+        requires:
+          - name: aanvraag_datum
+            type: date
+
+      - name: ONTWERP_BESLUIT
+        description: Bestuursorgaan bereidt ontwerpbesluit voor (AWB 3:11)
+
+      - name: TER_INZAGE
+        description: Terinzagelegging 6 weken (AWB 3:11-3:14)
+
+      - name: ZIENSWIJZEN
+        description: Zienswijzen indienen (AWB 3:15-3:17)
+
+      - name: BESLUIT
+        description: Definitief besluit (AWB 3:18)
+        requires:
+          - name: besluit_datum
+            type: date
+
+      - name: BEKENDMAKING
+        description: Publicatie (AWB 3:41/3:42)
+        requires:
+          - name: bekendmaking_datum
+            type: date
+
+      # No BEZWAAR — direct beroep (AWB 7:1 lid 1 sub d)
+      - name: BEROEP
+        description: Direct beroep bij bestuursrechter
 ```
 
 ### The complete beschikking lifecycle
@@ -131,10 +195,10 @@ stateDiagram-v2
 
     BESLUIT --> BEKENDMAKING
 
-    BEKENDMAKING --> BEZWAARTERMIJN_START
+    BEKENDMAKING --> BEZWAARTERMIJN
 
     state bezwaar_of_beroep <<choice>>
-    BEZWAARTERMIJN_START --> bezwaar_of_beroep
+    BEZWAARTERMIJN --> bezwaar_of_beroep
 
     bezwaar_of_beroep --> BEZWAAR: Bezwaar ingediend\n(AWB 6:4)
     bezwaar_of_beroep --> ONHERROEPELIJK: Geen bezwaar\nna 6 weken
@@ -263,12 +327,16 @@ Yields: "Waiting for BEKENDMAKING — need: bekendmaking_datum"
 
 **Step 2: BEKENDMAKING stage** (days/weeks later)
 ```
-Input:  { bekendmaking_datum: "2026-03-23", jaar: 2026, pasen_datum: "2026-04-05" }
+Input:  { bekendmaking_datum: "2026-03-23" }
 Engine: fires BEKENDMAKING-stage hooks (AWB 6:8 → Termijnenwet art 1)
+        Termijnenwet art 1 resolves feestdagen via cross-law reference
+        to feestdagenkalender (pasen_datum etc. are NOT external inputs)
 Output: { bezwaartermijn_startdatum: "2026-03-24",
           bezwaartermijn_einddatum: "2026-04-20" }
 Yields: "BEZWAAR stage — bezwaartermijn running until 2026-04-20"
 ```
+
+Only `bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). Calendar data like `pasen_datum` is resolved internally by the engine through cross-law references to the feestdagenkalender, as established in RFC-007 and RFC-011.
 
 The engine **yields** between stages, returning:
 - What it computed so far (accumulated outputs)
@@ -349,18 +417,22 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 The procedure is a new top-level construct in the schema (`procedure:` key), defined at the law level (not article level). It references stages, and hooks reference stages.
 
 The engine needs:
-- **Procedure index**: maps `(legal_character) → procedure_definition`, loaded from AWB YAML.
+- **Procedure index**: maps `(legal_character, procedure_id) → procedure_definition`, loaded from AWB YAML. When `procedure_id` is omitted in `produces`, selects the procedure marked `default: true`.
 - **Stage-aware hook resolution**: `find_hooks` gains a `stage` parameter. Hooks without `stage` default to BESLUIT.
 - **Besluit state**: a struct carrying accumulated outputs, current stage, and context. Passed in and returned by the engine.
 - **Yield mechanism**: the engine returns either a completed result or a "waiting for input" signal with the next stage's requirements.
 
 The besluit state is *not* stored in the engine. It is passed in by the caller and returned with updates. The engine remains a library, not a service.
 
+**Schema version:** The `procedure:` top-level key and the `procedure_id` field on `produces` are new constructs not present in schema v0.4.0. Implementation requires a schema version bump (v0.5.0 or later). AWB YAML files using `procedure:` will fail validation against the current schema until the schema is extended.
+
 ## Open Questions
 
 1. ~~**Do all besluiten share the same lifecycle?**~~ **Resolved:** No. Each legal_character has its own lifecycle, defined by the relevant AWB chapters. A BESCHIKKING has aanvraag → behandeling → besluit → bekendmaking → bezwaar. A BESLUIT_VAN_ALGEMENE_STREKKING has a different procedure (AWB afdeling 3.4, Staatscourant publication, no bezwaar, direct beroep). The AWB defines these different procedures — the lifecycle definition in YAML follows the AWB structure per type.
 
-2. ~~**Nested lifecycles.**~~ **Resolved:** A bezwaar is itself a besluit (AWB 7:12), which starts its own lifecycle (with its own bekendmaking, and possibility of beroep at the rechter). The engine applies the same lifecycle pattern recursively — a besluit op bezwaar enters the AWB lifecycle just like the original beschikking. If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine. The engine's existing cycle detection (RFC-008) will catch and report it.
+2. ~~**Nested lifecycles.**~~ **Resolved:** A bezwaar is itself a besluit (AWB 7:12), which starts its own lifecycle (with its own bekendmaking, and possibility of beroep at the rechter). The engine applies the same lifecycle pattern recursively — a besluit op bezwaar enters the AWB lifecycle just like the original beschikking. If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine.
+
+   Note that RFC-008's cycle detection does **not** cover this case. RFC-008 detects cross-law circular references within a single engine invocation (Law A → Law B → Law A). Nested lifecycle recursion (beschikking → besluit op bezwaar → its own bezwaar → ...) happens across separate engine invocations initiated by the orchestration layer. The **orchestration layer** is responsible for detecting excessive lifecycle nesting depth, not the engine. In the AWB this chain is naturally finite (beschikking → BOB → beroep → hoger beroep terminates), but the orchestration layer should enforce a configurable maximum nesting depth as a safety measure.
 
 3. ~~**Parallel stages.**~~ **Resolved:** The main lifecycle track (aanvraag → behandeling → besluit → bekendmaking → bezwaar → beroep) is strictly sequential — each stage depends on completion of the previous one. However, three genuinely parallel tracks can be spawned from the main lifecycle:
    - **Dwangsom bij niet-tijdig beslissen (AWB 4:17-4:20)**: activates when the beslistermijn expires without a besluit. Runs parallel to the ongoing behandeling. The dwangsombesluit is itself a beschikking with its own lifecycle.
