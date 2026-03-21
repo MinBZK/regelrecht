@@ -17,6 +17,14 @@ mod views;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install panic hook that restores the terminal before printing the panic
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+        original_hook(panic_info);
+    }));
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();

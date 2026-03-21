@@ -7,7 +7,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     for (i, tab) in Tab::ALL.iter().enumerate() {
         if i > 0 {
             spans.push(Span::styled(
-                " │ ",
+                "│",
                 Style::default().add_modifier(Modifier::DIM),
             ));
         }

@@ -6,7 +6,6 @@ use walkdir::WalkDir;
 
 /// Commands sent to the engine thread.
 pub enum EngineCommand {
-    ListLaws,
     GetLawInfo(String),
     Evaluate {
         law_id: String,
@@ -79,10 +78,6 @@ fn engine_thread(
     // Process commands
     while let Ok(cmd) = cmd_rx.recv() {
         match cmd {
-            EngineCommand::ListLaws => {
-                let laws: Vec<String> = service.list_laws().into_iter().map(String::from).collect();
-                let _ = resp_tx.send(EngineResponse::LawList(laws));
-            }
             EngineCommand::GetLawInfo(id) => {
                 let info = service.get_law_info(&id);
                 let _ = resp_tx.send(EngineResponse::LawInfo(info));

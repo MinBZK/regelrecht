@@ -5,6 +5,8 @@ use ratatui::widgets::{
     Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
 };
 
+const MAX_OUTPUT_LINES: usize = 10_000;
+
 struct ActionCommand {
     key: char,
     name: &'static str,
@@ -105,18 +107,10 @@ impl ActionsView {
     pub fn handle_process_message(&mut self, msg: ProcessMessage) {
         match msg.kind {
             ProcessMessageKind::Stdout(line) => {
-                self.output.push(OutputLine {
-                    text: line,
-                    is_stderr: false,
-                });
-                self.scroll_to_bottom();
+                self.push_output(line, false);
             }
             ProcessMessageKind::Stderr(line) => {
-                self.output.push(OutputLine {
-                    text: line,
-                    is_stderr: true,
-                });
-                self.scroll_to_bottom();
+                self.push_output(line, true);
             }
             ProcessMessageKind::Done { exit_code } => {
                 self.last_exit_code = Some(exit_code);
@@ -242,5 +236,14 @@ impl ActionsView {
         if self.output.len() > h {
             self.scroll_offset = self.output.len().saturating_sub(h);
         }
+    }
+
+    fn push_output(&mut self, text: String, is_stderr: bool) {
+        self.output.push(OutputLine { text, is_stderr });
+        if self.output.len() > MAX_OUTPUT_LINES {
+            self.output.drain(..self.output.len() - MAX_OUTPUT_LINES);
+            self.scroll_offset = self.scroll_offset.saturating_sub(1);
+        }
+        self.scroll_to_bottom();
     }
 }

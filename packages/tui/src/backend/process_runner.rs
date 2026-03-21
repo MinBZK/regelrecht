@@ -78,7 +78,10 @@ impl ProcessRunner {
         match self.rx.try_recv() {
             Ok(msg) => {
                 if matches!(msg.kind, ProcessMessageKind::Done { .. }) {
-                    self.running = None;
+                    // Only clear running if this Done is for the current task
+                    if self.running.as_deref() == Some(&msg.task_id) {
+                        self.running = None;
+                    }
                 }
                 Some(msg)
             }

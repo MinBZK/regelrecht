@@ -7,6 +7,8 @@ use ratatui::widgets::{
 };
 use std::path::Path;
 
+const MAX_OUTPUT_LINES: usize = 10_000;
+
 struct FeatureEntry {
     name: String,
     #[allow(dead_code)]
@@ -137,19 +139,11 @@ impl BddView {
         match msg.kind {
             ProcessMessageKind::Stdout(line) => {
                 self.parse_cucumber_line(&line);
-                self.output.push(OutputLine {
-                    text: line,
-                    is_stderr: false,
-                });
-                self.scroll_to_bottom();
+                self.push_output(line, false);
             }
             ProcessMessageKind::Stderr(line) => {
                 self.parse_cucumber_line(&line);
-                self.output.push(OutputLine {
-                    text: line,
-                    is_stderr: true,
-                });
-                self.scroll_to_bottom();
+                self.push_output(line, true);
             }
             ProcessMessageKind::Done { .. } => {
                 self.running = false;
@@ -288,9 +282,15 @@ impl BddView {
     }
 
     fn scroll_to_bottom(&mut self) {
-        // Use a reasonable estimate; render will clamp
-        if self.output.len() > 20 {
-            self.output_scroll = self.output.len().saturating_sub(20);
+        self.output_scroll = self.output.len().saturating_sub(1);
+    }
+
+    fn push_output(&mut self, text: String, is_stderr: bool) {
+        self.output.push(OutputLine { text, is_stderr });
+        if self.output.len() > MAX_OUTPUT_LINES {
+            self.output.drain(..self.output.len() - MAX_OUTPUT_LINES);
+            self.output_scroll = self.output_scroll.saturating_sub(1);
         }
+        self.scroll_to_bottom();
     }
 }

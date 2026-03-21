@@ -8,6 +8,8 @@ use ratatui::widgets::{
 };
 use std::path::{Path, PathBuf};
 
+const MAX_OUTPUT_LINES: usize = 10_000;
+
 #[derive(Clone)]
 struct ValidationFile {
     path: PathBuf,
@@ -97,6 +99,9 @@ impl ValidationView {
             ProcessMessageKind::Stdout(line) | ProcessMessageKind::Stderr(line) => {
                 self.parse_validation_line(&line);
                 self.output.push(line);
+                if self.output.len() > MAX_OUTPUT_LINES {
+                    self.output.drain(..self.output.len() - MAX_OUTPUT_LINES);
+                }
                 self.auto_scroll();
             }
             ProcessMessageKind::Done { exit_code } => {

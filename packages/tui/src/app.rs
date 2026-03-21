@@ -1,4 +1,4 @@
-use crate::backend::engine_backend::{EngineCommand, EngineHandle};
+use crate::backend::engine_backend::EngineHandle;
 use crate::backend::process_runner::ProcessRunner;
 use crate::views::{
     actions::ActionsView, bdd::BddView, corpus::CorpusView, dashboard::DashboardView,
@@ -39,14 +39,14 @@ impl Tab {
         match self {
             Tab::Dashboard => "Home",
             Tab::Bdd => "BDD",
-            Tab::Engine => "Engine",
-            Tab::Corpus => "Corpus",
-            Tab::Pipeline => "Pipeline",
-            Tab::Validation => "Validate",
+            Tab::Engine => "Eng",
+            Tab::Corpus => "Corp",
+            Tab::Pipeline => "Pipe",
+            Tab::Validation => "Val",
             Tab::Trace => "Trace",
             Tab::Dependencies => "Deps",
             Tab::Logs => "Logs",
-            Tab::Actions => "Actions",
+            Tab::Actions => "Act",
         }
     }
 
@@ -156,9 +156,6 @@ impl App {
 
         let mut deps = DepsView::new();
         deps.scan_deps(&project_root);
-
-        // Request law list once engine is loaded
-        engine_handle.send(EngineCommand::ListLaws);
 
         Self {
             active_tab: Tab::Dashboard,

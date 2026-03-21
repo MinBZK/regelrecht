@@ -11,10 +11,6 @@ repository = "https://github.com/MinBZK/regelrecht-mvp"
 name = "rrtui"
 path = "src/main.rs"
 
-[features]
-default = ["pipeline"]
-pipeline = ["dep:regelrecht-pipeline"]
-
 [dependencies]
 # TUI framework
 ratatui = "0.29"
@@ -22,20 +18,9 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 
 # Async runtime
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "process", "fs", "io-util", "time"] }
-futures = "0.3"
 
 # Workspace crates
 regelrecht-engine = { path = "../engine" }
-regelrecht-shared = { path = "../shared" }
-regelrecht-pipeline = { path = "../pipeline", optional = true }
-
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml = "0.9"
-serde_json = "1.0"
-
-# CLI args
-clap = { version = "4", features = ["derive"] }
 
 # File system
 walkdir = "2"
@@ -48,7 +33,6 @@ chrono = "0.4"
 
 # Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [lints.clippy]
 unwrap_used = "warn"
