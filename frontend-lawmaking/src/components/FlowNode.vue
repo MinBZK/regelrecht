@@ -84,6 +84,17 @@
       opacity="0.4"
     />
 
+    <!-- Date label (for real law views) -->
+    <text
+      v-if="stage.date"
+      class="flow-node__date"
+      :x="-20"
+      y="4"
+      text-anchor="end"
+      font-size="9"
+      fill="var(--color-text-muted)"
+    >{{ stage.date }}</text>
+
     <!-- Labels to the right of the node -->
     <g :transform="labelTransform">
       <text
@@ -194,6 +205,11 @@ const starPoints = computed(() => {
 
 .flow-node__subtitle {
   font-family: var(--font-family);
+}
+
+.flow-node__date {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes nodeAppear {

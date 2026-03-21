@@ -109,6 +109,7 @@ const props = defineProps({
   branches: { type: Array, required: true },
   connections: { type: Array, required: true },
   phases: { type: Array, default: null },
+  timeline: { type: Array, default: null },
   activeStep: { type: Number, default: -1 },
   selectedId: { type: String, default: null },
 });
@@ -255,5 +256,10 @@ function isConnectionActive(conn) {
   font-family: var(--font-family);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.flow-diagram__timeline-label {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-variant-numeric: tabular-nums;
 }
 </style>

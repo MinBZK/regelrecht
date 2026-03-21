@@ -44,6 +44,11 @@
                 :class="{ 'toggle-bar__item--active': viewMode === 'advanced' }"
                 @click="setViewMode('advanced')"
               >Uitgebreid</button>
+              <button
+                class="toggle-bar__item"
+                :class="{ 'toggle-bar__item--active': viewMode === 'woo' }"
+                @click="setViewMode('woo')"
+              >Wet open overheid</button>
             </div>
           </div>
         </div>
@@ -57,6 +62,7 @@
           :branches="currentBranches"
           :connections="currentConnections"
           :phases="currentPhases"
+          :timeline="currentTimeline"
           :active-step="activeStep"
           :selected-id="selectedStageId"
           @select-stage="onSelectStage"
@@ -86,6 +92,13 @@ import {
   connections as advancedConnections,
   phases as advancedPhases,
 } from './data/flowDataAdvanced.js';
+import {
+  stages as wooStages,
+  branches as wooBranches,
+  connections as wooConnections,
+  phases as wooPhases,
+  timelineMarkers as wooTimeline,
+} from './data/flowDataWoo.js';
 import FlowDiagram from './components/FlowDiagram.vue';
 import FlowLegend from './components/FlowLegend.vue';
 import StageDetail from './components/StageDetail.vue';
@@ -93,18 +106,18 @@ import StageDetail from './components/StageDetail.vue';
 const viewMode = ref('simple');
 const diagramRef = ref(null);
 
-const currentStages = computed(() =>
-  viewMode.value === 'simple' ? simpleStages : advancedStages,
-);
-const currentBranches = computed(() =>
-  viewMode.value === 'simple' ? simpleBranches : advancedBranches,
-);
-const currentConnections = computed(() =>
-  viewMode.value === 'simple' ? simpleConnections : advancedConnections,
-);
-const currentPhases = computed(() =>
-  viewMode.value === 'simple' ? null : advancedPhases,
-);
+const datasets = {
+  simple: { stages: simpleStages, branches: simpleBranches, connections: simpleConnections, phases: null, timeline: null },
+  advanced: { stages: advancedStages, branches: advancedBranches, connections: advancedConnections, phases: advancedPhases, timeline: null },
+  woo: { stages: wooStages, branches: wooBranches, connections: wooConnections, phases: wooPhases, timeline: wooTimeline },
+};
+
+const currentData = computed(() => datasets[viewMode.value]);
+const currentStages = computed(() => currentData.value.stages);
+const currentBranches = computed(() => currentData.value.branches);
+const currentConnections = computed(() => currentData.value.connections);
+const currentPhases = computed(() => currentData.value.phases);
+const currentTimeline = computed(() => currentData.value.timeline);
 
 const maxStep = computed(() => Math.max(...currentStages.value.map((s) => s.step)));
 const activeStep = ref(0);
