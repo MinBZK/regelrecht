@@ -267,15 +267,15 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 
 ## Open Questions
 
-1. **Do all besluiten share the same lifecycle?** AWB 1:3 defines "besluit" broadly. A BESCHIKKING (individual decision) has a clear lifecycle. A BESLUIT_VAN_ALGEMENE_STREKKING (general regulation) has a different process (publication in Staatscourant, not individual notification). Should each legal_character have its own lifecycle?
+1. ~~**Do all besluiten share the same lifecycle?**~~ **Resolved:** No. Each legal_character has its own lifecycle, defined by the relevant AWB chapters. A BESCHIKKING has aanvraag → behandeling → besluit → bekendmaking → bezwaar. A BESLUIT_VAN_ALGEMENE_STREKKING has a different procedure (AWB afdeling 3.4, Staatscourant publication, no bezwaar, direct beroep). The AWB defines these different procedures — the lifecycle definition in YAML follows the AWB structure per type.
 
-2. **Nested lifecycles.** A bezwaar is itself a besluit (AWB 7:12), which starts its own lifecycle (with its own bekendmaking, and possibility of beroep at the rechter). The engine applies the same lifecycle pattern recursively — a besluit op bezwaar enters the AWB lifecycle just like the original beschikking. If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine. The engine's existing cycle detection (RFC-008) will catch and report it.
+2. ~~**Nested lifecycles.**~~ **Resolved:** A bezwaar is itself a besluit (AWB 7:12), which starts its own lifecycle (with its own bekendmaking, and possibility of beroep at the rechter). The engine applies the same lifecycle pattern recursively — a besluit op bezwaar enters the AWB lifecycle just like the original beschikking. If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine. The engine's existing cycle detection (RFC-008) will catch and report it.
 
-3. **Parallel stages.** Some processes have parallel tracks (e.g., horen per AWB 7:2 while investigating). Is the lifecycle strictly sequential, or can stages run in parallel?
+3. **Parallel stages.** Some processes have parallel tracks (e.g., horen per AWB 7:2 while investigating, voorlopige voorziening parallel to bezwaar). The lifecycle is not strictly sequential — it is a state machine with concurrent states. *Under investigation — see RFC-012-research-parallel-stages.md.*
 
-4. **Beslistermijn enforcement.** AWB 4:13 sets decision deadlines. Should the lifecycle definition include maximum durations? Can the engine enforce them, or is that the orchestration layer's responsibility?
+4. ~~**Beslistermijn enforcement.**~~ **Resolved:** The beslistermijn is calculated by a hook at the AANVRAAG stage — AWB 4:13 provides the default ("redelijke termijn"), specific laws override via lex specialis (same pattern as bezwaartermijn_weken). The engine does **not** enforce the deadline: if besluit_datum exceeds the beslistermijn, the engine continues normally but annotates the besluit with a warning. Exceeding the beslistermijn does not invalidate the besluit — it **expands the lifecycle** with new available paths for the belanghebbende: ingebrekestelling (AWB 4:17), dwangsom (AWB 4:18), and beroep tegen niet tijdig beslissen (AWB 6:2 lid 1 sub b). These are modeled as conditional branches in the lifecycle state machine.
 
-5. **Intrekking and herroeping.** A beschikking can be revoked (AWB 10:4-10:5). Is this a stage in the lifecycle, or a separate lifecycle?
+5. ~~**Intrekking and herroeping.**~~ **Resolved:** Intrekking (AWB 10:4-10:5) is a state transition in the original besluit's lifecycle, not a separate lifecycle. A beschikking continues to exist after bekendmaking — it can be onherroepelijk, ingetrokken, gewijzigd, or verlopen. The intrekking itself is a nested besluit (same pattern as question 2): it requires motivering, bekendmaking, and can be challenged via bezwaar. The original beschikking's state changes as a consequence of the intrekkingsbesluit completing its own lifecycle.
 
 ## References
 
