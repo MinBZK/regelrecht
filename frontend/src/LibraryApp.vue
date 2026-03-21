@@ -90,6 +90,7 @@ async function loadLaw(path) {
     }
   } catch (e) {
     selectedLaw.value = null;
+    error.value = e;
   } finally {
     selectedLawLoading.value = false;
   }
@@ -153,6 +154,7 @@ loadIndex();
 
           <rr-simple-section container="sm">
             <div v-if="loading" style="padding: 32px; text-align: center;">Laden...</div>
+            <div v-else-if="error" style="padding: 32px; text-align: center; color: #c00;">{{ error.message }}</div>
             <rr-list v-else variant="simple">
               <rr-list-item
                 v-for="law in filteredLaws"

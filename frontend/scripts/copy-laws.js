@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -6,6 +6,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const corpusDir = resolve(root, '..', 'corpus', 'regulation', 'nl');
 const destDir = resolve(root, 'public', 'data');
+
+if (!existsSync(corpusDir)) {
+  console.warn(`Corpus directory not found: ${corpusDir}`);
+  console.warn('Skipping law copy — library will show no laws.');
+  mkdirSync(destDir, { recursive: true });
+  writeFileSync(resolve(destDir, 'index.json'), '[]');
+  process.exit(0);
+}
 
 /** Recursively find all .yaml files under a directory. */
 function findYamlFiles(dir, base = dir) {
@@ -33,6 +41,8 @@ function extractMeta(content) {
       meta.publication_date = line.slice(17).trim().replace(/^['"]|['"]$/g, '');
     } else if (line.startsWith('name:')) {
       meta.name = line.slice(5).trim().replace(/^['"]|['"]$/g, '');
+    } else if (line.startsWith('officiele_titel:')) {
+      meta.officiele_titel = line.slice(16).trim().replace(/^['"]|['"]$/g, '');
     }
   }
   return meta;
@@ -56,7 +66,7 @@ for (const src of yamlFiles) {
   if (meta.id) {
     index.push({
       id: meta.id,
-      name: meta.name || meta.id,
+      name: meta.name || meta.officiele_titel || meta.id,
       regulatory_layer: meta.regulatory_layer || 'unknown',
       publication_date: meta.publication_date || 'unknown',
       path: `/data/${rel}`,
