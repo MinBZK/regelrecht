@@ -8,7 +8,7 @@
 
 The corpus (`regulation/nl/`) lives in the regelrecht-mvp repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities, provinces, water boards, and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
 
-RFC-003 (Inversion of Control, currently PR #246, not yet merged) introduces IoC with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
+RFC-003 (Inversion of Control) introduces IoC with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
 
 - **Discovery**: how does the engine find municipal regulations?
 - **Loading**: how does the engine fetch laws from multiple sources?
