@@ -33,7 +33,9 @@ use tracing_subscriber::EnvFilter;
 /// 1. `EnvFilter` layer (reads `RUST_LOG`, defaults to `info`)
 /// 2. `tracing_opentelemetry::OpenTelemetryLayer` exporting to an OTLP endpoint
 ///
-/// Uses a simple (synchronous) span processor so no async runtime is required.
+/// Uses a batch span processor with a dedicated background thread so spans
+/// are exported asynchronously without blocking the evaluation hot path.
+/// No async runtime (tokio) is required.
 ///
 /// The OTLP endpoint is configured via `OTEL_EXPORTER_OTLP_ENDPOINT`
 /// (defaults to `http://localhost:4318`).
@@ -50,7 +52,7 @@ pub fn init_otel_subscriber(
         .build()?;
 
     let provider = SdkTracerProvider::builder()
-        .with_simple_exporter(exporter)
+        .with_batch_exporter(exporter)
         .with_resource(
             opentelemetry_sdk::Resource::builder()
                 .with_service_name(service_name.to_string())

@@ -396,32 +396,37 @@ impl LawExecutionService {
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
         if let Some((cached_law, cached_output, cached_outputs)) = res_ctx.cache.get(&key) {
-            debug_assert_eq!(
-                (cached_law.as_str(), cached_output.as_str()),
-                (law_id, output_name),
-                "Cache key hash collision: ({}, {}) vs ({}, {})",
-                cached_law,
-                cached_output,
-                law_id,
-                output_name
-            );
-            tracing::debug!(law_id, output_name, "Cache hit");
-            if let Some(ref tb) = res_ctx.trace {
-                let mut tb = tb.borrow_mut();
-                tb.push(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
-                if let Some(val) = cached_outputs.get(output_name) {
-                    tb.set_result(val.clone());
+            // Runtime collision check: hash keys are u64 so collisions are
+            // theoretically possible. For legally binding decisions, we must
+            // never silently return wrong results.
+            if cached_law != law_id || cached_output != output_name {
+                tracing::warn!(
+                    cached_law,
+                    cached_output,
+                    law_id,
+                    output_name,
+                    "Cache key hash collision detected, bypassing cache"
+                );
+                // Fall through to re-evaluate
+            } else {
+                tracing::debug!(law_id, output_name, "Cache hit");
+                if let Some(ref tb) = res_ctx.trace {
+                    let mut tb = tb.borrow_mut();
+                    tb.push(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
+                    if let Some(val) = cached_outputs.get(output_name) {
+                        tb.set_result(val.clone());
+                    }
+                    tb.pop();
                 }
-                tb.pop();
+                return Ok(ArticleResult {
+                    outputs: cached_outputs.clone(),
+                    resolved_inputs: HashMap::new(),
+                    article_number: String::new(),
+                    law_id: law_id.to_string(),
+                    law_uuid: None,
+                    trace: None,
+                });
             }
-            return Ok(ArticleResult {
-                outputs: cached_outputs.clone(),
-                resolved_inputs: HashMap::new(),
-                article_number: String::new(),
-                law_id: law_id.to_string(),
-                law_uuid: None,
-                trace: None,
-            });
         }
 
         tracing::debug!(
