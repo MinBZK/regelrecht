@@ -8,7 +8,7 @@ use crate::source_map::SourceMap;
 ///
 /// Loads sources from `corpus-registry.yaml` and optionally merges
 /// local overrides from `corpus-registry.local.yaml`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CorpusRegistry {
     sources: Vec<Source>,
 }
