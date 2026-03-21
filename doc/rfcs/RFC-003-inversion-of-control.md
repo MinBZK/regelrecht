@@ -6,9 +6,9 @@
 
 ## Context
 
-Dutch legislation follows a hierarchical delegation pattern: a formal law (wet) delegates authority to lower regulatory layers. For example, the Wet op de zorgtoeslag, article 4, delegates the determination of the standaardpremie to the minister via a ministerial regulation.
+Dutch legislation follows a hierarchical delegation pattern: a formal law (*wet*) delegates authority to lower regulatory layers. For example, the Wet op de zorgtoeslag, article 4, delegates the determination of the standard premium (*standaardpremie*) to the minister via a ministerial regulation.
 
-The engine previously supported this via a **top-down** `resolve` action: the higher law explicitly searches for matching lower regulations using `legal_basis` indexes and `select_on` criteria. This inverts the real legal relationship. In practice, a ministerial regulation opens with "Gelet op artikel 4 van de Wet op de zorgtoeslag" — it *registers itself* as filling in a delegated term.
+The engine previously supported this via a **top-down** `resolve` action: the higher law explicitly searches for matching lower regulations using `legal_basis` indexes and `select_on` criteria. This inverts the real legal relationship. In practice, a ministerial regulation opens with "In consideration of article 4 of the Wet op de zorgtoeslag" (*"Gelet op artikel 4 van de Wet op de zorgtoeslag"*) — it *registers itself* as filling in a delegated term.
 
 The top-down approach has limitations:
 - The higher law must know how to find its implementations
@@ -50,7 +50,7 @@ machine_readable:
 
 1. Engine indexes all `implements` declarations at law load time
 2. When executing an article with `open_terms`, the engine looks up implementations
-3. **Temporal filtering**: for each candidate, the engine selects the version valid for the calculation date (`valid_from <= calculation_date`). Candidates with no valid version for the requested date are excluded. This ensures that e.g. the 2025 standaardpremie is used for a 2025 calculation, even if a 2026 version is also loaded
+3. **Temporal filtering**: for each candidate, the engine selects the version valid for the calculation date (`valid_from <= calculation_date`). Candidates with no valid version for the requested date are excluded. This ensures that e.g. the 2025 standard premium (*standaardpremie*) is used for a 2025 calculation, even if a 2026 version is also loaded
 4. **Scope filtering**: candidates are filtered against the execution scope (e.g., `gemeente_code`). A scoped regulation only matches when the execution parameters contain the same value. Unscoped (national) regulations always match
 5. **Priority resolution**: among remaining candidates, **lex superior** (higher regulatory layer wins) then **lex posterior** (newer `valid_from` wins). When candidates have the same layer and date, this is ambiguous — the engine returns an error rather than silently picking one. This is a law authoring error that needs fixing
 6. If found: execute the implementing article to get the value
@@ -58,12 +58,12 @@ machine_readable:
 8. If not found + `required: true` + no default: error
 9. If not found + `required: false` + no default: skip (traced)
 10. **Cycle detection**: if an open term is already being resolved (via `ResolutionContext.visited`), a `CircularReference` error is raised — circular dependencies are a law authoring problem, not something the engine should fix. The cycle detection key uses `\0` (null byte) as separator to prevent key collisions when law IDs or article numbers contain `#`
-11. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a gemeente verordening tries to implement a term delegated to a minister, the engine rejects it with a clear error
+11. **Delegation type validation**: the engine validates that an implementing regulation's `regulatory_layer` matches the open term's `delegation_type`. If a municipal ordinance (*gemeente verordening*) tries to implement a term delegated to a minister, the engine rejects it with a clear error
 12. **Array size validation**: `open_terms` and `implements` arrays are validated against `MAX_ARRAY_SIZE` at law load time, preventing resource exhaustion
 
 ### Temporal model for open term resolution
 
-Temporal filtering is critical for correctness when multiple versions of an implementing regulation are loaded (e.g., the 2024 and 2025 standaardpremie). The mechanism works at two levels:
+Temporal filtering is critical for correctness when multiple versions of an implementing regulation are loaded (e.g., the 2024 and 2025 standard premium (*standaardpremie*)). The mechanism works at two levels:
 
 **Same `$id`, multiple versions.** The resolver stores multiple versions of the same law (keyed by `$id`), sorted newest-first. `get_law_for_date` filters these by `valid_from <= calculation_date` and returns the most recent valid version. So for a 2025-01-15 calculation with both `regeling_standaardpremie` versions loaded, the 2025 version is selected. A 2026 version with `valid_from: 2026-01-01` would be excluded because `2026-01-01 <= 2025-01-15` is false.
 
@@ -86,7 +86,7 @@ input:
       output: standaardpremie  # resolved from article 4
 ```
 
-This ensures the flow is: **article 2 → article 4 → IoC → regeling**, rather than article 2 bypassing article 4 and reaching into the regeling directly.
+This ensures the flow is: **article 2 → article 4 → IoC → regulation (*regeling*)**, rather than article 2 bypassing article 4 and reaching into the regulation (*regeling*) directly.
 
 ### Default pattern
 
@@ -105,7 +105,7 @@ open_terms:
 
 This pattern is more common at lower regulatory layers (a policy rule with a reasonable default that can be overridden by implementation policy) but the mechanism works on all layers.
 
-Defaults also serve a legal correctness role. For example, Participatiewet article 8's open terms have `default` blocks with `verlaging_percentage: 0` and `duur_maanden: 0`. Legal basis: art. 18 lid 2 says "verlaagt ... overeenkomstig de verordening" — no verordening means no verlaging. A missing verordening now results in full bijstand (no reduction) rather than a `DelegationError`.
+Defaults also serve a legal correctness role. For example, Participatiewet article 8's open terms have `default` blocks with `verlaging_percentage: 0` and `duur_maanden: 0`. Legal basis: art. 18 lid 2 says "verlaagt ... overeenkomstig de verordening" — no ordinance (*verordening*) means no reduction (*verlaging*). A missing ordinance now results in full social assistance (*bijstand*) rather than a `DelegationError`.
 
 ## Why
 
@@ -133,7 +133,7 @@ source:
   output: verlaging_percentage
 ```
 
-This is backwards. The Participatiewet doesn't know which gemeenten have verordeningen — it just delegates. The gemeente verordening knows which wet it implements. IoC corrects this by letting the implementing regulation declare the relationship:
+This is backwards. The Participatiewet doesn't know which municipalities (*gemeenten*) have ordinances (*verordeningen*) — it just delegates. The municipal ordinance (*gemeente verordening*) knows which law (*wet*) it implements. IoC corrects this by letting the implementing regulation declare the relationship:
 
 ```yaml
 # New pattern: lower regulation registers itself
@@ -144,7 +144,7 @@ implements:
     gelet_op: Gelet op artikel 8 van de Participatiewet
 ```
 
-The scoping question (which gemeente's verordening applies?) is an engine concern, not a law-encoding concern. The engine already knows the execution scope (e.g., `gemeente_code: GM0384`) from its parameters. The `find_implementations` method uses a `matches_scope` helper that checks all scope fields on the candidate law against execution parameters. Currently supports `gemeente_code`; designed for easy extension to `provincie_code` etc. This eliminates `select_on`, `legal_basis_for`, and `source.delegation` entirely — all delegation flows through `open_terms` + `implements`.
+The scoping question (which municipality's (*gemeente*) ordinance (*verordening*) applies?) is an engine concern, not a law-encoding concern. The engine already knows the execution scope (e.g., `gemeente_code: GM0384`) from its parameters. The `find_implementations` method uses a `matches_scope` helper that checks all scope fields on the candidate law against execution parameters. Currently supports `gemeente_code`; designed for easy extension to `provincie_code` etc. This eliminates `select_on`, `legal_basis_for`, and `source.delegation` entirely — all delegation flows through `open_terms` + `implements`.
 
 When resolving open terms, the engine does not forward all execution parameters to implementing articles. It uses `filter_parameters_for_article` to only pass parameters declared in the implementing article's `execution.parameters` section (principle of least privilege).
 
@@ -187,9 +187,9 @@ The old `source.delegation` + `select_on` + `legal_basis_for` pattern is superse
 
 ### Migration path
 
-1. **This PR**: IoC for parameter-free delegation (zorgtoeslag → standaardpremie) ✅
+1. **This PR**: IoC for parameter-free delegation (healthcare allowance (*zorgtoeslag*) → standard premium (*standaardpremie*)) ✅
 2. **This PR**: scope filtering, parameter forwarding, delegation type validation, Participatiewet defaults ✅
-3. **Follow-up**: migrate BW5 erfgrens from `source.delegation` to `open_terms`
+3. **Follow-up**: migrate BW5 inheritance threshold (*erfgrens*) from `source.delegation` to `open_terms`
 4. **Follow-up**: remove `source.delegation`, `select_on`, and `legal_basis_for` from the schema
 
 ### History
@@ -199,5 +199,6 @@ This RFC replaces the original RFC-003 (Delegation Pattern), which described a t
 ## References
 
 - Schema v0.4.0: `schema/v0.4.0/schema.json`
-- Zorgtoeslag proof: `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` and `corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml`
-- Gemeente implements: `corpus/regulation/nl/gemeentelijke_verordening/amsterdam/apv_erfgrens/2024-01-01.yaml` and `corpus/regulation/nl/gemeentelijke_verordening/diemen/afstemmingsverordening_participatiewet/2015-01-01.yaml`
+- Healthcare allowance (*zorgtoeslag*) proof: `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` and `corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml`
+- Municipal (*gemeente*) implements: `corpus/regulation/nl/gemeentelijke_verordening/amsterdam/apv_erfgrens/2024-01-01.yaml` and `corpus/regulation/nl/gemeentelijke_verordening/diemen/afstemmingsverordening_participatiewet/2015-01-01.yaml`
+- [Glossary of Dutch Legal Terms](../glossary.md)

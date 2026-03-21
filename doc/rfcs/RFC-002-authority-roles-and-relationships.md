@@ -6,7 +6,7 @@
 
 ## Context
 
-When representing laws and regulations in machine-readable format, we need to capture who has the authority (bevoegdheid) to make binding decisions.
+When representing laws and regulations in machine-readable format, we need to capture who has the authority (*bevoegdheid*) to make binding decisions.
 
 ### Observed Patterns
 
@@ -18,11 +18,11 @@ When representing laws and regulations in machine-readable format, we need to ca
 - Preamble defines the Minister as both issuer and executor
 
 **In Wet langdurige zorg (BWBR0035917):**
-- Article 2.1.3: Sociale verzekeringsbank (vaststelling verzekering)
-- Article 3.2.3: CIZ (indicatiebesluit)
-- Article 3.3.3: Zorgkantoor (persoonsgebonden budget)
-- Article 4.2.1: Wlz-uitvoerder (zorgplicht)
-- Article 5.1.1: Zorginstituut Nederland (toezicht)
+- Article 2.1.3: Sociale verzekeringsbank — insurance determination (*vaststelling verzekering*)
+- Article 3.2.3: CIZ — indication decision (*indicatiebesluit*)
+- Article 3.3.3: Zorgkantoor — personal care budget (*persoonsgebonden budget*)
+- Article 4.2.1: Wlz-uitvoerder — duty of care (*zorgplicht*)
+- Article 5.1.1: Zorginstituut Nederland — supervision (*toezicht*)
 - Article 6.1.1: CAK
 - Article 7.1.1: CIZ
 
@@ -30,10 +30,10 @@ When representing laws and regulations in machine-readable format, we need to ca
 
 One law can have **multiple** competent authorities for different actions. For example, a law might grant authority to:
 - A minister for policy decisions
-- An agency for individual decisions (beschikkingen)
+- An agency for individual decisions (*beschikkingen*)
 - A different body for appeals
 
-Additionally, some authorities are **categorical** rather than specific. For example, "het college van burgemeester en wethouders" applies to all 340+ municipalities, not a single entity.
+Additionally, some authorities are **categorical** rather than specific. For example, the College of Mayor and Aldermen (*college van burgemeester en wethouders*) applies to all 340+ municipalities, not a single entity.
 
 ## Decision
 
@@ -61,7 +61,7 @@ competent_authority:
 ### 3. Type Definitions
 
 - **`INSTANCE`**: A specific organization (Dienst Toeslagen, CIZ, CAK, Sociale verzekeringsbank)
-- **`CATEGORY`**: A category that must be resolved per context (college van B&W, gemeenteraad, gedeputeerde staten)
+- **`CATEGORY`**: A category that must be resolved per context (College of Mayor and Aldermen (*college van B&W*), municipal council (*gemeenteraad*), provincial executive (*gedeputeerde staten*))
 
 ## Why
 
@@ -81,11 +81,12 @@ competent_authority:
 
 ## Open Questions
 
-- How to handle mandaat/delegatie (authority delegation)?
+- How to handle delegation of authority (*mandaat/delegatie*)?
 - How to handle `#` references for `competent_authority`? When `competent_authority: '#bevoegd_gezag'` references an output, the `type` (INSTANCE/CATEGORY) must be specified separately. This is awkward because the type isn't part of the law being modeled - it's metadata we're adding.
 
 ## References
 
 - Issue #7: Good enough Language for 1st fase Editor and Engine
 - PR #30 Discussion
-- Art. 1:1 Awb (definition of bestuursorgaan)
+- Art. 1:1 Awb (definition of administrative body (*bestuursorgaan*))
+- [Glossary of Dutch Legal Terms](../glossary.md)

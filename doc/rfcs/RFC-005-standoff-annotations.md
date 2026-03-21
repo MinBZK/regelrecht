@@ -471,3 +471,4 @@ properties:
 - [W3C Selectors and States](https://www.w3.org/TR/selectors-states/)
 - [Hypothesis Fuzzy Anchoring](https://web.hypothes.is/blog/fuzzy-anchoring/)
 - [Google diff-match-patch](https://github.com/google/diff-match-patch) - fuzzy matching library
+- [Glossary of Dutch Legal Terms](../glossary.md)
