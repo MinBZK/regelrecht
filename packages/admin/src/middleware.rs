@@ -102,6 +102,7 @@ mod tests {
             end_session_url: None,
             config: Arc::new(config),
             metrics_cache: Arc::new(crate::metrics::new_cache()),
+            corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
         }
     }
 

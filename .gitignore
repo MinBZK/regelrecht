@@ -38,6 +38,10 @@ mutants.out/
 # Dev stack
 .dev-pids
 
+# Corpus local overrides
+corpus-registry.local.yaml
+corpus-auth.yaml
+
 # Environment
 .env
 

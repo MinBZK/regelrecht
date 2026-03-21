@@ -61,7 +61,7 @@ sources:
       branch: main
       path: regulation/nl
     scopes: []
-    priority: 100
+    priority: 1
 
   - id: amsterdam
     name: "Gemeente Amsterdam"
@@ -74,7 +74,7 @@ sources:
     scopes:
       - type: gemeente_code
         value: "GM0363"
-    priority: 50
+    priority: 10
     auth_ref: amsterdam
 
   - id: local-dev
@@ -83,7 +83,7 @@ sources:
     local:
       path: ./regulation/nl
     scopes: []
-    priority: 200
+    priority: 100
 ```
 
 **Manifest files:**
@@ -112,7 +112,7 @@ sources:
     scopes:
       - type: gemeente_code
         value: "GM0363"
-    priority: 50
+    priority: 10
 
   # New entry, added to the list
   - id: local-tests
@@ -121,7 +121,7 @@ sources:
     local:
       path: ./test-regulation
     scopes: []
-    priority: 200
+    priority: 100
 ```
 
 **Scopes:**
@@ -145,12 +145,12 @@ scopes:
 
 **Priority:**
 
-Multiple sources may provide a law with the same `$id`. This is allowed and expected: a local development source may override a central law for testing, or a municipality may provide a patched version of a national law during a transition period. Higher `priority` value wins - the law from the source with the highest priority is the one the engine uses.
+Multiple sources may provide a law with the same `$id`. This is allowed and expected: a local development source may override a central law for testing, or a municipality may provide a patched version of a national law during a transition period. **Lower priority value = higher priority** — the law from the source with the lowest priority number is the one the engine uses. Think of it as rank: priority 1 outranks priority 10.
 
 Where this matters in practice:
-- **Development**: your local source (priority 200) contains a modified version of a central law (priority 100). The local version wins, so you can test without modifying the central manifest.
+- **Development**: your local source (priority 100) contains a modified version of a central law (priority 1). Lower the local priority to 0 to make it win, so you can test without modifying the central manifest.
 - **Migration**: when moving laws between sources, temporary overlap is normal.
-- **Patches**: a municipality may temporarily override a central law with a corrected version.
+- **Patches**: a municipality may temporarily override a central law with a corrected version by using a lower priority number.
 
 When two sources have equal priority and the same `$id`, the engine raises an error at load time. This is detected when sources are fetched and indexed, not deferred to per-request execution. A misconfigured source fails clearly at startup, not when a citizen's request hits it.
 
@@ -174,7 +174,7 @@ sources:
       path: regulation/nl
       ref: "v2025.1"  # optional: tag, branch, or commit SHA
     scopes: []
-    priority: 100
+    priority: 1
 ```
 
 When `ref` is absent, the engine uses the `branch` head (latest). For reproducible historical execution, sources should use tags following a date-based convention (e.g. `v2025.1`, `v2025-01-15`). Tags are explicit, immutable, and don't depend on commit timestamp semantics.

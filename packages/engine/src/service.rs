@@ -201,6 +201,8 @@ pub struct LawExecutionService {
     /// Acts as an override layer: if a data source provides a field,
     /// it's used instead of triggering cross-law/IoC resolution.
     data_registry: DataSourceRegistry,
+    /// Source provenance tracking: law_id → (source_id, source_name).
+    source_info: HashMap<String, (String, String)>,
 }
 
 impl Default for LawExecutionService {
@@ -215,6 +217,7 @@ impl LawExecutionService {
         Self {
             resolver: RuleResolver::new(),
             data_registry: DataSourceRegistry::new(),
+            source_info: HashMap::new(),
         }
     }
 
@@ -232,6 +235,34 @@ impl LawExecutionService {
     /// `Ok(())` on success, `Err` if the maximum number of laws would be exceeded.
     pub fn load_law_struct(&mut self, law: ArticleBasedLaw) -> Result<()> {
         self.resolver.load_law(law)
+    }
+
+    /// Load a law from YAML string and record its source provenance.
+    ///
+    /// # Returns
+    /// The law ID on success.
+    pub fn load_law_with_source(
+        &mut self,
+        yaml: &str,
+        source_id: &str,
+        source_name: &str,
+    ) -> Result<String> {
+        let law_id = self.resolver.load_from_yaml(yaml)?;
+        self.source_info.insert(
+            law_id.clone(),
+            (source_id.to_string(), source_name.to_string()),
+        );
+        Ok(law_id)
+    }
+
+    /// Get the source provenance for a loaded law.
+    ///
+    /// Returns `(source_id, source_name)` if the law was loaded via
+    /// [`load_law_with_source`](Self::load_law_with_source).
+    pub fn get_law_source(&self, law_id: &str) -> Option<(&str, &str)> {
+        self.source_info
+            .get(law_id)
+            .map(|(id, name)| (id.as_str(), name.as_str()))
     }
 
     /// Execute a law output by name.
