@@ -2018,8 +2018,7 @@ mod tests {
                 let result = execute_operation(&op, &resolver, 0);
                 assert!(
                     matches!(result, Err(EngineError::MaxDepthExceeded(_))),
-                    "Expected MaxDepthExceeded but got {:?}",
-                    result
+                    "Expected MaxDepthExceeded error"
                 );
             }
         }
@@ -2128,8 +2127,7 @@ mod tests {
             let result = execute_operation(&op, &resolver, 0);
             assert!(
                 matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Large integer in arithmetic should cause overflow error, got: {:?}",
-                result
+                "Large integer in arithmetic should cause overflow error"
             );
         }
     }
