@@ -100,10 +100,12 @@ impl LogsView {
             .collect();
 
         let total = filtered.len();
+        let max_scroll = total.saturating_sub(inner_height);
+        let effective_scroll = self.scroll_offset.min(max_scroll);
 
         let visible: Vec<Line> = filtered
             .iter()
-            .skip(self.scroll_offset)
+            .skip(effective_scroll)
             .take(inner_height)
             .map(|l| {
                 let style = if l.contains("ERROR") || l.contains("error") {
@@ -176,8 +178,8 @@ impl LogsView {
     }
 
     fn scroll_to_bottom(&mut self) {
-        let total = self.lines.len();
-        self.scroll_offset = total.saturating_sub(20);
+        // Scroll to end; render clamps to actual viewport height
+        self.scroll_offset = self.lines.len().saturating_sub(1);
     }
 }
 

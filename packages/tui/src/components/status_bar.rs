@@ -4,7 +4,7 @@ use ratatui::prelude::*;
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let hints = match app.active_tab {
         Tab::Dashboard => "0-9:tabs",
-        Tab::Bdd => "Enter:run  a:all  j/k:nav  Tab:focus",
+        Tab::Bdd => "Enter/a:run all  j/k:nav  Tab:focus",
         Tab::Engine => "Enter:eval  j/k:nav  Tab:field",
         Tab::Corpus => "Enter:open  Space:expand  j/k:nav  Tab:focus",
         Tab::Pipeline => "r:refresh  j/k:nav",

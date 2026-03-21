@@ -4,6 +4,7 @@ use ratatui::widgets::{
     Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
 };
 use regelrecht_engine::{PathNode, PathNodeType, ResolveType, Value};
+use std::cell::Cell;
 use std::collections::HashSet;
 
 /// A flattened trace node for rendering.
@@ -26,6 +27,7 @@ pub struct TraceView {
     collapsed: HashSet<Vec<usize>>,
     selected: usize,
     scroll_offset: usize,
+    last_viewport_height: Cell<usize>,
 }
 
 impl TraceView {
@@ -36,6 +38,7 @@ impl TraceView {
             collapsed: HashSet::new(),
             selected: 0,
             scroll_offset: 0,
+            last_viewport_height: Cell::new(20),
         }
     }
 
@@ -111,6 +114,7 @@ impl TraceView {
         }
 
         let inner_height = area.height.saturating_sub(2) as usize;
+        self.last_viewport_height.set(inner_height);
 
         let lines: Vec<Line> = self
             .flat_nodes
@@ -241,10 +245,9 @@ impl TraceView {
         if self.selected < self.scroll_offset {
             self.scroll_offset = self.selected;
         }
-        // We'll use a rough estimate since we don't know terminal height here
-        let estimated_height = 20;
-        if self.selected >= self.scroll_offset + estimated_height {
-            self.scroll_offset = self.selected - estimated_height + 1;
+        let h = self.last_viewport_height.get();
+        if self.selected >= self.scroll_offset + h {
+            self.scroll_offset = self.selected - h + 1;
         }
     }
 }

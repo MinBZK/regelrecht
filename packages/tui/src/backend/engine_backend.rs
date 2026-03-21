@@ -28,12 +28,16 @@ pub enum EngineResponse {
         result: Result<ArticleResult, String>,
         trace: Option<PathNode>,
     },
+    /// The engine thread has panicked or exited unexpectedly.
+    ThreadDied,
 }
 
 /// Handle to communicate with the engine thread.
 pub struct EngineHandle {
     cmd_tx: std::sync::mpsc::Sender<EngineCommand>,
     resp_rx: mpsc::UnboundedReceiver<EngineResponse>,
+    thread_handle: Option<std::thread::JoinHandle<()>>,
+    dead: bool,
 }
 
 impl EngineHandle {
@@ -44,11 +48,16 @@ impl EngineHandle {
 
         let corpus_root = project_root.to_path_buf();
 
-        std::thread::spawn(move || {
+        let thread_handle = std::thread::spawn(move || {
             engine_thread(corpus_root, cmd_rx, resp_tx);
         });
 
-        Self { cmd_tx, resp_rx }
+        Self {
+            cmd_tx,
+            resp_rx,
+            thread_handle: Some(thread_handle),
+            dead: false,
+        }
     }
 
     pub fn send(&self, cmd: EngineCommand) {
@@ -56,6 +65,15 @@ impl EngineHandle {
     }
 
     pub fn try_recv(&mut self) -> Option<EngineResponse> {
+        // Check if the engine thread has died (panicked)
+        if !self.dead {
+            if let Some(ref handle) = self.thread_handle {
+                if handle.is_finished() {
+                    self.dead = true;
+                    return Some(EngineResponse::ThreadDied);
+                }
+            }
+        }
         self.resp_rx.try_recv().ok()
     }
 }

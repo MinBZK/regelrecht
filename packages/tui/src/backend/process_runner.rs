@@ -102,6 +102,7 @@ async fn run_streaming(
         .current_dir(&project_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .kill_on_drop(true)
         .spawn()?;
 
     let stdout = child.stdout.take();

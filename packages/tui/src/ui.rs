@@ -56,7 +56,7 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
         )),
         Line::from(""),
         Line::from(vec![
-            Span::styled(" 1-9       ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(" 0-9       ", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw("Switch tab"),
         ]),
         Line::from(vec![

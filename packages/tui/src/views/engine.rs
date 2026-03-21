@@ -122,6 +122,10 @@ impl EngineView {
                 }
                 self.result_scroll = 0;
             }
+            EngineResponse::ThreadDied => {
+                self.error = Some("Engine thread crashed — restart rrtui".to_string());
+                self.focus = Focus::Result;
+            }
         }
     }
 

@@ -61,7 +61,6 @@ pub struct ActionsView {
     scroll_offset: usize,
     running: Option<String>,
     last_exit_code: Option<Option<i32>>,
-    viewport_height: usize,
 }
 
 #[derive(Clone)]
@@ -77,7 +76,6 @@ impl ActionsView {
             scroll_offset: 0,
             running: None,
             last_exit_code: None,
-            viewport_height: 20,
         }
     }
 
@@ -173,10 +171,14 @@ impl ActionsView {
         let total_lines = self.output.len();
         let dim = Style::default().add_modifier(Modifier::DIM);
 
+        // Clamp scroll offset so we always show a full page when possible
+        let max_scroll = total_lines.saturating_sub(inner_height);
+        let effective_scroll = self.scroll_offset.min(max_scroll);
+
         let visible_lines: Vec<Line> = self
             .output
             .iter()
-            .skip(self.scroll_offset)
+            .skip(effective_scroll)
             .take(inner_height)
             .map(|line| {
                 let style = if line.is_stderr {
@@ -209,8 +211,7 @@ impl ActionsView {
         frame.render_widget(paragraph, area);
 
         if total_lines > inner_height {
-            let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(inner_height))
-                .position(self.scroll_offset);
+            let mut scrollbar_state = ScrollbarState::new(max_scroll).position(effective_scroll);
             frame.render_stateful_widget(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight),
                 area.inner(Margin {
@@ -232,10 +233,8 @@ impl ActionsView {
     }
 
     fn scroll_to_bottom(&mut self) {
-        let h = self.viewport_height;
-        if self.output.len() > h {
-            self.scroll_offset = self.output.len().saturating_sub(h);
-        }
+        // Scroll to end; render will clamp to actual viewport height
+        self.scroll_offset = self.output.len().saturating_sub(1);
     }
 
     fn push_output(&mut self, text: String, is_stderr: bool) {

@@ -193,11 +193,13 @@ impl BddView {
     fn render_output(&self, frame: &mut Frame, area: Rect) {
         let inner_height = area.height.saturating_sub(2) as usize;
         let dim = Style::default().add_modifier(Modifier::DIM);
+        let max_scroll = self.output.len().saturating_sub(inner_height);
+        let effective_scroll = self.output_scroll.min(max_scroll);
 
         let visible: Vec<Line> = self
             .output
             .iter()
-            .skip(self.output_scroll)
+            .skip(effective_scroll)
             .take(inner_height)
             .map(|l| {
                 let style = if l.is_stderr { Style::default() } else { dim };
@@ -213,7 +215,7 @@ impl BddView {
                 self.passed, self.failed, self.skipped
             )
         } else {
-            " Output — a:run all  Enter:run selected ".to_string()
+            " Output — Enter/a:run all ".to_string()
         };
 
         let border_style = if self.focus == Focus::Output {
@@ -236,8 +238,7 @@ impl BddView {
         frame.render_widget(paragraph, area);
 
         if self.output.len() > inner_height {
-            let mut state = ScrollbarState::new(self.output.len().saturating_sub(inner_height))
-                .position(self.output_scroll);
+            let mut state = ScrollbarState::new(max_scroll).position(effective_scroll);
             frame.render_stateful_widget(
                 Scrollbar::new(ScrollbarOrientation::VerticalRight),
                 area.inner(Margin {
@@ -261,8 +262,10 @@ impl BddView {
 
     fn parse_cucumber_line(&mut self, line: &str) {
         let trimmed = line.trim();
-        if trimmed.contains("passed") && trimmed.contains("failed") {
-            for part in trimmed.split(',') {
+        // Match summary lines like "3 passed" or "3 passed, 1 failed, 0 skipped"
+        if trimmed.contains(" passed") || trimmed.contains(" failed") {
+            // Split on commas and whitespace-separated tokens
+            for part in trimmed.split([',', '(', ')']) {
                 let part = part.trim();
                 if let Some(num_str) = part.strip_suffix(" passed") {
                     if let Ok(n) = num_str.trim().parse::<usize>() {
