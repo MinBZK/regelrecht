@@ -8,14 +8,14 @@
 
 The corpus (`regulation/nl/`) lives in the regelrecht-mvp repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities, provinces, water boards, and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
 
-RFC-007 (currently PR #246, not yet merged) introduces Inversion of Control (IoC) with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
+RFC-003 (Inversion of Control, currently PR #246, not yet merged) introduces IoC with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
 
 - **Discovery**: how does the engine find municipal regulations?
 - **Loading**: how does the engine fetch laws from multiple sources?
 - **Scope validation**: how does the engine detect that a source claims to represent a jurisdiction it shouldn't?
 - **Write-back**: how can a municipality maintain regulations in their own repo via the editor?
 
-The delegation approach from RFC-003 has been superseded by RFC-007's IoC mechanism. This RFC builds on RFC-007 by adding the infrastructure for multiple sources, each with their own ownership.
+The old delegation approach (originally described in a previous version of RFC-003) has been superseded by RFC-003's IoC mechanism. This RFC builds on RFC-003 by adding the infrastructure for multiple sources, each with their own ownership.
 
 ## Decision
 
@@ -41,7 +41,7 @@ regulation/nl/
 Each YAML file must:
 - Conform to the regelrecht YAML schema (referenced via `$schema`)
 - Have a `$id` that identifies the law (does not need to be globally unique - see Priority below for conflict resolution when multiple sources provide the same `$id`)
-- Declare `implements` (per RFC-007) when filling in open terms from a higher-level law
+- Declare `implements` (per RFC-003) when filling in open terms from a higher-level law
 
 The `path` field in the registry manifest points to the root of this structure within the repo. This allows repos to keep regulations in a subdirectory (e.g. `regulation/nl/`) or at the root.
 
@@ -295,7 +295,7 @@ New endpoints on the admin service:
 
 ### Benefits
 
-- **Fits IoC**: the `implements` mechanism from RFC-007 works cross-repo as long as the laws are loaded. The registry makes that loading explicit and configurable.
+- **Fits IoC**: the `implements` mechanism from RFC-003 works cross-repo as long as the laws are loaded. The registry makes that loading explicit and configurable.
 - **Decentralized ownership**: municipalities, provinces, and water boards manage their regulations in their own repo. No PR to a central repo needed to change a municipal ordinance.
 - **Transparent**: the registry manifest is a YAML file in Git. Anyone who wants to see which sources the engine loads can look at the manifest.
 - **Scope validation as trust boundary**: without complex PKI infrastructure, the engine can validate via scopes that a source doesn't deliver laws outside its jurisdiction.
@@ -362,7 +362,6 @@ Scope validation, schema version compatibility checks, collision reporting, and 
 
 ## References
 
-- RFC-007: Inversion of Control with `open_terms` and `implements` (supersedes RFC-003)
-- RFC-003: Delegation Pattern for Multi-Level Regulations (superseded by RFC-007)
+- RFC-003: Inversion of Control with `open_terms` and `implements`
 - GitHub Trees API: `GET /repos/{owner}/{repo}/git/trees/{tree_sha}?recursive=1`
 - GitHub Contents API: `GET /repos/{owner}/{repo}/contents/{path}`, `PUT /repos/{owner}/{repo}/contents/{path}`

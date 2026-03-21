@@ -1,13 +1,13 @@
-# RFC-012: Lifecycle Stages for Administrative Decisions
+# RFC-008: Bestuursrecht — AWB Procedures
 
 **Status:** Proposed
 **Date:** 2026-03-21
 **Authors:** Eelco Hotting
-**Depends on:** RFC-008 (Hooks), RFC-009 (Overrides)
+**Depends on:** RFC-007 (Hooks), RFC-009 (Overrides)
 
 ## Context
 
-RFC-008 introduced hooks: articles that fire when another article's `produces` annotation matches. This enables reactive execution — AWB 3:46 (motiveringsplicht) fires on any BESCHIKKING, AWB 6:7 (bezwaartermijn) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING.
+RFC-007 introduced hooks: articles that fire when another article's `produces` annotation matches. This enables reactive execution — AWB 3:46 (motiveringsplicht) fires on any BESCHIKKING, AWB 6:7 (bezwaartermijn) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING.
 
 But a beschikking is not an instant computation. It is an administrative process that progresses through stages over time:
 
@@ -251,7 +251,7 @@ stateDiagram-v2
 
 ### Hooks bind to stages, not just legal_character
 
-The `applies_to` in hooks (RFC-008) gains a `stage` field:
+The `applies_to` in hooks (RFC-007) gains a `stage` field:
 
 ```yaml
 # AWB 3:46 — motiveringsplicht
@@ -394,7 +394,7 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 **Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage besluit state persistence. This is significant implementation effort.
 
-**Backwards compatibility.** Existing laws that produce BESCHIKKING without a lifecycle still work — they complete in a single stage. But new laws should use the lifecycle model. RFC-008 hooks without `stage` default to BESLUIT for backward compatibility.
+**Backwards compatibility.** Existing laws that produce BESCHIKKING without a lifecycle still work — they complete in a single stage. But new laws should use the lifecycle model. RFC-007 hooks without `stage` default to BESLUIT for backward compatibility.
 
 **State management.** Besluit state must be persisted somewhere. The engine doesn't dictate where (database, event store, file system), but the orchestration layer must handle it.
 
@@ -432,7 +432,7 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 
 2. ~~**Nested lifecycles.**~~ **Resolved:** A bezwaar is itself a besluit (AWB 7:12), which starts its own lifecycle (with its own bekendmaking, and possibility of beroep at the rechter). The engine applies the same lifecycle pattern recursively — a besluit op bezwaar enters the AWB lifecycle just like the original beschikking. If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine.
 
-   Note that RFC-008's cycle detection does **not** cover this case. RFC-008 detects cross-law circular references within a single engine invocation (Law A → Law B → Law A). Nested lifecycle recursion (beschikking → besluit op bezwaar → its own bezwaar → ...) happens across separate engine invocations initiated by the orchestration layer. The **orchestration layer** is responsible for detecting excessive lifecycle nesting depth, not the engine. In the AWB this chain is naturally finite (beschikking → BOB → beroep → hoger beroep terminates), but the orchestration layer should enforce a configurable maximum nesting depth as a safety measure.
+   Note that RFC-007's cycle detection does **not** cover this case. RFC-007 detects cross-law circular references within a single engine invocation (Law A → Law B → Law A). Nested lifecycle recursion (beschikking → besluit op bezwaar → its own bezwaar → ...) happens across separate engine invocations initiated by the orchestration layer. The **orchestration layer** is responsible for detecting excessive lifecycle nesting depth, not the engine. In the AWB this chain is naturally finite (beschikking → BOB → beroep → hoger beroep terminates), but the orchestration layer should enforce a configurable maximum nesting depth as a safety measure.
 
 3. ~~**Parallel stages.**~~ **Resolved:** The main lifecycle track (aanvraag → behandeling → besluit → bekendmaking → bezwaar → beroep) is strictly sequential — each stage depends on completion of the previous one. However, three genuinely parallel tracks can be spawned from the main lifecycle:
    - **Dwangsom bij niet-tijdig beslissen (AWB 4:17-4:20)**: activates when the beslistermijn expires without a besluit. Runs parallel to the ongoing behandeling. The dwangsombesluit is itself a beschikking with its own lifecycle.
@@ -447,7 +447,7 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 
 ## References
 
-- RFC-008: Execution Lifecycle Hooks (hooks mechanism)
+- RFC-007: Execution Lifecycle Hooks (hooks mechanism)
 - RFC-009: Lex Specialis Overrides (contextual law overrides)
 - AWB Hoofdstuk 3: Algemene bepalingen over besluiten (bekendmaking, motivering)
 - AWB Hoofdstuk 4: Bijzondere bepalingen over besluiten (beslistermijn, aanvraag)

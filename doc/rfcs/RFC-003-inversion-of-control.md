@@ -1,4 +1,4 @@
-# RFC-007: Inversion of Control for Delegated Legislation
+# RFC-003: Inversion of Control for Delegated Legislation
 
 **Status:** Accepted
 **Date:** 2026-03-15
@@ -192,9 +192,9 @@ The old `source.delegation` + `select_on` + `legal_basis_for` pattern is superse
 3. **Follow-up**: migrate BW5 erfgrens from `source.delegation` to `open_terms`
 4. **Follow-up**: remove `source.delegation`, `select_on`, and `legal_basis_for` from the schema
 
-### Supersedes
+### History
 
-RFC-003 (Delegation Pattern) is superseded by this RFC. The top-down delegation model described in RFC-003 is replaced by the IoC model described here.
+This RFC replaces the original RFC-003 (Delegation Pattern), which described a top-down delegation model using `source.delegation` + `select_on` + `legal_basis_for`. The IoC model described here inverts that relationship.
 
 ## References
 

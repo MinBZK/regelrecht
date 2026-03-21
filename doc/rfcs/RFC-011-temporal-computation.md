@@ -4,7 +4,7 @@
 **Date:** 2026-03-19
 **Authors:** Eelco Hotting
 
-> **Note:** This RFC is under active research. It emerged from analyzing the complete bezwaartermijn calculation chain and identifies concepts needed for date-aware law execution. RFC-008 (hooks) and RFC-009 (overrides) are prerequisites.
+> **Note:** This RFC is under active research. It emerged from analyzing the complete bezwaartermijn calculation chain and identifies concepts needed for date-aware law execution. RFC-007 (hooks) and RFC-009 (overrides) are prerequisites.
 
 ## Context
 
@@ -25,7 +25,7 @@ graph LR
     style E fill:#9f9,stroke:#333
 ```
 
-Each article does one thing. No bilateral coupling. The chain uses hooks (RFC-008), overrides (RFC-009), IoC (RFC-007), and cross-article references — all mechanisms already designed. But the engine lacks the *types and operations* to express this chain.
+Each article does one thing. No bilateral coupling. The chain uses hooks (RFC-007), overrides (RFC-009), IoC (RFC-003), and cross-article references — all mechanisms already designed. But the engine lacks the *types and operations* to express this chain.
 
 ### The bezwaartermijn chain in detail
 
@@ -163,7 +163,7 @@ graph LR
 
 **Layer 3: Gelijkgestelde dagen** — Artikel 3 lid 3: "Wij kunnen bepaalde dagen voor de toepassing van deze wet met de in het eerste lid genoemde gelijkstellen." The Crown publishes Koninklijke Besluiten (KB's) in the Staatscourant, typically covering 2-3 years ahead (e.g., Stcrt. 2025, 24713 covers 2026-2028). These are discretionary government decisions — bridge days around holidays. Not algorithmically predictable.
 
-This fits the existing architecture: `Staatscourant → Harvester → Pipeline → Corpus → Engine`. The KB's are modeled as regulations that `implement` Termijnenwet art 3's `open_term: gelijkgestelde_dagen` via IoC (RFC-007). Same pattern as BW5 art 42 with gemeente verordeningen.
+This fits the existing architecture: `Staatscourant → Harvester → Pipeline → Corpus → Engine`. The KB's are modeled as regulations that `implement` Termijnenwet art 3's `open_term: gelijkgestelde_dagen` via IoC (RFC-003). Same pattern as BW5 art 42 with gemeente verordeningen.
 
 ### Interaction of mechanisms
 
@@ -502,7 +502,7 @@ All four cross-law mechanisms (hooks, overrides, IoC, references) compose natura
 
 Zero domain knowledge in the engine. Easter is a parameter. Koningsdag's Sunday shift is an IF expression in the law YAML. Feestdagen are harvested regulations. The engine provides pure operations; laws provide the knowledge.
 
-The feestdagen architecture fits the existing pipeline. KB's from the Staatscourant are regulations harvested and processed like any other. The IoC pattern from RFC-007 handles the open_term delegation from Termijnenwet art 3 lid 3 to the Crown's KB's.
+The feestdagen architecture fits the existing pipeline. KB's from the Staatscourant are regulations harvested and processed like any other. The IoC pattern from RFC-003 handles the open_term delegation from Termijnenwet art 3 lid 3 to the Crown's KB's.
 
 ### Tradeoffs
 
@@ -548,8 +548,8 @@ The feestdagen architecture fits the existing pipeline. KB's from the Staatscour
 
 ## References
 
-- RFC-007: Inversion of Control for Delegated Legislation
-- RFC-008: Execution Lifecycle Hooks
+- RFC-003: Inversion of Control for Delegated Legislation
+- RFC-007: Execution Lifecycle Hooks
 - RFC-009: Lex Specialis Overrides
 - AWB artikel 6:7: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7
 - AWB artikel 6:8: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:8

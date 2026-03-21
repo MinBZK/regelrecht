@@ -4,7 +4,7 @@
 **Date:** 2026-03-16
 **Authors:** Eelco Hotting
 
-> **Note:** This RFC is under active research and may change significantly. The interaction between overrides, hooks (RFC-008), and temporal computation (RFC-011) is being explored. See RFC-011 (Temporal Computation) for the current design exploration.
+> **Note:** This RFC is under active research and may change significantly. The interaction between overrides, hooks (RFC-007), and temporal computation (RFC-011) is being explored. See RFC-011 (Temporal Computation) for the current design exploration.
 
 ## Context
 
@@ -12,9 +12,9 @@ Dutch law follows the principle of *lex specialis derogat legi generali*: a more
 
 For example, AWB article 6:7 says "De termijn voor het indienen van een bezwaar- of beroepschrift bedraagt zes weken." No exception clause, no delegation. Yet the Vreemdelingenwet article 69 says "In afwijking van artikel 6:7 van de Algemene wet bestuursrecht bedraagt de termijn vier weken." It unilaterally replaces the value.
 
-This differs from delegation (RFC-007 IoC):
+This differs from delegation (RFC-003 IoC):
 
-| | IoC (RFC-007) | Lex specialis (this RFC) |
+| | IoC (RFC-003) | Lex specialis (this RFC) |
 |---|---|---|
 | General law | Declares `open_terms`, knows it is delegating | Declares nothing, does not know about overrides |
 | Specific law | Declares `implements`, fills in a value left open | Declares `overrides`, replaces a value already set |
@@ -28,9 +28,9 @@ The engine currently has no way to declare lex specialis relationships. The over
 Lex specialis overrides apply in both active and hook-augmented execution:
 
 - **Active execution**: AWB article 6:7 sets the bezwaartermijn at 6 weeks. When the engine evaluates AWB 6:7 in the context of the Vreemdelingenwet, article 69 overrides it to 4 weeks.
-- **Hook-augmented execution**: AWB article 6:7 hooks into any execution that produces a BESCHIKKING (see RFC-008). When Vreemdelingenwet is the contextual law, its article 69 overrides the bezwaartermijn that AWB 6:7 would produce from 6 to 4 weeks.
+- **Hook-augmented execution**: AWB article 6:7 hooks into any execution that produces a BESCHIKKING (see RFC-007). When Vreemdelingenwet is the contextual law, its article 69 overrides the bezwaartermijn that AWB 6:7 would produce from 6 to 4 weeks.
 
-The `overrides` mechanism is independent of `hooks` (RFC-008). A law can use `overrides` without hooks, and vice versa. Their interaction: overrides affect a hook article's result, not its triggering condition.
+The `overrides` mechanism is independent of `hooks` (RFC-007). A law can use `overrides` without hooks, and vice versa. Their interaction: overrides affect a hook article's result, not its triggering condition.
 
 ## Decision
 
@@ -89,7 +89,7 @@ In a chain where law A calls law B which calls law C, the contextual law is alwa
 
 When no contextual law is set (e.g., a standalone evaluation of AWB 6:7 via an API call without an originating law), no overrides apply. The target article executes with its own values.
 
-Unlike IoC resolution (RFC-007), lex specialis does not require lex superior/lex posterior tiebreaking between the overrider and the target. The `overrides` declaration is itself the assertion of specificity — the overriding law explicitly states "in afwijking van." The engine does not verify whether the override is legally valid; that is a law authoring responsibility.
+Unlike IoC resolution (RFC-003), lex specialis does not require lex superior/lex posterior tiebreaking between the overrider and the target. The `overrides` declaration is itself the assertion of specificity — the overriding law explicitly states "in afwijking van." The engine does not verify whether the override is legally valid; that is a law authoring responsibility.
 
 ### Resolution model
 
@@ -101,9 +101,9 @@ When the engine executes a law that has articles with `overrides` declarations:
 2. **At execution time**: when executing a target article (e.g., AWB 6:7), the engine queries the overrides index and filters by contextual law
 3. **If an override exists**: execute the overriding article and use its value for the targeted output. Other outputs from the target article are preserved — the override replaces only the named output, not the entire article
 4. **If no override exists**: execute the target article normally
-5. **If multiple overrides exist** for the same `(target_law, target_article, output)` within the contextual law: this is a law authoring error (a single law should not have two articles both saying "in afwijking van" the same provision). The engine raises an error rather than silently picking one, consistent with RFC-007's ambiguity rule for IoC
+5. **If multiple overrides exist** for the same `(target_law, target_article, output)` within the contextual law: this is a law authoring error (a single law should not have two articles both saying "in afwijking van" the same provision). The engine raises an error rather than silently picking one, consistent with RFC-003's ambiguity rule for IoC
 
-#### Hook-augmented execution (RFC-008)
+#### Hook-augmented execution (RFC-007)
 
 When a hook article fires (e.g., AWB 6:7 at `post_actions`), the override resolution follows the same logic as active execution. The contextual law still governs:
 
@@ -128,7 +128,7 @@ When the engine evaluates AWB 6:7 directly (not via a hook) in the context of th
 
 Without a contextual law (standalone evaluation), the override does not apply and AWB 6:7 returns 6.
 
-### Example: hook-augmented execution (RFC-008)
+### Example: hook-augmented execution (RFC-007)
 
 ```
 Vreemdelingenwet:
@@ -195,13 +195,13 @@ Some provisions may be modelled as either IoC with defaults or as plain values s
 - **Cycle detection**: override resolution uses `ResolutionContext.visited` (same as IoC) to prevent A overriding B overriding A.
 - **Temporal filtering**: override candidates are subject to the same temporal filtering as `implements` resolution. The engine selects the version of the overriding law valid for the calculation date. An override enacted in 2025 does not affect calculations for 2024.
 - **Parameter forwarding**: the overriding article receives the same parameters that the target article would have received, filtered by `filter_parameters_for_article`.
-- **Validation at load time**: the engine validates that the target `(law, article)` in an override declaration actually exists. Array size validation applies (consistent with RFC-007). Layer validation is deliberately omitted — lex specialis operates between laws at the same layer (e.g., WET overriding WET), unlike delegation which crosses layers.
+- **Validation at load time**: the engine validates that the target `(law, article)` in an override declaration actually exists. Array size validation applies (consistent with RFC-003). Layer validation is deliberately omitted — lex specialis operates between laws at the same layer (e.g., WET overriding WET), unlike delegation which crosses layers.
 - **Trace output**: new trace types `PathNodeType::OverrideResolution`, `ResolveType::Override` to show which override was applied and why.
 - **`ResolutionContext` change**: add `contextual_law_id: Option<String>` field. This field does not exist in the current engine; it is a new addition required by this RFC.
 
 ## References
 
-- RFC-007: Inversion of Control for Delegated Legislation (PR #246)
-- RFC-008: Execution Lifecycle Hooks (companion RFC, `hooks` mechanism, this PR)
+- RFC-003: Inversion of Control for Delegated Legislation (PR #246)
+- RFC-007: Execution Lifecycle Hooks (companion RFC, `hooks` mechanism, this PR)
 - AWB article 6:7: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7
 - Vreemdelingenwet article 69: https://wetten.overheid.nl/BWBR0011823/2024-01-01#Artikel69

@@ -1,4 +1,4 @@
-# RFC-008: Execution Lifecycle Hooks
+# RFC-007: Execution Lifecycle Hooks
 
 **Status:** Proposed
 **Date:** 2026-03-16
@@ -20,7 +20,7 @@ This is **reactive execution**: law that augments other law's execution without 
 
 This is one of four identified execution modes:
 
-1. **Active execution**: request-response (current engine, RFC-007 IoC)
+1. **Active execution**: request-response (current engine, RFC-003 IoC)
 2. **Reactive execution**: lifecycle hooks (this RFC)
 3. **Generative execution**: law that creates other law (git workflow, out of scope)
 4. **Verificative execution**: continuous invariant checking (out of scope)
@@ -43,7 +43,7 @@ The engine evaluates an article in five stages:
 
 1. **Create context** with parameters and calculation_date
 2. **Resolve inputs** from cross-law references and data sources
-3. **Resolve open terms** via IoC (RFC-007, `implements` index)
+3. **Resolve open terms** via IoC (RFC-003, `implements` index)
 4. **Execute actions** that evaluate conditions and set outputs
 5. **Return result** with outputs
 
@@ -106,7 +106,7 @@ When multiple filter fields are present, they are AND-combined. An article with 
 
 #### At load time
 
-The engine builds a `hooks_index` when loading laws. For each article with a `hooks` declaration, it indexes the hook by `(hook_point, legal_character)`, mapping to a list of `(law_id, article_number, HookFilter)` entries. This parallels `implements_index` (RFC-007) in `RuleResolver`.
+The engine builds a `hooks_index` when loading laws. For each article with a `hooks` declaration, it indexes the hook by `(hook_point, legal_character)`, mapping to a list of `(law_id, article_number, HookFilter)` entries. This parallels `implements_index` (RFC-003) in `RuleResolver`.
 
 At query time, the engine looks up by `(hook_point, legal_character)` and then post-filters candidates by `decision_type` if the hook's `applies_to` specifies one. This avoids requiring exact-match on `Option` fields while keeping the common case (filter by `legal_character` only) fast.
 
@@ -115,7 +115,7 @@ At query time, the engine looks up by `(hook_point, legal_character)` and then p
 When the engine executes an article that has a `produces` annotation:
 
 1. Resolve inputs (cross-law references, data sources).
-2. Resolve open terms (IoC, RFC-007).
+2. Resolve open terms (IoC, RFC-003).
 3. Query `hooks_index` for `pre_actions` hooks matching the article's `produces`. Fire matching hooks. Their outputs enter the execution context.
 4. Execute the article's own actions.
 5. Query `hooks_index` for `post_actions` hooks matching the article's `produces`. Fire matching hooks. Their outputs are merged into the `ArticleResult`.
@@ -124,7 +124,7 @@ Hook articles are executed as ordinary article evaluations. They produce outputs
 
 #### Parameter passing
 
-Hook articles do not receive the target article's execution context as input parameters. Each hook article declares its own `parameters` and `input` sections (or none, for constant-producing hooks like AWB 3:46 and AWB 6:7). The engine passes only the parameters declared in the hook article's `execution.parameters` section, consistent with RFC-007's principle of least privilege (`filter_parameters_for_article`).
+Hook articles do not receive the target article's execution context as input parameters. Each hook article declares its own `parameters` and `input` sections (or none, for constant-producing hooks like AWB 3:46 and AWB 6:7). The engine passes only the parameters declared in the hook article's `execution.parameters` section, consistent with RFC-003's principle of least privilege (`filter_parameters_for_article`).
 
 This means:
 - **Constant hooks** (no parameters declared): execute standalone, producing fixed values. Most AWB hooks fall in this category.
@@ -132,7 +132,7 @@ This means:
 
 #### Priority
 
-When multiple hooks produce the same output name, the engine resolves by lex superior (higher regulatory layer wins) then lex posterior (newer `valid_from` wins). This is the same priority model as IoC resolution (RFC-007).
+When multiple hooks produce the same output name, the engine resolves by lex superior (higher regulatory layer wins) then lex posterior (newer `valid_from` wins). This is the same priority model as IoC resolution (RFC-003).
 
 #### Execution order
 
@@ -273,13 +273,13 @@ The declaration is unilateral from the hook side: the target law is not modified
 
 Every execution of an article with `produces` requires querying the `hooks_index` at two points. For articles without `produces`, there is no overhead.
 
-When multiple hooks produce the same output name, priority resolution adds complexity. The lex superior / lex posterior model is proven (RFC-007 uses it for IoC), but the interaction between hook priority and override priority needs careful implementation.
+When multiple hooks produce the same output name, priority resolution adds complexity. The lex superior / lex posterior model is proven (RFC-003 uses it for IoC), but the interaction between hook priority and override priority needs careful implementation.
 
 A law that does not annotate its articles with `produces` cannot be hooked into. This is by design (explicit opt-in through annotation), but means that unannotated laws are invisible to hooks.
 
 ### Alternatives Considered
 
-**Alternative 1: Event-bus model (original RFC-008)**
+**Alternative 1: Event-bus model (original RFC-007)**
 - Laws declare `reacts_to: event_type` and `produces: event_type`. The engine annotates results with event metadata. An orchestration layer routes events.
 - Rejected: couples law specification to an event vocabulary (`besluit`, `bezwaarschrift`, `aanvraag`) that needs maintenance, and to an orchestration routing mechanism the engine should not own.
 
@@ -301,7 +301,7 @@ A law that does not annotate its articles with `produces` cannot be hooked into.
 
 ## References
 
-- RFC-007: Inversion of Control for Delegated Legislation (PR #246)
+- RFC-003: Inversion of Control for Delegated Legislation (PR #246)
 - RFC-009: Lex Specialis Overrides (companion RFC, `overrides` mechanism, this PR)
 - AWB article 3:46: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel3:46
 - AWB article 6:7: https://wetten.overheid.nl/BWBR0005537/2024-01-01#Artikel6:7
