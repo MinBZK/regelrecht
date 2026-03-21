@@ -42,7 +42,7 @@ A specific law may override step 1: the Vreemdelingenwet artikel 69 says "in afw
 
 - **Dates as values.** Parameters and outputs are numbers, booleans, or strings. There is no `type: date`.
 - **Date arithmetic.** No operations for adding days/weeks to a date, constructing a date from components, or checking the day of the week.
-- **Lists as values.** The feestdagen calendar is a list of dates. There is no `type: list`.
+- **Lists as values.** The feestdagen calendar is a list of dates. There is no `type: array` for collections.
 - **Semantic output categories.** The Termijnenwet hooks on "any termijn output", not on a specific decision type. The current hook filter (`applies_to`) only matches on `legal_character` and `decision_type`.
 - **Trigger-parameterized hooks.** The Termijnenwet adjusts any termijn regardless of its name. Current hooks produce fixed, named outputs.
 
@@ -83,9 +83,9 @@ All operations are pure functions. No domain knowledge.
 
 `NEXT_WORKING_DAY` takes a date and a list of non-working dates. If the date is a Saturday, Sunday, or in the list, it advances to the next day that is none of those. The engine does not know what "feestdagen" are — it just skips dates in the provided list. Weekends (Saturday and Sunday) are implicit because the Termijnenwet always includes them (artikel 1).
 
-### 3. List type and operations
+### 3. Array type and operations
 
-Add `type: list` for outputs that are collections.
+Add `type: array` for outputs that are collections (consistent with the existing schema's type enum).
 
 | Operation | Input | Output |
 |-----------|-------|--------|
@@ -218,11 +218,12 @@ graph TB
       output:
         - name: bezwaartermijn_weken
           type: number
-          semantic: termijn
       actions:
         - output: bezwaartermijn_weken
           value: 6
 ```
+
+> Note: `bezwaartermijn_weken` is a duration (number), not a deadline (date). The `semantic: termijn` annotation belongs on `bezwaartermijn_einddatum` in AWB 6:8, where the Termijnenwet art 1 hook can meaningfully extend the date.
 
 #### AWB 6:8 — Start and end date
 
@@ -281,7 +282,7 @@ graph TB
   machine_readable:
     open_terms:
       - id: gelijkgestelde_dagen
-        type: list
+        type: array
         required: false
         delegated_to: kroon
         delegation_type: KONINKLIJK_BESLUIT
@@ -302,7 +303,7 @@ graph TB
           description: Eerste Paasdag voor het betreffende jaar
       output:
         - name: feestdagen
-          type: list
+          type: array
       actions:
         # Koningsdag: 27 april, shift to 26 if Sunday
         - output: koningsdag
@@ -365,7 +366,7 @@ graph TB
     execution:
       output:
         - name: gelijkgestelde_dagen
-          type: list
+          type: array
       actions:
         - output: gelijkgestelde_dagen
           value:
@@ -511,7 +512,7 @@ The feestdagen architecture fits the existing pipeline. KB's from the Staatscour
 
 **Trigger-parameterized hooks.** `$trigger_output` and `$trigger_output_name` are a new concept. They make hooks more powerful but also more complex to reason about.
 
-**Hook ordering.** The walk-through implies decision-level hooks fire before output-level hooks within the same hook point. This ordering needs to be specified explicitly.
+**Hook ordering.** Within a hook point, decision-level hooks (`legal_character`, `decision_type` filters) fire before output-level hooks (`output_semantic` filters). This is not merely a convention — it is a structural requirement: output-level hooks operate on the article's outputs, which must exist before they can be matched and transformed. This ordering is a normative part of this RFC's design.
 
 **Feestdagen require Staatscourant harvesting.** The gelijkgestelde dagen from KB's are not algorithmically predictable. The system needs to harvest KB's from the Staatscourant — a new source type for the pipeline.
 
@@ -536,13 +537,13 @@ The feestdagen architecture fits the existing pipeline. KB's from the Staatscour
 ### Implementation Notes
 
 - `type: date` maps to `chrono::NaiveDate` in Rust. Already available in the engine via the `chrono` crate (used for `calculation_date`).
-- `type: list` maps to `Vec<Value>` in Rust. Needs a new `Value::List` variant.
+- `type: array` maps to `Vec<Value>` in Rust. Needs a new `Value::Array` variant.
 - `DATE_ADD`, `DATE`, `DAY_OF_WEEK` are straightforward `chrono` operations.
 - `NEXT_WORKING_DAY` is a loop: while the date is Saturday, Sunday, or in the non_working_days list, advance by one day. Pure, deterministic, bounded (max 9 consecutive non-working days in practice).
 - `LIST` and `CONCAT` are standard collection operations.
 - `semantic` on outputs is a new field in the schema's output declaration. Indexed by `RuleResolver` for hook matching.
 - Trigger-parameterized hooks require the engine to bind `$trigger_output` and `$trigger_output_name` when firing a hook that matched on `output_semantic`. The hook executes once per matching output.
-- Hook ordering within a hook point: decision-level filters (`legal_character`, `decision_type`) fire first, then output-level filters (`output_semantic`). This is implicit in the filter dimensions — output-level hooks need outputs to exist before they can match.
+- Hook ordering within a hook point: decision-level filters (`legal_character`, `decision_type`) fire first, then output-level filters (`output_semantic`). This is a structural requirement — output-level hooks need outputs to exist before they can match.
 - The Staatscourant KB's for gelijkgestelde dagen need a new source type in the harvester. The KB's are published at [zoek.officielebekendmakingen.nl](https://zoek.officielebekendmakingen.nl) and follow a predictable pattern (search for "Algemene termijnenwet" in Staatscourant publications).
 
 ## References
