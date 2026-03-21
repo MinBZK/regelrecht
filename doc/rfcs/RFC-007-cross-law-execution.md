@@ -8,13 +8,13 @@
 
 The engine currently supports **active execution**: someone requests a legal determination, the engine evaluates with specific parameters, and produces a result. This covers laws like the Zorgtoeslagwet, Participatiewet, and BW5. But three patterns in Dutch law cannot be expressed with active execution alone:
 
-**Reactive execution.** The Algemene wet bestuursrecht (AWB) applies whenever any government body issues a beschikking. Article 6:7 sets a bezwaartermijn of six weeks. Article 3:46 requires a deugdelijke motivering. Neither article is called explicitly. They fire because the output qualifies as a beschikking, regardless of which law produced it. The target law does not know about AWB. AWB does not know about the target law. The relationship is unilateral.
+**Reactive execution.** The Algemene wet bestuursrecht (AWB) applies whenever any government body issues an individual decision (*beschikking*). Article 6:7 sets an objection period (*bezwaartermijn*) of six weeks. Article 3:46 requires adequate reasoning (*deugdelijke motivering*). Neither article is called explicitly. They fire because the output qualifies as an individual decision (*beschikking*), regardless of which law produced it. The target law does not know about AWB. AWB does not know about the target law. The relationship is unilateral.
 
 **Lex specialis.** AWB 6:7 says "de termijn bedraagt zes weken" — no exception clause, no delegation. Yet the Vreemdelingenwet artikel 69 says "in afwijking van artikel 6:7 bedraagt de termijn vier weken." It unilaterally replaces the value. This differs from IoC delegation (RFC-003): the general law does not know it is being overridden.
 
-**Temporal computation.** "When is my deadline for bezwaar?" is not answered by "6 weeks" — it is answered by "9 april 2026." Computing that date requires a chain of four articles across three laws, using date arithmetic, public holiday calendars, and weekend rules. The engine lacks the types and operations.
+**Temporal computation.** "When is my deadline for objection (*bezwaar*)?" is not answered by "6 weeks" — it is answered by "9 april 2026." Computing that date requires a chain of four articles across three laws, using date arithmetic, public holiday calendars, and weekend rules. The engine lacks the types and operations.
 
-These three patterns combine in the **bezwaartermijn chain** — the driving example for this RFC:
+These three patterns combine in the **objection period (*bezwaartermijn*) chain** — the driving example for this RFC:
 
 ```mermaid
 graph LR
@@ -31,7 +31,7 @@ graph LR
 
 ### Design principle
 
-**Zero domain knowledge in the engine.** All legal and domain knowledge comes from law YAML files and parameters. The engine provides pure operations (date arithmetic, list manipulation). It does not know about Easter, Koningsdag, or feestdagen — these are all expressed in law or supplied as parameters.
+**Zero domain knowledge in the engine.** All legal and domain knowledge comes from law YAML files and parameters. The engine provides pure operations (date arithmetic, list manipulation). It does not know about Easter, King's Day (*Koningsdag*), or public holidays (*feestdagen*) — these are all expressed in law or supplied as parameters.
 
 ### Execution modes
 
@@ -75,7 +75,7 @@ Two hook points interleave with this lifecycle:
 | `pre_actions` | 3 and 4 | Parameters, inputs, resolved open terms |
 | `post_actions` | 4 and 5 | Parameters, inputs, open terms, outputs |
 
-Earlier drafts included `pre_input` and `post_input` hooks. These were removed because the legal requirements that operate on the input phase tend to be application-layer concerns (authorization per AWB 2:1), authoring-time concerns (data minimization per AVG art. 5), or process-management concerns (completeness checks per AWB 4:5 with hersteltermijn). None map cleanly to a runtime engine hook.
+Earlier drafts included `pre_input` and `post_input` hooks. These were removed because the legal requirements that operate on the input phase tend to be application-layer concerns (authorization per AWB 2:1), authoring-time concerns (data minimization per AVG art. 5), or process-management concerns (completeness checks per AWB 4:5 with recovery period (*hersteltermijn*)). None map cleanly to a runtime engine hook.
 
 #### YAML construct
 
@@ -232,7 +232,7 @@ All operations are pure functions. No domain knowledge. These six operations (`D
 | `DAY_OF_WEEK` | date | number (0=mon..6=sun) | `DAY_OF_WEEK(2026-04-27) → 0` |
 | `NEXT_WORKING_DAY` | date + list of dates | date | advances past weekends + listed dates |
 
-`NEXT_WORKING_DAY` takes a date and a list of non-working dates. If the date is a Saturday, Sunday, or in the list, it advances to the next day that is none of those. The engine does not know what "feestdagen" are — it just skips dates in the provided list.
+`NEXT_WORKING_DAY` takes a date and a list of non-working dates. If the date is a Saturday, Sunday, or in the list, it advances to the next day that is none of those. The engine does not know what public holidays (*feestdagen*) are — it just skips dates in the provided list.
 
 #### Array type and operations
 
@@ -243,7 +243,7 @@ Add `type: array` for outputs that are collections (consistent with the existing
 | `LIST` | items | array |
 | `CONCAT` | multiple arrays | merged array |
 
-Needed for the feestdagen calendar.
+Needed for the public holidays (*feestdagen*) calendar.
 
 #### Semantic output annotations
 
@@ -256,7 +256,7 @@ output:
     semantic: termijn
 ```
 
-Hooks can match on `output_semantic` — a new filter dimension. This is how the Termijnenwet hooks into any law that produces a termijn, regardless of decision type.
+Hooks can match on `output_semantic` — a new filter dimension. This is how the Termijnenwet hooks into any law that produces a deadline (*termijn*), regardless of decision type.
 
 #### Trigger-parameterized hooks
 
@@ -271,7 +271,7 @@ When an article produces multiple outputs with `semantic: termijn`, the hook fir
 
 #### Feestdagen as harvested regulation
 
-The feestdagen calendar in the Algemene Termijnenwet has three layers:
+The public holidays (*feestdagen*) calendar in the Algemene Termijnenwet has three layers:
 
 ```mermaid
 graph LR
@@ -293,11 +293,11 @@ graph LR
     style Harvester fill:#f96,stroke:#333
 ```
 
-**Layer 1: Fixed dates** — Defined in the law text (art 3 lid 1). Modeled as `DATE` operations with the `jaar` parameter. Koningsdag has a Sunday-shift rule modeled as an `IF`/`DAY_OF_WEEK` expression in law YAML — not as engine knowledge.
+**Layer 1: Fixed dates** — Defined in the law text (art 3 lid 1). Modeled as `DATE` operations with the `jaar` parameter. King's Day (*Koningsdag*) has a Sunday-shift rule modeled as an `IF`/`DAY_OF_WEEK` expression in law YAML — not as engine knowledge.
 
-**Layer 2: Easter-dependent dates** — Goede Vrijdag, Tweede Paasdag, Hemelvaartsdag, Tweede Pinksterdag. Fixed offsets from Easter Sunday. The engine receives `pasen_datum` as a parameter. The computus is not in the engine — whoever calls the engine provides the date.
+**Layer 2: Easter-dependent dates** — Good Friday (*Goede Vrijdag*), Easter Monday (*Tweede Paasdag*), Ascension Day (*Hemelvaartsdag*), Whit Monday (*Tweede Pinksterdag*). Fixed offsets from Easter Sunday. The engine receives `pasen_datum` as a parameter. The computus is not in the engine — whoever calls the engine provides the date.
 
-**Layer 3: Gelijkgestelde dagen** — Artikel 3 lid 3 delegates to the Crown. KB's from the Staatscourant (e.g., Stcrt. 2025, 24713 covers 2026-2028) implement this via IoC (RFC-003), same pattern as BW5 art 42 with gemeente verordeningen.
+**Layer 3: Equivalent days (*gelijkgestelde dagen*)** — days designated by royal decree as equivalent to public holidays (*feestdagen*). Artikel 3 lid 3 delegates to the Crown. KB's from the Government Gazette (*Staatscourant*) (e.g., Stcrt. 2025, 24713 covers 2026-2028) implement this via IoC (RFC-003), same pattern as BW5 art 42 with municipal ordinances (*gemeentelijke verordeningen*).
 
 ### How the mechanisms compose
 
@@ -566,9 +566,9 @@ See Section 1 above for the full YAML. Key point:
 
 ### Walk-through
 
-**Scenario 1: Vreemdelingenwet with override and feestdagen**
+**Scenario 1: Vreemdelingenwet with override and public holidays (*feestdagen*)**
 
-Citizen applies for a verblijfsvergunning. Decision announced Thursday 12 March 2026. Easter 2026 falls on 5 April.
+Citizen applies for a residence permit (*verblijfsvergunning*). Individual decision (*beschikking*) announced Thursday 12 March 2026. Easter 2026 falls on 5 April.
 
 ```mermaid
 sequenceDiagram
@@ -617,12 +617,12 @@ Final result:
 
 *"U kunt tot en met 9 april 2026 bezwaar maken (artikel 69 Vreemdelingenwet, in afwijking van artikel 6:7 Awb)"*
 
-**Scenario 2: Deadline falls on a gelijkgestelde dag**
+**Scenario 2: Deadline falls on an equivalent day (*gelijkgestelde dag*)**
 
 - `bekendmaking_datum: 2026-04-03` (Friday)
-- Contextual law: Participatiewet (no override, 6 weken)
+- Contextual law: Participatiewet (no override, 6 weeks)
 - `einddatum = 2026-04-03 + 6 weeks = 2026-05-15` (Friday)
-- 15 mei 2026 is a gelijkgestelde dag (KB Stcrt. 2025, 24713)
+- 15 mei 2026 is an equivalent day (*gelijkgestelde dag*) (KB Stcrt. 2025, 24713)
 - `NEXT_WORKING_DAY(2026-05-15, feestdagen)` → 15 mei in list → try 16 mei (Saturday) → weekend → try 17 mei (Sunday) → weekend → try 18 mei (Monday) → clear
 - `bezwaartermijn_einddatum: 2026-05-18`
 
@@ -630,7 +630,7 @@ The harvested KB changes the legal outcome. Without it, the deadline would be Fr
 
 **Scenario 3: Simple hooks without override**
 
-Zorgtoeslag produces a BESCHIKKING. No override, no date computation needed for the basic determination:
+Zorgtoeslag produces a BESCHIKKING (individual decision (*beschikking*)). No override, no date computation needed for the basic determination:
 
 ```
 1. Create context: { toetsingsinkomen: 28000, drempelinkomen: 38520 }
@@ -657,13 +657,13 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 
 **Composition.** All four cross-law mechanisms (hooks, overrides, IoC, references) compose naturally. The override propagates through the reference chain: when AWB 6:8 references AWB 6:7, the Vreemdelingenwet override applies automatically. No special wiring.
 
-**Impact analysis.** The engine can answer "which articles hook into BESCHIKKING executions?" and "if AWB 6:7 changes, which laws override it?" by querying its indexes.
+**Impact analysis.** The engine can answer "which articles hook into individual decision (*beschikking*) executions?" and "if AWB 6:7 changes, which laws override it?" by querying its indexes.
 
-**Unilateral declaration.** Hooks are declared by the hooking law, overrides by the overriding law. Neither requires the target law to participate. This matches legal reality: AWB applies to all besluiten; Vreemdelingenwet overrides AWB without AWB's consent.
+**Unilateral declaration.** Hooks are declared by the hooking law, overrides by the overriding law. Neither requires the target law to participate. This matches legal reality: AWB applies to all decisions (*besluiten*); the Vreemdelingenwet overrides AWB without AWB's consent.
 
 **Concrete answers.** A citizen asking "when is my deadline?" gets "9 april 2026", not "6 weeks."
 
-**Zero domain knowledge.** Easter is a parameter. Koningsdag's Sunday shift is an IF expression in law YAML. Feestdagen are harvested regulations. The engine provides pure operations; laws provide the knowledge.
+**Zero domain knowledge.** Easter is a parameter. King's Day (*Koningsdag*)'s Sunday shift is an IF expression in law YAML. Public holidays (*feestdagen*) are harvested regulations. The engine provides pure operations; laws provide the knowledge.
 
 ### Tradeoffs
 
@@ -671,13 +671,13 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 
 **Contextual law threading.** The engine needs to know which law initiated the execution chain to determine which overrides apply. This requires threading `contextual_law_id` through `ResolutionContext`.
 
-**New types and operations.** `date`, `array`, plus `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `NEXT_WORKING_DAY`, `LIST`, `CONCAT`. Significant expansion of the operation set.
+**New types and operations.** `date`, `array`, plus `DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `NEXT_WORKING_DAY`, `LIST`, `CONCAT`. This is a large expansion of the operation set.
 
-**Semantic annotations.** `semantic` on outputs introduces a new schema dimension. The set of valid values needs definition (initially just `termijn`).
+**Semantic annotations.** `semantic` on outputs introduces a new schema dimension. The set of valid values needs definition (initially just deadline (*termijn*)).
 
 **Trigger-parameterized hooks.** `$trigger_output` and `$trigger_output_name` make hooks more powerful but more complex to reason about.
 
-**Feestdagen require Staatscourant harvesting.** The gelijkgestelde dagen from KB's are not algorithmically predictable. New source type for the pipeline.
+**Public holidays (*feestdagen*) require Government Gazette (*Staatscourant*) harvesting.** The equivalent days (*gelijkgestelde dagen*) from KB's are not algorithmically predictable. New source type for the pipeline.
 
 ### Alternatives Considered
 
@@ -687,15 +687,15 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 
 **Overrides as IoC.** AWB 6:7 declares `open_terms: bezwaartermijn_weken`. Rejected: AWB 6:7 says "bedraagt zes weken" — it sets a value, it does not delegate.
 
-**Overrides on the besluit-producing article.** Rejected: the legal text is in article 69, not article 25.
+**Overrides on the decision (*besluit*)-producing article.** Rejected: the legal text is in article 69, not article 25.
 
 **Dates computed outside the engine.** Rejected: the Algemene Termijnenwet is law. Pushing date computation out means the engine cannot answer the question citizens actually ask.
 
 **Easter as engine knowledge (computus).** Rejected: violates zero-domain-knowledge. The computus is not in Dutch statute law.
 
-**Feestdagen as engine configuration.** Rejected: feestdagen are defined in law. Treating them as configuration hides the legal source.
+**Public holidays (*feestdagen*) as engine configuration.** Rejected: public holidays (*feestdagen*) are defined in law. Treating them as configuration hides the legal source.
 
-**Termijnenwet hooks on legal_character.** Rejected: legally imprecise. The Termijnenwet applies to any statutory term, not just beschikkingen.
+**Termijnenwet hooks on legal_character.** Rejected: legally imprecise. The Termijnenwet applies to any statutory deadline (*termijn*), not just individual decisions (*beschikkingen*).
 
 ### Implementation Notes
 
@@ -721,7 +721,7 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 - `NEXT_WORKING_DAY`: loop advancing past weekends + listed dates. Bounded (max 9 consecutive non-working days).
 - `semantic` on outputs indexed by `RuleResolver` for hook matching.
 - Trigger-parameterized hooks bind `$trigger_output` and `$trigger_output_name` per matching output.
-- Staatscourant KB's: new source type in harvester.
+- Government Gazette (*Staatscourant*) KB's: new source type in harvester.
 
 **Trigger variable resolution:**
 - `$trigger_output` and `$trigger_output_name` are meta-variables injected by the engine when a semantic hook fires. They differ from regular parameters (which are declared in `parameters`).
@@ -740,3 +740,4 @@ The Zorgtoeslag YAML declares nothing about AWB. AWB declares nothing about Zorg
 - Vreemdelingenwet artikel 69: https://wetten.overheid.nl/BWBR0011823/2024-01-01#Artikel69
 - KB gelijkgestelde dagen 2026-2028: https://zoek.officielebekendmakingen.nl/stcrt-2025-24713.html
 - KB gelijkgestelde dagen 2023-2025: https://zoek.officielebekendmakingen.nl/stcrt-2022-7812.html
+- [Glossary of Dutch Legal Terms](../glossary.md)

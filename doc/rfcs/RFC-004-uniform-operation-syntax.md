@@ -154,3 +154,4 @@ SWITCH makes multi-branch logic explicit. The operation name describes what happ
 - Schema: `schema/v0.3.0/schema.json`
 - Engine: `engine/engine.py` (`_evaluate_if()`, `_evaluate_switch()`, `_evaluate_when()`, `_evaluate_logical()`) *(original Python prototype, removed)*
 - Engine: `packages/engine/src/operations.rs` (`execute_if()`, `execute_switch()`, `execute_and()`, `execute_or()`) *(Rust implementation)*
+- [Glossary of Dutch Legal Terms](../glossary.md)

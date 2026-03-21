@@ -53,3 +53,5 @@ What other approaches did we consider and why did we reject them?
 ## References
 
 (Optional) Links to related issues, PRs, documentation, or external resources.
+
+- [Glossary of Dutch Legal Terms](../glossary.md)

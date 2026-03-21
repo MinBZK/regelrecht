@@ -6,14 +6,14 @@
 
 ## Context
 
-The corpus (`regulation/nl/`) lives in the regelrecht-mvp repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities, provinces, water boards, and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
+The corpus (`regulation/nl/`) lives in the regelrecht-mvp repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities (*gemeenten*), provinces (*provincies*), water boards (*waterschappen*), and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
 
-RFC-003 (Inversion of Control) introduces IoC with `open_terms` and `implements`. This lets a municipality fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
+RFC-003 (Inversion of Control) introduces IoC with `open_terms` and `implements`. This lets a municipality (*gemeente*) fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
 
 - **Discovery**: how does the engine find municipal regulations?
 - **Loading**: how does the engine fetch laws from multiple sources?
 - **Scope validation**: how does the engine detect that a source claims to represent a jurisdiction it shouldn't?
-- **Write-back**: how can a municipality maintain regulations in their own repo via the editor?
+- **Write-back**: how can a municipality (*gemeente*) maintain regulations in their own repo via the editor?
 
 The old delegation approach (originally described in a previous version of RFC-003) has been superseded by RFC-003's IoC mechanism. This RFC builds on RFC-003 by adding the infrastructure for multiple sources, each with their own ownership.
 
@@ -25,7 +25,7 @@ Four interconnected decisions form the federation model.
 
 The corpus (`regulation/nl/`) moves to its own repository, e.g. `MinBZK/regelrecht-corpus`. The regelrecht-mvp repo then contains only the engine, pipeline, admin, and editor.
 
-External sources are any Git repository that follows the required directory structure. They don't need to be forks or clones of the central corpus. A municipality like Amsterdam creates a repo `gemeente-amsterdam/regelrecht-amsterdam` containing their municipal regulations that declare `implements` on laws from the central corpus.
+External sources are any Git repository that follows the required directory structure. They don't need to be forks or clones of the central corpus. A municipality (*gemeente*) like Amsterdam creates a repo `gemeente-amsterdam/regelrecht-amsterdam` containing their municipal regulations that declare `implements` on laws from the central corpus.
 
 #### Required source structure
 
@@ -126,14 +126,14 @@ sources:
 
 **Scopes:**
 
-Scopes are **claims**: a source declares which jurisdiction(s) it provides regulations for. A scope is not a routing mechanism ("use this source when someone asks for GM0363") but an ownership declaration ("this source contains regulations from the municipality of Amsterdam").
+Scopes are **claims**: a source declares which jurisdiction(s) it provides regulations for. A scope is not a routing mechanism ("use this source when someone asks for GM0363") but an ownership declaration ("this source contains regulations from the municipality (*gemeente*) of Amsterdam").
 
 The engine uses scopes for two things:
 
-1. **Validation** - if a law from a source with scope `gemeente_code: GM0363` declares `gemeente_code: GM0518` in the law itself, the engine generates a warning. The source claims to be Amsterdam but delivers a law for a different municipality.
-2. **Filtering** - when running the engine for a specific municipality, scopes determine which sources are relevant and which can be skipped.
+1. **Validation** - if a law from a source with scope `gemeente_code: GM0363` declares `gemeente_code: GM0518` in the law itself, the engine generates a warning. The source claims to be Amsterdam but delivers a law for a different municipality (*gemeente*).
+2. **Filtering** - when running the engine for a specific municipality (*gemeente*), scopes determine which sources are relevant and which can be skipped.
 
-A source without scopes (like the central corpus) delivers laws without jurisdictional restrictions. A source can have multiple scopes, for example a province that delivers regulations for multiple scope types:
+A source without scopes (like the central corpus) delivers laws without jurisdictional restrictions. A source can have multiple scopes, for example a province (*provincie*) that delivers regulations for multiple scope types:
 
 ```yaml
 scopes:
@@ -145,12 +145,12 @@ scopes:
 
 **Priority:**
 
-Multiple sources may provide a law with the same `$id`. This is allowed and expected: a local development source may override a central law for testing, or a municipality may provide a patched version of a national law during a transition period. **Lower priority value = higher priority** — the law from the source with the lowest priority number is the one the engine uses. Think of it as rank: priority 1 outranks priority 10.
+Multiple sources may provide a law with the same `$id`. This is allowed and expected: a local development source may override a central law for testing, or a municipality (*gemeente*) may provide a patched version of a national law during a transition period. **Lower priority value = higher priority** — the law from the source with the lowest priority number is the one the engine uses. Think of it as rank: priority 1 outranks priority 10.
 
 Where this matters in practice:
 - **Development**: your local source (priority 100) contains a modified version of a central law (priority 1). Lower the local priority to 0 to make it win, so you can test without modifying the central manifest.
 - **Migration**: when moving laws between sources, temporary overlap is normal.
-- **Patches**: a municipality may temporarily override a central law with a corrected version by using a lower priority number.
+- **Patches**: a municipality (*gemeente*) may temporarily override a central law with a corrected version by using a lower priority number.
 
 When two sources have equal priority and the same `$id`, the engine raises an error at load time. This is detected when sources are fetched and indexed, not deferred to per-request execution. A misconfigured source fails clearly at startup, not when a citizen's request hits it.
 
@@ -271,7 +271,7 @@ Flow:
 3. Commit via `PUT /repos/{owner}/{repo}/contents/{path}` using the GitHub token from the browser
 4. Branch management: the editor works on a feature branch and can create a PR via the GitHub API (`POST /repos/{owner}/{repo}/pulls`)
 
-This makes the editor a full YAML editor for municipalities: edit, validate, commit, create PR, without needing a local development environment.
+This makes the editor a full YAML editor for municipalities (*gemeenten*): edit, validate, commit, create PR, without needing a local development environment.
 
 #### Admin API
 
@@ -296,10 +296,10 @@ New endpoints on the admin service:
 ### Benefits
 
 - **Fits IoC**: the `implements` mechanism from RFC-003 works cross-repo as long as the laws are loaded. The registry makes that loading explicit and configurable.
-- **Decentralized ownership**: municipalities, provinces, and water boards manage their regulations in their own repo. No PR to a central repo needed to change a municipal ordinance.
+- **Decentralized ownership**: municipalities (*gemeenten*), provinces (*provincies*), and water boards (*waterschappen*) manage their regulations in their own repo. No PR to a central repo needed to change a municipal ordinance (*verordening*).
 - **Transparent**: the registry manifest is a YAML file in Git. Anyone who wants to see which sources the engine loads can look at the manifest.
 - **Scope validation as trust boundary**: without complex PKI infrastructure, the engine can validate via scopes that a source doesn't deliver laws outside its jurisdiction.
-- **Incrementally adoptable**: start with the central corpus and add sources as municipalities are ready. The `type: local` option makes local development easy.
+- **Incrementally adoptable**: start with the central corpus and add sources as municipalities (*gemeenten*) are ready. The `type: local` option makes local development easy.
 
 ### Tradeoffs
 
@@ -320,7 +320,7 @@ A separate service that tracks which repos exist and caches their metadata. Intr
 
 **Alternative 3: Git submodules**
 
-Use submodules to include external repos in the corpus. Too rigid: every addition or update of a source requires a commit in the parent repo. With dozens of municipalities this becomes unmanageable. The registry manifest decouples registering sources from loading them.
+Use submodules to include external repos in the corpus. Too rigid: every addition or update of a source requires a commit in the parent repo. With dozens of municipalities (*gemeenten*) this becomes unmanageable. The registry manifest decouples registering sources from loading them.
 
 ### Implementation Notes
 
@@ -365,3 +365,4 @@ Scope validation, schema version compatibility checks, collision reporting, and 
 - RFC-003: Inversion of Control with `open_terms` and `implements`
 - GitHub Trees API: `GET /repos/{owner}/{repo}/git/trees/{tree_sha}?recursive=1`
 - GitHub Contents API: `GET /repos/{owner}/{repo}/contents/{path}`, `PUT /repos/{owner}/{repo}/contents/{path}`
+- [Glossary of Dutch Legal Terms](../glossary.md)

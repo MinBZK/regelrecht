@@ -94,3 +94,7 @@ We accept these tradeoffs because the benefits of documented decisions outweigh 
 2. **Wiki/Confluence**: Separate from code, unclear version control
 3. **GitHub Issues**: Good for discussions, but not structured for long-term documentation
 4. **ADRs (Architecture Decision Records)**: Very similar to RFCs; we chose "RFC" terminology as it's more familiar in open source
+
+## References
+
+- [Glossary of Dutch Legal Terms](../glossary.md)

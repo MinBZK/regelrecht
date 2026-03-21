@@ -7,51 +7,51 @@
 
 ## Context
 
-RFC-007 introduced hooks: articles that fire when another article's `produces` annotation matches. This enables reactive execution — AWB 3:46 (motiveringsplicht) fires on any BESCHIKKING, AWB 6:7 (bezwaartermijn) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING.
+RFC-007 introduced hooks: articles that fire when another article's `produces` annotation matches. This enables reactive execution — AWB 3:46 (reasoning requirement, *motiveringsplicht*) fires on any BESCHIKKING, AWB 6:7 (objection period, *bezwaartermijn*) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING.
 
-But a beschikking is not an instant computation. It is an administrative process that progresses through stages over time:
+But an individual decision (*beschikking*) is not an instant computation. It is an administrative law (*bestuursrecht*) process that progresses through stages over time:
 
-1. The belanghebbende submits an **aanvraag** (application, AWB 4:1).
-2. The bestuursorgaan investigates during the **behandeling** (processing) phase, possibly requesting additional information (AWB 4:5), possibly extending the beslistermijn (AWB 4:14). This can take weeks, months, or in complex cases years.
-3. The bestuursorgaan makes a **besluit** (decision, AWB 1:3).
-4. The besluit is communicated to the belanghebbende: **bekendmaking** (notification, AWB 3:41).
-5. The **bezwaartermijn** starts the day after bekendmaking (AWB 6:8 lid 1) and runs for six weeks (AWB 6:7).
-6. The belanghebbende may file a **bezwaar** (objection, AWB 6:4).
+1. The interested party (*belanghebbende*) submits an **application** (*aanvraag*, AWB 4:1).
+2. The administrative body (*bestuursorgaan*) investigates during the **processing** (*behandeling*) phase, possibly requesting additional information (AWB 4:5), possibly extending the decision deadline (*beslistermijn*, AWB 4:14). This can take weeks, months, or in complex cases years.
+3. The administrative body (*bestuursorgaan*) makes a **decision** (*besluit*, AWB 1:3).
+4. The decision (*besluit*) is communicated to the interested party (*belanghebbende*): **notification** (*bekendmaking*, AWB 3:41).
+5. The **objection period** (*bezwaartermijn*) starts the day after notification (*bekendmaking*, AWB 6:8 lid 1) and runs for six weeks (AWB 6:7).
+6. The interested party (*belanghebbende*) may file an **objection** (*bezwaar*, AWB 6:4).
 
-If hooks fire without awareness of lifecycle stages, all AWB obligations trigger at once — including AWB 6:8 (bezwaartermijn date calculation), which needs `bekendmaking_datum`. But bekendmaking hasn't happened yet at decision time. Treating a missing `bekendmaking_datum` as "skip this hook gracefully" is a workaround, not a design.
+If hooks fire without awareness of lifecycle stages, all AWB obligations trigger at once — including AWB 6:8 (objection period date calculation), which needs `bekendmaking_datum`. But notification (*bekendmaking*) hasn't happened yet at decision time. Treating a missing `bekendmaking_datum` as "skip this hook gracefully" is a workaround, not a design.
 
-The fundamental problem: **the decision and the bekendmaking are different moments in time, with different inputs, producing different outputs, governed by different articles of law.** They must not fire in the same execution step.
+The problem: **the decision and the notification (*bekendmaking*) are different moments in time, with different inputs, producing different outputs, governed by different articles of law.** They must not fire in the same execution step.
 
 ### Who defines the lifecycle?
 
-The lifecycle of a beschikking is not defined by the Vreemdelingenwet or the Zorgtoeslagwet. It is defined by the **Algemene wet bestuursrecht (AWB)**. That is the purpose of the AWB: to define the general administrative procedure that all bestuursorganen follow, regardless of which specific law they are executing.
+The lifecycle of an individual decision (*beschikking*) is not defined by the Vreemdelingenwet or the Zorgtoeslagwet. It is defined by the **Algemene wet bestuursrecht (AWB)** — the General Administrative Law Act. That is the purpose of the AWB: to define the general administrative procedure that all administrative bodies (*bestuursorganen*) follow, regardless of which specific law they are executing.
 
 The AWB defines stages. Specific laws fill in the content at each stage. Other laws (Termijnenwet, KB gelijkgestelde dagen) hook into specific stages. This relationship already exists in law — it needs to be expressed in the schema.
 
 ### Terminology: procedure vs. lifecycle
 
-In AWB terminology, what we describe here is a **procedure** — the bezwaarprocedure, the beroepsprocedure, the voorbereidingsprocedure. The AWB never uses the word "lifecycle"; that is software engineering jargon.
+In AWB terminology, what we describe here is a **procedure** — the objection procedure, the appeal procedure, the preparation procedure. The AWB never uses the word "lifecycle"; that is software engineering jargon.
 
-However, in the AWB "procedure" typically refers to one phase (the bezwaarprocedure, the beroepsprocedure). The entire journey from aanvraag to onherroepelijk spans *multiple* procedures. In engineering, "lifecycle" captures this overarching concept: the full life of a besluit from birth (aanvraag) to final state (onherroepelijk, ingetrokken, verlopen).
+However, in the AWB "procedure" typically refers to one phase (the objection (*bezwaar*) procedure, the appeal (*beroep*) procedure). The entire journey from application (*aanvraag*) to final/irrevocable (*onherroepelijk*) spans *multiple* procedures. In engineering, "lifecycle" captures this overarching concept: the full life of a decision (*besluit*) from birth (application) to final state (final/irrevocable (*onherroepelijk*), withdrawn (*ingetrokken*), or expired).
 
 This RFC uses both terms deliberately:
 - **Procedure** (`procedure:` in YAML): the domain term, used in the machine-readable specification because the YAML is a law specification and should speak the language of law.
 - **Lifecycle**: used in prose when discussing the engineering concept of an entity progressing through states over time.
 
-Both refer to the same thing: the AWB-defined sequence of stages that a besluit progresses through.
+Both refer to the same thing: the AWB-defined sequence of stages that a decision (*besluit*) progresses through.
 
 ### What goes wrong without lifecycle stages
 
-1. **Semantic confusion**: AWB 6:8 hooks on BESCHIKKING but should only fire when bekendmaking has occurred. Without stages, parameter absence becomes implicit control flow.
+1. **Semantic confusion**: AWB 6:8 hooks on BESCHIKKING but should only fire when notification (*bekendmaking*) has occurred. Without stages, parameter absence becomes implicit control flow.
 2. **Incorrect composition**: hooks that belong to different stages fire in the same execution, mixing outputs from different moments in time.
-3. **No way to model waiting**: an engine without stages cannot express "the besluit is taken, now waiting for bekendmaking."
-4. **Manual actions invisible**: a bestuursorgaan's investigation, decision-making, and notification are real-world actions that the law regulates (beslistermijn per AWB 4:13) but cannot be represented without stages.
+3. **No way to model waiting**: an engine without stages cannot express "the decision (*besluit*) is taken, now waiting for notification (*bekendmaking*)."
+4. **Manual actions invisible**: an administrative body (*bestuursorgaan*)'s investigation, decision-making, and notification (*bekendmaking*) are real-world actions that the law regulates (decision deadline (*beslistermijn*) per AWB 4:13) but cannot be represented without stages.
 
 ## Decision
 
 ### The lifecycle is law
 
-The AWB defines a **lifecycle** for administrative processes. This lifecycle is expressed in the YAML specification as a first-class construct. Laws do not define their own lifecycles — they declare which AWB-defined lifecycle they participate in through `produces`.
+The AWB defines a **lifecycle** for administrative law (*bestuursrecht*) processes. This lifecycle is expressed in the YAML specification as a first-class construct. Laws do not define their own lifecycles — they declare which AWB-defined lifecycle they participate in through `produces`.
 
 A lifecycle is a sequence of **stages**. Each stage:
 - Has a **name** (e.g., `AANVRAAG`, `BESLUIT`, `BEKENDMAKING`)
@@ -61,7 +61,7 @@ A lifecycle is a sequence of **stages**. Each stage:
 
 ### Procedure selection
 
-A single `legal_character` can have multiple procedure variants. Both a regular beschikking and a UOV beschikking have `legal_character: BESCHIKKING`, but they follow different AWB procedures — the UOV omits bezwaar entirely (AWB 7:1 lid 1 sub d). Selecting the wrong procedure produces a legally invalid outcome.
+A single `legal_character` can have multiple procedure variants. Both a regular individual decision (*beschikking*) and a UOV (public consultation procedure) individual decision (*beschikking*) have `legal_character: BESCHIKKING`, but they follow different AWB procedures — the UOV omits objection (*bezwaar*) entirely (AWB 7:1 lid 1 sub d). Selecting the wrong procedure produces a legally invalid outcome.
 
 The `produces` annotation gains an optional `procedure_id` field to disambiguate:
 
@@ -170,7 +170,7 @@ procedure:
 
 ### The complete beschikking lifecycle
 
-The diagram below shows the full beschikking lifecycle including parallel tracks. The main track (aanvraag → beroep) is strictly sequential. Three mechanisms can run in parallel: dwangsom (when beslistermijn expires), voorlopige voorziening (after bezwaar/beroep), and the bestuurlijke lus (repair loop within beroep).
+The diagram below shows the full individual decision (*beschikking*) lifecycle including parallel tracks. The main track (application (*aanvraag*) → appeal (*beroep*)) is strictly sequential. Three mechanisms can run in parallel: penalty payment (*dwangsom*, when the decision deadline (*beslistermijn*) expires), interim relief (*voorlopige voorziening*, after objection (*bezwaar*)/appeal (*beroep*)), and the administrative repair loop (*bestuurlijke lus*, within appeal (*beroep*)).
 
 ```mermaid
 stateDiagram-v2
@@ -285,11 +285,11 @@ The `applies_to` in hooks (RFC-007) gains a `stage` field:
           stage: BEKENDMAKING
 ```
 
-This is the key insight: **hooks apply to the AWB's lifecycle, not to the specific law's decision.** The Vreemdelingenwet produces a BESCHIKKING and thereby enters the AWB lifecycle. The Vreemdelingenwet does not know about AWB 6:8. AWB 6:8 does not know about the Vreemdelingenwet. They are connected through the lifecycle defined by the AWB.
+This is the key insight: **hooks apply to the AWB's lifecycle, not to the specific law's decision (*besluit*).** The Aliens Act (*Vreemdelingenwet*) produces a BESCHIKKING and thereby enters the AWB lifecycle. The Vreemdelingenwet does not know about AWB 6:8. AWB 6:8 does not know about the Vreemdelingenwet. They are connected through the lifecycle defined by the AWB.
 
 ### The besluit as state container
 
-A **besluit** progresses through the AWB lifecycle and accumulates outputs at each stage. The besluit itself is the state container — there is no separate "case" or "zaak" abstraction. This follows the AWB, which defines everything in terms of the besluit.
+A **decision** (*besluit*) progresses through the AWB lifecycle and accumulates outputs at each stage. The decision (*besluit*) itself is the state container — there is no separate "case" or "zaak" (case file) abstraction. This follows the AWB, which defines everything in terms of the decision (*besluit*).
 
 ```
 Besluit {
@@ -336,30 +336,30 @@ Output: { bezwaartermijn_startdatum: "2026-03-24",
 Yields: "BEZWAAR stage — bezwaartermijn running until 2026-04-20"
 ```
 
-`bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). `pasen_datum` is also an external parameter — the computus algorithm is not in Dutch statute law, so the caller provides Easter Sunday's date, consistent with the zero-domain-knowledge principle (RFC-007). Gelijkgestelde dagen (bridge days) are resolved internally via IoC from harvested KB's.
+`bekendmaking_datum` is a genuine external event (the orchestration layer signals that notification (*bekendmaking*) has occurred). `pasen_datum` is also an external parameter — the computus algorithm is not in Dutch statute law, so the caller provides Easter Sunday's date, consistent with the zero-domain-knowledge principle (RFC-007). Gelijkgestelde dagen (bridge days equated to public holidays) are resolved internally via IoC from harvested KB's.
 
 The engine **yields** between stages, returning:
 - What it computed so far (accumulated outputs)
 - What stage it's at
 - What inputs are needed to advance to the next stage
 
-The orchestration layer persists the besluit state and feeds new inputs when they become available.
+The orchestration layer persists the decision (*besluit*) state and feeds new inputs when they become available.
 
 ### What is state, precisely?
 
-The besluit state consists of:
+The decision (*besluit*) state consists of:
 
 | Component | What it is | Where it lives |
 |-----------|-----------|---------------|
-| **Accumulated outputs** | All outputs from completed stages | Besluit record |
-| **Current stage** | Which lifecycle stage the besluit is at | Besluit record |
+| **Accumulated outputs** | All outputs from completed stages | Decision (*besluit*) record |
+| **Current stage** | Which lifecycle stage the decision (*besluit*) is at | Decision (*besluit*) record |
 | **Pending inputs** | What external data is needed to advance | Derived from procedure definition |
 | **Contextual law** | The lex specialis context for overrides | Set at creation, immutable |
-| **Parameters** | Original parameters from the initial execution | Besluit record |
+| **Parameters** | Original parameters from the initial execution | Decision (*besluit*) record |
 
-The engine itself remains **stateless** in the sense that it does not maintain besluit state internally. The besluit state is an external record (database row, event store, file) managed by the orchestration layer. The engine receives the besluit state as input and returns the updated state as output.
+The engine itself remains **stateless** in the sense that it does not maintain decision (*besluit*) state internally. The decision (*besluit*) state is an external record (database row, event store, file) managed by the orchestration layer. The engine receives the decision (*besluit*) state as input and returns the updated state as output.
 
-This is important: the engine is still a pure function per stage. But the **composition** of stages into a besluit lifecycle is now explicit, governed by the AWB lifecycle definition, and persisted externally.
+This is important: the engine is still a pure function per stage. But the **composition** of stages into a decision (*besluit*) lifecycle is now explicit, governed by the AWB lifecycle definition, and persisted externally.
 
 ### Automatic vs. manual stage transitions
 
@@ -367,10 +367,10 @@ Some stage transitions are automatic (engine computes the next stage's outputs i
 
 | Transition | Type | Trigger |
 |-----------|------|---------|
-| AANVRAAG → BEHANDELING | Automatic | Application received |
-| BEHANDELING → BESLUIT | Manual | Bestuursorgaan decides |
-| BESLUIT → BEKENDMAKING | Manual | Notification sent |
-| BEKENDMAKING → BEZWAAR | Automatic | Bezwaartermijn starts |
+| AANVRAAG → BEHANDELING | Automatic | Application (*aanvraag*) received |
+| BEHANDELING → BESLUIT | Manual | Administrative body (*bestuursorgaan*) decides |
+| BESLUIT → BEKENDMAKING | Manual | Notification (*bekendmaking*) sent |
+| BEKENDMAKING → BEZWAAR | Automatic | Objection period (*bezwaartermijn*) starts |
 
 The lifecycle definition distinguishes these: stages with `requires` fields that are not computable from previous outputs need manual input. The engine signals this by yielding with a description of what's needed.
 
@@ -378,25 +378,25 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 ### Benefits
 
-**Conceptual correctness.** The model matches the legal reality: a besluit is a process with stages, not an instant computation. The AWB defines the process, specific laws fill in the content.
+**Conceptual correctness.** The model matches the legal reality: a decision (*besluit*) is a process with stages, not an instant computation. The AWB defines the process, specific laws fill in the content.
 
 **Separation of concerns.** Decision logic (Vreemdelingenwet) is separate from procedural logic (AWB lifecycle). Each law does what it's supposed to do. The lifecycle connects them.
 
-**Temporal accuracy.** Outputs are computed at the right moment. The bezwaartermijn einddatum is calculated when the bekendmaking happens, not when the decision is made. The feestdagenkalender uses the correct year for the bekendmaking date, not the decision date.
+**Temporal accuracy.** Outputs are computed at the right moment. The objection period (*bezwaartermijn*) end date is calculated when the notification (*bekendmaking*) happens, not when the decision (*besluit*) is made. The feestdagenkalender uses the correct year for the notification (*bekendmaking*) date, not the decision (*besluit*) date.
 
-**Auditability.** The besluit record shows exactly what happened at each stage, when, and with what inputs. This supports the motiveringsplicht (AWB 3:46) and provides a complete administrative trail.
+**Auditability.** The decision (*besluit*) record shows exactly what happened at each stage, when, and with what inputs. This supports the reasoning requirement (*motiveringsplicht*, AWB 3:46) and provides a complete administrative trail.
 
 **Extensibility.** New lifecycle stages can be added by the AWB without changing specific laws. New hooks can bind to any stage. The lifecycle is data (YAML), not code.
 
-**Real-world fidelity.** The model naturally handles long-running processes (asylum decisions that take months), manual steps (bestuursorgaan investigation), and asynchronous events (bekendmaking by post).
+**Real-world fidelity.** The model naturally handles long-running processes (asylum decisions that take months), manual steps (administrative body (*bestuursorgaan*) investigation), and asynchronous events (notification (*bekendmaking*) by post).
 
 ### Tradeoffs
 
-**Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage besluit state persistence. This is significant implementation effort.
+**Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage decision (*besluit*) state persistence. This is a lot of implementation work.
 
 **Backwards compatibility.** Existing laws that produce BESCHIKKING without a lifecycle still work — they complete in a single stage. But new laws should use the lifecycle model. RFC-007 hooks without `stage` default to BESLUIT for backward compatibility.
 
-**State management.** Besluit state must be persisted somewhere. The engine doesn't dictate where (database, event store, file system), but the orchestration layer must handle it.
+**State management.** Decision (*besluit*) state must be persisted somewhere. The engine doesn't dictate where (database, event store, file system), but the orchestration layer must handle it.
 
 ### Alternatives Considered
 
@@ -410,7 +410,7 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 **Alternative 3: Event sourcing / CQRS**
 - The original poc-machine-law approach: a `Case` aggregate with event sourcing.
-- Rejected: couples the law specification to infrastructure (aggregates, event types, projections). The lifecycle should be expressed in law YAML, not in infrastructure code. However, an event-sourced persistence layer is a valid *implementation* of besluit state management.
+- Rejected: couples the law specification to infrastructure (aggregates, event types, projections). The lifecycle should be expressed in law YAML, not in infrastructure code. However, an event-sourced persistence layer is a valid *implementation* of decision (*besluit*) state management.
 
 ### Implementation Notes
 
@@ -419,10 +419,10 @@ The procedure is a new top-level construct in the schema (`procedure:` key), def
 The engine needs:
 - **Procedure index**: maps `(legal_character, procedure_id) → procedure_definition`, loaded from AWB YAML. When `procedure_id` is omitted in `produces`, selects the procedure marked `default: true`.
 - **Stage-aware hook resolution**: `find_hooks` gains a `stage` parameter. Hooks without `stage` default to BESLUIT.
-- **Besluit state**: a struct carrying accumulated outputs, current stage, and context. Passed in and returned by the engine.
+- **Decision (*besluit*) state**: a struct carrying accumulated outputs, current stage, and context. Passed in and returned by the engine.
 - **Yield mechanism**: the engine returns either a completed result or a "waiting for input" signal with the next stage's requirements.
 
-The besluit state is *not* stored in the engine. It is passed in by the caller and returned with updates. The engine remains a library, not a service.
+The decision (*besluit*) state is *not* stored in the engine. It is passed in by the caller and returned with updates. The engine remains a library, not a service.
 
 **Schema version:** The `procedure:` top-level key and the `procedure_id` field on `produces` are new constructs not present in schema v0.4.0. Implementation requires a schema version bump (v0.5.0 or later). AWB YAML files using `procedure:` will fail validation against the current schema until the schema is extended.
 
@@ -431,28 +431,28 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 1. **New return type**: `enum ExecutionOutcome { Complete(ArticleResult), Yielded(StageState) }` — replaces `Result<ArticleResult>` at the stage execution boundary. `StageState` carries accumulated outputs, current stage, and required inputs for the next stage.
 2. **Separate method**: add `execute_stage` alongside the existing `evaluate_article_with_service`. The existing method remains unchanged for single-stage laws; `execute_stage` handles lifecycle-aware execution.
 
-Besluit state is external (passed in, returned out), which is compatible with the stateless engine design. The engine uses `&self` (immutable borrows) for execution, so there is no architectural conflict with multi-stage execution — each invocation is still a pure function over its inputs.
+Decision (*besluit*) state is external (passed in, returned out), which is compatible with the stateless engine design. The engine uses `&self` (immutable borrows) for execution, so there is no architectural conflict with multi-stage execution — each invocation is still a pure function over its inputs.
 
-**Nested lifecycle recursion.** A besluit op bezwaar is itself a besluit, creating recursive nesting. The engine's cycle detection (`ResolutionContext.visited`) operates within a single invocation; cross-invocation nesting is the orchestration layer's responsibility. The engine should provide a `max_nesting_depth` configuration to help the orchestration layer detect excessive recursion. In practice the AWB chain is naturally finite (beschikking, BOB, beroep, hoger beroep), but a configurable depth limit provides a safety net.
+**Nested lifecycle recursion.** A decision on objection (*besluit op bezwaar*) is itself a decision (*besluit*), creating recursive nesting. The engine's cycle detection (`ResolutionContext.visited`) operates within a single invocation; cross-invocation nesting is the orchestration layer's responsibility. The engine should provide a `max_nesting_depth` configuration to help the orchestration layer detect excessive recursion. In practice the AWB chain is naturally finite (individual decision (*beschikking*), decision on objection (*besluit op bezwaar*), appeal (*beroep*), higher appeal (*hoger beroep*)), but a configurable depth limit provides a safety net.
 
 ## Open Questions
 
-1. ~~**Do all besluiten share the same lifecycle?**~~ **Resolved:** No. Each legal_character has its own lifecycle, defined by the relevant AWB chapters. A BESCHIKKING has aanvraag → behandeling → besluit → bekendmaking → bezwaar. A BESLUIT_VAN_ALGEMENE_STREKKING has a different procedure (AWB afdeling 3.4, Staatscourant publication, no bezwaar, direct beroep). The AWB defines these different procedures — the lifecycle definition in YAML follows the AWB structure per type.
+1. ~~**Do all decisions (*besluiten*) share the same lifecycle?**~~ **Resolved:** No. Each legal_character has its own lifecycle, defined by the relevant AWB chapters. A BESCHIKKING has application (*aanvraag*) → processing (*behandeling*) → decision (*besluit*) → notification (*bekendmaking*) → objection (*bezwaar*). A BESLUIT_VAN_ALGEMENE_STREKKING (general rule, *besluit van algemene strekking*) has a different procedure (AWB afdeling 3.4, Staatscourant publication, no objection (*bezwaar*), direct appeal (*beroep*)). The AWB defines these different procedures — the lifecycle definition in YAML follows the AWB structure per type.
 
-2. ~~**Nested lifecycles.**~~ **Resolved:** A bezwaar is itself a besluit (AWB 7:12), which starts its own lifecycle (with its own bekendmaking, and possibility of beroep at the rechter). The engine applies the same lifecycle pattern recursively — a besluit op bezwaar enters the AWB lifecycle just like the original beschikking. If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine.
+2. ~~**Nested lifecycles.**~~ **Resolved:** An objection (*bezwaar*) is itself a decision (*besluit*, AWB 7:12), which starts its own lifecycle (with its own notification (*bekendmaking*), and possibility of appeal (*beroep*) before the administrative court (*bestuursrechter*)). The engine applies the same lifecycle pattern recursively — a decision on objection (*besluit op bezwaar*) enters the AWB lifecycle just like the original individual decision (*beschikking*). If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine.
 
-   Note that RFC-007's cycle detection does **not** cover this case. RFC-007 detects cross-law circular references within a single engine invocation (Law A → Law B → Law A). Nested lifecycle recursion (beschikking → besluit op bezwaar → its own bezwaar → ...) happens across separate engine invocations initiated by the orchestration layer. The **orchestration layer** is responsible for detecting excessive lifecycle nesting depth, not the engine. In the AWB this chain is naturally finite (beschikking → BOB → beroep → hoger beroep terminates), but the orchestration layer should enforce a configurable maximum nesting depth as a safety measure.
+   Note that RFC-007's cycle detection does **not** cover this case. RFC-007 detects cross-law circular references within a single engine invocation (Law A → Law B → Law A). Nested lifecycle recursion (individual decision (*beschikking*) → decision on objection (*besluit op bezwaar*) → its own objection (*bezwaar*) → ...) happens across separate engine invocations initiated by the orchestration layer. The **orchestration layer** is responsible for detecting excessive lifecycle nesting depth, not the engine. In the AWB this chain is naturally finite (individual decision (*beschikking*) → decision on objection (*besluit op bezwaar*) → appeal (*beroep*) → higher appeal (*hoger beroep*) terminates), but the orchestration layer should enforce a configurable maximum nesting depth as a safety measure.
 
-3. ~~**Parallel stages.**~~ **Resolved:** The main lifecycle track (aanvraag → behandeling → besluit → bekendmaking → bezwaar → beroep) is strictly sequential — each stage depends on completion of the previous one. However, three genuinely parallel tracks can be spawned from the main lifecycle:
-   - **Dwangsom bij niet-tijdig beslissen (AWB 4:17-4:20)**: activates when the beslistermijn expires without a besluit. Runs parallel to the ongoing behandeling. The dwangsombesluit is itself a beschikking with its own lifecycle.
-   - **Voorlopige voorziening (AWB 8:81-8:87)**: activates after bezwaar or beroep is filed. Runs parallel to the bezwaar/beroep procedure. Can collapse into the main track via kortsluiting (AWB 8:86) where the voorzieningenrechter immediately decides the main case.
-   - **Wijzigingsbesluit pending bezwaar/beroep (AWB 6:19)**: if the bestuursorgaan takes a new besluit while bezwaar/beroep is pending, it is incorporated into the existing procedure.
+3. ~~**Parallel stages.**~~ **Resolved:** The main lifecycle track (application (*aanvraag*) → processing (*behandeling*) → decision (*besluit*) → notification (*bekendmaking*) → objection (*bezwaar*) → appeal (*beroep*)) is strictly sequential — each stage depends on completion of the previous one. However, three genuinely parallel tracks can be spawned from the main lifecycle:
+   - **Penalty payment for late decision (*dwangsom bij niet-tijdig beslissen*, AWB 4:17-4:20)**: activates when the decision deadline (*beslistermijn*) expires without a decision (*besluit*). Runs parallel to the ongoing processing (*behandeling*) phase. The penalty payment decision (*dwangsombesluit*) is itself an individual decision (*beschikking*) with its own lifecycle.
+   - **Interim relief (*voorlopige voorziening*, AWB 8:81-8:87)**: activates after objection (*bezwaar*) or appeal (*beroep*) is filed. Runs parallel to the objection (*bezwaar*)/appeal (*beroep*) procedure. Can collapse into the main track via short-circuit ruling (*kortsluiting*, AWB 8:86) where the interim relief judge (*voorzieningenrechter*) immediately decides the main case.
+   - **Amendment decision (*wijzigingsbesluit*) pending objection (*bezwaar*)/appeal (*beroep*) (AWB 6:19)**: if the administrative body (*bestuursorgaan*) takes a new decision (*besluit*) while objection (*bezwaar*)/appeal (*beroep*) is pending, it is incorporated into the existing procedure.
 
-   Additionally, two alternative paths exist as branches (not parallelism): rechtstreeks beroep (AWB 7:1a, skipping bezwaar) and the uniforme openbare voorbereidingsprocedure (AWB afdeling 3.4, replacing regular preparation with public consultation and eliminating bezwaar). The bestuurlijke lus (AWB 8:51a-8:51d) is a loop within beroep, not a parallel track — the court suspends beroep, the bestuursorgaan repairs the defect, then beroep resumes. See Appendix A for the full procedure analysis and Appendix B for Mermaid state diagrams.
+   Additionally, two alternative paths exist as branches (not parallelism): direct appeal (*rechtstreeks beroep*, AWB 7:1a, skipping objection (*bezwaar*)) and the uniforme openbare voorbereidingsprocedure (AWB afdeling 3.4, replacing regular preparation with public consultation and eliminating objection (*bezwaar*)). The administrative repair loop (*bestuurlijke lus*, AWB 8:51a-8:51d) is a loop within appeal (*beroep*), not a parallel track — the administrative court (*bestuursrechter*) suspends appeal (*beroep*), the administrative body (*bestuursorgaan*) repairs the defect, then appeal (*beroep*) resumes. See Appendix A for the full procedure analysis and Appendix B for Mermaid state diagrams.
 
-4. ~~**Beslistermijn enforcement.**~~ **Resolved:** The beslistermijn is calculated by a hook at the AANVRAAG stage — AWB 4:13 provides the default ("redelijke termijn"), specific laws override via lex specialis (same pattern as bezwaartermijn_weken). The engine does **not** enforce the deadline: if besluit_datum exceeds the beslistermijn, the engine continues normally but annotates the besluit with a warning. Exceeding the beslistermijn does not invalidate the besluit — it **expands the lifecycle** with new available paths for the belanghebbende: ingebrekestelling (AWB 4:17), dwangsom (AWB 4:18), and beroep tegen niet tijdig beslissen (AWB 6:2 lid 1 sub b). These are modeled as conditional branches in the lifecycle state machine.
+4. ~~**Decision deadline (*beslistermijn*) enforcement.**~~ **Resolved:** The decision deadline (*beslistermijn*) is calculated by a hook at the AANVRAAG stage — AWB 4:13 provides the default ("redelijke termijn"), specific laws override via lex specialis (same pattern as bezwaartermijn_weken). The engine does **not** enforce the deadline: if besluit_datum exceeds the decision deadline (*beslistermijn*), the engine continues normally but annotates the decision (*besluit*) with a warning. Exceeding the decision deadline (*beslistermijn*) does not invalidate the decision (*besluit*) — it **expands the lifecycle** with new available paths for the interested party (*belanghebbende*): notice of default (*ingebrekestelling*, AWB 4:17), penalty payment (*dwangsom*, AWB 4:18), and appeal (*beroep*) against failure to decide in time (AWB 6:2 lid 1 sub b). These are modeled as conditional branches in the lifecycle state machine.
 
-5. ~~**Intrekking and herroeping.**~~ **Resolved:** Intrekking (AWB 10:4-10:5) is a state transition in the original besluit's lifecycle, not a separate lifecycle. A beschikking continues to exist after bekendmaking — it can be onherroepelijk, ingetrokken, gewijzigd, or verlopen. The intrekking itself is a nested besluit (same pattern as question 2): it requires motivering, bekendmaking, and can be challenged via bezwaar. The original beschikking's state changes as a consequence of the intrekkingsbesluit completing its own lifecycle.
+5. ~~**Withdrawal (*intrekking*) and revocation.**~~ **Resolved:** Withdrawal (*intrekking*, AWB 10:4-10:5) is a state transition in the original decision (*besluit*)'s lifecycle, not a separate lifecycle. An individual decision (*beschikking*) continues to exist after notification (*bekendmaking*) — it can be final/irrevocable (*onherroepelijk*), withdrawn (*ingetrokken*), amended, or expired. The withdrawal (*intrekking*) itself is a nested decision (*besluit*, same pattern as question 2): it requires motivation, notification (*bekendmaking*), and can be challenged via objection (*bezwaar*). The original individual decision (*beschikking*)'s state changes as a consequence of the withdrawal (*intrekking*) decision completing its own lifecycle.
 
 ## References
 
@@ -467,6 +467,7 @@ Besluit state is external (passed in, returned out), which is compatible with th
 - [PG Awb - Bestuurlijke lus (8:51a-8:51d)](https://pgawb.nl/pg-awb-digitaal/hoofdstuk-8/8-2-behandeling-van-het-beroep/8-2-2a-bestuurlijke-lus/)
 - [PG Awb - Afdeling 3.4 UOV](https://pgawb.nl/pg-awb-digitaal/hoofdstuk-3/3-4-uniforme-openbare-voorbereidingsprocedure/)
 - [PG Awb - Artikel 7:1a (rechtstreeks beroep)](https://pgawb.nl/pg-awb-digitaal/hoofdstuk-7/7-1-bezwaar-voorafgaand-aan-beroep-bij-de-administratieve-rechter/artikel-71a/)
+- [Glossary of Dutch Legal Terms](../glossary.md)
 
 ---
 
