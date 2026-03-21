@@ -2,13 +2,9 @@
 
 This glossary defines Dutch legal and administrative terms used throughout the
 RFCs and codebase. Terms are grouped by domain. Within prose, RFCs use the
-convention **English term** (*Dutch term*) on first use, then the English term
-thereafter.
-
-The convention is **English term** (*Dutch term*) on **every** occurrence in
-prose, not just the first. This ensures readers who skim or jump into the middle
-of a document can always connect English descriptions to their precise Dutch
-legal equivalents.
+convention **English term** (*Dutch term*) on **every** occurrence, not just
+the first. This ensures readers who skim or jump into the middle of a document
+can always connect English descriptions to their precise Dutch legal equivalents.
 
 For YAML field names, enum values, and quoted legal text, the original Dutch is
 preserved — these are technical identifiers or verbatim law and should not be
