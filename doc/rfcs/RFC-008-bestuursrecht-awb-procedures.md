@@ -1,13 +1,13 @@
-# RFC-012: Lifecycle Stages for Administrative Decisions
+# RFC-008: Bestuursrecht — AWB Procedures
 
 **Status:** Proposed
 **Date:** 2026-03-21
 **Authors:** Eelco Hotting
-**Depends on:** RFC-008 (Hooks), RFC-009 (Overrides)
+**Depends on:** RFC-007 (Cross-Law Execution Model)
 
 ## Context
 
-RFC-008 introduced hooks: articles that fire when another article's `produces` annotation matches. This enables reactive execution — AWB 3:46 (motiveringsplicht) fires on any BESCHIKKING, AWB 6:7 (bezwaartermijn) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING.
+RFC-007 introduced hooks: articles that fire when another article's `produces` annotation matches. This enables reactive execution — AWB 3:46 (motiveringsplicht) fires on any BESCHIKKING, AWB 6:7 (bezwaartermijn) fires on any BESCHIKKING, AWB 6:8 (start/einddatum) fires on any BESCHIKKING.
 
 But a beschikking is not an instant computation. It is an administrative process that progresses through stages over time:
 
@@ -251,7 +251,7 @@ stateDiagram-v2
 
 ### Hooks bind to stages, not just legal_character
 
-The `applies_to` in hooks (RFC-008) gains a `stage` field:
+The `applies_to` in hooks (RFC-007) gains a `stage` field:
 
 ```yaml
 # AWB 3:46 — motiveringsplicht
@@ -336,7 +336,7 @@ Output: { bezwaartermijn_startdatum: "2026-03-24",
 Yields: "BEZWAAR stage — bezwaartermijn running until 2026-04-20"
 ```
 
-`bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). `pasen_datum` is also an external parameter — the computus algorithm is not in Dutch statute law, so the caller provides Easter Sunday's date, consistent with the zero-domain-knowledge principle (RFC-011). Gelijkgestelde dagen (bridge days) are resolved internally via IoC from harvested KB's.
+`bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). `pasen_datum` is also an external parameter — the computus algorithm is not in Dutch statute law, so the caller provides Easter Sunday's date, consistent with the zero-domain-knowledge principle (RFC-007). Gelijkgestelde dagen (bridge days) are resolved internally via IoC from harvested KB's.
 
 The engine **yields** between stages, returning:
 - What it computed so far (accumulated outputs)
@@ -394,7 +394,7 @@ The lifecycle definition distinguishes these: stages with `requires` fields that
 
 **Complexity.** The engine moves from "pure function" to "state machine executor." The orchestration layer must now manage besluit state persistence. This is significant implementation effort.
 
-**Backwards compatibility.** Existing laws that produce BESCHIKKING without a lifecycle still work — they complete in a single stage. But new laws should use the lifecycle model. RFC-008 hooks without `stage` default to BESLUIT for backward compatibility.
+**Backwards compatibility.** Existing laws that produce BESCHIKKING without a lifecycle still work — they complete in a single stage. But new laws should use the lifecycle model. RFC-007 hooks without `stage` default to BESLUIT for backward compatibility.
 
 **State management.** Besluit state must be persisted somewhere. The engine doesn't dictate where (database, event store, file system), but the orchestration layer must handle it.
 
@@ -426,13 +426,22 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 
 **Schema version:** The `procedure:` top-level key and the `procedure_id` field on `produces` are new constructs not present in schema v0.4.0. Implementation requires a schema version bump (v0.5.0 or later). AWB YAML files using `procedure:` will fail validation against the current schema until the schema is extended.
 
+**Yield mechanism.** The largest architectural change is the yield mechanism. The current engine returns `Result<ArticleResult>` — a terminal result. Multi-stage execution needs the engine to return either a completed result or a "yielded" state waiting for input to proceed to the next stage. Two implementation approaches:
+
+1. **New return type**: `enum ExecutionOutcome { Complete(ArticleResult), Yielded(StageState) }` — replaces `Result<ArticleResult>` at the stage execution boundary. `StageState` carries accumulated outputs, current stage, and required inputs for the next stage.
+2. **Separate method**: add `execute_stage` alongside the existing `evaluate_article_with_service`. The existing method remains unchanged for single-stage laws; `execute_stage` handles lifecycle-aware execution.
+
+Besluit state is external (passed in, returned out), which is compatible with the stateless engine design. The engine uses `&self` (immutable borrows) for execution, so there is no architectural conflict with multi-stage execution — each invocation is still a pure function over its inputs.
+
+**Nested lifecycle recursion.** A besluit op bezwaar is itself a besluit, creating recursive nesting. The engine's cycle detection (`ResolutionContext.visited`) operates within a single invocation; cross-invocation nesting is the orchestration layer's responsibility. The engine should provide a `max_nesting_depth` configuration to help the orchestration layer detect excessive recursion. In practice the AWB chain is naturally finite (beschikking, BOB, beroep, hoger beroep), but a configurable depth limit provides a safety net.
+
 ## Open Questions
 
 1. ~~**Do all besluiten share the same lifecycle?**~~ **Resolved:** No. Each legal_character has its own lifecycle, defined by the relevant AWB chapters. A BESCHIKKING has aanvraag → behandeling → besluit → bekendmaking → bezwaar. A BESLUIT_VAN_ALGEMENE_STREKKING has a different procedure (AWB afdeling 3.4, Staatscourant publication, no bezwaar, direct beroep). The AWB defines these different procedures — the lifecycle definition in YAML follows the AWB structure per type.
 
 2. ~~**Nested lifecycles.**~~ **Resolved:** A bezwaar is itself a besluit (AWB 7:12), which starts its own lifecycle (with its own bekendmaking, and possibility of beroep at the rechter). The engine applies the same lifecycle pattern recursively — a besluit op bezwaar enters the AWB lifecycle just like the original beschikking. If a law inadvertently creates infinite recursion, that is a defect in the law, not in the engine.
 
-   Note that RFC-008's cycle detection does **not** cover this case. RFC-008 detects cross-law circular references within a single engine invocation (Law A → Law B → Law A). Nested lifecycle recursion (beschikking → besluit op bezwaar → its own bezwaar → ...) happens across separate engine invocations initiated by the orchestration layer. The **orchestration layer** is responsible for detecting excessive lifecycle nesting depth, not the engine. In the AWB this chain is naturally finite (beschikking → BOB → beroep → hoger beroep terminates), but the orchestration layer should enforce a configurable maximum nesting depth as a safety measure.
+   Note that RFC-007's cycle detection does **not** cover this case. RFC-007 detects cross-law circular references within a single engine invocation (Law A → Law B → Law A). Nested lifecycle recursion (beschikking → besluit op bezwaar → its own bezwaar → ...) happens across separate engine invocations initiated by the orchestration layer. The **orchestration layer** is responsible for detecting excessive lifecycle nesting depth, not the engine. In the AWB this chain is naturally finite (beschikking → BOB → beroep → hoger beroep terminates), but the orchestration layer should enforce a configurable maximum nesting depth as a safety measure.
 
 3. ~~**Parallel stages.**~~ **Resolved:** The main lifecycle track (aanvraag → behandeling → besluit → bekendmaking → bezwaar → beroep) is strictly sequential — each stage depends on completion of the previous one. However, three genuinely parallel tracks can be spawned from the main lifecycle:
    - **Dwangsom bij niet-tijdig beslissen (AWB 4:17-4:20)**: activates when the beslistermijn expires without a besluit. Runs parallel to the ongoing behandeling. The dwangsombesluit is itself a beschikking with its own lifecycle.
@@ -447,8 +456,7 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 
 ## References
 
-- RFC-008: Execution Lifecycle Hooks (hooks mechanism)
-- RFC-009: Lex Specialis Overrides (contextual law overrides)
+- RFC-007: Cross-Law Execution Model (hooks, overrides, temporal computation)
 - AWB Hoofdstuk 3: Algemene bepalingen over besluiten (bekendmaking, motivering)
 - AWB Hoofdstuk 4: Bijzondere bepalingen over besluiten (beslistermijn, aanvraag)
 - AWB Hoofdstuk 6: Algemene bepalingen over bezwaar en beroep (termijnen)

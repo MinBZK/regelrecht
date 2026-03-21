@@ -1,4 +1,4 @@
-# RFC-007: Inversion of Control for Delegated Legislation
+# RFC-003: Inversion of Control for Delegated Legislation
 
 **Status:** Accepted
 **Date:** 2026-03-15
@@ -75,7 +75,7 @@ Temporal filtering is critical for correctness when multiple versions of an impl
 
 ### Same-law routing via `source.output`
 
-When multiple articles in the same law need an open term value, only one article should declare the `open_terms` and serve as the single point of delegation. Other articles reference it via `source.output` (without `source.regulation`):
+When multiple articles in the same law need an open term value, only one article should declare the `open_terms` and serve as the single point of delegation. Other articles reference it via `source.output` (see RFC-001, Section 9: Input Source Consolidation) without `source.regulation`:
 
 ```yaml
 # Article 2 gets standaardpremie from article 4 (same law)
@@ -180,8 +180,8 @@ When resolving open terms, the engine does not forward all execution parameters 
 | Pattern | Use when |
 |---------|----------|
 | **IoC** (`open_terms` + `implements`) | Any delegation: a higher law delegates a value to a lower regulation (with or without scope) |
-| **Same-law reference** (`source.output`) | Internal: one article needs a value produced by another article in the same law |
-| **External reference** (`source.regulation`) | Direct reference: one law needs a specific value from another law |
+| **Same-law reference** (`source.output`) | Internal: one article needs a value produced by another article in the same law (see RFC-001 §9) |
+| **External reference** (`source.regulation`) | Direct reference: one law needs a specific value from another law (see RFC-001 §9) |
 
 The old `source.delegation` + `select_on` + `legal_basis_for` pattern is superseded by IoC and will be phased out.
 
@@ -192,9 +192,9 @@ The old `source.delegation` + `select_on` + `legal_basis_for` pattern is superse
 3. **Follow-up**: migrate BW5 erfgrens from `source.delegation` to `open_terms`
 4. **Follow-up**: remove `source.delegation`, `select_on`, and `legal_basis_for` from the schema
 
-### Supersedes
+### History
 
-RFC-003 (Delegation Pattern) is superseded by this RFC. The top-down delegation model described in RFC-003 is replaced by the IoC model described here.
+This RFC replaces the original RFC-003 (Delegation Pattern), which described a top-down delegation model using `source.delegation` + `select_on` + `legal_basis_for`. The IoC model described here inverts that relationship.
 
 ## References
 
