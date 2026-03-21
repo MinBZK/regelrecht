@@ -1,0 +1,61 @@
+/**
+ * Rijksoverheid Webfonts
+ * Official fonts for Dutch Government (Rijksoverheid) websites
+ * Source: rijkshuisstijl.nl
+ */
+
+/* Rijksoverheid Sans - Text variant (for body text) */
+@font-face {
+  font-family: 'RijksoverheidSans';
+  src: url('./ROsanswebtextregular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksoverheidSans';
+  src: url('./ROsanswebtextbold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksoverheidSans';
+  src: url('./ROsanswebtextitalic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Rijksoverheid Serif */
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('./ROserifwebregular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('./ROserifwebbold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'RijksoverheidSerif';
+  src: url('./ROserifwebitalic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* CSS Custom Property for easy usage */
+:root {
+  --rr-font-family-sans: 'RijksoverheidSans', system-ui, -apple-system, sans-serif;
+  --rr-font-family-serif: 'RijksoverheidSerif', Georgia, serif;
+}

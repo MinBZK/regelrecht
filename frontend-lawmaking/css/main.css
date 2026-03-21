@@ -1,0 +1,17 @@
+/* Main CSS */
+@import 'variables.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-family);
+  background: var(--color-background);
+  color: var(--color-text-primary);
+}
