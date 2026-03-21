@@ -5,6 +5,7 @@ COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
 RUN --mount=type=secret,id=GITHUB_TOKEN \
     GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) npm ci
 COPY frontend/ .
+COPY corpus-registry.yaml ../corpus-registry.yaml
 COPY corpus/regulation/ ../corpus/regulation/
 RUN npm run build
 

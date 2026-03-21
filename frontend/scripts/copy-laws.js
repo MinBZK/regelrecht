@@ -1,27 +1,58 @@
+/**
+ * Copy regulation YAML files to public/data/ based on corpus-registry.yaml.
+ *
+ * Reads the registry manifest (and optional local override), iterates all
+ * local sources, copies their YAML files, and generates an index.json with
+ * metadata and source provenance.
+ *
+ * This is the same source discovery mechanism the Rust engine uses at runtime,
+ * ensuring the editor sees the same laws as the engine.
+ */
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
+import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
-const corpusDir = resolve(root, '..', 'corpus', 'regulation', 'nl');
+const projectRoot = resolve(root, '..');
 const destDir = resolve(root, 'public', 'data');
 
-if (!existsSync(corpusDir)) {
-  console.warn(`Corpus directory not found: ${corpusDir}`);
-  console.warn('Skipping law copy — library will show no laws.');
-  mkdirSync(destDir, { recursive: true });
-  writeFileSync(resolve(destDir, 'index.json'), '[]');
-  process.exit(0);
+const registryPath = resolve(projectRoot, process.env.CORPUS_REGISTRY_PATH || 'corpus-registry.yaml');
+const localOverridePath = resolve(projectRoot, process.env.CORPUS_REGISTRY_LOCAL_PATH || 'corpus-registry.local.yaml');
+
+/** Load and merge registry manifest with optional local override. */
+function loadRegistry() {
+  if (!existsSync(registryPath)) {
+    console.warn(`Registry not found: ${registryPath}`);
+    return { sources: [] };
+  }
+
+  const base = yaml.load(readFileSync(registryPath, 'utf-8'));
+
+  if (existsSync(localOverridePath)) {
+    const override = yaml.load(readFileSync(localOverridePath, 'utf-8'));
+    if (override?.sources) {
+      // Local entries replace base entries with same id (full replacement)
+      const overrideIds = new Set(override.sources.map(s => s.id));
+      base.sources = base.sources.filter(s => !overrideIds.has(s.id)).concat(override.sources);
+      console.log(`Merged ${override.sources.length} source(s) from local override`);
+    }
+  }
+
+  // Sort by priority (lower = higher priority)
+  base.sources.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+  return base;
 }
 
 /** Recursively find all .yaml files under a directory. */
-function findYamlFiles(dir, base = dir) {
+function findYamlFiles(dir) {
+  if (!existsSync(dir)) return [];
   const results = [];
   for (const entry of readdirSync(dir)) {
     const full = resolve(dir, entry);
     if (statSync(full).isDirectory()) {
-      results.push(...findYamlFiles(full, base));
+      results.push(...findYamlFiles(full));
     } else if (entry.endsWith('.yaml')) {
       results.push(full);
     }
@@ -29,7 +60,7 @@ function findYamlFiles(dir, base = dir) {
   return results;
 }
 
-/** Extract $id and other metadata from YAML using line-based parsing. */
+/** Extract metadata from YAML using line-based parsing (no full parse). */
 function extractMeta(content) {
   const meta = {};
   for (const line of content.split('\n')) {
@@ -48,28 +79,62 @@ function extractMeta(content) {
   return meta;
 }
 
+// --- Main ---
+
 mkdirSync(destDir, { recursive: true });
 
-const yamlFiles = findYamlFiles(corpusDir);
+const registry = loadRegistry();
+const localSources = registry.sources.filter(s => s.type === 'local');
+
+if (localSources.length === 0) {
+  console.warn('No local sources in registry — library will show no laws.');
+  writeFileSync(resolve(destDir, 'index.json'), '[]');
+  process.exit(0);
+}
+
 const index = [];
+const seenIds = new Map(); // $id → priority (for conflict resolution)
+let totalFiles = 0;
 
-for (const src of yamlFiles) {
-  const rel = relative(corpusDir, src);
-  const dest = resolve(destDir, rel);
+for (const source of localSources) {
+  const sourceDir = resolve(projectRoot, source.local.path);
+  const yamlFiles = findYamlFiles(sourceDir);
 
-  mkdirSync(dirname(dest), { recursive: true });
-  cpSync(src, dest);
+  console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): ${yamlFiles.length} files from ${source.local.path}`);
 
-  const content = readFileSync(src, 'utf-8');
-  const meta = extractMeta(content);
+  for (const src of yamlFiles) {
+    const rel = relative(sourceDir, src);
+    // Namespace destination by source id to avoid cross-source file collisions
+    const destRel = localSources.length > 1 ? `${source.id}/${rel}` : rel;
+    const dest = resolve(destDir, destRel);
 
-  if (meta.id) {
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(src, dest);
+    totalFiles++;
+
+    const content = readFileSync(src, 'utf-8');
+    const meta = extractMeta(content);
+
+    if (!meta.id) continue;
+
+    // Priority-based conflict resolution (same as Rust SourceMap)
+    const existing = seenIds.get(meta.id);
+    if (existing !== undefined) {
+      if (source.priority >= existing) continue; // existing wins
+      // New source wins — remove old entry
+      const oldIdx = index.findIndex(e => e.id === meta.id);
+      if (oldIdx !== -1) index.splice(oldIdx, 1);
+    }
+    seenIds.set(meta.id, source.priority);
+
     index.push({
       id: meta.id,
       name: meta.name || meta.officiele_titel || meta.id,
       regulatory_layer: meta.regulatory_layer || 'unknown',
       publication_date: meta.publication_date || 'unknown',
-      path: `/data/${rel}`,
+      path: `/data/${destRel}`,
+      source_id: source.id,
+      source_name: source.name,
     });
   }
 }
@@ -79,4 +144,4 @@ index.sort((a, b) =>
 );
 
 writeFileSync(resolve(destDir, 'index.json'), JSON.stringify(index, null, 2));
-console.log(`Copied ${yamlFiles.length} regulation files, generated index.json with ${index.length} laws`);
+console.log(`Done: ${totalFiles} files from ${localSources.length} source(s), ${index.length} laws in index`);
