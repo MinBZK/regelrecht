@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@minbzk/storybook": "^0.8.9"
+    "@minbzk/storybook": "file:../../../../../storybook"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.5",

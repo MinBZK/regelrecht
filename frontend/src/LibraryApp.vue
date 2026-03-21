@@ -1,27 +1,22 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, shallowRef } from 'vue';
+import yaml from 'js-yaml';
+import ArticleText from './components/ArticleText.vue';
+import MachineReadable from './components/MachineReadable.vue';
+import YamlView from './components/YamlView.vue';
+import ActionSheet from './components/ActionSheet.vue';
 
 const laws = ref([]);
 const loading = ref(true);
 const error = ref(null);
 const search = ref('');
 
-const LAYER_LABELS = {
-  WET: 'Wetten',
-  MINISTERIELE_REGELING: 'Ministeriële regelingen',
-  GEMEENTELIJKE_VERORDENING: 'Gemeentelijke verordeningen',
-};
-
-/** Format a $id into a readable name (replace underscores, title case). */
-function formatId(id) {
-  return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-/** Display name: use name field if it's a real name, otherwise format $id. */
-function displayName(law) {
-  if (law.name && !law.name.startsWith('#')) return law.name;
-  return formatId(law.id);
-}
+const selectedLawPath = ref(null);
+const selectedLaw = shallowRef(null);
+const selectedLawLoading = ref(false);
+const selectedArticleNumber = ref(null);
+const detailView = ref('machine');
+const activeAction = ref(null);
 
 const filteredLaws = computed(() => {
   const q = search.value.toLowerCase();
@@ -32,21 +27,50 @@ const filteredLaws = computed(() => {
   );
 });
 
-const groupedLaws = computed(() => {
-  const groups = {};
-  for (const law of filteredLaws.value) {
-    const layer = law.regulatory_layer;
-    if (!groups[layer]) groups[layer] = [];
-    groups[layer].push(law);
+const articles = computed(() => selectedLaw.value?.articles ?? []);
+
+const lawName = computed(() => {
+  if (!selectedLaw.value) return '';
+  const nameRef = selectedLaw.value.name;
+  if (typeof nameRef === 'string' && nameRef.startsWith('#')) {
+    const outputName = nameRef.slice(1);
+    for (const article of articles.value) {
+      const actions = article.machine_readable?.execution?.actions;
+      if (!actions) continue;
+      for (const action of actions) {
+        if (action.output === outputName) return action.value;
+      }
+    }
   }
-  return groups;
+  return nameRef || selectedLaw.value.$id || '';
 });
 
-async function load() {
+const selectedArticle = computed(() => {
+  if (!selectedArticleNumber.value) return null;
+  return articles.value.find(
+    (a) => String(a.number) === String(selectedArticleNumber.value)
+  ) ?? null;
+});
+
+function displayName(law) {
+  if (law.name && !law.name.startsWith('#')) return law.name;
+  return law.id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function articleDescription(article) {
+  if (!article.text) return '';
+  const firstLine = article.text.split('\n')[0];
+  return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
+}
+
+async function loadIndex() {
   try {
     const res = await fetch('/data/index.json');
     if (!res.ok) throw new Error(`Failed to load index: ${res.status}`);
     laws.value = await res.json();
+    if (laws.value.length > 0 && !selectedLawPath.value) {
+      selectLaw(laws.value[0].path);
+    }
   } catch (e) {
     error.value = e;
   } finally {
@@ -54,12 +78,41 @@ async function load() {
   }
 }
 
-load();
+async function loadLaw(path) {
+  try {
+    selectedLawLoading.value = true;
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+    const text = await res.text();
+    selectedLaw.value = yaml.load(text);
+    if (articles.value.length > 0) {
+      selectedArticleNumber.value = String(articles.value[0].number);
+    }
+  } catch (e) {
+    selectedLaw.value = null;
+  } finally {
+    selectedLawLoading.value = false;
+  }
+}
+
+function selectLaw(path) {
+  selectedLawPath.value = path;
+  selectedArticleNumber.value = null;
+  activeAction.value = null;
+  loadLaw(path);
+}
+
+function selectArticle(number) {
+  selectedArticleNumber.value = String(number);
+  activeAction.value = null;
+}
+
+loadIndex();
 </script>
 
 <template>
-  <rr-page header-sticky>
-    <!-- Header -->
+  <rr-page sticky-header>
+    <!-- Top Toolbar -->
     <rr-toolbar slot="header" size="md">
       <rr-toolbar-start-area>
         <rr-toolbar-item>
@@ -73,7 +126,7 @@ load();
         <rr-toolbar-item>
           <rr-search-field
             size="md"
-            placeholder="Zoeken in wetten..."
+            placeholder="Zoeken"
             @input="search = $event.target.value"
           ></rr-search-field>
         </rr-toolbar-item>
@@ -90,98 +143,148 @@ load();
       </rr-toolbar-end-area>
     </rr-toolbar>
 
-    <!-- Loading -->
-    <div v-if="loading" class="library-status">Laden...</div>
+    <!-- 3-Pane Split View -->
+    <rr-side-by-side-split-view panes="3">
 
-    <!-- Error -->
-    <div v-else-if="error" class="library-status library-error">
-      Kon de bibliotheek niet laden: {{ error.message }}
-    </div>
+      <!-- Pane 1: Wetten Browser -->
+      <div slot="pane-1">
+        <rr-page sticky-header>
+          <rr-top-title-bar slot="header" toolbar="none" title="Wetten en regels" container="sm"></rr-top-title-bar>
 
-    <!-- Law list -->
-    <div v-else class="library-content">
-      <div v-for="(layerLaws, layer) in groupedLaws" :key="layer" class="library-group">
-        <h2 class="library-group-title">{{ LAYER_LABELS[layer] || layer }}</h2>
-        <div class="library-grid">
-          <a
-            v-for="law in layerLaws"
-            :key="law.path"
-            :href="`editor.html?law=${law.path}`"
-            class="library-card"
+          <rr-simple-section container="sm">
+            <div v-if="loading" style="padding: 32px; text-align: center;">Laden...</div>
+            <rr-list v-else variant="simple">
+              <rr-list-item
+                v-for="law in filteredLaws"
+                :key="law.path"
+                size="md"
+                type="button"
+                :selected="law.path === selectedLawPath || undefined"
+                @click="selectLaw(law.path)"
+              >
+                <rr-text-cell>{{ displayName(law) }}</rr-text-cell>
+                <rr-icon-cell slot="end" size="20">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </rr-icon-cell>
+              </rr-list-item>
+            </rr-list>
+          </rr-simple-section>
+        </rr-page>
+      </div>
+
+      <!-- Pane 2: Artikelen Lijst -->
+      <div slot="pane-2">
+        <rr-page sticky-header>
+          <rr-top-title-bar
+            slot="header"
+            :title="lawName || 'Selecteer een wet'"
+            container="sm"
+            toolbar="custom"
           >
-            <div class="library-card-title">{{ displayName(law) }}</div>
-            <div class="library-card-meta">
-              <span class="library-card-id">{{ law.id }}</span>
-              <span class="library-card-date">{{ law.publication_date }}</span>
+            <div slot="toolbar-start">
+              <rr-toolbar size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <rr-icon-button variant="neutral-tinted" size="s" title="Favoriet">
+                      <svg slot="__icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3.5C10 3.5 8 2 5.5 2C3 2 1 3.5 1 6.5C1 12 10 17 10 17C10 17 19 12 19 6.5C19 3.5 17 2 14.5 2C12 2 10 3.5 10 3.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </rr-icon-button>
+                  </rr-toolbar-item>
+                  <rr-toolbar-item>
+                    <rr-button variant="neutral-tinted" size="md">Filter</rr-button>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+                <rr-toolbar-end-area>
+                  <rr-toolbar-item>
+                    <rr-button
+                      variant="accent-filled"
+                      size="md"
+                      :href="selectedLawPath ? `editor.html?law=${selectedLawPath}` : undefined"
+                    >Bewerk</rr-button>
+                  </rr-toolbar-item>
+                </rr-toolbar-end-area>
+              </rr-toolbar>
             </div>
-          </a>
-        </div>
+          </rr-top-title-bar>
+
+          <rr-simple-section container="sm">
+            <div v-if="selectedLawLoading" style="padding: 32px; text-align: center;">Laden...</div>
+            <div v-else-if="!selectedLaw" style="padding: 32px; text-align: center;">Selecteer een wet</div>
+            <rr-list v-else variant="simple">
+              <rr-list-item
+                v-for="article in articles"
+                :key="article.number"
+                size="md"
+                type="button"
+                :selected="String(article.number) === String(selectedArticleNumber) || undefined"
+                @click="selectArticle(article.number)"
+              >
+                <rr-text-cell>
+                  <span slot="text">Artikel {{ article.number }}</span>
+                  <span slot="supporting-text">{{ articleDescription(article) }}</span>
+                </rr-text-cell>
+                <rr-icon-cell slot="end" size="20">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </rr-icon-cell>
+              </rr-list-item>
+            </rr-list>
+          </rr-simple-section>
+        </rr-page>
       </div>
 
-      <div v-if="filteredLaws.length === 0" class="library-status">
-        Geen wetten gevonden voor "{{ search }}"
+      <!-- Pane 3: Artikel Detail -->
+      <div slot="pane-3">
+        <rr-page sticky-header>
+          <rr-top-title-bar
+            slot="header"
+            :title="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
+            container="sm"
+            toolbar="custom"
+          >
+            <div slot="toolbar-start">
+              <rr-toolbar size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <rr-segmented-control size="md" :value="detailView" @change="detailView = $event.detail.value">
+                      <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
+                      <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
+                      <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                    </rr-segmented-control>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+                <rr-toolbar-end-area>
+                  <rr-toolbar-item>
+                    <rr-button
+                      variant="accent-filled"
+                      size="md"
+                      :href="selectedLawPath ? `editor.html?law=${selectedLawPath}` : undefined"
+                    >Bewerk</rr-button>
+                  </rr-toolbar-item>
+                </rr-toolbar-end-area>
+              </rr-toolbar>
+            </div>
+          </rr-top-title-bar>
+
+          <rr-simple-section container="sm">
+            <div v-if="!selectedArticle" style="padding: 32px; text-align: center;">
+              Selecteer een artikel
+            </div>
+            <template v-else>
+              <div v-show="detailView === 'tekst'">
+                <ArticleText :article="selectedArticle" />
+              </div>
+              <div v-show="detailView === 'machine'">
+                <MachineReadable :article="selectedArticle" @open-action="activeAction = $event" />
+              </div>
+              <div v-show="detailView === 'yaml'">
+                <YamlView :article="selectedArticle" />
+              </div>
+            </template>
+          </rr-simple-section>
+        </rr-page>
       </div>
-    </div>
+
+    </rr-side-by-side-split-view>
   </rr-page>
-</template>
 
-<style scoped>
-.library-status {
-  padding: 48px;
-  text-align: center;
-  color: var(--rr-color-text-secondary, #666);
-  font-size: 16px;
-}
-.library-error {
-  color: #c00;
-}
-.library-content {
-  padding: 24px 32px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-.library-group {
-  margin-bottom: 32px;
-}
-.library-group-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 12px 0;
-  color: var(--rr-color-text-primary, #1a1a1a);
-}
-.library-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
-}
-.library-card {
-  display: block;
-  padding: 16px;
-  border: 1px solid var(--rr-color-border, #ddd);
-  border-radius: 8px;
-  background: #fff;
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.library-card:hover {
-  border-color: var(--rr-color-primary, #0066cc);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-.library-card-title {
-  font-size: 15px;
-  font-weight: 500;
-  margin-bottom: 6px;
-  color: var(--rr-color-text-primary, #1a1a1a);
-}
-.library-card-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  color: var(--rr-color-text-secondary, #666);
-}
-.library-card-id {
-  font-family: monospace;
-  font-size: 12px;
-}
-</style>
+  <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
+</template>
