@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 export function useLaw(yamlUrl) {
   if (!yamlUrl) {
     const params = new URLSearchParams(window.location.search);
-    yamlUrl = params.get('law') || '/data/zorgtoeslagwet-2025-01-01.yaml';
+    yamlUrl = params.get('law') || '/data/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml';
   }
   const law = shallowRef(null);
   const selectedArticleNumber = ref(null);
