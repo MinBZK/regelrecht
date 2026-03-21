@@ -3,7 +3,7 @@
 **Status:** Proposed
 **Date:** 2026-03-21
 **Authors:** Eelco Hotting
-**Depends on:** RFC-007 (Hooks), RFC-009 (Overrides)
+**Depends on:** RFC-007 (Cross-Law Execution Model)
 
 ## Context
 
@@ -336,7 +336,7 @@ Output: { bezwaartermijn_startdatum: "2026-03-24",
 Yields: "BEZWAAR stage — bezwaartermijn running until 2026-04-20"
 ```
 
-`bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). `pasen_datum` is also an external parameter — the computus algorithm is not in Dutch statute law, so the caller provides Easter Sunday's date, consistent with the zero-domain-knowledge principle (RFC-011). Gelijkgestelde dagen (bridge days) are resolved internally via IoC from harvested KB's.
+`bekendmaking_datum` is a genuine external event (the orchestration layer signals that bekendmaking has occurred). `pasen_datum` is also an external parameter — the computus algorithm is not in Dutch statute law, so the caller provides Easter Sunday's date, consistent with the zero-domain-knowledge principle (RFC-007). Gelijkgestelde dagen (bridge days) are resolved internally via IoC from harvested KB's.
 
 The engine **yields** between stages, returning:
 - What it computed so far (accumulated outputs)
@@ -447,8 +447,7 @@ The besluit state is *not* stored in the engine. It is passed in by the caller a
 
 ## References
 
-- RFC-007: Execution Lifecycle Hooks (hooks mechanism)
-- RFC-009: Lex Specialis Overrides (contextual law overrides)
+- RFC-007: Cross-Law Execution Model (hooks, overrides, temporal computation)
 - AWB Hoofdstuk 3: Algemene bepalingen over besluiten (bekendmaking, motivering)
 - AWB Hoofdstuk 4: Bijzondere bepalingen over besluiten (beslistermijn, aanvraag)
 - AWB Hoofdstuk 6: Algemene bepalingen over bezwaar en beroep (termijnen)
