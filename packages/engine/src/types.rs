@@ -498,6 +498,10 @@ pub enum PathNodeType {
     Cached,
     /// Open term resolution via IoC (implements lookup)
     OpenTermResolution,
+    /// Hook resolution (lifecycle hook firing, RFC-007)
+    HookResolution,
+    /// Override resolution (lex specialis replacement, RFC-007)
+    OverrideResolution,
 }
 
 /// Resolve type for variable resolution
@@ -524,6 +528,10 @@ pub enum ResolveType {
     DataSource,
     /// Value resolved via open term implementation (IoC)
     OpenTerm,
+    /// Value resolved via lifecycle hook (RFC-007)
+    Hook,
+    /// Value resolved via lex specialis override (RFC-007)
+    Override,
 }
 
 #[cfg(test)]

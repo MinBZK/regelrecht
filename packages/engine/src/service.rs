@@ -811,6 +811,8 @@ impl LawExecutionService {
                             competent_authority: None,
                             open_terms: None,
                             implements: None,
+                            hooks: None,
+                            overrides: None,
                         }),
                     };
 

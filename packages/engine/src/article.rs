@@ -118,6 +118,10 @@ pub struct Produces {
     /// Type of decision (e.g., "TOEKENNING", "GOEDKEURING")
     #[serde(default)]
     pub decision_type: Option<String>,
+    /// Selects a specific AWB procedure variant (RFC-008).
+    /// When absent, the default procedure for the legal_character is used.
+    #[serde(default)]
+    pub procedure_id: Option<String>,
 }
 
 /// A single case in an IF operation (cases/default syntax)
@@ -336,6 +340,101 @@ pub struct ImplementsDeclaration {
     pub gelet_op: Option<String>,
 }
 
+/// Lifecycle point at which a hook fires
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookPoint {
+    /// Fires between open-term resolution and action execution
+    PreActions,
+    /// Fires between action execution and result return
+    PostActions,
+}
+
+/// Filter that determines when a hook fires
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookFilter {
+    /// Match articles that produce this legal character (e.g., "BESCHIKKING")
+    #[serde(default)]
+    pub legal_character: Option<String>,
+    /// Optionally narrow to a specific decision type (e.g., "TOEKENNING")
+    #[serde(default)]
+    pub decision_type: Option<String>,
+    /// Lifecycle stage at which this hook fires (e.g., "BESLUIT", "BEKENDMAKING")
+    /// When absent, defaults to BESLUIT for backward compatibility.
+    #[serde(default)]
+    pub stage: Option<String>,
+}
+
+/// Declaration that an article fires as a hook on matching lifecycle events (RFC-007)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookDeclaration {
+    /// When in the lifecycle this hook fires
+    pub hook_point: HookPoint,
+    /// What triggers this hook
+    pub applies_to: HookFilter,
+}
+
+/// Declaration that an article overrides another article's output (RFC-007, lex specialis)
+///
+/// Used for "in afwijking van artikel X" patterns where one law unilaterally
+/// replaces another law's output value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OverrideDeclaration {
+    /// The $id of the law being overridden
+    pub law: String,
+    /// The article number being overridden
+    pub article: String,
+    /// The specific output being replaced
+    pub output: String,
+}
+
+/// A required input for a procedure stage
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StageRequirement {
+    /// Name of the required input
+    pub name: String,
+    /// Data type of the required input
+    #[serde(rename = "type")]
+    pub req_type: ParameterType,
+}
+
+/// A stage in an AWB-defined procedure lifecycle (RFC-008)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Stage {
+    /// Stage name (e.g., "AANVRAAG", "BESLUIT", "BEKENDMAKING")
+    pub name: String,
+    /// Human-readable description
+    #[serde(default)]
+    pub description: Option<String>,
+    /// External inputs required to enter this stage
+    #[serde(default)]
+    pub requires: Option<Vec<StageRequirement>>,
+}
+
+/// Filter for which legal character a procedure applies to
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProcedureAppliesTo {
+    /// Legal character (e.g., "BESCHIKKING")
+    pub legal_character: String,
+}
+
+/// A procedure definition — an AWB-defined lifecycle for a legal character (RFC-008)
+///
+/// Procedures are defined by the AWB, not by specific laws. Laws declare which
+/// procedure they participate in via `produces.legal_character`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProcedureDefinition {
+    /// Unique identifier for this procedure (e.g., "beschikking", "beschikking_uov")
+    pub id: String,
+    /// Whether this is the default procedure for its legal_character
+    #[serde(default)]
+    pub default: Option<bool>,
+    /// Which legal character this procedure governs
+    pub applies_to: ProcedureAppliesTo,
+    /// Ordered sequence of lifecycle stages
+    pub stages: Vec<Stage>,
+}
+
 /// Machine-readable section of an article
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineReadable {
@@ -353,6 +452,12 @@ pub struct MachineReadable {
     /// Declares which open terms from higher-level laws this article fills
     #[serde(default)]
     pub implements: Option<Vec<ImplementsDeclaration>>,
+    /// Hook declarations: this article fires when matching lifecycle events occur (RFC-007)
+    #[serde(default)]
+    pub hooks: Option<Vec<HookDeclaration>>,
+    /// Override declarations: this article replaces another article's output (RFC-007)
+    #[serde(default)]
+    pub overrides: Option<Vec<OverrideDeclaration>>,
 }
 
 /// Represents a single article in a law
@@ -449,6 +554,26 @@ impl Article {
             .as_ref()
             .and_then(|mr| mr.implements.as_ref())
     }
+
+    /// Get hook declarations from this article.
+    pub fn get_hooks(&self) -> Option<&Vec<HookDeclaration>> {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.hooks.as_ref())
+    }
+
+    /// Get override declarations from this article.
+    pub fn get_overrides(&self) -> Option<&Vec<OverrideDeclaration>> {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.overrides.as_ref())
+    }
+
+    /// Get the produces specification from this article.
+    pub fn get_produces(&self) -> Option<&Produces> {
+        self.get_execution_spec()
+            .and_then(|exec| exec.produces.as_ref())
+    }
 }
 
 /// Represents an article-based law document
@@ -497,6 +622,9 @@ pub struct ArticleBasedLaw {
     /// Legal basis references
     #[serde(default)]
     pub legal_basis: Option<Vec<LegalBasis>>,
+    /// AWB-defined procedure lifecycles (RFC-008)
+    #[serde(default)]
+    pub procedure: Option<Vec<ProcedureDefinition>>,
     /// Articles in the law
     #[serde(default)]
     pub articles: Vec<Article>,

@@ -53,7 +53,8 @@ pub mod telemetry;
 // Re-export commonly used items
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
-    MachineReadable, Source,
+    HookDeclaration, HookFilter, HookPoint, MachineReadable, OverrideDeclaration,
+    ProcedureDefinition, Source, Stage,
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
