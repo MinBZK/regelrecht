@@ -161,6 +161,7 @@ impl<'a> ResolutionContext<'a> {
 ///
 /// Uses hashing instead of String building to avoid allocations.
 /// Parameters are sorted by key before hashing for determinism.
+/// The hash is only used for per-execution memoization (not persisted).
 fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     law_id.hash(&mut hasher);

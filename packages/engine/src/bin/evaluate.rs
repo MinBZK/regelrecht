@@ -63,7 +63,7 @@ fn error_response(msg: String) -> EvaluateResponse {
 fn main() {
     // Initialize OpenTelemetry if the otel feature is enabled and the endpoint is configured
     #[cfg(feature = "otel")]
-    let _otel_guard = if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
+    let _otel_guard = if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok_and(|v| !v.is_empty()) {
         match regelrecht_engine::telemetry::init_otel_subscriber("regelrecht-engine") {
             Ok(guard) => Some(guard),
             Err(e) => {
