@@ -1120,12 +1120,6 @@ fn parse_date(value: &Value) -> Result<NaiveDate> {
     }
 }
 
-/// Calculate the difference in days between two dates.
-#[cfg(test)]
-fn calculate_days_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
-    (date1 - date2).num_days()
-}
-
 /// Calculate the difference in complete months between two dates.
 ///
 /// Uses proper calendar arithmetic. A month is counted as complete when
