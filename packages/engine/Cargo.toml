@@ -74,10 +74,8 @@ version = "0.31"
 optional = true
 
 [dev-dependencies]
-pretty_assertions = "1.4"
 cucumber = "0.22"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-futures = "0.3"
 walkdir = "2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 criterion = { version = "0.5", features = ["html_reports"] }
