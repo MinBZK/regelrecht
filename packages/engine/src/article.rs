@@ -400,6 +400,13 @@ impl Article {
             .and_then(|mr| mr.competent_authority.as_ref())
     }
 
+    /// Get inputs from this article's execution spec.
+    pub fn get_inputs(&self) -> &[Input] {
+        self.get_execution_spec()
+            .and_then(|exec| exec.input.as_deref())
+            .unwrap_or(&[])
+    }
+
     /// Get open terms declared by this article.
     pub fn get_open_terms(&self) -> Option<&Vec<OpenTerm>> {
         self.machine_readable
@@ -560,7 +567,7 @@ impl ArticleBasedLaw {
             )));
         }
 
-        let law: Self = serde_yaml::from_str(content).map_err(EngineError::YamlError)?;
+        let law: Self = serde_yaml_ng::from_str(content).map_err(EngineError::YamlError)?;
 
         // Validate array sizes after parsing
         law.validate_array_sizes()?;

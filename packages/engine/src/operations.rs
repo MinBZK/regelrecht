@@ -201,8 +201,8 @@ fn execute_operation_internal<R: ValueResolver>(
 ) -> Result<Value> {
     match op.operation {
         // Comparison operations
-        Operation::Equals => execute_equals(op, resolver, depth),
-        Operation::NotEquals => execute_not_equals(op, resolver, depth),
+        Operation::Equals => execute_equality(op, resolver, depth, false),
+        Operation::NotEquals => execute_equality(op, resolver, depth, true),
         Operation::GreaterThan => execute_numeric_comparison(op, resolver, depth, |a, b| a > b),
         Operation::LessThan => execute_numeric_comparison(op, resolver, depth, |a, b| a < b),
         Operation::GreaterThanOrEqual => {
@@ -231,16 +231,36 @@ fn execute_operation_internal<R: ValueResolver>(
         Operation::Switch => execute_switch(op, resolver, depth),
 
         // Null checking operations
-        Operation::IsNull => execute_is_null(op, resolver, depth),
-        Operation::NotNull => execute_not_null(op, resolver, depth),
+        Operation::IsNull => execute_null_check(op, resolver, depth, false),
+        Operation::NotNull => execute_null_check(op, resolver, depth, true),
 
         // Membership testing operations
-        Operation::In => execute_in(op, resolver, depth),
-        Operation::NotIn => execute_not_in(op, resolver, depth),
+        Operation::In => execute_membership(op, resolver, depth, false),
+        Operation::NotIn => execute_membership(op, resolver, depth, true),
 
         // Date operations
         Operation::SubtractDate => execute_subtract_date(op, resolver, depth),
     }
+}
+
+// =============================================================================
+// Field Extraction Helpers
+// =============================================================================
+
+/// Extract the `subject` field from an operation, or return a descriptive error.
+fn require_subject(op: &ActionOperation) -> Result<&ActionValue> {
+    op.subject.as_ref().ok_or_else(|| {
+        EngineError::InvalidOperation(format!("{} requires 'subject'", op.operation.name()))
+    })
+}
+
+/// Extract both `subject` and `value` fields from an operation, or return a descriptive error.
+fn require_subject_value(op: &ActionOperation) -> Result<(&ActionValue, &ActionValue)> {
+    let subject = require_subject(op)?;
+    let value = op.value.as_ref().ok_or_else(|| {
+        EngineError::InvalidOperation(format!("{} requires 'value'", op.operation.name()))
+    })?;
+    Ok((subject, value))
 }
 
 // =============================================================================
@@ -285,47 +305,24 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Execute EQUALS operation with Python-style numeric coercion.
+/// Execute EQUALS / NOT_EQUALS with Python-style numeric coercion.
 ///
 /// - `Int(42) == Float(42.0)` returns `true` (like Python)
 /// - Non-numeric types use structural equality
-fn execute_equals<R: ValueResolver>(
+/// - When `negate` is true, the result is inverted (NOT_EQUALS).
+fn execute_equality<R: ValueResolver>(
     op: &ActionOperation,
     resolver: &R,
     depth: usize,
+    negate: bool,
 ) -> Result<Value> {
-    let subject = op.subject.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation("Comparison requires 'subject'".to_string())
-    })?;
-    let value = op
-        .value
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("Comparison requires 'value'".to_string()))?;
+    let (subject, value) = require_subject_value(op)?;
 
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
 
-    Ok(Value::Bool(values_equal(&subject_val, &value_val)))
-}
-
-/// Execute NOT_EQUALS operation with Python-style numeric coercion.
-fn execute_not_equals<R: ValueResolver>(
-    op: &ActionOperation,
-    resolver: &R,
-    depth: usize,
-) -> Result<Value> {
-    let subject = op.subject.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation("Comparison requires 'subject'".to_string())
-    })?;
-    let value = op
-        .value
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("Comparison requires 'value'".to_string()))?;
-
-    let subject_val = evaluate_value(subject, resolver, depth)?;
-    let value_val = evaluate_value(value, resolver, depth)?;
-
-    Ok(Value::Bool(!values_equal(&subject_val, &value_val)))
+    let equal = values_equal(&subject_val, &value_val);
+    Ok(Value::Bool(if negate { !equal } else { equal }))
 }
 
 /// Execute a numeric comparison (>, <, >=, <=).
@@ -340,13 +337,7 @@ fn execute_numeric_comparison<R: ValueResolver, F>(
 where
     F: Fn(f64, f64) -> bool,
 {
-    let subject = op.subject.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation("Comparison requires 'subject'".to_string())
-    })?;
-    let value = op
-        .value
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("Comparison requires 'value'".to_string()))?;
+    let (subject, value) = require_subject_value(op)?;
 
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
@@ -717,34 +708,20 @@ fn execute_switch<R: ValueResolver>(
 // Null Checking Operations
 // =============================================================================
 
-/// Execute IS_NULL operation: returns true if the subject is null.
-fn execute_is_null<R: ValueResolver>(
+/// Execute IS_NULL / NOT_NULL operation.
+///
+/// When `negate` is true, returns true if the subject is *not* null (NOT_NULL).
+fn execute_null_check<R: ValueResolver>(
     op: &ActionOperation,
     resolver: &R,
     depth: usize,
+    negate: bool,
 ) -> Result<Value> {
-    let subject = op
-        .subject
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("IS_NULL requires 'subject'".to_string()))?;
+    let subject = require_subject(op)?;
 
     let subject_val = evaluate_value(subject, resolver, depth)?;
-    Ok(Value::Bool(subject_val.is_null()))
-}
-
-/// Execute NOT_NULL operation: returns true if the subject is not null.
-fn execute_not_null<R: ValueResolver>(
-    op: &ActionOperation,
-    resolver: &R,
-    depth: usize,
-) -> Result<Value> {
-    let subject = op
-        .subject
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("NOT_NULL requires 'subject'".to_string()))?;
-
-    let subject_val = evaluate_value(subject, resolver, depth)?;
-    Ok(Value::Bool(!subject_val.is_null()))
+    let is_null = subject_val.is_null();
+    Ok(Value::Bool(if negate { !is_null } else { is_null }))
 }
 
 // =============================================================================
@@ -776,50 +753,26 @@ fn resolve_membership_values<R: ValueResolver>(
     }
 }
 
-/// Execute IN operation: returns true if subject is in the values list.
+/// Execute IN / NOT_IN operation.
 ///
 /// Uses Python-style numeric coercion for equality comparison.
-fn execute_in<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize) -> Result<Value> {
-    let subject = op
-        .subject
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("IN requires 'subject'".to_string()))?;
-
-    let subject_val = evaluate_value(subject, resolver, depth)?;
-    let check_values = resolve_membership_values(op, "IN", resolver, depth)?;
-
-    for val in &check_values {
-        if values_equal(&subject_val, val) {
-            return Ok(Value::Bool(true));
-        }
-    }
-
-    Ok(Value::Bool(false))
-}
-
-/// Execute NOT_IN operation: returns true if subject is not in the values list.
-///
-/// Uses Python-style numeric coercion for equality comparison.
-fn execute_not_in<R: ValueResolver>(
+/// When `negate` is true, returns true if subject is *not* in the list (NOT_IN).
+fn execute_membership<R: ValueResolver>(
     op: &ActionOperation,
     resolver: &R,
     depth: usize,
+    negate: bool,
 ) -> Result<Value> {
-    let subject = op
-        .subject
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("NOT_IN requires 'subject'".to_string()))?;
+    let subject = require_subject(op)?;
 
     let subject_val = evaluate_value(subject, resolver, depth)?;
-    let check_values = resolve_membership_values(op, "NOT_IN", resolver, depth)?;
+    let op_name = op.operation.name();
+    let check_values = resolve_membership_values(op, op_name, resolver, depth)?;
 
-    for val in &check_values {
-        if values_equal(&subject_val, val) {
-            return Ok(Value::Bool(false));
-        }
-    }
-
-    Ok(Value::Bool(true))
+    let found = check_values
+        .iter()
+        .any(|val| values_equal(&subject_val, val));
+    Ok(Value::Bool(if negate { !found } else { found }))
 }
 
 // =============================================================================
@@ -851,12 +804,7 @@ fn execute_subtract_date<R: ValueResolver>(
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let subject = op.subject.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation("SUBTRACT_DATE requires 'subject'".to_string())
-    })?;
-    let value = op.value.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation("SUBTRACT_DATE requires 'value'".to_string())
-    })?;
+    let (subject, value) = require_subject_value(op)?;
 
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
@@ -955,12 +903,11 @@ fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
 
 /// Return the number of days in a given month.
 fn days_in_month(year: i32, month: u32) -> u32 {
-    // Month lengths are well-known; use a match for safety and clarity
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
         4 | 6 | 9 | 11 => 30,
         2 => {
-            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+            if NaiveDate::from_ymd_opt(year, 2, 29).is_some() {
                 29
             } else {
                 28
@@ -1082,18 +1029,9 @@ fn to_number(val: &Value) -> Result<f64> {
 
 /// Create a TypeMismatch error.
 fn type_error(expected: &str, actual: &Value) -> EngineError {
-    let actual_type = match actual {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Int(_) => "integer",
-        Value::Float(_) => "float",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    };
     EngineError::TypeMismatch {
         expected: expected.to_string(),
-        actual: actual_type.to_string(),
+        actual: actual.type_name().to_string(),
     }
 }
 

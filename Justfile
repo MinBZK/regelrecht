@@ -60,6 +60,22 @@ test-all: test harvester-test pipeline-test pipeline-integration-test
 mutants *ARGS:
     cd packages/engine && cargo mutants --in-place --timeout-multiplier 3 {{ARGS}}
 
+# --- Benchmarks ---
+
+_bench_flags := "--bench uri_parsing --bench variable_resolution --bench operations --bench article_evaluation --bench law_loading --bench priority --bench service_e2e"
+
+# Run criterion benchmarks (skips unit test harness, runs only criterion benches)
+bench *ARGS:
+    cd packages/engine && cargo bench {{_bench_flags}} {{ARGS}}
+
+# Run benchmarks and save baseline
+bench-save NAME:
+    cd packages/engine && cargo bench {{_bench_flags}} -- --save-baseline {{NAME}}
+
+# Compare against saved baseline (run `just bench-save <name>` first to create one)
+bench-compare BASE:
+    cd packages/engine && cargo bench {{_bench_flags}} -- --baseline {{BASE}}
+
 # --- Security ---
 
 # Run security audit on all dependencies (vulnerabilities, licenses, sources)

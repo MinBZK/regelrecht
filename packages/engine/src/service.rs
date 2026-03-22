@@ -25,7 +25,7 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, Input, MachineReadable};
+use crate::article::{Article, ArticleBasedLaw, Execution, MachineReadable};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
@@ -39,6 +39,7 @@ use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 // =============================================================================
@@ -51,6 +52,15 @@ use std::rc::Rc;
 /// during cross-law reference resolution. This reduces the number of
 /// parameters passed between internal resolution functions.
 ///
+/// Cache entry: (law_id, output_name, outputs, parameters).
+/// Stores identity fields for runtime collision detection alongside cached outputs.
+type CacheEntry = (
+    String,
+    String,
+    HashMap<String, Value>,
+    HashMap<String, Value>,
+);
+
 /// Uses a scoped push/pop pattern for the visited set to avoid
 /// cloning the HashSet on every cross-law descent.
 struct ResolutionContext<'a> {
@@ -62,8 +72,8 @@ struct ResolutionContext<'a> {
     depth: usize,
     /// Optional shared trace builder
     trace: Option<Rc<RefCell<TraceBuilder>>>,
-    /// Per-execution memoization cache: canonical key → outputs map
-    cache: HashMap<String, HashMap<String, Value>>,
+    /// Per-execution memoization cache: hash key → CacheEntry
+    cache: HashMap<u64, CacheEntry>,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -110,18 +120,96 @@ impl<'a> ResolutionContext<'a> {
     fn is_visited(&self, key: &str) -> bool {
         self.visited.contains(key)
     }
+
+    /// Push a new trace node. No-op if tracing is disabled.
+    fn trace_push(&self, name: impl Into<String>, node_type: PathNodeType) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().push(name, node_type);
+        }
+    }
+
+    /// Pop the current trace node. No-op if tracing is disabled.
+    fn trace_pop(&self) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().pop();
+        }
+    }
+
+    /// Set the result on the current trace node. No-op if tracing is disabled.
+    fn trace_set_result(&self, result: Value) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_result(result);
+        }
+    }
+
+    /// Set a message on the current trace node. No-op if tracing is disabled.
+    fn trace_set_message(&self, msg: impl Into<String>) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_message(msg);
+        }
+    }
+
+    /// Set the resolve type on the current trace node. No-op if tracing is disabled.
+    fn trace_set_resolve_type(&self, rt: ResolveType) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_resolve_type(rt);
+        }
+    }
 }
 
-/// Build a deterministic cache key from law_id, output_name, and parameters.
-fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -> String {
-    let mut sorted: Vec<_> = params.iter().collect();
-    sorted.sort_by_key(|(k, _)| k.as_str());
-    let params_str: String = sorted
-        .iter()
-        .map(|(k, v)| format!("{}={:?}", k, v))
-        .collect::<Vec<_>>()
-        .join(",");
-    format!("{}#{}({})", law_id, output_name, params_str)
+/// Build a cache key from law_id, output_name, and parameters.
+///
+/// Uses hashing instead of String building to avoid allocations.
+/// Parameters are sorted by key for consistent hashing within a process.
+/// Note: `DefaultHasher` is randomly seeded per process, so keys are only
+/// valid for per-execution memoization (not persisted across runs).
+fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    law_id.hash(&mut hasher);
+    output_name.hash(&mut hasher);
+    // Sort params by key for deterministic hashing
+    let mut keys: Vec<&String> = params.keys().collect();
+    keys.sort_unstable();
+    for key in keys {
+        key.hash(&mut hasher);
+        if let Some(value) = params.get(key) {
+            hash_value(value, &mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+/// Hash a Value for cache key purposes.
+fn hash_value(value: &Value, hasher: &mut impl Hasher) {
+    std::mem::discriminant(value).hash(hasher);
+    match value {
+        Value::Null => {}
+        Value::Bool(b) => b.hash(hasher),
+        Value::Int(i) => i.hash(hasher),
+        Value::Float(f) => {
+            // Canonicalize -0.0 → +0.0 so hash matches PartialEq (IEEE 754: -0.0 == +0.0)
+            let canonical = if *f == 0.0 { 0.0_f64 } else { *f };
+            canonical.to_bits().hash(hasher);
+        }
+        Value::String(s) => s.hash(hasher),
+        Value::Array(arr) => {
+            arr.len().hash(hasher);
+            for v in arr {
+                hash_value(v, hasher);
+            }
+        }
+        Value::Object(map) => {
+            map.len().hash(hasher);
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort_unstable();
+            for key in keys {
+                key.hash(hasher);
+                if let Some(v) = map.get(key) {
+                    hash_value(v, hasher);
+                }
+            }
+        }
+    }
 }
 
 /// Trait for resolving cross-law references.
@@ -279,6 +367,7 @@ impl LawExecutionService {
     ///
     /// # Returns
     /// The execution result with outputs and metadata.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
     pub fn evaluate_law_output(
         &self,
         law_id: &str,
@@ -345,6 +434,7 @@ impl LawExecutionService {
     }
 
     /// Internal method with cycle tracking.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth)))]
     fn evaluate_law_output_internal(
         &self,
         law_id: &str,
@@ -354,24 +444,38 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
-        if let Some(cached_outputs) = res_ctx.cache.get(&key) {
-            tracing::debug!(law_id, output_name, "Cache hit");
-            if let Some(ref tb) = res_ctx.trace {
-                let mut tb = tb.borrow_mut();
-                tb.push(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
+        if let Some((cached_law, cached_output, cached_outputs, cached_params)) =
+            res_ctx.cache.get(&key)
+        {
+            // Runtime collision check: hash keys are u64 so collisions are
+            // theoretically possible. For legally binding decisions, we must
+            // never silently return wrong results.
+            if cached_law != law_id || cached_output != output_name || cached_params != &parameters
+            {
+                tracing::warn!(
+                    cached_law,
+                    cached_output,
+                    law_id,
+                    output_name,
+                    "Cache key hash collision detected, bypassing cache"
+                );
+                // Fall through to re-evaluate
+            } else {
+                tracing::debug!(law_id, output_name, "Cache hit");
+                res_ctx.trace_push(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
                 if let Some(val) = cached_outputs.get(output_name) {
-                    tb.set_result(val.clone());
+                    res_ctx.trace_set_result(val.clone());
                 }
-                tb.pop();
+                res_ctx.trace_pop();
+                return Ok(ArticleResult {
+                    outputs: cached_outputs.clone(),
+                    resolved_inputs: HashMap::new(),
+                    article_number: String::new(),
+                    law_id: law_id.to_string(),
+                    law_uuid: None,
+                    trace: None,
+                });
             }
-            return Ok(ArticleResult {
-                outputs: cached_outputs.clone(),
-                resolved_inputs: HashMap::new(),
-                article_number: String::new(),
-                law_id: law_id.to_string(),
-                law_uuid: None,
-                trace: None,
-            });
         }
 
         tracing::debug!(
@@ -413,6 +517,9 @@ impl LawExecutionService {
                 output: output_name.to_string(),
             })?;
 
+        // Clone parameters for cache storage before moving into evaluation
+        let params_for_cache = parameters.clone();
+
         // Execute with service provider
         let result = self.evaluate_article_with_service(
             article,
@@ -423,7 +530,19 @@ impl LawExecutionService {
         )?;
 
         // --- Cache store (only on success) ---
-        res_ctx.cache.insert(key, result.outputs.clone());
+        // Note: on a hash collision (astronomically unlikely, ~1e-18 per pair),
+        // this overwrites the collider's entry. Both keys then thrash each other,
+        // degrading to re-evaluation on every access. Correctness is preserved
+        // because every read validates the stored identity fields.
+        res_ctx.cache.insert(
+            key,
+            (
+                law_id.to_string(),
+                output_name.to_string(),
+                result.outputs.clone(),
+                params_for_cache,
+            ),
+        );
 
         Ok(result)
     }
@@ -521,6 +640,7 @@ impl LawExecutionService {
     /// 3. If not found + has default: execute the default actions
     /// 4. If not found + required + no default: error
     /// 5. If not found + not required + no default: skip
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, law, context, res_ctx), fields(law_id = %law.id, article = %article.number)))]
     fn resolve_open_terms(
         &self,
         article: &Article,
@@ -546,15 +666,12 @@ impl LawExecutionService {
                     open_term = %term.id,
                     "Circular open term dependency detected"
                 );
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.push(&term.id, PathNodeType::OpenTermResolution);
-                    tb.set_message(format!(
-                        "Circular dependency: open term '{}' on {}#{} is already being resolved",
-                        term.id, law.id, article.number
-                    ));
-                    tb.pop();
-                }
+                res_ctx.trace_push(&term.id, PathNodeType::OpenTermResolution);
+                res_ctx.trace_set_message(format!(
+                    "Circular dependency: open term '{}' on {}#{} is already being resolved",
+                    term.id, law.id, article.number
+                ));
+                res_ctx.trace_pop();
                 return Err(EngineError::CircularReference(format!(
                     "Circular open term dependency: '{}' on {} article {} is already being resolved",
                     term.id, law.id, article.number
@@ -570,11 +687,8 @@ impl LawExecutionService {
             );
 
             // Trace the open term resolution
-            if let Some(ref tb) = res_ctx.trace {
-                let mut tb = tb.borrow_mut();
-                tb.push(&term.id, PathNodeType::OpenTermResolution);
-                tb.set_resolve_type(ResolveType::OpenTerm);
-            }
+            res_ctx.trace_push(&term.id, PathNodeType::OpenTermResolution);
+            res_ctx.trace_set_resolve_type(ResolveType::OpenTerm);
 
             // Look up implementations (filtered by execution scope)
             let implementations = match self.resolver.find_implementations(
@@ -586,14 +700,11 @@ impl LawExecutionService {
             ) {
                 Ok(impls) => impls,
                 Err(e) => {
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_message(format!(
-                            "Open term '{}': implementation lookup failed: {}",
-                            term.id, e
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}': implementation lookup failed: {}",
+                        term.id, e
+                    ));
+                    res_ctx.trace_pop();
                     res_ctx.leave(&ot_key);
                     return Err(e);
                 }
@@ -605,14 +716,11 @@ impl LawExecutionService {
                 if let Some(ref expected_type) = term.delegation_type {
                     let actual_layer = impl_law.regulatory_layer.as_str();
                     if actual_layer != expected_type {
-                        if let Some(ref tb) = res_ctx.trace {
-                            let mut tb = tb.borrow_mut();
-                            tb.set_message(format!(
-                                "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
-                                term.id, impl_law.id, actual_layer, expected_type
-                            ));
-                            tb.pop();
-                        }
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
+                            term.id, impl_law.id, actual_layer, expected_type
+                        ));
+                        res_ctx.trace_pop();
                         res_ctx.leave(&ot_key);
                         return Err(EngineError::ResolutionError(format!(
                             "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
@@ -642,14 +750,11 @@ impl LawExecutionService {
                 ) {
                     Ok(r) => r,
                     Err(e) => {
-                        if let Some(ref tb) = res_ctx.trace {
-                            let mut tb = tb.borrow_mut();
-                            tb.set_message(format!(
-                                "Open term '{}': implementation execution failed: {}",
-                                term.id, e
-                            ));
-                            tb.pop();
-                        }
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}': implementation execution failed: {}",
+                            term.id, e
+                        ));
+                        res_ctx.trace_pop();
                         res_ctx.leave(&ot_key);
                         return Err(e);
                     }
@@ -657,27 +762,21 @@ impl LawExecutionService {
 
                 if let Some(value) = result.outputs.get(&term.id) {
                     // Trace success
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_result(value.clone());
-                        tb.set_message(format!(
-                            "Open term '{}' resolved from {} article {}",
-                            term.id, impl_law.id, impl_article.number
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_result(value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' resolved from {} article {}",
+                        term.id, impl_law.id, impl_article.number
+                    ));
+                    res_ctx.trace_pop();
 
                     resolved.insert(term.id.clone(), value.clone());
                 } else {
                     // Implementation executed but didn't produce the expected output
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_message(format!(
-                            "Open term '{}': implementation {} article {} produced no matching output",
-                            term.id, impl_law.id, impl_article.number
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}': implementation {} article {} produced no matching output",
+                        term.id, impl_law.id, impl_article.number
+                    ));
+                    res_ctx.trace_pop();
                     res_ctx.leave(&ot_key);
                     return Err(EngineError::InvalidOperation(format!(
                         "Implementation {} article {} for open term '{}' did not produce output named '{}'",
@@ -732,14 +831,11 @@ impl LawExecutionService {
                     ) {
                         Ok(r) => r,
                         Err(e) => {
-                            if let Some(ref tb) = res_ctx.trace {
-                                let mut tb = tb.borrow_mut();
-                                tb.set_message(format!(
-                                    "Open term '{}': default evaluation failed: {}",
-                                    term.id, e
-                                ));
-                                tb.pop();
-                            }
+                            res_ctx.trace_set_message(format!(
+                                "Open term '{}': default evaluation failed: {}",
+                                term.id, e
+                            ));
+                            res_ctx.trace_pop();
                             res_ctx.leave(&ot_key);
                             return Err(e);
                         }
@@ -751,37 +847,31 @@ impl LawExecutionService {
                         .cloned()
                         .unwrap_or(Value::Null);
 
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_result(default_value.clone());
-                        tb.set_message(format!("Open term '{}' resolved from default", term.id));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_result(default_value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' resolved from default",
+                        term.id
+                    ));
+                    res_ctx.trace_pop();
 
                     resolved.insert(term.id.clone(), default_value);
                 } else {
                     // Default exists but has no actions — treat as null
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_result(Value::Null);
-                        tb.set_message(format!(
-                            "Open term '{}' resolved from empty default",
-                            term.id
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_result(Value::Null);
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' resolved from empty default",
+                        term.id
+                    ));
+                    res_ctx.trace_pop();
                     resolved.insert(term.id.clone(), Value::Null);
                 }
             } else if term.required {
                 // Required but no implementation and no default
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!(
-                        "Open term '{}' is required but no implementation found",
-                        term.id
-                    ));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!(
+                    "Open term '{}' is required but no implementation found",
+                    term.id
+                ));
+                res_ctx.trace_pop();
 
                 res_ctx.leave(&ot_key);
                 return Err(EngineError::ResolutionError(format!(
@@ -795,14 +885,11 @@ impl LawExecutionService {
                     "Optional open term not implemented, skipping"
                 );
 
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!(
-                        "Open term '{}' not required, no implementation, skipped",
-                        term.id
-                    ));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!(
+                    "Open term '{}' not required, no implementation, skipped",
+                    term.id
+                ));
+                res_ctx.trace_pop();
             }
 
             res_ctx.leave(&ot_key);
@@ -820,7 +907,7 @@ impl LawExecutionService {
         parameters: &HashMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
-        let inputs = self.get_inputs(article);
+        let inputs = article.get_inputs();
 
         for input in inputs {
             let source = match &input.source {
@@ -843,17 +930,14 @@ impl LawExecutionService {
                     );
 
                     // Trace the data source resolution
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.push(&input.name, PathNodeType::Resolve);
-                        tb.set_resolve_type(ResolveType::DataSource);
-                        tb.set_result(data_match.value.clone());
-                        tb.set_message(format!(
-                            "Resolving from SOURCE {}: {}",
-                            data_match.source_name, data_match.value
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_push(&input.name, PathNodeType::Resolve);
+                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                    res_ctx.trace_set_result(data_match.value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Resolving from SOURCE {}: {}",
+                        data_match.source_name, data_match.value
+                    ));
+                    res_ctx.trace_pop();
 
                     context.set_resolved_input(&input.name, data_match.value);
                     continue;
@@ -926,20 +1010,14 @@ impl LawExecutionService {
         }
 
         // Trace cross-law call
-        if let Some(ref tb) = res_ctx.trace {
-            tb.borrow_mut()
-                .push(format!("{}#{}", regulation, output), PathNodeType::UriCall);
-        }
+        res_ctx.trace_push(format!("{}#{}", regulation, output), PathNodeType::UriCall);
 
         // Build parameters for the target article
         let target_params = match self.build_target_parameters(source_parameters, context) {
             Ok(p) => p,
             Err(e) => {
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!("Failed to build parameters: {}", e));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!("Failed to build parameters: {}", e));
+                res_ctx.trace_pop();
                 return Err(e);
             }
         };
@@ -957,14 +1035,11 @@ impl LawExecutionService {
             Ok(r) => match r.outputs.get(output).cloned() {
                 Some(v) => v,
                 None => {
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_message(format!(
-                            "Output '{}' not found in result from {}",
-                            output, regulation
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_message(format!(
+                        "Output '{}' not found in result from {}",
+                        output, regulation
+                    ));
+                    res_ctx.trace_pop();
                     return Err(EngineError::OutputNotFound {
                         law_id: regulation.to_string(),
                         output: output.to_string(),
@@ -972,21 +1047,15 @@ impl LawExecutionService {
                 }
             },
             Err(e) => {
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!("Execution failed: {}", e));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!("Execution failed: {}", e));
+                res_ctx.trace_pop();
                 return Err(e);
             }
         };
 
         // Complete trace node
-        if let Some(ref tb) = res_ctx.trace {
-            let mut tb = tb.borrow_mut();
-            tb.set_result(value.clone());
-            tb.pop();
-        }
+        res_ctx.trace_set_result(value.clone());
+        res_ctx.trace_pop();
 
         Ok(value)
     }
@@ -1039,14 +1108,6 @@ impl LawExecutionService {
         }
 
         Ok(params)
-    }
-
-    /// Get inputs from article execution spec.
-    fn get_inputs<'a>(&self, article: &'a Article) -> &'a [Input] {
-        article
-            .get_execution_spec()
-            .and_then(|exec| exec.input.as_deref())
-            .unwrap_or(&[])
     }
 
     /// List all loaded law IDs.
@@ -1217,6 +1278,7 @@ impl ServiceProvider for LawExecutionService {
         self.resolver.get_law(law_id)
     }
 
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, source_parameters, context), fields(regulation = %regulation, output = %output)))]
     fn resolve_external_input(
         &self,
         regulation: &str,

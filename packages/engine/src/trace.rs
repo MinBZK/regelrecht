@@ -654,7 +654,7 @@ fn resolve_type_name(rt: &ResolveType) -> &'static str {
 #[derive(Debug)]
 struct BuildingNode {
     node: PathNode,
-    start_time: Instant,
+    start_time: Option<Instant>,
 }
 
 /// Builder for constructing execution traces using a stack-based approach.
@@ -669,6 +669,9 @@ pub struct TraceBuilder {
 
     /// Whether tracing is enabled
     enabled: bool,
+
+    /// Whether to record timing (Instant::now on push/pop)
+    timed: bool,
 }
 
 impl Default for TraceBuilder {
@@ -678,11 +681,24 @@ impl Default for TraceBuilder {
 }
 
 impl TraceBuilder {
-    /// Create a new TraceBuilder with tracing enabled.
+    /// Create a new TraceBuilder with tracing enabled and timing.
     pub fn new() -> Self {
         Self {
             stack: Vec::new(),
             enabled: true,
+            timed: true,
+        }
+    }
+
+    /// Create a new TraceBuilder with tracing enabled but no timing.
+    ///
+    /// Skips `Instant::now()` syscalls on push/pop — useful when only
+    /// the trace tree structure matters, not microsecond durations.
+    pub fn new_untimed() -> Self {
+        Self {
+            stack: Vec::new(),
+            enabled: true,
+            timed: false,
         }
     }
 
@@ -691,6 +707,7 @@ impl TraceBuilder {
         Self {
             stack: Vec::new(),
             enabled: false,
+            timed: false,
         }
     }
 
@@ -711,7 +728,11 @@ impl TraceBuilder {
         let node = PathNode::new(node_type, name);
         self.stack.push(BuildingNode {
             node,
-            start_time: Instant::now(),
+            start_time: if self.timed {
+                Some(Instant::now())
+            } else {
+                None
+            },
         });
     }
 
@@ -738,11 +759,11 @@ impl TraceBuilder {
     }
 
     /// Get the message on the current node, if set.
-    pub fn get_message(&self) -> Option<String> {
+    pub fn get_message(&self) -> Option<&str> {
         if !self.enabled {
             return None;
         }
-        self.stack.last().and_then(|s| s.node.message.clone())
+        self.stack.last().and_then(|s| s.node.message.as_deref())
     }
 
     /// Set the resolve type for the current node.
@@ -766,10 +787,9 @@ impl TraceBuilder {
         }
 
         let building = self.stack.pop()?;
-        let duration = building.start_time.elapsed().as_micros() as u64;
 
         let mut completed = building.node;
-        completed.duration_us = Some(duration);
+        completed.duration_us = building.start_time.map(|t| t.elapsed().as_micros() as u64);
 
         // If there's a parent, add this as a child (move, not clone)
         if let Some(parent) = self.stack.last_mut() {

@@ -13,8 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 # TUI framework
-ratatui = "0.29"
-crossterm = { version = "0.28", features = ["event-stream"] }
+ratatui = "0.30"
+crossterm = { version = "0.29", features = ["event-stream"] }
 
 # Async runtime
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "process", "fs", "io-util", "time"] }

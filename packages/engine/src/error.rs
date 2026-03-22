@@ -23,7 +23,7 @@ pub enum EngineError {
 
     /// YAML parsing error
     #[error("YAML parse error: {0}")]
-    YamlError(#[from] serde_yaml::Error),
+    YamlError(#[from] serde_yaml_ng::Error),
 
     /// JSON serialization error
     #[error("JSON error: {0}")]

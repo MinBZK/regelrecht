@@ -197,7 +197,7 @@ impl BddView {
             .block(block)
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-        let mut state = self.list_state.clone();
+        let mut state = self.list_state;
         frame.render_stateful_widget(list, area, &mut state);
     }
 

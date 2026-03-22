@@ -61,6 +61,20 @@ fn error_response(msg: String) -> EvaluateResponse {
 }
 
 fn main() {
+    // Initialize OpenTelemetry if the otel feature is enabled and the endpoint is configured
+    #[cfg(feature = "otel")]
+    let _otel_guard = if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok_and(|v| !v.is_empty()) {
+        match regelrecht_engine::telemetry::init_otel_subscriber("regelrecht-engine") {
+            Ok(guard) => Some(guard),
+            Err(e) => {
+                eprintln!("Warning: failed to initialize OpenTelemetry: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let mut input = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut input) {
         let resp = error_response(format!("Failed to read stdin: {e}"));
