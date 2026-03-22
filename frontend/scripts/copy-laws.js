@@ -89,7 +89,7 @@ async function fetchGitHubFiles(source) {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball/${branch}`;
-  const res = await fetch(tarballUrl, { headers, redirect: 'follow' });
+  const res = await fetch(tarballUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(60_000) });
   if (!res.ok) {
     throw new Error(`GitHub tarball download failed for ${owner}/${repo}@${branch}: ${res.status} ${res.statusText}`);
   }
@@ -98,10 +98,13 @@ async function fetchGitHubFiles(source) {
   try {
     const tarPath = join(tmpDir, 'repo.tar.gz');
     writeFileSync(tarPath, Buffer.from(await res.arrayBuffer()));
-    execSync(`tar -xzf ${tarPath} -C ${tmpDir}`, { stdio: 'ignore' });
+    execSync(`tar -xzf ${tarPath} -C ${tmpDir}`, { stdio: 'pipe' });
 
     // GitHub tarballs extract to a directory like "owner-repo-sha/"
     const extracted = readdirSync(tmpDir).find(d => statSync(join(tmpDir, d)).isDirectory());
+    if (!extracted) {
+      throw new Error(`GitHub tarball for ${owner}/${repo}@${branch} extracted no top-level directory`);
+    }
     const sourceDir = join(tmpDir, extracted, basePath || '');
 
     const yamlFiles = findYamlFiles(sourceDir);
@@ -148,7 +151,13 @@ for (const source of allSources) {
     }));
   } else if (source.type === 'github') {
     console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): fetching from ${source.github.owner}/${source.github.repo}@${source.github.branch}`);
-    files = await fetchGitHubFiles(source);
+    try {
+      files = await fetchGitHubFiles(source);
+    } catch (err) {
+      console.warn(`  Failed to fetch GitHub source "${source.id}": ${err.message}`);
+      console.warn('  Continuing without this source.');
+      continue;
+    }
   } else {
     console.warn(`Unknown source type "${source.type}" for "${source.id}", skipping`);
     continue;
