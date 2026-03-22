@@ -2,15 +2,17 @@
  * Copy regulation YAML files to public/data/ based on corpus-registry.yaml.
  *
  * Reads the registry manifest (and optional local override), iterates all
- * local sources, copies their YAML files, and generates an index.json with
- * metadata and source provenance.
+ * sources (local and GitHub), copies/fetches their YAML files, and generates
+ * an index.json with metadata and source provenance.
  *
  * This is the same source discovery mechanism the Rust engine uses at runtime,
  * ensuring the editor sees the same laws as the engine.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { resolve, dirname, relative } from 'path';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { resolve, dirname, join, relative } from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
+import { tmpdir } from 'os';
 import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -79,42 +81,89 @@ function extractMeta(content) {
   return meta;
 }
 
+/** Fetch YAML files from a GitHub repository via tarball download. Returns array of { relPath, content }. */
+async function fetchGitHubFiles(source) {
+  const { owner, repo, branch, path: basePath } = source.github;
+  const token = process.env.GITHUB_TOKEN;
+  const headers = { 'User-Agent': 'regelrecht-copy-laws' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball/${branch}`;
+  const res = await fetch(tarballUrl, { headers, redirect: 'follow' });
+  if (!res.ok) {
+    throw new Error(`GitHub tarball download failed for ${owner}/${repo}@${branch}: ${res.status} ${res.statusText}`);
+  }
+
+  const tmpDir = mkdtempSync(join(tmpdir(), 'corpus-'));
+  try {
+    const tarPath = join(tmpDir, 'repo.tar.gz');
+    writeFileSync(tarPath, Buffer.from(await res.arrayBuffer()));
+    execSync(`tar -xzf ${tarPath} -C ${tmpDir}`, { stdio: 'ignore' });
+
+    // GitHub tarballs extract to a directory like "owner-repo-sha/"
+    const extracted = readdirSync(tmpDir).find(d => statSync(join(tmpDir, d)).isDirectory());
+    const sourceDir = join(tmpDir, extracted, basePath || '');
+
+    const yamlFiles = findYamlFiles(sourceDir);
+    console.log(`  Found ${yamlFiles.length} YAML files under ${basePath || '/'}`);
+
+    return yamlFiles.map(f => ({
+      relPath: relative(sourceDir, f),
+      content: readFileSync(f, 'utf-8'),
+    }));
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 // --- Main ---
 
 mkdirSync(destDir, { recursive: true });
 
 const registry = loadRegistry();
-const localSources = registry.sources.filter(s => s.type === 'local');
+const allSources = registry.sources;
 
-if (localSources.length === 0) {
-  console.warn('No local sources in registry — library will show no laws.');
+if (allSources.length === 0) {
+  console.warn('No sources in registry — library will show no laws.');
   writeFileSync(resolve(destDir, 'index.json'), '[]');
   process.exit(0);
 }
 
+const multiSource = allSources.length > 1;
 const index = [];
 const seenIds = new Map(); // $id → { priority, source_id } (for cross-source conflict resolution)
 let totalFiles = 0;
 
-for (const source of localSources) {
-  const sourceDir = resolve(projectRoot, source.local.path);
-  const yamlFiles = findYamlFiles(sourceDir);
+for (const source of allSources) {
+  /** @type {Array<{relPath: string, content: string}>} */
+  let files;
 
-  console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): ${yamlFiles.length} files from ${source.local.path}`);
+  if (source.type === 'local') {
+    const sourceDir = resolve(projectRoot, source.local.path);
+    const yamlFiles = findYamlFiles(sourceDir);
+    console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): ${yamlFiles.length} files from ${source.local.path}`);
+    files = yamlFiles.map(f => ({
+      relPath: relative(sourceDir, f),
+      content: readFileSync(f, 'utf-8'),
+    }));
+  } else if (source.type === 'github') {
+    console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): fetching from ${source.github.owner}/${source.github.repo}@${source.github.branch}`);
+    files = await fetchGitHubFiles(source);
+  } else {
+    console.warn(`Unknown source type "${source.type}" for "${source.id}", skipping`);
+    continue;
+  }
 
-  for (const src of yamlFiles) {
-    const content = readFileSync(src, 'utf-8');
+  for (const { relPath, content } of files) {
     const meta = extractMeta(content);
-
     if (!meta.id) continue;
 
-    const rel = relative(sourceDir, src);
     // Namespace destination by source id to avoid cross-source file collisions
-    const destRel = localSources.length > 1 ? `${source.id}/${rel}` : rel;
+    const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
     const dest = resolve(destDir, destRel);
 
     mkdirSync(dirname(dest), { recursive: true });
-    cpSync(src, dest);
+    writeFileSync(dest, content);
     totalFiles++;
 
     // Cross-source conflict resolution (same as Rust SourceMap).
@@ -151,4 +200,4 @@ index.sort((a, b) =>
 );
 
 writeFileSync(resolve(destDir, 'index.json'), JSON.stringify(index, null, 2));
-console.log(`Done: ${totalFiles} files from ${localSources.length} source(s), ${index.length} laws in index`);
+console.log(`Done: ${totalFiles} files from ${allSources.length} source(s), ${index.length} laws in index`);
