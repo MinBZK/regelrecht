@@ -189,6 +189,9 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │       └──DEFAULT: 14189600
 ║   ║   │           └──Resolving from DEFINITION: $VERMOGENSGRENS_ALLEENSTAAND = 14189600
 ║   ║   └──Result: vermogen_onder_grens = True
+║   ╟──HOOK: Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:3:46
+║   ║   ╙──Computing motivering_vereist
+║   ║       └──Result: motivering_vereist = True
 ║   ╟──Computing hoogte_zorgtoeslag
 ║   ║   ├──Compute MAX(...) = 209691.78888
 ║   ║   │   └──Compute SUBTRACT(...) = 209691.78888
@@ -226,18 +229,21 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │               │               └──Resolving from DEFINITION: $DREMPELINKOMEN_ALLEENSTAANDE = 3971900
 ║   ║   │               └──DEFAULT: 0
 ║   ║   └──Result: hoogte_zorgtoeslag = 209691.78888
-║   ╙──Computing heeft_recht_op_zorgtoeslag
-║       ├──Compute AND(...) = True
-║       │   ├──Compute GREATER_THAN_OR_EQUAL(...) = True
-║       │   │   └──Resolving from PARAMETERS: $LEEFTIJD = 20
-║       │   ├──Compute EQUALS(...) = True
-║       │   │   └──Resolving from PARAMETERS: $IS_VERZEKERDE = True
-║       │   ├──Compute NOT(...) = True
-║       │   │   └──Compute EQUALS(...) = False
-║       │   │       └──Resolving from PARAMETERS: $IS_FORENSISCH = False
-║       │   ├──Compute EQUALS(...) = True
-║       │   │   └──Resolving from PARAMETERS: $VERMOGEN_ONDER_GRENS = True
-║       │   └──Compute GREATER_THAN(...) = True
-║       │       └──Resolving from OUTPUT: $HOOGTE_ZORGTOESLAG = 209691.78888
-║       └──Result: heeft_recht_op_zorgtoeslag = True
+║   ╟──Computing heeft_recht_op_zorgtoeslag
+║   ║   ├──Compute AND(...) = True
+║   ║   │   ├──Compute GREATER_THAN_OR_EQUAL(...) = True
+║   ║   │   │   └──Resolving from PARAMETERS: $LEEFTIJD = 20
+║   ║   │   ├──Compute EQUALS(...) = True
+║   ║   │   │   └──Resolving from PARAMETERS: $IS_VERZEKERDE = True
+║   ║   │   ├──Compute NOT(...) = True
+║   ║   │   │   └──Compute EQUALS(...) = False
+║   ║   │   │       └──Resolving from PARAMETERS: $IS_FORENSISCH = False
+║   ║   │   ├──Compute EQUALS(...) = True
+║   ║   │   │   └──Resolving from PARAMETERS: $VERMOGEN_ONDER_GRENS = True
+║   ║   │   └──Compute GREATER_THAN(...) = True
+║   ║   │       └──Resolving from OUTPUT: $HOOGTE_ZORGTOESLAG = 209691.78888
+║   ║   └──Result: heeft_recht_op_zorgtoeslag = True
+║   ╙──HOOK: Hook PostActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:6:7
+║   ║   ╙──Computing bezwaartermijn_weken
+║           └──Result: bezwaartermijn_weken = 6
 ╙──Result: hoogte_zorgtoeslag = 209692
