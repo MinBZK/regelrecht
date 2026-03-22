@@ -157,11 +157,12 @@ impl<'a> ResolutionContext<'a> {
     }
 }
 
-/// Build a deterministic cache key from law_id, output_name, and parameters.
+/// Build a cache key from law_id, output_name, and parameters.
 ///
 /// Uses hashing instead of String building to avoid allocations.
-/// Parameters are sorted by key before hashing for determinism.
-/// The hash is only used for per-execution memoization (not persisted).
+/// Parameters are sorted by key for consistent hashing within a process.
+/// Note: `DefaultHasher` is randomly seeded per process, so keys are only
+/// valid for per-execution memoization (not persisted across runs).
 fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     law_id.hash(&mut hasher);
@@ -529,6 +530,10 @@ impl LawExecutionService {
         )?;
 
         // --- Cache store (only on success) ---
+        // Note: on a hash collision (astronomically unlikely, ~1e-18 per pair),
+        // this overwrites the collider's entry. Both keys then thrash each other,
+        // degrading to re-evaluation on every access. Correctness is preserved
+        // because every read validates the stored identity fields.
         res_ctx.cache.insert(
             key,
             (

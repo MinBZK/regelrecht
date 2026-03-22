@@ -65,9 +65,9 @@ pub struct RuleResolver {
     /// Registry of loaded laws by ID, supporting multiple versions per law ID.
     /// Each law ID maps to a list of versions, sorted by valid_from date (newest first).
     law_versions: HashMap<String, Vec<ArticleBasedLaw>>,
-    /// Index: "law_id#output_name" -> article_number
+    /// Index: "law_id\0output_name" -> article_number
     /// Note: This index uses the most recent version of each law.
-    /// Uses a flat string key to avoid two allocations per lookup.
+    /// Uses a flat string key (null-separated) to avoid two allocations per lookup.
     output_index: HashMap<String, String>,
     /// IoC index: (law_id, article, open_term_id) -> list of (implementing_law_id, implementing_article_number)
     implements_index: HashMap<(String, String, String), Vec<(String, String)>>,
@@ -250,7 +250,7 @@ impl RuleResolver {
     ) -> Option<&Article> {
         let law = self.get_law_for_date(law_id, reference_date)?;
         // Try indexed lookup first (O(1)), fall back to linear scan
-        let index_key = format!("{}#{}", law_id, output);
+        let index_key = format!("{}\0{}", law_id, output);
         if let Some(article_number) = self.output_index.get(&index_key) {
             if let Some(article) = law.find_article_by_number(article_number) {
                 // Verify the article in this version actually has the output
@@ -402,7 +402,7 @@ impl RuleResolver {
         let mut outputs: Vec<(&str, &str)> = self
             .output_index
             .keys()
-            .filter_map(|key| key.split_once('#'))
+            .filter_map(|key| key.split_once('\0'))
             .collect();
         outputs.sort();
         outputs
@@ -556,7 +556,7 @@ impl RuleResolver {
     fn rebuild_indexes_for_law(&mut self, law_id: &str) {
         // Remove old output index entries
         self.output_index
-            .retain(|key, _| key.split_once('#').is_none_or(|(id, _)| id != law_id));
+            .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
 
         // Remove old implements index entries where this law is an implementor
         for candidates in self.implements_index.values_mut() {
@@ -574,7 +574,7 @@ impl RuleResolver {
                         if let Some(outputs) = &exec.output {
                             for output in outputs {
                                 self.output_index.insert(
-                                    format!("{}#{}", law_id, output.name),
+                                    format!("{}\0{}", law_id, output.name),
                                     article.number.clone(),
                                 );
                             }
@@ -605,7 +605,7 @@ impl RuleResolver {
     fn remove_indexes_for_law(&mut self, law_id: &str) {
         // Remove output index entries
         self.output_index
-            .retain(|key, _| key.split_once('#').is_none_or(|(id, _)| id != law_id));
+            .retain(|key, _| key.split_once('\0').is_none_or(|(id, _)| id != law_id));
 
         // Remove from implements index (this law as implementor)
         for candidates in self.implements_index.values_mut() {
