@@ -184,7 +184,11 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
         Value::Null => {}
         Value::Bool(b) => b.hash(hasher),
         Value::Int(i) => i.hash(hasher),
-        Value::Float(f) => f.to_bits().hash(hasher),
+        Value::Float(f) => {
+            // Canonicalize -0.0 → +0.0 so hash matches PartialEq (IEEE 754: -0.0 == +0.0)
+            let canonical = if *f == 0.0 { 0.0_f64 } else { *f };
+            canonical.to_bits().hash(hasher);
+        }
         Value::String(s) => s.hash(hasher),
         Value::Array(arr) => {
             arr.len().hash(hasher);

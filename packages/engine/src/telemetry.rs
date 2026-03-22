@@ -66,8 +66,15 @@ pub fn init_otel_subscriber(
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
+    // Include a stderr fmt layer so warnings (e.g., cache collision detection)
+    // remain visible even when the OTLP endpoint is unreachable.
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_target(false);
+
     tracing_subscriber::registry()
         .with(filter)
+        .with(fmt_layer)
         .with(otel_layer)
         .try_init()
         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;

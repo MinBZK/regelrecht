@@ -72,7 +72,7 @@ bench *ARGS:
 bench-save NAME:
     cd packages/engine && cargo bench {{_bench_flags}} -- --save-baseline {{NAME}}
 
-# Compare against saved baseline
+# Compare against saved baseline (run `just bench-save <name>` first to create one)
 bench-compare BASE:
     cd packages/engine && cargo bench {{_bench_flags}} -- --baseline {{BASE}}
 
