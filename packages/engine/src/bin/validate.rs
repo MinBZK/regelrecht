@@ -89,7 +89,7 @@ fn main() {
             }
         };
 
-        let value: serde_json::Value = match serde_yaml::from_str(&content) {
+        let value: serde_json::Value = match serde_yaml_ng::from_str(&content) {
             Ok(v) => v,
             Err(e) => {
                 eprintln!("FAIL: {}: yaml parse: {e}", path.display());

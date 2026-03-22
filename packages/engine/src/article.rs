@@ -567,7 +567,7 @@ impl ArticleBasedLaw {
             )));
         }
 
-        let law: Self = serde_yaml::from_str(content).map_err(EngineError::YamlError)?;
+        let law: Self = serde_yaml_ng::from_str(content).map_err(EngineError::YamlError)?;
 
         // Validate array sizes after parsing
         law.validate_array_sizes()?;

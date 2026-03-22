@@ -115,7 +115,7 @@ sources:
     scopes: []
     priority: 1
 "#;
-        let manifest: RegistryManifest = serde_yaml::from_str(yaml).unwrap();
+        let manifest: RegistryManifest = serde_yaml_ng::from_str(yaml).unwrap();
         assert_eq!(manifest.schema_version, "1.0");
         assert_eq!(manifest.sources.len(), 1);
 
@@ -149,7 +149,7 @@ sources:
     priority: 10
     auth_ref: amsterdam
 "#;
-        let manifest: RegistryManifest = serde_yaml::from_str(yaml).unwrap();
+        let manifest: RegistryManifest = serde_yaml_ng::from_str(yaml).unwrap();
         let source = &manifest.sources[0];
         assert_eq!(source.id, "amsterdam");
         assert_eq!(source.priority, 10);
@@ -188,7 +188,7 @@ sources:
       ref: v2025.1
     priority: 1
 "#;
-        let manifest: RegistryManifest = serde_yaml::from_str(yaml).unwrap();
+        let manifest: RegistryManifest = serde_yaml_ng::from_str(yaml).unwrap();
         match &manifest.sources[0].source_type {
             SourceType::GitHub { github } => {
                 assert_eq!(github.git_ref.as_deref(), Some("v2025.1"));
@@ -216,8 +216,8 @@ sources:
             }],
         };
 
-        let yaml = serde_yaml::to_string(&manifest).unwrap();
-        let parsed: RegistryManifest = serde_yaml::from_str(&yaml).unwrap();
+        let yaml = serde_yaml_ng::to_string(&manifest).unwrap();
+        let parsed: RegistryManifest = serde_yaml_ng::from_str(&yaml).unwrap();
         assert_eq!(parsed.sources[0].id, "test");
         assert_eq!(parsed.sources[0].priority, 5);
     }

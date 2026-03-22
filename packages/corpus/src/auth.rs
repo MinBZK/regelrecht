@@ -72,7 +72,7 @@ pub fn resolve_token(source_id: &str, auth_file: Option<&Path>) -> Result<Option
                 ))
             })?;
 
-            let config: AuthConfig = serde_yaml::from_str(&content).map_err(|e| {
+            let config: AuthConfig = serde_yaml_ng::from_str(&content).map_err(|e| {
                 CorpusError::Config(format!(
                     "Failed to parse auth file {}: {}",
                     path.display(),

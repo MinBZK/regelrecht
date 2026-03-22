@@ -33,7 +33,7 @@ impl CorpusRegistry {
             ))
         })?;
 
-        let manifest: RegistryManifest = serde_yaml::from_str(&content).map_err(|e| {
+        let manifest: RegistryManifest = serde_yaml_ng::from_str(&content).map_err(|e| {
             CorpusError::Config(format!(
                 "Failed to parse registry manifest {}: {}",
                 manifest_path.display(),
@@ -53,7 +53,7 @@ impl CorpusRegistry {
                     ))
                 })?;
 
-                let local_manifest: RegistryManifest = serde_yaml::from_str(&local_content)
+                let local_manifest: RegistryManifest = serde_yaml_ng::from_str(&local_content)
                     .map_err(|e| {
                         CorpusError::Config(format!(
                             "Failed to parse local override {}: {}",
@@ -74,7 +74,7 @@ impl CorpusRegistry {
 
     /// Load from a YAML string (useful for testing).
     pub fn from_yaml(yaml: &str) -> Result<Self> {
-        let manifest: RegistryManifest = serde_yaml::from_str(yaml)
+        let manifest: RegistryManifest = serde_yaml_ng::from_str(yaml)
             .map_err(|e| CorpusError::Config(format!("Failed to parse registry YAML: {}", e)))?;
 
         let mut sources = manifest.sources;

@@ -422,7 +422,7 @@ impl EngineView {
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-        let mut state = self.law_list_state.clone();
+        let mut state = self.law_list_state;
         frame.render_stateful_widget(list, area, &mut state);
     }
 
@@ -463,7 +463,7 @@ impl EngineView {
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-        let mut state = self.output_list_state.clone();
+        let mut state = self.output_list_state;
         frame.render_stateful_widget(list, area, &mut state);
     }
 
