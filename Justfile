@@ -3,6 +3,10 @@
 
 set dotenv-load := true
 
+# CI uses RUSTFLAGS=-Dwarnings; ci_flags mirrors that for quality/test recipes
+# but not for dev (hot-reload), where in-flight warnings would kill cargo watch.
+ci_flags := "RUSTFLAGS=-Dwarnings"
+
 # Default task - toon beschikbare tasks
 default:
     @just --list
@@ -15,11 +19,11 @@ format:
 
 # Run clippy lints
 lint:
-    cd packages && cargo clippy --all-features -- -D warnings
+    cd packages && {{ci_flags}} cargo clippy --all-features
 
 # Run cargo check
 build-check:
-    cd packages && cargo check --all-features
+    cd packages && {{ci_flags}} cargo check --all-features
 
 # Validate regulation YAML files
 validate *FILES:
@@ -33,23 +37,23 @@ check: format lint build-check validate test harvester-test pipeline-test admin-
 
 # Run Rust unit and integration tests
 test:
-    cd packages/engine && cargo test --all-features
+    cd packages/engine && {{ci_flags}} cargo test --all-features
 
 # Run Rust BDD tests
 bdd:
-    cd packages/engine && cargo test --test bdd -- --nocapture
+    cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
 # Run harvester tests
 harvester-test:
-    cd packages/harvester && cargo test
+    cd packages/harvester && {{ci_flags}} cargo test
 
 # Run pipeline unit tests (no Docker/DB required)
 pipeline-test:
-    cd packages/pipeline && cargo test --lib
+    cd packages/pipeline && {{ci_flags}} cargo test --lib
 
 # Run pipeline integration tests (requires Docker for testcontainers)
 pipeline-integration-test:
-    cd packages/pipeline && cargo test --test '*'
+    cd packages/pipeline && {{ci_flags}} cargo test --test '*'
 
 # Run all tests (engine + harvester + pipeline unit + pipeline integration)
 test-all: test harvester-test pipeline-test pipeline-integration-test
@@ -97,11 +101,11 @@ admin-frontend:
 
 # Check admin Rust code
 admin-check:
-    cd packages && cargo check --package regelrecht-admin
+    cd packages && {{ci_flags}} cargo check --package regelrecht-admin
 
 # Lint admin Rust code
 admin-lint:
-    cd packages && cargo clippy --package regelrecht-admin -- -D warnings
+    cd packages && {{ci_flags}} cargo clippy --package regelrecht-admin
 
 # Format check admin Rust code
 admin-fmt:
@@ -109,7 +113,7 @@ admin-fmt:
 
 # Run admin tests
 admin-test:
-    cd packages && cargo test --package regelrecht-admin
+    cd packages && {{ci_flags}} cargo test --package regelrecht-admin
 
 # --- Development (native with hot reload) ---
 
