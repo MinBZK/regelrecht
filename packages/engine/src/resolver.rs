@@ -80,10 +80,9 @@ pub struct RuleResolver {
     /// Override index: (target_law, target_article, output) -> list of (overriding_law, overriding_article)
     /// Enables O(1) lookup of lex specialis overrides for a given output.
     overrides_index: HashMap<(String, String, String), Vec<(String, String)>>,
-    /// Procedure index: (legal_character, procedure_id) -> procedure definition
+    /// Procedure index: (legal_character, procedure_id) -> (procedure definition, defining_law_id)
     /// Loaded from laws that define `procedure:` (typically the AWB).
-    /// Default procedures are stored with procedure_id = their id.
-    procedure_index: HashMap<(String, String), ProcedureDefinition>,
+    procedure_index: HashMap<(String, String), (ProcedureDefinition, String)>,
     /// Maps legal_character -> default procedure_id for that character.
     procedure_defaults: HashMap<String, String>,
 }
@@ -595,9 +594,13 @@ impl RuleResolver {
         }
         self.overrides_index.retain(|_, v| !v.is_empty());
 
-        // Remove old procedure index entries for this law
+        // Remove old procedure index entries defined by this law
         self.procedure_index
-            .retain(|_, proc_def| proc_def.id != *law_id);
+            .retain(|_, (_, defining_law)| defining_law != law_id);
+        // Clean up defaults whose backing procedure no longer exists
+        let proc_index = &self.procedure_index;
+        self.procedure_defaults
+            .retain(|lc, proc_id| proc_index.contains_key(&(lc.clone(), proc_id.clone())));
 
         // Add new index entries from the most recent version
         // Access law_versions directly to avoid borrowing self through get_law()
@@ -610,7 +613,8 @@ impl RuleResolver {
                             proc_def.applies_to.legal_character.clone(),
                             proc_def.id.clone(),
                         );
-                        self.procedure_index.insert(key, proc_def.clone());
+                        self.procedure_index
+                            .insert(key, (proc_def.clone(), law_id.to_string()));
 
                         if proc_def.default.unwrap_or(false) {
                             self.procedure_defaults.insert(
@@ -705,10 +709,12 @@ impl RuleResolver {
         }
         self.overrides_index.retain(|_, v| !v.is_empty());
 
-        // Remove procedure index entries — procedure_index stores the definition,
-        // but we don't track which law defined it. Clear entries that came from this law.
-        // For now, we only have the id stored in the definition itself.
-        self.procedure_index.retain(|_, _| true); // procedures are rare, keep for now
+        // Remove procedure index entries defined by this law
+        self.procedure_index
+            .retain(|_, (_, defining_law)| defining_law != law_id);
+        let proc_index = &self.procedure_index;
+        self.procedure_defaults
+            .retain(|lc, proc_id| proc_index.contains_key(&(lc.clone(), proc_id.clone())));
     }
 
     /// Find hooks that match a given lifecycle event.
@@ -782,7 +788,7 @@ impl RuleResolver {
             None => self.procedure_defaults.get(legal_character)?.clone(),
         };
         let key = (legal_character.to_string(), proc_id);
-        self.procedure_index.get(&key)
+        self.procedure_index.get(&key).map(|(def, _)| def)
     }
 
     /// Validate that all override targets exist in loaded laws.

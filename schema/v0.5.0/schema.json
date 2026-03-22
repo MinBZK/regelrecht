@@ -1456,7 +1456,11 @@
                     "type": "string",
                     "description": "Lifecycle stage at which this hook fires (e.g., BESLUIT, BEKENDMAKING). Defaults to BESLUIT."
                   }
-                }
+                },
+                "required": [
+                  "legal_character"
+                ],
+                "additionalProperties": false
               }
             },
             "additionalProperties": false

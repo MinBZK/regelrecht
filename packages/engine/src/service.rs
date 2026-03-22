@@ -32,6 +32,7 @@ use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
 use crate::engine::{ArticleEngine, ArticleResult};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
+use crate::priority;
 use crate::resolver::RuleResolver;
 use crate::trace::TraceBuilder;
 use crate::types::{PathNodeType, RegulatoryLayer, ResolveType, Value};
@@ -595,19 +596,13 @@ impl LawExecutionService {
         let mut res_ctx = ResolutionContext::new(calculation_date);
         res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
 
-        // Execute the article — hooks inside evaluate_article_with_service will
-        // use the default "BESLUIT" stage. For proper stage-aware hooks, we need
-        // to set the stage. We do this by executing the article directly and
-        // firing hooks at the correct stage.
-        //
-        // For now, we use the existing evaluate path which fires at BESLUIT.
-        // TODO: Thread stage through to evaluate_article_with_service for
-        // proper stage-aware hook filtering.
+        // Execute the article with stage-aware hook firing.
         let result = self.evaluate_article_with_service(
             article,
             law,
             stage_params,
             Some(output_name),
+            &stage.name,
             &mut res_ctx,
         )?;
 
@@ -744,12 +739,13 @@ impl LawExecutionService {
         // Clone parameters for cache storage before moving into evaluation
         let params_for_cache = parameters.clone();
 
-        // Execute with service provider
+        // Execute with service provider (default stage BESLUIT for cross-law calls)
         let result = self.evaluate_article_with_service(
             article,
             law,
             parameters,
             Some(output_name),
+            "BESLUIT",
             res_ctx,
         )?;
 
@@ -794,6 +790,8 @@ impl LawExecutionService {
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<HashMap<String, Value>> {
         let mut hook_outputs: HashMap<String, Value> = HashMap::new();
+        // Track which law produced each output for priority resolution
+        let mut output_sources: HashMap<String, &ArticleBasedLaw> = HashMap::new();
 
         // Only fire hooks if the article declares what it produces
         let produces = match article.get_produces() {
@@ -827,7 +825,7 @@ impl LawExecutionService {
 
         for (hook_law_id, hook_article_number, _filter) in matching_hooks {
             // Cycle detection: don't re-enter a hook we're already executing
-            let hook_key = format!("hook:{}#{}", hook_law_id, hook_article_number);
+            let hook_key = format!("hook:{}\0{}", hook_law_id, hook_article_number);
             if res_ctx.is_visited(&hook_key) {
                 tracing::debug!(hook_key = %hook_key, "Skipping hook: cycle detected");
                 continue;
@@ -869,7 +867,8 @@ impl LawExecutionService {
                 hook_article,
                 hook_law,
                 hook_params,
-                None, // hooks produce all their outputs
+                None,      // hooks produce all their outputs
+                "BESLUIT", // hook articles themselves are not procedure-aware
                 res_ctx,
             );
 
@@ -878,23 +877,39 @@ impl LawExecutionService {
 
             match hook_result {
                 Ok(result) => {
-                    // Merge outputs (first-writer-wins)
                     for (name, value) in result.outputs {
-                        hook_outputs.entry(name).or_insert(value);
+                        if let Some(existing_law) = output_sources.get(&name) {
+                            // Conflict: two hooks produce same output.
+                            // Resolve via lex superior / lex posterior.
+                            let existing_priority =
+                                priority::layer_rank(&existing_law.regulatory_layer);
+                            let new_priority = priority::layer_rank(&hook_law.regulatory_layer);
+                            if new_priority < existing_priority {
+                                // New hook has higher authority (lower rank = higher)
+                                hook_outputs.insert(name.clone(), value);
+                                output_sources.insert(name, hook_law);
+                            } else if new_priority == existing_priority {
+                                // Same layer: lex posterior (newer valid_from wins)
+                                let existing_date =
+                                    existing_law.valid_from.as_deref().unwrap_or("");
+                                let new_date = hook_law.valid_from.as_deref().unwrap_or("");
+                                if new_date > existing_date {
+                                    hook_outputs.insert(name.clone(), value);
+                                    output_sources.insert(name, hook_law);
+                                }
+                                // If same date: keep first (ambiguous, but deterministic)
+                            }
+                            // else: existing has higher authority, keep it
+                        } else {
+                            output_sources.insert(name.clone(), hook_law);
+                            hook_outputs.insert(name, value);
+                        }
                     }
                     res_ctx.trace_pop();
                 }
-                Err(EngineError::VariableNotFound(var)) => {
-                    // Graceful skip: hook declared a parameter that isn't available
-                    tracing::debug!(
-                        hook = %hook_key,
-                        variable = %var,
-                        "Skipping hook: required variable not found"
-                    );
-                    res_ctx.trace_set_message(format!("Skipped: variable '{}' not found", var));
-                    res_ctx.trace_pop();
-                }
                 Err(e) => {
+                    // If a hook fires (stage matches), it must succeed.
+                    // A missing variable means the law cannot be applied — that's an error.
                     res_ctx.trace_pop();
                     return Err(e);
                 }
@@ -953,7 +968,7 @@ impl LawExecutionService {
             let (ovr_law_id, ovr_article_number) = applicable[0];
 
             // Cycle detection
-            let ovr_key = format!("override:{}#{}", ovr_law_id, ovr_article_number);
+            let ovr_key = format!("override:{}\0{}", ovr_law_id, ovr_article_number);
             if res_ctx.is_visited(&ovr_key) {
                 tracing::debug!(ovr_key = %ovr_key, "Skipping override: cycle detected");
                 continue;
@@ -987,6 +1002,7 @@ impl LawExecutionService {
                 ovr_law,
                 ovr_params,
                 Some(&output_name),
+                "BESLUIT", // override articles are not procedure-aware
                 res_ctx,
             );
 
@@ -1017,12 +1033,16 @@ impl LawExecutionService {
     }
 
     /// Execute an article with ServiceProvider support.
+    ///
+    /// The `stage` parameter controls which lifecycle stage hooks fire at.
+    /// For direct (non-procedure) execution, pass `"BESLUIT"` as default.
     fn evaluate_article_with_service(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
         parameters: HashMap<String, Value>,
         requested_output: Option<&str>,
+        stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
         // Create execution context
@@ -1059,8 +1079,6 @@ impl LawExecutionService {
         }
 
         // Fire pre_actions hooks (between open term resolution and action execution).
-        // Default stage is BESLUIT when no stage context is provided.
-        let stage = "BESLUIT";
         let pre_hook_outputs = self.fire_hooks(
             HookPoint::PreActions,
             article,
@@ -1255,6 +1273,7 @@ impl LawExecutionService {
                     impl_law,
                     impl_params,
                     Some(&term.id),
+                    "BESLUIT",
                     res_ctx,
                 ) {
                     Ok(r) => r,
@@ -1486,6 +1505,7 @@ impl LawExecutionService {
                     law,
                     ref_params,
                     Some(output_name),
+                    "BESLUIT",
                     res_ctx,
                 )?;
 

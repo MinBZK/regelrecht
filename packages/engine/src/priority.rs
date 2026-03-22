@@ -29,7 +29,7 @@ type Result<T> = std::result::Result<T, EngineError>;
 /// - Delegated legislation (AMvB, ministerial regulation)
 /// - Policy rules and local ordinances at the bottom
 #[must_use]
-fn layer_priority(layer: &RegulatoryLayer) -> u8 {
+pub fn layer_rank(layer: &RegulatoryLayer) -> u8 {
     match layer {
         RegulatoryLayer::Verdrag => 0,
         RegulatoryLayer::EuVerordening => 1,
@@ -98,8 +98,8 @@ pub fn resolve_candidate<'a>(
     let mut reason = format!("only candidate ({})", best.law.id);
 
     for candidate in &candidates[1..] {
-        let best_priority = layer_priority(&best.law.regulatory_layer);
-        let candidate_priority = layer_priority(&candidate.law.regulatory_layer);
+        let best_priority = layer_rank(&best.law.regulatory_layer);
+        let candidate_priority = layer_rank(&candidate.law.regulatory_layer);
 
         if candidate_priority < best_priority {
             // Lower number = higher authority (lex superior)
@@ -144,29 +144,22 @@ mod tests {
     #[test]
     fn test_layer_priority_ordering() {
         // International > Constitution > Law > AMvB > Ministerial > Policy
+        assert!(layer_rank(&RegulatoryLayer::Verdrag) < layer_rank(&RegulatoryLayer::Grondwet));
+        assert!(layer_rank(&RegulatoryLayer::Grondwet) < layer_rank(&RegulatoryLayer::Wet));
+        assert!(layer_rank(&RegulatoryLayer::Wet) < layer_rank(&RegulatoryLayer::Amvb));
         assert!(
-            layer_priority(&RegulatoryLayer::Verdrag) < layer_priority(&RegulatoryLayer::Grondwet)
-        );
-        assert!(layer_priority(&RegulatoryLayer::Grondwet) < layer_priority(&RegulatoryLayer::Wet));
-        assert!(layer_priority(&RegulatoryLayer::Wet) < layer_priority(&RegulatoryLayer::Amvb));
-        assert!(
-            layer_priority(&RegulatoryLayer::Amvb)
-                < layer_priority(&RegulatoryLayer::MinisterieleRegeling)
+            layer_rank(&RegulatoryLayer::Amvb) < layer_rank(&RegulatoryLayer::MinisterieleRegeling)
         );
         assert!(
-            layer_priority(&RegulatoryLayer::MinisterieleRegeling)
-                < layer_priority(&RegulatoryLayer::Beleidsregel)
+            layer_rank(&RegulatoryLayer::MinisterieleRegeling)
+                < layer_rank(&RegulatoryLayer::Beleidsregel)
         );
     }
 
     #[test]
     fn test_eu_law_outranks_national() {
-        assert!(
-            layer_priority(&RegulatoryLayer::EuVerordening) < layer_priority(&RegulatoryLayer::Wet)
-        );
-        assert!(
-            layer_priority(&RegulatoryLayer::EuRichtlijn) < layer_priority(&RegulatoryLayer::Wet)
-        );
+        assert!(layer_rank(&RegulatoryLayer::EuVerordening) < layer_rank(&RegulatoryLayer::Wet));
+        assert!(layer_rank(&RegulatoryLayer::EuRichtlijn) < layer_rank(&RegulatoryLayer::Wet));
     }
 
     #[test]
