@@ -25,7 +25,7 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, MachineReadable};
+use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, MachineReadable};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
@@ -74,6 +74,9 @@ struct ResolutionContext<'a> {
     trace: Option<Rc<RefCell<TraceBuilder>>>,
     /// Per-execution memoization cache: hash key → CacheEntry
     cache: HashMap<u64, CacheEntry>,
+    /// The law that initiated the current execution chain (for override scoping).
+    /// Overrides only apply when declared by this law.
+    contextual_law_id: Option<String>,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -85,6 +88,7 @@ impl<'a> ResolutionContext<'a> {
             depth: 0,
             trace: None,
             cache: HashMap::new(),
+            contextual_law_id: None,
         }
     }
 
@@ -96,6 +100,7 @@ impl<'a> ResolutionContext<'a> {
             depth: 0,
             trace: Some(trace),
             cache: HashMap::new(),
+            contextual_law_id: None,
         }
     }
 
@@ -376,6 +381,7 @@ impl LawExecutionService {
         calculation_date: &str,
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::new(calculation_date);
+        res_ctx.contextual_law_id = Some(law_id.to_string());
         self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
     }
 
@@ -414,6 +420,7 @@ impl LawExecutionService {
         }
 
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
+        res_ctx.contextual_law_id = Some(law_id.to_string());
         let mut result =
             self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
 
@@ -547,6 +554,251 @@ impl LawExecutionService {
         Ok(result)
     }
 
+    /// Fire hooks that match the given article's `produces` annotation.
+    ///
+    /// For each matching hook, executes the hook article and merges its outputs.
+    /// First-writer-wins: if multiple hooks produce the same output, the first value is kept.
+    ///
+    /// # Arguments
+    /// * `hook_point` - Whether to fire pre_actions or post_actions hooks
+    /// * `article` - The article whose `produces` triggers hooks
+    /// * `law` - The law containing the article
+    /// * `stage` - The lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
+    /// * `parameters` - Parameters available to hook articles
+    /// * `res_ctx` - Resolution context for cycle detection and tracing
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, law, parameters, res_ctx), fields(hook_point = ?hook_point, law_id = %law.id, article = %article.number)))]
+    fn fire_hooks(
+        &self,
+        hook_point: HookPoint,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        stage: &str,
+        parameters: &HashMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<HashMap<String, Value>> {
+        let mut hook_outputs: HashMap<String, Value> = HashMap::new();
+
+        // Only fire hooks if the article declares what it produces
+        let produces = match article.get_produces() {
+            Some(p) => p,
+            None => return Ok(hook_outputs),
+        };
+
+        let legal_character = match &produces.legal_character {
+            Some(lc) => lc.as_str(),
+            None => return Ok(hook_outputs),
+        };
+
+        let decision_type = produces.decision_type.as_deref();
+
+        // Find matching hooks
+        let matching_hooks =
+            self.resolver
+                .find_hooks(hook_point, legal_character, decision_type, stage);
+
+        if matching_hooks.is_empty() {
+            return Ok(hook_outputs);
+        }
+
+        tracing::debug!(
+            hook_point = ?hook_point,
+            legal_character = legal_character,
+            stage = stage,
+            matches = matching_hooks.len(),
+            "Firing hooks"
+        );
+
+        for (hook_law_id, hook_article_number, _filter) in matching_hooks {
+            // Cycle detection: don't re-enter a hook we're already executing
+            let hook_key = format!("hook:{}#{}", hook_law_id, hook_article_number);
+            if res_ctx.is_visited(&hook_key) {
+                tracing::debug!(hook_key = %hook_key, "Skipping hook: cycle detected");
+                continue;
+            }
+
+            // Look up the hook article
+            let ref_date = res_ctx.reference_date();
+            let Some(hook_law) = self.resolver.get_law_for_date(hook_law_id, ref_date) else {
+                tracing::warn!(hook_law_id = %hook_law_id, "Hook law not found");
+                continue;
+            };
+            let Some(hook_article) = hook_law.find_article_by_number(hook_article_number) else {
+                tracing::warn!(
+                    hook_law_id = %hook_law_id,
+                    hook_article = %hook_article_number,
+                    "Hook article not found"
+                );
+                continue;
+            };
+
+            // Filter parameters: only pass parameters declared by the hook article (least privilege)
+            let hook_params = Self::filter_parameters_for_article(hook_article, parameters);
+
+            // Trace the hook execution
+            res_ctx.trace_push(
+                format!("{}:{}", hook_law_id, hook_article_number),
+                PathNodeType::HookResolution,
+            );
+            res_ctx.trace_set_message(format!(
+                "Hook {:?} on {} stage {} → {}:{}",
+                hook_point, legal_character, stage, hook_law_id, hook_article_number
+            ));
+
+            // Enter scope for cycle detection
+            res_ctx.enter(hook_key.clone());
+
+            // Execute the hook article
+            let hook_result = self.evaluate_article_with_service(
+                hook_article,
+                hook_law,
+                hook_params,
+                None, // hooks produce all their outputs
+                res_ctx,
+            );
+
+            // Leave scope (even on error)
+            res_ctx.leave(&hook_key);
+
+            match hook_result {
+                Ok(result) => {
+                    // Merge outputs (first-writer-wins)
+                    for (name, value) in result.outputs {
+                        hook_outputs.entry(name).or_insert(value);
+                    }
+                    res_ctx.trace_pop();
+                }
+                Err(EngineError::VariableNotFound(var)) => {
+                    // Graceful skip: hook declared a parameter that isn't available
+                    tracing::debug!(
+                        hook = %hook_key,
+                        variable = %var,
+                        "Skipping hook: required variable not found"
+                    );
+                    res_ctx.trace_set_message(format!("Skipped: variable '{}' not found", var));
+                    res_ctx.trace_pop();
+                }
+                Err(e) => {
+                    res_ctx.trace_pop();
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(hook_outputs)
+    }
+
+    /// Apply lex specialis overrides to an article's outputs.
+    ///
+    /// For each output in the result, checks if an override exists from the contextual law.
+    /// If found, executes the overriding article and replaces the output value.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, result, article, law, parameters, res_ctx), fields(law_id = %law.id, article = %article.number)))]
+    fn apply_overrides(
+        &self,
+        result: &mut ArticleResult,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        parameters: &HashMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<()> {
+        let contextual_law_id = match &res_ctx.contextual_law_id {
+            Some(id) => id.clone(),
+            None => return Ok(()), // No contextual law → no overrides apply
+        };
+
+        // Check each output for overrides
+        let output_names: Vec<String> = result.outputs.keys().cloned().collect();
+        for output_name in output_names {
+            let overrides = self
+                .resolver
+                .find_overrides(&law.id, &article.number, &output_name);
+
+            if overrides.is_empty() {
+                continue;
+            }
+
+            // Filter: only overrides from the contextual law apply
+            let applicable: Vec<_> = overrides
+                .iter()
+                .filter(|(ovr_law_id, _)| *ovr_law_id == contextual_law_id)
+                .collect();
+
+            if applicable.is_empty() {
+                continue;
+            }
+
+            if applicable.len() > 1 {
+                return Err(EngineError::InvalidOperation(format!(
+                    "Multiple overrides from '{}' for output '{}' on '{}:{}'",
+                    contextual_law_id, output_name, law.id, article.number
+                )));
+            }
+
+            let (ovr_law_id, ovr_article_number) = applicable[0];
+
+            // Cycle detection
+            let ovr_key = format!("override:{}#{}", ovr_law_id, ovr_article_number);
+            if res_ctx.is_visited(&ovr_key) {
+                tracing::debug!(ovr_key = %ovr_key, "Skipping override: cycle detected");
+                continue;
+            }
+
+            // Look up overriding article
+            let ref_date = res_ctx.reference_date();
+            let Some(ovr_law) = self.resolver.get_law_for_date(ovr_law_id, ref_date) else {
+                continue;
+            };
+            let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
+                continue;
+            };
+
+            // Trace
+            res_ctx.trace_push(
+                format!("{}:{}", ovr_law_id, ovr_article_number),
+                PathNodeType::OverrideResolution,
+            );
+            res_ctx.trace_set_message(format!(
+                "Lex specialis: {}:{} overrides {}:{}.{}",
+                ovr_law_id, ovr_article_number, law.id, article.number, output_name
+            ));
+
+            // Execute overriding article
+            let ovr_params = Self::filter_parameters_for_article(ovr_article, parameters);
+            res_ctx.enter(ovr_key.clone());
+
+            let ovr_result = self.evaluate_article_with_service(
+                ovr_article,
+                ovr_law,
+                ovr_params,
+                Some(&output_name),
+                res_ctx,
+            );
+
+            res_ctx.leave(&ovr_key);
+
+            match ovr_result {
+                Ok(ovr_output) => {
+                    if let Some(value) = ovr_output.outputs.get(&output_name) {
+                        tracing::debug!(
+                            output = %output_name,
+                            from = %law.id,
+                            to = %ovr_law_id,
+                            "Override applied"
+                        );
+                        result.outputs.insert(output_name.clone(), value.clone());
+                        res_ctx.trace_set_result(value.clone());
+                    }
+                    res_ctx.trace_pop();
+                }
+                Err(e) => {
+                    res_ctx.trace_pop();
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Execute an article with ServiceProvider support.
     fn evaluate_article_with_service(
         &self,
@@ -589,21 +841,61 @@ impl LawExecutionService {
             combined_params.insert(name, value);
         }
 
+        // Fire pre_actions hooks (between open term resolution and action execution).
+        // Default stage is BESLUIT when no stage context is provided.
+        let stage = "BESLUIT";
+        let pre_hook_outputs = self.fire_hooks(
+            HookPoint::PreActions,
+            article,
+            law,
+            stage,
+            &combined_params,
+            res_ctx,
+        )?;
+        for (name, value) in &pre_hook_outputs {
+            combined_params.insert(name.clone(), value.clone());
+        }
+
         // Use traced evaluation if trace is available
         let mut result = if let Some(ref tb) = res_ctx.trace {
             engine.evaluate_with_trace(
-                combined_params,
+                combined_params.clone(),
                 res_ctx.calculation_date,
                 requested_output,
                 Rc::clone(tb),
             )?
         } else {
             engine.evaluate_with_output(
-                combined_params,
+                combined_params.clone(),
                 res_ctx.calculation_date,
                 requested_output,
             )?
         };
+
+        // Fire post_actions hooks (between action execution and result return).
+        // Post-hooks receive both parameters and article outputs.
+        let mut post_params = combined_params;
+        for (name, value) in &result.outputs {
+            post_params.insert(name.clone(), value.clone());
+        }
+        let post_hook_outputs = self.fire_hooks(
+            HookPoint::PostActions,
+            article,
+            law,
+            stage,
+            &post_params,
+            res_ctx,
+        )?;
+        for (name, value) in post_hook_outputs {
+            result.outputs.entry(name).or_insert(value);
+        }
+        // Merge pre-hook outputs into result too (they are part of the execution)
+        for (name, value) in pre_hook_outputs {
+            result.outputs.entry(name).or_insert(value);
+        }
+
+        // Apply lex specialis overrides
+        self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
 
         // Enforce TypeSpec: round eurocent outputs to integer.
         // This applies only to top-level article outputs (the API boundary).
