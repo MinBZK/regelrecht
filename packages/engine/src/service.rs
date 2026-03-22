@@ -121,30 +121,35 @@ impl<'a> ResolutionContext<'a> {
         self.visited.contains(key)
     }
 
+    /// Push a new trace node. No-op if tracing is disabled.
     fn trace_push(&self, name: impl Into<String>, node_type: PathNodeType) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().push(name, node_type);
         }
     }
 
+    /// Pop the current trace node. No-op if tracing is disabled.
     fn trace_pop(&self) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().pop();
         }
     }
 
+    /// Set the result on the current trace node. No-op if tracing is disabled.
     fn trace_set_result(&self, result: Value) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_result(result);
         }
     }
 
+    /// Set a message on the current trace node. No-op if tracing is disabled.
     fn trace_set_message(&self, msg: impl Into<String>) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_message(msg);
         }
     }
 
+    /// Set the resolve type on the current trace node. No-op if tracing is disabled.
     fn trace_set_resolve_type(&self, rt: ResolveType) {
         if let Some(ref tb) = self.trace {
             tb.borrow_mut().set_resolve_type(rt);
