@@ -1,0 +1,72 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.5.0/schema.json
+$id: vreemdelingenwet_2000
+regulatory_layer: WET
+publication_date: '2026-01-01'
+valid_from: '2000-11-23'
+name: Vreemdelingenwet 2000
+bwb_id: BWBR0011823
+url: https://wetten.overheid.nl/BWBR0011823/2024-01-01
+
+articles:
+  - number: '14'
+    text: |-
+      1. Onze Minister is bevoegd:
+      a. de aanvraag tot het verlenen van een verblijfsvergunning
+      voor bepaalde tijd in te willigen, af te wijzen dan wel niet
+      in behandeling te nemen.
+    url: https://wetten.overheid.nl/BWBR0011823/2024-01-01#Artikel14
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: heeft_geldige_mvv
+            type: boolean
+            required: true
+            description: Art 16 lid 1 sub a — geldige machtiging tot voorlopig verblijf
+          - name: heeft_geldig_document
+            type: boolean
+            required: true
+            description: Art 16 lid 1 sub b — geldig document voor grensoverschrijding
+        output:
+          - name: verblijfsvergunning_verleend
+            type: boolean
+        actions:
+          - output: verblijfsvergunning_verleend
+            value:
+              operation: AND
+              conditions:
+                - $heeft_geldige_mvv
+                - $heeft_geldig_document
+
+  - number: '16'
+    text: |-
+      1. Een aanvraag tot het verlenen van een verblijfsvergunning
+      voor bepaalde tijd als bedoeld in artikel 14 kan worden
+      afgewezen indien:
+      a. de vreemdeling niet beschikt over een geldige machtiging
+      tot voorlopig verblijf die overeenkomt met het verblijfsdoel;
+      b. de vreemdeling niet beschikt over een geldig document voor
+      grensoverschrijding.
+    url: https://wetten.overheid.nl/BWBR0011823/2024-01-01#Artikel16
+
+  - number: '69'
+    text: |-
+      1. In afwijking van artikel 6:7 van de Algemene wet
+         bestuursrecht bedraagt de termijn voor het indienen van
+         een bezwaar- of beroepschrift vier weken.
+    url: https://wetten.overheid.nl/BWBR0011823/2024-01-01#Artikel69
+    machine_readable:
+      overrides:
+        - law: algemene_wet_bestuursrecht
+          article: '6:7'
+          output: bezwaartermijn_weken
+      execution:
+        output:
+          - name: bezwaartermijn_weken
+            type: number
+        actions:
+          - output: bezwaartermijn_weken
+            value: 4

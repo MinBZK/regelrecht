@@ -783,12 +783,12 @@ impl LawExecutionService {
     /// * `stage` - The lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
     /// * `parameters` - Parameters available to hook articles
     /// * `res_ctx` - Resolution context for cycle detection and tracing
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, law, parameters, res_ctx), fields(hook_point = ?hook_point, law_id = %law.id, article = %article.number)))]
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, _law, parameters, res_ctx), fields(hook_point = ?hook_point, law_id = %_law.id, article = %article.number)))]
     fn fire_hooks(
         &self,
         hook_point: HookPoint,
         article: &Article,
-        law: &ArticleBasedLaw,
+        _law: &ArticleBasedLaw,
         stage: &str,
         parameters: &HashMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
