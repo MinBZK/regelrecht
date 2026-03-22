@@ -217,6 +217,86 @@
         },
         "additionalProperties": false
       }
+    },
+    "procedure": {
+      "type": "array",
+      "description": "AWB-defined procedure lifecycles for administrative decisions (RFC-008)",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "applies_to",
+          "stages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this procedure (e.g., 'beschikking', 'beschikking_uov')"
+          },
+          "default": {
+            "type": "boolean",
+            "description": "Whether this is the default procedure for its legal_character"
+          },
+          "applies_to": {
+            "type": "object",
+            "required": [
+              "legal_character"
+            ],
+            "properties": {
+              "legal_character": {
+                "type": "string",
+                "description": "Legal character this procedure governs"
+              }
+            }
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Stage name (e.g., AANVRAAG, BESLUIT, BEKENDMAKING)"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable description"
+                },
+                "requires": {
+                  "type": "array",
+                  "description": "External inputs required to enter this stage",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "type"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "string",
+                          "number",
+                          "boolean",
+                          "date",
+                          "array",
+                          "object"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [
@@ -1298,6 +1378,10 @@
                     "AANSLAG"
                   ],
                   "description": "Type of decision produced"
+                },
+                "procedure_id": {
+                  "type": "string",
+                  "description": "Selects a specific AWB procedure variant. When absent, the default procedure for the legal_character is used."
                 }
               }
             },
@@ -1331,6 +1415,79 @@
             }
           },
           "additionalProperties": false
+        },
+        "hooks": {
+          "type": "array",
+          "description": "Hook declarations: this article fires when matching lifecycle events occur (RFC-007)",
+          "items": {
+            "type": "object",
+            "required": [
+              "hook_point",
+              "applies_to"
+            ],
+            "properties": {
+              "hook_point": {
+                "type": "string",
+                "enum": [
+                  "pre_actions",
+                  "post_actions"
+                ],
+                "description": "When in the lifecycle this hook fires"
+              },
+              "applies_to": {
+                "type": "object",
+                "properties": {
+                  "legal_character": {
+                    "type": "string",
+                    "enum": [
+                      "BESCHIKKING",
+                      "TOETS",
+                      "WAARDEBEPALING",
+                      "BESLUIT_VAN_ALGEMENE_STREKKING",
+                      "INFORMATIEF"
+                    ],
+                    "description": "Match articles that produce this legal character"
+                  },
+                  "decision_type": {
+                    "type": "string",
+                    "description": "Optionally narrow to a specific decision type"
+                  },
+                  "stage": {
+                    "type": "string",
+                    "description": "Lifecycle stage at which this hook fires (e.g., BESLUIT, BEKENDMAKING). Defaults to BESLUIT."
+                  }
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "overrides": {
+          "type": "array",
+          "description": "Override declarations: this article replaces another article's output (RFC-007, lex specialis)",
+          "items": {
+            "type": "object",
+            "required": [
+              "law",
+              "article",
+              "output"
+            ],
+            "properties": {
+              "law": {
+                "type": "string",
+                "description": "The $id of the law being overridden"
+              },
+              "article": {
+                "type": "string",
+                "description": "The article number being overridden"
+              },
+              "output": {
+                "type": "string",
+                "description": "The specific output being replaced"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false
