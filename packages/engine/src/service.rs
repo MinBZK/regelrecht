@@ -37,6 +37,7 @@ use crate::trace::TraceBuilder;
 use crate::types::{PathNodeType, RegulatoryLayer, ResolveType, Value};
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -282,6 +283,40 @@ pub struct LawInfo {
     pub article_count: usize,
 }
 
+/// State of a decision progressing through an AWB-defined procedure lifecycle (RFC-008).
+///
+/// The engine is stateless — this struct is passed in by the caller and returned
+/// with updates. The orchestration layer persists it between stages.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StageState {
+    /// Which AWB procedure this decision follows (e.g., "beschikking")
+    pub procedure_id: String,
+    /// The law that initiated execution (for override scoping)
+    pub contextual_law: String,
+    /// Current lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
+    pub current_stage: String,
+    /// Outputs accumulated from all completed stages
+    pub accumulated_outputs: HashMap<String, Value>,
+    /// Original parameters from the initial execution
+    pub parameters: HashMap<String, Value>,
+}
+
+/// Outcome of a stage-aware execution step.
+#[derive(Debug)]
+pub enum ExecutionOutcome {
+    /// All stages completed — final result
+    Complete(ArticleResult),
+    /// Execution yielded — waiting for external input to advance
+    Yielded {
+        /// Updated decision state
+        state: StageState,
+        /// Outputs computed so far (including this stage)
+        outputs: HashMap<String, Value>,
+        /// Inputs required to advance to the next stage
+        pending_inputs: Vec<String>,
+    },
+}
+
 /// High-level service for executing laws with automatic cross-law resolution.
 ///
 /// `LawExecutionService` wraps a `RuleResolver` and implements `ServiceProvider`
@@ -438,6 +473,188 @@ impl LawExecutionService {
         }
 
         Ok(result)
+    }
+
+    /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
+    ///
+    /// For laws that produce a `legal_character` with an associated AWB procedure,
+    /// this method executes one stage at a time and yields when external input is needed.
+    ///
+    /// # Arguments
+    /// * `law_id` - The law being executed (e.g., "vreemdelingenwet_2000")
+    /// * `output_name` - The output to calculate
+    /// * `state` - Current decision state (None for initial execution)
+    /// * `parameters` - Input parameters (merged with accumulated outputs if resuming)
+    /// * `calculation_date` - Date for calculations
+    ///
+    /// # Returns
+    /// `ExecutionOutcome::Complete` if all stages are done, or
+    /// `ExecutionOutcome::Yielded` if waiting for external input.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, state, parameters), fields(law_id = %law_id, output = %output_name)))]
+    pub fn execute_stage(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        state: Option<StageState>,
+        parameters: HashMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<ExecutionOutcome> {
+        // Look up the law and article
+        let ref_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
+        let law = self
+            .resolver
+            .get_law_for_date(law_id, ref_date)
+            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+        let article = self
+            .resolver
+            .get_article_by_output(law_id, output_name, ref_date)
+            .ok_or_else(|| EngineError::OutputNotFound {
+                law_id: law_id.to_string(),
+                output: output_name.to_string(),
+            })?;
+
+        // Check if this article produces something with a procedure
+        let produces = article.get_produces();
+        let legal_character = produces.and_then(|p| p.legal_character.as_deref());
+        let procedure_id = produces.and_then(|p| p.procedure_id.as_deref());
+
+        // Look up procedure definition
+        let procedure =
+            legal_character.and_then(|lc| self.resolver.find_procedure(lc, procedure_id));
+
+        // If no procedure, fall through to normal single-stage execution
+        let Some(procedure) = procedure else {
+            let result =
+                self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?;
+            return Ok(ExecutionOutcome::Complete(result));
+        };
+
+        // Determine current stage
+        let mut stage_state = match state {
+            Some(s) => s,
+            None => {
+                // Initial execution: start at the first stage
+                let first_stage = procedure.stages.first().ok_or_else(|| {
+                    EngineError::InvalidOperation("Procedure has no stages".to_string())
+                })?;
+
+                StageState {
+                    procedure_id: procedure.id.clone(),
+                    contextual_law: law_id.to_string(),
+                    current_stage: first_stage.name.clone(),
+                    accumulated_outputs: HashMap::new(),
+                    parameters: parameters.clone(),
+                }
+            }
+        };
+
+        // Find current stage in procedure
+        let stage_idx = procedure
+            .stages
+            .iter()
+            .position(|s| s.name == stage_state.current_stage)
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "Stage '{}' not found in procedure '{}'",
+                    stage_state.current_stage, procedure.id
+                ))
+            })?;
+
+        let stage = &procedure.stages[stage_idx];
+
+        // Check if required inputs for this stage are present
+        if let Some(requires) = &stage.requires {
+            let mut missing = Vec::new();
+            for req in requires {
+                if !parameters.contains_key(&req.name)
+                    && !stage_state.accumulated_outputs.contains_key(&req.name)
+                {
+                    missing.push(req.name.clone());
+                }
+            }
+            if !missing.is_empty() {
+                let outputs = stage_state.accumulated_outputs.clone();
+                return Ok(ExecutionOutcome::Yielded {
+                    state: stage_state,
+                    outputs,
+                    pending_inputs: missing,
+                });
+            }
+        }
+
+        // Merge accumulated outputs + new parameters for this stage's execution
+        let mut stage_params = stage_state.parameters.clone();
+        for (k, v) in &stage_state.accumulated_outputs {
+            stage_params.insert(k.clone(), v.clone());
+        }
+        for (k, v) in &parameters {
+            stage_params.insert(k.clone(), v.clone());
+        }
+
+        // Execute the article with stage-aware hook firing
+        let mut res_ctx = ResolutionContext::new(calculation_date);
+        res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
+
+        // Execute the article — hooks inside evaluate_article_with_service will
+        // use the default "BESLUIT" stage. For proper stage-aware hooks, we need
+        // to set the stage. We do this by executing the article directly and
+        // firing hooks at the correct stage.
+        //
+        // For now, we use the existing evaluate path which fires at BESLUIT.
+        // TODO: Thread stage through to evaluate_article_with_service for
+        // proper stage-aware hook filtering.
+        let result = self.evaluate_article_with_service(
+            article,
+            law,
+            stage_params,
+            Some(output_name),
+            &mut res_ctx,
+        )?;
+
+        // Merge outputs into accumulated state
+        for (k, v) in &result.outputs {
+            stage_state.accumulated_outputs.insert(k.clone(), v.clone());
+        }
+
+        // Advance to next stage
+        if stage_idx + 1 < procedure.stages.len() {
+            let next_stage = &procedure.stages[stage_idx + 1];
+            stage_state.current_stage = next_stage.name.clone();
+
+            // Check if next stage needs external inputs
+            if let Some(requires) = &next_stage.requires {
+                let mut missing = Vec::new();
+                for req in requires {
+                    if !stage_state.accumulated_outputs.contains_key(&req.name)
+                        && !stage_state.parameters.contains_key(&req.name)
+                    {
+                        missing.push(req.name.clone());
+                    }
+                }
+
+                if !missing.is_empty() {
+                    return Ok(ExecutionOutcome::Yielded {
+                        outputs: stage_state.accumulated_outputs.clone(),
+                        state: stage_state,
+                        pending_inputs: missing,
+                    });
+                }
+            }
+
+            // Next stage has all inputs — continue executing (recursive)
+            return self.execute_stage(
+                law_id,
+                output_name,
+                Some(stage_state),
+                parameters,
+                calculation_date,
+            );
+        }
+
+        // All stages complete
+        let mut final_result = result;
+        final_result.outputs = stage_state.accumulated_outputs;
+        Ok(ExecutionOutcome::Complete(final_result))
     }
 
     /// Internal method with cycle tracking.
