@@ -93,7 +93,7 @@ if (localSources.length === 0) {
 }
 
 const index = [];
-const seenIds = new Map(); // $id → priority (for conflict resolution)
+const seenIds = new Map(); // $id → { priority, source_id } (for cross-source conflict resolution)
 let totalFiles = 0;
 
 for (const source of localSources) {
@@ -103,6 +103,11 @@ for (const source of localSources) {
   console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): ${yamlFiles.length} files from ${source.local.path}`);
 
   for (const src of yamlFiles) {
+    const content = readFileSync(src, 'utf-8');
+    const meta = extractMeta(content);
+
+    if (!meta.id) continue;
+
     const rel = relative(sourceDir, src);
     // Namespace destination by source id to avoid cross-source file collisions
     const destRel = localSources.length > 1 ? `${source.id}/${rel}` : rel;
@@ -112,20 +117,22 @@ for (const source of localSources) {
     cpSync(src, dest);
     totalFiles++;
 
-    const content = readFileSync(src, 'utf-8');
-    const meta = extractMeta(content);
-
-    if (!meta.id) continue;
-
-    // Priority-based conflict resolution (same as Rust SourceMap)
+    // Cross-source conflict resolution (same as Rust SourceMap).
+    // Multiple versions within the same source are allowed (temporal versioning).
     const existing = seenIds.get(meta.id);
-    if (existing !== undefined) {
-      if (source.priority >= existing) continue; // existing wins
-      // New source wins — remove old entry
-      const oldIdx = index.findIndex(e => e.id === meta.id);
-      if (oldIdx !== -1) index.splice(oldIdx, 1);
+    if (existing !== undefined && existing.source_id !== source.id) {
+      if (source.priority === existing.priority) {
+        console.error(`Conflict: law '${meta.id}' provided by sources '${existing.source_id}' and '${source.id}' with equal priority ${source.priority}`);
+        process.exit(1);
+      }
+      if (source.priority > existing.priority) continue; // existing wins (lower = higher priority)
+      // New source wins — remove old entries from losing source
+      const loserId = existing.source_id;
+      for (let i = index.length - 1; i >= 0; i--) {
+        if (index[i].id === meta.id && index[i].source_id === loserId) index.splice(i, 1);
+      }
     }
-    seenIds.set(meta.id, source.priority);
+    seenIds.set(meta.id, { priority: source.priority, source_id: source.id });
 
     index.push({
       id: meta.id,
