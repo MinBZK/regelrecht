@@ -110,6 +110,19 @@ impl Value {
         }
     }
 
+    /// Get the type name as a static string (for error messages).
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Null => "null",
+            Value::Bool(_) => "boolean",
+            Value::Int(_) => "integer",
+            Value::Float(_) => "float",
+            Value::String(_) => "string",
+            Value::Array(_) => "array",
+            Value::Object(_) => "object",
+        }
+    }
+
     /// Convert value to boolean (Python-style truthiness)
     ///
     /// Note: NaN is treated as falsy (unlike Python where `bool(float('nan'))` is True).
@@ -212,54 +225,13 @@ impl From<serde_json::Value> for Value {
 
 impl From<&serde_json::Value> for Value {
     fn from(v: &serde_json::Value) -> Self {
-        match v {
-            serde_json::Value::Null => Value::Null,
-            serde_json::Value::Bool(b) => Value::Bool(*b),
-            serde_json::Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    Value::Int(i)
-                } else if let Some(f) = n.as_f64() {
-                    if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-                        Value::Int(f as i64)
-                    } else {
-                        Value::Float(f)
-                    }
-                } else {
-                    Value::Null
-                }
-            }
-            serde_json::Value::String(s) => Value::String(s.clone()),
-            serde_json::Value::Array(arr) => Value::Array(arr.iter().map(Value::from).collect()),
-            serde_json::Value::Object(obj) => {
-                let map: HashMap<String, Value> = obj
-                    .iter()
-                    .map(|(k, v)| (k.clone(), Value::from(v)))
-                    .collect();
-                Value::Object(map)
-            }
-        }
+        Value::from(v.clone())
     }
 }
 
 impl From<&Value> for serde_json::Value {
     fn from(v: &Value) -> Self {
-        match v {
-            Value::Null => serde_json::Value::Null,
-            Value::Bool(b) => serde_json::Value::Bool(*b),
-            Value::Int(i) => serde_json::json!(*i),
-            Value::Float(f) => serde_json::json!(*f),
-            Value::String(s) => serde_json::Value::String(s.clone()),
-            Value::Array(arr) => {
-                serde_json::Value::Array(arr.iter().map(serde_json::Value::from).collect())
-            }
-            Value::Object(map) => {
-                let obj: serde_json::Map<String, serde_json::Value> = map
-                    .iter()
-                    .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
-                    .collect();
-                serde_json::Value::Object(obj)
-            }
-        }
+        serde_json::Value::from(v.clone())
     }
 }
 
@@ -356,57 +328,6 @@ pub enum Operation {
 }
 
 impl Operation {
-    /// Check if this is a comparison operation
-    pub fn is_comparison(&self) -> bool {
-        matches!(
-            self,
-            Operation::Equals
-                | Operation::NotEquals
-                | Operation::GreaterThan
-                | Operation::LessThan
-                | Operation::GreaterThanOrEqual
-                | Operation::LessThanOrEqual
-        )
-    }
-
-    /// Check if this is an arithmetic operation
-    pub fn is_arithmetic(&self) -> bool {
-        matches!(
-            self,
-            Operation::Add | Operation::Subtract | Operation::Multiply | Operation::Divide
-        )
-    }
-
-    /// Check if this is an aggregate operation
-    pub fn is_aggregate(&self) -> bool {
-        matches!(self, Operation::Max | Operation::Min)
-    }
-
-    /// Check if this is a logical operation
-    pub fn is_logical(&self) -> bool {
-        matches!(self, Operation::And | Operation::Or)
-    }
-
-    /// Check if this is a conditional operation
-    pub fn is_conditional(&self) -> bool {
-        matches!(self, Operation::If | Operation::Switch)
-    }
-
-    /// Check if this is a null checking operation
-    pub fn is_null_check(&self) -> bool {
-        matches!(self, Operation::IsNull | Operation::NotNull)
-    }
-
-    /// Check if this is a membership testing operation
-    pub fn is_membership(&self) -> bool {
-        matches!(self, Operation::In | Operation::NotIn)
-    }
-
-    /// Check if this is a date operation
-    pub fn is_date(&self) -> bool {
-        matches!(self, Operation::SubtractDate)
-    }
-
     /// Get the operation name as a static uppercase string.
     ///
     /// Avoids per-invocation `format!("{:?}", op).to_uppercase()` allocations.
@@ -540,15 +461,6 @@ mod tests {
 
         let str_val = Value::String("hello".to_string());
         assert_eq!(str_val.as_str(), Some("hello"));
-    }
-
-    #[test]
-    fn test_operation_categories() {
-        assert!(Operation::Equals.is_comparison());
-        assert!(Operation::Add.is_arithmetic());
-        assert!(Operation::Max.is_aggregate());
-        assert!(Operation::And.is_logical());
-        assert!(Operation::If.is_conditional());
     }
 
     #[test]

@@ -25,7 +25,7 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, Input, MachineReadable};
+use crate::article::{Article, ArticleBasedLaw, Execution, MachineReadable};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
@@ -119,6 +119,36 @@ impl<'a> ResolutionContext<'a> {
     /// Check if a key is already being resolved (cycle detection).
     fn is_visited(&self, key: &str) -> bool {
         self.visited.contains(key)
+    }
+
+    fn trace_push(&self, name: impl Into<String>, node_type: PathNodeType) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().push(name, node_type);
+        }
+    }
+
+    fn trace_pop(&self) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().pop();
+        }
+    }
+
+    fn trace_set_result(&self, result: Value) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_result(result);
+        }
+    }
+
+    fn trace_set_message(&self, msg: impl Into<String>) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_message(msg);
+        }
+    }
+
+    fn trace_set_resolve_type(&self, rt: ResolveType) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().set_resolve_type(rt);
+        }
     }
 }
 
@@ -421,14 +451,11 @@ impl LawExecutionService {
                 // Fall through to re-evaluate
             } else {
                 tracing::debug!(law_id, output_name, "Cache hit");
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.push(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
-                    if let Some(val) = cached_outputs.get(output_name) {
-                        tb.set_result(val.clone());
-                    }
-                    tb.pop();
+                res_ctx.trace_push(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
+                if let Some(val) = cached_outputs.get(output_name) {
+                    res_ctx.trace_set_result(val.clone());
                 }
+                res_ctx.trace_pop();
                 return Ok(ArticleResult {
                     outputs: cached_outputs.clone(),
                     resolved_inputs: HashMap::new(),
@@ -624,15 +651,12 @@ impl LawExecutionService {
                     open_term = %term.id,
                     "Circular open term dependency detected"
                 );
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.push(&term.id, PathNodeType::OpenTermResolution);
-                    tb.set_message(format!(
-                        "Circular dependency: open term '{}' on {}#{} is already being resolved",
-                        term.id, law.id, article.number
-                    ));
-                    tb.pop();
-                }
+                res_ctx.trace_push(&term.id, PathNodeType::OpenTermResolution);
+                res_ctx.trace_set_message(format!(
+                    "Circular dependency: open term '{}' on {}#{} is already being resolved",
+                    term.id, law.id, article.number
+                ));
+                res_ctx.trace_pop();
                 return Err(EngineError::CircularReference(format!(
                     "Circular open term dependency: '{}' on {} article {} is already being resolved",
                     term.id, law.id, article.number
@@ -648,11 +672,8 @@ impl LawExecutionService {
             );
 
             // Trace the open term resolution
-            if let Some(ref tb) = res_ctx.trace {
-                let mut tb = tb.borrow_mut();
-                tb.push(&term.id, PathNodeType::OpenTermResolution);
-                tb.set_resolve_type(ResolveType::OpenTerm);
-            }
+            res_ctx.trace_push(&term.id, PathNodeType::OpenTermResolution);
+            res_ctx.trace_set_resolve_type(ResolveType::OpenTerm);
 
             // Look up implementations (filtered by execution scope)
             let implementations = match self.resolver.find_implementations(
@@ -664,14 +685,11 @@ impl LawExecutionService {
             ) {
                 Ok(impls) => impls,
                 Err(e) => {
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_message(format!(
-                            "Open term '{}': implementation lookup failed: {}",
-                            term.id, e
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}': implementation lookup failed: {}",
+                        term.id, e
+                    ));
+                    res_ctx.trace_pop();
                     res_ctx.leave(&ot_key);
                     return Err(e);
                 }
@@ -683,14 +701,11 @@ impl LawExecutionService {
                 if let Some(ref expected_type) = term.delegation_type {
                     let actual_layer = impl_law.regulatory_layer.as_str();
                     if actual_layer != expected_type {
-                        if let Some(ref tb) = res_ctx.trace {
-                            let mut tb = tb.borrow_mut();
-                            tb.set_message(format!(
-                                "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
-                                term.id, impl_law.id, actual_layer, expected_type
-                            ));
-                            tb.pop();
-                        }
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
+                            term.id, impl_law.id, actual_layer, expected_type
+                        ));
+                        res_ctx.trace_pop();
                         res_ctx.leave(&ot_key);
                         return Err(EngineError::ResolutionError(format!(
                             "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
@@ -720,14 +735,11 @@ impl LawExecutionService {
                 ) {
                     Ok(r) => r,
                     Err(e) => {
-                        if let Some(ref tb) = res_ctx.trace {
-                            let mut tb = tb.borrow_mut();
-                            tb.set_message(format!(
-                                "Open term '{}': implementation execution failed: {}",
-                                term.id, e
-                            ));
-                            tb.pop();
-                        }
+                        res_ctx.trace_set_message(format!(
+                            "Open term '{}': implementation execution failed: {}",
+                            term.id, e
+                        ));
+                        res_ctx.trace_pop();
                         res_ctx.leave(&ot_key);
                         return Err(e);
                     }
@@ -735,27 +747,21 @@ impl LawExecutionService {
 
                 if let Some(value) = result.outputs.get(&term.id) {
                     // Trace success
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_result(value.clone());
-                        tb.set_message(format!(
-                            "Open term '{}' resolved from {} article {}",
-                            term.id, impl_law.id, impl_article.number
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_result(value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' resolved from {} article {}",
+                        term.id, impl_law.id, impl_article.number
+                    ));
+                    res_ctx.trace_pop();
 
                     resolved.insert(term.id.clone(), value.clone());
                 } else {
                     // Implementation executed but didn't produce the expected output
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_message(format!(
-                            "Open term '{}': implementation {} article {} produced no matching output",
-                            term.id, impl_law.id, impl_article.number
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}': implementation {} article {} produced no matching output",
+                        term.id, impl_law.id, impl_article.number
+                    ));
+                    res_ctx.trace_pop();
                     res_ctx.leave(&ot_key);
                     return Err(EngineError::InvalidOperation(format!(
                         "Implementation {} article {} for open term '{}' did not produce output named '{}'",
@@ -810,14 +816,11 @@ impl LawExecutionService {
                     ) {
                         Ok(r) => r,
                         Err(e) => {
-                            if let Some(ref tb) = res_ctx.trace {
-                                let mut tb = tb.borrow_mut();
-                                tb.set_message(format!(
-                                    "Open term '{}': default evaluation failed: {}",
-                                    term.id, e
-                                ));
-                                tb.pop();
-                            }
+                            res_ctx.trace_set_message(format!(
+                                "Open term '{}': default evaluation failed: {}",
+                                term.id, e
+                            ));
+                            res_ctx.trace_pop();
                             res_ctx.leave(&ot_key);
                             return Err(e);
                         }
@@ -829,37 +832,31 @@ impl LawExecutionService {
                         .cloned()
                         .unwrap_or(Value::Null);
 
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_result(default_value.clone());
-                        tb.set_message(format!("Open term '{}' resolved from default", term.id));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_result(default_value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' resolved from default",
+                        term.id
+                    ));
+                    res_ctx.trace_pop();
 
                     resolved.insert(term.id.clone(), default_value);
                 } else {
                     // Default exists but has no actions — treat as null
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_result(Value::Null);
-                        tb.set_message(format!(
-                            "Open term '{}' resolved from empty default",
-                            term.id
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_result(Value::Null);
+                    res_ctx.trace_set_message(format!(
+                        "Open term '{}' resolved from empty default",
+                        term.id
+                    ));
+                    res_ctx.trace_pop();
                     resolved.insert(term.id.clone(), Value::Null);
                 }
             } else if term.required {
                 // Required but no implementation and no default
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!(
-                        "Open term '{}' is required but no implementation found",
-                        term.id
-                    ));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!(
+                    "Open term '{}' is required but no implementation found",
+                    term.id
+                ));
+                res_ctx.trace_pop();
 
                 res_ctx.leave(&ot_key);
                 return Err(EngineError::ResolutionError(format!(
@@ -873,14 +870,11 @@ impl LawExecutionService {
                     "Optional open term not implemented, skipping"
                 );
 
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!(
-                        "Open term '{}' not required, no implementation, skipped",
-                        term.id
-                    ));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!(
+                    "Open term '{}' not required, no implementation, skipped",
+                    term.id
+                ));
+                res_ctx.trace_pop();
             }
 
             res_ctx.leave(&ot_key);
@@ -898,7 +892,7 @@ impl LawExecutionService {
         parameters: &HashMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
-        let inputs = self.get_inputs(article);
+        let inputs = article.get_inputs();
 
         for input in inputs {
             let source = match &input.source {
@@ -921,17 +915,14 @@ impl LawExecutionService {
                     );
 
                     // Trace the data source resolution
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.push(&input.name, PathNodeType::Resolve);
-                        tb.set_resolve_type(ResolveType::DataSource);
-                        tb.set_result(data_match.value.clone());
-                        tb.set_message(format!(
-                            "Resolving from SOURCE {}: {}",
-                            data_match.source_name, data_match.value
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_push(&input.name, PathNodeType::Resolve);
+                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                    res_ctx.trace_set_result(data_match.value.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Resolving from SOURCE {}: {}",
+                        data_match.source_name, data_match.value
+                    ));
+                    res_ctx.trace_pop();
 
                     context.set_resolved_input(&input.name, data_match.value);
                     continue;
@@ -1004,20 +995,14 @@ impl LawExecutionService {
         }
 
         // Trace cross-law call
-        if let Some(ref tb) = res_ctx.trace {
-            tb.borrow_mut()
-                .push(format!("{}#{}", regulation, output), PathNodeType::UriCall);
-        }
+        res_ctx.trace_push(format!("{}#{}", regulation, output), PathNodeType::UriCall);
 
         // Build parameters for the target article
         let target_params = match self.build_target_parameters(source_parameters, context) {
             Ok(p) => p,
             Err(e) => {
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!("Failed to build parameters: {}", e));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!("Failed to build parameters: {}", e));
+                res_ctx.trace_pop();
                 return Err(e);
             }
         };
@@ -1035,14 +1020,11 @@ impl LawExecutionService {
             Ok(r) => match r.outputs.get(output).cloned() {
                 Some(v) => v,
                 None => {
-                    if let Some(ref tb) = res_ctx.trace {
-                        let mut tb = tb.borrow_mut();
-                        tb.set_message(format!(
-                            "Output '{}' not found in result from {}",
-                            output, regulation
-                        ));
-                        tb.pop();
-                    }
+                    res_ctx.trace_set_message(format!(
+                        "Output '{}' not found in result from {}",
+                        output, regulation
+                    ));
+                    res_ctx.trace_pop();
                     return Err(EngineError::OutputNotFound {
                         law_id: regulation.to_string(),
                         output: output.to_string(),
@@ -1050,21 +1032,15 @@ impl LawExecutionService {
                 }
             },
             Err(e) => {
-                if let Some(ref tb) = res_ctx.trace {
-                    let mut tb = tb.borrow_mut();
-                    tb.set_message(format!("Execution failed: {}", e));
-                    tb.pop();
-                }
+                res_ctx.trace_set_message(format!("Execution failed: {}", e));
+                res_ctx.trace_pop();
                 return Err(e);
             }
         };
 
         // Complete trace node
-        if let Some(ref tb) = res_ctx.trace {
-            let mut tb = tb.borrow_mut();
-            tb.set_result(value.clone());
-            tb.pop();
-        }
+        res_ctx.trace_set_result(value.clone());
+        res_ctx.trace_pop();
 
         Ok(value)
     }
@@ -1117,14 +1093,6 @@ impl LawExecutionService {
         }
 
         Ok(params)
-    }
-
-    /// Get inputs from article execution spec.
-    fn get_inputs<'a>(&self, article: &'a Article) -> &'a [Input] {
-        article
-            .get_execution_spec()
-            .and_then(|exec| exec.input.as_deref())
-            .unwrap_or(&[])
     }
 
     /// List all loaded law IDs.

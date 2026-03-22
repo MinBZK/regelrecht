@@ -19,7 +19,7 @@
 //! println!("Output: {:?}", result.outputs);
 //! ```
 
-use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw, Input};
+use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::config;
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
@@ -247,7 +247,7 @@ impl<'a> ArticleEngine<'a> {
         visited: &[String],
         depth: usize,
     ) -> Result<()> {
-        let inputs = self.get_inputs();
+        let inputs = self.article.get_inputs();
 
         for input in inputs {
             let source = match &input.source {
@@ -484,14 +484,6 @@ impl<'a> ArticleEngine<'a> {
         self.article
             .get_execution_spec()
             .and_then(|exec| exec.actions.as_deref())
-            .unwrap_or(&[])
-    }
-
-    /// Get inputs from the article's execution spec.
-    fn get_inputs(&self) -> &[Input] {
-        self.article
-            .get_execution_spec()
-            .and_then(|exec| exec.input.as_deref())
             .unwrap_or(&[])
     }
 }

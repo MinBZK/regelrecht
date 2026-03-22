@@ -483,21 +483,8 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
         }
         _ => Err(EngineError::TypeMismatch {
             expected: "object".to_string(),
-            actual: value_type_name(value).to_string(),
+            actual: value.type_name().to_string(),
         }),
-    }
-}
-
-/// Get the type name of a Value for error messages.
-fn value_type_name(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "boolean",
-        Value::Int(_) => "integer",
-        Value::Float(_) => "float",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
     }
 }
 
