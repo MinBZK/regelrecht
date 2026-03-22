@@ -101,6 +101,52 @@ fn assert_reden_afwijzing_contains(world: &mut RegelrechtWorld, expected_text: S
     }
 }
 
+// =============================================================================
+// Generic assertion steps
+// =============================================================================
+
+#[then("the execution succeeds")]
+fn assert_execution_succeeds(world: &mut RegelrechtWorld) {
+    assert!(
+        world.is_success(),
+        "Expected successful execution, got error: {:?}",
+        world.error_message()
+    );
+}
+
+#[then(regex = r#"^the output "([^"]+)" is "([^"]+)"$"#)]
+fn assert_output_value(world: &mut RegelrechtWorld, output_name: String, expected: String) {
+    assert!(
+        world.is_success(),
+        "Expected successful execution, got error: {:?}",
+        world.error_message()
+    );
+
+    let actual = world.get_output(&output_name);
+    let expected_value = crate::helpers::value_conversion::convert_gherkin_value(&expected);
+
+    match actual {
+        Some(value) => {
+            assert_eq!(
+                *value, expected_value,
+                "Output '{}': expected {:?}, got {:?}",
+                output_name, expected_value, value
+            );
+        }
+        None => {
+            let available: Vec<&String> = world
+                .result
+                .as_ref()
+                .map(|r| r.outputs.keys().collect())
+                .unwrap_or_default();
+            panic!(
+                "Output '{}' not found. Available outputs: {:?}",
+                output_name, available
+            );
+        }
+    }
+}
+
 // Error steps (bijstand and general)
 
 #[then(regex = r#"^the execution fails with "([^"]+)"$"#)]
