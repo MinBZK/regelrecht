@@ -52,6 +52,15 @@ use std::rc::Rc;
 /// during cross-law reference resolution. This reduces the number of
 /// parameters passed between internal resolution functions.
 ///
+/// Cache entry: (law_id, output_name, outputs, parameters).
+/// Stores identity fields for runtime collision detection alongside cached outputs.
+type CacheEntry = (
+    String,
+    String,
+    HashMap<String, Value>,
+    HashMap<String, Value>,
+);
+
 /// Uses a scoped push/pop pattern for the visited set to avoid
 /// cloning the HashSet on every cross-law descent.
 struct ResolutionContext<'a> {
@@ -63,9 +72,8 @@ struct ResolutionContext<'a> {
     depth: usize,
     /// Optional shared trace builder
     trace: Option<Rc<RefCell<TraceBuilder>>>,
-    /// Per-execution memoization cache: hash key → (law_id, output_name, outputs)
-    /// Stores identity for collision detection via debug_assert.
-    cache: HashMap<u64, (String, String, HashMap<String, Value>)>,
+    /// Per-execution memoization cache: hash key → CacheEntry
+    cache: HashMap<u64, CacheEntry>,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -395,11 +403,14 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
-        if let Some((cached_law, cached_output, cached_outputs)) = res_ctx.cache.get(&key) {
+        if let Some((cached_law, cached_output, cached_outputs, cached_params)) =
+            res_ctx.cache.get(&key)
+        {
             // Runtime collision check: hash keys are u64 so collisions are
             // theoretically possible. For legally binding decisions, we must
             // never silently return wrong results.
-            if cached_law != law_id || cached_output != output_name {
+            if cached_law != law_id || cached_output != output_name || cached_params != &parameters
+            {
                 tracing::warn!(
                     cached_law,
                     cached_output,
@@ -468,6 +479,9 @@ impl LawExecutionService {
                 output: output_name.to_string(),
             })?;
 
+        // Clone parameters for cache storage before moving into evaluation
+        let params_for_cache = parameters.clone();
+
         // Execute with service provider
         let result = self.evaluate_article_with_service(
             article,
@@ -484,6 +498,7 @@ impl LawExecutionService {
                 law_id.to_string(),
                 output_name.to_string(),
                 result.outputs.clone(),
+                params_for_cache,
             ),
         );
 
