@@ -44,7 +44,7 @@
 
 <script setup>
 import { computed } from 'vue';
-import { typeColors } from '../data/flowConstants.js';
+import { branchColors, typeColors } from '../data/flowConstants.js';
 
 const props = defineProps({
   stage: { type: Object, default: null },
@@ -54,7 +54,9 @@ defineEmits(['close']);
 
 const badgeColor = computed(() => {
   if (!props.stage) return '';
-  return typeColors[props.stage.type] || 'var(--color-branch-main)';
+  return branchColors[props.stage.branch]
+    || typeColors[props.stage.type]
+    || 'var(--color-branch-main)';
 });
 </script>
 

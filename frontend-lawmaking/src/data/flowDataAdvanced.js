@@ -1,14 +1,14 @@
 /**
  * Advanced flow data: the full Dutch legislative process.
  *
- * Layout (7 columns, ~45 rows):
- *   col 0: main (Corpus Juris)
- *   col 1: ministry internal / pre-parliamentary preparation
- *   col 2: formal bill through parliament (Tweede Kamer / Eerste Kamer)
- *   col 3: CI checks / external reviews / advisory bodies
- *   col 4: amendment branches
- *   col 5: sub-amendments, concurrent amendment, initiatiefwet
- *   col 6: delegated legislation (AMvB), novelle loop-back
+ * Branch model (GitFlow):
+ *   col 0: main (Corpus Juris — geldend recht)
+ *   col 1: develop (Wetgevingskalender — voorstellen in procedure)
+ *   col 2: ministry fork (wetsvoorstel — eigen omgeving ministerie)
+ *   col 3: internal sub-branch (beleid + juridisch team)
+ *   col 4-8: parallel advisory/check forks (toetsen, consultatie)
+ *   col 3-7: amendment branches (elk amendement eigen branch)
+ *   col 3: novelle (reparatie-fork)
  */
 
 export const branches = [
@@ -18,719 +18,726 @@ export const branches = [
     gitLabel: 'main',
     color: 'var(--color-branch-main)',
     col: 0,
-    startRow: 0,
-    endRow: 46,
+  },
+  {
+    id: 'develop',
+    label: 'Wetgevingskalender',
+    gitLabel: 'develop',
+    color: 'var(--color-branch-develop)',
+    col: 1,
   },
   {
     id: 'ministry',
     label: 'Ministerie',
-    gitLabel: 'feature/voorbereiding',
-    color: 'var(--color-branch-feature)',
-    col: 1,
-    startRow: 1,
-    endRow: 18,
-  },
-  {
-    id: 'policy',
-    label: 'Beleidsteam',
-    gitLabel: 'feature/beleid',
-    color: 'var(--color-branch-feature)',
+    gitLabel: 'fork/wetsvoorstel',
+    color: 'var(--color-branch-wetsvoorstel)',
     col: 2,
-    startRow: 2,
-    endRow: 4,
   },
   {
-    id: 'parliament',
-    label: 'Parlement',
-    gitLabel: 'feature/wetsvoorstel',
-    color: 'var(--color-branch-feature)',
-    col: 2,
-    startRow: 19,
-    endRow: 40,
+    id: 'internal',
+    label: 'Intern team',
+    gitLabel: 'topic/*',
+    color: 'var(--color-branch-internal)',
+    col: 3,
   },
   {
-    id: 'amendments',
-    label: 'Amendementen',
-    gitLabel: 'patches/*',
-    color: 'var(--color-review)',
+    id: 'uh-toets-branch',
+    label: 'U&H toets',
+    gitLabel: 'fork/uh-toets',
+    color: 'var(--color-branch-advisory)',
     col: 4,
-    startRow: 28,
-    endRow: 32,
   },
   {
-    id: 'sub-amendments',
-    label: 'Subamendementen',
-    gitLabel: 'patches/sub/*',
-    color: 'var(--color-review)',
+    id: 'regeldruk-branch',
+    label: 'Regeldruk',
+    gitLabel: 'fork/regeldruk',
+    color: 'var(--color-branch-advisory)',
     col: 5,
-    startRow: 28,
-    endRow: 32,
   },
   {
-    id: 'initiatief',
+    id: 'financieel-branch',
+    label: 'Financieel',
+    gitLabel: 'fork/financieel',
+    color: 'var(--color-branch-advisory)',
+    col: 6,
+  },
+  {
+    id: 'privacy-branch',
+    label: 'Privacy',
+    gitLabel: 'fork/dpia',
+    color: 'var(--color-branch-advisory)',
+    col: 7,
+  },
+  {
+    id: 'consultatie-branch',
+    label: 'Consultatie',
+    gitLabel: 'fork/consultatie',
+    color: 'var(--color-branch-advisory)',
+    col: 4,
+  },
+  {
+    id: 'adviesorganen-branch',
+    label: 'Adviesorganen',
+    gitLabel: 'fork/advies',
+    color: 'var(--color-branch-advisory)',
+    col: 5,
+  },
+  {
+    id: 'rvs-branch',
+    label: 'Raad van State',
+    gitLabel: 'fork/rvs',
+    color: 'var(--color-branch-advisory)',
+    col: 4,
+  },
+  {
+    id: 'initiatief-branch',
     label: 'Initiatiefwet',
     gitLabel: 'external-contributor/*',
-    color: 'var(--color-release)',
-    col: 5,
-    startRow: 19,
-    endRow: 22,
+    color: 'var(--color-review)',
+    col: 3,
   },
   {
-    id: 'delegated',
-    label: 'Gedelegeerde wetgeving',
-    gitLabel: 'config/amvb',
-    color: 'var(--color-deploy)',
+    id: 'amend-a-branch',
+    label: 'Amd. A',
+    gitLabel: 'patch/amd-a',
+    color: 'var(--color-review)',
+    col: 3,
+  },
+  {
+    id: 'amend-b-branch',
+    label: 'Amd. B',
+    gitLabel: 'patch/amd-b',
+    color: 'var(--color-review)',
+    col: 4,
+  },
+  {
+    id: 'amend-c-branch',
+    label: 'Amd. C',
+    gitLabel: 'patch/amd-c',
+    color: 'var(--color-review)',
+    col: 5,
+  },
+  {
+    id: 'sub-amend-branch',
+    label: 'Sub-amd.',
+    gitLabel: 'patch/sub-amd',
+    color: 'var(--color-review)',
     col: 6,
-    startRow: 38,
-    endRow: 43,
+  },
+  {
+    id: 'rejected-branch',
+    label: 'Verworpen',
+    gitLabel: 'patch/rejected',
+    color: 'var(--color-branch-rejected)',
+    col: 7,
+  },
+  {
+    id: 'novelle-branch',
+    label: 'Novelle',
+    gitLabel: 'fix-PR/novelle',
+    color: 'var(--color-branch-wetsvoorstel)',
+    col: 3,
   },
 ];
 
 export const phases = [
-  { id: 'A', label: 'A. Departementale voorbereiding', startRow: 1, endRow: 4, color: 'var(--color-branch-feature)' },
-  { id: 'B', label: 'B. Interdepartementaal', startRow: 5, endRow: 9, color: 'var(--color-ci)' },
-  { id: 'C', label: 'C. Externe consultatie', startRow: 10, endRow: 12, color: 'var(--color-review)' },
-  { id: 'D', label: 'D. Kabinet', startRow: 13, endRow: 14, color: 'var(--color-branch-main)' },
-  { id: 'E', label: 'E. Raad van State', startRow: 15, endRow: 18, color: 'var(--color-ci)' },
-  { id: 'F', label: 'F. Tweede Kamer', startRow: 19, endRow: 34, color: 'var(--color-review)' },
-  { id: 'G', label: 'G. Eerste Kamer', startRow: 35, endRow: 38, color: 'var(--color-review)' },
-  { id: 'H', label: 'H. Bekrachtiging & publicatie', startRow: 39, endRow: 46, color: 'var(--color-deploy)' },
+  { id: 'A', label: 'A. Departementale voorbereiding', startRow: 1, endRow: 6, color: 'var(--color-branch-wetsvoorstel)' },
+  { id: 'B', label: 'B. Interdepartementaal & toetsen', startRow: 7, endRow: 12, color: 'var(--color-branch-advisory)' },
+  { id: 'C', label: 'C. Externe consultatie', startRow: 13, endRow: 16, color: 'var(--color-branch-advisory)' },
+  { id: 'D', label: 'D. Kabinet', startRow: 17, endRow: 19, color: 'var(--color-branch-develop)' },
+  { id: 'E', label: 'E. Raad van State', startRow: 20, endRow: 24, color: 'var(--color-branch-advisory)' },
+  { id: 'F', label: 'F. Tweede Kamer', startRow: 25, endRow: 45, color: 'var(--color-branch-develop)' },
+  { id: 'G', label: 'G. Eerste Kamer', startRow: 46, endRow: 52, color: 'var(--color-branch-develop)' },
+  { id: 'H', label: 'H. Bekrachtiging', startRow: 53, endRow: 56, color: 'var(--color-branch-main)' },
 ];
 
 export const stages = [
-  // === Main branch start ===
+  // === MAIN ===
   {
     id: 'corpus-start',
     branch: 'main',
     type: 'commit',
-    gitLabel: 'main branch',
+    gitLabel: 'HEAD (main)',
     lawLabel: 'Corpus Juris',
     subtitle: 'Geldend recht',
-    description:
-      'Het geheel van alle geldende Nederlandse wetgeving — de "main branch". ' +
-      'Wat hier staat, is geldend recht.',
-    col: 0, row: 0, step: 0,
+    description: 'Het geheel van alle geldende Nederlandse wetgeving.',
+    col: 0, step: 0,
   },
 
-  // === Phase A: Ministry Internal (parallel tracks) ===
+  // === DEVELOP ===
   {
-    id: 'beleidsidee',
+    id: 'develop-start',
+    branch: 'develop',
+    type: 'branch',
+    gitLabel: 'git checkout -b develop',
+    lawLabel: 'Wetgevingskalender',
+    subtitle: 'Voorstellen in procedure',
+    description: 'De develop branch bevat alle wetsvoorstellen die officieel in procedure zijn.',
+    col: 1, step: 1,
+  },
+
+  // === PHASE A: Ministry fork ===
+  {
+    id: 'ministry-fork',
     branch: 'ministry',
     type: 'branch',
-    gitLabel: 'git checkout -b',
+    gitLabel: 'git clone (fork)',
     lawLabel: 'Beleidsidee',
-    subtitle: 'Aanleiding',
+    subtitle: 'Ministerie forkt naar eigen omgeving',
     description:
-      'Een wetgevend traject begint met een aanleiding: het regeerakkoord, een EU-richtlijn, ' +
-      'een rechterlijke uitspraak, of een maatschappelijk probleem.',
-    col: 1, row: 1, step: 1,
+      'Een wetgevend traject begint met een aanleiding: regeerakkoord, EU-richtlijn, ' +
+      'rechterlijke uitspraak, of maatschappelijk probleem. Het ministerie forkt het Corpus Juris.',
+    col: 2, step: 2,
   },
   {
-    id: 'beleidsnota',
-    branch: 'policy',
+    id: 'intern-start',
+    branch: 'internal',
     type: 'branch',
-    gitLabel: 'git checkout -b (parallel)',
-    lawLabel: 'Beleidsnota',
-    subtitle: 'Beleidsmedewerker schrijft',
+    gitLabel: 'git checkout -b concept',
+    lawLabel: 'Beleidsnota + conceptwet',
+    subtitle: 'Parallel: beleid en recht',
     description:
-      'Beleidsmedewerkers schrijven een beleidsnota met de gewenste maatschappelijke effecten. ' +
-      'Dit is een parallelle branch: beleid en recht worden gelijktijdig ontwikkeld.',
-    col: 2, row: 2, step: 2,
+      'Beleidsmedewerkers en wetgevingsjuristen werken parallel. ' +
+      'Beleidsnota (wat?) en juridische tekst (hoe?) worden gelijktijdig ontwikkeld.',
+    col: 3, step: 3,
   },
   {
-    id: 'conceptwet',
-    branch: 'ministry',
+    id: 'intern-mvt',
+    branch: 'internal',
     type: 'commit',
-    gitLabel: 'commit',
-    lawLabel: 'Conceptwetsvoorstel',
-    subtitle: 'Wetgevingsjurist schrijft',
-    description:
-      'De wetgevingsjurist vertaalt het beleid naar juridische tekst: het wetsvoorstel ' +
-      'én de memorie van toelichting. Meerdere interne iteraties volgen.',
-    col: 1, row: 3, step: 3,
-  },
-  {
-    id: 'mvt',
-    branch: 'policy',
-    type: 'commit',
-    gitLabel: 'commit',
+    gitLabel: 'commit (MvT)',
     lawLabel: 'Memorie van Toelichting',
     subtitle: 'Onderbouwing & artikelsgewijze toelichting',
     description:
-      'De MvT beschrijft het doel, de achtergrond, en de artikelsgewijze toelichting. ' +
-      'Dit is een apart document dat meeloopt met het wetsvoorstel — als een parallelle branch ' +
-      'die uiteindelijk samenkomt.',
-    col: 2, row: 3, step: 3,
+      'De MvT beschrijft het doel, de achtergrond, en de artikelsgewijze toelichting.',
+    col: 3, step: 4,
   },
   {
-    id: 'merge-beleid',
+    id: 'intern-toets',
+    branch: 'internal',
+    type: 'commit',
+    gitLabel: 'commit (review)',
+    lawLabel: 'Departementale toets',
+    subtitle: 'Directie Wetgeving / JenV',
+    description:
+      'Toets aan de Aanwijzingen voor de regelgeving. Bij JenV ook een wetgevingstoets ' +
+      'op rechtsstatelijke kwaliteit.',
+    col: 3, step: 5,
+  },
+  {
+    id: 'intern-signoff',
+    branch: 'internal',
+    type: 'commit',
+    gitLabel: 'approve (chain)',
+    lawLabel: 'Akkoord DG/SG',
+    subtitle: 'Ambtelijke goedkeuringsketen',
+    description:
+      'Goedkeuringsketen: wetgevingsjurist → afdelingshoofd → directeur → DG → SG → minister.',
+    col: 3, step: 6,
+  },
+  {
+    id: 'ministry-merge-intern',
     branch: 'ministry',
     type: 'merge',
-    gitLabel: 'merge (internal)',
-    lawLabel: 'Samenvoeging',
-    subtitle: 'Beleid + recht samengebracht',
-    description:
-      'De beleidsnota en het juridische concept worden samengevoegd tot één coherent pakket: ' +
-      'wetsvoorstel + MvT. Vergelijkbaar met het mergen van twee feature branches.',
-    col: 1, row: 4, step: 4,
-  },
-  {
-    id: 'dept-toets',
-    branch: 'ministry',
-    type: 'ci-check',
-    gitLabel: 'lint / internal CI',
-    lawLabel: 'Departementale toets',
-    subtitle: 'Interne kwaliteitscontrole',
-    description:
-      'De directie Wetgeving/JZ toetst aan de Aanwijzingen voor de regelgeving. ' +
-      'Bij JenV ook een wetgevingstoets op rechtsstatelijke kwaliteit.',
-    col: 1, row: 5, step: 5,
-  },
-  {
-    id: 'signoff',
-    branch: 'ministry',
-    type: 'review',
-    gitLabel: 'approve (internal)',
-    lawLabel: 'Akkoord DG/SG',
-    subtitle: 'Ambtelijke goedkeuring',
-    description:
-      'Goedkeuringsketen: wetgevingsjurist → afdelingshoofd → directeur → DG → SG → minister. ' +
-      'Vergelijkbaar met required approvals voordat je mag pushen.',
-    col: 1, row: 6, step: 6,
+    gitLabel: 'merge topic → fork',
+    lawLabel: 'Intern concept gereed',
+    subtitle: 'Beleid + recht samengevoegd',
+    description: 'De interne branches worden samengevoegd in de ministry fork.',
+    col: 2, step: 7,
   },
 
-  // === Phase B: Interdepartmental ===
+  // === PHASE B: Interdepartmental + parallel checks ===
   {
     id: 'interdept',
     branch: 'ministry',
-    type: 'review',
-    gitLabel: 'cross-team review',
+    type: 'commit',
+    gitLabel: 'commit (cross-team)',
     lawLabel: 'Interdepartementaal overleg',
     subtitle: 'IOWJZ / IHW afstemming',
     description:
-      'Het concept wordt rondgestuurd naar alle betrokken ministeries. Via IOWJZ en IHW ' +
-      'worden commentaren verzameld en geschillen opgelost.',
-    col: 1, row: 7, step: 7,
+      'Het concept circuleert langs alle betrokken ministeries. Feedback wordt verwerkt.',
+    col: 2, step: 8,
   },
-  // Parallel CI checks — all run simultaneously (same row, different columns)
+  // Parallel advisory forks
   {
     id: 'uh-toets',
-    branch: 'checks',
-    type: 'ci-check',
-    gitLabel: 'CI: integration test',
+    branch: 'uh-toets-branch',
+    type: 'commit',
+    gitLabel: 'fork → CI: integration test',
     lawLabel: 'Uitvoerbaarheidstoets',
     subtitle: 'UWV / Belastingdienst / SVB',
-    description:
-      'Uitvoeringsorganisaties toetsen of de wet in de praktijk uitvoerbaar en handhaafbaar is. ' +
-      'Loopt parallel met de andere toetsen.',
-    col: 3, row: 8, step: 8,
+    description: 'Uitvoeringsorganisaties toetsen of de wet uitvoerbaar en handhaafbaar is.',
+    col: 4, step: 9,
   },
   {
     id: 'regeldruk',
-    branch: 'checks',
-    type: 'ci-check',
-    gitLabel: 'CI: performance test',
+    branch: 'regeldruk-branch',
+    type: 'commit',
+    gitLabel: 'fork → CI: performance test',
     lawLabel: 'Regeldruktoets (ATR)',
     subtitle: 'Administratieve lasten',
-    description:
-      'Het Adviescollege Toetsing Regeldruk beoordeelt de regeldruk voor burgers en bedrijven. ' +
-      'Loopt parallel met de andere toetsen.',
-    col: 4, row: 8, step: 8,
+    description: 'Het Adviescollege Toetsing Regeldruk beoordeelt de regeldruk.',
+    col: 5, step: 9,
   },
   {
     id: 'financieel',
-    branch: 'checks',
-    type: 'ci-check',
-    gitLabel: 'CI: budget check',
+    branch: 'financieel-branch',
+    type: 'commit',
+    gitLabel: 'fork → CI: budget check',
     lawLabel: 'Financiële toets',
     subtitle: 'Ministerie van Financiën',
-    description:
-      'Het ministerie van Financiën beoordeelt de budgettaire gevolgen. ' +
-      'Loopt parallel met de andere toetsen.',
-    col: 5, row: 8, step: 8,
+    description: 'Beoordeling van de budgettaire gevolgen.',
+    col: 6, step: 9,
   },
   {
     id: 'privacy-toets',
-    branch: 'checks',
-    type: 'ci-check',
-    gitLabel: 'CI: security scan',
+    branch: 'privacy-branch',
+    type: 'commit',
+    gitLabel: 'fork → CI: security scan',
     lawLabel: 'DPIA / Privacy toets',
     subtitle: 'Autoriteit Persoonsgegevens',
-    description:
-      'Data Protection Impact Assessment. Loopt parallel met de andere toetsen. ' +
-      'Vergelijkbaar met een security scan in CI.',
-    col: 6, row: 8, step: 8,
+    description: 'Data Protection Impact Assessment.',
+    col: 7, step: 9,
   },
   {
     id: 'voorportaal',
     branch: 'ministry',
-    type: 'review',
-    gitLabel: 'architecture review',
+    type: 'merge',
+    gitLabel: 'merge all checks → fork',
     lawLabel: 'Ambtelijk voorportaal',
     subtitle: 'Resultaten samenbrengen',
     description:
       'Senior ambtenaren bespreken het voorstel met alle toetsresultaten. ' +
-      'Resterende geschillen worden opgelost. Vergelijkbaar met het wachten ' +
-      'tot alle parallelle CI checks groen zijn.',
-    col: 1, row: 10, step: 10,
+      'Alle parallelle checks zijn groen.',
+    col: 2, step: 10,
   },
 
-  // === Phase C: External Consultation (also parallel) ===
+  // === PHASE C: External consultation (parallel forks) ===
   {
     id: 'internetconsultatie',
-    branch: 'checks',
-    type: 'review',
-    gitLabel: 'public RFC',
+    branch: 'consultatie-branch',
+    type: 'commit',
+    gitLabel: 'fork → public RFC',
     lawLabel: 'Internetconsultatie',
     subtitle: '4+ weken publiek commentaar',
     description:
-      'Het concept wordt gepubliceerd op internetconsultatie.nl. Burgers, bedrijven, ' +
-      'NGO\'s en experts reageren — minimaal 4 weken.',
-    col: 3, row: 11, step: 11,
+      'Het concept wordt gepubliceerd op internetconsultatie.nl. ' +
+      'Burgers, bedrijven, NGOs en experts reageren.',
+    col: 4, step: 11,
   },
   {
     id: 'adviesorganen',
-    branch: 'checks',
-    type: 'ci-check',
-    gitLabel: 'CI: domain experts',
+    branch: 'adviesorganen-branch',
+    type: 'commit',
+    gitLabel: 'fork → domain experts',
     lawLabel: 'Adviesorganen',
     subtitle: 'SER, RvdR, AP, etc.',
-    description:
-      'Gespecialiseerde organen geven advies: SER, Raad voor de Rechtspraak, ' +
-      'Autoriteit Persoonsgegevens. Loopt parallel met internetconsultatie.',
-    col: 5, row: 11, step: 11,
+    description: 'Gespecialiseerde organen geven advies. Loopt parallel met internetconsultatie.',
+    col: 5, step: 11,
   },
   {
     id: 'verwerking-reacties',
     branch: 'ministry',
-    type: 'commit',
-    gitLabel: 'commit (feedback)',
+    type: 'merge',
+    gitLabel: 'merge consultatie → fork',
     lawLabel: 'Verwerking reacties',
     subtitle: 'Aanpassingen n.a.v. consultatie',
-    description:
-      'Het ministerie verwerkt alle reacties uit consultatie en adviezen. ' +
-      'Het voorstel wordt aangepast. Nieuwe commits.',
-    col: 1, row: 12, step: 12,
+    description: 'Het ministerie verwerkt alle reacties uit consultatie en adviezen.',
+    col: 2, step: 12,
   },
 
-  // === Phase D: Cabinet ===
+  // === PHASE D: Cabinet ===
   {
     id: 'onderraad',
     branch: 'ministry',
-    type: 'review',
-    gitLabel: 'team lead review',
+    type: 'commit',
+    gitLabel: 'commit (politiek)',
     lawLabel: 'Onderraad',
     subtitle: 'Relevante ministers',
-    description:
-      'De relevante ministeriële onderraad bespreekt het voorstel. Politieke afstemming.',
-    col: 1, row: 13, step: 13,
+    description: 'De relevante ministeriële onderraad bespreekt het voorstel.',
+    col: 2, step: 13,
   },
   {
     id: 'ministerraad',
     branch: 'ministry',
-    type: 'review',
-    gitLabel: 'project owner approve',
+    type: 'commit',
+    gitLabel: 'approve (cabinet)',
     lawLabel: 'Ministerraad',
     subtitle: 'Kabinetsbesluit (elke vrijdag)',
-    description:
-      'De voltallige ministerraad keurt het voorstel goed. Het politieke akkoord.',
-    col: 1, row: 14, step: 14,
+    description: 'De voltallige ministerraad keurt het voorstel goed.',
+    col: 2, step: 14,
+  },
+  {
+    id: 'ministry-push',
+    branch: 'ministry',
+    type: 'commit',
+    gitLabel: 'git push (PR)',
+    lawLabel: 'Voorstel aangeboden',
+    subtitle: 'Aangeboden aan Wetgevingskalender',
+    description: 'Het voorstel wordt aangeboden aan de Wetgevingskalender.',
+    col: 2, step: 15,
+  },
+  // Ministry fork merges into develop
+  {
+    id: 'develop-receive',
+    branch: 'develop',
+    type: 'merge',
+    gitLabel: 'merge fork → develop',
+    lawLabel: 'Voorstel in procedure',
+    subtitle: 'Opgenomen in kalender',
+    description: 'Het voorstel is opgenomen in de Wetgevingskalender.',
+    col: 1, step: 16,
   },
 
-  // === Phase E: Raad van State ===
+  // === PHASE E: Raad van State (advisory fork) ===
   {
-    id: 'adviesaanvraag-rvs',
-    branch: 'checks',
-    type: 'ci-check',
-    gitLabel: 'CI: senior review',
-    lawLabel: 'Advies Raad van State',
-    subtitle: 'Constitutionele toets (art. 73 Gw)',
-    description:
-      'De Raad van State toetst op grondwettelijkheid, juridische kwaliteit, ' +
-      'wetgevingstechniek en beleidseffectiviteit. Dictum: positief/negatief.',
-    col: 3, row: 15, step: 15,
+    id: 'rvs-fork',
+    branch: 'rvs-branch',
+    type: 'branch',
+    gitLabel: 'fork → senior review',
+    lawLabel: 'Adviesaanvraag Raad van State',
+    subtitle: 'Via Koninklijke Boodschap',
+    description: 'Het voorstel wordt via de Koning aan de Raad van State aangeboden.',
+    col: 4, step: 17,
+  },
+  {
+    id: 'rvs-toets',
+    branch: 'rvs-branch',
+    type: 'commit',
+    gitLabel: 'commit (toetsing)',
+    lawLabel: 'Constitutionele toets',
+    subtitle: 'Grondwet, EU-recht, consistentie',
+    description: 'De RvS toetst op grondwettelijkheid, juridische kwaliteit en wetgevingstechniek.',
+    col: 4, step: 18,
+  },
+  {
+    id: 'rvs-advies',
+    branch: 'rvs-branch',
+    type: 'commit',
+    gitLabel: 'commit (advies + dictum)',
+    lawLabel: 'RvS advies',
+    subtitle: 'Formeel advies met dictum',
+    description: 'De Raad van State levert een formeel advies met dictum.',
+    col: 4, step: 19,
   },
   {
     id: 'nader-rapport',
-    branch: 'ministry',
+    branch: 'rvs-branch',
     type: 'commit',
-    gitLabel: 'commit (address review)',
+    gitLabel: 'commit (nader rapport)',
     lawLabel: 'Nader rapport',
-    subtitle: 'Reactie op advies RvS',
-    description:
-      'De regering reageert op het advies en past het voorstel aan. Het nader rapport ' +
-      'beschrijft welke adviezen zijn overgenomen.',
-    col: 1, row: 16, step: 16,
+    subtitle: 'Kabinetsreactie op advies',
+    description: 'De regering reageert op het advies en past het voorstel aan.',
+    col: 4, step: 20,
+  },
+  {
+    id: 'rvs-merge',
+    branch: 'develop',
+    type: 'merge',
+    gitLabel: 'merge rvs → develop',
+    lawLabel: 'Advies verwerkt',
+    subtitle: 'Wijzigingen doorgevoerd',
+    description: 'Het RvS-advies is verwerkt. De fork wordt gemerged terug naar develop.',
+    col: 1, step: 21,
   },
 
   // === Rebase moment ===
   {
     id: 'rebase',
-    branch: 'ministry',
+    branch: 'develop',
     type: 'commit',
     gitLabel: 'git rebase main',
     lawLabel: 'Actualisering wettekst',
     subtitle: 'Verwerking tussentijdse wetswijzigingen',
     description:
-      'Tijdens de jaren van voorbereiding is het Corpus Juris veranderd. Het voorstel wordt ' +
-      'geactualiseerd: verwijzingen worden bijgewerkt, samenloopbepalingen toegevoegd. ' +
-      'Vergelijkbaar met een rebase op main.',
-    col: 1, row: 17, step: 17,
+      'Tijdens de jaren van voorbereiding is het Corpus Juris veranderd. ' +
+      'Verwijzingen worden bijgewerkt, samenloopbepalingen toegevoegd.',
+    col: 1, step: 22,
   },
 
+  // === Koninklijke Boodschap — indiening bij TK ===
   {
     id: 'koninklijke-boodschap',
-    branch: 'parliament',
-    type: 'branch',
-    gitLabel: 'git push + open PR',
+    branch: 'develop',
+    type: 'commit',
+    gitLabel: 'open PR',
     lawLabel: 'Koninklijke Boodschap',
     subtitle: 'Indiening bij Tweede Kamer',
-    description:
-      'Het wetsvoorstel wordt via een Koninklijke Boodschap ingediend bij de Tweede Kamer. ' +
-      'Dit is het moment dat de PR wordt geopend.',
-    col: 2, row: 19, step: 18,
+    description: 'Het wetsvoorstel wordt via een Koninklijke Boodschap ingediend bij de Tweede Kamer.',
+    col: 1, step: 23,
   },
 
-  // === Initiatiefwetsvoorstel (external contributor) ===
+  // === Initiatiefwetsvoorstel (external contributor, parallel) ===
   {
     id: 'initiatief-voorstel',
-    branch: 'initiatief',
+    branch: 'initiatief-branch',
     type: 'branch',
     gitLabel: 'external contributor PR',
     lawLabel: 'Initiatiefwetsvoorstel',
     subtitle: 'Voorstel vanuit de Kamer',
     description:
       'Elk Tweede Kamerlid kan zelf een wetsvoorstel indienen — zonder regering. ' +
-      'Vergelijkbaar met een external contributor die een PR opent. ' +
-      'Het lid verdedigt het voorstel zelf (i.p.v. de minister).',
-    col: 5, row: 19, step: 18,
+      'Vergelijkbaar met een external contributor die een PR opent.',
+    col: 3, step: 23,
   },
   {
     id: 'initiatief-rvs',
-    branch: 'initiatief',
-    type: 'ci-check',
+    branch: 'initiatief-branch',
+    type: 'commit',
     gitLabel: 'CI (via TK)',
     lawLabel: 'RvS advies (via Kamer)',
     subtitle: 'TK vraagt advies',
-    description:
-      'Bij een initiatiefwetsvoorstel vraagt de Tweede Kamer (niet de regering) advies ' +
-      'aan de Raad van State.',
-    col: 5, row: 20, step: 19,
+    description: 'Bij een initiatiefwetsvoorstel vraagt de Tweede Kamer advies aan de Raad van State.',
+    col: 3, step: 24,
   },
   {
     id: 'initiatief-merge',
-    branch: 'initiatief',
+    branch: 'initiatief-branch',
     type: 'commit',
     gitLabel: 'merge into PR',
-    lawLabel: 'Behandeling als regulier voorstel',
+    lawLabel: 'Behandeling als regulier',
     subtitle: 'Zelfde procedure vanaf hier',
-    description:
-      'Na het RvS advies volgt het initiatiefwetsvoorstel dezelfde parlementaire procedure. ' +
-      'Het wordt behandeld als elk ander wetsvoorstel.',
-    col: 5, row: 21, step: 20,
+    description: 'Na het RvS advies volgt dezelfde parlementaire procedure.',
+    col: 3, step: 25,
   },
 
-  // === Phase F: Tweede Kamer ===
+  // === PHASE F: Tweede Kamer ===
   {
     id: 'tk-verslag',
-    branch: 'parliament',
-    type: 'review',
+    branch: 'develop',
+    type: 'commit',
     gitLabel: 'PR review comments',
     lawLabel: 'Verslag',
     subtitle: 'Schriftelijke vragen commissie',
-    description:
-      'De vaste Kamercommissie stelt schriftelijke vragen. Kan meerdere rondes duren.',
-    col: 2, row: 21, step: 20,
+    description: 'De vaste Kamercommissie stelt schriftelijke vragen. Kan meerdere rondes duren.',
+    col: 1, step: 26,
   },
   {
     id: 'tk-nota-nav',
-    branch: 'parliament',
+    branch: 'develop',
     type: 'commit',
     gitLabel: 'respond to review',
     lawLabel: 'Nota n.a.v. verslag',
     subtitle: 'Beantwoording vragen',
-    description:
-      'De regering beantwoordt alle vragen uit het verslag.',
-    col: 2, row: 22, step: 21,
+    description: 'De regering beantwoordt alle vragen uit het verslag.',
+    col: 1, step: 27,
   },
   {
-    id: 'nota-van-wijziging-1',
-    branch: 'parliament',
+    id: 'nvw-1',
+    branch: 'develop',
     type: 'commit',
     gitLabel: 'push commits',
-    lawLabel: 'Nota van wijziging (1)',
+    lawLabel: 'Nota van wijziging',
     subtitle: 'Regering wijzigt eigen voorstel',
-    description:
-      'De regering kan het eigen voorstel wijzigen. Er kunnen meerdere nota\'s van wijziging zijn.',
-    col: 2, row: 23, step: 22,
-  },
-  {
-    id: 'nota-van-wijziging-2',
-    branch: 'parliament',
-    type: 'commit',
-    gitLabel: 'push more commits',
-    lawLabel: 'Nota van wijziging (2)',
-    subtitle: 'Verdere aanpassingen',
-    description:
-      'Een tweede nota van wijziging — het voorstel evolueert op basis van politieke onderhandeling.',
-    col: 2, row: 24, step: 23,
+    description: 'De regering kan het eigen voorstel wijzigen op basis van politieke feedback.',
+    col: 1, step: 28,
   },
   {
     id: 'wetgevingsoverleg',
-    branch: 'parliament',
-    type: 'review',
+    branch: 'develop',
+    type: 'commit',
     gitLabel: 'line-by-line review',
     lawLabel: 'Wetgevingsoverleg',
     subtitle: 'Artikelsgewijs in commissie',
-    description:
-      'Formele commissievergadering: artikelsgewijze bespreking. Alle Kamerleden mogen deelnemen.',
-    col: 2, row: 25, step: 24,
+    description: 'Formele commissievergadering: artikelsgewijze bespreking.',
+    col: 1, step: 29,
   },
   {
     id: 'plenair-debat',
-    branch: 'parliament',
-    type: 'review',
+    branch: 'develop',
+    type: 'commit',
     gitLabel: 'PR discussion',
     lawLabel: 'Plenair debat',
     subtitle: 'Voltallige Kamer',
-    description:
-      'Plenair debat: woordvoerders spreken, minister reageert. ' +
-      'Amendementen en moties worden ingediend.',
-    col: 2, row: 26, step: 25,
+    description: 'Plenair debat: woordvoerders spreken, minister reageert. Amendementen worden ingediend.',
+    col: 1, step: 30,
   },
 
-  // === Amendments (parallel — filed independently) ===
+  // === Amendments (each its own branch, parallel) ===
   {
     id: 'amendement-a',
-    branch: 'amendments',
+    branch: 'amend-a-branch',
     type: 'commit',
-    gitLabel: 'patch/amendement-12',
-    lawLabel: 'Amendement Van der Berg',
-    subtitle: 'Art. 3 lid 2 wijzigen',
+    gitLabel: 'patch (Van der Berg)',
+    lawLabel: 'Amendement A',
+    subtitle: 'Art. 3 lid 2 wijzigen — aangenomen',
     description:
-      'Kamerlid Van der Berg dient een amendement in om artikel 3 lid 2 te wijzigen. ' +
-      'Elk Kamerlid kan amendementen indienen — vergelijkbaar met een reviewer-submitted patch.',
-    col: 4, row: 28, step: 26,
+      'Elk Kamerlid kan amendementen indienen — reviewer-submitted patches. ' +
+      'Dit amendement wijzigt artikel 3 lid 2.',
+    col: 3, step: 31,
   },
   {
     id: 'amendement-b',
-    branch: 'amendments',
+    branch: 'amend-b-branch',
     type: 'commit',
-    gitLabel: 'patch/amendement-15',
-    lawLabel: 'Amendement Jansen',
-    subtitle: 'Nieuw artikel 5a toevoegen',
+    gitLabel: 'patch (Jansen) — overgenomen',
+    lawLabel: 'Amendement B',
+    subtitle: 'Nieuw art. 5a — cherry-picked',
     description:
-      'Kamerlid Jansen dient een amendement in om een nieuw artikel toe te voegen. ' +
-      'Dit amendement is onafhankelijk van amendement Van der Berg.',
-    col: 5, row: 28, step: 26,
+      'De minister neemt dit amendement over (cherry-pick). ' +
+      'Het wordt direct onderdeel van het voorstel — geen stemming nodig.',
+    col: 4, step: 31,
   },
   {
     id: 'amendement-c',
-    branch: 'amendments',
+    branch: 'amend-c-branch',
     type: 'commit',
-    gitLabel: 'patch/amendement-18 (conflicterend)',
-    lawLabel: 'Amendement De Vries',
-    subtitle: 'Conflicteert met Van der Berg',
+    gitLabel: 'patch (De Vries) — conflicterend',
+    lawLabel: 'Amendement C',
+    subtitle: 'Conflicteert met A — aangenomen',
     description:
-      'Dit amendement wijzigt hetzelfde artikellid als Van der Berg — een merge conflict. ' +
-      'Bureau Wetgeving bepaalt de stemvolgorde: verste strekking eerst. ' +
-      'Als één wordt aangenomen, vervalt het andere.',
-    col: 6, row: 28, step: 26,
+      'Dit amendement wijzigt hetzelfde artikellid als A — een merge conflict. ' +
+      'Bureau Wetgeving bepaalt de stemvolgorde: verste strekking eerst.',
+    col: 5, step: 31,
   },
   {
-    id: 'subamendement-1',
-    branch: 'sub-amendments',
+    id: 'subamendement',
+    branch: 'sub-amend-branch',
     type: 'commit',
-    gitLabel: 'patch/sub/amendement-12a',
-    lawLabel: 'Subamendement op Van der Berg',
-    subtitle: 'Wijziging op het amendement',
+    gitLabel: 'patch/sub (op A)',
+    lawLabel: 'Subamendement op A',
+    subtitle: 'Max 1 niveau diep — eerst gestemd',
     description:
-      'Een subamendement: een wijziging op het amendement van Van der Berg. ' +
-      'Maximaal één niveau diep — geen sub-subamendementen. ' +
+      'Een subamendement: wijziging op het amendement. Maximaal één niveau diep. ' +
       'Wordt altijd eerst in stemming gebracht.',
-    col: 4, row: 30, step: 27,
+    col: 6, step: 31,
   },
   {
-    id: 'amendement-adopted',
-    branch: 'amendments',
+    id: 'amendement-rejected',
+    branch: 'rejected-branch',
     type: 'commit',
-    gitLabel: 'cherry-pick (overgenomen)',
-    lawLabel: 'Overgenomen amendement',
-    subtitle: 'Regering neemt over, geen stemming',
-    description:
-      'De minister neemt het amendement van Jansen over. Het wordt direct onderdeel ' +
-      'van het voorstel — geen stemming nodig. Cherry-pick door de maintainer.',
-    col: 5, row: 30, step: 28,
+    gitLabel: 'patch (Smit) — verworpen',
+    lawLabel: 'Amendement verworpen',
+    subtitle: 'Dead end — geen merge',
+    description: 'Dit amendement wordt verworpen bij stemming. De branch stopt hier.',
+    col: 7, step: 31,
   },
+
+  // === Stemmingslijst + stemming ===
   {
     id: 'stemmingslijst',
-    branch: 'parliament',
-    type: 'ci-check',
+    branch: 'develop',
+    type: 'commit',
     gitLabel: 'CI: conflict detection',
     lawLabel: 'Stemmingslijst',
     subtitle: 'Bureau Wetgeving ordent',
     description:
-      'Bureau Wetgeving stelt de stemmingslijst op: subamendementen eerst, dan amendementen ' +
-      '(verste strekking eerst), per artikel. Voorkomt tegenstrijdige tekst. ' +
-      'De merge queue met conflict detection.',
-    col: 2, row: 33, step: 30,
+      'Bureau Wetgeving stelt de stemmingslijst op: subamendementen eerst, ' +
+      'dan amendementen (verste strekking eerst). De merge queue.',
+    col: 1, step: 32,
   },
   {
     id: 'stemmingen',
-    branch: 'parliament',
+    branch: 'develop',
     type: 'merge',
-    gitLabel: 'merge queue',
-    lawLabel: 'Stemmingen',
+    gitLabel: 'merge queue — stemming',
+    lawLabel: 'Stemmingen Tweede Kamer',
     subtitle: 'Per artikel, dan geheel',
     description:
-      'Stemming verloopt per artikel (met amendementen), dan over het hele voorstel. ' +
-      'Gewone meerderheid, quorum vereist.',
-    col: 2, row: 34, step: 31,
+      'Stemming: subamendementen eerst, dan amendementen, per artikel, dan het hele voorstel. ' +
+      'Gewone meerderheid vereist.',
+    col: 1, step: 33,
   },
 
-  // === Phase G: Eerste Kamer ===
+  // === PHASE G: Eerste Kamer ===
   {
     id: 'ek-behandeling',
-    branch: 'parliament',
-    type: 'review',
+    branch: 'develop',
+    type: 'commit',
     gitLabel: 'final reviewer',
     lawLabel: 'Eerste Kamer behandeling',
     subtitle: 'Voorlopig verslag + debat',
     description:
       'Schriftelijke voorbereiding gevolgd door plenair debat. ' +
       'De Eerste Kamer heeft GEEN recht van amendement.',
-    col: 2, row: 36, step: 32,
+    col: 1, step: 34,
   },
   {
     id: 'ek-toezegging',
-    branch: 'parliament',
+    branch: 'develop',
     type: 'commit',
     gitLabel: 'create issue (follow-up)',
     lawLabel: 'Toezegging minister',
     subtitle: 'Belofte voor later',
     description:
-      'In plaats van te amenderen, vraagt de Eerste Kamer toezeggingen van de minister: ' +
-      'beloftes om bezwaren later op te lossen. Vergelijkbaar met het aanmaken van follow-up issues.',
-    col: 2, row: 37, step: 33,
+      'In plaats van te amenderen, vraagt de EK toezeggingen: ' +
+      'beloftes om bezwaren later op te lossen. Follow-up issues.',
+    col: 1, step: 35,
   },
   {
     id: 'ek-stemming',
-    branch: 'parliament',
-    type: 'review',
+    branch: 'develop',
+    type: 'commit',
     gitLabel: 'approve / reject',
     lawLabel: 'Stemming Eerste Kamer',
     subtitle: 'Aannemen of verwerpen',
-    description:
-      'Aannemen of verwerpen — zonder wijziging. Protected branch rule: alleen approve/reject.',
-    col: 2, row: 38, step: 34,
+    description: 'Aannemen of verwerpen — zonder wijziging. Protected branch: alleen approve/reject.',
+    col: 1, step: 36,
   },
 
-  // === Novelle (loops back through TK) ===
+  // === Novelle (loops back, parallel with EK) ===
   {
-    id: 'novelle',
-    branch: 'delegated',
+    id: 'novelle-start',
+    branch: 'novelle-branch',
     type: 'branch',
     gitLabel: 'dependent fix-PR',
     lawLabel: 'Novelle',
-    subtitle: 'Reparatietraject terug via TK',
+    subtitle: 'Reparatie-fork terug via TK',
     description:
-      'Als de Eerste Kamer bezwaren heeft: een novelle. Een apart wetsvoorstel dat het ' +
-      'origineel repareert. Doorloopt het volledige Tweede Kamer-traject opnieuw. ' +
-      'Beide worden gelijktijdig aangenomen.',
-    col: 6, row: 38, step: 34,
+      'Als de EK bezwaren heeft: een novelle. Een apart wetsvoorstel dat het origineel repareert. ' +
+      'Doorloopt het volledige TK-traject opnieuw. Beide worden gelijktijdig aangenomen.',
+    col: 3, step: 36,
   },
   {
     id: 'novelle-tk',
-    branch: 'delegated',
-    type: 'review',
-    gitLabel: 'PR review (TK, opnieuw)',
+    branch: 'novelle-branch',
+    type: 'commit',
+    gitLabel: 'PR review (TK opnieuw)',
     lawLabel: 'Novelle door Tweede Kamer',
     subtitle: 'Volledige behandeling',
-    description:
-      'De novelle wordt als regulier wetsvoorstel behandeld door de Tweede Kamer. ' +
-      'Pas als de TK de novelle aanneemt, kan de EK het origineel behandelen.',
-    col: 6, row: 39, step: 35,
+    description: 'De novelle doorloopt het volledige Tweede Kamer-traject.',
+    col: 3, step: 37,
+  },
+  {
+    id: 'novelle-merge',
+    branch: 'novelle-branch',
+    type: 'commit',
+    gitLabel: 'fix-PR merged',
+    lawLabel: 'Novelle aangenomen TK',
+    subtitle: 'Terug naar EK',
+    description: 'De novelle is aangenomen door de TK en gaat terug naar de EK.',
+    col: 3, step: 38,
   },
 
-  // === Phase H: Publication ===
+  // EK stemt over beide
+  {
+    id: 'ek-final',
+    branch: 'develop',
+    type: 'merge',
+    gitLabel: 'approve (beide)',
+    lawLabel: 'EK stemt over beide',
+    subtitle: 'Wet + novelle gelijktijdig',
+    description: 'De Eerste Kamer stemt gelijktijdig over het wetsvoorstel en de novelle.',
+    col: 1, step: 39,
+  },
+
+  // === PHASE H: The King merges ===
   {
     id: 'koninklijk-besluit',
     branch: 'main',
     type: 'merge',
-    gitLabel: 'merge to main',
+    gitLabel: 'merge develop → main',
     lawLabel: 'Koninklijk Besluit',
     subtitle: 'Bekrachtiging door de Koning',
     description:
-      'De Koning bekrachtigt, minister(s) contrasigneren. De feature branch wordt gemerged naar main.',
-    col: 0, row: 40, step: 36,
+      'De Koning is de enige maintainer van het Corpus Juris — alleen hij kan mergen ' +
+      'naar main, met de Minister als co-author op elke commit.',
+    tags: [
+      { label: 'Staatsblad', color: 'var(--color-branch-advisory)' },
+      { label: 'Inwerkingtreding', color: 'var(--color-branch-main)' },
+    ],
+    col: 0, step: 40,
   },
-  {
-    id: 'staatsblad',
-    branch: 'main',
-    type: 'deploy',
-    gitLabel: 'deploy / publish',
-    lawLabel: 'Publicatie Staatsblad',
-    subtitle: 'Bekendmaking',
-    description:
-      'De Minister van JenV plaatst de wet in het Staatsblad. Zonder publicatie geen werking.',
-    col: 0, row: 41, step: 37,
-  },
-
-  // === Delegated legislation forks off ===
-  {
-    id: 'amvb-delegation',
-    branch: 'delegated',
-    type: 'branch',
-    gitLabel: 'config/amvb-xyz',
-    lawLabel: 'AMvB (gedelegeerd)',
-    subtitle: 'Uitwerking bij Koninklijk Besluit',
-    description:
-      'De wet delegeert regelgeving aan de regering: een AMvB werkt details uit. ' +
-      'Gaat NIET door het parlement (tenzij voorhangprocedure). ' +
-      'Vergelijkbaar met een config change onder gedelegeerde bevoegdheid.',
-    col: 6, row: 42, step: 38,
-  },
-  {
-    id: 'amvb-voorhang',
-    branch: 'delegated',
-    type: 'review',
-    gitLabel: 'voorhang review gate',
-    lawLabel: 'Voorhangprocedure',
-    subtitle: 'Parlement kijkt mee (4 weken)',
-    description:
-      'Bij een voorhangprocedure moet de concept-AMvB aan beide Kamers worden voorgelegd ' +
-      'voordat deze naar de Raad van State gaat. Het parlement kan debatteren of blokkeren.',
-    col: 6, row: 43, step: 39,
-  },
-
-  {
-    id: 'inwerkingtreding',
-    branch: 'main',
-    type: 'release',
-    gitLabel: 'release / go-live',
-    lawLabel: 'Inwerkingtreding',
-    subtitle: 'Vaste verandermomenten: 1 jan / 1 jul',
-    description:
-      'De wet treedt in werking. Verschillende artikelen kunnen op verschillende data ' +
-      'in werking treden — gefaseerde rollout. Min. 2 maanden na publicatie.',
-    col: 0, row: 44, step: 40,
-  },
-
-  // === Concurrent bill (samenloop) ===
-  {
-    id: 'samenloop',
-    branch: 'main',
-    type: 'commit',
-    gitLabel: 'samenloopbepaling',
-    lawLabel: 'Samenloopbepaling',
-    subtitle: 'Pre-geprogrammeerde conflictresolutie',
-    description:
-      'Als twee wetsvoorstellen dezelfde wet wijzigen, bevat elk een samenloopbepaling: ' +
-      '"als wet A eerst in werking treedt, pas dan X toe; als wet B eerst, pas dan Y toe." ' +
-      'Pre-geprogrammeerde merge conflict resolution — uniek voor wetgeving.',
-    col: 0, row: 45, step: 41,
-  },
-
   {
     id: 'corpus-updated',
     branch: 'main',
@@ -738,85 +745,87 @@ export const stages = [
     gitLabel: 'HEAD',
     lawLabel: 'Corpus Juris',
     subtitle: 'Bijgewerkt',
-    description:
-      'Het Corpus Juris is bijgewerkt met de nieuwe wet. De main branch gaat door.',
-    col: 0, row: 46, step: 42,
+    description: 'Het Corpus Juris is bijgewerkt. Main gaat door.',
+    col: 0, step: 41,
   },
 ];
 
 export const connections = [
-  // Branch off from main to ministry
-  { from: 'corpus-start', to: 'beleidsidee', type: 'branch-off' },
+  // main → develop
+  { from: 'corpus-start', to: 'develop-start', type: 'branch-off' },
 
-  // Phase A: Ministry internal (parallel tracks)
-  { from: 'beleidsidee', to: 'beleidsnota', type: 'branch-off' },
-  { from: 'beleidsidee', to: 'conceptwet', type: 'straight' },
-  { from: 'beleidsnota', to: 'mvt', type: 'straight' },
-  { from: 'conceptwet', to: 'merge-beleid', type: 'straight' },
-  { from: 'mvt', to: 'merge-beleid', type: 'merge-in' },
-  { from: 'merge-beleid', to: 'dept-toets', type: 'straight' },
-  { from: 'dept-toets', to: 'signoff', type: 'straight' },
+  // develop → ministry fork
+  { from: 'develop-start', to: 'ministry-fork', type: 'branch-off' },
 
-  // Phase B: Interdepartmental — parallel CI checks fan out
-  { from: 'signoff', to: 'interdept', type: 'straight' },
-  { from: 'interdept', to: 'uh-toets', type: 'ci-fork' },
-  { from: 'interdept', to: 'regeldruk', type: 'ci-fork' },
-  { from: 'interdept', to: 'financieel', type: 'ci-fork' },
-  { from: 'interdept', to: 'privacy-toets', type: 'ci-fork' },
-  // All return independently
-  { from: 'uh-toets', to: 'voorportaal', type: 'ci-return' },
-  { from: 'regeldruk', to: 'voorportaal', type: 'ci-return' },
-  { from: 'financieel', to: 'voorportaal', type: 'ci-return' },
-  { from: 'privacy-toets', to: 'voorportaal', type: 'ci-return' },
-  { from: 'interdept', to: 'voorportaal', type: 'straight' },
+  // Phase A: ministry internal
+  { from: 'ministry-fork', to: 'intern-start', type: 'branch-off' },
+  { from: 'intern-start', to: 'intern-mvt', type: 'straight' },
+  { from: 'intern-mvt', to: 'intern-toets', type: 'straight' },
+  { from: 'intern-toets', to: 'intern-signoff', type: 'straight' },
+  { from: 'intern-signoff', to: 'ministry-merge-intern', type: 'merge-in' },
 
-  // Phase C: External consultation — also parallel
-  { from: 'voorportaal', to: 'internetconsultatie', type: 'ci-fork' },
-  { from: 'voorportaal', to: 'adviesorganen', type: 'ci-fork' },
-  { from: 'internetconsultatie', to: 'verwerking-reacties', type: 'ci-return' },
-  { from: 'adviesorganen', to: 'verwerking-reacties', type: 'ci-return' },
-  { from: 'voorportaal', to: 'verwerking-reacties', type: 'straight' },
+  // Phase B: interdepartmental + parallel check forks
+  { from: 'ministry-merge-intern', to: 'interdept', type: 'straight' },
+  { from: 'interdept', to: 'uh-toets', type: 'branch-off' },
+  { from: 'interdept', to: 'regeldruk', type: 'branch-off' },
+  { from: 'interdept', to: 'financieel', type: 'branch-off' },
+  { from: 'interdept', to: 'privacy-toets', type: 'branch-off' },
+  // All checks merge back
+  { from: 'uh-toets', to: 'voorportaal', type: 'merge-in' },
+  { from: 'regeldruk', to: 'voorportaal', type: 'merge-in' },
+  { from: 'financieel', to: 'voorportaal', type: 'merge-in' },
+  { from: 'privacy-toets', to: 'voorportaal', type: 'merge-in' },
 
-  // Phase D: Cabinet
+  // Phase C: external consultation forks
+  { from: 'voorportaal', to: 'internetconsultatie', type: 'branch-off' },
+  { from: 'voorportaal', to: 'adviesorganen', type: 'branch-off' },
+  { from: 'internetconsultatie', to: 'verwerking-reacties', type: 'merge-in' },
+  { from: 'adviesorganen', to: 'verwerking-reacties', type: 'merge-in' },
+
+  // Phase D: cabinet
   { from: 'verwerking-reacties', to: 'onderraad', type: 'straight' },
   { from: 'onderraad', to: 'ministerraad', type: 'straight' },
+  { from: 'ministerraad', to: 'ministry-push', type: 'straight' },
 
-  // Phase E: Raad van State
-  { from: 'ministerraad', to: 'adviesaanvraag-rvs', type: 'ci-fork' },
-  { from: 'adviesaanvraag-rvs', to: 'nader-rapport', type: 'ci-return' },
-  { from: 'ministerraad', to: 'nader-rapport', type: 'straight' },
-  { from: 'nader-rapport', to: 'rebase', type: 'straight' },
+  // Ministry fork → develop
+  { from: 'ministry-push', to: 'develop-receive', type: 'merge-in' },
 
-  // Transition from ministry to parliament
-  { from: 'rebase', to: 'koninklijke-boodschap', type: 'branch-off' },
+  // Phase E: RvS advisory fork
+  { from: 'develop-receive', to: 'rvs-fork', type: 'branch-off' },
+  { from: 'rvs-fork', to: 'rvs-toets', type: 'straight' },
+  { from: 'rvs-toets', to: 'rvs-advies', type: 'straight' },
+  { from: 'rvs-advies', to: 'nader-rapport', type: 'straight' },
+  { from: 'nader-rapport', to: 'rvs-merge', type: 'merge-in' },
 
-  // Initiatiefwetsvoorstel (parallel external contributor)
-  { from: 'corpus-start', to: 'initiatief-voorstel', type: 'branch-off' },
+  // Rebase + Koninklijke Boodschap
+  { from: 'rvs-merge', to: 'rebase', type: 'straight' },
+  { from: 'rebase', to: 'koninklijke-boodschap', type: 'straight' },
+
+  // Initiatiefwet (parallel, external contributor)
+  { from: 'koninklijke-boodschap', to: 'initiatief-voorstel', type: 'branch-off' },
   { from: 'initiatief-voorstel', to: 'initiatief-rvs', type: 'straight' },
   { from: 'initiatief-rvs', to: 'initiatief-merge', type: 'straight' },
-  { from: 'initiatief-merge', to: 'tk-verslag', type: 'merge-in' },
 
   // Phase F: Tweede Kamer
   { from: 'koninklijke-boodschap', to: 'tk-verslag', type: 'straight' },
   { from: 'tk-verslag', to: 'tk-nota-nav', type: 'straight' },
-  { from: 'tk-nota-nav', to: 'nota-van-wijziging-1', type: 'straight' },
-  { from: 'nota-van-wijziging-1', to: 'nota-van-wijziging-2', type: 'straight' },
-  { from: 'nota-van-wijziging-2', to: 'wetgevingsoverleg', type: 'straight' },
+  { from: 'tk-nota-nav', to: 'nvw-1', type: 'straight' },
+  { from: 'nvw-1', to: 'wetgevingsoverleg', type: 'straight' },
   { from: 'wetgevingsoverleg', to: 'plenair-debat', type: 'straight' },
 
-  // Amendments fan out in parallel from plenair debat
-  { from: 'plenair-debat', to: 'amendement-a', type: 'ci-fork' },
-  { from: 'plenair-debat', to: 'amendement-b', type: 'ci-fork' },
-  { from: 'plenair-debat', to: 'amendement-c', type: 'ci-fork' },
-  // Sub-amendment branches further from amendement-a
-  { from: 'amendement-a', to: 'subamendement-1', type: 'straight' },
-  // Adopted amendment (government cherry-picks)
-  { from: 'amendement-b', to: 'amendement-adopted', type: 'straight' },
+  // Amendments fan out from plenair debat
+  { from: 'plenair-debat', to: 'amendement-a', type: 'branch-off' },
+  { from: 'plenair-debat', to: 'amendement-b', type: 'branch-off' },
+  { from: 'plenair-debat', to: 'amendement-c', type: 'branch-off' },
+  { from: 'plenair-debat', to: 'subamendement', type: 'branch-off' },
+  { from: 'plenair-debat', to: 'amendement-rejected', type: 'branch-off' },
+  // Accepted amendments merge back to stemmingen
+  { from: 'amendement-a', to: 'stemmingen', type: 'merge-in' },
+  { from: 'amendement-b', to: 'stemmingen', type: 'merge-in' },
+  { from: 'amendement-c', to: 'stemmingen', type: 'merge-in' },
+  { from: 'subamendement', to: 'stemmingen', type: 'merge-in' },
+  // amendement-rejected: dead end
 
-  // Amendments merge back via stemmingen
-  { from: 'subamendement-1', to: 'stemmingslijst', type: 'ci-return' },
-  { from: 'amendement-c', to: 'stemmingslijst', type: 'ci-return' },
-  { from: 'amendement-adopted', to: 'stemmingslijst', type: 'ci-return' },
   { from: 'plenair-debat', to: 'stemmingslijst', type: 'straight' },
   { from: 'stemmingslijst', to: 'stemmingen', type: 'straight' },
 
@@ -825,22 +834,21 @@ export const connections = [
   { from: 'ek-behandeling', to: 'ek-toezegging', type: 'straight' },
   { from: 'ek-toezegging', to: 'ek-stemming', type: 'straight' },
 
-  // Novelle branches off and loops back
-  { from: 'ek-stemming', to: 'novelle', type: 'branch-off' },
-  { from: 'novelle', to: 'novelle-tk', type: 'straight' },
+  // Novelle (parallel fork from EK)
+  { from: 'ek-stemming', to: 'novelle-start', type: 'branch-off' },
+  { from: 'novelle-start', to: 'novelle-tk', type: 'straight' },
+  { from: 'novelle-tk', to: 'novelle-merge', type: 'straight' },
+  { from: 'novelle-merge', to: 'ek-final', type: 'merge-in' },
 
-  // Phase H: merge to main
-  { from: 'ek-stemming', to: 'koninklijk-besluit', type: 'merge-in' },
+  { from: 'ek-stemming', to: 'ek-final', type: 'straight' },
 
-  // Main continues
+  // develop merges into main (the King merges!)
+  { from: 'ek-final', to: 'koninklijk-besluit', type: 'merge-in' },
+  { from: 'koninklijk-besluit', to: 'corpus-updated', type: 'straight' },
+
+  // main continues (dashed) while branches are active
   { from: 'corpus-start', to: 'koninklijk-besluit', type: 'main-continues' },
-  { from: 'koninklijk-besluit', to: 'staatsblad', type: 'straight' },
-
-  // AMvB branches off after staatsblad
-  { from: 'staatsblad', to: 'amvb-delegation', type: 'branch-off' },
-  { from: 'amvb-delegation', to: 'amvb-voorhang', type: 'straight' },
-
-  { from: 'staatsblad', to: 'inwerkingtreding', type: 'straight' },
-  { from: 'inwerkingtreding', to: 'samenloop', type: 'straight' },
-  { from: 'samenloop', to: 'corpus-updated', type: 'straight' },
+  // develop continues (dashed) while forks are active
+  { from: 'develop-start', to: 'develop-receive', type: 'main-continues' },
+  { from: 'develop-receive', to: 'rvs-merge', type: 'main-continues' },
 ];

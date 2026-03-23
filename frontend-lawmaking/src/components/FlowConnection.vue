@@ -4,8 +4,8 @@
     :class="{ 'flow-connection--active': isActive }"
     :d="pathData"
     fill="none"
-    :stroke="strokeColor"
-    :stroke-width="strokeWidth"
+    stroke="var(--color-connection)"
+    stroke-width="3"
     :stroke-dasharray="isActive ? 'none' : dashArray"
   />
 </template>
@@ -33,26 +33,6 @@ function getPos(stageId) {
   };
 }
 
-const strokeColor = computed(() => {
-  const type = props.connection.type;
-  if (type === 'ci-fork' || type === 'ci-chain' || type === 'ci-return') {
-    return 'var(--color-ci)';
-  }
-  if (type === 'branch-off') return 'var(--color-branch-feature)';
-  if (type === 'merge-in') return 'var(--color-branch-feature)';
-  if (type === 'main-continues') return 'var(--color-branch-main)';
-
-  // Determine from the "from" node
-  const from = props.stages.find((s) => s.id === props.connection.from);
-  if (from?.branch === 'feature') return 'var(--color-branch-feature)';
-  return 'var(--color-branch-main)';
-});
-
-const strokeWidth = computed(() => {
-  if (props.connection.type === 'main-continues') return 3;
-  return 2.5;
-});
-
 const dashArray = computed(() => {
   if (props.connection.type === 'main-continues') return '6 4';
   return 'none';
@@ -63,30 +43,16 @@ const pathData = computed(() => {
   const to = getPos(props.connection.to);
   const type = props.connection.type;
 
-  if (type === 'straight' || type === 'ci-chain') {
+  // Straight line for same-column connections
+  if (from.x === to.x) {
     return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
   }
 
-  if (type === 'main-continues') {
-    // Dashed line along main branch skipping the feature section
-    return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
-  }
-
-  if (type === 'branch-off' || type === 'merge-in' || type === 'ci-fork' || type === 'ci-return') {
-    const dy = to.y - from.y;
-    let midY;
-    if (dy > 20) {
-      // Normal downward: S-curve with control point halfway between
-      midY = from.y + dy * 0.5;
-    } else {
-      // Same row or upward: arc below both points
-      const bottomY = Math.max(from.y, to.y);
-      midY = bottomY + 50;
-    }
-    return `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
-  }
-
-  return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  // S-curve for cross-column connections
+  const topY = Math.min(from.y, to.y);
+  const bottomY = Math.max(from.y, to.y);
+  const midY = topY + (bottomY - topY) * 0.5;
+  return `M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`;
 });
 </script>
 
