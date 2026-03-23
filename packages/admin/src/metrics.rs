@@ -29,6 +29,10 @@ pub struct MetricsSnapshot {
     pub jobs_by_status: Vec<(String, i64)>,
     pub laws_by_status: Vec<(String, i64)>,
     pub avg_job_duration_secs: Option<f64>,
+    /// Jobs that permanently failed (exhausted retries) in the last hour.
+    pub recently_failed_jobs: i64,
+    /// Jobs that permanently failed (exhausted retries) in the last 24 hours.
+    pub recently_failed_jobs_24h: i64,
 }
 
 /// Cached response: the encoded Prometheus text and when it was generated.
@@ -69,10 +73,21 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
     .fetch_one(pool)
     .await?;
 
+    let recently_failed: (i64, i64) = sqlx::query_as(
+        "SELECT \
+             COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '1 hour'), \
+             COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '24 hours') \
+         FROM jobs WHERE status = 'failed'",
+    )
+    .fetch_one(pool)
+    .await?;
+
     Ok(MetricsSnapshot {
         jobs_by_status,
         laws_by_status,
         avg_job_duration_secs: avg_duration.0,
+        recently_failed_jobs: recently_failed.0,
+        recently_failed_jobs_24h: recently_failed.1,
     })
 }
 
@@ -133,6 +148,22 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
             })
             .set(*count);
     }
+
+    let recently_failed = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_jobs_recently_failed",
+        "Number of jobs that permanently failed in the last hour",
+        recently_failed.clone(),
+    );
+    recently_failed.set(snapshot.recently_failed_jobs);
+
+    let recently_failed_24h = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_jobs_recently_failed_24h",
+        "Number of jobs that permanently failed in the last 24 hours",
+        recently_failed_24h.clone(),
+    );
+    recently_failed_24h.set(snapshot.recently_failed_jobs_24h);
 
     if let Some(avg) = snapshot.avg_job_duration_secs {
         job_duration_avg.set(avg);
@@ -202,6 +233,8 @@ mod tests {
             jobs_by_status: vec![],
             laws_by_status: vec![],
             avg_job_duration_secs: None,
+            recently_failed_jobs: 0,
+            recently_failed_jobs_24h: 0,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         assert!(
@@ -215,6 +248,14 @@ mod tests {
         assert!(
             body.contains("regelrecht_job_duration_avg_seconds"),
             "should contain duration metric"
+        );
+        assert!(
+            body.contains("regelrecht_jobs_recently_failed 0"),
+            "should contain recently failed metric"
+        );
+        assert!(
+            body.contains("regelrecht_jobs_recently_failed_24h 0"),
+            "should contain recently failed 24h metric"
         );
 
         // Default zero-value gauges should be present for all known statuses.
@@ -244,8 +285,19 @@ mod tests {
             ],
             laws_by_status: vec![("harvested".to_string(), 100), ("enriched".to_string(), 5)],
             avg_job_duration_secs: Some(12.5),
+            recently_failed_jobs: 2,
+            recently_failed_jobs_24h: 5,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
+
+        assert!(
+            body.contains("regelrecht_jobs_recently_failed 2"),
+            "recently failed metric"
+        );
+        assert!(
+            body.contains("regelrecht_jobs_recently_failed_24h 5"),
+            "recently failed 24h metric"
+        );
 
         // Job counts by status should appear as labeled gauges.
         assert!(
@@ -284,6 +336,8 @@ mod tests {
             jobs_by_status: vec![("running".to_string(), 1)],
             laws_by_status: vec![],
             avg_job_duration_secs: None,
+            recently_failed_jobs: 0,
+            recently_failed_jobs_24h: 0,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         // When no avg duration, the gauge should remain at default (0).
@@ -307,6 +361,8 @@ mod tests {
             jobs_by_status: vec![("completed".to_string(), 10), ("failed".to_string(), 2)],
             laws_by_status: vec![],
             avg_job_duration_secs: None,
+            recently_failed_jobs: 0,
+            recently_failed_jobs_24h: 0,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         assert!(
