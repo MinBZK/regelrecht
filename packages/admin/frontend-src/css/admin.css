@@ -311,8 +311,8 @@
   align-items: center;
   gap: var(--primitives-space-8);
   padding: var(--primitives-space-8) var(--primitives-space-16);
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  background: var(--primitives-color-accent-75);
+  border: 1px solid var(--primitives-color-accent-200);
   border-radius: var(--primitives-corner-radius-sm);
 }
 
@@ -329,13 +329,13 @@
 }
 
 .detail-phase__dot--active {
-  background: #3b82f6;
+  background: var(--primitives-color-accent-500);
 }
 
 .detail-phase__label {
   font-size: var(--primitives-font-size-80);
   font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: #1e40af;
+  color: var(--primitives-color-accent-700);
 }
 
 .detail-phase__meta {

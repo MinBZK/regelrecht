@@ -547,6 +547,7 @@ function getFieldValue(el) {
 async function onHarvestSubmit() {
   const input = $('#harvest-bwb-id');
   const btn = $('#harvest-btn');
+  if (btn.hasAttribute('disabled')) return;
   const bwbId = getFieldValue(input).trim();
   if (!bwbId) return;
   if (!/^BWBR\d{7}$/.test(bwbId)) {
