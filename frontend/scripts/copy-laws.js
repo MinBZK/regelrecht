@@ -1,18 +1,16 @@
 /**
  * Copy regulation YAML files to public/data/ based on corpus-registry.yaml.
  *
- * Reads the registry manifest (and optional local override), iterates all
- * sources (local and GitHub), copies/fetches their YAML files, and generates
- * an index.json with metadata and source provenance.
+ * Processes LOCAL sources only: copies their YAML files and generates a
+ * local-index.json with metadata. GitHub sources are resolved at runtime
+ * in the browser via the GitHub Tree API.
  *
- * This is the same source discovery mechanism the Rust engine uses at runtime,
- * ensuring the editor sees the same laws as the engine.
+ * Also copies corpus-registry.yaml to public/ so the browser can read
+ * GitHub source configuration at runtime.
  */
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
-import { resolve, dirname, join, relative } from 'path';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { resolve, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
-import { tmpdir } from 'os';
 import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,14 +33,12 @@ function loadRegistry() {
   if (existsSync(localOverridePath)) {
     const override = yaml.load(readFileSync(localOverridePath, 'utf-8'));
     if (override?.sources) {
-      // Local entries replace base entries with same id (full replacement)
       const overrideIds = new Set(override.sources.map(s => s.id));
       base.sources = base.sources.filter(s => !overrideIds.has(s.id)).concat(override.sources);
       console.log(`Merged ${override.sources.length} source(s) from local override`);
     }
   }
 
-  // Sort by priority (lower = higher priority)
   base.sources.sort((a, b) => (a.priority || 0) - (b.priority || 0));
   return base;
 }
@@ -81,163 +77,61 @@ function extractMeta(content) {
   return meta;
 }
 
-/** Fetch YAML files from a GitHub repository via tarball download. Returns { files, sha }. */
-async function fetchGitHubFiles(source) {
-  const { owner, repo, branch, path: basePath } = source.github;
-  const token = process.env.GITHUB_TOKEN;
-  const headers = { 'User-Agent': 'regelrecht-copy-laws' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball/${branch}`;
-  const res = await fetch(tarballUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(120_000) });
-  if (!res.ok) {
-    throw new Error(`GitHub tarball download failed for ${owner}/${repo}@${branch}: ${res.status} ${res.statusText}`);
-  }
-
-  const tmpDir = mkdtempSync(join(tmpdir(), 'corpus-'));
-  try {
-    const tarPath = join(tmpDir, 'repo.tar.gz');
-    writeFileSync(tarPath, Buffer.from(await res.arrayBuffer()));
-    execSync(`tar -xzf "${tarPath}" -C "${tmpDir}"`, { stdio: 'pipe' });
-
-    // GitHub tarballs extract to a directory like "owner-repo-sha/"
-    const extracted = readdirSync(tmpDir).find(d => statSync(join(tmpDir, d)).isDirectory());
-    if (!extracted) {
-      throw new Error(`GitHub tarball for ${owner}/${repo}@${branch} extracted no top-level directory`);
-    }
-    // Extract commit SHA from the directory name (e.g. "MinBZK-regelrecht-corpus-abc1234")
-    const sha = extracted.split('-').pop();
-    const sourceDir = join(tmpDir, extracted, basePath || '');
-
-    const yamlFiles = findYamlFiles(sourceDir);
-    console.log(`  Found ${yamlFiles.length} YAML files under ${basePath || '/'} (commit ${sha})`);
-
-    const files = yamlFiles.map(f => ({
-      relPath: relative(sourceDir, f),
-      content: readFileSync(f, 'utf-8'),
-    }));
-    return { files, sha };
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
-  }
-}
-
 // --- Main ---
 
 mkdirSync(destDir, { recursive: true });
 
 const registry = loadRegistry();
-const allSources = registry.sources;
+const localSources = registry.sources.filter(s => s.type === 'local');
+const githubSources = registry.sources.filter(s => s.type === 'github');
 
-if (allSources.length === 0) {
-  console.warn('No sources in registry — library will show no laws.');
-  writeFileSync(resolve(destDir, 'index.json'), '[]');
-  process.exit(0);
-}
+// Copy registry to public/ so the browser can read GitHub source config at runtime.
+cpSync(registryPath, resolve(root, 'public', 'corpus-registry.yaml'));
 
-const multiSource = allSources.length > 1;
+const multiSource = registry.sources.length > 1;
 const index = [];
-const seenIds = new Map(); // $id → { priority, source_id } (for cross-source conflict resolution)
 let totalFiles = 0;
-let processedSources = 0;
 
-for (const source of allSources) {
-  /** @type {Array<{relPath: string, content: string}>} */
-  let files;
-  let resolvedSha = null;
+for (const source of localSources) {
+  const sourceDir = resolve(projectRoot, source.local.path);
+  const yamlFiles = findYamlFiles(sourceDir);
+  console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): ${yamlFiles.length} files from ${source.local.path}`);
 
-  if (source.type === 'local') {
-    const sourceDir = resolve(projectRoot, source.local.path);
-    const yamlFiles = findYamlFiles(sourceDir);
-    console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): ${yamlFiles.length} files from ${source.local.path}`);
-    files = yamlFiles.map(f => ({
-      relPath: relative(sourceDir, f),
-      content: readFileSync(f, 'utf-8'),
-    }));
-  } else if (source.type === 'github') {
-    console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): fetching from ${source.github.owner}/${source.github.repo}@${source.github.branch}`);
-    try {
-      const result = await fetchGitHubFiles(source);
-      files = result.files;
-      resolvedSha = result.sha;
-    } catch (err) {
-      console.warn(`  Failed to fetch GitHub source "${source.id}": ${err.message}`);
-      console.warn('  Continuing without this source.');
-      continue;
-    }
-  } else {
-    console.warn(`Unknown source type "${source.type}" for "${source.id}", skipping`);
-    continue;
-  }
-
-  processedSources++;
-
-  // Extract metadata and determine the latest version per $id for the index.
+  // Deduplicate: keep latest publication_date per $id.
   const latestById = new Map();
   const parsed = [];
-  for (const file of files) {
-    const meta = extractMeta(file.content);
+  for (const filePath of yamlFiles) {
+    const content = readFileSync(filePath, 'utf-8');
+    const meta = extractMeta(content);
     if (!meta.id) continue;
-    parsed.push({ ...file, meta });
+    const relPath = relative(sourceDir, filePath);
+    parsed.push({ relPath, content, meta });
     const existing = latestById.get(meta.id);
     if (!existing || (meta.publication_date || '') > (existing.meta.publication_date || '')) {
-      latestById.set(meta.id, { ...file, meta });
+      latestById.set(meta.id, { relPath, meta });
     }
   }
 
-  const isGitHub = source.type === 'github';
+  console.log(`  ${yamlFiles.length} files → ${latestById.size} unique laws (${parsed.length} versions on disk)`);
 
-  if (isGitHub) {
-    console.log(`  ${files.length} files → ${latestById.size} unique laws (served from GitHub)`);
-  } else {
-    console.log(`  ${files.length} files → ${latestById.size} unique laws (${parsed.length} versions on disk)`);
-    // Write ALL local versions to disk (so direct URLs keep working).
-    for (const { relPath, content } of parsed) {
-      const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
-      const dest = resolve(destDir, destRel);
-      mkdirSync(dirname(dest), { recursive: true });
-      writeFileSync(dest, content);
-      totalFiles++;
-    }
+  // Write ALL versions to disk.
+  for (const { relPath, content } of parsed) {
+    const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
+    const dest = resolve(destDir, destRel);
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, content);
+    totalFiles++;
   }
 
-  // Only add the latest version per $id to the index.
+  // Add latest version per $id to the index.
   for (const [, { relPath, meta }] of latestById) {
-    // For GitHub sources, point directly to raw.githubusercontent.com.
-    // For local sources, use the local data path.
-    let lawPath;
-    if (isGitHub) {
-      const { owner, repo, path: basePath } = source.github;
-      // Pin to the resolved commit SHA so index metadata matches served content.
-      const ref = resolvedSha || source.github.branch;
-      lawPath = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${basePath ? basePath + '/' : ''}${relPath}`;
-    } else {
-      const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
-      lawPath = `/data/${destRel}`;
-    }
-
-    // Cross-source conflict resolution (same as Rust SourceMap).
-    const existing = seenIds.get(meta.id);
-    if (existing !== undefined && existing.source_id !== source.id) {
-      if (source.priority === existing.priority) {
-        console.error(`Conflict: law '${meta.id}' provided by sources '${existing.source_id}' and '${source.id}' with equal priority ${source.priority}`);
-        process.exit(1);
-      }
-      if (source.priority > existing.priority) continue; // existing wins (lower = higher priority)
-      // New source wins — remove old entries from losing source
-      const loserId = existing.source_id;
-      for (let i = index.length - 1; i >= 0; i--) {
-        if (index[i].id === meta.id && index[i].source_id === loserId) index.splice(i, 1);
-      }
-    }
-    seenIds.set(meta.id, { priority: source.priority, source_id: source.id });
-
+    const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
     index.push({
       id: meta.id,
       name: meta.name || meta.officiele_titel || meta.id,
       regulatory_layer: meta.regulatory_layer || 'unknown',
       publication_date: meta.publication_date || 'unknown',
-      path: lawPath,
+      path: `/data/${destRel}`,
       source_id: source.id,
       source_name: source.name,
     });
@@ -249,4 +143,7 @@ index.sort((a, b) =>
 );
 
 writeFileSync(resolve(destDir, 'index.json'), JSON.stringify(index, null, 2));
-console.log(`Done: ${totalFiles} files from ${processedSources} source(s), ${index.length} laws in index`);
+console.log(`Done: ${totalFiles} files, ${index.length} laws in index`);
+if (githubSources.length > 0) {
+  console.log(`${githubSources.length} GitHub source(s) will be resolved at runtime in the browser.`);
+}

@@ -70,18 +70,89 @@ function articleDescription(article) {
   return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
 }
 
+/** Fetch GitHub tree and derive index entries from file paths. */
+async function fetchGitHubIndex(source) {
+  const { owner, repo, branch, path: basePath } = source.github;
+  const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
+  const res = await fetch(treeUrl, { headers: { 'User-Agent': 'regelrecht-editor' } });
+  if (!res.ok) throw new Error(`GitHub tree API: ${res.status}`);
+  const tree = await res.json();
+
+  const prefix = basePath ? `${basePath}/` : '';
+  const yamlEntries = tree.tree.filter(e =>
+    e.type === 'blob' && e.path.startsWith(prefix) && e.path.endsWith('.yaml')
+  );
+
+  // Derive metadata from path: {prefix}{layer}/{law_id}/{date}.yaml
+  const latestById = new Map();
+  for (const entry of yamlEntries) {
+    const rel = entry.path.slice(prefix.length); // e.g. "wet/wet_op_de_zorgtoeslag/2025-01-01.yaml"
+    const parts = rel.split('/');
+    if (parts.length < 3) continue;
+    const layer = parts[0].toUpperCase();
+    const lawId = parts[parts.length - 2];
+    const date = parts[parts.length - 1].replace('.yaml', '');
+
+    const existing = latestById.get(lawId);
+    if (!existing || date > existing.date) {
+      latestById.set(lawId, {
+        id: lawId,
+        name: lawId,
+        regulatory_layer: layer,
+        publication_date: date,
+        date,
+        path: `https://raw.githubusercontent.com/${owner}/${repo}/${tree.sha}/${entry.path}`,
+        source_id: source.id,
+        source_name: source.name,
+      });
+    }
+  }
+
+  return [...latestById.values()];
+}
+
 async function loadIndex() {
   try {
-    const [indexRes, favRes] = await Promise.all([
+    const [indexRes, favRes, registryRes] = await Promise.all([
       fetch('/data/index.json'),
       fetch('/favorites.json'),
+      fetch('/corpus-registry.yaml'),
     ]);
     if (!indexRes.ok) throw new Error(`Failed to load index: ${indexRes.status}`);
-    laws.value = await indexRes.json();
+    const localIndex = await indexRes.json();
+    const localIds = new Set(localIndex.map(l => l.id));
+
     if (favRes.ok) {
       const favIds = await favRes.json();
       favorites.value = new Set(favIds);
     }
+
+    // Fetch GitHub sources at runtime.
+    let githubIndex = [];
+    if (registryRes.ok) {
+      try {
+        const registry = yaml.load(await registryRes.text());
+        const githubSources = (registry.sources || [])
+          .filter(s => s.type === 'github')
+          .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+        for (const source of githubSources) {
+          try {
+            const entries = await fetchGitHubIndex(source);
+            // Filter out laws that exist locally (local priority wins).
+            githubIndex.push(...entries.filter(e => !localIds.has(e.id)));
+          } catch (err) {
+            console.warn(`Failed to load GitHub source "${source.id}":`, err.message);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to parse registry:', err.message);
+      }
+    }
+
+    laws.value = [...localIndex, ...githubIndex].sort((a, b) =>
+      (a.regulatory_layer || '').localeCompare(b.regulatory_layer || '') || a.id.localeCompare(b.id)
+    );
+
     let startList = laws.value;
     if (favorites.value) {
       const favList = laws.value.filter(l => favorites.value.has(l.id));

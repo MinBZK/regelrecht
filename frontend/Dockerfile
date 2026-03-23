@@ -7,8 +7,7 @@ RUN --mount=type=secret,id=GITHUB_TOKEN \
 COPY frontend/ .
 COPY corpus-registry.yaml ../corpus-registry.yaml
 COPY corpus/regulation/ ../corpus/regulation/
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN 2>/dev/null) npm run build
+RUN npm run build
 
 # Stage 2: Production (unprivileged nginx for Kubernetes/OpenShift)
 FROM nginxinc/nginx-unprivileged:alpine
