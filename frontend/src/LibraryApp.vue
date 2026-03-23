@@ -149,6 +149,13 @@ async function loadIndex() {
     laws.value = [...localIndex, ...githubIndex].sort((a, b) =>
       (a.regulatory_layer || '').localeCompare(b.regulatory_layer || '') || a.id.localeCompare(b.id)
     );
+    console.log(`[loadIndex] total: ${laws.value.length} laws (${localIndex.length} local, ${githubIndex.length} github)`);
+    // Log favorites match
+    if (favorites.value) {
+      const matched = laws.value.filter(l => favorites.value.has(l.id));
+      console.log(`[loadIndex] favorites: ${favorites.value.size} ids, ${matched.length} matched`);
+      matched.forEach(l => console.log(`  [fav] ${l.id} -> ${l.path.slice(0, 80)}`));
+    }
 
     let startList = laws.value;
     if (favorites.value) {
@@ -166,6 +173,7 @@ async function loadIndex() {
 }
 
 async function loadLaw(path) {
+  console.log('[loadLaw] fetching:', path);
   try {
     selectedLawLoading.value = true;
     const res = await fetch(path);
