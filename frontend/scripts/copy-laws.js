@@ -179,20 +179,34 @@ for (const source of allSources) {
     }
   }
 
-  console.log(`  ${files.length} files → ${latestById.size} unique laws (${parsed.length} versions on disk)`);
+  const isGitHub = source.type === 'github';
 
-  // Write ALL versions to disk (so direct URLs keep working).
-  for (const { relPath, content } of parsed) {
-    const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
-    const dest = resolve(destDir, destRel);
-    mkdirSync(dirname(dest), { recursive: true });
-    writeFileSync(dest, content);
-    totalFiles++;
+  if (isGitHub) {
+    console.log(`  ${files.length} files → ${latestById.size} unique laws (served from GitHub)`);
+  } else {
+    console.log(`  ${files.length} files → ${latestById.size} unique laws (${parsed.length} versions on disk)`);
+    // Write ALL local versions to disk (so direct URLs keep working).
+    for (const { relPath, content } of parsed) {
+      const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
+      const dest = resolve(destDir, destRel);
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, content);
+      totalFiles++;
+    }
   }
 
   // Only add the latest version per $id to the index.
   for (const [, { relPath, meta }] of latestById) {
-    const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
+    // For GitHub sources, point directly to raw.githubusercontent.com.
+    // For local sources, use the local data path.
+    let lawPath;
+    if (isGitHub) {
+      const { owner, repo, branch, path: basePath } = source.github;
+      lawPath = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${basePath ? basePath + '/' : ''}${relPath}`;
+    } else {
+      const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
+      lawPath = `/data/${destRel}`;
+    }
 
     // Cross-source conflict resolution (same as Rust SourceMap).
     const existing = seenIds.get(meta.id);
@@ -215,7 +229,7 @@ for (const source of allSources) {
       name: meta.name || meta.officiele_titel || meta.id,
       regulatory_layer: meta.regulatory_layer || 'unknown',
       publication_date: meta.publication_date || 'unknown',
-      path: `/data/${destRel}`,
+      path: lawPath,
       source_id: source.id,
       source_name: source.name,
     });
