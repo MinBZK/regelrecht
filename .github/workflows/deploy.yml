@@ -298,7 +298,7 @@ jobs:
 
   deploy-preview:
     runs-on: ubuntu-latest
-    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, changes]
+    needs: [build, build-admin, build-harvester-worker, build-enrich-worker]
     if: >-
       always() &&
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
@@ -315,14 +315,14 @@ jobs:
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Deploy admin to ZAD (Preview)
-        if: needs.changes.outputs.backend == 'true' && needs.build-admin.result == 'success'
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: pr${{ github.event.pull_request.number }}
           component: harvester-admin
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ADMIN }}:sha-${{ steps.sha.outputs.short }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ADMIN }}:${{ needs.build-admin.result == 'success' && format('sha-{0}', steps.sha.outputs.short) || 'latest' }}
+          domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
           comment-on-pr: true
@@ -330,14 +330,14 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Deploy harvester-worker to ZAD (Preview)
-        if: needs.changes.outputs.backend == 'true' && needs.build-harvester-worker.result == 'success'
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: pr${{ github.event.pull_request.number }}
           component: harvester-worker
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_HARVESTER_WORKER }}:sha-${{ steps.sha.outputs.short }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_HARVESTER_WORKER }}:${{ needs.build-harvester-worker.result == 'success' && format('sha-{0}', steps.sha.outputs.short) || 'latest' }}
+          domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
           comment-on-pr: true
@@ -345,14 +345,14 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Deploy enrich-worker to ZAD (Preview)
-        if: needs.changes.outputs.backend == 'true' && needs.build-enrich-worker.result == 'success'
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: pr${{ github.event.pull_request.number }}
           component: enrichworker
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ENRICH_WORKER }}:sha-${{ steps.sha.outputs.short }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ENRICH_WORKER }}:${{ needs.build-enrich-worker.result == 'success' && format('sha-{0}', steps.sha.outputs.short) || 'latest' }}
+          domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
           comment-on-pr: true
@@ -368,6 +368,7 @@ jobs:
           deployment-name: pr${{ github.event.pull_request.number }}
           component: ${{ env.ZAD_COMPONENT }}
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
           comment-on-pr: true
@@ -401,6 +402,7 @@ jobs:
           deployment-name: regelrecht
           component: harvester-admin
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ADMIN }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
 
       - name: Deploy editor to ZAD (Production)
         if: needs.build.result == 'success'
@@ -412,6 +414,7 @@ jobs:
           deployment-name: regelrecht
           component: ${{ env.ZAD_COMPONENT }}
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
 
       - name: Deploy harvester-worker to ZAD (Production)
         if: needs.build-harvester-worker.result == 'success'
@@ -422,6 +425,7 @@ jobs:
           deployment-name: regelrecht
           component: harvester-worker
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_HARVESTER_WORKER }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
 
       - name: Deploy enrich-worker to ZAD (Production)
         if: needs.build-enrich-worker.result == 'success'
@@ -432,6 +436,7 @@ jobs:
           deployment-name: regelrecht
           component: enrichworker
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ENRICH_WORKER }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
 
       - name: Deploy grafana to ZAD (Production)
         if: needs.build-grafana.result == 'success'
@@ -442,6 +447,7 @@ jobs:
           deployment-name: regelrecht
           component: grafana
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GRAFANA }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
 
   cleanup-preview:
     runs-on: ubuntu-latest
