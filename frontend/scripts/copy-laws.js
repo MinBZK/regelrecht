@@ -89,7 +89,7 @@ async function fetchGitHubFiles(source) {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const tarballUrl = `https://api.github.com/repos/${owner}/${repo}/tarball/${branch}`;
-  const res = await fetch(tarballUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(60_000) });
+  const res = await fetch(tarballUrl, { headers, redirect: 'follow', signal: AbortSignal.timeout(120_000) });
   if (!res.ok) {
     throw new Error(`GitHub tarball download failed for ${owner}/${repo}@${branch}: ${res.status} ${res.statusText}`);
   }
@@ -166,10 +166,20 @@ for (const source of allSources) {
 
   processedSources++;
 
-  for (const { relPath, content } of files) {
-    const meta = extractMeta(content);
+  // Deduplicate temporal versions: keep only the latest publication_date per $id.
+  const latestById = new Map();
+  for (const file of files) {
+    const meta = extractMeta(file.content);
     if (!meta.id) continue;
+    const existing = latestById.get(meta.id);
+    if (!existing || (meta.publication_date || '') > (existing.meta.publication_date || '')) {
+      latestById.set(meta.id, { ...file, meta });
+    }
+  }
 
+  console.log(`  ${files.length} files → ${latestById.size} unique laws (latest versions)`);
+
+  for (const [, { relPath, content, meta }] of latestById) {
     // Namespace destination by source id to avoid cross-source file collisions
     const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
     const dest = resolve(destDir, destRel);
@@ -179,7 +189,6 @@ for (const source of allSources) {
     totalFiles++;
 
     // Cross-source conflict resolution (same as Rust SourceMap).
-    // Multiple versions within the same source are allowed (temporal versioning).
     const existing = seenIds.get(meta.id);
     if (existing !== undefined && existing.source_id !== source.id) {
       if (source.priority === existing.priority) {
