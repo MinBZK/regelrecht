@@ -1,8 +1,8 @@
 /**
  * Copy regulation YAML files to public/data/ based on corpus-registry.yaml.
  *
- * Processes LOCAL sources only: copies their YAML files and generates a
- * local-index.json with metadata. GitHub sources are resolved at runtime
+ * Processes LOCAL sources only: copies their YAML files and generates
+ * index.json with metadata. GitHub sources are resolved at runtime
  * in the browser via the GitHub Tree API.
  *
  * Also copies corpus-registry.yaml to public/ so the browser can read

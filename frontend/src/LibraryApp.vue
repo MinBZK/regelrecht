@@ -101,7 +101,7 @@ async function fetchGitHubIndex(source) {
         regulatory_layer: layer,
         publication_date: date,
         date,
-        path: `https://raw.githubusercontent.com/${owner}/${repo}/${tree.sha}/${entry.path}`,
+        path: `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${entry.path}`,
         source_id: source.id,
         source_name: source.name,
       });
