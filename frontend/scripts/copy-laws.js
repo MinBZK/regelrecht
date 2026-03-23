@@ -136,6 +136,7 @@ const multiSource = allSources.length > 1;
 const index = [];
 const seenIds = new Map(); // $id → { priority, source_id } (for cross-source conflict resolution)
 let totalFiles = 0;
+let processedSources = 0;
 
 for (const source of allSources) {
   /** @type {Array<{relPath: string, content: string}>} */
@@ -162,6 +163,8 @@ for (const source of allSources) {
     console.warn(`Unknown source type "${source.type}" for "${source.id}", skipping`);
     continue;
   }
+
+  processedSources++;
 
   for (const { relPath, content } of files) {
     const meta = extractMeta(content);
@@ -209,4 +212,4 @@ index.sort((a, b) =>
 );
 
 writeFileSync(resolve(destDir, 'index.json'), JSON.stringify(index, null, 2));
-console.log(`Done: ${totalFiles} files from ${allSources.length} source(s), ${index.length} laws in index`);
+console.log(`Done: ${totalFiles} files from ${processedSources} source(s), ${index.length} laws in index`);
