@@ -305,6 +305,7 @@ jobs:
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Deploy admin to ZAD (Preview)
+        if: needs.build-admin.result != 'failure'
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -320,6 +321,7 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Deploy harvester-worker to ZAD (Preview)
+        if: needs.build-harvester-worker.result != 'failure'
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -335,6 +337,7 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Deploy enrich-worker to ZAD (Preview)
+        if: needs.build-enrich-worker.result != 'failure'
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
