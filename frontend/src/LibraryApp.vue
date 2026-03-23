@@ -133,8 +133,9 @@ async function loadIndex() {
       favorites.value = new Set(favIds);
     }
 
-    // Fetch GitHub sources at runtime.
+    // Fetch GitHub sources at runtime (sorted by priority, lower wins).
     let githubIndex = [];
+    const seenIds = new Set(localIds);
     if (registryRes.ok) {
       const registryText = await registryRes.text();
       const registry = yaml.load(registryText);
@@ -144,8 +145,10 @@ async function loadIndex() {
       for (const source of githubSources) {
         try {
           const entries = await fetchGitHubIndex(source);
-          githubIndex.push(...entries.filter(e => !localIds.has(e.id)));
-          console.log(`Loaded ${entries.length} laws from GitHub source "${source.id}"`);
+          const newEntries = entries.filter(e => !seenIds.has(e.id));
+          for (const e of newEntries) seenIds.add(e.id);
+          githubIndex.push(...newEntries);
+          console.log(`Loaded ${entries.length} laws from GitHub source "${source.id}" (${newEntries.length} new)`);
         } catch (err) {
           console.warn(`Failed to load GitHub source "${source.id}":`, err.message);
         }
