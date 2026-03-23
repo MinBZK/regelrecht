@@ -74,7 +74,7 @@ function articleDescription(article) {
 async function fetchGitHubIndex(source) {
   const { owner, repo, branch, path: basePath } = source.github;
   const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
-  const res = await fetch(treeUrl, { headers: { 'User-Agent': 'regelrecht-editor' } });
+  const res = await fetch(treeUrl);
   if (!res.ok) throw new Error(`GitHub tree API: ${res.status}`);
   const tree = await res.json();
 
@@ -130,22 +130,19 @@ async function loadIndex() {
     // Fetch GitHub sources at runtime.
     let githubIndex = [];
     if (registryRes.ok) {
-      try {
-        const registry = yaml.load(await registryRes.text());
-        const githubSources = (registry.sources || [])
-          .filter(s => s.type === 'github')
-          .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-        for (const source of githubSources) {
-          try {
-            const entries = await fetchGitHubIndex(source);
-            // Filter out laws that exist locally (local priority wins).
-            githubIndex.push(...entries.filter(e => !localIds.has(e.id)));
-          } catch (err) {
-            console.warn(`Failed to load GitHub source "${source.id}":`, err.message);
-          }
+      const registryText = await registryRes.text();
+      const registry = yaml.load(registryText);
+      const githubSources = (registry.sources || [])
+        .filter(s => s.type === 'github')
+        .sort((a, b) => (a.priority || 0) - (b.priority || 0));
+      for (const source of githubSources) {
+        try {
+          const entries = await fetchGitHubIndex(source);
+          githubIndex.push(...entries.filter(e => !localIds.has(e.id)));
+          console.log(`Loaded ${entries.length} laws from GitHub source "${source.id}"`);
+        } catch (err) {
+          console.warn(`Failed to load GitHub source "${source.id}":`, err.message);
         }
-      } catch (err) {
-        console.warn('Failed to parse registry:', err.message);
       }
     }
 
