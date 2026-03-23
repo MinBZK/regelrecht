@@ -7,7 +7,6 @@
     :stroke="strokeColor"
     :stroke-width="strokeWidth"
     :stroke-dasharray="isActive ? 'none' : dashArray"
-    :stroke-dashoffset="isActive ? 0 : dashOffset"
   />
 </template>
 
@@ -59,8 +58,6 @@ const dashArray = computed(() => {
   return 'none';
 });
 
-const dashOffset = '0';
-
 const pathData = computed(() => {
   const from = getPos(props.connection.from);
   const to = getPos(props.connection.to);
@@ -93,9 +90,9 @@ const pathData = computed(() => {
 });
 </script>
 
-<style>
+<style scoped>
 .flow-connection {
-  transition: opacity 0.5s ease, stroke-dashoffset 0.8s ease;
+  transition: opacity 0.5s ease;
 }
 
 .flow-connection:not(.flow-connection--active) {

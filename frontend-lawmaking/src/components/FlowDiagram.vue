@@ -119,8 +119,8 @@ defineEmits(['select-stage']);
 const columnWidth = 220;
 const rowHeight = 80;
 
-const maxCol = computed(() => Math.max(...props.stages.map((s) => s.col)));
-const maxRow = computed(() => Math.max(...props.stages.map((s) => s.row)));
+const maxCol = computed(() => Math.max(0, ...props.stages.map((s) => s.col)));
+const maxRow = computed(() => Math.max(0, ...props.stages.map((s) => s.row)));
 
 const svgWidth = computed(() => 80 + (maxCol.value + 2) * columnWidth);
 const svgHeight = computed(() => 50 + (maxRow.value + 2) * rowHeight);
@@ -204,6 +204,7 @@ const visiblePhases = computed(() => {
     const phaseStages = props.stages.filter(
       (s) => s.row >= p.startRow && s.row <= p.endRow
     );
+    if (phaseStages.length === 0) return false;
     const minStep = Math.min(...phaseStages.map((s) => s.step));
     return props.activeStep >= minStep;
   });
@@ -224,7 +225,7 @@ function isConnectionActive(conn) {
 }
 </script>
 
-<style>
+<style scoped>
 .flow-diagram {
   display: flex;
   justify-content: center;

@@ -26,6 +26,7 @@ export const legend = [
   { label: 'Branch', shape: 'circle', color: 'var(--color-branch-feature)' },
   { label: 'CI Check', shape: 'diamond', color: 'var(--color-ci)' },
   { label: 'Review', shape: 'square', color: 'var(--color-review)' },
+  { label: 'Merge', shape: 'circle-double', color: 'var(--color-branch-main)' },
   { label: 'Deploy', shape: 'triangle', color: 'var(--color-deploy)' },
   { label: 'Release', shape: 'star', color: 'var(--color-release)' },
 ];

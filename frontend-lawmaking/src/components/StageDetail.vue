@@ -58,7 +58,7 @@ const badgeColor = computed(() => {
 });
 </script>
 
-<style>
+<style scoped>
 .stage-detail {
   position: fixed;
   top: var(--nav-height);

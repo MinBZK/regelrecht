@@ -170,7 +170,7 @@ const starPoints = computed(() => {
 });
 </script>
 
-<style>
+<style scoped>
 .flow-node {
   cursor: pointer;
   transition: opacity var(--transition-normal);
@@ -213,13 +213,7 @@ const starPoints = computed(() => {
 }
 
 @keyframes nodeAppear {
-  from {
-    opacity: 0;
-    transform: translate(var(--x), var(--y)) scale(0.5);
-  }
-  to {
-    opacity: 1;
-    transform: translate(var(--x), var(--y)) scale(1);
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 </style>

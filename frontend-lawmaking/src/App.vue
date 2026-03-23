@@ -16,11 +16,11 @@
 
           <!-- Playback controls -->
           <div class="header-controls">
-            <button class="header-btn" @click="resetSteps" :disabled="activeStep <= 0" title="Begin">&#x23EE;</button>
-            <button class="header-btn" @click="stepBack" :disabled="activeStep <= 0" title="Vorige">&#x258F;&#x25C0;</button>
-            <button class="header-btn" :class="{ 'header-btn--playing': isPlaying }" @click="togglePlay" title="Afspelen">{{ isPlaying ? '\u23F8' : '\u25B6' }}</button>
-            <button class="header-btn" @click="stepForward" :disabled="activeStep >= maxStep" title="Volgende">&#x25B6;&#x258F;</button>
-            <button class="header-btn" @click="goToEnd" :disabled="activeStep >= maxStep" title="Einde">&#x23ED;</button>
+            <button class="header-btn" @click="resetSteps" :disabled="activeStep <= 0" title="Begin" aria-label="Terug naar begin">&#x23EE;</button>
+            <button class="header-btn" @click="stepBack" :disabled="activeStep <= 0" title="Vorige" aria-label="Stap terug">&#x258F;&#x25C0;</button>
+            <button class="header-btn" :class="{ 'header-btn--playing': isPlaying }" @click="togglePlay" :title="isPlaying ? 'Pauzeren' : 'Afspelen'" :aria-label="isPlaying ? 'Pauzeren' : 'Afspelen'">{{ isPlaying ? '⏸' : '▶' }}</button>
+            <button class="header-btn" @click="stepForward" :disabled="activeStep >= maxStep" title="Volgende" aria-label="Stap vooruit">&#x25B6;&#x258F;</button>
+            <button class="header-btn" @click="goToEnd" :disabled="activeStep >= maxStep" title="Einde" aria-label="Naar einde">&#x23ED;</button>
             <span class="header-controls__step">{{ activeStep + 1 }}/{{ maxStep + 1 }}</span>
           </div>
 
@@ -119,7 +119,7 @@ const currentConnections = computed(() => currentData.value.connections);
 const currentPhases = computed(() => currentData.value.phases);
 const currentTimeline = computed(() => currentData.value.timeline);
 
-const maxStep = computed(() => Math.max(...currentStages.value.map((s) => s.step)));
+const maxStep = computed(() => Math.max(0, ...currentStages.value.map((s) => s.step)));
 const activeStep = ref(0);
 const selectedStageId = ref(null);
 const isPlaying = ref(false);
@@ -203,7 +203,7 @@ onUnmounted(() => {
 });
 </script>
 
-<style>
+<style scoped>
 .app {
   display: flex;
   flex-direction: column;

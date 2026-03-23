@@ -11,6 +11,10 @@
           cx="10" cy="10" r="6"
           :fill="item.color"
         />
+        <g v-else-if="item.shape === 'circle-double'">
+          <circle cx="10" cy="10" r="8" fill="none" :stroke="item.color" stroke-width="2" />
+          <circle cx="10" cy="10" r="5" :fill="item.color" :stroke="item.color" stroke-width="2" />
+        </g>
         <rect
           v-else-if="item.shape === 'diamond'"
           x="4" y="4" width="12" height="12"
@@ -43,7 +47,7 @@
 import { legend } from '../data/flowConstants.js';
 </script>
 
-<style>
+<style scoped>
 .flow-legend {
   display: flex;
   align-items: center;
