@@ -35,7 +35,7 @@
           </rr-toolbar-item>
           <rr-toolbar-item id="harvest-form-container" style="display:none">
             <div id="harvest-form" class="harvest-form">
-              <rr-text-field id="harvest-bwb-id" size="md" placeholder="BWB ID (e.g. BWBR0018451)"></rr-text-field>
+              <rr-search-field id="harvest-bwb-id" size="md" placeholder="BWB ID (e.g. BWBR0018451)"></rr-search-field>
               <rr-button id="harvest-btn" variant="accent-filled" size="md">Harvest</rr-button>
             </div>
           </rr-toolbar-item>
@@ -66,7 +66,10 @@
     <aside id="detail-panel" class="detail-panel" hidden>
       <div class="detail-panel__header">
         <h2 class="detail-panel__title">Job Details</h2>
-        <button id="detail-close" class="detail-panel__close" title="Close">&times;</button>
+        <rr-icon-button id="detail-close" variant="neutral-transparent" size="sm" accessible-label="Close">
+          <rr-icon name="dismiss"></rr-icon>
+          Close
+        </rr-icon-button>
       </div>
       <div id="detail-body" class="detail-panel__body">
         <!-- Rendered by app.js -->

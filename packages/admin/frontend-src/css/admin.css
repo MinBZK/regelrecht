@@ -189,56 +189,6 @@
 
 
 /* ============================================================
-   Row Action Buttons
-   ============================================================ */
-
-.action-btns {
-  display: inline-flex;
-  gap: var(--primitives-space-4);
-}
-
-.action-btn {
-  padding: var(--primitives-space-2) var(--primitives-space-8);
-  font-family: var(--primitives-font-family-body);
-  font-size: var(--primitives-font-size-80);
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  border: 1px solid var(--semantics-dividers-color);
-  border-radius: var(--primitives-corner-radius-xs);
-  cursor: pointer;
-  background-color: var(--semantics-surfaces-background-color);
-  color: var(--semantics-content-color);
-  transition: background-color 150ms ease, border-color 150ms ease;
-}
-
-.action-btn:not(:disabled):hover {
-  background-color: var(--semantics-surfaces-tinted-background-color);
-}
-
-.action-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.action-btn--harvest {
-  border-color: var(--primitives-color-accent-200);
-  color: var(--primitives-color-accent-700);
-}
-
-.action-btn--harvest:not(:disabled):hover {
-  background-color: var(--primitives-color-accent-75);
-}
-
-.action-btn--enrich {
-  border-color: var(--primitives-color-success-200);
-  color: var(--primitives-color-success-700);
-}
-
-.action-btn--enrich:not(:disabled):hover {
-  background-color: var(--primitives-color-success-75);
-}
-
-
-/* ============================================================
    Detail Panel (slide-in from right)
    ============================================================ */
 
@@ -288,22 +238,6 @@
   font-size: 18px;
   font-weight: var(--primitives-font-weight-body-extra-bold);
   color: var(--semantics-content-color);
-}
-
-.detail-panel__close {
-  font-size: 24px;
-  line-height: 1;
-  color: var(--semantics-content-secondary-color);
-  cursor: pointer;
-  padding: var(--primitives-space-4);
-  border-radius: var(--primitives-corner-radius-xs);
-  background: none;
-  border: none;
-}
-
-.detail-panel__close:hover {
-  color: var(--semantics-content-color);
-  background: var(--semantics-surfaces-tinted-background-color);
 }
 
 .detail-panel__body {

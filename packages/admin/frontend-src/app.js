@@ -217,31 +217,40 @@ function renderFilters() {
       textField.addEventListener('input', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          onFilterChange(filter.key, getTextFieldValue(textField));
+          onFilterChange(filter.key, getFieldValue(textField));
         }, 300);
       });
 
       wrapper.appendChild(textField);
     } else {
-      const dropdown = document.createElement('rr-drop-down-field');
+      const dropdown = document.createElement('rr-dropdown');
       dropdown.setAttribute('size', 'md');
-      dropdown.setAttribute('placeholder', filter.label);
       dropdown.id = `filter-${filter.key}`;
 
-      const options = [
-        { value: '', label: `All ${filter.label}` },
-        ...filter.options.map(v => ({ value: v, label: v })),
-      ];
-      dropdown.options = options;
+      const select = document.createElement('select');
+      select.setAttribute('aria-label', filter.label);
 
-      if (state.filters[filter.key]) {
-        dropdown.value = state.filters[filter.key];
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = `All ${filter.label}`;
+      select.appendChild(defaultOpt);
+
+      for (const v of filter.options) {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
       }
 
-      dropdown.addEventListener('change', (e) => {
-        onFilterChange(filter.key, e.detail?.value ?? e.target.value ?? '');
+      if (state.filters[filter.key]) {
+        select.value = state.filters[filter.key];
+      }
+
+      select.addEventListener('change', () => {
+        onFilterChange(filter.key, select.value);
       });
 
+      dropdown.appendChild(select);
       wrapper.appendChild(dropdown);
     }
   }
@@ -388,13 +397,14 @@ function renderPagination() {
 }
 
 function renderRowActions(row) {
-  const container = document.createElement('span');
-  container.className = 'action-btns';
+  const container = document.createElement('rr-button-group');
+  container.setAttribute('flow', 'horizontal');
+  container.setAttribute('size', 'sm');
 
   // Re-harvest: available for most statuses (not while actively processing)
   if (RE_HARVESTABLE_STATUSES.includes(row.status)) {
-    const harvestBtn = document.createElement('button');
-    harvestBtn.className = 'action-btn action-btn--harvest';
+    const harvestBtn = document.createElement('rr-button');
+    harvestBtn.setAttribute('variant', 'accent-outlined');
     harvestBtn.textContent = 'Harvest';
     harvestBtn.title = `Re-harvest ${row.law_id}`;
     harvestBtn.addEventListener('click', () => onRowHarvestClick(row.law_id, harvestBtn));
@@ -403,8 +413,8 @@ function renderRowActions(row) {
 
   // Enrich: available after harvest completes
   if (ENRICHABLE_STATUSES.includes(row.status)) {
-    const enrichBtn = document.createElement('button');
-    enrichBtn.className = 'action-btn action-btn--enrich';
+    const enrichBtn = document.createElement('rr-button');
+    enrichBtn.setAttribute('variant', 'neutral-tinted');
     enrichBtn.textContent = 'Enrich';
     enrichBtn.title = `Trigger enrichment for ${row.law_id}`;
     enrichBtn.addEventListener('click', () => onEnrichClick(row.law_id, enrichBtn));
@@ -528,8 +538,7 @@ function switchTab(tabKey) {
   fetchData();
 }
 
-function getTextFieldValue(el) {
-  // rr-text-field may expose .value on host or only on the inner <input>
+function getFieldValue(el) {
   if (el.value != null && el.value !== '') return el.value;
   const inner = el.shadowRoot?.querySelector('input');
   return inner?.value ?? '';
@@ -538,7 +547,7 @@ function getTextFieldValue(el) {
 async function onHarvestSubmit() {
   const input = $('#harvest-bwb-id');
   const btn = $('#harvest-btn');
-  const bwbId = getTextFieldValue(input).trim();
+  const bwbId = getFieldValue(input).trim();
   if (!bwbId) return;
   if (!/^BWBR\d{7}$/.test(bwbId)) {
     alert('BWB ID format: BWBR followed by 7 digits (e.g. BWBR0018451)');
@@ -584,7 +593,7 @@ async function onHarvestSubmit() {
 }
 
 async function onRowHarvestClick(lawId, btn) {
-  btn.disabled = true;
+  btn.setAttribute('disabled', '');
   btn.textContent = 'Submitting\u2026';
 
   try {
@@ -611,13 +620,13 @@ async function onRowHarvestClick(lawId, btn) {
   } catch (err) {
     alert('Harvest failed: ' + err.message);
   } finally {
-    btn.disabled = false;
+    btn.removeAttribute('disabled');
     btn.textContent = 'Harvest';
   }
 }
 
 async function onEnrichClick(lawId, btn) {
-  btn.disabled = true;
+  btn.setAttribute('disabled', '');
   btn.textContent = 'Submitting\u2026';
 
   try {
@@ -644,7 +653,7 @@ async function onEnrichClick(lawId, btn) {
   } catch (err) {
     alert('Enrich failed: ' + err.message);
   } finally {
-    btn.disabled = false;
+    btn.removeAttribute('disabled');
     btn.textContent = 'Enrich';
   }
 }
@@ -984,18 +993,16 @@ async function init() {
 
   void fetchPlatformInfo().then(showDeploymentBadge);
 
-  // Bind harvest button (rr-button is not form-associated, so we use click)
+  // Bind harvest button
   const harvestBtn = $('#harvest-btn');
   if (harvestBtn) {
     harvestBtn.addEventListener('click', onHarvestSubmit);
   }
 
-  // Re-enable Enter-to-submit on the BWB ID input (no <form> to handle it)
+  // rr-search-field fires 'search' on Enter key and search button click
   const harvestInput = $('#harvest-bwb-id');
   if (harvestInput) {
-    harvestInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') onHarvestSubmit();
-    });
+    harvestInput.addEventListener('search', onHarvestSubmit);
   }
 
   // Bind detail panel close
