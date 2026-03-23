@@ -46,8 +46,8 @@ if (existsSync(pidfile)) {
     if (isWindows) {
       tryExec(`taskkill /F /T /PID ${pid}`);
     } else {
-      tryExec(`pkill -P ${pid}`);
-      tryExec(`kill ${pid}`);
+      // Negative PID sends signal to entire process group (detached procs get own PGID)
+      tryExec(`kill -TERM -${pid}`);
     }
   }
 

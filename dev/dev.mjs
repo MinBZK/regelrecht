@@ -51,11 +51,6 @@ function run(cmd, opts = {}) {
   }
 }
 
-/** Run a shell command and return stdout */
-function runOutput(cmd, opts = {}) {
-  return execSync(cmd, { cwd: root, encoding: "utf8", ...opts }).trim();
-}
-
 const compose = "docker compose -f docker-compose.dev.yml -f dev/compose.native.yaml";
 
 // --- Preflight checks ---
@@ -87,14 +82,11 @@ log(`${green}ok${reset}\n`);
 // --- Start infra ---
 
 log(`${bold}=> Starting infra (postgres, prometheus, grafana)…${reset} `);
-if (!run(`${compose} up -d postgres prometheus grafana`)) {
+try {
+  execSync(`${compose} up -d postgres prometheus grafana`, { cwd: root, stdio: "pipe" });
+} catch (e) {
   log(`${red}failed${reset}\n`);
-  try {
-    const out = runOutput(`${compose} up -d postgres prometheus grafana 2>&1`);
-    console.error(out);
-  } catch (e) {
-    console.error(e.stdout || e.message);
-  }
+  console.error(e.stderr?.toString() || e.stdout?.toString() || e.message);
   process.exit(1);
 }
 log(`${green}done${reset}\n`);
@@ -221,12 +213,13 @@ console.log(`  Grafana:    http://localhost:${grafanaPort}`);
 console.log(`  Prometheus: http://localhost:${promPort}`);
 console.log(`  PostgreSQL: localhost:${pgPort}`);
 console.log("");
-console.log(`  ${dim}Admin API log:${reset}      tail -f .dev-admin.log`);
+const tailCmd = isWindows ? "Get-Content -Wait" : "tail -f";
+console.log(`  ${dim}Admin API log:${reset}      ${tailCmd} .dev-admin.log`);
 if (adminFe) {
-  console.log(`  ${dim}Admin frontend log:${reset} tail -f .dev-admin-frontend.log`);
+  console.log(`  ${dim}Admin frontend log:${reset} ${tailCmd} .dev-admin-frontend.log`);
 }
 if (editorFe) {
-  console.log(`  ${dim}Editor log:${reset}         tail -f .dev-editor.log`);
+  console.log(`  ${dim}Editor log:${reset}         ${tailCmd} .dev-editor.log`);
 }
 console.log(`  ${dim}Infra logs:${reset}         just dev-logs`);
 console.log(`  ${dim}Database:${reset}           just dev-psql`);
