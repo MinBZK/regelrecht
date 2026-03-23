@@ -181,7 +181,10 @@ loadIndex();
                 :selected="law.path === selectedLawPath || undefined"
                 @click="selectLaw(law.path)"
               >
-                <rr-text-cell>{{ displayName(law) }}</rr-text-cell>
+                <rr-text-cell>
+                  <span slot="text">{{ displayName(law) }}</span>
+                  <span slot="supporting-text" style="font-size: 11px; color: #888;">{{ law.source_name }}</span>
+                </rr-text-cell>
                 <rr-icon-cell slot="end" size="20">
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </rr-icon-cell>
