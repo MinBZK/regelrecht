@@ -30,7 +30,6 @@ jobs:
       harvester-worker: ${{ steps.filter.outputs.harvester-worker }}
       enrich-worker: ${{ steps.filter.outputs.enrich-worker }}
       grafana: ${{ steps.filter.outputs.grafana }}
-      backend: ${{ steps.backend.outputs.result }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
@@ -52,15 +51,6 @@ jobs:
               - '.claude/skills/law-*/**'
             grafana:
               - 'packages/grafana/**'
-
-      - name: Determine backend changes
-        id: backend
-        run: |
-          if [[ "${{ steps.filter.outputs.admin }}" == "true" || "${{ steps.filter.outputs.harvester-worker }}" == "true" || "${{ steps.filter.outputs.enrich-worker }}" == "true" ]]; then
-            echo "result=true" >> $GITHUB_OUTPUT
-          else
-            echo "result=false" >> $GITHUB_OUTPUT
-          fi
 
   build:
     runs-on: ubuntu-latest
