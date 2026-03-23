@@ -41,8 +41,9 @@ muteTimes:
     time_intervals:
       - location: Europe/Amsterdam
         times:
-          - start_time: 01:00
-            end_time: 24:00
+          # yamllint disable-line rule:quoted-strings
+          - start_time: '01:00'
+            end_time: '24:00'
 
 policies:
   - orgId: 1
