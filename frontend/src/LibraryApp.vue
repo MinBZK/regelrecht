@@ -23,7 +23,8 @@ const activeAction = ref(null);
 const filteredLaws = computed(() => {
   let list = laws.value;
   if (favorites.value) {
-    list = list.filter(law => favorites.value.has(law.id));
+    const favList = list.filter(law => favorites.value.has(law.id));
+    if (favList.length > 0) list = favList;
   }
   const q = search.value.toLowerCase();
   if (!q) return list;
@@ -81,9 +82,11 @@ async function loadIndex() {
       const favIds = await favRes.json();
       favorites.value = new Set(favIds);
     }
-    const startList = favorites.value
-      ? laws.value.filter(l => favorites.value.has(l.id))
-      : laws.value;
+    let startList = laws.value;
+    if (favorites.value) {
+      const favList = laws.value.filter(l => favorites.value.has(l.id));
+      if (favList.length > 0) startList = favList;
+    }
     if (startList.length > 0 && !selectedLawPath.value) {
       selectLaw(startList[0].path);
     }

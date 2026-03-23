@@ -81,7 +81,7 @@ function extractMeta(content) {
   return meta;
 }
 
-/** Fetch YAML files from a GitHub repository via tarball download. Returns array of { relPath, content }. */
+/** Fetch YAML files from a GitHub repository via tarball download. Returns { files, sha }. */
 async function fetchGitHubFiles(source) {
   const { owner, repo, branch, path: basePath } = source.github;
   const token = process.env.GITHUB_TOKEN;
@@ -98,22 +98,25 @@ async function fetchGitHubFiles(source) {
   try {
     const tarPath = join(tmpDir, 'repo.tar.gz');
     writeFileSync(tarPath, Buffer.from(await res.arrayBuffer()));
-    execSync(`tar -xzf ${tarPath} -C ${tmpDir}`, { stdio: 'pipe' });
+    execSync(`tar -xzf "${tarPath}" -C "${tmpDir}"`, { stdio: 'pipe' });
 
     // GitHub tarballs extract to a directory like "owner-repo-sha/"
     const extracted = readdirSync(tmpDir).find(d => statSync(join(tmpDir, d)).isDirectory());
     if (!extracted) {
       throw new Error(`GitHub tarball for ${owner}/${repo}@${branch} extracted no top-level directory`);
     }
+    // Extract commit SHA from the directory name (e.g. "MinBZK-regelrecht-corpus-abc1234")
+    const sha = extracted.split('-').pop();
     const sourceDir = join(tmpDir, extracted, basePath || '');
 
     const yamlFiles = findYamlFiles(sourceDir);
-    console.log(`  Found ${yamlFiles.length} YAML files under ${basePath || '/'}`);
+    console.log(`  Found ${yamlFiles.length} YAML files under ${basePath || '/'} (commit ${sha})`);
 
-    return yamlFiles.map(f => ({
+    const files = yamlFiles.map(f => ({
       relPath: relative(sourceDir, f),
       content: readFileSync(f, 'utf-8'),
     }));
+    return { files, sha };
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -141,6 +144,7 @@ let processedSources = 0;
 for (const source of allSources) {
   /** @type {Array<{relPath: string, content: string}>} */
   let files;
+  let resolvedSha = null;
 
   if (source.type === 'local') {
     const sourceDir = resolve(projectRoot, source.local.path);
@@ -153,7 +157,9 @@ for (const source of allSources) {
   } else if (source.type === 'github') {
     console.log(`Source "${source.name}" (${source.id}, priority ${source.priority}): fetching from ${source.github.owner}/${source.github.repo}@${source.github.branch}`);
     try {
-      files = await fetchGitHubFiles(source);
+      const result = await fetchGitHubFiles(source);
+      files = result.files;
+      resolvedSha = result.sha;
     } catch (err) {
       console.warn(`  Failed to fetch GitHub source "${source.id}": ${err.message}`);
       console.warn('  Continuing without this source.');
@@ -201,8 +207,10 @@ for (const source of allSources) {
     // For local sources, use the local data path.
     let lawPath;
     if (isGitHub) {
-      const { owner, repo, branch, path: basePath } = source.github;
-      lawPath = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${basePath ? basePath + '/' : ''}${relPath}`;
+      const { owner, repo, path: basePath } = source.github;
+      // Pin to the resolved commit SHA so index metadata matches served content.
+      const ref = resolvedSha || source.github.branch;
+      lawPath = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${basePath ? basePath + '/' : ''}${relPath}`;
     } else {
       const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
       lawPath = `/data/${destRel}`;
