@@ -77,6 +77,9 @@ async function fetchGitHubIndex(source) {
   const res = await fetch(treeUrl);
   if (!res.ok) throw new Error(`GitHub tree API: ${res.status}`);
   const tree = await res.json();
+  if (tree.truncated) {
+    console.warn(`GitHub tree for ${owner}/${repo} was truncated — some laws may be missing`);
+  }
 
   const prefix = basePath ? `${basePath}/` : '';
   const yamlEntries = tree.tree.filter(e =>
@@ -97,7 +100,7 @@ async function fetchGitHubIndex(source) {
     if (!existing || date > existing.date) {
       latestById.set(lawId, {
         id: lawId,
-        name: lawId,
+        name: '',
         regulatory_layer: layer,
         publication_date: date,
         date,
