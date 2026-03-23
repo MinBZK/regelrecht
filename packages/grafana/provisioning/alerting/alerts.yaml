@@ -137,8 +137,8 @@ groups:
           severity: info
         annotations:
           summary: >-
-            Geharvest: {{ index $values "A" | printf "%.0f" }},
-            Verrijkt: {{ index $values "B" | printf "%.0f" }}
+            Geharvest: {{ (index $values "A").Value | printf "%.0f" }},
+            Verrijkt: {{ (index $values "B").Value | printf "%.0f" }}
           harvested: '{{ (index $values "A").Value | printf "%.0f" }}'
           enriched: '{{ (index $values "B").Value | printf "%.0f" }}'
           failed_total: '{{ (index $values "D").Value | printf "%.0f" }}'
