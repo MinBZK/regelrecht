@@ -622,6 +622,7 @@ impl LawExecutionService {
                 for req in requires {
                     if !stage_state.accumulated_outputs.contains_key(&req.name)
                         && !stage_state.parameters.contains_key(&req.name)
+                        && !parameters.contains_key(&req.name)
                     {
                         missing.push(req.name.clone());
                     }
