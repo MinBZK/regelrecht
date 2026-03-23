@@ -7,6 +7,7 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 
 const laws = ref([]);
+const favorites = ref(null);
 const loading = ref(true);
 const indexError = ref(null);
 const search = ref('');
@@ -20,9 +21,13 @@ const detailView = ref('machine');
 const activeAction = ref(null);
 
 const filteredLaws = computed(() => {
+  let list = laws.value;
+  if (favorites.value) {
+    list = list.filter(law => favorites.value.has(law.id));
+  }
   const q = search.value.toLowerCase();
-  if (!q) return laws.value;
-  return laws.value.filter(law =>
+  if (!q) return list;
+  return list.filter(law =>
     law.id.toLowerCase().includes(q) ||
     displayName(law).toLowerCase().includes(q)
   );
@@ -66,11 +71,21 @@ function articleDescription(article) {
 
 async function loadIndex() {
   try {
-    const res = await fetch('/data/index.json');
-    if (!res.ok) throw new Error(`Failed to load index: ${res.status}`);
-    laws.value = await res.json();
-    if (laws.value.length > 0 && !selectedLawPath.value) {
-      selectLaw(laws.value[0].path);
+    const [indexRes, favRes] = await Promise.all([
+      fetch('/data/index.json'),
+      fetch('/favorites.json'),
+    ]);
+    if (!indexRes.ok) throw new Error(`Failed to load index: ${indexRes.status}`);
+    laws.value = await indexRes.json();
+    if (favRes.ok) {
+      const favIds = await favRes.json();
+      favorites.value = new Set(favIds);
+    }
+    const startList = favorites.value
+      ? laws.value.filter(l => favorites.value.has(l.id))
+      : laws.value;
+    if (startList.length > 0 && !selectedLawPath.value) {
+      selectLaw(startList[0].path);
     }
   } catch (e) {
     indexError.value = e;
