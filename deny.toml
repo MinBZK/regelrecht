@@ -45,4 +45,6 @@ wildcards = "allow"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+# Temporary: testcontainers patched via git to fix RUSTSEC-2026-0066.
+# Remove once testcontainers releases a version with astral-tokio-tar >= 0.6.0.
+allow-git = ["https://github.com/testcontainers/testcontainers-rs"]
