@@ -264,9 +264,30 @@ function resetView() {
 
 defineExpose({ zoomIn, zoomOut, resetView });
 
-const visiblePhases = computed(() => {
+/**
+ * Resolve phase row ranges from stage IDs (startStage/endStage)
+ * or fall back to hardcoded startRow/endRow for legacy data.
+ */
+const resolvedPhases = computed(() => {
   if (!props.phases) return [];
-  return props.phases.filter((p) => {
+  return props.phases.map((p) => {
+    let startRow = p.startRow;
+    let endRow = p.endRow;
+    if (p.startStage) {
+      const s = layoutStages.value.find((st) => st.id === p.startStage);
+      if (s) startRow = s.row;
+    }
+    if (p.endStage) {
+      const s = layoutStages.value.find((st) => st.id === p.endStage);
+      if (s) endRow = s.row;
+    }
+    return { ...p, startRow, endRow };
+  });
+});
+
+const visiblePhases = computed(() => {
+  return resolvedPhases.value.filter((p) => {
+    if (p.startRow === undefined || p.endRow === undefined) return false;
     const phaseStages = layoutStages.value.filter(
       (s) => s.row >= p.startRow && s.row <= p.endRow
     );

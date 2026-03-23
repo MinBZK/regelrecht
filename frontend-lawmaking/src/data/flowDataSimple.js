@@ -69,7 +69,7 @@ export const stages = [
     description:
       'Het geheel van alle geldende Nederlandse wetgeving — de "main branch". ' +
       'Wat hier staat, is geldend recht.',
-    col: 0, row: 0, step: 0,
+    col: 0, step: 0,
   },
   {
     id: 'main-other',
@@ -81,7 +81,7 @@ export const stages = [
     description:
       'Terwijl het wetsvoorstel in procedure is, gaan andere wetten gewoon door. ' +
       'Main verandert voortdurend — daarom zijn rebases nodig.',
-    col: 0, row: 5, step: 5,
+    col: 0, step: 5,
   },
 
   // === DEVELOP: Wetgevingskalender ===
@@ -95,7 +95,7 @@ export const stages = [
     description:
       'De develop branch bevat alle wetsvoorstellen die officieel in procedure zijn, ' +
       'maar nog geen onderdeel van het Corpus Juris.',
-    col: 1, row: 2, step: 1,
+    col: 1, step: 1,
   },
 
   // === WETSVOORSTEL: Ministry fork ===
@@ -109,7 +109,7 @@ export const stages = [
     description:
       'Een ministerie forkt het Corpus Juris naar een eigen omgeving. ' +
       'Het team werkt onafhankelijk, net als een fork op een eigen Git-server.',
-    col: 2, row: 4, step: 2,
+    col: 2, step: 2,
   },
   {
     id: 'voorstel-beleid',
@@ -121,7 +121,7 @@ export const stages = [
     description:
       'De beleidsmedewerker schrijft een beleidsnota: wat is het probleem, ' +
       'wat moet de wet bereiken? Dit is de "product spec" bij de code.',
-    col: 2, row: 5, step: 3,
+    col: 2, step: 3,
   },
 
   // === INTERNAL: Sub-branch within the fork ===
@@ -135,7 +135,7 @@ export const stages = [
     description:
       'Binnen de fork maakt het juridisch team een sub-branch aan. ' +
       'Wetgevingsjuristen vertalen het beleid naar juridische tekst.',
-    col: 3, row: 6, step: 4,
+    col: 3, step: 4,
   },
   {
     id: 'intern-draft',
@@ -147,7 +147,7 @@ export const stages = [
     description:
       'Het eerste concept van de wettekst. Er volgen nog vele iteraties — ' +
       'net als bij code wordt er voortdurend herzien en verbeterd.',
-    col: 3, row: 7, step: 6,
+    col: 3, step: 6,
   },
   {
     id: 'intern-review',
@@ -159,7 +159,7 @@ export const stages = [
     description:
       'Interne review door de Directie Wetgeving en de wetgevingstoets van JenV. ' +
       'Vergelijkbaar met code review binnen het team.',
-    col: 3, row: 8, step: 7,
+    col: 3, step: 7,
   },
   {
     id: 'intern-rebase',
@@ -171,7 +171,7 @@ export const stages = [
     description:
       'Het Corpus Juris verandert voortdurend. Het voorstel moet ' +
       'regelmatig gerebased worden zodat het consistent blijft met geldend recht.',
-    col: 3, row: 9, step: 8,
+    col: 3, step: 8,
   },
   {
     id: 'intern-final',
@@ -183,7 +183,7 @@ export const stages = [
     description:
       'De ambtelijke top (DG, SG) keurt het concept goed. ' +
       'Vergelijkbaar met required approvals voordat je mag mergen.',
-    col: 3, row: 10, step: 9,
+    col: 3, step: 9,
   },
 
   // === Back to wetsvoorstel fork ===
@@ -197,7 +197,7 @@ export const stages = [
     description:
       'De interne sub-branch wordt samengevoegd in de wetsvoorstel-fork. ' +
       'Het concept is klaar voor verdere uitwerking.',
-    col: 2, row: 11, step: 10,
+    col: 2, step: 10,
   },
   {
     id: 'voorstel-mvt',
@@ -209,7 +209,7 @@ export const stages = [
     description:
       'De Memorie van Toelichting legt uit waarom de wet er zo uitziet — ' +
       'vergelijkbaar met design docs en ADRs bij de code.',
-    col: 2, row: 12, step: 11,
+    col: 2, step: 11,
   },
   {
     id: 'voorstel-interdepart',
@@ -221,7 +221,7 @@ export const stages = [
     description:
       'Het voorstel circuleert langs alle relevante ministeries. ' +
       'Hun feedback wordt verwerkt — cross-team review.',
-    col: 2, row: 13, step: 12,
+    col: 2, step: 12,
   },
   {
     id: 'voorstel-consultatie',
@@ -233,7 +233,7 @@ export const stages = [
     description:
       'Het voorstel gaat op internetconsultatie.nl — een publieke RFC. ' +
       'Burgers, NGOs en bedrijven geven feedback.',
-    col: 2, row: 14, step: 13,
+    col: 2, step: 13,
   },
   {
     id: 'voorstel-push',
@@ -245,7 +245,7 @@ export const stages = [
     description:
       'De Ministerraad keurt het voorstel goed en biedt het aan. ' +
       'Vergelijkbaar met een pull request van een fork naar de upstream develop branch.',
-    col: 2, row: 15, step: 14,
+    col: 2, step: 14,
   },
 
   // === Back to develop ===
@@ -259,7 +259,7 @@ export const stages = [
     description:
       'Het voorstel is opgenomen in de Wetgevingskalender. ' +
       'Vanaf nu doorloopt het de formele parlementaire procedure.',
-    col: 1, row: 17, step: 15,
+    col: 1, step: 15,
   },
 
   // === ADVISORY: Raad van State fork ===
@@ -273,7 +273,7 @@ export const stages = [
     description:
       'Het voorstel wordt via de Koning aan de Raad van State aangeboden. ' +
       'De RvS forkt het voorstel om onafhankelijk te toetsen.',
-    col: 4, row: 18, step: 16,
+    col: 4, step: 16,
   },
   {
     id: 'rvs-toets',
@@ -285,7 +285,7 @@ export const stages = [
     description:
       'De RvS toetst het voorstel aan de Grondwet, EU-recht, ' +
       'en bestaande wetgeving. Een diepgaande juridische review.',
-    col: 4, row: 19, step: 17,
+    col: 4, step: 17,
   },
   {
     id: 'rvs-kwaliteit',
@@ -297,7 +297,7 @@ export const stages = [
     description:
       'Toets op wetgevingskwaliteit: is de tekst duidelijk, consistent, ' +
       'en uitvoerbaar? Vergelijkbaar met een code quality review.',
-    col: 4, row: 20, step: 18,
+    col: 4, step: 18,
   },
   {
     id: 'rvs-advies',
@@ -309,7 +309,7 @@ export const stages = [
     description:
       'De Raad van State levert een formeel advies met dictum. ' +
       'Het kabinet moet hierop reageren met een Nader Rapport.',
-    col: 4, row: 21, step: 19,
+    col: 4, step: 19,
   },
   {
     id: 'rvs-nader-rapport',
@@ -321,7 +321,7 @@ export const stages = [
     description:
       'Het kabinet reageert op het RvS-advies en verwerkt de feedback. ' +
       'Vergelijkbaar met het adresseren van review comments.',
-    col: 4, row: 22, step: 20,
+    col: 4, step: 20,
   },
 
   // === Back to develop: advisory merged ===
@@ -335,7 +335,7 @@ export const stages = [
     description:
       'Het advies van de Raad van State is verwerkt in het voorstel. ' +
       'De fork wordt gemerged terug naar develop.',
-    col: 1, row: 23, step: 21,
+    col: 1, step: 21,
   },
   {
     id: 'tk-review',
@@ -347,7 +347,7 @@ export const stages = [
     description:
       'De Tweede Kamer behandelt het voorstel — vergelijkbaar met een PR review. ' +
       'Kamerleden dienen amendementen in, debatteren, en stemmen.',
-    col: 1, row: 24, step: 22,
+    col: 1, step: 22,
   },
   {
     id: 'tk-amendement',
@@ -359,7 +359,7 @@ export const stages = [
     description:
       'Amendementen van Kamerleden worden verwerkt — vergelijkbaar met ' +
       'reviewer-submitted patches die gemerged worden in de branch.',
-    col: 1, row: 25, step: 23,
+    col: 1, step: 23,
   },
   {
     id: 'ek-review',
@@ -371,7 +371,7 @@ export const stages = [
     description:
       'De Eerste Kamer kan alleen aannemen of verwerpen, geen amendementen. ' +
       'Vergelijkbaar met een protected branch gate: approve or reject.',
-    col: 1, row: 26, step: 24,
+    col: 1, step: 24,
   },
 
   // === MAIN: The King merges ===
@@ -390,7 +390,7 @@ export const stages = [
       { label: 'Staatsblad', color: 'var(--color-branch-advisory)' },
       { label: 'Inwerkingtreding', color: 'var(--color-branch-main)' },
     ],
-    col: 0, row: 27, step: 25,
+    col: 0, step: 25,
   },
   {
     id: 'corpus-updated',
@@ -402,7 +402,7 @@ export const stages = [
     description:
       'Het Corpus Juris is bijgewerkt met de nieuwe wet. ' +
       'Main gaat door — klaar voor het volgende wetsvoorstel.',
-    col: 0, row: 30, step: 26,
+    col: 0, step: 26,
   },
 ];
 

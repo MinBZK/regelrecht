@@ -141,14 +141,14 @@ export const branches = [
 ];
 
 export const phases = [
-  { id: 'A', label: 'A. Departementale voorbereiding', startRow: 1, endRow: 6, color: 'var(--color-branch-wetsvoorstel)' },
-  { id: 'B', label: 'B. Interdepartementaal & toetsen', startRow: 7, endRow: 12, color: 'var(--color-branch-advisory)' },
-  { id: 'C', label: 'C. Externe consultatie', startRow: 13, endRow: 16, color: 'var(--color-branch-advisory)' },
-  { id: 'D', label: 'D. Kabinet', startRow: 17, endRow: 19, color: 'var(--color-branch-develop)' },
-  { id: 'E', label: 'E. Raad van State', startRow: 20, endRow: 24, color: 'var(--color-branch-advisory)' },
-  { id: 'F', label: 'F. Tweede Kamer', startRow: 25, endRow: 45, color: 'var(--color-branch-develop)' },
-  { id: 'G', label: 'G. Eerste Kamer', startRow: 46, endRow: 52, color: 'var(--color-branch-develop)' },
-  { id: 'H', label: 'H. Bekrachtiging', startRow: 53, endRow: 56, color: 'var(--color-branch-main)' },
+  { id: 'A', label: 'A. Departementale voorbereiding', startStage: 'ministry-fork', endStage: 'ministry-merge-intern', color: 'var(--color-branch-wetsvoorstel)' },
+  { id: 'B', label: 'B. Interdepartementaal & toetsen', startStage: 'interdept', endStage: 'voorportaal', color: 'var(--color-branch-advisory)' },
+  { id: 'C', label: 'C. Externe consultatie', startStage: 'internetconsultatie', endStage: 'verwerking-reacties', color: 'var(--color-branch-advisory)' },
+  { id: 'D', label: 'D. Kabinet', startStage: 'onderraad', endStage: 'develop-receive', color: 'var(--color-branch-develop)' },
+  { id: 'E', label: 'E. Raad van State', startStage: 'rvs-fork', endStage: 'rvs-merge', color: 'var(--color-branch-advisory)' },
+  { id: 'F', label: 'F. Tweede Kamer', startStage: 'koninklijke-boodschap', endStage: 'stemmingen', color: 'var(--color-branch-develop)' },
+  { id: 'G', label: 'G. Eerste Kamer', startStage: 'ek-behandeling', endStage: 'ek-final', color: 'var(--color-branch-develop)' },
+  { id: 'H', label: 'H. Bekrachtiging', startStage: 'koninklijk-besluit', endStage: 'corpus-updated', color: 'var(--color-branch-main)' },
 ];
 
 export const stages = [

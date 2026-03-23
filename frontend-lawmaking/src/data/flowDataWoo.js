@@ -113,19 +113,19 @@ export const phases = [
 
 /** Timeline markers shown on the left axis */
 export const timelineMarkers = [
-  { row: 1, label: '2012' },
-  { row: 7, label: '2013' },
-  { row: 10, label: '2014' },
-  { row: 12, label: '2015' },
-  { row: 13, label: '2016' },
-  { row: 21, label: '2016' },
-  { row: 23, label: '2017' },
-  { row: 25, label: '2018' },
-  { row: 27, label: '2019' },
-  { row: 30, label: '2020' },
-  { row: 32, label: '2021' },
-  { row: 39, label: '2021' },
-  { row: 41, label: '2022' },
+  { label: '2012' },
+  { label: '2013' },
+  { label: '2014' },
+  { label: '2015' },
+  { label: '2016' },
+  { label: '2016' },
+  { label: '2017' },
+  { label: '2018' },
+  { label: '2019' },
+  { label: '2020' },
+  { label: '2021' },
+  { label: '2021' },
+  { label: '2022' },
 ];
 
 export const stages = [
@@ -141,7 +141,7 @@ export const stages = [
     description:
       'De Wob is het geldende transparantierecht. Burgers moeten zelf informatie opvragen (passief). ' +
       'Critici vinden de wet verouderd: te ruime weigeringsgronden, geen actieve openbaarmaking.',
-    col: 0, row: 0, step: 0,
+    col: 0, step: 0,
   },
 
   // === 2012: Submission ===
@@ -157,7 +157,7 @@ export const stages = [
       'Mariko Peters (GroenLinks) dient eigenhandig een initiatiefwetsvoorstel in: ' +
       'de "Nieuwe Wet openbaarheid van bestuur". Een lone external contributor die een PR opent ' +
       'tegen het hele systeem.',
-    col: 1, row: 1, step: 1,
+    col: 1, step: 1,
   },
   {
     id: 'mvt',
@@ -170,7 +170,7 @@ export const stages = [
     description:
       'De memorie van toelichting beschrijft het doel: van passieve naar actieve openbaarmaking, ' +
       'een Informatiecommissaris, uitbreiding naar semipublieke sector.',
-    col: 1, row: 2, step: 2,
+    col: 1, step: 2,
   },
   {
     id: 'rvs-sent',
@@ -182,7 +182,7 @@ export const stages = [
     date: '4 okt 2012',
     description:
       'Het voorstel wordt naar de Raad van State gestuurd voor advies.',
-    col: 1, row: 3, step: 3,
+    col: 1, step: 3,
   },
   {
     id: 'handover-1',
@@ -196,7 +196,7 @@ export const stages = [
       'Peters verlaat de Kamer. Linda Voortman (GL) neemt de verdediging over. ' +
       'De eerste van zes overdrachten — alsof de maintainer van een open-source project vertrekt ' +
       'en iemand anders het overneemt.',
-    col: 1, row: 5, step: 4,
+    col: 1, step: 4,
   },
   {
     id: 'govt-response',
@@ -209,7 +209,7 @@ export const stages = [
     description:
       'Minister Plasterk (PvdA, BZK): de regering dient geen eigen alternatief in maar ' +
       '"wacht de behandeling af". Passief-agressieve houding van de project owner.',
-    col: 1, row: 6, step: 5,
+    col: 1, step: 5,
   },
 
   // === 2013: Raad van State ===
@@ -224,7 +224,7 @@ export const stages = [
     description:
       'De RvS levert advies na 14 maanden. Het advies leidt tot een substantiële herziening ' +
       'van het voorstel. Tegelijkertijd sluit Gerard Schouw (D66) aan als co-verdediger.',
-    col: 3, row: 7, step: 6,
+    col: 3, step: 6,
   },
   {
     id: 'schouw-joins',
@@ -237,7 +237,7 @@ export const stages = [
     description:
       'Gerard Schouw (D66) wordt tweede verdediger. Het voorstel krijgt een breder draagvlak. ' +
       'Vergelijkbaar met een co-author die aan de PR wordt toegevoegd.',
-    col: 1, row: 8, step: 6,
+    col: 1, step: 6,
   },
   {
     id: 'revised-bill',
@@ -250,7 +250,7 @@ export const stages = [
     description:
       'Het voorstel wordt substantieel herzien op basis van het RvS advies. ' +
       'Vergelijkbaar met een force push na ingrijpende review feedback.',
-    col: 1, row: 9, step: 7,
+    col: 1, step: 7,
   },
 
   // === 2014: Committee Phase ===
@@ -264,7 +264,7 @@ export const stages = [
     date: '5 feb 2014',
     description:
       'De vaste commissie Binnenlandse Zaken stelt schriftelijke vragen.',
-    col: 1, row: 10, step: 8,
+    col: 1, step: 8,
   },
   {
     id: 'nota-nav-1',
@@ -276,7 +276,7 @@ export const stages = [
     date: '13 mei 2014',
     description:
       'Initiatiefnemers beantwoorden de vragen en dienen de eerste nota van wijziging in.',
-    col: 1, row: 11, step: 9,
+    col: 1, step: 9,
   },
   {
     id: 'nvw-2',
@@ -289,7 +289,7 @@ export const stages = [
     description:
       'Tweede nota van wijziging: scope uitgebreid naar "publieke taak"-instellingen, ' +
       'hergebruikregels toegevoegd.',
-    col: 1, row: 12, step: 10,
+    col: 1, step: 10,
   },
 
   // === 2015: Quiet year — sponsorship transfers ===
@@ -304,7 +304,7 @@ export const stages = [
     description:
       'In 2015 wisselt de D66-verdediger twee keer: Schouw → Verhoeven (aug) → Van Weyenberg (okt). ' +
       'Het voorstel overleeft drie maintainer-wisselingen in één jaar.',
-    col: 1, row: 12.5, step: 11,
+    col: 1, step: 11,
   },
 
   // === 2016 March-April: Tweede Kamer (the burst) ===
@@ -319,7 +319,7 @@ export const stages = [
     description:
       'Derde nota van wijziging: hergebruik-hoofdstuk verwijderd (apart geregeld), ' +
       'responstermijn van 2 naar 4 weken, Informatiecommissaris 4 jaar uitgesteld.',
-    col: 2, row: 13, step: 12,
+    col: 2, step: 12,
   },
   {
     id: 'plenair-1',
@@ -331,7 +331,7 @@ export const stages = [
     date: '31 mrt 2016',
     description:
       'Het plenaire debat begint. De behandeling wordt over meerdere dagen verspreid.',
-    col: 2, row: 14, step: 13,
+    col: 2, step: 13,
   },
 
   // Amendments on 33328 (parallel, filed 7-13 april 2016)
@@ -409,7 +409,7 @@ export const stages = [
     date: '13 apr 2016',
     description:
       'Vierde en laatste nota van wijziging: technische correcties, verwijzingen bijgewerkt.',
-    col: 2, row: 15, step: 14,
+    col: 2, step: 14,
   },
   {
     id: 'plenair-2',
@@ -421,7 +421,7 @@ export const stages = [
     date: '13 apr 2016',
     description:
       'Het plenaire debat wordt afgerond met re- en dupliek.',
-    col: 2, row: 18, step: 16,
+    col: 2, step: 16,
   },
 
   // Stemming TK
@@ -436,7 +436,7 @@ export const stages = [
     description:
       'AANGENOMEN. Voor: SP, PvdD, PvdA, GL, D66, 50PLUS, CU, PVV. ' +
       'Tegen: VVD, CDA, SGP. De VVD stemt tegen — dit verandert later.',
-    col: 2, row: 20, step: 17,
+    col: 2, step: 17,
   },
 
   // === 2016-2017: The Stall (impact analysis) ===
@@ -451,7 +451,7 @@ export const stages = [
     description:
       'De Eerste Kamer houdt een deskundigenbijeenkomst. Een ongebruikelijke stap — ' +
       'de EK wil eerst experts horen voordat ze het voorstel inhoudelijk behandelt.',
-    col: 2, row: 21, step: 18,
+    col: 2, step: 18,
   },
   {
     id: 'impact-commissioned',
@@ -465,7 +465,7 @@ export const stages = [
       'Minister Blok (VVD) geeft ABDTOPConsult opdracht de uitvoerbaarheid te onderzoeken. ' +
       'Critici noemen dit een vertragingstactiek: de regering probeert het voorstel te torpederen ' +
       'door aan te tonen dat het "onuitvoerbaar" is.',
-    col: 3, row: 22, step: 19,
+    col: 3, step: 19,
   },
   {
     id: 'impact-1',
@@ -479,7 +479,7 @@ export const stages = [
       'Deel 1 van de impactanalyse: rijksoverheid, uitvoeringsorganisaties, politie. ' +
       'Conclusie: "het wetsvoorstel is in de huidige vorm onuitvoerbaar en brengt zeer ' +
       'hoge uitvoeringskosten met zich mee." De CI pipeline faalt.',
-    col: 3, row: 23, step: 20,
+    col: 3, step: 20,
   },
   {
     id: 'impact-2',
@@ -491,7 +491,7 @@ export const stages = [
     date: '13 jun 2017',
     description:
       'Deel 2 bevestigt de problemen voor decentrale overheden.',
-    col: 3, row: 24, step: 21,
+    col: 3, step: 21,
   },
   {
     id: 'handover-snels',
@@ -505,7 +505,7 @@ export const stages = [
       'Na de verkiezingen van maart 2017 wisselen beide verdedigers: ' +
       'Voortman → Bart Snels (GL), Van Weyenberg → Joost Sneller (D66). ' +
       'Het voorstel overleeft opnieuw een volledige maintainer-wissel.',
-    col: 2, row: 25, step: 22,
+    col: 2, step: 22,
   },
   {
     id: 'negotiations',
@@ -519,7 +519,7 @@ export const stages = [
       'De behandeling in de Eerste Kamer wordt opgeschort. Initiatiefnemers en regering ' +
       'onderhandelen over een compromis: een novelle die de bezwaren wegneemt. ' +
       'De PR staat on hold terwijl een fix-PR wordt voorbereid.',
-    col: 2, row: 26, step: 23,
+    col: 2, step: 23,
   },
 
   // === 2019: Novelle ===
@@ -535,7 +535,7 @@ export const stages = [
       'De novelle (35112) wordt ingediend: een apart wetsvoorstel dat het origineel wijzigt. ' +
       'Een dependent fix-PR die eerst door de hele TK-pipeline moet voordat de EK ' +
       'het origineel kan behandelen.',
-    col: 3, row: 27, step: 24,
+    col: 3, step: 24,
   },
   {
     id: 'novelle-rvs',
@@ -547,7 +547,7 @@ export const stages = [
     date: '12 apr 2019',
     description:
       'De Raad van State adviseert over de novelle. Aanbevelingen worden verwerkt.',
-    col: 3, row: 28, step: 25,
+    col: 3, step: 25,
   },
   {
     id: 'novelle-revised',
@@ -559,7 +559,7 @@ export const stages = [
     date: '30 jun 2020',
     description:
       'Het novelle-voorstel wordt herzien op basis van het RvS advies.',
-    col: 3, row: 30, step: 26,
+    col: 3, step: 26,
   },
   {
     id: 'novelle-committee',
@@ -571,7 +571,7 @@ export const stages = [
     date: '22 sep 2020',
     description:
       'De commissie behandelt de novelle: verslag en beantwoording.',
-    col: 3, row: 31, step: 27,
+    col: 3, step: 27,
   },
 
   // Novelle amendments (parallel, jan 2021)
@@ -593,7 +593,7 @@ export const stages = [
   {
     id: 'novelle-amend-rejected',
     branch: 'rejected-35112',
-    type: 'ci-check',
+    type: 'commit',
     gitLabel: 'patch rejected (×1)',
     lawLabel: '1 amendement verworpen',
     subtitle: 'Sneller/Buitenweg (D66/GL)',
@@ -617,7 +617,7 @@ export const stages = [
       'Cruciaal: de VVD stemt nu VOOR (was tegen in 2016). ' +
       'De toeslagenaffaire heeft het politieke landschap fundamenteel verschoven. ' +
       'Alleen PVV stemt tegen.',
-    col: 3, row: 35, step: 29,
+    col: 3, step: 29,
   },
 
   // === Eerste Kamer: combined treatment ===
@@ -633,7 +633,7 @@ export const stages = [
       'De Eerste Kamer behandelt beide voorstellen (33328 + 35112) gezamenlijk. ' +
       'Drie schriftelijke rondes: voorlopig verslag, memorie van antwoord, ' +
       'nader voorlopig verslag, nadere memorie van antwoord, verslag, nota.',
-    col: 2, row: 36, step: 30,
+    col: 2, step: 30,
   },
   {
     id: 'ek-debate',
@@ -646,7 +646,7 @@ export const stages = [
     description:
       'Plenair debat over beide voorstellen tegelijk. Drie moties ingediend, ' +
       'één ingetrokken. De Eerste Kamer kan niet amenderen — alleen aannemen of verwerpen.',
-    col: 2, row: 37, step: 31,
+    col: 2, step: 31,
   },
   {
     id: 'ek-vote',
@@ -660,7 +660,7 @@ export const stages = [
       'Beide voorstellen aangenomen bij zitten en opstaan. ' +
       'Tegen 33328: SGP, CDA, CU. Tegen 35112: CDA, CU. ' +
       'Bijzonder: SGP stemt TEGEN 33328 maar VOOR 35112.',
-    col: 2, row: 38, step: 32,
+    col: 2, step: 32,
   },
 
   // === Publication & entry into force ===
@@ -680,7 +680,7 @@ export const stages = [
       { label: 'Stb. 2021, 499+500', color: 'var(--color-branch-advisory)' },
       { label: '1 mei 2022 — go live', color: 'var(--color-branch-main)' },
     ],
-    col: 0, row: 39, step: 33,
+    col: 0, step: 33,
   },
   {
     id: 'corpus-updated',
@@ -692,7 +692,7 @@ export const stages = [
     date: '',
     description:
       'Het Corpus Juris is bijgewerkt. De Wob is vervangen door de Woo.',
-    col: 0, row: 42, step: 36,
+    col: 0, step: 36,
   },
 ];
 
