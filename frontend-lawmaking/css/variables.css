@@ -78,16 +78,21 @@
   --transition-fast: 150ms ease;
   --transition-normal: 200ms ease;
 
-  /* Diagram colors */
-  --color-branch-main: #154273;
+  /* Branch / fork colors */
+  --color-branch-main: #1B5E20;
+  --color-branch-develop: #66BB6A;
+  --color-branch-wetsvoorstel: #1565C0;
+  --color-branch-internal: #64B5F6;
+  --color-branch-advisory: #E65100;
+  --color-node-stroke: #1E293B;
+  --color-connection: #1E293B;
+
+  --color-branch-rejected: #B71C1C;
+
+  /* Legacy diagram colors (for advanced/Woo views) */
   --color-branch-feature: #2D8A4E;
   --color-ci: #B45309;
   --color-review: #7C3AED;
   --color-deploy: #0369A1;
   --color-release: #059669;
-
-  /* Diagram layout */
-  --grid-column-width: 220;
-  --grid-row-height: 80;
-  --node-radius: 10;
 }

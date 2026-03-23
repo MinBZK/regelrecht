@@ -47,27 +47,56 @@ export const branches = [
     label: 'Novelle',
     gitLabel: 'fix-PR #35112',
     color: 'var(--color-deploy)',
-    col: 5,
-    startRow: 27,
-    endRow: 35,
+    col: 3,
   },
   {
-    id: 'amendments-33328',
-    label: 'Amendementen 33328',
-    gitLabel: 'patches/33328-*',
+    id: 'amend-21-branch',
+    label: 'Amd. 21',
+    gitLabel: 'patch/33328-21',
     color: 'var(--color-review)',
     col: 3,
-    startRow: 16,
-    endRow: 19,
   },
   {
-    id: 'amendments-35112',
-    label: 'Amendementen 35112',
-    gitLabel: 'patches/35112-*',
+    id: 'amend-22-branch',
+    label: 'Amd. 22',
+    gitLabel: 'patch/33328-22',
+    color: 'var(--color-review)',
+    col: 4,
+  },
+  {
+    id: 'amend-28-branch',
+    label: 'Amd. 28',
+    gitLabel: 'patch/33328-28',
+    color: 'var(--color-review)',
+    col: 5,
+  },
+  {
+    id: 'amend-34-branch',
+    label: 'Amd. 34',
+    gitLabel: 'patch/33328-34',
     color: 'var(--color-review)',
     col: 6,
-    startRow: 32,
-    endRow: 34,
+  },
+  {
+    id: 'rejected-33328',
+    label: 'Verworpen',
+    gitLabel: 'patch/33328-rejected',
+    color: 'var(--color-branch-rejected)',
+    col: 7,
+  },
+  {
+    id: 'novelle-amend-accepted-branch',
+    label: 'Amd. novelle',
+    gitLabel: 'patches/35112-accepted',
+    color: 'var(--color-review)',
+    col: 4,
+  },
+  {
+    id: 'rejected-35112',
+    label: 'Verworpen',
+    gitLabel: 'patch/35112-rejected',
+    color: 'var(--color-branch-rejected)',
+    col: 5,
   },
 ];
 
@@ -308,7 +337,7 @@ export const stages = [
   // Amendments on 33328 (parallel, filed 7-13 april 2016)
   {
     id: 'amend-21',
-    branch: 'amendments-33328',
+    branch: 'amend-21-branch',
     type: 'commit',
     gitLabel: 'patch (Oosenbrug/Fokke)',
     lawLabel: 'Amd. 21: Klachtprocedure',
@@ -316,11 +345,11 @@ export const stages = [
     date: '7 apr 2016',
     description:
       'Amendement Oosenbrug/Fokke (PvdA): herintroductie klachtprocedure bij niet-tijdig beslissen.',
-    col: 3, row: 16, step: 14,
+    col: 3, step: 14,
   },
   {
     id: 'amend-22',
-    branch: 'amendments-33328',
+    branch: 'amend-22-branch',
     type: 'commit',
     gitLabel: 'patch (Segers/Veldman)',
     lawLabel: 'Amd. 22: Wob-jurisprudentie',
@@ -328,11 +357,11 @@ export const stages = [
     date: '12 apr 2016',
     description:
       'Amendement Segers/Veldman (CU/VVD): aansluiting bij bestaande Wob-jurisprudentie.',
-    col: 4, row: 16, step: 14,
+    col: 4, step: 14,
   },
   {
     id: 'amend-28',
-    branch: 'amendments-33328',
+    branch: 'amend-28-branch',
     type: 'commit',
     gitLabel: 'patch (Segers/Oosenbrug)',
     lawLabel: 'Amd. 28: Kamerlid-info',
@@ -340,11 +369,11 @@ export const stages = [
     date: '13 apr 2016',
     description:
       'Amendement Segers/Oosenbrug: informatie aan individuele Kamerleden beschermd.',
-    col: 3, row: 17, step: 15,
+    col: 5, step: 14,
   },
   {
     id: 'amend-34',
-    branch: 'amendments-33328',
+    branch: 'amend-34-branch',
     type: 'commit',
     gitLabel: 'patch (Veldman/Bisschop)',
     lawLabel: 'Amd. 34: Commissaris uitstellen',
@@ -353,12 +382,12 @@ export const stages = [
     description:
       'Amendement Veldman/Bisschop: Informatiecommissaris pas na evaluatie. ' +
       'Gewijzigde versie van eerder ingediend amendement.',
-    col: 4, row: 17, step: 15,
+    col: 6, step: 14,
   },
   {
     id: 'amend-rejected',
-    branch: 'amendments-33328',
-    type: 'ci-check',
+    branch: 'rejected-33328',
+    type: 'commit',
     gitLabel: 'patches REJECTED (×3)',
     lawLabel: '3 amendementen verworpen',
     subtitle: 'VVD/SGP — scope + bedrijfsgegevens',
@@ -367,7 +396,7 @@ export const stages = [
       'Drie amendementen van Veldman/Bisschop (VVD/SGP) verworpen: reikwijdte beperken (23), ' +
       'beleidsopvattingen uitsluiten (24), bedrijfsgegevens absoluut maken (33). ' +
       'NB: amendement 33 (bedrijfsgegevens) wordt later via de novelle alsnog aangenomen!',
-    col: 3, row: 18, step: 16,
+    col: 7, step: 14,
   },
 
   {
@@ -506,7 +535,7 @@ export const stages = [
       'De novelle (35112) wordt ingediend: een apart wetsvoorstel dat het origineel wijzigt. ' +
       'Een dependent fix-PR die eerst door de hele TK-pipeline moet voordat de EK ' +
       'het origineel kan behandelen.',
-    col: 5, row: 27, step: 24,
+    col: 3, row: 27, step: 24,
   },
   {
     id: 'novelle-rvs',
@@ -518,7 +547,7 @@ export const stages = [
     date: '12 apr 2019',
     description:
       'De Raad van State adviseert over de novelle. Aanbevelingen worden verwerkt.',
-    col: 5, row: 28, step: 25,
+    col: 3, row: 28, step: 25,
   },
   {
     id: 'novelle-revised',
@@ -530,7 +559,7 @@ export const stages = [
     date: '30 jun 2020',
     description:
       'Het novelle-voorstel wordt herzien op basis van het RvS advies.',
-    col: 5, row: 30, step: 26,
+    col: 3, row: 30, step: 26,
   },
   {
     id: 'novelle-committee',
@@ -542,13 +571,13 @@ export const stages = [
     date: '22 sep 2020',
     description:
       'De commissie behandelt de novelle: verslag en beantwoording.',
-    col: 5, row: 31, step: 27,
+    col: 3, row: 31, step: 27,
   },
 
   // Novelle amendments (parallel, jan 2021)
   {
     id: 'novelle-amend-accepted',
-    branch: 'amendments-35112',
+    branch: 'novelle-amend-accepted-branch',
     type: 'commit',
     gitLabel: 'patches accepted (×6)',
     lawLabel: '6 amendementen aangenomen',
@@ -559,11 +588,11 @@ export const stages = [
       'Van der Molen (CDA): geanonimiseerde beleidsopvattingen openbaar (n.a.v. toeslagenaffaire). ' +
       'Snoeren/Bisschop (VVD/SGP): bedrijfsgegevens als absolute weigeringsgrond — ' +
       'dezelfde inhoud als het in 2016 verworpen amendement 33328-33! Politieke verschuiving.',
-    col: 6, row: 33, step: 28,
+    col: 4, step: 28,
   },
   {
     id: 'novelle-amend-rejected',
-    branch: 'amendments-35112',
+    branch: 'rejected-35112',
     type: 'ci-check',
     gitLabel: 'patch rejected (×1)',
     lawLabel: '1 amendement verworpen',
@@ -571,7 +600,7 @@ export const stages = [
     date: '14 jan 2021',
     description:
       'Eén amendement verworpen: verplichting om alle documenten bij besluit mee te sturen.',
-    col: 6, row: 34, step: 28,
+    col: 5, step: 28,
   },
 
   // Novelle TK vote
@@ -588,7 +617,7 @@ export const stages = [
       'Cruciaal: de VVD stemt nu VOOR (was tegen in 2016). ' +
       'De toeslagenaffaire heeft het politieke landschap fundamenteel verschoven. ' +
       'Alleen PVV stemt tegen.',
-    col: 5, row: 35, step: 29,
+    col: 3, row: 35, step: 29,
   },
 
   // === Eerste Kamer: combined treatment ===
@@ -644,33 +673,14 @@ export const stages = [
     subtitle: 'Ondertekend',
     date: '25 okt 2021',
     description:
-      'De Koning ondertekent beide wetten. De feature branch wordt gemerged naar main.',
+      'De Koning ondertekent beide wetten. De feature branch wordt gemerged naar main. ' +
+      'Publicatie in Staatsblad (Stb. 2021, 499+500) op 27 okt 2021. ' +
+      'Inwerkingtreding per 1 mei 2022 — de Wob wordt ingetrokken.',
+    tags: [
+      { label: 'Stb. 2021, 499+500', color: 'var(--color-branch-advisory)' },
+      { label: '1 mei 2022 — go live', color: 'var(--color-branch-main)' },
+    ],
     col: 0, row: 39, step: 33,
-  },
-  {
-    id: 'staatsblad',
-    branch: 'main',
-    type: 'deploy',
-    gitLabel: 'deploy (Stb. 2021, 499+500)',
-    lawLabel: 'Publicatie Staatsblad',
-    subtitle: 'Nr. 499 (Woo) + 500 (novelle)',
-    date: '27 okt 2021',
-    description:
-      'Beide wetten gepubliceerd in het Staatsblad.',
-    col: 0, row: 40, step: 34,
-  },
-  {
-    id: 'iwt',
-    branch: 'main',
-    type: 'release',
-    gitLabel: 'release v1.0 — go live',
-    lawLabel: 'Inwerkingtreding',
-    subtitle: 'Wob ingetrokken — Woo geldt',
-    date: '1 mei 2022',
-    description:
-      'De Wet open overheid treedt in werking. De Wob wordt officieel ingetrokken. ' +
-      'Na bijna 10 jaar is de PR gemerged en gedeployed.',
-    col: 0, row: 41, step: 35,
   },
   {
     id: 'corpus-updated',
@@ -715,16 +725,18 @@ export const connections = [
   { from: 'nvw-3', to: 'plenair-1', type: 'straight' },
   { from: 'plenair-1', to: 'nvw-4', type: 'straight' },
 
-  // Amendments fan out (parallel)
-  { from: 'plenair-1', to: 'amend-21', type: 'ci-fork' },
-  { from: 'plenair-1', to: 'amend-22', type: 'ci-fork' },
-  { from: 'amend-21', to: 'amend-28', type: 'straight' },
-  { from: 'amend-22', to: 'amend-34', type: 'straight' },
-  { from: 'plenair-1', to: 'amend-rejected', type: 'ci-fork' },
-
-  // Amendments + plenair merge back to vote
-  // amend-rejected: dead end — no connection back (verworpen)
-  { from: 'amend-34', to: 'plenair-2', type: 'ci-return' },
+  // Amendments: each forks from plenair-1, accepted merge back, rejected dead-end
+  { from: 'plenair-1', to: 'amend-21', type: 'branch-off' },
+  { from: 'plenair-1', to: 'amend-22', type: 'branch-off' },
+  { from: 'plenair-1', to: 'amend-28', type: 'branch-off' },
+  { from: 'plenair-1', to: 'amend-34', type: 'branch-off' },
+  { from: 'plenair-1', to: 'amend-rejected', type: 'branch-off' },
+  // Accepted amendments merge back
+  { from: 'amend-21', to: 'plenair-2', type: 'merge-in' },
+  { from: 'amend-22', to: 'plenair-2', type: 'merge-in' },
+  { from: 'amend-28', to: 'plenair-2', type: 'merge-in' },
+  { from: 'amend-34', to: 'plenair-2', type: 'merge-in' },
+  // amend-rejected: dead end — no merge back (verworpen)
   { from: 'nvw-4', to: 'plenair-2', type: 'straight' },
 
   { from: 'plenair-2', to: 'tk-vote', type: 'straight' },
@@ -744,10 +756,11 @@ export const connections = [
   { from: 'novelle-rvs', to: 'novelle-revised', type: 'straight' },
   { from: 'novelle-revised', to: 'novelle-committee', type: 'straight' },
 
-  // Novelle amendments
-  { from: 'novelle-committee', to: 'novelle-amend-accepted', type: 'ci-fork' },
-  { from: 'novelle-committee', to: 'novelle-amend-rejected', type: 'ci-fork' },
-  // novelle-amend-rejected: dead end — no connection back (verworpen)
+  // Novelle amendments: each forks, accepted merge back, rejected dead-end
+  { from: 'novelle-committee', to: 'novelle-amend-accepted', type: 'branch-off' },
+  { from: 'novelle-committee', to: 'novelle-amend-rejected', type: 'branch-off' },
+  { from: 'novelle-amend-accepted', to: 'novelle-tk-vote', type: 'merge-in' },
+  // novelle-amend-rejected: dead end — no merge back (verworpen)
   { from: 'novelle-committee', to: 'novelle-tk-vote', type: 'straight' },
 
   // Both go to EK
@@ -762,7 +775,5 @@ export const connections = [
 
   // Main continues
   { from: 'wob', to: 'royal-assent', type: 'main-continues' },
-  { from: 'royal-assent', to: 'staatsblad', type: 'straight' },
-  { from: 'staatsblad', to: 'iwt', type: 'straight' },
-  { from: 'iwt', to: 'corpus-updated', type: 'straight' },
+  { from: 'royal-assent', to: 'corpus-updated', type: 'straight' },
 ];

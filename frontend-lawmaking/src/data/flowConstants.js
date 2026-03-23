@@ -1,4 +1,13 @@
-/** Color for each node type */
+/** Branch/fork colors — drives node fill color */
+export const branchColors = {
+  main: 'var(--color-branch-main)',
+  develop: 'var(--color-branch-develop)',
+  wetsvoorstel: 'var(--color-branch-wetsvoorstel)',
+  internal: 'var(--color-branch-internal)',
+  advisory: 'var(--color-branch-advisory)',
+};
+
+/** Legacy type→color map for advanced/Woo views */
 export const typeColors = {
   commit: 'var(--color-branch-main)',
   branch: 'var(--color-branch-feature)',
@@ -9,24 +18,11 @@ export const typeColors = {
   release: 'var(--color-release)',
 };
 
-/** Icon/shape for each node type */
-export const typeShapes = {
-  commit: 'circle',
-  branch: 'circle',
-  'ci-check': 'diamond',
-  review: 'square',
-  merge: 'circle-double',
-  deploy: 'triangle',
-  release: 'star',
-};
-
-/** Legend entries */
+/** Legend entries — one per branch type */
 export const legend = [
-  { label: 'Commit', shape: 'circle', color: 'var(--color-branch-main)' },
-  { label: 'Branch', shape: 'circle', color: 'var(--color-branch-feature)' },
-  { label: 'CI Check', shape: 'diamond', color: 'var(--color-ci)' },
-  { label: 'Review', shape: 'square', color: 'var(--color-review)' },
-  { label: 'Merge', shape: 'circle-double', color: 'var(--color-branch-main)' },
-  { label: 'Deploy', shape: 'triangle', color: 'var(--color-deploy)' },
-  { label: 'Release', shape: 'star', color: 'var(--color-release)' },
+  { label: 'Corpus Juris (main)', color: 'var(--color-branch-main)' },
+  { label: 'Wetgevingskalender (develop)', color: 'var(--color-branch-develop)' },
+  { label: 'Wetsvoorstel (fork)', color: 'var(--color-branch-wetsvoorstel)' },
+  { label: 'Interne afstemming', color: 'var(--color-branch-internal)' },
+  { label: 'Advies / validatie (fork)', color: 'var(--color-branch-advisory)' },
 ];
