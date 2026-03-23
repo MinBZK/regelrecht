@@ -1,5 +1,6 @@
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
+use axum::response::IntoResponse;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
@@ -28,13 +29,19 @@ pub struct SourceSummary {
     pub law_count: usize,
 }
 
-/// A law entry with source provenance.
+/// A law entry with source provenance and metadata.
 #[derive(Debug, Serialize)]
 pub struct CorpusLawEntry {
     pub law_id: String,
     pub source_id: String,
     pub source_name: String,
     pub file_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regulatory_layer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub publication_date: Option<String>,
 }
 
 /// GET /api/sources — list all registered corpus sources with law counts.
@@ -86,11 +93,21 @@ pub async fn list_corpus_laws(
     let mut entries: Vec<CorpusLawEntry> = corpus
         .source_map
         .laws()
-        .map(|law| CorpusLawEntry {
-            law_id: law.law_id.clone(),
-            source_id: law.source_id.clone(),
-            source_name: law.source_name.clone(),
-            file_path: law.file_path.clone(),
+        .map(|law| {
+            let name = extract_yaml_field(&law.yaml_content, "name")
+                .or_else(|| extract_yaml_field(&law.yaml_content, "officiele_titel"));
+            let regulatory_layer = extract_yaml_field(&law.yaml_content, "regulatory_layer");
+            let publication_date = extract_yaml_field(&law.yaml_content, "publication_date");
+
+            CorpusLawEntry {
+                law_id: law.law_id.clone(),
+                source_id: law.source_id.clone(),
+                source_name: law.source_name.clone(),
+                file_path: law.file_path.clone(),
+                name,
+                regulatory_layer,
+                publication_date,
+            }
         })
         .collect();
 
@@ -103,6 +120,24 @@ pub async fn list_corpus_laws(
         .collect();
 
     Ok(Json(paginated))
+}
+
+/// GET /api/corpus/laws/{law_id} — return raw YAML content for a single law.
+pub async fn get_corpus_law(
+    State(state): State<AppState>,
+    Path(law_id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let corpus = state.corpus.read().await;
+
+    let law = corpus
+        .source_map
+        .get_law(&law_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+
+    Ok((
+        [(header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        law.yaml_content.clone(),
+    ))
 }
 
 /// POST /api/sources/{id}/sync — rebuild all local corpus sources.
@@ -145,12 +180,33 @@ pub async fn sync_source(
     }; // read lock released
 
     // Phase 2: no lock held — do all disk I/O
-    let new_map = registry.load_local_sources().map_err(|e| {
+    let mut new_map = registry.load_local_sources().map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Failed to reload sources: {}", e),
         )
     })?;
+
+    // Phase 2.5: read lock — preserve GitHub-sourced laws from the previous load
+    {
+        let old_corpus = state.corpus.read().await;
+        for law in old_corpus.source_map.laws() {
+            if let Some(source) = old_corpus.registry.get_source(&law.source_id) {
+                if matches!(
+                    source.source_type,
+                    regelrecht_corpus::SourceType::GitHub { .. }
+                ) {
+                    let _ = new_map.load_fetched_file(
+                        &law.yaml_content,
+                        &law.file_path,
+                        &law.source_id,
+                        &law.source_name,
+                        law.source_priority,
+                    );
+                }
+            }
+        }
+    } // read lock released
 
     // Phase 3: write lock — brief swap only
     let mut corpus = state.corpus.write().await;
@@ -172,4 +228,20 @@ pub async fn sync_source(
             "status": "synced"
         })),
     ))
+}
+
+/// Extract a top-level YAML field value using simple line-based parsing.
+///
+/// Only matches `key:` at the start of a line (no leading whitespace).
+fn extract_yaml_field(yaml: &str, key: &str) -> Option<String> {
+    let prefix = format!("{}: ", key);
+    for line in yaml.lines() {
+        if let Some(rest) = line.strip_prefix(&prefix) {
+            let value = rest.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }

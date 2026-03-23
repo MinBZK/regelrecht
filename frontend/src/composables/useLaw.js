@@ -1,15 +1,28 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
 
-export function useLaw(lawParam) {
-  if (!lawParam) {
-    const params = new URLSearchParams(window.location.search);
-    lawParam = params.get('law') || 'wet_op_de_zorgtoeslag';
+/** Derive the admin backend URL from the current editor origin. */
+function getAdminUrl() {
+  const origin = window.location.origin;
+  // RIG naming: editor-{name}-regel-k4c → admin-{name}-regel-k4c
+  if (origin.includes('editor-')) {
+    return origin.replace('editor-', 'admin-');
   }
-  // If the parameter looks like a URL, fetch directly; otherwise use the API.
-  const yamlUrl = (lawParam.startsWith('/') || lawParam.startsWith('http'))
-    ? lawParam
-    : `/api/corpus/laws/${encodeURIComponent(lawParam)}`;
+  // Local dev: assume admin runs on port 3001
+  return origin.replace(/:\d+$/, ':3001');
+}
+
+export function useLaw(yamlUrl) {
+  if (!yamlUrl) {
+    const params = new URLSearchParams(window.location.search);
+    const lawParam = params.get('law') || '/data/local/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml';
+    // Bare law_id (not a path or URL) → fetch via admin API
+    if (lawParam && !lawParam.startsWith('/') && !lawParam.startsWith('http')) {
+      yamlUrl = `${getAdminUrl()}/api/corpus/laws/${encodeURIComponent(lawParam)}`;
+    } else {
+      yamlUrl = lawParam;
+    }
+  }
   const law = shallowRef(null);
   const selectedArticleNumber = ref(null);
   const loading = ref(true);

@@ -20,6 +20,17 @@ const selectedArticleNumber = ref(null);
 const detailView = ref('machine');
 const activeAction = ref(null);
 
+/** Derive the admin backend URL from the current editor origin. */
+const adminUrl = (() => {
+  const origin = window.location.origin;
+  // RIG naming: editor-{name}-regel-k4c → admin-{name}-regel-k4c
+  if (origin.includes('editor-')) {
+    return origin.replace('editor-', 'admin-');
+  }
+  // Local dev: assume admin runs on port 3001
+  return origin.replace(/:\d+$/, ':3001');
+})();
+
 const filteredLaws = computed(() => {
   let list = laws.value;
   if (favorites.value) {
@@ -60,7 +71,7 @@ const selectedArticle = computed(() => {
 });
 
 function displayName(law) {
-  if (law.name) return law.name;
+  if (law.name && !law.name.startsWith('#')) return law.name;
   return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
@@ -72,8 +83,9 @@ function articleDescription(article) {
 
 async function loadIndex() {
   try {
+    // Fetch law index from admin API (merged local + central corpus)
     const [corpusRes, favRes] = await Promise.all([
-      fetch('/api/corpus/laws?limit=1000'),
+      fetch(`${adminUrl}/api/corpus/laws?limit=1000`),
       fetch('/favorites.json'),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
@@ -84,7 +96,9 @@ async function loadIndex() {
       favorites.value = new Set(favIds);
     }
 
-    laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
+    laws.value = corpusLaws.sort((a, b) =>
+      (a.regulatory_layer || '').localeCompare(b.regulatory_layer || '') || a.law_id.localeCompare(b.law_id)
+    );
 
     let startList = laws.value;
     if (favorites.value) {
@@ -104,7 +118,7 @@ async function loadIndex() {
 async function loadLaw(lawId) {
   try {
     selectedLawLoading.value = true;
-    const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+    const res = await fetch(`${adminUrl}/api/corpus/laws/${encodeURIComponent(lawId)}`);
     if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
     const text = await res.text();
     selectedLaw.value = yaml.load(text);

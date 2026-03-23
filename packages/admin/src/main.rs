@@ -10,6 +10,7 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tower_sessions::cookie::SameSite;
@@ -42,8 +43,30 @@ async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCod
     Ok("OK")
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // Map CORPUS_GIT_TOKEN → CORPUS_AUTH_CENTRAL_TOKEN before spawning any threads.
+    // This avoids `unsafe { env::set_var }` inside the async runtime.
+    if env::var("CORPUS_AUTH_CENTRAL_TOKEN").is_err() {
+        if let Ok(token) = env::var("CORPUS_GIT_TOKEN") {
+            // SAFETY: no other threads exist yet — the tokio runtime hasn't started.
+            unsafe { env::set_var("CORPUS_AUTH_CENTRAL_TOKEN", &token) };
+        }
+    }
+
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("failed to build tokio runtime: {e}");
+            std::process::exit(1);
+        }
+    };
+    runtime.block_on(async_main());
+}
+
+async fn async_main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -122,8 +145,8 @@ async fn main() {
             .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
     );
 
-    // Initialize corpus registry
-    let corpus_state = init_corpus();
+    // Initialize corpus registry (with async GitHub source loading)
+    let corpus_state = init_corpus().await;
 
     let app_state = AppState {
         pool,
@@ -140,15 +163,17 @@ async fn main() {
         .with_http_only(true)
         .with_secure(app_state.config.is_auth_enabled());
 
-    let api_routes = Router::new()
+    // CORS configuration for public corpus endpoints
+    let cors_layer = build_cors_layer();
+
+    // Protected API routes (behind auth)
+    let protected_routes = Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
         .route("/api/jobs/{job_id}", get(handlers::get_job))
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
         .route("/api/enrich-jobs", post(handlers::create_enrich_jobs))
         .route("/api/jobs", delete(handlers::delete_all_jobs))
-        .route("/api/sources", get(corpus_handlers::list_sources))
-        .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
         .route(
             "/api/sources/{source_id}/sync",
             post(corpus_handlers::sync_source),
@@ -156,8 +181,17 @@ async fn main() {
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_auth,
-        ))
-        .route("/api/info", get(handlers::platform_info));
+        ));
+
+    // Public corpus read endpoints (with CORS for cross-origin editor access)
+    let corpus_routes = Router::new()
+        .route("/api/sources", get(corpus_handlers::list_sources))
+        .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
+        .route(
+            "/api/corpus/laws/{law_id}",
+            get(corpus_handlers::get_corpus_law),
+        )
+        .layer(cors_layer);
 
     let auth_routes = Router::new()
         .route("/auth/login", get(auth::login))
@@ -168,8 +202,10 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health))
         .route("/metrics", get(metrics::metrics_handler))
+        .route("/api/info", get(handlers::platform_info))
         .merge(auth_routes)
-        .merge(api_routes)
+        .merge(protected_routes)
+        .merge(corpus_routes)
         .with_state(app_state)
         .layer(session_layer)
         .layer(axum_middleware::from_fn(middleware::security_headers))
@@ -194,12 +230,42 @@ async fn main() {
     }
 }
 
-/// Initialize the corpus registry and load local sources.
+/// Build a CORS layer for public corpus endpoints.
+///
+/// Allowed origins are configured via `CORS_ALLOWED_ORIGINS` (comma-separated).
+/// If not set, defaults to permissive CORS to allow any editor deployment.
+fn build_cors_layer() -> CorsLayer {
+    use axum::http::Method;
+
+    let layer = CorsLayer::new().allow_methods([Method::GET]);
+
+    match env::var("CORS_ALLOWED_ORIGINS") {
+        Ok(origins) if !origins.is_empty() => {
+            let parsed: Vec<_> = origins
+                .split(',')
+                .filter_map(|o| o.trim().parse().ok())
+                .collect();
+            tracing::info!(origins = ?parsed, "CORS: configured allowed origins");
+            layer.allow_origin(parsed)
+        }
+        _ => {
+            tracing::info!("CORS: no CORS_ALLOWED_ORIGINS set, allowing any origin");
+            layer.allow_origin(tower_http::cors::Any)
+        }
+    }
+}
+
+/// Initialize the corpus registry and load all sources (local + GitHub).
 ///
 /// Registry file paths can be configured via environment variables:
 /// - `CORPUS_REGISTRY_PATH` (default: `corpus-registry.yaml`)
 /// - `CORPUS_REGISTRY_LOCAL_PATH` (default: `corpus-registry.local.yaml`)
-fn init_corpus() -> state::CorpusState {
+/// - `CORPUS_AUTH_PATH` (optional, path to `corpus-auth.yaml`)
+///
+/// For GitHub sources, token resolution uses `CORPUS_AUTH_{SOURCE_ID}_TOKEN` env vars.
+/// The `CORPUS_GIT_TOKEN` → `CORPUS_AUTH_CENTRAL_TOKEN` mapping is handled in `main()`
+/// before the tokio runtime starts.
+async fn init_corpus() -> state::CorpusState {
     let manifest_str =
         env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
     let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
@@ -228,14 +294,31 @@ fn init_corpus() -> state::CorpusState {
             .unwrap_or_else(|_| unreachable!())
     };
 
-    let source_map = match registry.load_local_sources() {
+    let auth_file = env::var("CORPUS_AUTH_PATH")
+        .ok()
+        .map(std::path::PathBuf::from);
+
+    // Try async load (local + GitHub); fall back to local-only on failure
+    let source_map = match registry.load_all_sources_async(auth_file.as_deref()).await {
         Ok(map) => {
-            tracing::info!(laws = map.len(), "Loaded corpus laws");
+            tracing::info!(
+                laws = map.len(),
+                "Loaded all corpus sources (local + GitHub)"
+            );
             map
         }
         Err(e) => {
-            tracing::warn!(error = %e, "Failed to load corpus sources");
-            regelrecht_corpus::SourceMap::new()
+            tracing::warn!(error = %e, "Failed to load all sources, falling back to local-only");
+            match registry.load_local_sources() {
+                Ok(map) => {
+                    tracing::info!(laws = map.len(), "Loaded local corpus sources (fallback)");
+                    map
+                }
+                Err(e2) => {
+                    tracing::warn!(error = %e2, "Failed to load local corpus sources");
+                    regelrecht_corpus::SourceMap::new()
+                }
+            }
         }
     };
 
