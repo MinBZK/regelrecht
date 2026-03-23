@@ -22,7 +22,6 @@ contactPoints:
           title: Dagelijkse Regelrecht Update
           text: |
             {{ range .Alerts -}}
-            {{ if eq .Labels.alertname "Dagelijkse Regelrecht Update" -}}
             | | |
             |:---|:---|
             | :seedling: **Geharvest** | {{ .Annotations.harvested }} wetten |
@@ -31,11 +30,22 @@ contactPoints:
             | :x: **Totaal mislukt** | {{ .Annotations.failed_total }} jobs |
             | :hourglass: **Openstaand** | {{ .Annotations.pending }} jobs |
             | :white_check_mark: **Afgerond** | {{ .Annotations.completed }} jobs |
-            {{ else if eq .Labels.alertname "Nieuwe mislukte jobs" -}}
-            :warning: **{{ .Annotations.summary }}**
-            {{ end -}}
             {{ end }}
         disableResolveMessage: true
+
+muteTimes:
+  - orgId: 1
+    name: niet-middernacht
+    # Mute the daily summary outside midnight. This interval covers 01:00–24:00
+    # Amsterdam time, so notifications can only fire between 00:00 and 01:00.
+    # Combined with repeat_interval: 24h this gives exactly one message per day
+    # at midnight (handles CET/CEST automatically).
+    time_intervals:
+      - location: Europe/Amsterdam
+        times:
+          # yamllint disable-line rule:quoted-strings
+          - start_time: '01:00'
+            end_time: '24:00'
 
 policies:
   - orgId: 1
@@ -47,11 +57,15 @@ policies:
     group_interval: 5m
     repeat_interval: 1h
     routes:
-      # Daily summary fires once per day, not every hour.
+      # Daily summary: once per day, only at midnight Amsterdam time.
+      # The mute is scoped to this route so future real-time alerts
+      # on the root policy are unaffected.
       - receiver: mattermost
         matchers:
           - alertname = "Dagelijkse Regelrecht Update"
         repeat_interval: 24h
+        mute_time_intervals:
+          - niet-middernacht
 
 groups:
   - orgId: 1
@@ -145,46 +159,3 @@ groups:
           failed_24h: '{{ (index $values "G").Value | printf "%.0f" }}'
           pending: '{{ (index $values "E").Value | printf "%.0f" }}'
           completed: '{{ (index $values "F").Value | printf "%.0f" }}'
-
-      - uid: failed-jobs
-        title: Nieuwe mislukte jobs
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: PBFA97CFB590B2093
-            model:
-              # Exact integer count from the DB: jobs that permanently
-              # failed (exhausted retries) in the last hour.
-              expr: regelrecht_jobs_recently_failed
-              instant: true
-              refId: A
-          - refId: C
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: A
-              conditions:
-                - evaluator:
-                    type: gt
-                    params:
-                      - 0
-                  operator:
-                    type: and
-                  reducer:
-                    type: last
-              refId: C
-        noDataState: OK
-        execErrState: Alerting
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: >-
-            {{ (index $values "A").Value | printf "%.0f" }} nieuwe
-            mislukte jobs in het afgelopen uur
