@@ -7,35 +7,10 @@
     >
       <svg width="20" height="20" viewBox="0 0 20 20">
         <circle
-          v-if="item.shape === 'circle'"
-          cx="10" cy="10" r="6"
+          cx="10" cy="10" r="7"
           :fill="item.color"
-        />
-        <g v-else-if="item.shape === 'circle-double'">
-          <circle cx="10" cy="10" r="8" fill="none" :stroke="item.color" stroke-width="2" />
-          <circle cx="10" cy="10" r="5" :fill="item.color" :stroke="item.color" stroke-width="2" />
-        </g>
-        <rect
-          v-else-if="item.shape === 'diamond'"
-          x="4" y="4" width="12" height="12"
-          :fill="item.color"
-          transform="rotate(45 10 10)"
-        />
-        <rect
-          v-else-if="item.shape === 'square'"
-          x="4" y="4" width="12" height="12"
-          rx="2"
-          :fill="item.color"
-        />
-        <polygon
-          v-else-if="item.shape === 'triangle'"
-          points="10,3 17,17 3,17"
-          :fill="item.color"
-        />
-        <polygon
-          v-else-if="item.shape === 'star'"
-          points="10,2 12.4,7.2 18,8 13.8,12 15,17.6 10,14.8 5,17.6 6.2,12 2,8 7.6,7.2"
-          :fill="item.color"
+          stroke="var(--color-node-stroke)"
+          stroke-width="2"
         />
       </svg>
       <span class="flow-legend__label">{{ item.label }}</span>

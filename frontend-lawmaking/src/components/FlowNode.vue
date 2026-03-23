@@ -8,69 +8,12 @@
     :tabindex="isActive ? 0 : -1"
     @keydown.enter.stop="$emit('select', stage.id)"
   >
-    <!-- Node shape -->
+    <!-- Node circle -->
     <circle
-      v-if="shape === 'circle'"
       :r="radius"
-      :fill="color"
-      :stroke="color"
-      stroke-width="2"
-      class="flow-node__shape"
-    />
-    <circle
-      v-else-if="shape === 'circle-double'"
-      :r="radius + 3"
-      fill="none"
-      :stroke="color"
-      stroke-width="2"
-      class="flow-node__shape"
-    />
-    <circle
-      v-if="shape === 'circle-double'"
-      :r="radius - 1"
-      :fill="color"
-      :stroke="color"
-      stroke-width="2"
-      class="flow-node__shape"
-    />
-    <rect
-      v-else-if="shape === 'diamond'"
-      :x="-radius"
-      :y="-radius"
-      :width="radius * 2"
-      :height="radius * 2"
-      :fill="color"
-      :stroke="color"
-      stroke-width="2"
-      :transform="`rotate(45)`"
-      class="flow-node__shape"
-    />
-    <rect
-      v-else-if="shape === 'square'"
-      :x="-radius"
-      :y="-radius"
-      :width="radius * 2"
-      :height="radius * 2"
-      rx="3"
-      :fill="color"
-      :stroke="color"
-      stroke-width="2"
-      class="flow-node__shape"
-    />
-    <polygon
-      v-else-if="shape === 'triangle'"
-      :points="trianglePoints"
-      :fill="color"
-      :stroke="color"
-      stroke-width="2"
-      class="flow-node__shape"
-    />
-    <polygon
-      v-else-if="shape === 'star'"
-      :points="starPoints"
-      :fill="color"
-      :stroke="color"
-      stroke-width="2"
+      :fill="fillColor"
+      stroke="var(--color-node-stroke)"
+      stroke-width="3"
       class="flow-node__shape"
     />
 
@@ -79,7 +22,7 @@
       v-if="isSelected"
       :r="radius + 6"
       fill="none"
-      :stroke="color"
+      stroke="var(--color-node-stroke)"
       stroke-width="2"
       opacity="0.4"
     />
@@ -95,8 +38,32 @@
       fill="var(--color-text-muted)"
     >{{ stage.date }}</text>
 
+    <!-- Tags (deploy markers, release tags) -->
+    <g
+      v-for="(tag, i) in (stage.tags || [])"
+      :key="tag.label"
+      :transform="`translate(16, ${30 + i * 22})`"
+      class="flow-node__tag"
+    >
+      <polygon
+        points="0,-7 50,-7 50,7 8,7 0,0"
+        :fill="tag.color || 'var(--color-node-stroke)'"
+        opacity="0.15"
+        stroke="var(--color-node-stroke)"
+        stroke-width="1"
+      />
+      <text
+        x="8"
+        y="4"
+        font-size="9"
+        font-weight="700"
+        :fill="tag.color || 'var(--color-node-stroke)'"
+        class="flow-node__tag-label"
+      >{{ tag.label }}</text>
+    </g>
+
     <!-- Labels to the right of the node -->
-    <g :transform="labelTransform">
+    <g :transform="`translate(20, 0)`">
       <text
         class="flow-node__git-label"
         :y="-6"
@@ -123,7 +90,7 @@
 
 <script setup>
 import { computed } from 'vue';
-import { typeColors, typeShapes } from '../data/flowConstants.js';
+import { branchColors, typeColors } from '../data/flowConstants.js';
 
 const props = defineProps({
   stage: { type: Object, required: true },
@@ -140,34 +107,11 @@ const radius = 10;
 const x = computed(() => 80 + props.stage.col * props.columnWidth);
 const y = computed(() => 50 + props.stage.row * props.rowHeight);
 
-const color = computed(() => typeColors[props.stage.type] || 'var(--color-branch-main)');
-const shape = computed(() => typeShapes[props.stage.type] || 'circle');
-
-const labelTransform = computed(() => {
-  // CI check labels go further right to avoid overlap with connection lines
-  if (props.stage.col === 2) {
-    return `translate(22, 0)`;
-  }
-  return `translate(20, 0)`;
-});
-
-const trianglePoints = computed(() => {
-  const r = radius + 2;
-  return `0,${-r} ${r},${r} ${-r},${r}`;
-});
-
-const starPoints = computed(() => {
-  const outer = radius + 2;
-  const inner = radius / 2;
-  const points = [];
-  for (let i = 0; i < 5; i++) {
-    const outerAngle = (Math.PI / 2) + (i * 2 * Math.PI / 5);
-    const innerAngle = outerAngle + Math.PI / 5;
-    points.push(`${Math.cos(outerAngle) * outer},${-Math.sin(outerAngle) * outer}`);
-    points.push(`${Math.cos(innerAngle) * inner},${-Math.sin(innerAngle) * inner}`);
-  }
-  return points.join(' ');
-});
+const fillColor = computed(() =>
+  branchColors[props.stage.branch]
+    || typeColors[props.stage.type]
+    || 'var(--color-branch-main)',
+);
 </script>
 
 <style scoped>
@@ -210,6 +154,11 @@ const starPoints = computed(() => {
 .flow-node__date {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   font-variant-numeric: tabular-nums;
+}
+
+.flow-node__tag-label {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  letter-spacing: 0.02em;
 }
 
 @keyframes nodeAppear {
