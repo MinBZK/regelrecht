@@ -27,7 +27,8 @@ contactPoints:
             |:---|:---|
             | :seedling: **Geharvest** | {{ .Annotations.harvested }} wetten |
             | :sparkles: **Verrijkt** | {{ .Annotations.enriched }} wetten |
-            | :x: **Mislukt** | {{ .Annotations.failed }} jobs |
+            | :x: **Mislukt (24u)** | {{ .Annotations.failed_24h }} jobs |
+            | :x: **Totaal mislukt** | {{ .Annotations.failed_total }} jobs |
             | :hourglass: **Openstaand** | {{ .Annotations.pending }} jobs |
             | :white_check_mark: **Afgerond** | {{ .Annotations.completed }} jobs |
             {{ else if eq .Labels.alertname "Nieuwe mislukte jobs" -}}
@@ -62,7 +63,7 @@ groups:
         title: Dagelijkse Regelrecht Update
         # Always-fire: the math expression is always > 0, so this alert
         # acts as a scheduled summary that repeats every 24h.
-        condition: G
+        condition: H
         data:
           - refId: A
             relativeTimeRange:
@@ -109,8 +110,18 @@ groups:
               expr: max(regelrecht_jobs{status="completed"})
               instant: true
               refId: F
-          # Always-fire: A + B + 1 is always > 0.
+          # Recently failed in last 24h (for the daily summary context).
           - refId: G
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: regelrecht_jobs_recently_failed_24h
+              instant: true
+              refId: G
+          # Always-fire: A + B + 1 is always > 0.
+          - refId: H
             relativeTimeRange:
               from: 600
               to: 0
@@ -118,7 +129,7 @@ groups:
             model:
               type: math
               expression: $A + $B + 1
-              refId: G
+              refId: H
         noDataState: OK
         execErrState: Alerting
         for: 0s
@@ -128,11 +139,12 @@ groups:
           summary: >-
             Geharvest: {{ index $values "A" | printf "%.0f" }},
             Verrijkt: {{ index $values "B" | printf "%.0f" }}
-          harvested: '{{ index $values "A" | printf "%.0f" }}'
-          enriched: '{{ index $values "B" | printf "%.0f" }}'
-          failed: '{{ index $values "D" | printf "%.0f" }}'
-          pending: '{{ index $values "E" | printf "%.0f" }}'
-          completed: '{{ index $values "F" | printf "%.0f" }}'
+          harvested: '{{ (index $values "A").Value | printf "%.0f" }}'
+          enriched: '{{ (index $values "B").Value | printf "%.0f" }}'
+          failed_total: '{{ (index $values "D").Value | printf "%.0f" }}'
+          failed_24h: '{{ (index $values "G").Value | printf "%.0f" }}'
+          pending: '{{ (index $values "E").Value | printf "%.0f" }}'
+          completed: '{{ (index $values "F").Value | printf "%.0f" }}'
 
       - uid: failed-jobs
         title: Nieuwe mislukte jobs
@@ -174,5 +186,5 @@ groups:
           severity: warning
         annotations:
           summary: >-
-            {{ index $values "A" | printf "%.0f" }} nieuwe mislukte
-            jobs in het afgelopen uur
+            {{ (index $values "A").Value | printf "%.0f" }} nieuwe
+            mislukte jobs in het afgelopen uur
