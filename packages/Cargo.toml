@@ -18,3 +18,7 @@ panic = "warn"
 [profile.bench]
 opt-level = 3
 lto = false
+
+# Patch testcontainers to pick up astral-tokio-tar 0.6.0 (fixes RUSTSEC-2026-0066)
+[patch.crates-io]
+testcontainers = { git = "https://github.com/testcontainers/testcontainers-rs", branch = "dependabot/cargo/astral-tokio-tar-0.6.0" }
