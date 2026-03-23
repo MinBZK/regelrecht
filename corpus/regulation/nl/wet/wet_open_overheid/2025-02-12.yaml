@@ -408,6 +408,10 @@ articles:
                     value: true
                   then: 6
               default: 4
+          # "binnen vier weken gerekend vanaf de dag na die waarop het verzoek is ontvangen"
+          # einddatum = ontvangst + termijn (NIET ontvangst+1 + termijn).
+          # "gerekend vanaf de dag na" maakt die dag tot dag 1 (inclusief),
+          # dus 4 weken = 28 dagen gerekend vanaf ontvangst+1 = dag 28 = ontvangst + 28.
           - output: uiterste_beslisdatum
             value:
               operation: DATE_ADD

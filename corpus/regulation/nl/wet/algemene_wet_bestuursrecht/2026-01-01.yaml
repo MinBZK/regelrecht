@@ -109,11 +109,17 @@ articles:
           - name: bezwaartermijn_einddatum
             type: date
         actions:
+          # "met ingang van de dag na die waarop het besluit is bekendgemaakt"
+          # startdatum = bekendmaking + 1 dag (dies a quo: bekendmakingsdatum telt niet mee)
           - output: bezwaartermijn_startdatum
             value:
               operation: DATE_ADD
               date: $bekendmaking_datum
               days: 1
+          # einddatum = bekendmaking + termijn (NIET startdatum + termijn).
+          # De startdatum is dag 1 van de termijn (inclusief), dus 6 weken
+          # = 42 dagen gerekend vanaf startdatum = dag 42 = bekendmaking + 42.
+          # startdatum + 6 weken zou dag 43 geven — één dag te veel.
           - output: bezwaartermijn_einddatum
             value:
               operation: DATE_ADD
