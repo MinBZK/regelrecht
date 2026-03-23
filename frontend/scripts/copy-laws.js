@@ -166,27 +166,33 @@ for (const source of allSources) {
 
   processedSources++;
 
-  // Deduplicate temporal versions: keep only the latest publication_date per $id.
+  // Extract metadata and determine the latest version per $id for the index.
   const latestById = new Map();
+  const parsed = [];
   for (const file of files) {
     const meta = extractMeta(file.content);
     if (!meta.id) continue;
+    parsed.push({ ...file, meta });
     const existing = latestById.get(meta.id);
     if (!existing || (meta.publication_date || '') > (existing.meta.publication_date || '')) {
       latestById.set(meta.id, { ...file, meta });
     }
   }
 
-  console.log(`  ${files.length} files → ${latestById.size} unique laws (latest versions)`);
+  console.log(`  ${files.length} files → ${latestById.size} unique laws (${parsed.length} versions on disk)`);
 
-  for (const [, { relPath, content, meta }] of latestById) {
-    // Namespace destination by source id to avoid cross-source file collisions
+  // Write ALL versions to disk (so direct URLs keep working).
+  for (const { relPath, content } of parsed) {
     const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
     const dest = resolve(destDir, destRel);
-
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, content);
     totalFiles++;
+  }
+
+  // Only add the latest version per $id to the index.
+  for (const [, { relPath, meta }] of latestById) {
+    const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
 
     // Cross-source conflict resolution (same as Rust SourceMap).
     const existing = seenIds.get(meta.id);
