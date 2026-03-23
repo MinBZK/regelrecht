@@ -427,6 +427,7 @@ jobs:
           deployment-name: pr${{ github.event.pull_request.number }}
           component: lawmaking
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LAWMAKING }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
           comment-on-pr: true
@@ -516,6 +517,7 @@ jobs:
           deployment-name: regelrecht
           component: lawmaking
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LAWMAKING }}:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
 
   cleanup-preview:
     runs-on: ubuntu-latest
