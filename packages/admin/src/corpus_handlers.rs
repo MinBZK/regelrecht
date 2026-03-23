@@ -196,13 +196,20 @@ pub async fn sync_source(
                     source.source_type,
                     regelrecht_corpus::SourceType::GitHub { .. }
                 ) {
-                    let _ = new_map.load_fetched_file(
+                    if let Err(e) = new_map.load_fetched_file(
                         &law.yaml_content,
                         &law.file_path,
                         &law.source_id,
                         &law.source_name,
                         law.source_priority,
-                    );
+                    ) {
+                        tracing::warn!(
+                            law_id = %law.law_id,
+                            source_id = %law.source_id,
+                            error = %e,
+                            "Failed to preserve GitHub law during sync"
+                        );
+                    }
                 }
             }
         }
