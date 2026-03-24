@@ -396,14 +396,14 @@ function renderPagination() {
 }
 
 function renderRowActions(row) {
-  const container = document.createElement('rr-button-group');
-  container.setAttribute('flow', 'horizontal');
-  container.setAttribute('size', 'sm');
+  const container = document.createElement('span');
+  container.className = 'action-btns';
 
   // Re-harvest: available for most statuses (not while actively processing)
   if (RE_HARVESTABLE_STATUSES.includes(row.status)) {
     const harvestBtn = document.createElement('rr-button');
     harvestBtn.setAttribute('variant', 'accent-outlined');
+    harvestBtn.setAttribute('size', 'sm');
     harvestBtn.textContent = 'Harvest';
     harvestBtn.title = `Re-harvest ${row.law_id}`;
     harvestBtn.addEventListener('click', () => onRowHarvestClick(row.law_id, harvestBtn));
@@ -414,6 +414,7 @@ function renderRowActions(row) {
   if (ENRICHABLE_STATUSES.includes(row.status)) {
     const enrichBtn = document.createElement('rr-button');
     enrichBtn.setAttribute('variant', 'neutral-tinted');
+    enrichBtn.setAttribute('size', 'sm');
     enrichBtn.textContent = 'Enrich';
     enrichBtn.title = `Trigger enrichment for ${row.law_id}`;
     enrichBtn.addEventListener('click', () => onEnrichClick(row.law_id, enrichBtn));
