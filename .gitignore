@@ -18,6 +18,7 @@
 # Frontend
 node_modules/
 frontend/dist/
+packages/admin/static/
 
 # Rust
 target/
