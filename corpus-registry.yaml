@@ -9,7 +9,7 @@ sources:
     scopes: []
     priority: 1  # 1 = highest priority
 
-  - id: central
+  - id: minbzk-central
     name: Centrale Regelrecht Corpus
     type: github
     github:
@@ -19,3 +19,4 @@ sources:
       path: regulation/nl
     scopes: []
     priority: 2
+    # Auth by convention: CORPUS_AUTH_MINBZK_CENTRAL_TOKEN
