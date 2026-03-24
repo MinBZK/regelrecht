@@ -345,3 +345,34 @@ local-psql:
 # Remove all local data (volumes)
 local-clean:
     {{ compose-local }} down -v
+
+# --- Documentation ---
+
+# Install docs dependencies (requires GITHUB_TOKEN for @minbzk/storybook)
+# Token is only needed for install, not for dev/build/preview.
+docs-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Try macOS keychain first, then fall back to environment variable
+    TOKEN="${GITHUB_TOKEN:-$(security find-generic-password -a "$USER" -s github-packages-read -w 2>/dev/null || echo "")}"
+    if [ -z "$TOKEN" ]; then
+        printf "\033[31mNo GITHUB_TOKEN found.\033[0m\n"
+        printf "Create a classic PAT at https://github.com/settings/tokens\n"
+        printf "with only the read:packages scope. Then:\n\n"
+        printf "  macOS:  security add-generic-password -a \"\$USER\" -s github-packages-read -w \"ghp_YOUR_TOKEN\"\n"
+        printf "  Linux:  export GITHUB_TOKEN=ghp_YOUR_TOKEN\n"
+        exit 1
+    fi
+    cd docs && GITHUB_TOKEN="$TOKEN" npm ci
+
+# Start docs dev server (VitePress)
+docs:
+    cd docs && npm run dev
+
+# Build docs for production
+docs-build:
+    cd docs && npm run build
+
+# Preview production docs build
+docs-preview:
+    cd docs && npm run preview
