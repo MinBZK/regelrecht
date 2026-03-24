@@ -5,7 +5,7 @@
 
 #[cfg(feature = "github")]
 mod inner {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     use reqwest::header::{
         HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, IF_NONE_MATCH, USER_AGENT,
@@ -103,6 +103,114 @@ mod inner {
             // Step 2: Fetch each YAML file's content
             let mut files = Vec::new();
             for path in &yaml_paths {
+                match self
+                    .fetch_file_content(&source.full_repo(), source.effective_ref(), path, token)
+                    .await
+                {
+                    Ok(content) => {
+                        files.push(FetchedFile {
+                            path: path.clone(),
+                            content,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!(path = %path, error = %e, "Failed to fetch file, skipping");
+                    }
+                }
+            }
+
+            Ok(FetchResult::Fetched(files))
+        }
+
+        /// Fetch only laws matching the given `$id` set from a GitHub source.
+        ///
+        /// Uses the Trees API (1 call) to discover file paths, matches them
+        /// against `law_ids` by extracting the law directory name from the path
+        /// (`{base}/{layer}/{law_id}/{date}.yaml`), picks the best version per
+        /// law (latest `valid_from` ≤ today), and fetches only those files.
+        pub async fn fetch_source_filtered(
+            &mut self,
+            source: &GitHubSource,
+            token: Option<&str>,
+            law_ids: &HashSet<String>,
+        ) -> Result<FetchResult> {
+            if law_ids.is_empty() {
+                return Ok(FetchResult::Fetched(Vec::new()));
+            }
+
+            let base_path = source.path.as_deref().unwrap_or("");
+
+            let all_paths = match self
+                .list_yaml_files(
+                    &source.full_repo(),
+                    source.effective_ref(),
+                    base_path,
+                    token,
+                )
+                .await?
+            {
+                Some(paths) => paths,
+                None => return Ok(FetchResult::NotModified),
+            };
+
+            // Group paths by law_id, keeping only those in the filter set.
+            // Path format: {base_path}/{layer}/{law_id}/{date}.yaml
+            let prefix = if base_path.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", base_path)
+            };
+
+            let today = crate::source_map::today_str();
+            let mut best_per_law: HashMap<String, String> = HashMap::new();
+
+            for path in &all_paths {
+                let rel = if prefix.is_empty() {
+                    path.as_str()
+                } else {
+                    match path.strip_prefix(&prefix) {
+                        Some(r) => r,
+                        None => continue,
+                    }
+                };
+
+                let parts: Vec<&str> = rel.split('/').collect();
+                if parts.len() < 3 {
+                    continue;
+                }
+
+                let law_id = parts[parts.len() - 2];
+                if !law_ids.contains(law_id) {
+                    continue;
+                }
+
+                // Extract date from filename (YYYY-MM-DD.yaml)
+                let filename = parts[parts.len() - 1];
+                let new_date = filename.strip_suffix(".yaml");
+
+                if let Some(existing_path) = best_per_law.get(law_id) {
+                    let existing_filename = existing_path.rsplit('/').next().unwrap_or("");
+                    let existing_date = existing_filename.strip_suffix(".yaml");
+
+                    let new_wins =
+                        crate::source_map::pick_best_version(existing_date, new_date, &today);
+
+                    if new_wins {
+                        best_per_law.insert(law_id.to_string(), path.clone());
+                    }
+                } else {
+                    best_per_law.insert(law_id.to_string(), path.clone());
+                }
+            }
+
+            tracing::info!(
+                matched = best_per_law.len(),
+                requested = law_ids.len(),
+                "fetching filtered laws from GitHub"
+            );
+
+            let mut files = Vec::new();
+            for path in best_per_law.values() {
                 match self
                     .fetch_file_content(&source.full_repo(), source.effective_ref(), path, token)
                     .await

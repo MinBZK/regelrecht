@@ -288,7 +288,7 @@ fn extract_date_from_path(path: &str) -> Option<String> {
 }
 
 /// Return today's date as "YYYY-MM-DD".
-fn today_str() -> String {
+pub fn today_str() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -322,7 +322,7 @@ fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
 /// 1. Currently valid (date <= today) beats future-only.
 /// 2. Among currently valid dates, the latest wins (most up-to-date).
 /// 3. Among future dates, the latest wins.
-fn pick_best_version(existing: Option<&str>, new: Option<&str>, today: &str) -> bool {
+pub fn pick_best_version(existing: Option<&str>, new: Option<&str>, today: &str) -> bool {
     match (existing, new) {
         (None, Some(_)) => true,
         (Some(_), None) => false,

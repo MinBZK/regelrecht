@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -25,13 +26,13 @@ async fn main() {
         )
         .init();
 
-    let corpus_state = init_corpus();
+    let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
+    let corpus_state = init_corpus(&static_dir).await;
 
     let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
     };
 
-    let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let index_file = PathBuf::from(&static_dir).join("index.html");
 
     let api_routes = Router::new()
@@ -66,18 +67,17 @@ async fn main() {
     }
 }
 
-/// Initialize the corpus registry and load local sources only.
-///
-/// GitHub sources are skipped — the editor serves only the laws bundled
-/// in the Docker image. This avoids burning GitHub API rate limits on
-/// thousands of files that aren't shown in the UI.
-fn init_corpus() -> CorpusState {
+/// Initialize the corpus: load local sources, then fetch only the
+/// favorites that are missing from GitHub sources.
+async fn init_corpus(static_dir: &str) -> CorpusState {
     let manifest_str =
         env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
     let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
         .unwrap_or_else(|_| "corpus-registry.local.yaml".to_string());
+    let auth_str = env::var("CORPUS_AUTH_FILE").unwrap_or_else(|_| "corpus-auth.yaml".to_string());
     let manifest_path = PathBuf::from(&manifest_str);
     let local_path = PathBuf::from(&local_str);
+    let auth_path = PathBuf::from(&auth_str);
 
     let registry = if manifest_path.exists() {
         match regelrecht_corpus::CorpusRegistry::load(&manifest_path, Some(&local_path)) {
@@ -95,14 +95,30 @@ fn init_corpus() -> CorpusState {
         empty_registry()
     };
 
-    let source_map = match registry.load_local_sources() {
+    let favorites = load_favorites(static_dir);
+    let auth_file = if auth_path.exists() {
+        Some(auth_path.as_path())
+    } else {
+        None
+    };
+
+    let source_map = match registry.load_favorites_async(&favorites, auth_file).await {
         Ok(map) => {
             tracing::info!(laws = map.len(), "loaded corpus laws");
             map
         }
         Err(e) => {
-            tracing::warn!(error = %e, "failed to load local sources");
-            regelrecht_corpus::SourceMap::new()
+            tracing::warn!(error = %e, "failed to load favorites from GitHub, falling back to local-only");
+            match registry.load_local_sources() {
+                Ok(map) => {
+                    tracing::info!(laws = map.len(), "loaded corpus laws (local-only fallback)");
+                    map
+                }
+                Err(e2) => {
+                    tracing::warn!(error = %e2, "failed to load local sources");
+                    regelrecht_corpus::SourceMap::new()
+                }
+            }
         }
     };
 
@@ -112,10 +128,28 @@ fn init_corpus() -> CorpusState {
     }
 }
 
+/// Read favorites.json from the static directory.
+fn load_favorites(static_dir: &str) -> HashSet<String> {
+    let path = PathBuf::from(static_dir).join("favorites.json");
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<Vec<String>>(&content) {
+            Ok(ids) => {
+                tracing::info!(count = ids.len(), "loaded favorites");
+                ids.into_iter().collect()
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to parse favorites.json");
+                HashSet::new()
+            }
+        },
+        Err(_) => {
+            tracing::info!("no favorites.json found");
+            HashSet::new()
+        }
+    }
+}
+
 fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
     regelrecht_corpus::CorpusRegistry::from_yaml("schema_version: '1.0'\nsources: []\n")
-        .unwrap_or_else(|_| {
-            // This YAML is hardcoded and always valid
-            unreachable!()
-        })
+        .unwrap_or_else(|_| unreachable!())
 }

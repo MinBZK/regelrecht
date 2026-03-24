@@ -135,6 +135,76 @@ impl CorpusRegistry {
     /// If caching is added later, callers must ensure that `NotModified`
     /// sources are merged from a previous `SourceMap` instead of silently
     /// dropped.
+    /// Load local sources + only the specified laws from GitHub sources.
+    ///
+    /// Uses the Trees API (1 call per GitHub source) to discover paths,
+    /// then fetches only the files matching `law_ids`. This keeps startup
+    /// fast and avoids burning rate limits on thousands of unused files.
+    #[cfg(feature = "github")]
+    pub async fn load_favorites_async(
+        &self,
+        law_ids: &std::collections::HashSet<String>,
+        auth_file: Option<&Path>,
+    ) -> Result<SourceMap> {
+        let mut map = SourceMap::new();
+        let mut fetcher = crate::github::GitHubFetcher::new()?;
+
+        // Determine which law_ids are NOT already covered by local sources,
+        // so we only fetch what's missing from GitHub.
+        for source in &self.sources {
+            if let SourceType::Local { .. } = &source.source_type {
+                map.load_source(source)?;
+            }
+        }
+        let local_ids: std::collections::HashSet<String> =
+            map.laws().map(|l| l.law_id.clone()).collect();
+        let missing: std::collections::HashSet<String> =
+            law_ids.difference(&local_ids).cloned().collect();
+
+        if missing.is_empty() {
+            tracing::info!("all favorites available locally, skipping GitHub fetch");
+            return Ok(map);
+        }
+
+        for source in &self.sources {
+            if let SourceType::GitHub { github } = &source.source_type {
+                let token = crate::auth::resolve_token_for_source(
+                    &source.id,
+                    source.auth_ref.as_deref(),
+                    auth_file,
+                )?;
+                match fetcher
+                    .fetch_source_filtered(github, token.as_deref(), &missing)
+                    .await?
+                {
+                    crate::github::FetchResult::Fetched(files) => {
+                        for file in &files {
+                            map.load_fetched_file(
+                                &file.content,
+                                &file.path,
+                                &source.id,
+                                &source.name,
+                                source.priority,
+                            )?;
+                        }
+                    }
+                    crate::github::FetchResult::NotModified => {}
+                }
+            }
+        }
+
+        Ok(map)
+    }
+
+    /// Load all sources (local + GitHub) into a SourceMap.
+    ///
+    /// Fetches GitHub sources using the provided auth file for token lookup.
+    ///
+    /// **Note:** A fresh `GitHubFetcher` is created on each call, so the
+    /// `NotModified` branch is currently unreachable (no prior ETag exists).
+    /// If caching is added later, callers must ensure that `NotModified`
+    /// sources are merged from a previous `SourceMap` instead of silently
+    /// dropped.
     #[cfg(feature = "github")]
     pub async fn load_all_sources_async(&self, auth_file: Option<&Path>) -> Result<SourceMap> {
         let mut map = SourceMap::new();
