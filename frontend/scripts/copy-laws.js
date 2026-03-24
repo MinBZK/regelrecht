@@ -86,7 +86,9 @@ const localSources = registry.sources.filter(s => s.type === 'local');
 const githubSources = registry.sources.filter(s => s.type === 'github');
 
 // Copy registry to public/ so the browser can read GitHub source config at runtime.
-cpSync(registryPath, resolve(root, 'public', 'corpus-registry.yaml'));
+if (existsSync(registryPath)) {
+  cpSync(registryPath, resolve(root, 'public', 'corpus-registry.yaml'));
+}
 
 const multiSource = registry.sources.length > 1;
 const index = [];
