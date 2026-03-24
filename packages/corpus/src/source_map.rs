@@ -130,11 +130,45 @@ impl SourceMap {
     }
 
     /// Insert a law into the map, resolving conflicts by priority.
+    ///
+    /// When two entries share the same `$id` and priority:
+    /// - **Same source**: multiple versions of one law. Keep the version whose
+    ///   `valid_from` date (from the filename) is closest to today without
+    ///   exceeding it. If no version is currently valid, keep the latest.
+    /// - **Different sources**: this is still a hard error (ambiguous ownership).
     fn insert(&mut self, law: LoadedLaw) -> Result<()> {
         let law_id = law.law_id.clone();
 
         if let Some(existing) = self.laws.get(&law_id) {
             if existing.source_priority == law.source_priority {
+                // Same source with multiple versions → pick best version
+                if existing.source_id == law.source_id {
+                    let existing_date = extract_date_from_path(&existing.file_path);
+                    let new_date = extract_date_from_path(&law.file_path);
+                    let today = today_str();
+
+                    let new_wins =
+                        pick_best_version(existing_date.as_deref(), new_date.as_deref(), &today);
+
+                    if new_wins {
+                        tracing::debug!(
+                            law_id = %law_id,
+                            kept = %law.file_path,
+                            dropped = %existing.file_path,
+                            "same-source version conflict resolved"
+                        );
+                        self.laws.insert(law_id, law);
+                    } else {
+                        tracing::debug!(
+                            law_id = %law_id,
+                            kept = %existing.file_path,
+                            dropped = %law.file_path,
+                            "same-source version conflict resolved"
+                        );
+                    }
+                    return Ok(());
+                }
+
                 return Err(CorpusError::Config(format!(
                     "Conflict: law '{}' provided by both '{}' and '{}' with equal priority {}",
                     law_id, existing.source_id, law.source_id, law.source_priority
@@ -224,6 +258,80 @@ impl SourceMap {
 impl Default for SourceMap {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Extract a YYYY-MM-DD date from the filename component of a path.
+///
+/// Matches the convention `…/law_id/2025-01-01.yaml`.
+fn extract_date_from_path(path: &str) -> Option<String> {
+    let filename = path.rsplit('/').next().unwrap_or(path);
+    let stem = filename.strip_suffix(".yaml")?;
+    // Validate YYYY-MM-DD pattern
+    if stem.len() == 10
+        && stem.as_bytes()[4] == b'-'
+        && stem.as_bytes()[7] == b'-'
+        && stem.bytes().filter(|b| b.is_ascii_digit()).count() == 8
+    {
+        Some(stem.to_string())
+    } else {
+        None
+    }
+}
+
+/// Return today's date as "YYYY-MM-DD".
+fn today_str() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    // 86400 seconds per day, epoch is 1970-01-01
+    let days = now / 86400;
+    // Simple conversion: count years/months/days from epoch
+    let (y, m, d) = days_to_ymd(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Convert days since Unix epoch to (year, month, day).
+fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
+    // Algorithm from https://howardhinnant.github.io/date_algorithms.html
+    days += 719_468;
+    let era = days / 146_097;
+    let doe = days - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+/// Decide whether `new_date` should replace `existing_date`.
+///
+/// Rules:
+/// 1. Currently valid (date <= today) beats future-only.
+/// 2. Among currently valid dates, the latest wins (most up-to-date).
+/// 3. Among future dates, the latest wins.
+fn pick_best_version(existing: Option<&str>, new: Option<&str>, today: &str) -> bool {
+    match (existing, new) {
+        (None, Some(_)) => true,
+        (Some(_), None) => false,
+        (None, None) => false,
+        (Some(e), Some(n)) => {
+            let e_valid = e <= today;
+            let n_valid = n <= today;
+            match (e_valid, n_valid) {
+                // Both valid or both future → latest date wins
+                _ if e_valid == n_valid => n > e,
+                // Only new is valid now → new wins
+                (false, true) => true,
+                // Only existing is valid now → existing stays
+                (true, false) => false,
+                _ => unreachable!(),
+            }
+        }
     }
 }
 
@@ -364,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn test_equal_priority_conflict_is_error() {
+    fn test_equal_priority_different_sources_is_error() {
         let dir_a = TempDir::new().unwrap();
         let dir_b = TempDir::new().unwrap();
 
@@ -382,6 +490,44 @@ mod tests {
         let err = result.unwrap_err().to_string();
         assert!(err.contains("dup_law"));
         assert!(err.contains("equal priority"));
+    }
+
+    #[test]
+    fn test_same_source_multiple_versions_keeps_latest_valid() {
+        let dir = TempDir::new().unwrap();
+
+        // Two versions of the same law, both currently valid (dates in the past)
+        write_yaml(dir.path(), "wet/my_law/2024-01-01.yaml", "my_law");
+        write_yaml(dir.path(), "wet/my_law/2025-01-01.yaml", "my_law");
+
+        let source = make_source("local", "Local", dir.path(), 1);
+        let mut map = SourceMap::new();
+        let count = map.load_source(&source).unwrap();
+
+        // Both files are loaded but only one law in the map
+        assert_eq!(count, 2);
+        assert_eq!(map.len(), 1);
+
+        let law = map.get_law("my_law").unwrap();
+        // 2025 version should win (latest valid)
+        assert!(law.file_path.contains("2025-01-01"));
+    }
+
+    #[test]
+    fn test_same_source_valid_beats_future() {
+        let dir = TempDir::new().unwrap();
+
+        // One valid now, one far in the future
+        write_yaml(dir.path(), "wet/my_law/2024-01-01.yaml", "my_law");
+        write_yaml(dir.path(), "wet/my_law/2099-01-01.yaml", "my_law");
+
+        let source = make_source("local", "Local", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let law = map.get_law("my_law").unwrap();
+        // 2024 is currently valid, 2099 is future → 2024 wins
+        assert!(law.file_path.contains("2024-01-01"));
     }
 
     #[test]
