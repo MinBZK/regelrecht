@@ -528,17 +528,25 @@ function switchTab(tabKey) {
 
   // Clear BWB field and sync law_id filter
   const bwbField = $('#harvest-bwb-id');
-  if (bwbField) bwbField.value = '';
+  if (bwbField) setFieldValue(bwbField, '');
 
   renderTabs();
   renderAll();
   fetchData();
 }
 
+// Web component .value may not always reflect the inner <input> state;
+// fall back to shadow DOM as a workaround for rr-text-field quirks.
 function getFieldValue(el) {
   if (el.value != null && el.value !== '') return el.value;
   const inner = el.shadowRoot?.querySelector('input');
   return inner?.value ?? '';
+}
+
+function setFieldValue(el, val) {
+  el.value = val;
+  const inner = el.shadowRoot?.querySelector('input');
+  if (inner) inner.value = val;
 }
 
 async function onHarvestSubmit() {
@@ -578,7 +586,7 @@ async function onHarvestSubmit() {
       throw new Error(text || `HTTP ${response.status}`);
     }
     await response.json();
-    input.value = '';
+    setFieldValue(input, '');
     btn.textContent = 'Queued \u2713';
     btn.removeAttribute('disabled');
     setTimeout(() => { btn.textContent = 'Harvest'; }, 2000);
@@ -668,7 +676,7 @@ function viewJobsForLaw(lawId) {
 
   // Pre-fill BWB field with the law ID
   const bwbField = $('#harvest-bwb-id');
-  if (bwbField) bwbField.value = lawId;
+  if (bwbField) setFieldValue(bwbField, lawId);
 
   renderTabs();
   renderAll();
