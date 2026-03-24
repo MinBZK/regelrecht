@@ -2,18 +2,11 @@
   <div
     class="flow-diagram"
     ref="container"
-    @wheel.prevent="onWheel"
-    @mousedown="onMouseDown"
-    @mousemove="onMouseMove"
-    @mouseup="onMouseUp"
-    @mouseleave="onMouseUp"
   >
     <svg
-      :viewBox="`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`"
-      :width="svgWidth"
-      :height="svgHeight"
+      :viewBox="`0 0 ${svgWidth} ${svgHeight}`"
+      :style="{ width: svgWidth * scale + 'px', height: svgHeight * scale + 'px' }"
       class="flow-diagram__svg"
-      :class="{ 'flow-diagram__svg--grabbing': isDragging }"
     >
       <!-- Branch lines (background) -->
       <line
@@ -100,7 +93,7 @@
 </template>
 
 <script setup>
-import { computed, ref, reactive, watch } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import FlowNode from './FlowNode.vue';
 import FlowConnection from './FlowConnection.vue';
 
@@ -116,26 +109,25 @@ const props = defineProps({
 
 defineEmits(['select-stage']);
 
+const container = ref(null);
+const scale = ref(1);
+
 const columnWidth = 220;
 const rowHeight = 80;
 
-// Minimum row gap: 1 for same-column, 2 for cross-column (nicer S-curves)
 const SAME_COL_GAP = 1;
 const CROSS_COL_GAP = 2;
 
 /**
  * Auto-layout: compute row positions from step order and connections.
- * Each stage is placed at max(predecessor rows) + gap.
- * Cross-column connections get a larger gap for nice S-curves.
  */
 const layoutStages = computed(() => {
   const sorted = [...props.stages].sort((a, b) => a.step - b.step);
-  const rowMap = new Map(); // stageId → computed row
-  const colLastRow = new Map(); // col → last used row in that column
-  let globalLastRow = -1; // track the highest row assigned so far
+  const rowMap = new Map();
+  const colLastRow = new Map();
+  let globalLastRow = -1;
 
   for (const stage of sorted) {
-    // Find all connections where this stage is the target
     const inbound = props.connections.filter((c) => c.to === stage.id);
     let row = 0;
 
@@ -148,13 +140,10 @@ const layoutStages = computed(() => {
       row = Math.max(row, fromRow + gap);
     }
 
-    // Nodes without inbound connections (except the first) should be placed
-    // after all previously laid-out nodes to respect step ordering
     if (inbound.length === 0 && globalLastRow >= 0) {
       row = Math.max(row, globalLastRow + SAME_COL_GAP);
     }
 
-    // Ensure no overlap within the same column
     const lastInCol = colLastRow.get(stage.col);
     if (lastInCol !== undefined) {
       row = Math.max(row, lastInCol + SAME_COL_GAP);
@@ -168,9 +157,6 @@ const layoutStages = computed(() => {
   return sorted.map((s) => ({ ...s, row: rowMap.get(s.id) ?? s.row ?? 0 }));
 });
 
-/**
- * Auto-compute branch startRow/endRow from the stages on each branch.
- */
 const layoutBranches = computed(() => {
   return props.branches.map((branch) => {
     const branchStages = layoutStages.value.filter((s) => s.branch === branch.id);
@@ -190,79 +176,49 @@ const maxRow = computed(() => Math.max(0, ...layoutStages.value.map((s) => s.row
 const svgWidth = computed(() => 80 + (maxCol.value + 2) * columnWidth);
 const svgHeight = computed(() => 50 + (maxRow.value + 2) * rowHeight);
 
-// Pan & zoom state
-const viewBox = reactive({ x: 0, y: 0, w: svgWidth.value, h: svgHeight.value });
-const isDragging = ref(false);
-let dragStart = { x: 0, y: 0, vbX: 0, vbY: 0 };
-
-// Reset viewBox when data changes (toggle)
-watch([svgWidth, svgHeight], () => {
-  viewBox.x = 0;
-  viewBox.y = 0;
-  viewBox.w = svgWidth.value;
-  viewBox.h = svgHeight.value;
-});
-
-function onWheel(e) {
-  const delta = e.ctrlKey ? e.deltaY * 0.01 : e.deltaY * 0.002;
-  const zoomFactor = 1 + Math.max(-0.15, Math.min(0.15, delta));
-  const rect = e.currentTarget.getBoundingClientRect();
-  const mx = (e.clientX - rect.left) / rect.width;
-  const my = (e.clientY - rect.top) / rect.height;
-  const cx = viewBox.x + viewBox.w * mx;
-  const cy = viewBox.y + viewBox.h * my;
-  const newW = viewBox.w * zoomFactor;
-  const newH = viewBox.h * zoomFactor;
-  viewBox.x = cx - newW * mx;
-  viewBox.y = cy - newH * my;
-  viewBox.w = newW;
-  viewBox.h = newH;
-}
-
-function onMouseDown(e) {
-  if (e.button !== 0) return;
-  isDragging.value = true;
-  dragStart = { x: e.clientX, y: e.clientY, vbX: viewBox.x, vbY: viewBox.y };
-}
-
-function onMouseMove(e) {
-  if (!isDragging.value) return;
-  const container = e.currentTarget;
-  const scale = viewBox.w / container.clientWidth;
-  viewBox.x = dragStart.vbX - (e.clientX - dragStart.x) * scale;
-  viewBox.y = dragStart.vbY - (e.clientY - dragStart.y) * scale;
-}
-
-function onMouseUp() {
-  isDragging.value = false;
-}
-
+// Zoom via CSS scale
 function zoomIn() {
-  const cx = viewBox.x + viewBox.w / 2;
-  const cy = viewBox.y + viewBox.h / 2;
-  viewBox.w *= 0.8;
-  viewBox.h *= 0.8;
-  viewBox.x = cx - viewBox.w / 2;
-  viewBox.y = cy - viewBox.h / 2;
+  scale.value = Math.min(3, scale.value * 1.25);
 }
 
 function zoomOut() {
-  const cx = viewBox.x + viewBox.w / 2;
-  const cy = viewBox.y + viewBox.h / 2;
-  viewBox.w *= 1.25;
-  viewBox.h *= 1.25;
-  viewBox.x = cx - viewBox.w / 2;
-  viewBox.y = cy - viewBox.h / 2;
+  scale.value = Math.max(0.3, scale.value * 0.8);
 }
 
 function resetView() {
-  viewBox.x = 0;
-  viewBox.y = 0;
-  viewBox.w = svgWidth.value;
-  viewBox.h = svgHeight.value;
+  scale.value = 1;
+  if (container.value) {
+    container.value.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  }
 }
 
 defineExpose({ zoomIn, zoomOut, resetView });
+
+// Auto-scroll to the latest active node during playback
+watch(() => props.activeStep, (step) => {
+  if (step < 0 || !container.value) return;
+  nextTick(() => {
+    // Find the highest-row active node at this step
+    const activeNodes = layoutStages.value.filter((s) => s.step === step);
+    if (activeNodes.length === 0) return;
+    const maxActiveRow = Math.max(...activeNodes.map((s) => s.row));
+    const targetY = (50 + maxActiveRow * rowHeight) * scale.value;
+    const containerRect = container.value.getBoundingClientRect();
+    const scrollTarget = targetY - containerRect.height * 0.6;
+    container.value.scrollTo({
+      top: Math.max(0, scrollTarget),
+      behavior: 'smooth',
+    });
+  });
+});
+
+// Reset scroll when data changes (view toggle)
+watch([svgWidth, svgHeight], () => {
+  scale.value = 1;
+  if (container.value) {
+    container.value.scrollTo({ top: 0, left: 0 });
+  }
+});
 
 /**
  * Resolve phase row ranges from stage IDs (startStage/endStage)
@@ -314,21 +270,13 @@ function isConnectionActive(conn) {
 
 <style scoped>
 .flow-diagram {
-  display: flex;
-  justify-content: center;
-  overflow: hidden;
+  overflow: auto;
   padding: var(--spacing-4);
   position: relative;
-  cursor: grab;
 }
 
 .flow-diagram__svg {
-  max-width: 100%;
-  height: auto;
-}
-
-.flow-diagram__svg--grabbing {
-  cursor: grabbing;
+  display: block;
 }
 
 .flow-diagram__branch-line {
