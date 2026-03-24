@@ -34,7 +34,6 @@ pub struct CorpusLawEntry {
     pub law_id: String,
     pub source_id: String,
     pub source_name: String,
-    pub file_path: String,
 }
 
 /// GET /api/sources — list all registered corpus sources with law counts.
@@ -90,7 +89,6 @@ pub async fn list_corpus_laws(
             law_id: law.law_id.clone(),
             source_id: law.source_id.clone(),
             source_name: law.source_name.clone(),
-            file_path: law.file_path.clone(),
         })
         .collect();
 
