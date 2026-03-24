@@ -38,6 +38,7 @@
    ============================================================ */
 
 .table-container {
+  margin-top: var(--primitives-space-16);
   background-color: var(--semantics-surfaces-background-color);
   border: 1px solid var(--semantics-dividers-color);
   border-radius: var(--primitives-corner-radius-sm);
