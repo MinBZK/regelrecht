@@ -32,6 +32,7 @@ pub struct SourceSummary {
 #[derive(Debug, Serialize)]
 pub struct CorpusLawEntry {
     pub law_id: String,
+    pub name: Option<String>,
     pub source_id: String,
     pub source_name: String,
 }
@@ -87,6 +88,7 @@ pub async fn list_corpus_laws(
         .laws()
         .map(|law| CorpusLawEntry {
             law_id: law.law_id.clone(),
+            name: law.name.clone(),
             source_id: law.source_id.clone(),
             source_name: law.source_name.clone(),
         })

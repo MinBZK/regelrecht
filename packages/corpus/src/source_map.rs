@@ -11,6 +11,8 @@ use crate::models::{Source, SourceType};
 pub struct LoadedLaw {
     /// The law's `$id` field.
     pub law_id: String,
+    /// The law's `name` field (human-readable title), if present.
+    pub name: Option<String>,
     /// The raw YAML content.
     pub yaml_content: String,
     /// Path to the source file.
@@ -113,8 +115,11 @@ impl SourceMap {
                 None => continue, // Skip files without $id
             };
 
+            let name = extract_law_name(&content);
+
             let loaded = LoadedLaw {
                 law_id: law_id.clone(),
+                name,
                 yaml_content: content,
                 file_path: path.display().to_string(),
                 source_id: source.id.clone(),
@@ -216,8 +221,11 @@ impl SourceMap {
             None => return Ok(false),
         };
 
+        let name = extract_law_name(content);
+
         let loaded = LoadedLaw {
             law_id: law_id.clone(),
+            name,
             yaml_content: content.to_string(),
             file_path: file_path.to_string(),
             source_id: source_id.to_string(),
@@ -347,6 +355,22 @@ fn extract_law_id(yaml: &str) -> Option<String> {
             if !value.is_empty() {
                 return Some(value.to_string());
             }
+        }
+    }
+    None
+}
+
+/// Extract the top-level `name` field from a YAML string.
+///
+/// Skips names starting with `#` (output references resolved at runtime).
+fn extract_law_name(yaml: &str) -> Option<String> {
+    for line in yaml.lines() {
+        if let Some(rest) = line.strip_prefix("name:") {
+            let value = rest.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() && !value.starts_with('#') {
+                return Some(value.to_string());
+            }
+            return None;
         }
     }
     None

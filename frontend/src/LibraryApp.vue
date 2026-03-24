@@ -60,6 +60,7 @@ const selectedArticle = computed(() => {
 });
 
 function displayName(law) {
+  if (law.name) return law.name;
   return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
