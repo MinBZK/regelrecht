@@ -126,15 +126,6 @@ impl CorpusRegistry {
         Ok(map)
     }
 
-    /// Load all sources (local + GitHub) into a SourceMap.
-    ///
-    /// Fetches GitHub sources using the provided auth file for token lookup.
-    ///
-    /// **Note:** A fresh `GitHubFetcher` is created on each call, so the
-    /// `NotModified` branch is currently unreachable (no prior ETag exists).
-    /// If caching is added later, callers must ensure that `NotModified`
-    /// sources are merged from a previous `SourceMap` instead of silently
-    /// dropped.
     /// Load local sources + only the specified laws from GitHub sources.
     ///
     /// Uses the Trees API (1 call per GitHub source) to discover paths,
@@ -191,6 +182,17 @@ impl CorpusRegistry {
                     crate::github::FetchResult::NotModified => {}
                 }
             }
+        }
+
+        // Validate scopes and log warnings
+        let warnings = crate::validation::validate_scopes(&map, &self.sources);
+        for w in &warnings {
+            tracing::warn!(
+                law_id = %w.law_id,
+                source_id = %w.source_id,
+                "{}",
+                w.message
+            );
         }
 
         Ok(map)
