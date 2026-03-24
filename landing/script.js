@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Handle direct hash navigation (when someone visits a #section URL)
-    if (window.location.hash) {
+    if (window.location.hash && /^#[\w-]+$/.test(window.location.hash)) {
         const targetElement = document.querySelector(window.location.hash);
         if (targetElement) {
             // Small delay to ensure page is fully loaded
@@ -367,4 +367,7 @@ function resetForm() {
     document.getElementById('signup-error').hidden = true;
 }
 
-window.resetForm = resetForm;
+var btnResetSuccess = document.getElementById('btn-reset-success');
+var btnResetError = document.getElementById('btn-reset-error');
+if (btnResetSuccess) btnResetSuccess.addEventListener('click', resetForm);
+if (btnResetError) btnResetError.addEventListener('click', resetForm);
