@@ -1,43 +1,6 @@
 // Regelrecht Landing Page JavaScript
 
-// Handle navigation and URL anchors
-document.addEventListener('DOMContentLoaded', function() {
-    // Get all navigation links
-    const navLinks = document.querySelectorAll('nav a[href^="#"]');
-
-    navLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            const targetId = this.getAttribute('href');
-            const targetElement = document.querySelector(targetId);
-
-            if (targetElement) {
-                // Smooth scroll to element
-                targetElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-
-                // Update URL with hash
-                history.pushState(null, null, targetId);
-            }
-        });
-    });
-
-    // Handle direct hash navigation (when someone visits a #section URL)
-    if (window.location.hash && /^#[\w-]+$/.test(window.location.hash)) {
-        const targetElement = document.querySelector(window.location.hash);
-        if (targetElement) {
-            // Small delay to ensure page is fully loaded
-            setTimeout(() => {
-                targetElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                });
-            }, 100);
-        }
-    }
-});
+// Handle direct hash navigation is done in the DOMContentLoaded handler below (line ~195)
 
 // Demo functionality
 function executeRule() {
@@ -213,6 +176,17 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Handle direct hash navigation (when someone visits a #section URL)
+    if (window.location.hash && /^#[\w-]+$/.test(window.location.hash)) {
+        const targetElement = document.querySelector(window.location.hash);
+        if (targetElement) {
+            setTimeout(() => {
+                const offsetTop = targetElement.offsetTop - 80;
+                window.scrollTo({ top: offsetTop, behavior: 'smooth' });
+            }, 100);
+        }
+    }
 
     // Add animation to feature cards on scroll
     const observerOptions = {
