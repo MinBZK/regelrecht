@@ -89,6 +89,12 @@ translated.
 | Water board | *waterschap* | Special-purpose authority responsible for water management in a designated area. |
 | Crown | *Kroon* | The King acting together with the responsible minister(s). Issues royal decrees (*Koninklijke Besluiten*). |
 | Administrative court | *bestuursrechter* | Judge specialized in disputes between citizens and administrative bodies. |
+| Allowances Service | *Dienst Toeslagen* | Executive agency of the Ministry of Finance responsible for administering income-dependent allowances (*toeslagen*): healthcare allowance (*zorgtoeslag*), rent allowance (*huurtoeslag*), childcare allowance (*kinderopvangtoeslag*), and child-related budget (*kindgebonden budget*). |
+| Tax Authority | *Belastingdienst* | National tax administration. Also the source holder (*bronhouder*) of the Income Registry (*Basisregistratie Inkomen*, BRI). |
+| Tax inspector | *inspecteur* | Official within the Tax Authority (*Belastingdienst*) who formally determines (*vaststelt*) income and tax assessments. |
+| Social Insurance Bank | *Sociale Verzekeringsbank* (SVB) | Agency responsible for national insurance schemes including old age pension (*AOW*), survivor benefits (*Anw*), and child benefit (*kinderbijslag* / AKW). |
+| Employee Insurance Agency | *Uitvoeringsinstituut Werknemersverzekeringen* (UWV) | Agency responsible for employee insurance schemes including unemployment benefit (*WW*) and disability benefit (*WIA*). |
+| Information Bureau | *Inlichtingenbureau* | Intermediary that connects municipalities (*gemeenten*) with national data sources for social domain tasks. |
 
 ## Temporal and Deadline Concepts
 
