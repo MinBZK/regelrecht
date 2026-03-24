@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aanmelden - RegelRecht</title>
+    <link rel="stylesheet" href="../styles.css">
+    <link href="https://unpkg.com/@nl-rvo/design-tokens/dist/index.css" rel="stylesheet">
+    <link href="https://unpkg.com/@nl-rvo/component-library-css/dist/index.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=RO+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="page-aanmelden">
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-container">
+            <a href="../" class="nav-logo" style="text-decoration: none;">
+                <h1 class="logo-text">RegelRecht</h1>
+                <span class="logo-subtitle">Een verkenning van het Ministerie van BZK</span>
+            </a>
+            <div class="nav-links">
+                <a href="../#what-is-it">Wat</a>
+                <a href="../#how-it-works">Hoe</a>
+                <a href="../#tools">Ecosysteem</a>
+                <a href="../#example">Voorbeelden</a>
+                <div class="nav-dropdown">
+                    <a href="#" class="nav-dropdown-toggle">Meer ↓</a>
+                    <div class="nav-dropdown-menu">
+                        <a href="../#innovation">Innovatiebudget</a>
+                        <a href="../#references">Rapporten</a>
+                        <a href="../#faq">Veel gestelde vragen</a>
+                        <a href="../#feedback">Wat denk jij</a>
+                    </div>
+                </div>
+                <a href="https://github.com/topics/regelrecht" class="nav-cta">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Signup Form Section -->
+    <section class="signup-form-section signup-form-section--no-hero">
+        <div class="signup-form-container">
+            <h2 class="section-title">Op de hoogte blijven of bijdragen aan RegelRecht?</h2>
+
+            <form id="signup-form">
+                <!-- Honeypot spam protection -->
+                <input type="text" name="_honey" style="display:none">
+
+                <div class="form-group">
+                    <fieldset class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="Bijdragen aan validatie" value="Ja" class="form-radio" checked>
+                            <span>Ik wil bijdragen aan de (juridische) validatie van RegelRecht</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="Bijdragen aan validatie" value="Nee" class="form-radio">
+                            <span>Ik wil niet bijdragen</span>
+                        </label>
+                    </fieldset>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="Op de hoogte blijven" value="Ja" class="form-checkbox" checked>
+                        <span>Ik wil daarnaast updates ontvangen over de ontwikkelingen van RegelRecht</span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label for="email" class="form-label">E-mailadres</label>
+                    <input type="email" id="email" name="E-mailadres" class="form-input" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="naam" class="form-label">Volledige naam</label>
+                    <input type="text" id="naam" name="Volledige naam" class="form-input" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="organisatie" class="form-label">Organisatie</label>
+                    <input type="text" id="organisatie" name="Organisatie" class="form-input" placeholder="Bijv. Ministerie van BZK, Gemeente Amsterdam">
+                </div>
+
+                <div class="form-group">
+                    <label for="functie" class="form-label">Functie (optioneel)</label>
+                    <input type="text" id="functie" name="Functie" class="form-input" placeholder="Bijv. jurist, beleidsmedewerker, wetgevingsjurist">
+                </div>
+
+                <button type="submit" class="btn-primary signup-submit">Meld me aan</button>
+            </form>
+
+            <!-- Success message -->
+            <div id="signup-success" class="signup-success" hidden>
+                <h3>Bedankt voor je aanmelding!</h3>
+                <p>We hebben je aanmelding ontvangen.</p>
+                <button onclick="resetForm()" class="btn-primary signup-submit">Nog iemand aanmelden</button>
+            </div>
+
+            <!-- Error message -->
+            <div id="signup-error" class="signup-error" hidden>
+                <h3>Er ging iets mis</h3>
+                <p>Het versturen van het formulier is niet gelukt. Probeer het opnieuw of stuur een e-mail naar <a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a>.</p>
+                <button onclick="resetForm()" class="btn-primary signup-submit">Opnieuw proberen</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>RegelRecht</h3>
+                    <p>Een verkenning van Bureau Architectuur van het Ministerie van Binnenlandse Zaken naar de mogelijkheden van transparante, uitvoerbare wetgeving.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Links</h4>
+                    <ul>
+                        <li><a href="https://github.com/MinBZK/poc-machine-law">GitHub Repository</a></li>
+                        <li><a href="../#how-it-works">Hoe het werkt</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Contact</h4>
+                    <ul>
+                        <li><a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Onderdeel van</h4>
+                    <ul>
+                        <li>Bureau Architectuur</li>
+                        <li>Ministerie van Binnenlandse Zaken en Koninkrijksrelaties</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Ministerie van Binnenlandse Zaken en Koninkrijksrelaties. Alle rechten voorbehouden.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../script.js"></script>
+</body>
+</html>
