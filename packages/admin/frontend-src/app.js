@@ -54,7 +54,6 @@ const TAB_CONFIG = {
     filters: [
       { key: 'status', label: 'Status', options: JOB_STATUSES },
       { key: 'job_type', label: 'Type', options: JOB_TYPES },
-      { key: 'law_id', label: 'Law ID', type: 'text' },
     ],
   },
 };
@@ -527,11 +526,9 @@ function switchTab(tabKey) {
   state.totalCount = 0;
   state.error = null;
 
-  // Show harvest form only on jobs tab
-  const harvestContainer = $('#harvest-form-container');
-  if (harvestContainer) {
-    harvestContainer.style.display = tabKey === 'jobs' ? '' : 'none';
-  }
+  // Clear BWB field and sync law_id filter
+  const bwbField = $('#harvest-bwb-id');
+  if (bwbField) bwbField.value = '';
 
   renderTabs();
   renderAll();
@@ -669,10 +666,9 @@ function viewJobsForLaw(lawId) {
   state.totalCount = 0;
   state.error = null;
 
-  const harvestContainer = $('#harvest-form-container');
-  if (harvestContainer) {
-    harvestContainer.style.display = '';
-  }
+  // Pre-fill BWB field with the law ID
+  const bwbField = $('#harvest-bwb-id');
+  if (bwbField) bwbField.value = lawId;
 
   renderTabs();
   renderAll();
@@ -1000,10 +996,23 @@ async function init() {
     harvestBtn.addEventListener('click', onHarvestSubmit);
   }
 
-  // rr-search-field fires 'search' on Enter key and search button click
+  // BWB field: Enter submits harvest, typing also filters jobs by law_id
   const harvestInput = $('#harvest-bwb-id');
   if (harvestInput) {
-    harvestInput.addEventListener('search', onHarvestSubmit);
+    harvestInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') onHarvestSubmit();
+    });
+
+    let bwbDebounce;
+    harvestInput.addEventListener('input', () => {
+      clearTimeout(bwbDebounce);
+      bwbDebounce = setTimeout(() => {
+        if (state.activeTab === 'jobs') {
+          const val = getFieldValue(harvestInput).trim();
+          onFilterChange('law_id', val);
+        }
+      }, 300);
+    });
   }
 
   // Bind detail panel close
