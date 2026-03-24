@@ -12,4 +12,9 @@ doc
 .pytest_cache
 __pycache__
 .github
-packages
+# Exclude packages not needed for editor-api build
+packages/admin
+packages/harvester
+packages/pipeline
+packages/tui
+# Keep: packages/editor-api, packages/corpus, packages/engine, packages/shared, packages/Cargo.*

@@ -21,6 +21,7 @@ jobs:
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
       admin: ${{ steps.filter.outputs.admin }}
+      editor-api: ${{ steps.filter.outputs.editor-api }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
@@ -43,6 +44,11 @@ jobs:
               - .github/workflows/ci.yml
             admin:
               - packages/admin/**
+              - Justfile
+              - .github/workflows/ci.yml
+            editor-api:
+              - packages/editor-api/**
+              - packages/corpus/**
               - Justfile
               - .github/workflows/ci.yml
 
@@ -327,3 +333,49 @@ jobs:
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.admin != 'true'
         run: echo "No admin changes, skipping"
+
+  editor-api:
+    name: Editor API
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        if: needs.changes.outputs.editor-api == 'true'
+
+      - name: Install Rust toolchain
+        if: needs.changes.outputs.editor-api == 'true'
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry
+        if: needs.changes.outputs.editor-api == 'true'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/target
+          key: ${{ runner.os }}-cargo-editor-api-${{ hashFiles('packages/editor-api/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-editor-api-
+
+      - name: Install just
+        if: needs.changes.outputs.editor-api == 'true'
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b  # v3
+
+      - name: Check formatting
+        if: needs.changes.outputs.editor-api == 'true'
+        run: just editor-api-fmt
+
+      - name: Run clippy
+        if: needs.changes.outputs.editor-api == 'true'
+        run: just editor-api-lint
+
+      - name: Run cargo check
+        if: needs.changes.outputs.editor-api == 'true'
+        run: just editor-api-check
+
+      - name: Skip (no relevant changes)
+        if: needs.changes.outputs.editor-api != 'true'
+        run: echo "No editor-api changes, skipping"

@@ -1,11 +1,15 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
 
-export function useLaw(yamlUrl) {
-  if (!yamlUrl) {
+export function useLaw(lawParam) {
+  if (!lawParam) {
     const params = new URLSearchParams(window.location.search);
-    yamlUrl = params.get('law') || '/data/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml';
+    lawParam = params.get('law') || 'wet_op_de_zorgtoeslag';
   }
+  // If the parameter looks like a URL, fetch directly; otherwise use the API.
+  const yamlUrl = (lawParam.startsWith('/') || lawParam.startsWith('http'))
+    ? lawParam
+    : `/api/corpus/laws/${encodeURIComponent(lawParam)}`;
   const law = shallowRef(null);
   const selectedArticleNumber = ref(null);
   const loading = ref(true);

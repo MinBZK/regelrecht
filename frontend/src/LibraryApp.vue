@@ -7,11 +7,12 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 
 const laws = ref([]);
+const favorites = ref(null);
 const loading = ref(true);
 const indexError = ref(null);
 const search = ref('');
 
-const selectedLawPath = ref(null);
+const selectedLawId = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
@@ -20,10 +21,15 @@ const detailView = ref('machine');
 const activeAction = ref(null);
 
 const filteredLaws = computed(() => {
+  let list = laws.value;
+  if (favorites.value) {
+    const favList = list.filter(law => favorites.value.has(law.law_id));
+    if (favList.length > 0) list = favList;
+  }
   const q = search.value.toLowerCase();
-  if (!q) return laws.value;
-  return laws.value.filter(law =>
-    law.id.toLowerCase().includes(q) ||
+  if (!q) return list;
+  return list.filter(law =>
+    law.law_id.toLowerCase().includes(q) ||
     displayName(law).toLowerCase().includes(q)
   );
 });
@@ -54,8 +60,8 @@ const selectedArticle = computed(() => {
 });
 
 function displayName(law) {
-  if (law.name && !law.name.startsWith('#')) return law.name;
-  return law.id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  if (law.name) return law.name;
+  return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function articleDescription(article) {
@@ -66,11 +72,27 @@ function articleDescription(article) {
 
 async function loadIndex() {
   try {
-    const res = await fetch('/data/index.json');
-    if (!res.ok) throw new Error(`Failed to load index: ${res.status}`);
-    laws.value = await res.json();
-    if (laws.value.length > 0 && !selectedLawPath.value) {
-      selectLaw(laws.value[0].path);
+    const [corpusRes, favRes] = await Promise.all([
+      fetch('/api/corpus/laws?limit=1000'),
+      fetch('/favorites.json'),
+    ]);
+    if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
+    const corpusLaws = await corpusRes.json();
+
+    if (favRes.ok) {
+      const favIds = await favRes.json();
+      favorites.value = new Set(favIds);
+    }
+
+    laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
+
+    let startList = laws.value;
+    if (favorites.value) {
+      const favList = laws.value.filter(l => favorites.value.has(l.law_id));
+      if (favList.length > 0) startList = favList;
+    }
+    if (startList.length > 0 && !selectedLawId.value) {
+      selectLaw(startList[0].law_id);
     }
   } catch (e) {
     indexError.value = e;
@@ -79,10 +101,10 @@ async function loadIndex() {
   }
 }
 
-async function loadLaw(path) {
+async function loadLaw(lawId) {
   try {
     selectedLawLoading.value = true;
-    const res = await fetch(path);
+    const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
     if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
     const text = await res.text();
     selectedLaw.value = yaml.load(text);
@@ -97,12 +119,12 @@ async function loadLaw(path) {
   }
 }
 
-function selectLaw(path) {
-  selectedLawPath.value = path;
+function selectLaw(lawId) {
+  selectedLawId.value = lawId;
   selectedArticleNumber.value = null;
   activeAction.value = null;
   lawError.value = null;
-  loadLaw(path);
+  loadLaw(lawId);
 }
 
 function selectArticle(number) {
@@ -160,13 +182,16 @@ loadIndex();
             <rr-list v-else variant="simple">
               <rr-list-item
                 v-for="law in filteredLaws"
-                :key="law.path"
+                :key="law.law_id"
                 size="md"
                 type="button"
-                :selected="law.path === selectedLawPath || undefined"
-                @click="selectLaw(law.path)"
+                :selected="law.law_id === selectedLawId || undefined"
+                @click="selectLaw(law.law_id)"
               >
-                <rr-text-cell>{{ displayName(law) }}</rr-text-cell>
+                <rr-text-cell>
+                  <span slot="text">{{ displayName(law) }}</span>
+                  <span slot="supporting-text" style="font-size: 11px; color: #888;">{{ law.source_name }}</span>
+                </rr-text-cell>
                 <rr-icon-cell slot="end" size="20">
                   <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </rr-icon-cell>
@@ -202,7 +227,7 @@ loadIndex();
                     <rr-button
                       variant="accent-filled"
                       size="md"
-                      :href="selectedLawPath ? `editor.html?law=${selectedLawPath}` : undefined"
+                      :href="selectedLawId ? `editor.html?law=${selectedLawId}` : undefined"
                     >Bewerk</rr-button>
                   </rr-toolbar-item>
                 </rr-toolbar-end-area>
@@ -261,7 +286,7 @@ loadIndex();
                     <rr-button
                       variant="accent-filled"
                       size="md"
-                      :href="selectedLawPath ? `editor.html?law=${selectedLawPath}` : undefined"
+                      :href="selectedLawId ? `editor.html?law=${selectedLawId}` : undefined"
                     >Bewerk</rr-button>
                   </rr-toolbar-item>
                 </rr-toolbar-end-area>

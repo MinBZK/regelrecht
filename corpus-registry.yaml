@@ -8,3 +8,14 @@ sources:
       path: corpus/regulation/nl
     scopes: []
     priority: 1  # 1 = highest priority
+
+  - id: central
+    name: Centrale Regelrecht Corpus
+    type: github
+    github:
+      owner: MinBZK
+      repo: regelrecht-corpus
+      branch: development
+      path: regulation/nl
+    scopes: []
+    priority: 2

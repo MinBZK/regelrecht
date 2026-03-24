@@ -31,7 +31,7 @@ validate *FILES:
 
 # Run all quality checks (format + lint + check + validate + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
-check: format lint build-check validate test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend
+check: format lint build-check validate test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
 
 # --- Tests ---
 
@@ -114,6 +114,24 @@ admin-fmt:
 # Run admin tests
 admin-test:
     cd packages && {{ci_flags}} cargo test --package regelrecht-admin
+
+# --- Editor API ---
+
+# Run editor API locally
+editor-api:
+    cd packages && cargo run --package regelrecht-editor-api
+
+# Check editor API Rust code
+editor-api-check:
+    cd packages && {{ci_flags}} cargo check --package regelrecht-editor-api
+
+# Lint editor API Rust code
+editor-api-lint:
+    cd packages && {{ci_flags}} cargo clippy --package regelrecht-editor-api
+
+# Format check editor API Rust code
+editor-api-fmt:
+    cd packages && cargo fmt --check --package regelrecht-editor-api
 
 # --- Development (native with hot reload) ---
 
