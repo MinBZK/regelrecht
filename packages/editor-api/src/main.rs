@@ -17,15 +17,25 @@ mod state;
 
 use state::{AppState, CorpusState};
 
-#[tokio::main]
-async fn main() {
-    // Map CORPUS_GIT_TOKEN → CORPUS_AUTH_CENTRAL_TOKEN so the corpus crate
-    // can resolve the GitHub token via its standard env-var convention.
+fn main() {
+    // Map CORPUS_GIT_TOKEN → CORPUS_AUTH_CENTRAL_TOKEN before the runtime starts
+    // so the corpus crate can resolve the GitHub token via its standard env-var convention.
     if let Ok(token) = env::var("CORPUS_GIT_TOKEN") {
-        // SAFETY: single-threaded at this point (before tokio runtime work starts)
+        // SAFETY: single-threaded, no runtime yet.
         unsafe { env::set_var("CORPUS_AUTH_CENTRAL_TOKEN", &token) };
     }
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap_or_else(|e| {
+            eprintln!("failed to build tokio runtime: {e}");
+            std::process::exit(1);
+        })
+        .block_on(async_main());
+}
+
+async fn async_main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
