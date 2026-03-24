@@ -465,7 +465,6 @@ jobs:
           deployment-name: regelrecht
           component: harvester-admin
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ADMIN }}:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
 
       - name: Deploy editor to ZAD (Production)
         if: needs.build.result == 'success'
@@ -477,7 +476,6 @@ jobs:
           deployment-name: regelrecht
           component: ${{ env.ZAD_COMPONENT }}
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
 
       - name: Deploy harvester-worker to ZAD (Production)
         if: needs.build-harvester-worker.result == 'success'
@@ -488,7 +486,6 @@ jobs:
           deployment-name: regelrecht
           component: harvester-worker
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_HARVESTER_WORKER }}:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
 
       - name: Deploy enrich-worker to ZAD (Production)
         if: needs.build-enrich-worker.result == 'success'
@@ -499,7 +496,6 @@ jobs:
           deployment-name: regelrecht
           component: enrichworker
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_ENRICH_WORKER }}:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
 
       - name: Deploy grafana to ZAD (Production)
         if: needs.build-grafana.result == 'success'
@@ -510,7 +506,6 @@ jobs:
           deployment-name: regelrecht
           component: grafana
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_GRAFANA }}:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
 
       - name: Deploy lawmaking to ZAD (Production)
         if: needs.build-lawmaking.result == 'success'
@@ -521,7 +516,6 @@ jobs:
           deployment-name: regelrecht
           component: lawmaking
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LAWMAKING }}:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
 
   cleanup-preview:
     runs-on: ubuntu-latest
