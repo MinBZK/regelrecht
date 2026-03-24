@@ -3622,6 +3622,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-editor-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "regelrecht-corpus",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "regelrecht-engine"
 version = "0.1.0"
 dependencies = [

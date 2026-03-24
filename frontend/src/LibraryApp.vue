@@ -12,7 +12,7 @@ const loading = ref(true);
 const indexError = ref(null);
 const search = ref('');
 
-const selectedLawPath = ref(null);
+const selectedLawId = ref(null);
 const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
@@ -23,13 +23,13 @@ const activeAction = ref(null);
 const filteredLaws = computed(() => {
   let list = laws.value;
   if (favorites.value) {
-    const favList = list.filter(law => favorites.value.has(law.id));
+    const favList = list.filter(law => favorites.value.has(law.law_id));
     if (favList.length > 0) list = favList;
   }
   const q = search.value.toLowerCase();
   if (!q) return list;
   return list.filter(law =>
-    law.id.toLowerCase().includes(q) ||
+    law.law_id.toLowerCase().includes(q) ||
     displayName(law).toLowerCase().includes(q)
   );
 });
@@ -60,8 +60,7 @@ const selectedArticle = computed(() => {
 });
 
 function displayName(law) {
-  if (law.name && !law.name.startsWith('#')) return law.name;
-  return law.id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function articleDescription(article) {
@@ -70,102 +69,29 @@ function articleDescription(article) {
   return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
 }
 
-/** Fetch GitHub tree and derive index entries from file paths. */
-async function fetchGitHubIndex(source) {
-  const { owner, repo, branch, path: basePath } = source.github;
-  const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
-  const res = await fetch(treeUrl);
-  if (!res.ok) throw new Error(`GitHub tree API: ${res.status}`);
-  const tree = await res.json();
-  if (tree.truncated) {
-    console.warn(`GitHub tree for ${owner}/${repo} was truncated — some laws may be missing`);
-  }
-
-  const prefix = basePath ? `${basePath}/` : '';
-  const yamlEntries = tree.tree.filter(e =>
-    e.type === 'blob' && e.path.startsWith(prefix) && e.path.endsWith('.yaml')
-  );
-
-  // Derive metadata from path: {prefix}{layer}/{law_id}/{date}.yaml
-  const latestById = new Map();
-  for (const entry of yamlEntries) {
-    const rel = entry.path.slice(prefix.length); // e.g. "wet/wet_op_de_zorgtoeslag/2025-01-01.yaml"
-    const parts = rel.split('/');
-    if (parts.length < 3) continue;
-    const layer = parts[0].toUpperCase();
-    const lawId = parts[parts.length - 2];
-    const filename = parts[parts.length - 1].replace('.yaml', '');
-    // Only include versioned files (YYYY-MM-DD.yaml), skip status.yaml etc.
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(filename)) continue;
-    const date = filename;
-
-    const existing = latestById.get(lawId);
-    if (!existing || date > existing.date) {
-      latestById.set(lawId, {
-        id: lawId,
-        name: '',
-        regulatory_layer: layer,
-        publication_date: date,
-        date,
-        path: `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${entry.path}`,
-        source_id: source.id,
-        source_name: source.name,
-      });
-    }
-  }
-
-  return [...latestById.values()];
-}
-
 async function loadIndex() {
   try {
-    const [indexRes, favRes, registryRes] = await Promise.all([
-      fetch('/data/index.json'),
+    const [corpusRes, favRes] = await Promise.all([
+      fetch('/api/corpus/laws?limit=1000'),
       fetch('/favorites.json'),
-      fetch('/corpus-registry.yaml'),
     ]);
-    if (!indexRes.ok) throw new Error(`Failed to load index: ${indexRes.status}`);
-    const localIndex = await indexRes.json();
-    const localIds = new Set(localIndex.map(l => l.id));
+    if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
+    const corpusLaws = await corpusRes.json();
 
     if (favRes.ok) {
       const favIds = await favRes.json();
       favorites.value = new Set(favIds);
     }
 
-    // Fetch GitHub sources at runtime (sorted by priority, lower wins).
-    let githubIndex = [];
-    const seenIds = new Set(localIds);
-    if (registryRes.ok) {
-      const registryText = await registryRes.text();
-      const registry = yaml.load(registryText);
-      const githubSources = (registry.sources || [])
-        .filter(s => s.type === 'github')
-        .sort((a, b) => (a.priority || 0) - (b.priority || 0));
-      for (const source of githubSources) {
-        try {
-          const entries = await fetchGitHubIndex(source);
-          const newEntries = entries.filter(e => !seenIds.has(e.id));
-          for (const e of newEntries) seenIds.add(e.id);
-          githubIndex.push(...newEntries);
-          console.log(`Loaded ${entries.length} laws from GitHub source "${source.id}" (${newEntries.length} new)`);
-        } catch (err) {
-          console.warn(`Failed to load GitHub source "${source.id}":`, err.message);
-        }
-      }
-    }
-
-    laws.value = [...localIndex, ...githubIndex].sort((a, b) =>
-      (a.regulatory_layer || '').localeCompare(b.regulatory_layer || '') || a.id.localeCompare(b.id)
-    );
+    laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
 
     let startList = laws.value;
     if (favorites.value) {
-      const favList = laws.value.filter(l => favorites.value.has(l.id));
+      const favList = laws.value.filter(l => favorites.value.has(l.law_id));
       if (favList.length > 0) startList = favList;
     }
-    if (startList.length > 0 && !selectedLawPath.value) {
-      selectLaw(startList[0].path);
+    if (startList.length > 0 && !selectedLawId.value) {
+      selectLaw(startList[0].law_id);
     }
   } catch (e) {
     indexError.value = e;
@@ -174,10 +100,10 @@ async function loadIndex() {
   }
 }
 
-async function loadLaw(path) {
+async function loadLaw(lawId) {
   try {
     selectedLawLoading.value = true;
-    const res = await fetch(path);
+    const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
     if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
     const text = await res.text();
     selectedLaw.value = yaml.load(text);
@@ -192,12 +118,12 @@ async function loadLaw(path) {
   }
 }
 
-function selectLaw(path) {
-  selectedLawPath.value = path;
+function selectLaw(lawId) {
+  selectedLawId.value = lawId;
   selectedArticleNumber.value = null;
   activeAction.value = null;
   lawError.value = null;
-  loadLaw(path);
+  loadLaw(lawId);
 }
 
 function selectArticle(number) {
@@ -255,11 +181,11 @@ loadIndex();
             <rr-list v-else variant="simple">
               <rr-list-item
                 v-for="law in filteredLaws"
-                :key="law.path"
+                :key="law.law_id"
                 size="md"
                 type="button"
-                :selected="law.path === selectedLawPath || undefined"
-                @click="selectLaw(law.path)"
+                :selected="law.law_id === selectedLawId || undefined"
+                @click="selectLaw(law.law_id)"
               >
                 <rr-text-cell>
                   <span slot="text">{{ displayName(law) }}</span>
@@ -300,7 +226,7 @@ loadIndex();
                     <rr-button
                       variant="accent-filled"
                       size="md"
-                      :href="selectedLawPath ? `editor.html?law=${selectedLawPath}` : undefined"
+                      :href="selectedLawId ? `editor.html?law=${selectedLawId}` : undefined"
                     >Bewerk</rr-button>
                   </rr-toolbar-item>
                 </rr-toolbar-end-area>
@@ -359,7 +285,7 @@ loadIndex();
                     <rr-button
                       variant="accent-filled"
                       size="md"
-                      :href="selectedLawPath ? `editor.html?law=${selectedLawPath}` : undefined"
+                      :href="selectedLawId ? `editor.html?law=${selectedLawId}` : undefined"
                     >Bewerk</rr-button>
                   </rr-toolbar-item>
                 </rr-toolbar-end-area>
