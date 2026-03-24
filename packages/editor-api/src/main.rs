@@ -17,32 +17,15 @@ mod state;
 
 use state::{AppState, CorpusState};
 
-fn main() {
-    // Map CORPUS_GIT_TOKEN → CORPUS_AUTH_CENTRAL_TOKEN before the runtime starts
-    // so the corpus crate can resolve the GitHub token via its standard env-var convention.
-    if let Ok(token) = env::var("CORPUS_GIT_TOKEN") {
-        // SAFETY: single-threaded, no runtime yet.
-        unsafe { env::set_var("CORPUS_AUTH_CENTRAL_TOKEN", &token) };
-    }
-
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap_or_else(|e| {
-            eprintln!("failed to build tokio runtime: {e}");
-            std::process::exit(1);
-        })
-        .block_on(async_main());
-}
-
-async fn async_main() {
+#[tokio::main]
+async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
 
-    let corpus_state = init_corpus().await;
+    let corpus_state = init_corpus();
 
     let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
@@ -83,19 +66,18 @@ async fn async_main() {
     }
 }
 
-/// Initialize the corpus registry and load sources.
+/// Initialize the corpus registry and load local sources only.
 ///
-/// Loads local sources synchronously, then attempts to fetch GitHub sources
-/// asynchronously. Falls back to local-only if GitHub fetch fails.
-async fn init_corpus() -> CorpusState {
+/// GitHub sources are skipped — the editor serves only the laws bundled
+/// in the Docker image. This avoids burning GitHub API rate limits on
+/// thousands of files that aren't shown in the UI.
+fn init_corpus() -> CorpusState {
     let manifest_str =
         env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
     let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
         .unwrap_or_else(|_| "corpus-registry.local.yaml".to_string());
-    let auth_str = env::var("CORPUS_AUTH_FILE").unwrap_or_else(|_| "corpus-auth.yaml".to_string());
     let manifest_path = PathBuf::from(&manifest_str);
     let local_path = PathBuf::from(&local_str);
-    let auth_path = PathBuf::from(&auth_str);
 
     let registry = if manifest_path.exists() {
         match regelrecht_corpus::CorpusRegistry::load(&manifest_path, Some(&local_path)) {
@@ -113,30 +95,14 @@ async fn init_corpus() -> CorpusState {
         empty_registry()
     };
 
-    // Try loading all sources (local + GitHub)
-    let auth_file = if auth_path.exists() {
-        Some(auth_path.as_path())
-    } else {
-        None
-    };
-
-    let source_map = match registry.load_all_sources_async(auth_file).await {
+    let source_map = match registry.load_local_sources() {
         Ok(map) => {
-            tracing::info!(laws = map.len(), "loaded corpus laws (local + GitHub)");
+            tracing::info!(laws = map.len(), "loaded corpus laws");
             map
         }
         Err(e) => {
-            tracing::warn!(error = %e, "failed to load all sources, falling back to local-only");
-            match registry.load_local_sources() {
-                Ok(map) => {
-                    tracing::info!(laws = map.len(), "loaded corpus laws (local-only fallback)");
-                    map
-                }
-                Err(e2) => {
-                    tracing::warn!(error = %e2, "failed to load local sources");
-                    regelrecht_corpus::SourceMap::new()
-                }
-            }
+            tracing::warn!(error = %e, "failed to load local sources");
+            regelrecht_corpus::SourceMap::new()
         }
     };
 
