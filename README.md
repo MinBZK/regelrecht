@@ -1,4 +1,4 @@
-# regelrecht-mvp
+# regelrecht
 
 RegelRecht MVP - Machine-readable Dutch law execution engine with a web-based editor.
 

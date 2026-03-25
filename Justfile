@@ -1,4 +1,4 @@
-# Justfile voor regelrecht-mvp
+# Justfile voor regelrecht
 # Gebruik: just <task>
 
 set dotenv-load := true

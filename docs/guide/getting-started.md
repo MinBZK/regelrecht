@@ -10,8 +10,8 @@
 ## Clone and Build
 
 ```bash
-git clone https://github.com/MinBZK/regelrecht-mvp.git
-cd regelrecht-mvp
+git clone https://github.com/MinBZK/regelrecht.git
+cd regelrecht
 ```
 
 ## Quick Check
@@ -64,7 +64,7 @@ just bench        # Run performance benchmarks
 ## Project Structure
 
 ```
-regelrecht-mvp/
+regelrecht/
 ├── packages/
 │   ├── engine/       # Rust execution engine
 │   ├── pipeline/     # PostgreSQL job queue

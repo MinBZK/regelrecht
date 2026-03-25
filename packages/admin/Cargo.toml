@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["MinBZK <noreply@minbzk.nl>"]
 description = "RegelRecht admin UI for viewing pipeline database"
 license = "MIT"
-repository = "https://github.com/MinBZK/regelrecht-mvp"
+repository = "https://github.com/MinBZK/regelrecht"
 
 [lib]
 name = "regelrecht_admin"

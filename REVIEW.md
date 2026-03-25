@@ -2,7 +2,7 @@
 
 ## Project context
 
-regelrecht-mvp makes Dutch law machine-readable and executable. The engine evaluates
+regelrecht makes Dutch law machine-readable and executable. The engine evaluates
 YAML-encoded law to produce legally binding decisions (beschikkingen) that directly
 affect citizens — benefit entitlements, tax calculations, allowances. Errors are not
 just bugs: a wrong operator, misplaced decimal, or broken cross-law reference produces

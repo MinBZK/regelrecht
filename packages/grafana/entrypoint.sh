@@ -68,7 +68,7 @@ spec:
   title: Regelrecht Dashboards
   type: github
   github:
-    url: ${GITHUB_REPO_URL:-https://github.com/MinBZK/regelrecht-mvp}
+    url: ${GITHUB_REPO_URL:-https://github.com/MinBZK/regelrecht}
     branch: ${GITHUB_BRANCH:-main}
     path: packages/grafana/dashboards/
 secure:
