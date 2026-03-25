@@ -684,7 +684,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Cleanup ZAD Deployment
+      - name: Cleanup ZAD deployment and editor container image
         uses: RijksICTGilde/zad-actions/cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
