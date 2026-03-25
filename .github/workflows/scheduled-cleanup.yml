@@ -49,7 +49,7 @@ jobs:
           # Get open PR numbers to avoid deleting active preview images
           OPEN_PRS=$(gh pr list --repo "${ORG}/regelrecht" --state open --json number --jq '.[].number')
 
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
+          for PACKAGE in regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
             echo "Checking stale images for $PACKAGE..."
             gh api --paginate \
               "/orgs/${ORG}/packages/container/${PACKAGE}/versions" \
