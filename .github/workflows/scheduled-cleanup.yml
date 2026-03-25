@@ -24,7 +24,7 @@ jobs:
       actions: write
 
     steps:
-      - name: Cleanup stale PR preview environments
+      - name: Cleanup stale ZAD deployments and GitHub environments
         uses: RijksICTGilde/zad-actions/scheduled-cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -33,14 +33,11 @@ jobs:
           pr-number-pattern: 's/^pr//'
           delete-github-env: true
           delete-github-deployments: true
-          delete-container: true
-          container-org: ${{ github.repository_owner }}
-          container-name: regelrecht-editor
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: ${{ inputs.dry-run || false }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
 
-      - name: Cleanup stale container images for all components
+      - name: Cleanup stale container images
         if: ${{ !(inputs.dry-run || false) }}
         env:
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
@@ -49,7 +46,7 @@ jobs:
           # Get open PR numbers to avoid deleting active preview images
           OPEN_PRS=$(gh pr list --repo "${ORG}/regelrecht" --state open --json number --jq '.[].number')
 
-          for PACKAGE in regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
+          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
             echo "Checking stale images for $PACKAGE..."
             gh api --paginate \
               "/orgs/${ORG}/packages/container/${PACKAGE}/versions" \
