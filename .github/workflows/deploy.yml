@@ -428,7 +428,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Cleanup ZAD deployment
+      - name: Cleanup ZAD deployment and container images
         uses: RijksICTGilde/zad-actions/cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -436,31 +436,20 @@ jobs:
           deployment-name: pr${{ github.event.pull_request.number }}
           delete-github-env: true
           delete-github-deployments: true
+          delete-container: true
+          containers: >-
+            [
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-editor", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-admin", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-harvester-worker", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-enrich-worker", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-lawmaking", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-landing", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-docs", "tag": "pr-${{ github.event.pull_request.number }}"}
+            ]
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
           comment-header: '## Preview Deployment'
-
-      - name: Cleanup container images
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-          PR_TAG: pr-${{ github.event.pull_request.number }}
-          ORG: ${{ github.repository_owner }}
-        run: |
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
-            echo "Deleting ${PACKAGE}:${PR_TAG}..."
-            VERSION_ID=$(gh api --paginate \
-              "/orgs/${ORG}/packages/container/${PACKAGE}/versions" \
-              --jq ".[] | select(.metadata.container.tags | index(\"${PR_TAG}\")) | .id" \
-              2>/dev/null | head -1) || true
-            if [ -n "$VERSION_ID" ]; then
-              gh api --method DELETE \
-                "/orgs/${ORG}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
-                2>/dev/null || true
-              echo "Deleted ${PACKAGE}:${PR_TAG} (version ${VERSION_ID})"
-            else
-              echo "No image found for ${PACKAGE}:${PR_TAG}, skipping"
-            fi
-          done
 
       - name: Prune orphaned SHA-tagged images
         env:
