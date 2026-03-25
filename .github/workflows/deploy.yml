@@ -424,7 +424,7 @@ jobs:
         run: |
           for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
             echo "Deleting ${PACKAGE}:${PR_TAG}..."
-            VERSION_ID=$(gh api \
+            VERSION_ID=$(gh api --paginate \
               "/orgs/${ORG}/packages/container/${PACKAGE}/versions" \
               --jq ".[] | select(.metadata.container.tags | index(\"${PR_TAG}\")) | .id" \
               2>/dev/null | head -1) || true
