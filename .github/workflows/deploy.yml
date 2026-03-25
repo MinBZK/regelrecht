@@ -427,7 +427,7 @@ jobs:
             VERSION_ID=$(gh api \
               "/orgs/${ORG}/packages/container/${PACKAGE}/versions" \
               --jq ".[] | select(.metadata.container.tags | index(\"${PR_TAG}\")) | .id" \
-              2>/dev/null) || true
+              2>/dev/null | head -1) || true
             if [ -n "$VERSION_ID" ]; then
               gh api --method DELETE \
                 "/orgs/${ORG}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
