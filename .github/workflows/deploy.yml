@@ -11,7 +11,7 @@ permissions: {}
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: minbzk/regelrecht-mvp
+  IMAGE_NAME: minbzk/regelrecht-editor
   IMAGE_NAME_ADMIN: minbzk/regelrecht-admin
   IMAGE_NAME_HARVESTER_WORKER: minbzk/regelrecht-harvester-worker
   IMAGE_NAME_ENRICH_WORKER: minbzk/regelrecht-enrich-worker
@@ -694,7 +694,7 @@ jobs:
           delete-github-deployments: true
           delete-container: true
           container-org: ${{ github.repository_owner }}
-          container-name: ${{ github.event.repository.name }}
+          container-name: regelrecht-editor
           container-tag: pr-${{ github.event.pull_request.number }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
@@ -788,7 +788,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
-          for PACKAGE in ${{ github.event.repository.name }} regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-grafana regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
+          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-grafana regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
             echo "Pruning sha-only images for $PACKAGE..."
             gh api --paginate \
               "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions" \

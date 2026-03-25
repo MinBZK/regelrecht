@@ -35,7 +35,7 @@ jobs:
           delete-github-deployments: true
           delete-container: true
           container-org: ${{ github.repository_owner }}
-          container-name: regelrecht-mvp
+          container-name: regelrecht-editor
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: ${{ inputs.dry-run || false }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}

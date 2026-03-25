@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**regelrecht-mvp** is an MVP for machine-readable Dutch law execution. Components:
+**regelrecht** is an MVP for machine-readable Dutch law execution. Components:
 - `packages/engine/` - Rust law execution engine
 - `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
@@ -84,7 +84,7 @@ git worktree add .worktrees/feature-branch feature-branch
 ### Law Format
 
 Laws are stored as article-based YAML files conforming to the official JSON schema:
-- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json`
+- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json`
 
 ### Cross-Law References
 
@@ -157,7 +157,7 @@ CI runs via `.github/workflows/ci.yml`.
 
 - Base: `nginxinc/nginx-unprivileged:alpine`
 - Port: 8000 (required by RIG liveprobe)
-- Registry: `ghcr.io/minbzk/regelrecht-mvp`
+- Registry: `ghcr.io/minbzk/regelrecht-editor`
 
 ### RIG API
 
@@ -187,7 +187,7 @@ curl -H "X-API-Key: $RIG_API_KEY" \
 # Upsert deployment
 curl -X POST -H "X-API-Key: $RIG_API_KEY" -H "Content-Type: application/json" \
   "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/projects/regel-k4c/:upsert-deployment" \
-  -d '{"deploymentName": "pr73", "components": [{"reference": "editor", "image": "ghcr.io/minbzk/regelrecht-mvp:pr-73"}]}'
+  -d '{"deploymentName": "pr73", "components": [{"reference": "editor", "image": "ghcr.io/minbzk/regelrecht-editor:pr-73"}]}'
 
 # Delete deployment
 curl -X DELETE -H "X-API-Key: $RIG_API_KEY" \
