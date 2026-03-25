@@ -684,7 +684,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Cleanup ZAD deployment and editor container image
+      - name: Cleanup ZAD deployment
         uses: RijksICTGilde/zad-actions/cleanup@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -692,6 +692,16 @@ jobs:
           deployment-name: pr${{ github.event.pull_request.number }}
           delete-github-env: true
           delete-github-deployments: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-admin-token: ${{ secrets.ADMIN_TOKEN }}
+          comment-header: '## Preview Deployment'
+
+      - name: Cleanup editor container image
+        uses: RijksICTGilde/zad-actions/cleanup@v3
+        with:
+          api-key: ${{ secrets.RIG_API_KEY }}
+          project-id: ${{ env.ZAD_PROJECT }}
+          deployment-name: pr${{ github.event.pull_request.number }}
           delete-container: true
           container-org: ${{ github.repository_owner }}
           container-name: regelrecht-editor
