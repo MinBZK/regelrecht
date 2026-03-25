@@ -59,6 +59,9 @@ jobs:
   # Editor always builds (not conditional on changes)
   build:
     if: github.event.action != 'closed'
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-editor
@@ -68,6 +71,9 @@ jobs:
   build-admin:
     needs: changes
     if: github.event.action != 'closed' && needs.changes.outputs.admin == 'true'
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-admin
@@ -83,6 +89,9 @@ jobs:
         (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
         needs.changes.outputs.harvester-worker == 'true'
       )
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-harvester-worker
@@ -98,6 +107,9 @@ jobs:
         (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
         needs.changes.outputs.enrich-worker == 'true'
       )
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-enrich-worker
@@ -110,6 +122,9 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
       needs.changes.outputs.grafana == 'true'
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-grafana
@@ -126,6 +141,9 @@ jobs:
         (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
         needs.changes.outputs.lawmaking == 'true'
       )
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-lawmaking
@@ -141,6 +159,9 @@ jobs:
         (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
         needs.changes.outputs.landing == 'true'
       )
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-landing
@@ -156,6 +177,9 @@ jobs:
         (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
         needs.changes.outputs.docs == 'true'
       )
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-image.yml
     with:
       image-name: minbzk/regelrecht-docs

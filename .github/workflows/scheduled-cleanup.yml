@@ -39,3 +39,29 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: ${{ inputs.dry-run || false }}
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
+
+      - name: Cleanup stale container images for all components
+        if: ${{ !(inputs.dry-run || false) }}
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+        run: |
+          # Get open PR numbers to avoid deleting active preview images
+          OPEN_PRS=$(gh pr list --repo "${ORG}/regelrecht" --state open --json number --jq '.[].number')
+
+          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
+            echo "Checking stale images for $PACKAGE..."
+            gh api --paginate \
+              "/orgs/${ORG}/packages/container/${PACKAGE}/versions" \
+              --jq '.[] | select(.metadata.container.tags | length > 0) | {id, tags: .metadata.container.tags}' \
+              2>/dev/null | jq -r 'select(.tags | any(startswith("pr-"))) | "\(.id) \(.tags | map(select(startswith("pr-"))) | .[0])"' \
+              2>/dev/null | while read -r VERSION_ID TAG; do
+                PR_NUM=$(echo "$TAG" | sed 's/pr-//')
+                if ! echo "$OPEN_PRS" | grep -qw "$PR_NUM"; then
+                  echo "Deleting stale $PACKAGE:$TAG (version $VERSION_ID)"
+                  gh api --method DELETE \
+                    "/orgs/${ORG}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
+                    2>/dev/null || true
+                fi
+              done
+          done

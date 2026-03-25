@@ -18,9 +18,6 @@ on:
         required: false
         type: string
         default: ''
-    secrets:
-      GITHUB_TOKEN:
-        required: true
     outputs:
       image-tag:
         description: Docker image tags
