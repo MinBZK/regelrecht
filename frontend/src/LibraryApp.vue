@@ -1,10 +1,14 @@
 <script setup>
 import { ref, computed, shallowRef } from 'vue';
+import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
+
+const route = useRoute();
+const router = useRouter();
 
 const laws = ref([]);
 const favorites = ref(null);
@@ -86,13 +90,19 @@ async function loadIndex() {
 
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
 
-    let startList = laws.value;
-    if (favorites.value) {
-      const favList = laws.value.filter(l => favorites.value.has(l.law_id));
-      if (favList.length > 0) startList = favList;
-    }
-    if (startList.length > 0 && !selectedLawId.value) {
-      selectLaw(startList[0].law_id);
+    // Only auto-select if no law specified in route
+    if (!route.params.lawId) {
+      let startList = laws.value;
+      if (favorites.value) {
+        const favList = laws.value.filter(l => favorites.value.has(l.law_id));
+        if (favList.length > 0) startList = favList;
+      }
+      if (startList.length > 0) {
+        const firstLawId = startList[0].law_id;
+        selectedLawId.value = firstLawId;
+        loadLaw(firstLawId);
+        router.replace({ name: 'library', params: { lawId: firstLawId } });
+      }
     }
   } catch (e) {
     indexError.value = e;
@@ -109,7 +119,13 @@ async function loadLaw(lawId) {
     const text = await res.text();
     selectedLaw.value = yaml.load(text);
     if (articles.value.length > 0) {
-      selectedArticleNumber.value = String(articles.value[0].number);
+      // Use article from route if valid, otherwise select first
+      const routeArticle = route.params.articleNumber;
+      if (routeArticle && articles.value.some(a => String(a.number) === String(routeArticle))) {
+        selectedArticleNumber.value = String(routeArticle);
+      } else {
+        selectedArticleNumber.value = String(articles.value[0].number);
+      }
     }
   } catch (e) {
     selectedLaw.value = null;
@@ -120,18 +136,53 @@ async function loadLaw(lawId) {
 }
 
 function selectLaw(lawId) {
+  if (lawId === selectedLawId.value) return;
   selectedLawId.value = lawId;
   selectedArticleNumber.value = null;
   activeAction.value = null;
   lawError.value = null;
+  router.push({ name: 'library', params: { lawId } });
   loadLaw(lawId);
 }
 
 function selectArticle(number) {
-  selectedArticleNumber.value = String(number);
+  const articleStr = String(number);
+  if (articleStr === selectedArticleNumber.value) return;
+  selectedArticleNumber.value = articleStr;
   activeAction.value = null;
+  router.push({ name: 'library', params: { lawId: selectedLawId.value, articleNumber: articleStr } });
 }
 
+// Handle browser back/forward navigation
+onBeforeRouteUpdate((to) => {
+  const newLawId = to.params.lawId;
+  const newArticle = to.params.articleNumber;
+
+  if (newLawId && newLawId !== selectedLawId.value) {
+    selectedLawId.value = newLawId;
+    selectedArticleNumber.value = null;
+    activeAction.value = null;
+    lawError.value = null;
+    loadLaw(newLawId);
+  } else if (newLawId === selectedLawId.value) {
+    if (newArticle) {
+      const articleStr = String(newArticle);
+      if (articleStr !== selectedArticleNumber.value) {
+        selectedArticleNumber.value = articleStr;
+        activeAction.value = null;
+      }
+    } else if (articles.value.length > 0) {
+      selectedArticleNumber.value = String(articles.value[0].number);
+      activeAction.value = null;
+    }
+  }
+});
+
+// Initial load from route
+if (route.params.lawId) {
+  selectedLawId.value = route.params.lawId;
+  loadLaw(route.params.lawId);
+}
 loadIndex();
 </script>
 

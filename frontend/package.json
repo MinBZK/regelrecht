@@ -12,7 +12,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@minbzk/storybook": "^0.8.14"
+    "@minbzk/storybook": "^0.8.14",
+    "vue-router": "^5.0.4"
   },
   "overrides": {
     "brace-expansion": "^5.0.5"
