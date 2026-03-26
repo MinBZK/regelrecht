@@ -1,6 +1,6 @@
-/* Rijksoverheid Fonts */
+/* Rijksoverheid Fonts - registered as RijksSansVF to align with design tokens */
 @font-face {
-  font-family: 'RijksoverheidSans';
+  font-family: 'RijksSansVF';
   src: url('/fonts/ROsanswebtextregular.woff') format('woff');
   font-weight: 400;
   font-style: normal;
@@ -8,7 +8,7 @@
 }
 
 @font-face {
-  font-family: 'RijksoverheidSans';
+  font-family: 'RijksSansVF';
   src: url('/fonts/ROsanswebtextbold.woff') format('woff');
   font-weight: 700;
   font-style: normal;
@@ -16,7 +16,7 @@
 }
 
 @font-face {
-  font-family: 'RijksoverheidSans';
+  font-family: 'RijksSansVF';
   src: url('/fonts/ROsanswebtextitalic.woff') format('woff');
   font-weight: 400;
   font-style: italic;
@@ -48,8 +48,8 @@
 }
 
 :root {
-  /* Font family override */
-  --rr-font-family-sans: 'RijksoverheidSans', system-ui, -apple-system, sans-serif;
+  /* Font family - aligned with @minbzk/storybook design tokens */
+  --rr-font-family-sans: 'RijksSansVF', system-ui, sans-serif;
   --rr-font-family-serif: 'RijksoverheidSerif', Georgia, serif;
 
   /* Map RegelRecht design tokens to VitePress CSS variables */
@@ -61,7 +61,7 @@
   --vp-c-brand-soft: rgba(21, 66, 115, 0.14);
 
   /* Typography */
-  --vp-font-family-base: 'RijksoverheidSans', system-ui, -apple-system, sans-serif;
+  --vp-font-family-base: 'RijksSansVF', system-ui, sans-serif;
   --vp-font-family-mono: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, Consolas, monospace;
 
   /* Neutral palette → VitePress surfaces */

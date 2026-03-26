@@ -2,11 +2,13 @@
  * Rijksoverheid Webfonts
  * Official fonts for Dutch Government (Rijksoverheid) websites
  * Source: rijkshuisstijl.nl
+ *
+ * Registered as 'RijksSansVF' to align with @minbzk/storybook design tokens.
  */
 
 /* Rijksoverheid Sans - Text variant (for body text) */
 @font-face {
-  font-family: 'RijksoverheidSans';
+  font-family: 'RijksSansVF';
   src: url('./ROsanswebtextregular.woff') format('woff');
   font-weight: 400;
   font-style: normal;
@@ -14,7 +16,7 @@
 }
 
 @font-face {
-  font-family: 'RijksoverheidSans';
+  font-family: 'RijksSansVF';
   src: url('./ROsanswebtextbold.woff') format('woff');
   font-weight: 700;
   font-style: normal;
@@ -22,7 +24,7 @@
 }
 
 @font-face {
-  font-family: 'RijksoverheidSans';
+  font-family: 'RijksSansVF';
   src: url('./ROsanswebtextitalic.woff') format('woff');
   font-weight: 400;
   font-style: italic;
@@ -54,8 +56,8 @@
   font-display: swap;
 }
 
-/* CSS Custom Property for easy usage */
+/* CSS Custom Properties - aligned with @minbzk/storybook design tokens */
 :root {
-  --rr-font-family-sans: 'RijksoverheidSans', system-ui, -apple-system, sans-serif;
+  --rr-font-family-sans: 'RijksSansVF', system-ui, sans-serif;
   --rr-font-family-serif: 'RijksoverheidSerif', Georgia, serif;
 }
