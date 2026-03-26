@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@minbzk/storybook": "^0.8.12"
+    "@minbzk/storybook": "^0.8.14"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.5",

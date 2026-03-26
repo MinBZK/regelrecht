@@ -95,191 +95,175 @@ function selectArticle(number) {
 </script>
 
 <template>
-  <rr-page header-sticky>
-    <!-- Header: Main Toolbar -->
-    <rr-toolbar slot="header" size="md">
-      <rr-toolbar-start-area>
-        <rr-toolbar-item>
-          <rr-tab-bar size="md">
-            <rr-tab-bar-item href="index.html">Bibliotheek</rr-tab-bar-item>
-            <rr-tab-bar-item selected>Editor</rr-tab-bar-item>
-          </rr-tab-bar>
-        </rr-toolbar-item>
-      </rr-toolbar-start-area>
-      <rr-toolbar-center-area>
-        <rr-toolbar-item>
-          <rr-search-field size="md" placeholder="Zoeken"></rr-search-field>
-        </rr-toolbar-item>
-      </rr-toolbar-center-area>
-      <rr-toolbar-end-area>
-        <rr-toolbar-item>
-          <rr-icon-button variant="neutral-tinted" size="m" title="Notificaties">
-            <img slot="__icon" src="/assets/icons/bell.svg" alt="Notificaties" width="24" height="24">
-          </rr-icon-button>
-        </rr-toolbar-item>
-        <rr-toolbar-item>
-          <rr-button-bar size="md">
-            <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
-            <rr-icon-button variant="neutral-tinted" size="m" has-menu title="Account">
-              <img slot="__icon" src="/assets/icons/person.svg" alt="Account" width="24" height="24">
-            </rr-icon-button>
-          </rr-button-bar>
-        </rr-toolbar-item>
-      </rr-toolbar-end-area>
-    </rr-toolbar>
-
-    <!-- Error state -->
-    <div v-if="error" style="padding: 32px; color: #c00; text-align: center;">
-      Kon de wet niet laden: {{ error.message }}
-    </div>
-
-    <!-- Document Tab Bar -->
-    <rr-document-tab-bar v-if="!loading && !error">
-      <rr-document-tab-bar-item
-        v-for="article in articles"
-        :key="article.number"
-        :subtitle="lawName"
-        :selected="String(article.number) === String(selectedArticleNumber) || undefined"
-        has-dismiss-button
-        @click="selectArticle(article.number)"
-      >
-        Artikel {{ article.number }}
-      </rr-document-tab-bar-item>
-    </rr-document-tab-bar>
-
-    <!-- Main Editor: Three-pane layout -->
-    <div class="editor-three-pane">
-
-      <!-- Left Pane: Text -->
-      <div class="editor-pane editor-pane--text">
-        <rr-page header-sticky>
-          <rr-toolbar slot="header" size="md">
+  <rr-app-view>
+    <rr-bar-split-view>
+      <!-- Primary Bar: App Toolbar + Document Tabs -->
+      <rr-split-view-pane slot="primary-bar">
+        <rr-container>
+          <rr-toolbar size="md">
             <rr-toolbar-start-area>
               <rr-toolbar-item>
-                <rr-button variant="neutral-tinted" size="md">
-                  Tekst
-                  <img src="/assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
-                </rr-button>
+                <rr-tab-bar size="md">
+                  <rr-tab-bar-item href="index.html">Bibliotheek</rr-tab-bar-item>
+                  <rr-tab-bar-item selected>Editor</rr-tab-bar-item>
+                </rr-tab-bar>
               </rr-toolbar-item>
             </rr-toolbar-start-area>
+            <rr-toolbar-center-area>
+              <rr-toolbar-item>
+                <rr-search-field size="md" placeholder="Zoeken"></rr-search-field>
+              </rr-toolbar-item>
+            </rr-toolbar-center-area>
             <rr-toolbar-end-area>
               <rr-toolbar-item>
-                <rr-segmented-control size="md" content-type="icons">
-                  <rr-segmented-control-item value="bold" title="Bold">
-                    <img src="/assets/icons/bold.svg" alt="Bold" width="20" height="20">
-                  </rr-segmented-control-item>
-                  <rr-segmented-control-item value="italic" title="Italic">
-                    <img src="/assets/icons/italic.svg" alt="Italic" width="20" height="20">
-                  </rr-segmented-control-item>
-                </rr-segmented-control>
+                <rr-icon-button variant="neutral-tinted" size="m" title="Notificaties">
+                  <img slot="__icon" src="/assets/icons/bell.svg" alt="Notificaties" width="24" height="24">
+                </rr-icon-button>
               </rr-toolbar-item>
               <rr-toolbar-item>
-                <rr-segmented-control size="md" content-type="icons">
-                  <rr-segmented-control-item value="hr" title="Horizontale lijn">
-                    <img src="/assets/icons/minus.svg" alt="Lijn" width="20" height="20">
-                  </rr-segmented-control-item>
-                  <rr-segmented-control-item value="ul" title="Bullet list">
-                    <img src="/assets/icons/bullet-list.svg" alt="Bullet list" width="20" height="20">
-                  </rr-segmented-control-item>
-                  <rr-segmented-control-item value="ol" title="Numbered list">
-                    <img src="/assets/icons/numbered-list.svg" alt="Numbered list" width="20" height="20">
-                  </rr-segmented-control-item>
-                </rr-segmented-control>
+                <rr-button-bar size="md">
+                  <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="m" has-menu title="Account">
+                    <img slot="__icon" src="/assets/icons/person.svg" alt="Account" width="24" height="24">
+                  </rr-icon-button>
+                </rr-button-bar>
               </rr-toolbar-item>
             </rr-toolbar-end-area>
           </rr-toolbar>
 
-          <rr-simple-section>
-            <ArticleText :article="selectedArticle" />
-          </rr-simple-section>
-        </rr-page>
-      </div>
-
-      <!-- Middle Pane: YAML -->
-      <div class="editor-pane editor-pane--yaml">
-        <rr-page header-sticky>
-          <rr-toolbar slot="header" size="md">
-            <rr-toolbar-start-area>
-              <rr-toolbar-item>
-                <span class="editor-pane-title">YAML</span>
-              </rr-toolbar-item>
-            </rr-toolbar-start-area>
-            <rr-toolbar-end-area>
-              <rr-toolbar-item v-if="parseError">
-                <span class="editor-parse-error">YAML parse error</span>
-              </rr-toolbar-item>
-            </rr-toolbar-end-area>
-          </rr-toolbar>
-
-          <div class="editor-yaml-wrap">
-            <textarea
-              :value="yamlSource"
-              @input="onYamlInput"
-              class="editor-yaml-textarea"
-              spellcheck="false"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-            ></textarea>
-            <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+          <!-- Error state -->
+          <div v-if="error" style="padding: 32px; color: #c00; text-align: center;">
+            Kon de wet niet laden: {{ error.message }}
           </div>
-        </rr-page>
-      </div>
 
-      <!-- Right Pane: Machine Readable -->
-      <div class="editor-pane editor-pane--machine">
-        <rr-page header-sticky>
-          <rr-toolbar slot="header" size="md">
-            <rr-toolbar-start-area>
-              <rr-toolbar-item>
-                <span class="editor-pane-title">Machine Readable</span>
-              </rr-toolbar-item>
-            </rr-toolbar-start-area>
-          </rr-toolbar>
+          <!-- Document Tab Bar -->
+          <rr-document-tab-bar v-if="!loading && !error">
+            <rr-document-tab-bar-item
+              v-for="article in articles"
+              :key="article.number"
+              :subtitle="lawName"
+              :selected="String(article.number) === String(selectedArticleNumber) || undefined"
+              has-dismiss-button
+              @click="selectArticle(article.number)"
+            >
+              Artikel {{ article.number }}
+            </rr-document-tab-bar-item>
+          </rr-document-tab-bar>
+        </rr-container>
+      </rr-split-view-pane>
 
-          <rr-simple-section>
-            <MachineReadable
-              :article="editedArticle"
-              :editable="true"
-              @open-edit="activeEditItem = $event"
-              @open-action="activeAction = $event"
-            />
-          </rr-simple-section>
-        </rr-page>
-      </div>
+      <!-- Main: Navigation Split View -->
+      <rr-split-view-pane slot="main">
+        <rr-navigation-split-view>
 
-    </div>
-  </rr-page>
+          <!-- Sidebar: Text -->
+          <rr-split-view-pane slot="sidebar" has-content>
+            <rr-page header-sticky>
+              <rr-toolbar slot="header" size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <rr-button variant="neutral-tinted" size="md">
+                      Tekst
+                      <img src="/assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
+                    </rr-button>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+                <rr-toolbar-end-area>
+                  <rr-toolbar-item>
+                    <rr-segmented-control size="md" content-type="icons">
+                      <rr-segmented-control-item value="bold" title="Bold">
+                        <img src="/assets/icons/bold.svg" alt="Bold" width="20" height="20">
+                      </rr-segmented-control-item>
+                      <rr-segmented-control-item value="italic" title="Italic">
+                        <img src="/assets/icons/italic.svg" alt="Italic" width="20" height="20">
+                      </rr-segmented-control-item>
+                    </rr-segmented-control>
+                  </rr-toolbar-item>
+                  <rr-toolbar-item>
+                    <rr-segmented-control size="md" content-type="icons">
+                      <rr-segmented-control-item value="hr" title="Horizontale lijn">
+                        <img src="/assets/icons/minus.svg" alt="Lijn" width="20" height="20">
+                      </rr-segmented-control-item>
+                      <rr-segmented-control-item value="ul" title="Bullet list">
+                        <img src="/assets/icons/bullet-list.svg" alt="Bullet list" width="20" height="20">
+                      </rr-segmented-control-item>
+                      <rr-segmented-control-item value="ol" title="Numbered list">
+                        <img src="/assets/icons/numbered-list.svg" alt="Numbered list" width="20" height="20">
+                      </rr-segmented-control-item>
+                    </rr-segmented-control>
+                  </rr-toolbar-item>
+                </rr-toolbar-end-area>
+              </rr-toolbar>
+
+              <rr-simple-section>
+                <ArticleText :article="selectedArticle" />
+              </rr-simple-section>
+            </rr-page>
+          </rr-split-view-pane>
+
+          <!-- Secondary Sidebar: YAML -->
+          <rr-split-view-pane slot="secondary-sidebar" has-content>
+            <rr-page header-sticky>
+              <rr-toolbar slot="header" size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <span class="editor-pane-title">YAML</span>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+                <rr-toolbar-end-area>
+                  <rr-toolbar-item v-if="parseError">
+                    <span class="editor-parse-error">YAML parse error</span>
+                  </rr-toolbar-item>
+                </rr-toolbar-end-area>
+              </rr-toolbar>
+
+              <div class="editor-yaml-wrap">
+                <textarea
+                  :value="yamlSource"
+                  @input="onYamlInput"
+                  class="editor-yaml-textarea"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                ></textarea>
+                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+              </div>
+            </rr-page>
+          </rr-split-view-pane>
+
+          <!-- Main: Machine Readable -->
+          <rr-split-view-pane slot="main" has-content>
+            <rr-page header-sticky>
+              <rr-toolbar slot="header" size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <span class="editor-pane-title">Machine Readable</span>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+              </rr-toolbar>
+
+              <rr-simple-section>
+                <MachineReadable
+                  :article="editedArticle"
+                  :editable="true"
+                  @open-edit="activeEditItem = $event"
+                  @open-action="activeAction = $event"
+                />
+              </rr-simple-section>
+            </rr-page>
+          </rr-split-view-pane>
+
+        </rr-navigation-split-view>
+      </rr-split-view-pane>
+    </rr-bar-split-view>
+  </rr-app-view>
 
   <ActionSheet :action="activeAction" :article="editedArticle" @close="activeAction = null" />
   <EditSheet :item="activeEditItem" @save="handleSave" @close="activeEditItem = null" />
 </template>
 
 <style>
-.editor-three-pane {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  height: calc(100vh - 96px);
-  min-height: 0;
-}
-
-.editor-pane {
-  overflow-y: auto;
-  min-width: 0;
-  border-right: 1px solid var(--semantics-dividers-color, #E0E3E8);
-}
-.editor-pane:last-child {
-  border-right: none;
-}
-
-.editor-pane--text {
-  background: #F4F6F9;
-}
-
-.editor-pane--yaml {
-  background: #1e1e2e;
-}
-
 .editor-pane-title {
   font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
   font-weight: 550;
