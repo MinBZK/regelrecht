@@ -111,11 +111,15 @@ async function loadIndex() {
   }
 }
 
+let loadLawGeneration = 0;
+
 async function loadLaw(lawId) {
+  const gen = ++loadLawGeneration;
   try {
     selectedLawLoading.value = true;
     const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
     if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+    if (gen !== loadLawGeneration) return; // stale response, discard
     const text = await res.text();
     selectedLaw.value = yaml.load(text);
     if (articles.value.length > 0) {
@@ -125,13 +129,20 @@ async function loadLaw(lawId) {
         selectedArticleNumber.value = String(routeArticle);
       } else {
         selectedArticleNumber.value = String(articles.value[0].number);
+        // Correct URL if the route had an invalid article number
+        if (routeArticle) {
+          router.replace({ name: 'library', params: { lawId, articleNumber: selectedArticleNumber.value } });
+        }
       }
     }
   } catch (e) {
+    if (gen !== loadLawGeneration) return;
     selectedLaw.value = null;
     lawError.value = e;
   } finally {
-    selectedLawLoading.value = false;
+    if (gen === loadLawGeneration) {
+      selectedLawLoading.value = false;
+    }
   }
 }
 
@@ -150,7 +161,7 @@ function selectArticle(number) {
   if (articleStr === selectedArticleNumber.value) return;
   selectedArticleNumber.value = articleStr;
   activeAction.value = null;
-  router.push({ name: 'library', params: { lawId: selectedLawId.value, articleNumber: articleStr } });
+  router.replace({ name: 'library', params: { lawId: selectedLawId.value, articleNumber: articleStr } });
 }
 
 // Handle browser back/forward navigation
@@ -279,7 +290,7 @@ loadIndex();
                     </rr-toolbar-start-area>
                     <rr-toolbar-end-area>
                       <rr-toolbar-item>
-                        <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
+                        <a v-if="selectedLawId" :href="`editor.html?law=${encodeURIComponent(selectedLawId)}`">
                           <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
                         </a>
                         <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
@@ -336,7 +347,7 @@ loadIndex();
                   </rr-toolbar-start-area>
                   <rr-toolbar-end-area>
                     <rr-toolbar-item>
-                      <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
+                      <a v-if="selectedLawId" :href="`editor.html?law=${encodeURIComponent(selectedLawId)}`">
                         <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
                       </a>
                       <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
