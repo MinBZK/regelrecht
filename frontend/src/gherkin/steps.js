@@ -109,7 +109,10 @@ export function createStepDefinitions({ loadDependency }) {
       execute: async (ctx, engine, match) => {
         const outputName = match[1];
         const lawId = match[2];
-        const date = ctx.calculationDate || '2025-01-01';
+        if (!ctx.calculationDate) {
+          throw new Error('No calculation date set. Add: Given the calculation date is "YYYY-MM-DD"');
+        }
+        const date = ctx.calculationDate;
 
         try {
           ctx.result = engine.execute(lawId, outputName, ctx.parameters, date);
