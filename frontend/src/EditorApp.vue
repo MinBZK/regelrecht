@@ -131,11 +131,6 @@ function selectArticle(number) {
             </rr-toolbar-end-area>
           </rr-toolbar>
 
-          <!-- Error state -->
-          <div v-if="error" style="padding: 32px; color: #c00; text-align: center;">
-            Kon de wet niet laden: {{ error.message }}
-          </div>
-
           <!-- Document Tab Bar -->
           <rr-document-tab-bar v-if="!loading && !error">
             <rr-document-tab-bar-item
@@ -154,7 +149,12 @@ function selectArticle(number) {
 
       <!-- Main: Navigation Split View -->
       <rr-split-view-pane slot="main">
-        <rr-navigation-split-view>
+        <!-- Error state -->
+        <div v-if="error" style="padding: 32px; color: #c00; text-align: center;">
+          Kon de wet niet laden: {{ error.message }}
+        </div>
+
+        <rr-navigation-split-view v-else>
 
           <!-- Sidebar: Text -->
           <rr-split-view-pane slot="sidebar" has-content>
