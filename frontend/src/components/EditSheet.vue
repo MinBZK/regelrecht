@@ -100,7 +100,7 @@ function save() {
       if (sourceOutput) data.source.output = sourceOutput;
       if (item.data?.source?.parameters) data.source.parameters = item.data.source.parameters;
     }
-    if (item.data?.type_spec) data.type_spec = item.data.type_spec;
+    if (type === 'amount' && item.data?.type_spec) data.type_spec = item.data.type_spec;
     if (s === 'input') {
       emit('save', { section: 'input', index: item.index, data });
     } else {
@@ -110,7 +110,7 @@ function save() {
     const { name, type } = values.value;
     if (!name.trim()) return;
     const data = { name: name.trim(), type };
-    if (item.data?.type_spec) data.type_spec = item.data.type_spec;
+    if (type === 'amount' && item.data?.type_spec) data.type_spec = item.data.type_spec;
     if (s === 'output') {
       emit('save', { section: 'output', index: item.index, data });
     } else {
