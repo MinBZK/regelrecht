@@ -66,7 +66,23 @@ jobs:
             Read `REVIEW.md` for the project context, review dimensions, severity scale, and
             skip rules. Follow those guidelines strictly.
 
-            Review the PR diff. Only comment on changed lines.
+            ## CRITICAL SCOPE RULE
+
+            **ONLY review lines that were actually added or modified in this PR's diff.**
+
+            You MUST NOT comment on:
+            - Pre-existing code that was not changed in this PR
+            - Context lines shown in the diff that were not added/modified (lines without + prefix)
+            - Issues in unchanged files or unchanged sections of changed files
+            - Pre-existing patterns, naming, style, or technical debt in surrounding code
+
+            You may read full files for context to understand the changes, but every single
+            finding you report MUST point to a line that was added or modified in the diff.
+            If a line was not changed by this PR, it is OUT OF SCOPE, no matter how wrong it looks.
+
+            Before submitting each finding, verify: "Was this line actually changed in the PR diff?"
+            If the answer is no, drop the finding.
+
             Skip dimensions that have no findings. Be precise and actionable — no "consider"
             or "you might want to" comments.
 
