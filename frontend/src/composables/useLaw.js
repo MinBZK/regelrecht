@@ -4,7 +4,7 @@ import yaml from 'js-yaml';
 export function useLaw(lawParam) {
   if (!lawParam) {
     const params = new URLSearchParams(window.location.search);
-    lawParam = params.get('law') || 'wet_op_de_zorgtoeslag';
+    lawParam = params.get('law') || 'zorgtoeslagwet';
   }
   // If the parameter looks like a URL, fetch directly; otherwise use the API.
   const yamlUrl = (lawParam.startsWith('/') || lawParam.startsWith('http'))

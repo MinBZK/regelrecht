@@ -224,11 +224,10 @@ loadIndex();
                 </rr-toolbar-start-area>
                 <rr-toolbar-end-area>
                   <rr-toolbar-item>
-                    <rr-button
-                      variant="accent-filled"
-                      size="md"
-                      :href="selectedLawId ? `editor.html?law=${selectedLawId}` : undefined"
-                    >Bewerk</rr-button>
+                    <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
+                      <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
+                    </a>
+                    <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
                   </rr-toolbar-item>
                 </rr-toolbar-end-area>
               </rr-toolbar>
@@ -270,28 +269,25 @@ loadIndex();
             container="sm"
             toolbar="custom"
           >
-            <div slot="toolbar-start">
-              <rr-toolbar size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-segmented-control size="md" :value="detailView" @change="detailView = $event.detail.value">
-                      <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
-                      <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
-                      <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
-                    </rr-segmented-control>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-                <rr-toolbar-end-area>
-                  <rr-toolbar-item>
-                    <rr-button
-                      variant="accent-filled"
-                      size="md"
-                      :href="selectedLawId ? `editor.html?law=${selectedLawId}` : undefined"
-                    >Bewerk</rr-button>
-                  </rr-toolbar-item>
-                </rr-toolbar-end-area>
-              </rr-toolbar>
-            </div>
+            <rr-toolbar slot="toolbar-start" size="md">
+              <rr-toolbar-start-area>
+                <rr-toolbar-item>
+                  <rr-segmented-control size="md" :value="detailView" @change="detailView = $event.detail.value">
+                    <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
+                    <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
+                    <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                  </rr-segmented-control>
+                </rr-toolbar-item>
+              </rr-toolbar-start-area>
+              <rr-toolbar-end-area>
+                <rr-toolbar-item>
+                  <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
+                    <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
+                  </a>
+                  <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
+                </rr-toolbar-item>
+              </rr-toolbar-end-area>
+            </rr-toolbar>
           </rr-top-title-bar>
 
           <rr-simple-section container="sm">
