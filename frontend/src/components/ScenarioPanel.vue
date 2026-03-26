@@ -34,15 +34,11 @@ watch(
   async ([yaml, isReady]) => {
     if (!isReady || !yaml) return;
     const engine = getEngine();
-    try {
-      // Unload then reload to pick up edits
-      if (engine.hasLaw(props.lawId)) {
-        engine.unloadLaw(props.lawId);
-      }
-      engine.loadLaw(yaml);
-    } catch (e) {
-      // Ignore load errors (e.g., duplicate)
+    // Unload then reload to pick up edits (replace semantics)
+    if (engine.hasLaw(props.lawId)) {
+      engine.unloadLaw(props.lawId);
     }
+    engine.loadLaw(yaml);
   },
   { immediate: true },
 );
@@ -61,15 +57,6 @@ async function runScenarios() {
 
   try {
     const engine = getEngine();
-
-    // Reload current law to pick up edits
-    if (props.lawYaml) {
-      if (engine.hasLaw(props.lawId)) {
-        engine.unloadLaw(props.lawId);
-      }
-      engine.loadLaw(props.lawYaml);
-    }
-
     const parsed = parseFeature(featureText.value);
     results.value = await runFeature(parsed, engine, { loadDependency });
   } catch (e) {
@@ -161,7 +148,7 @@ function stepIcon(status) {
         class="scenario-result"
       >
         <div class="scenario-result-header" :class="`scenario-result--${scenario.status}`">
-          <span class="scenario-result-icon">{{ scenario.status === 'passed' ? '\u25CF' : '\u25CF' }}</span>
+          <span class="scenario-result-icon">&#x25CF;</span>
           {{ scenario.name }}
           <span class="scenario-result-badge">{{ scenario.status.toUpperCase() }}</span>
         </div>

@@ -3,7 +3,7 @@
  *
  * Provides the engine and helpers for loading laws and dependencies.
  */
-import { ref, shallowRef } from 'vue';
+import { ref } from 'vue';
 
 let engineInstance = null;
 let initPromise = null;

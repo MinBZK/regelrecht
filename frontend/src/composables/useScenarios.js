@@ -57,7 +57,7 @@ export function useScenarios(lawId) {
   watch(lawId, () => {
     selectedScenario.value = null;
     featureText.value = '';
-    fetchScenarios();
+    fetchScenarios().catch(() => {});
   }, { immediate: true });
 
   return {
