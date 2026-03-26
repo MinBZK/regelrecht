@@ -165,14 +165,14 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
             <rr-list variant="box" class="settings-list">
               <rr-list-item size="md">
-                <rr-label-cell>Naam</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Naam</rr-text-cell>
+                <rr-cell>
                   <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
-                <rr-label-cell>Waarde</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Waarde</rr-text-cell>
+                <rr-cell>
                   <div v-if="values.controlType === 'currency'" class="edit-sheet-value-group">
                     <span class="edit-sheet-unit">&euro;</span>
                     <input type="number" step="0.01" v-model.number="values.displayValue" class="edit-sheet-input">
@@ -184,7 +184,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
                   <input v-else-if="values.controlType === 'boolean'" type="checkbox" v-model="values.displayValue" class="edit-sheet-checkbox">
                   <input v-else-if="values.controlType === 'number'" type="number" v-model.number="values.displayValue" class="edit-sheet-input edit-sheet-input--full">
                   <input v-else type="text" v-model="values.displayValue" class="edit-sheet-input edit-sheet-input--full">
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
             </rr-list>
           </template>
@@ -193,24 +193,24 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
             <rr-list variant="box" class="settings-list">
               <rr-list-item size="md">
-                <rr-label-cell>Naam</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Naam</rr-text-cell>
+                <rr-cell>
                   <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
-                <rr-label-cell>Type</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Type</rr-text-cell>
+                <rr-cell>
                   <select v-model="values.type" class="edit-sheet-select">
                     <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                   </select>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
-                <rr-label-cell>Verplicht</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Verplicht</rr-text-cell>
+                <rr-cell>
                   <rr-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></rr-switch>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
             </rr-list>
           </template>
@@ -219,30 +219,30 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
           <template v-if="item.section === 'input' || item.section === 'add-input'">
             <rr-list variant="box" class="settings-list">
               <rr-list-item size="md">
-                <rr-label-cell>Naam</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Naam</rr-text-cell>
+                <rr-cell>
                   <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
-                <rr-label-cell>Type</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Type</rr-text-cell>
+                <rr-cell>
                   <select v-model="values.type" class="edit-sheet-select">
                     <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                   </select>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
-                <rr-label-cell>Bron regelgeving</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Bron regelgeving</rr-text-cell>
+                <rr-cell>
                   <rr-text-field size="md" :value="values.sourceRegulation" @input="values.sourceRegulation = $event.target?.value ?? $event.detail?.value ?? values.sourceRegulation"></rr-text-field>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
-                <rr-label-cell>Bron output</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Bron output</rr-text-cell>
+                <rr-cell>
                   <rr-text-field size="md" :value="values.sourceOutput" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></rr-text-field>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
             </rr-list>
           </template>
@@ -251,18 +251,18 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
           <template v-if="item.section === 'output' || item.section === 'add-output'">
             <rr-list variant="box" class="settings-list">
               <rr-list-item size="md">
-                <rr-label-cell>Naam</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Naam</rr-text-cell>
+                <rr-cell>
                   <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
-                <rr-label-cell>Type</rr-label-cell>
-                <rr-button-cell slot="end">
+                <rr-text-cell>Type</rr-text-cell>
+                <rr-cell>
                   <select v-model="values.type" class="edit-sheet-select">
                     <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                   </select>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
             </rr-list>
           </template>
@@ -328,7 +328,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
   gap: 0 12px;
   align-items: center;
 }
-.edit-sheet-panel .settings-list rr-button-cell {
+.edit-sheet-panel .settings-list rr-cell {
   width: 100%;
 }
 .edit-sheet-panel .settings-list rr-text-field {
