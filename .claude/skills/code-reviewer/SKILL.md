@@ -45,14 +45,26 @@ git diff --cached
 
 ## Step 3: Review the Changes
 
-For each changed file:
+**CRITICAL RULE: Only review lines that were actually changed in the diff.**
 
-1. **Read the entire file** — not just the diff
+Do NOT comment on:
+- Pre-existing code that was not modified in this PR/commit
+- Surrounding context lines that appear in the diff for readability but were not changed
+- Issues in files that were not touched by this PR/commit
+- Pre-existing patterns, style, or naming choices in unchanged code
+
+You may read the full file to *understand* context, but every finding you report
+MUST point to a line that was added or modified in the diff. If a line was not
+changed, it is out of scope — no matter how wrong it looks.
+
+For each changed line/block:
+
+1. **Understand the surrounding code** — read enough context to judge the change
 2. **Trace the data flow** — where does data come from, where does it go?
 3. **Check the boundaries** — what happens at edges and limits?
 4. **Apply REVIEW.md dimensions** — check each applicable dimension from the guidelines
 
-**Questions to ask:**
+**Questions to ask (about changed code only):**
 - What could go wrong here?
 - What happens if this input is null/empty/huge/negative?
 - What happens if this external call fails?
