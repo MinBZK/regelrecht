@@ -72,7 +72,7 @@ function selectOperationByNode(node) {
       </rr-toolbar>
 
       <!-- Body -->
-      <div class="action-sheet-body">
+      <div class="action-sheet-body" v-if="action">
         <rr-simple-section>
           <!-- Output binding -->
           <rr-title-bar size="5">Output</rr-title-bar>

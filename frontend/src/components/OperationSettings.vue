@@ -105,7 +105,7 @@ function currentDropdownValue(val) {
 <template>
   <div v-if="operation">
     <div class="settings-title-bar">
-      <h3 class="section-title" style="margin: 0;">Instellingen operatie {{ operation.number }}</h3>
+      <rr-title-bar size="4">Instellingen operatie {{ operation.number }}</rr-title-bar>
       <rr-icon-button variant="neutral-tinted" size="s" icon="ellipsis" title="Meer opties">
       </rr-icon-button>
     </div>

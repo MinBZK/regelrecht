@@ -202,7 +202,7 @@ const sectionLabels = {
                 <rr-text-cell>Type</rr-text-cell>
                 <rr-cell>
                   <rr-dropdown size="md">
-                    <select :value="values.type" @change="values.type = $event.target.value">
+                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
                   </rr-dropdown>
@@ -230,7 +230,7 @@ const sectionLabels = {
                 <rr-text-cell>Type</rr-text-cell>
                 <rr-cell>
                   <rr-dropdown size="md">
-                    <select :value="values.type" @change="values.type = $event.target.value">
+                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
                   </rr-dropdown>
@@ -264,7 +264,7 @@ const sectionLabels = {
                 <rr-text-cell>Type</rr-text-cell>
                 <rr-cell>
                   <rr-dropdown size="md">
-                    <select :value="values.type" @change="values.type = $event.target.value">
+                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
                   </rr-dropdown>
