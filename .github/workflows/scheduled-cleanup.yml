@@ -44,7 +44,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry-run || false }}
         run: |
           # Get open PR numbers to avoid deleting active preview images
-          OPEN_PRS=$(gh pr list --repo "${ORG}/regelrecht" --state open --json number --jq '.[].number')
+          OPEN_PRS=$(gh pr list --repo "${ORG}/regelrecht" --state open --json number --jq '.[].number') || { echo 'Failed to list open PRs, skipping cleanup'; exit 0; }
 
           for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
             echo "Checking stale images for $PACKAGE..."
