@@ -29,8 +29,8 @@
   --color-text-secondary: var(--color-slate-500);
   --color-text-muted: var(--color-slate-400);
 
-  /* Typography - Using Rijksoverheid fonts from design system */
-  --font-family: var(--rr-font-family-sans, 'RijksoverheidSans', system-ui, -apple-system, sans-serif);
+  /* Typography - aligned with @minbzk/storybook design tokens */
+  --font-family: var(--primitives-font-family-body, var(--rr-font-family-sans, 'RijksSansVF', system-ui, sans-serif));
 
   --font-size-xs: 12px;
   --font-size-sm: 14px;
@@ -41,9 +41,8 @@
   --font-size-3xl: 26px;
   --font-size-4xl: 29px;
 
-  /* Note: Rijksoverheid fonts only have 400 (regular) and 700 (bold) */
   --font-weight-normal: 400;
-  --font-weight-medium: 700;
+  --font-weight-medium: 550;
   --font-weight-semibold: 700;
 
   --line-height-tight: 1;
