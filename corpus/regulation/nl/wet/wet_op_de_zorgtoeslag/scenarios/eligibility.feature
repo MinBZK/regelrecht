@@ -7,6 +7,7 @@ Feature: Zorgtoeslag eligibility
     Given law "regeling_standaardpremie" is loaded
     Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
     Given law "wet_inkomstenbelasting_2001" is loaded
+    Given law "wet_forensische_zorg" is loaded
 
   Scenario: Meerderjarige met actieve polis heeft recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":

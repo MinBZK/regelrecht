@@ -213,14 +213,14 @@ function getOutput(ctx, name) {
 
 function assertOutput(ctx, name, expected) {
   const actual = getOutput(ctx, name);
-  if (!deepEqual(actual, expected)) {
+  if (!primitiveEqual(actual, expected)) {
     throw new Error(
       `Expected output "${name}" to equal ${JSON.stringify(expected)}, got: ${JSON.stringify(actual)}`,
     );
   }
 }
 
-function deepEqual(a, b) {
+function primitiveEqual(a, b) {
   if (a === b) return true;
   if (a === null || b === null) return false;
   if (typeof a !== typeof b) return false;
