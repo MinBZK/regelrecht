@@ -136,181 +136,189 @@ loadIndex();
 </script>
 
 <template>
-  <rr-page sticky-header>
-    <!-- Top Toolbar -->
-    <rr-toolbar slot="header" size="md">
-      <rr-toolbar-start-area>
-        <rr-toolbar-item>
-          <rr-tab-bar size="md">
-            <rr-tab-bar-item selected>Bibliotheek</rr-tab-bar-item>
-            <rr-tab-bar-item href="editor.html">Editor</rr-tab-bar-item>
-          </rr-tab-bar>
-        </rr-toolbar-item>
-      </rr-toolbar-start-area>
-      <rr-toolbar-center-area>
-        <rr-toolbar-item>
-          <rr-search-field
-            size="md"
-            placeholder="Zoeken"
-            @input="search = $event.target.value"
-          ></rr-search-field>
-        </rr-toolbar-item>
-      </rr-toolbar-center-area>
-      <rr-toolbar-end-area>
-        <rr-toolbar-item>
-          <rr-button-bar size="md">
-            <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
-            <rr-icon-button variant="neutral-tinted" size="m" has-menu title="Account">
-              <img slot="__icon" src="/assets/icons/person.svg" alt="Account" width="24" height="24">
-            </rr-icon-button>
-          </rr-button-bar>
-        </rr-toolbar-item>
-      </rr-toolbar-end-area>
-    </rr-toolbar>
+  <rr-app-view>
+    <rr-bar-split-view>
+      <!-- Primary Bar: App Toolbar -->
+      <rr-split-view-pane slot="primary-bar">
+        <rr-container>
+          <rr-toolbar size="md">
+            <rr-toolbar-start-area>
+              <rr-toolbar-item>
+                <rr-tab-bar size="md">
+                  <rr-tab-bar-item selected>Bibliotheek</rr-tab-bar-item>
+                  <rr-tab-bar-item href="editor.html">Editor</rr-tab-bar-item>
+                </rr-tab-bar>
+              </rr-toolbar-item>
+            </rr-toolbar-start-area>
+            <rr-toolbar-center-area>
+              <rr-toolbar-item>
+                <rr-search-field
+                  size="md"
+                  placeholder="Zoeken"
+                  @input="search = $event.target.value"
+                ></rr-search-field>
+              </rr-toolbar-item>
+            </rr-toolbar-center-area>
+            <rr-toolbar-end-area>
+              <rr-toolbar-item>
+                <rr-button-bar size="md">
+                  <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
+                  <rr-icon-button variant="neutral-tinted" size="m" has-menu title="Account">
+                    <img slot="__icon" src="/assets/icons/person.svg" alt="Account" width="24" height="24">
+                  </rr-icon-button>
+                </rr-button-bar>
+              </rr-toolbar-item>
+            </rr-toolbar-end-area>
+          </rr-toolbar>
+        </rr-container>
+      </rr-split-view-pane>
 
-    <!-- 3-Pane Split View -->
-    <rr-side-by-side-split-view panes="3">
+      <!-- Main: Navigation Split View -->
+      <rr-split-view-pane slot="main">
+        <rr-navigation-split-view>
 
-      <!-- Pane 1: Wetten Browser -->
-      <div slot="pane-1">
-        <rr-page sticky-header>
-          <rr-top-title-bar slot="header" toolbar="none" title="Wetten en regels" container="sm"></rr-top-title-bar>
+          <!-- Sidebar: Wetten Browser -->
+          <rr-split-view-pane slot="sidebar" has-content>
+            <rr-page sticky-header>
+              <rr-top-title-bar slot="header" toolbar="none" title="Wetten en regels" container="sm"></rr-top-title-bar>
 
-          <rr-simple-section container="sm">
-            <div v-if="loading" style="padding: 32px; text-align: center;">Laden...</div>
-            <div v-else-if="indexError" style="padding: 32px; text-align: center; color: #c00;">{{ indexError.message }}</div>
-            <rr-list v-else variant="simple">
-              <rr-list-item
-                v-for="law in filteredLaws"
-                :key="law.law_id"
-                size="md"
-                type="button"
-                :selected="law.law_id === selectedLawId || undefined"
-                @click="selectLaw(law.law_id)"
+              <rr-simple-section container="sm">
+                <div v-if="loading" style="padding: 32px; text-align: center;">Laden...</div>
+                <div v-else-if="indexError" style="padding: 32px; text-align: center; color: #c00;">{{ indexError.message }}</div>
+                <rr-list v-else variant="simple">
+                  <rr-list-item
+                    v-for="law in filteredLaws"
+                    :key="law.law_id"
+                    size="md"
+                    type="button"
+                    :selected="law.law_id === selectedLawId || undefined"
+                    @click="selectLaw(law.law_id)"
+                  >
+                    <rr-text-cell>
+                      <span slot="text">{{ displayName(law) }}</span>
+                      <span slot="supporting-text" style="font-size: 11px; color: #888;">{{ law.source_name }}</span>
+                    </rr-text-cell>
+                    <rr-icon-cell slot="end" size="20">
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </rr-icon-cell>
+                  </rr-list-item>
+                </rr-list>
+              </rr-simple-section>
+            </rr-page>
+          </rr-split-view-pane>
+
+          <!-- Secondary Sidebar: Artikelen Lijst -->
+          <rr-split-view-pane slot="secondary-sidebar" has-content>
+            <rr-page sticky-header>
+              <rr-top-title-bar
+                slot="header"
+                :title="lawName || 'Selecteer een wet'"
+                container="sm"
+                toolbar="custom"
               >
-                <rr-text-cell>
-                  <span slot="text">{{ displayName(law) }}</span>
-                  <span slot="supporting-text" style="font-size: 11px; color: #888;">{{ law.source_name }}</span>
-                </rr-text-cell>
-                <rr-icon-cell slot="end" size="20">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </rr-icon-cell>
-              </rr-list-item>
-            </rr-list>
-          </rr-simple-section>
-        </rr-page>
-      </div>
+                <div slot="toolbar-start">
+                  <rr-toolbar size="md">
+                    <rr-toolbar-start-area>
+                      <rr-toolbar-item>
+                        <rr-icon-button variant="neutral-tinted" size="s" title="Favoriet">
+                          <svg slot="__icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3.5C10 3.5 8 2 5.5 2C3 2 1 3.5 1 6.5C1 12 10 17 10 17C10 17 19 12 19 6.5C19 3.5 17 2 14.5 2C12 2 10 3.5 10 3.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </rr-icon-button>
+                      </rr-toolbar-item>
+                      <rr-toolbar-item>
+                        <rr-button variant="neutral-tinted" size="md">Filter</rr-button>
+                      </rr-toolbar-item>
+                    </rr-toolbar-start-area>
+                    <rr-toolbar-end-area>
+                      <rr-toolbar-item>
+                        <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
+                          <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
+                        </a>
+                        <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
+                      </rr-toolbar-item>
+                    </rr-toolbar-end-area>
+                  </rr-toolbar>
+                </div>
+              </rr-top-title-bar>
 
-      <!-- Pane 2: Artikelen Lijst -->
-      <div slot="pane-2">
-        <rr-page sticky-header>
-          <rr-top-title-bar
-            slot="header"
-            :title="lawName || 'Selecteer een wet'"
-            container="sm"
-            toolbar="custom"
-          >
-            <div slot="toolbar-start">
-              <rr-toolbar size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-icon-button variant="neutral-tinted" size="s" title="Favoriet">
-                      <svg slot="__icon" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3.5C10 3.5 8 2 5.5 2C3 2 1 3.5 1 6.5C1 12 10 17 10 17C10 17 19 12 19 6.5C19 3.5 17 2 14.5 2C12 2 10 3.5 10 3.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                    </rr-icon-button>
-                  </rr-toolbar-item>
-                  <rr-toolbar-item>
-                    <rr-button variant="neutral-tinted" size="md">Filter</rr-button>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-                <rr-toolbar-end-area>
-                  <rr-toolbar-item>
-                    <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
-                      <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
-                    </a>
-                    <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
-                  </rr-toolbar-item>
-                </rr-toolbar-end-area>
-              </rr-toolbar>
-            </div>
-          </rr-top-title-bar>
+              <rr-simple-section container="sm">
+                <div v-if="selectedLawLoading" style="padding: 32px; text-align: center;">Laden...</div>
+                <div v-else-if="lawError" style="padding: 32px; text-align: center; color: #c00;">{{ lawError.message }}</div>
+                <div v-else-if="!selectedLaw" style="padding: 32px; text-align: center;">Selecteer een wet</div>
+                <rr-list v-else variant="simple">
+                  <rr-list-item
+                    v-for="article in articles"
+                    :key="article.number"
+                    size="md"
+                    type="button"
+                    :selected="String(article.number) === String(selectedArticleNumber) || undefined"
+                    @click="selectArticle(article.number)"
+                  >
+                    <rr-text-cell>
+                      <span slot="text">Artikel {{ article.number }}</span>
+                      <span slot="supporting-text">{{ articleDescription(article) }}</span>
+                    </rr-text-cell>
+                    <rr-icon-cell slot="end" size="20">
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </rr-icon-cell>
+                  </rr-list-item>
+                </rr-list>
+              </rr-simple-section>
+            </rr-page>
+          </rr-split-view-pane>
 
-          <rr-simple-section container="sm">
-            <div v-if="selectedLawLoading" style="padding: 32px; text-align: center;">Laden...</div>
-            <div v-else-if="lawError" style="padding: 32px; text-align: center; color: #c00;">{{ lawError.message }}</div>
-            <div v-else-if="!selectedLaw" style="padding: 32px; text-align: center;">Selecteer een wet</div>
-            <rr-list v-else variant="simple">
-              <rr-list-item
-                v-for="article in articles"
-                :key="article.number"
-                size="md"
-                type="button"
-                :selected="String(article.number) === String(selectedArticleNumber) || undefined"
-                @click="selectArticle(article.number)"
+          <!-- Main: Artikel Detail -->
+          <rr-split-view-pane slot="main" has-content>
+            <rr-page sticky-header>
+              <rr-top-title-bar
+                slot="header"
+                :title="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
+                container="sm"
+                toolbar="custom"
               >
-                <rr-text-cell>
-                  <span slot="text">Artikel {{ article.number }}</span>
-                  <span slot="supporting-text">{{ articleDescription(article) }}</span>
-                </rr-text-cell>
-                <rr-icon-cell slot="end" size="20">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                </rr-icon-cell>
-              </rr-list-item>
-            </rr-list>
-          </rr-simple-section>
-        </rr-page>
-      </div>
+                <rr-toolbar slot="toolbar-start" size="md">
+                  <rr-toolbar-start-area>
+                    <rr-toolbar-item>
+                      <rr-segmented-control size="md" :value="detailView" @change="detailView = $event.detail.value">
+                        <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
+                        <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
+                        <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                      </rr-segmented-control>
+                    </rr-toolbar-item>
+                  </rr-toolbar-start-area>
+                  <rr-toolbar-end-area>
+                    <rr-toolbar-item>
+                      <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
+                        <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
+                      </a>
+                      <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
+                    </rr-toolbar-item>
+                  </rr-toolbar-end-area>
+                </rr-toolbar>
+              </rr-top-title-bar>
 
-      <!-- Pane 3: Artikel Detail -->
-      <div slot="pane-3">
-        <rr-page sticky-header>
-          <rr-top-title-bar
-            slot="header"
-            :title="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
-            container="sm"
-            toolbar="custom"
-          >
-            <rr-toolbar slot="toolbar-start" size="md">
-              <rr-toolbar-start-area>
-                <rr-toolbar-item>
-                  <rr-segmented-control size="md" :value="detailView" @change="detailView = $event.detail.value">
-                    <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
-                    <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
-                    <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
-                  </rr-segmented-control>
-                </rr-toolbar-item>
-              </rr-toolbar-start-area>
-              <rr-toolbar-end-area>
-                <rr-toolbar-item>
-                  <a v-if="selectedLawId" :href="`editor.html?law=${selectedLawId}`">
-                    <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
-                  </a>
-                  <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
-                </rr-toolbar-item>
-              </rr-toolbar-end-area>
-            </rr-toolbar>
-          </rr-top-title-bar>
+              <rr-simple-section container="sm">
+                <div v-if="!selectedArticle" style="padding: 32px; text-align: center;">
+                  Selecteer een artikel
+                </div>
+                <template v-else>
+                  <div v-show="detailView === 'tekst'">
+                    <ArticleText :article="selectedArticle" />
+                  </div>
+                  <div v-show="detailView === 'machine'">
+                    <MachineReadable :article="selectedArticle" @open-action="activeAction = $event" />
+                  </div>
+                  <div v-show="detailView === 'yaml'">
+                    <YamlView :article="selectedArticle" />
+                  </div>
+                </template>
+              </rr-simple-section>
+            </rr-page>
+          </rr-split-view-pane>
 
-          <rr-simple-section container="sm">
-            <div v-if="!selectedArticle" style="padding: 32px; text-align: center;">
-              Selecteer een artikel
-            </div>
-            <template v-else>
-              <div v-show="detailView === 'tekst'">
-                <ArticleText :article="selectedArticle" />
-              </div>
-              <div v-show="detailView === 'machine'">
-                <MachineReadable :article="selectedArticle" @open-action="activeAction = $event" />
-              </div>
-              <div v-show="detailView === 'yaml'">
-                <YamlView :article="selectedArticle" />
-              </div>
-            </template>
-          </rr-simple-section>
-        </rr-page>
-      </div>
-
-    </rr-side-by-side-split-view>
-  </rr-page>
+        </rr-navigation-split-view>
+      </rr-split-view-pane>
+    </rr-bar-split-view>
+  </rr-app-view>
 
   <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
 </template>

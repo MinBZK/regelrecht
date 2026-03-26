@@ -114,24 +114,24 @@ function currentDropdownValue(val) {
     <rr-list variant="box" class="settings-list">
       <!-- Titel -->
       <rr-list-item size="md">
-        <rr-label-cell>Titel</rr-label-cell>
-        <rr-button-cell slot="end">
+        <rr-text-cell>Titel</rr-text-cell>
+        <rr-cell>
           <rr-text-field size="md" :value="operation.title"></rr-text-field>
-        </rr-button-cell>
+        </rr-cell>
       </rr-list-item>
 
       <!-- Type -->
       <rr-list-item size="md">
-        <rr-label-cell>Type</rr-label-cell>
-        <rr-button-cell slot="end">
+        <rr-text-cell>Type</rr-text-cell>
+        <rr-cell>
           <rr-drop-down-field size="md" :value="operation.operation" .options="typeOptions"></rr-drop-down-field>
-        </rr-button-cell>
+        </rr-cell>
       </rr-list-item>
 
       <!-- Waarde rows -->
       <rr-list-item v-for="(val, i) in operationValues" :key="i" size="md">
-        <rr-label-cell>{{ val._label }}</rr-label-cell>
-        <rr-button-cell slot="end">
+        <rr-text-cell>{{ val._label }}</rr-text-cell>
+        <rr-cell>
           <div class="value-row">
             <template v-if="isLiteralValue(val._value)">
               <rr-text-field size="md" :value="String(val._value)" is-full-width></rr-text-field>
@@ -152,7 +152,7 @@ function currentDropdownValue(val) {
             {{ describeSubtitle(val._value) }}
             <a href="#" @click.prevent="emit('select-operation', val._value)">Bewerk</a>
           </p>
-        </rr-button-cell>
+        </rr-cell>
       </rr-list-item>
 
       <!-- Add value -->
@@ -182,7 +182,7 @@ function currentDropdownValue(val) {
   gap: 0 12px;
   align-items: center;
 }
-.settings-list rr-button-cell {
+.settings-list rr-cell {
   width: 100%;
 }
 .settings-list rr-text-field,

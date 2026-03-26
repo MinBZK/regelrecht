@@ -88,10 +88,10 @@ onUnmounted(() => {
           <h3 class="section-title">Output</h3>
           <rr-list variant="box">
             <rr-list-item size="md">
-              <rr-label-cell>Verbonden aan</rr-label-cell>
-              <rr-button-cell slot="end">
+              <rr-text-cell>Verbonden aan</rr-text-cell>
+              <rr-cell>
                 <rr-drop-down-field size="md" :value="action?.output" .options="outputOptions"></rr-drop-down-field>
-              </rr-button-cell>
+              </rr-cell>
             </rr-list-item>
           </rr-list>
 
@@ -106,9 +106,9 @@ onUnmounted(() => {
                   <div class="op-cell-title">{{ op.number }}. {{ op.title }}</div>
                   <div class="op-cell-subtitle">{{ op.subtitle }}</div>
                 </div>
-                <rr-button-cell slot="end">
+                <rr-cell>
                   <rr-button variant="neutral-tinted" size="sm" @click="selectOperation(op)">Bewerk</rr-button>
-                </rr-button-cell>
+                </rr-cell>
               </rr-list-item>
             </rr-list>
 
