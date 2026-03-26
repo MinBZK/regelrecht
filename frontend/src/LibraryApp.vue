@@ -169,7 +169,21 @@ onBeforeRouteUpdate((to) => {
   const newLawId = to.params.lawId;
   const newArticle = to.params.articleNumber;
 
-  if (newLawId && newLawId !== selectedLawId.value) {
+  if (!newLawId) {
+    // Navigated to /library with no lawId — reset and auto-select
+    selectedLawId.value = null;
+    selectedLaw.value = null;
+    selectedArticleNumber.value = null;
+    activeAction.value = null;
+    lawError.value = null;
+    const list = filteredLaws.value;
+    if (list.length > 0) {
+      const firstLawId = list[0].law_id;
+      selectedLawId.value = firstLawId;
+      loadLaw(firstLawId);
+      router.replace({ name: 'library', params: { lawId: firstLawId } });
+    }
+  } else if (newLawId !== selectedLawId.value) {
     selectedLawId.value = newLawId;
     selectedArticleNumber.value = null;
     activeAction.value = null;
