@@ -1,15 +1,92 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
+import yaml from 'js-yaml';
 import { useLaw } from './composables/useLaw.js';
 import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
-import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
+import EditSheet from './components/EditSheet.vue';
 
 const { articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
 
 const activeAction = ref(null);
-const rightPaneView = ref('machine');
+const activeEditItem = ref(null);
+const parseError = ref(null);
+
+// ── Reactive data model (single source of truth) ──
+const machineReadable = ref(null);
+const yamlSource = ref('');
+
+const dumpOpts = { lineWidth: 80, noRefs: true };
+
+// Initialize from article
+watch(selectedArticle, (article) => {
+  activeAction.value = null;
+  activeEditItem.value = null;
+  const mr = article?.machine_readable;
+  machineReadable.value = mr ? JSON.parse(JSON.stringify(mr)) : null;
+  yamlSource.value = mr ? yaml.dump(mr, dumpOpts) : '';
+  parseError.value = null;
+}, { immediate: true });
+
+// Virtual article for components (reads from machineReadable)
+const editedArticle = computed(() => {
+  if (!selectedArticle.value) return null;
+  return { ...selectedArticle.value, machine_readable: machineReadable.value };
+});
+
+// YAML textarea input → parse to model
+function onYamlInput(event) {
+  const text = event.target.value;
+  yamlSource.value = text;
+  try {
+    const parsed = yaml.load(text);
+    machineReadable.value = parsed != null && typeof parsed === 'object' ? parsed : null;
+    parseError.value = null;
+  } catch (e) {
+    parseError.value = e.message;
+  }
+}
+
+// Right-panel save → update model → re-dump YAML
+function handleSave({ section, key, newKey, index, data }) {
+  const mr = machineReadable.value
+    ? JSON.parse(JSON.stringify(machineReadable.value))
+    : {};
+
+  // Ensure structure exists for adds
+  if (!mr.definitions) mr.definitions = {};
+  if (!mr.execution) mr.execution = {};
+  if (!mr.execution.parameters) mr.execution.parameters = [];
+  if (!mr.execution.input) mr.execution.input = [];
+  if (!mr.execution.output) mr.execution.output = [];
+
+  if (section === 'definition') {
+    if (newKey && newKey !== key) {
+      delete mr.definitions[key];
+    }
+    mr.definitions[newKey || key] = data;
+  } else if (section === 'add-definition') {
+    mr.definitions[key] = data;
+  } else if (section === 'parameter') {
+    mr.execution.parameters[index] = data;
+  } else if (section === 'add-parameter') {
+    mr.execution.parameters.push(data);
+  } else if (section === 'input') {
+    mr.execution.input[index] = data;
+  } else if (section === 'add-input') {
+    mr.execution.input.push(data);
+  } else if (section === 'output') {
+    mr.execution.output[index] = data;
+  } else if (section === 'add-output') {
+    mr.execution.output.push(data);
+  }
+
+  // Trigger reactivity + sync YAML
+  machineReadable.value = mr;
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+}
 
 function selectArticle(number) {
   activeAction.value = null;
@@ -70,11 +147,11 @@ function selectArticle(number) {
       </rr-document-tab-bar-item>
     </rr-document-tab-bar>
 
-    <!-- Main Editor: Side-by-side split view -->
-    <rr-side-by-side-split-view>
+    <!-- Main Editor: Three-pane layout -->
+    <div class="editor-three-pane">
 
       <!-- Left Pane: Text -->
-      <div slot="pane-1" style="background: #F4F6F9;">
+      <div class="editor-pane editor-pane--text">
         <rr-page header-sticky>
           <rr-toolbar slot="header" size="md">
             <rr-toolbar-start-area>
@@ -118,31 +195,142 @@ function selectArticle(number) {
         </rr-page>
       </div>
 
-      <!-- Right Pane: Machine / YAML -->
-      <div slot="pane-2">
+      <!-- Middle Pane: YAML -->
+      <div class="editor-pane editor-pane--yaml">
         <rr-page header-sticky>
           <rr-toolbar slot="header" size="md">
             <rr-toolbar-start-area>
               <rr-toolbar-item>
-                <rr-segmented-control size="md" value="machine" @change="rightPaneView = $event.detail.value">
-                  <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
-                  <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
-                </rr-segmented-control>
+                <span class="editor-pane-title">YAML</span>
+              </rr-toolbar-item>
+            </rr-toolbar-start-area>
+            <rr-toolbar-end-area>
+              <rr-toolbar-item v-if="parseError">
+                <span class="editor-parse-error">YAML parse error</span>
+              </rr-toolbar-item>
+            </rr-toolbar-end-area>
+          </rr-toolbar>
+
+          <div class="editor-yaml-wrap">
+            <textarea
+              :value="yamlSource"
+              @input="onYamlInput"
+              class="editor-yaml-textarea"
+              spellcheck="false"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+            ></textarea>
+            <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+          </div>
+        </rr-page>
+      </div>
+
+      <!-- Right Pane: Machine Readable -->
+      <div class="editor-pane editor-pane--machine">
+        <rr-page header-sticky>
+          <rr-toolbar slot="header" size="md">
+            <rr-toolbar-start-area>
+              <rr-toolbar-item>
+                <span class="editor-pane-title">Machine Readable</span>
               </rr-toolbar-item>
             </rr-toolbar-start-area>
           </rr-toolbar>
 
-          <rr-simple-section v-show="rightPaneView === 'machine'">
-            <MachineReadable :article="selectedArticle" @open-action="activeAction = $event" />
-          </rr-simple-section>
-          <rr-simple-section v-show="rightPaneView === 'yaml'">
-            <YamlView :article="selectedArticle" />
+          <rr-simple-section>
+            <MachineReadable
+              :article="editedArticle"
+              :editable="true"
+              @open-edit="activeEditItem = $event"
+              @open-action="activeAction = $event"
+            />
           </rr-simple-section>
         </rr-page>
       </div>
 
-    </rr-side-by-side-split-view>
+    </div>
   </rr-page>
 
-  <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
+  <ActionSheet :action="activeAction" :article="editedArticle" @close="activeAction = null" />
+  <EditSheet :item="activeEditItem" @save="handleSave" @close="activeEditItem = null" />
 </template>
+
+<style>
+.editor-three-pane {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  height: calc(100vh - 96px);
+  min-height: 0;
+}
+
+.editor-pane {
+  overflow-y: auto;
+  min-width: 0;
+  border-right: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+.editor-pane:last-child {
+  border-right: none;
+}
+
+.editor-pane--text {
+  background: #F4F6F9;
+}
+
+.editor-pane--yaml {
+  background: #1e1e2e;
+}
+
+.editor-pane-title {
+  font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
+  font-weight: 550;
+  font-size: 14px;
+  color: var(--semantics-text-primary-color, #333B44);
+}
+
+.editor-yaml-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-yaml-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  height: calc(100vh - 160px);
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 16px;
+  border: none;
+  outline: none;
+  resize: none;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+}
+
+.editor-yaml-textarea::selection {
+  background: #45475a;
+}
+
+.editor-parse-error {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c00;
+  background: #fee;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.editor-parse-error-detail {
+  background: #2a1a1a;
+  color: #f38ba8;
+  font-family: 'SF Mono', monospace;
+  font-size: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid #45475a;
+}
+</style>
