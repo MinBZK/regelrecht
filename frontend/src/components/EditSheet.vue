@@ -209,7 +209,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
               <rr-list-item size="md">
                 <rr-label-cell>Verplicht</rr-label-cell>
                 <rr-button-cell slot="end">
-                  <rr-switch :checked="values.required || undefined" @change="values.required = $event.detail?.checked ?? !values.required"></rr-switch>
+                  <rr-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></rr-switch>
                 </rr-button-cell>
               </rr-list-item>
             </rr-list>

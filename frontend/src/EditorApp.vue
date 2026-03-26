@@ -40,7 +40,8 @@ function onYamlInput(event) {
   const text = event.target.value;
   yamlSource.value = text;
   try {
-    machineReadable.value = yaml.load(text);
+    const parsed = yaml.load(text);
+    machineReadable.value = parsed != null && typeof parsed === 'object' ? parsed : null;
     parseError.value = null;
   } catch (e) {
     parseError.value = e.message;
@@ -49,8 +50,9 @@ function onYamlInput(event) {
 
 // Right-panel save → update model → re-dump YAML
 function handleSave({ section, key, newKey, index, data }) {
-  if (!machineReadable.value) return;
-  const mr = JSON.parse(JSON.stringify(machineReadable.value));
+  const mr = machineReadable.value
+    ? JSON.parse(JSON.stringify(machineReadable.value))
+    : {};
 
   // Ensure structure exists for adds
   if (!mr.definitions) mr.definitions = {};

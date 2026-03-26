@@ -63,6 +63,7 @@ function formatValue(val, unit) {
 // Open edit sheet for existing items
 function editDef(name) {
   const rawDef = mr.value?.definitions?.[name];
+  if (rawDef == null) return;
   emit('open-edit', { section: 'definition', key: name, rawDef: JSON.parse(JSON.stringify(rawDef)) });
 }
 
@@ -201,7 +202,7 @@ function addOutput() {
     <template v-if="actions.length">
       <h3 class="machine-section-title">Acties</h3>
       <rr-list variant="box">
-        <rr-list-item v-for="action in actions" :key="action.output" size="md">
+        <rr-list-item v-for="(action, index) in actions" :key="index" size="md">
           <rr-text-cell>{{ action.output }}</rr-text-cell>
           <rr-button-cell slot="end">
             <rr-button variant="neutral-tinted" size="sm" @click="emit('open-action', action)">Bewerk</rr-button>
