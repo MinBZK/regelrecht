@@ -151,10 +151,28 @@ pub fn resolve_consolidation_date(manifest: &BwbManifest, date: Option<&str>) ->
                 }
             }
 
-            Err(HarvesterError::NoConsolidation {
-                bwb_id: extract_bwb_id_from_latest(&manifest.latest_item),
-                date: target_date.to_string(),
-            })
+            // Fallback: return the consolidation with the highest einddatum.
+            // This handles withdrawn laws where the target date is after the last
+            // validity period (e.g. law withdrawn in 2007, target date is 2021).
+            let latest = manifest.expressions.iter().max_by_key(|c| &c.einddatum);
+
+            match latest {
+                Some(consolidation) => {
+                    let bwb_id = extract_bwb_id_from_latest(&manifest.latest_item);
+                    tracing::warn!(
+                        bwb_id = %bwb_id,
+                        target_date = %target_date,
+                        fallback_date = %consolidation.datum_inwerkingtreding,
+                        fallback_einddatum = %consolidation.einddatum,
+                        "No consolidation covers target date, falling back to latest consolidation"
+                    );
+                    Ok(consolidation.datum_inwerkingtreding.clone())
+                }
+                None => Err(HarvesterError::NoConsolidation {
+                    bwb_id: extract_bwb_id_from_latest(&manifest.latest_item),
+                    date: target_date.to_string(),
+                }),
+            }
         }
     }
 }
@@ -258,24 +276,51 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_date_no_match() {
+    fn test_resolve_date_no_match_falls_back_to_latest() {
         let manifest = parse_manifest(SAMPLE_MANIFEST, "BWBR0015703").unwrap();
 
-        // Date before any consolidation
-        let result = resolve_consolidation_date(&manifest, Some("2023-01-01"));
-        assert!(result.is_err());
-
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("2023-01-01"));
+        // Date before any consolidation — falls back to latest (highest einddatum = 9999-12-31)
+        let result = resolve_consolidation_date(&manifest, Some("2023-01-01")).unwrap();
+        assert_eq!(result, "2026-02-04");
     }
 
     #[test]
-    fn test_resolve_date_in_gap() {
+    fn test_resolve_date_in_gap_falls_back_to_latest() {
         let manifest = parse_manifest(SAMPLE_MANIFEST, "BWBR0015703").unwrap();
 
         // Date between two periods (2025-01-01 to 2025-06-30 is a gap)
-        let result = resolve_consolidation_date(&manifest, Some("2025-03-15"));
-        assert!(result.is_err());
+        // Falls back to latest consolidation (highest einddatum = 9999-12-31)
+        let result = resolve_consolidation_date(&manifest, Some("2025-03-15")).unwrap();
+        assert_eq!(result, "2026-02-04");
+    }
+
+    #[test]
+    fn test_resolve_date_after_withdrawal() {
+        // Manifest for a withdrawn law: all consolidations have finite einddatum
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<repository>
+  <work _latestItem="2006-01-01_0/xml/BWBR0002089_2006-01-01_0.xml">
+    <expression label="2003-06-01_0">
+      <metadata>
+        <datum_inwerkingtreding>2003-06-01</datum_inwerkingtreding>
+        <einddatum>2005-12-31</einddatum>
+      </metadata>
+    </expression>
+    <expression label="2006-01-01_0">
+      <metadata>
+        <datum_inwerkingtreding>2006-01-01</datum_inwerkingtreding>
+        <einddatum>2007-06-30</einddatum>
+      </metadata>
+    </expression>
+  </work>
+</repository>"#;
+
+        let manifest = parse_manifest(xml, "BWBR0002089").unwrap();
+
+        // Target date 2021 is well after withdrawal (2007-06-30)
+        // Should fall back to the consolidation with highest einddatum (2006-01-01)
+        let result = resolve_consolidation_date(&manifest, Some("2021-01-01")).unwrap();
+        assert_eq!(result, "2006-01-01");
     }
 
     #[test]
