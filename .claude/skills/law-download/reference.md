@@ -160,7 +160,7 @@ VERDRAG, UITVOERINGSBELEID, GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING.
 
 **Schema URL:**
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.2/schema.json
 ```
 
 **Required Fields (always):**

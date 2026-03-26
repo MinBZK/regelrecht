@@ -2,11 +2,11 @@
 
 **Status:** Accepted
 **Date:** 2025-11-19
-**Authors:** regelrecht-mvp team
+**Authors:** regelrecht team
 
 ## Context
 
-As the regelrecht-mvp project grows, we need a structured way to document design decisions and architectural choices. Important decisions about law execution, article resolution, URI handling, and system architecture should be documented with their rationale for future reference.
+As the regelrecht project grows, we need a structured way to document design decisions and architectural choices. Important decisions about law execution, article resolution, URI handling, and system architecture should be documented with their rationale for future reference.
 
 Without a formal process, design decisions live in:
 - Pull request discussions (hard to discover)

@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2025-11-20
-**Authors:** regelrecht-mvp team
+**Authors:** regelrecht team
 
 ## Context
 

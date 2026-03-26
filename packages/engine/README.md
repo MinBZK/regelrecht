@@ -168,5 +168,5 @@ MIT - See [LICENSE](LICENSE) for details.
 
 ## Links
 
-- [GitHub Repository](https://github.com/MinBZK/regelrecht-mvp)
+- [GitHub Repository](https://github.com/MinBZK/regelrecht)
 - [npm Package](https://www.npmjs.com/package/regelrecht-engine)

@@ -94,13 +94,13 @@ export default withMermaid(
         ],
       },
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/MinBZK/regelrecht-mvp' },
+        { icon: 'github', link: 'https://github.com/MinBZK/regelrecht' },
       ],
       search: {
         provider: 'local',
       },
       editLink: {
-        pattern: 'https://github.com/MinBZK/regelrecht-mvp/edit/main/docs/:path',
+        pattern: 'https://github.com/MinBZK/regelrecht/edit/main/docs/:path',
       },
     },
 

@@ -10,7 +10,7 @@ hero:
       link: /guide/what-is-regelrecht
     - theme: alt
       text: View on GitHub
-      link: https://github.com/MinBZK/regelrecht-mvp
+      link: https://github.com/MinBZK/regelrecht
 features:
   - title: Executable Law
     details: Dutch legislation encoded in YAML, executed by a deterministic engine. Every decision is traceable to its legal source.

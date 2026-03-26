@@ -8,7 +8,7 @@ The current schema version is **v0.4.0**.
 
 Schema URL:
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
 ```
 
 ## Version History

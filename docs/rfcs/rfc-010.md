@@ -6,7 +6,7 @@
 
 ## Context
 
-The corpus (`regulation/nl/`) lives in the regelrecht-mvp repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities (*gemeenten*), provinces (*provincies*), water boards (*waterschappen*), and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
+The corpus (`regulation/nl/`) lives in the regelrecht repo alongside the engine, pipeline, admin, and editor. That works for an MVP, but doesn't match the legislative reality: regulation is decentralized. Municipalities (*gemeenten*), provinces (*provincies*), water boards (*waterschappen*), and ministries each produce their own regulations, often filling in details delegated by higher-level laws.
 
 RFC-003 (Inversion of Control) introduces IoC with `open_terms` and `implements`. This lets a municipality (*gemeente*) fill in a national law without modifying that law. Technically this already works cross-repo, as long as the engine loads all relevant laws. What's missing is the infrastructure for that:
 
@@ -23,7 +23,7 @@ Four interconnected decisions form the federation model.
 
 ### 1. Corpus as a separate repo
 
-The corpus (`regulation/nl/`) moves to its own repository, e.g. `MinBZK/regelrecht-corpus`. The regelrecht-mvp repo then contains only the engine, pipeline, admin, and editor.
+The corpus (`regulation/nl/`) moves to its own repository, e.g. `MinBZK/regelrecht-corpus`. The regelrecht repo then contains only the engine, pipeline, admin, and editor.
 
 External sources are any Git repository that follows the required directory structure. They don't need to be forks or clones of the central corpus. A municipality (*gemeente*) like Amsterdam creates a repo `gemeente-amsterdam/regelrecht-amsterdam` containing their municipal regulations that declare `implements` on laws from the central corpus.
 

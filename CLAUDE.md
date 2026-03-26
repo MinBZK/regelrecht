@@ -4,11 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**regelrecht-mvp** is an MVP for machine-readable Dutch law execution. Components:
+**regelrecht** is a platform for machine-readable Dutch law execution. The repo is a monorepo with multiple components:
+
 - `packages/engine/` - Rust law execution engine
 - `packages/pipeline/` - PostgreSQL-backed job queue and law status tracking
+- `packages/harvester/` - Law corpus harvesting from BWB (Basis Wettelijke Regelgeving)
+- `packages/admin/` - Admin dashboard (Rust API + Vue frontend)
+- `packages/editor-api/` - Rust backend API for the editor frontend
+- `packages/corpus/` - Shared library for working with YAML regulation files
+- `packages/shared/` - Common types/utilities across packages
+- `packages/tui/` - Terminal UI dashboard
+- `packages/grafana/` - Grafana monitoring with provisioned dashboards
+- `frontend/` - Law editor (Vue/Vite + editor-api backend)
+- `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
+- `landing/` - Static landing page (regelrecht.rijks.app)
+- `docs/` - Documentation site (VitePress)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `frontend/` - Static HTML/CSS law editor prototype
 - `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
 
 ## Development Setup
@@ -60,31 +71,10 @@ git worktree add .worktrees/feature-branch feature-branch
 
 ## Architecture Notes
 
-### Directory Structure
-
-- **packages/engine/** - Rust law execution engine (cargo workspace member)
-- **packages/pipeline/** - PostgreSQL-backed job queue and law status tracking (Rust)
-  - `src/job_queue.rs` - Job creation, claiming (`FOR UPDATE SKIP LOCKED`), completion, failure with auto-retry
-  - `src/law_status.rs` - Per-law status tracking from `unknown` through `harvested` to `enriched`
-  - `src/models.rs` - Data types: `Job`, `LawEntry`, `JobType`, `JobStatus`, `LawStatusValue`, `Priority`
-  - `src/config.rs` - Configuration from `DATABASE_URL` env var
-  - `src/db.rs` - Connection pool creation and migration runner
-  - `src/error.rs` - Error types (`PipelineError`)
-  - `migrations/` - SQL migrations (run automatically on worker startup)
-- **frontend/** - Static HTML/CSS law editor prototype
-  - `index.html` - Law browser page
-  - `editor.html` - Law editor page
-  - `Dockerfile` - Multi-stage build (Node.js + nginx-unprivileged)
-  - `nginx.conf` - Nginx config (port 8000, gzip, caching)
-- **corpus/regulation/nl/** - Dutch legal regulations in machine-readable format
-  - `wet/` - Formal laws (wetten)
-  - `ministeriele_regeling/` - Ministerial regulations
-- **features/** - Gherkin feature files for BDD testing
-
 ### Law Format
 
 Laws are stored as article-based YAML files conforming to the official JSON schema:
-- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json`
+- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json`
 
 ### Cross-Law References
 
@@ -133,63 +123,51 @@ After completing significant code changes, proactively use the `code-reviewer` s
 
 ## CI/CD Deployment
 
-The frontend is automatically deployed to RIG via `.github/workflows/deploy.yml`.
+All components are deployed to ZAD (RIG/Quattro/rijksapps) via `.github/workflows/deploy.yml`.
 CI runs via `.github/workflows/ci.yml`.
 
-### Environments
+### Deployed Components
 
-| Environment | Deployment Name | URL |
-|-------------|-----------------|-----|
-| Production | `regelrecht` | https://editor-regelrecht-regel-k4c.rig.prd1.gn2.quattro.rijksapps.nl |
-| PR Preview | `prN` | https://editor-prN-regel-k4c.rig.prd1.gn2.quattro.rijksapps.nl |
+| Component | Image | Production URL |
+|-----------|-------|----------------|
+| editor | `regelrecht-editor` | `editor.regelrecht.rijks.app` |
+| harvester-admin | `regelrecht-admin` | `harvester-admin.regelrecht.rijks.app` |
+| harvester-worker | `regelrecht-harvester-worker` | (no web UI) |
+| enrichworker | `regelrecht-enrich-worker` | (no web UI) |
+| landing | `regelrecht-landing` | `regelrecht.rijks.app` |
+| lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
+| docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` |
+| grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
 ### How It Works
 
-1. **PR opened/updated**: Builds Docker image, pushes to GHCR, deploys `prN` to RIG
-2. **PR closed**: Deletes RIG deployment and GHCR image
-3. **Push to main**: Deploys `regelrecht` (production) to RIG
+1. **PR opened/updated**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
+2. **PR closed**: Deletes ZAD deployment and GHCR images
+3. **Push to main**: Deploys `regelrecht` (production) to ZAD
 
 ### Required Secrets
 
-- `RIG_API_KEY` - API key for RIG Operations Manager (configured in GitHub secrets)
+- `RIG_API_KEY` - API key for ZAD Operations Manager (configured in GitHub secrets)
 
-### Docker Image
+### ZAD CLI
 
-- Base: `nginxinc/nginx-unprivileged:alpine`
-- Port: 8000 (required by RIG liveprobe)
-- Registry: `ghcr.io/minbzk/regelrecht-mvp`
-
-### RIG API
-
-**API Docs:** https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/docs
-
-**Base URL:** `https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api`
-
-#### Get Deployment Logs
+Use [`zad-cli`](https://github.com/RijksICTGilde/zad-cli) to manage deployments. Configure `ZAD_API_KEY` and `ZAD_PROJECT_ID` in `.env`.
 
 ```bash
-# Get logs for a specific deployment (lines: 1-1000, default 10)
-curl -H "X-API-Key: $RIG_API_KEY" \
-  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/logs/regel-k4c?deployment=pr73&lines=50"
+# Install / upgrade
+uv tool install git+https://github.com/RijksICTGilde/zad-cli.git
+uv tool upgrade zad-cli
 
-# Get logs for production
-curl -H "X-API-Key: $RIG_API_KEY" \
-  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/logs/regel-k4c?deployment=regelrecht&lines=50"
-```
+# Add a new component
+zad component add landing \
+    --image ghcr.io/minbzk/regelrecht-landing:latest \
+    --deployment regelrecht \
+    --port 8000 \
+    --service publish-on-web
 
-#### Other Commands
+# Get logs
+zad logs --deployment regelrecht --lines 50
 
-```bash
-# Refresh project (sync config)
-curl -H "X-API-Key: $RIG_API_KEY" \
-  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/projects/regel-k4c/:refresh"
-
-# Upsert deployment
-curl -X POST -H "X-API-Key: $RIG_API_KEY" -H "Content-Type: application/json" \
-  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/projects/regel-k4c/:upsert-deployment" \
-  -d '{"deploymentName": "pr73", "components": [{"reference": "editor", "image": "ghcr.io/minbzk/regelrecht-mvp:pr-73"}]}'
-
-# Delete deployment
-curl -X DELETE -H "X-API-Key: $RIG_API_KEY" \
-  "https://operations-manager.rig.prd1.gn2.quattro.rijksapps.nl/api/projects/regel-k4c/pr73"
+# List deployments
+zad deployment list
 ```

@@ -146,13 +146,13 @@ Dutch law has several regulatory layers, indicated in the output YAML:
 
 ## Output Format
 
-The harvester produces YAML files conforming to the [regelrecht schema](https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.1/schema.json).
+The harvester produces YAML files conforming to the [regelrecht schema](https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.1/schema.json).
 
 ### Example Output
 
 ```yaml
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.1/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.1/schema.json
 $id: wet_op_de_zorgtoeslag
 regulatory_layer: WET
 publication_date: '2024-12-20'
@@ -270,7 +270,7 @@ MIT - see repository root for full license text.
 
 ## Links
 
-- [GitHub Repository](https://github.com/MinBZK/regelrecht-mvp)
-- [Schema Documentation](https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.1/schema.json)
+- [GitHub Repository](https://github.com/MinBZK/regelrecht)
+- [Schema Documentation](https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.1/schema.json)
 - [wetten.overheid.nl](https://wetten.overheid.nl) - Official Dutch law viewer
 - [BWB Repository](https://repository.officiele-overheidspublicaties.nl/bwb) - Raw BWB data
