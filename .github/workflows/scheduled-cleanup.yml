@@ -38,10 +38,10 @@ jobs:
           github-admin-token: ${{ secrets.ADMIN_TOKEN }}
 
       - name: Cleanup stale container images
-        if: ${{ !(inputs.dry-run || false) }}
         env:
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           ORG: ${{ github.repository_owner }}
+          DRY_RUN: ${{ inputs.dry-run || false }}
         run: |
           # Get open PR numbers to avoid deleting active preview images
           OPEN_PRS=$(gh pr list --repo "${ORG}/regelrecht" --state open --json number --jq '.[].number')
@@ -55,10 +55,14 @@ jobs:
               2>/dev/null | while read -r VERSION_ID TAG; do
                 PR_NUM=$(echo "$TAG" | sed 's/pr-//')
                 if ! echo "$OPEN_PRS" | grep -qw "$PR_NUM"; then
-                  echo "Deleting stale $PACKAGE:$TAG (version $VERSION_ID)"
-                  gh api --method DELETE \
-                    "/orgs/${ORG}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
-                    2>/dev/null || true
+                  if [ "$DRY_RUN" = "true" ]; then
+                    echo "[dry-run] Would delete stale $PACKAGE:$TAG (version $VERSION_ID)"
+                  else
+                    echo "Deleting stale $PACKAGE:$TAG (version $VERSION_ID)"
+                    gh api --method DELETE \
+                      "/orgs/${ORG}/packages/container/${PACKAGE}/versions/${VERSION_ID}" \
+                      2>/dev/null || true
+                  fi
                 fi
               done
           done
