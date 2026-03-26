@@ -58,6 +58,21 @@ function findYamlFiles(dir) {
   return results;
 }
 
+/** Recursively find all .feature files under a directory. */
+function findFeatureFiles(dir) {
+  if (!existsSync(dir)) return [];
+  const results = [];
+  for (const entry of readdirSync(dir)) {
+    const full = resolve(dir, entry);
+    if (statSync(full).isDirectory()) {
+      results.push(...findFeatureFiles(full));
+    } else if (entry.endsWith('.feature')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
 /** Extract metadata from YAML using line-based parsing (no full parse). */
 function extractMeta(content) {
   const meta = {};
@@ -123,6 +138,19 @@ for (const source of localSources) {
     mkdirSync(dirname(dest), { recursive: true });
     writeFileSync(dest, content);
     totalFiles++;
+  }
+
+  // Copy scenario .feature files alongside laws.
+  const featureFiles = findFeatureFiles(sourceDir);
+  for (const filePath of featureFiles) {
+    const relPath = relative(sourceDir, filePath);
+    const destRel = multiSource ? `${source.id}/${relPath}` : relPath;
+    const dest = resolve(destDir, destRel);
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(filePath, dest);
+  }
+  if (featureFiles.length > 0) {
+    console.log(`  ${featureFiles.length} scenario files copied`);
   }
 
   // Add latest version per $id to the index.

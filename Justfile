@@ -11,6 +11,12 @@ ci_flags := "RUSTFLAGS=-Dwarnings"
 default:
     @just --list
 
+# --- WASM ---
+
+# Build WASM module for browser use
+wasm-build:
+    wasm-pack build packages/engine --target web --features wasm --out-dir ../../frontend/src/wasm/pkg
+
 # --- Quality checks ---
 
 # Check Rust formatting

@@ -1,6 +1,7 @@
 //! WASM bindings for the RegelRecht engine
 //!
-//! This module provides WebAssembly bindings that match the Python `LawExecutionService` API.
+//! This module provides WebAssembly bindings backed by `LawExecutionService`,
+//! giving full cross-law resolution and data source support in the browser.
 //! It is feature-gated behind the `wasm` feature flag.
 //!
 //! # Key Constraints
@@ -8,62 +9,36 @@
 //! - **No filesystem access in WASM**: Laws must be passed as YAML strings via `load_law()`
 //! - **Efficient serialization**: Uses `serde-wasm-bindgen` for Rust <-> JavaScript conversion
 //!
-//! # Limitations
+//! # Cross-Law Resolution
 //!
-//! The WASM environment cannot perform cross-law resolution or IoC open term resolution because
-//! these require a ServiceProvider implementation (filesystem access, database queries, etc.)
-//! that is not available in browser environments.
-//!
-//! ## Cross-Law References (`source.regulation`)
-//!
-//! When an article has an input that references another law:
-//!
-//! ```yaml
-//! input:
-//!   - name: standaardpremie
-//!     source:
-//!       regulation: regeling_standaardpremie
-//!       output: standaardpremie
-//! ```
-//!
-//! **WASM cannot resolve this automatically**. Instead:
-//!
-//! 1. Load and execute the referenced law separately
-//! 2. Pass the result as a parameter:
+//! Unlike the previous `ArticleEngine`-based implementation, this version uses
+//! `LawExecutionService` internally. When all referenced laws are loaded,
+//! cross-law references are resolved automatically:
 //!
 //! ```javascript
-//! // First, get the standaardpremie value
-//! const spResult = engine.execute('regeling_standaardpremie', 'standaardpremie', {}, '2025-01-01');
-//! const standaardpremie = spResult.outputs.standaardpremie;
-//!
-//! // Then pass it as a parameter to the dependent law
-//! const result = engine.execute('zorgtoeslagwet', 'hoogte_zorgtoeslag', {
-//!     standaardpremie: standaardpremie,  // Pre-resolved value
-//!     // ... other parameters
-//! }, '2025-01-01');
-//! ```
-//!
-//! # Example (JavaScript)
-//!
-//! ```javascript
-//! import init, { WasmEngine } from 'regelrecht-engine';
-//!
-//! await init();
 //! const engine = new WasmEngine();
+//! engine.loadLaw(zorgtoeslagwetYaml);
+//! engine.loadLaw(regelingStandaardpremieYaml);
+//! engine.loadLaw(awirYaml);
 //!
-//! // Load law from HTTP
-//! const response = await fetch('/laws/zorgtoeslagwet.yaml');
-//! const yaml = await response.text();
-//! const lawId = engine.loadLaw(yaml);
-//!
-//! // Execute (calculation_date is required)
+//! // Cross-law references are resolved automatically
 //! const result = engine.execute(
 //!     'zorgtoeslagwet',
 //!     'heeft_recht_op_zorgtoeslag',
-//!     { BSN: '123456789', vermogen: 50000, heeft_toeslagpartner: false },
+//!     { bsn: '999993653' },
 //!     '2025-01-01'
 //! );
-//! console.log(result.outputs);
+//! ```
+//!
+//! # Data Sources
+//!
+//! Register tabular data sources (e.g., personal records) that are queried
+//! during execution to resolve inputs:
+//!
+//! ```javascript
+//! engine.registerDataSource('personal_data', 'bsn', [
+//!     { bsn: '999993653', geboortedatum: '2000-01-01', land_verblijf: 'NEDERLAND' }
+//! ]);
 //! ```
 //!
 //! # Error Handling
@@ -83,10 +58,9 @@ use serde_wasm_bindgen::Serializer;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
-use crate::article::ArticleBasedLaw;
 use crate::config;
-use crate::engine::ArticleEngine;
 use crate::error::EngineError;
+use crate::service::LawExecutionService;
 use crate::types::{RegulatoryLayer, Value};
 
 /// Create a serializer that converts HashMaps to JavaScript objects (not Maps)
@@ -95,39 +69,22 @@ fn js_serializer() -> Serializer {
 }
 
 /// Helper to create consistent error JsValues.
-///
-/// Formats error messages for JavaScript consumption.
 fn wasm_error(msg: &str) -> JsValue {
     JsValue::from_str(msg)
 }
 
-/// Convert internal EngineError to user-friendly WASM error with actionable guidance.
+/// Convert internal EngineError to user-friendly WASM error.
 fn engine_error_to_wasm(err: EngineError) -> JsValue {
     match err {
-        EngineError::ExternalReferenceNotResolved {
-            input_name,
-            regulation,
-            output,
-        } => {
-            wasm_error(&format!(
-                "Cross-law resolution not supported in WASM: input '{}' requires value from '{}' output '{}'. \
-                 Pre-resolve this value and pass it as a parameter: {{ \"{}\": <resolved_value> }}",
-                input_name, regulation, output, input_name
-            ))
-        }
-        EngineError::ResolutionError(msg) => {
-            wasm_error(&format!(
-                "Resolution error: {}. In WASM, open term resolution is not supported. \
-                 Load and execute implementing regulations, then pass results as parameters.",
-                msg
-            ))
-        }
-        // For other errors, use the standard conversion
+        EngineError::LawNotFound(ref law_id) => wasm_error(&format!(
+            "Law '{}' not found. Load it first with loadLaw().",
+            law_id
+        )),
         other => wasm_error(&other.to_string()),
     }
 }
 
-/// Serializable result for execute() - avoids double serialization through serde_json
+/// Serializable result for execute()
 #[derive(Serialize)]
 struct WasmExecuteResult {
     outputs: HashMap<String, Value>,
@@ -152,13 +109,13 @@ struct WasmLawInfo {
     article_count: usize,
 }
 
-/// WASM-compatible law execution engine.
+/// WASM-compatible law execution engine with cross-law resolution.
 ///
-/// Provides the same functionality as Python's `LawExecutionService`, but adapted
-/// for WASM constraints (no filesystem access).
+/// Backed by `LawExecutionService`, providing automatic resolution of
+/// cross-law references and data source support in the browser.
 #[wasm_bindgen]
 pub struct WasmEngine {
-    laws: HashMap<String, ArticleBasedLaw>,
+    service: LawExecutionService,
 }
 
 #[wasm_bindgen]
@@ -167,60 +124,41 @@ impl WasmEngine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         Self {
-            laws: HashMap::new(),
+            service: LawExecutionService::new(),
         }
     }
 
     /// Load a law from a YAML string.
     ///
+    /// If a law with the same ID and valid_from is already loaded, it will be replaced.
+    /// Multiple versions (same ID, different valid_from) can coexist.
+    ///
     /// # Arguments
     /// * `yaml` - YAML string containing the law definition (max 1 MB)
     ///
     /// # Returns
-    /// * `Ok(String)` - The law ID (used for subsequent `execute()` calls)
+    /// * `Ok(String)` - The law ID
     /// * `Err(JsValue)` - Error message if parsing fails
-    ///
-    /// # Example (JavaScript)
-    /// ```javascript
-    /// const response = await fetch('/laws/zorgtoeslagwet.yaml');
-    /// const yaml = await response.text();
-    /// const lawId = engine.loadLaw(yaml);  // Returns "zorgtoeslagwet"
-    /// ```
     #[wasm_bindgen(js_name = loadLaw)]
     pub fn load_law(&mut self, yaml: &str) -> Result<String, JsValue> {
-        // Input validation
         if yaml.len() > config::MAX_YAML_SIZE {
             return Err(wasm_error(&format!(
                 "YAML exceeds maximum size ({} bytes)",
                 config::MAX_YAML_SIZE
             )));
         }
-        if self.laws.len() >= config::MAX_LOADED_LAWS {
-            return Err(wasm_error(&format!(
-                "Maximum number of laws reached ({})",
-                config::MAX_LOADED_LAWS
-            )));
-        }
 
-        let law = ArticleBasedLaw::from_yaml_str(yaml).map_err(engine_error_to_wasm)?;
-        let id = law.id.clone();
-
-        // Check for duplicate - require explicit unload first
-        if self.laws.contains_key(&id) {
-            return Err(wasm_error(&format!(
-                "Law '{}' is already loaded. Call unloadLaw('{}') first to replace it.",
-                id, id
-            )));
-        }
-
-        self.laws.insert(id.clone(), law);
-        Ok(id)
+        self.service.load_law(yaml).map_err(engine_error_to_wasm)
     }
 
-    /// Execute an article's output with the given parameters.
+    /// Execute a law output with automatic cross-law resolution.
+    ///
+    /// All referenced laws must be loaded via `loadLaw()` first.
+    /// Data sources registered via `registerDataSource()` are queried
+    /// to resolve inputs before falling back to cross-law resolution.
     ///
     /// # Arguments
-    /// * `law_id` - ID of the loaded law (returned by `loadLaw()`)
+    /// * `law_id` - ID of the loaded law
     /// * `output_name` - Name of the output to calculate
     /// * `parameters` - JavaScript object with input parameters
     /// * `calculation_date` - Date string (YYYY-MM-DD) for which to calculate
@@ -228,17 +166,6 @@ impl WasmEngine {
     /// # Returns
     /// * `Ok(JsValue)` - JavaScript object with `outputs`, `resolved_inputs`, etc.
     /// * `Err(JsValue)` - Error message if execution fails
-    ///
-    /// # Example (JavaScript)
-    /// ```javascript
-    /// const result = engine.execute(
-    ///     'zorgtoeslagwet',
-    ///     'heeft_recht_op_zorgtoeslag',
-    ///     { vermogen: 50000, heeft_toeslagpartner: false },
-    ///     '2025-01-01'
-    /// );
-    /// console.log(result.outputs.heeft_recht_op_zorgtoeslag);  // true or false
-    /// ```
     #[wasm_bindgen(js_name = execute)]
     pub fn execute(
         &self,
@@ -247,31 +174,14 @@ impl WasmEngine {
         parameters: JsValue,
         calculation_date: &str,
     ) -> Result<JsValue, JsValue> {
-        // Find law
-        let law = self
-            .laws
-            .get(law_id)
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
-
-        // Find article by output
-        let article =
-            law.find_article_by_output(output_name)
-                .ok_or_else(|| EngineError::OutputNotFound {
-                    law_id: law_id.to_string(),
-                    output: output_name.to_string(),
-                })?;
-
-        // Parse parameters from JsValue
         let params: HashMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
             .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
 
-        // Execute
-        let engine = ArticleEngine::new(article, law);
-        let result = engine
-            .evaluate(params, calculation_date)
+        let result = self
+            .service
+            .evaluate_law_output(law_id, output_name, params, calculation_date)
             .map_err(engine_error_to_wasm)?;
 
-        // Serialize result directly (no intermediate serde_json::Value)
         let wasm_result = WasmExecuteResult {
             outputs: result.outputs,
             resolved_inputs: result.resolved_inputs,
@@ -289,55 +199,31 @@ impl WasmEngine {
     }
 
     /// List all loaded law IDs (sorted alphabetically).
-    ///
-    /// # Returns
-    /// Array of law ID strings in alphabetical order.
-    ///
-    /// # Example (JavaScript)
-    /// ```javascript
-    /// const laws = engine.listLaws();  // ["awir", "zorgtoeslagwet", ...]
-    /// ```
     #[wasm_bindgen(js_name = listLaws)]
     pub fn list_laws(&self) -> Vec<String> {
-        let mut keys: Vec<String> = self.laws.keys().cloned().collect();
-        keys.sort();
-        keys
+        self.service
+            .list_laws()
+            .into_iter()
+            .map(String::from)
+            .collect()
     }
 
     /// Get metadata about a loaded law.
-    ///
-    /// # Arguments
-    /// * `law_id` - ID of the law to query
-    ///
-    /// # Returns
-    /// * `Ok(JsValue)` - JavaScript object with law metadata
-    /// * `Err(JsValue)` - Error if law not found
-    ///
-    /// # Example (JavaScript)
-    /// ```javascript
-    /// const info = engine.getLawInfo('zorgtoeslagwet');
-    /// console.log(info.outputs);  // ["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag", ...]
-    /// console.log(info.article_count);  // 5
-    /// ```
     #[wasm_bindgen(js_name = getLawInfo)]
     pub fn get_law_info(&self, law_id: &str) -> Result<JsValue, JsValue> {
-        let law = self
-            .laws
-            .get(law_id)
-            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
-
-        // Collect and sort outputs for consistent ordering
-        let mut outputs: Vec<String> = law.get_all_outputs().keys().cloned().collect();
-        outputs.sort();
+        let law_info = self
+            .service
+            .get_law_info(law_id)
+            .ok_or_else(|| wasm_error(&format!("Law '{}' not found", law_id)))?;
 
         let info = WasmLawInfo {
-            id: law.id.clone(),
-            regulatory_layer: law.regulatory_layer,
-            publication_date: law.publication_date.clone(),
-            bwb_id: law.bwb_id.clone(),
-            url: law.url.clone(),
-            outputs,
-            article_count: law.articles.len(),
+            id: law_info.id,
+            regulatory_layer: law_info.regulatory_layer,
+            publication_date: law_info.publication_date,
+            bwb_id: law_info.bwb_id,
+            url: law_info.url,
+            outputs: law_info.outputs,
+            article_count: law_info.article_count,
         };
 
         info.serialize(&js_serializer()).map_err(|e| {
@@ -350,38 +236,63 @@ impl WasmEngine {
 
     /// Remove a loaded law from the engine.
     ///
-    /// # Arguments
-    /// * `law_id` - ID of the law to remove
-    ///
     /// # Returns
     /// * `true` if the law was removed, `false` if it wasn't loaded
     #[wasm_bindgen(js_name = unloadLaw)]
     pub fn unload_law(&mut self, law_id: &str) -> bool {
-        self.laws.remove(law_id).is_some()
+        self.service.unload_law(law_id)
     }
 
     /// Check if a law is loaded.
-    ///
-    /// # Arguments
-    /// * `law_id` - ID of the law to check
-    ///
-    /// # Returns
-    /// * `true` if the law is loaded, `false` otherwise
     #[wasm_bindgen(js_name = hasLaw)]
     pub fn has_law(&self, law_id: &str) -> bool {
-        self.laws.contains_key(law_id)
+        self.service.has_law(law_id)
     }
 
     /// Get the number of loaded laws.
     #[wasm_bindgen(js_name = lawCount)]
     pub fn law_count(&self) -> usize {
-        self.laws.len()
+        self.service.law_count()
+    }
+
+    /// Register a tabular data source from flat records.
+    ///
+    /// Data sources are queried during execution to resolve inputs before
+    /// falling back to cross-law resolution.
+    ///
+    /// # Arguments
+    /// * `name` - Data source name (e.g., "personal_data")
+    /// * `key_field` - Field name used as record key (e.g., "bsn")
+    /// * `records` - JavaScript array of objects, each representing a record
+    ///
+    /// # Example (JavaScript)
+    /// ```javascript
+    /// engine.registerDataSource('personal_data', 'bsn', [
+    ///     { bsn: '999993653', geboortedatum: '2000-01-01', land_verblijf: 'NEDERLAND' }
+    /// ]);
+    /// ```
+    #[wasm_bindgen(js_name = registerDataSource)]
+    pub fn register_data_source(
+        &mut self,
+        name: &str,
+        key_field: &str,
+        records: JsValue,
+    ) -> Result<(), JsValue> {
+        let parsed: Vec<HashMap<String, Value>> = serde_wasm_bindgen::from_value(records)
+            .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))?;
+
+        self.service
+            .register_dict_source(name, key_field, parsed)
+            .map_err(engine_error_to_wasm)
+    }
+
+    /// Remove all registered data sources.
+    #[wasm_bindgen(js_name = clearDataSources)]
+    pub fn clear_data_sources(&mut self) {
+        self.service.clear_data_sources();
     }
 
     /// Get the engine version.
-    ///
-    /// # Returns
-    /// Version string (e.g., "0.1.0")
     #[wasm_bindgen(js_name = version)]
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
@@ -394,15 +305,9 @@ impl Default for WasmEngine {
     }
 }
 
-// Tests for WasmEngine
-//
-// Note: Most WASM-specific functionality (JsValue conversion, execute, get_law_info)
-// can only be tested in an actual WASM environment. These tests focus on the
-// non-WASM-dependent parts of the API.
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::article::ArticleBasedLaw;
 
     const MINIMAL_LAW_YAML: &str = r#"
 $id: test_law
@@ -428,6 +333,10 @@ articles:
               - 2
 "#;
 
+    fn load_law(engine: &mut WasmEngine, yaml: &str) -> String {
+        engine.service.load_law(yaml).unwrap()
+    }
+
     #[test]
     fn test_wasm_engine_new() {
         let engine = WasmEngine::new();
@@ -442,14 +351,9 @@ articles:
     }
 
     #[test]
-    fn test_wasm_engine_load_law_directly() {
-        // Test the underlying law loading without going through JsValue conversion
+    fn test_wasm_engine_load_law() {
         let mut engine = WasmEngine::new();
-
-        // Manually parse and add the law (simulating what load_law does internally)
-        let law = ArticleBasedLaw::from_yaml_str(MINIMAL_LAW_YAML).unwrap();
-        let id = law.id.clone();
-        engine.laws.insert(id.clone(), law);
+        load_law(&mut engine, MINIMAL_LAW_YAML);
 
         assert_eq!(engine.law_count(), 1);
         assert!(engine.has_law("test_law"));
@@ -459,10 +363,7 @@ articles:
     #[test]
     fn test_wasm_engine_unload_law() {
         let mut engine = WasmEngine::new();
-
-        // Add law directly
-        let law = ArticleBasedLaw::from_yaml_str(MINIMAL_LAW_YAML).unwrap();
-        engine.laws.insert(law.id.clone(), law);
+        load_law(&mut engine, MINIMAL_LAW_YAML);
 
         assert!(engine.has_law("test_law"));
         assert!(engine.unload_law("test_law"));
@@ -473,10 +374,7 @@ articles:
     #[test]
     fn test_wasm_engine_list_laws() {
         let mut engine = WasmEngine::new();
-
-        // Add law directly
-        let law = ArticleBasedLaw::from_yaml_str(MINIMAL_LAW_YAML).unwrap();
-        engine.laws.insert(law.id.clone(), law);
+        load_law(&mut engine, MINIMAL_LAW_YAML);
 
         let laws = engine.list_laws();
         assert_eq!(laws.len(), 1);
@@ -488,8 +386,7 @@ articles:
         let mut engine = WasmEngine::new();
         assert!(!engine.has_law("test_law"));
 
-        let law = ArticleBasedLaw::from_yaml_str(MINIMAL_LAW_YAML).unwrap();
-        engine.laws.insert(law.id.clone(), law);
+        load_law(&mut engine, MINIMAL_LAW_YAML);
 
         assert!(engine.has_law("test_law"));
         assert!(!engine.has_law("other_law"));
@@ -500,8 +397,7 @@ articles:
         let mut engine = WasmEngine::new();
         assert_eq!(engine.law_count(), 0);
 
-        let law = ArticleBasedLaw::from_yaml_str(MINIMAL_LAW_YAML).unwrap();
-        engine.laws.insert(law.id.clone(), law);
+        load_law(&mut engine, MINIMAL_LAW_YAML);
         assert_eq!(engine.law_count(), 1);
 
         let yaml2 = r#"
@@ -512,8 +408,141 @@ articles:
   - number: '1'
     text: Second test article
 "#;
-        let law2 = ArticleBasedLaw::from_yaml_str(yaml2).unwrap();
-        engine.laws.insert(law2.id.clone(), law2);
+        load_law(&mut engine, yaml2);
         assert_eq!(engine.law_count(), 2);
+    }
+
+    #[test]
+    fn test_wasm_engine_reload_law_replaces() {
+        let mut engine = WasmEngine::new();
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+        assert_eq!(engine.law_count(), 1);
+
+        // Loading the same law again replaces the existing version
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+        assert_eq!(engine.law_count(), 1);
+    }
+
+    #[test]
+    fn test_wasm_engine_cross_law_execution() {
+        let mut engine = WasmEngine::new();
+
+        // Law A: outputs a constant value
+        let law_a = r#"
+$id: law_a
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Provides base value
+    machine_readable:
+      execution:
+        output:
+          - name: base_value
+            type: number
+        actions:
+          - output: base_value
+            value: 100
+"#;
+
+        // Law B: references law_a's output
+        let law_b = r#"
+$id: law_b
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Uses base value from law A
+    machine_readable:
+      execution:
+        input:
+          - name: base_value
+            type: number
+            source:
+              regulation: law_a
+              output: base_value
+        output:
+          - name: doubled
+            type: number
+        actions:
+          - output: doubled
+            operation: MULTIPLY
+            values:
+              - $base_value
+              - 2
+"#;
+
+        load_law(&mut engine, law_a);
+        load_law(&mut engine, law_b);
+
+        // Execute via the service directly (can't use JsValue in native tests)
+        let params = HashMap::new();
+        let result = engine
+            .service
+            .evaluate_law_output("law_b", "doubled", params, "2025-01-01")
+            .unwrap();
+
+        assert_eq!(result.outputs.get("doubled"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_wasm_engine_data_source() {
+        let mut engine = WasmEngine::new();
+
+        // Law that reads age from a data source via source reference
+        let law = r#"
+$id: data_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Uses data source
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: age
+            type: number
+            source:
+              output: age
+        output:
+          - name: is_adult
+            type: boolean
+        actions:
+          - output: is_adult
+            operation: GREATER_THAN_OR_EQUAL
+            subject: $age
+            value: 18
+"#;
+        load_law(&mut engine, law);
+
+        // Register data source
+        let records = vec![{
+            let mut r = HashMap::new();
+            r.insert("bsn".to_string(), Value::String("123".to_string()));
+            r.insert("age".to_string(), Value::Int(25));
+            r
+        }];
+        engine
+            .service
+            .register_dict_source("people", "bsn", records)
+            .unwrap();
+
+        let mut params = HashMap::new();
+        params.insert("bsn".to_string(), Value::String("123".to_string()));
+
+        let result = engine
+            .service
+            .evaluate_law_output("data_law", "is_adult", params, "2025-01-01")
+            .unwrap();
+
+        assert_eq!(result.outputs.get("is_adult"), Some(&Value::Bool(true)));
+
+        // Clear and verify
+        engine.clear_data_sources();
+        assert_eq!(engine.service.data_source_count(), 0);
     }
 }

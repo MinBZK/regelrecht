@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "wasm:build": "just wasm-build",
     "prebuild": "node scripts/copy-laws.js",
     "predev": "node scripts/copy-laws.js",
     "dev": "vite",
@@ -12,6 +13,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@cucumber/gherkin": "^39.0.0",
+    "@cucumber/messages": "^32.2.0",
     "@minbzk/storybook": "^0.8.14"
   },
   "overrides": {

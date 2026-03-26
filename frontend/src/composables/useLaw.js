@@ -11,6 +11,7 @@ export function useLaw(lawParam) {
     ? lawParam
     : `/api/corpus/laws/${encodeURIComponent(lawParam)}`;
   const law = shallowRef(null);
+  const rawYaml = ref('');
   const selectedArticleNumber = ref(null);
   const loading = ref(true);
   const error = ref(null);
@@ -48,6 +49,7 @@ export function useLaw(lawParam) {
       const res = await fetch(yamlUrl);
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
       const text = await res.text();
+      rawYaml.value = text;
       law.value = yaml.load(text);
       if (articles.value.length > 0 && !selectedArticleNumber.value) {
         selectedArticleNumber.value = String(articles.value[0].number);
@@ -61,8 +63,13 @@ export function useLaw(lawParam) {
 
   load();
 
+  // Derive the law ID from the parsed law or the original param
+  const lawId = computed(() => law.value?.$id || lawParam);
+
   return {
     law,
+    lawId,
+    rawYaml,
     articles,
     lawName,
     selectedArticle,
