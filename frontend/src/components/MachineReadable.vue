@@ -205,7 +205,7 @@ function addOutput() {
         <rr-list-item v-for="(action, index) in actions" :key="index" size="md">
           <rr-text-cell>{{ action.output }}</rr-text-cell>
           <rr-button-cell slot="end">
-            <rr-button variant="neutral-tinted" size="sm" @click="emit('open-action', action)">Bewerk</rr-button>
+            <rr-button variant="neutral-tinted" size="sm" @click="emit('open-action', action)">{{ editable ? 'Bewerk' : 'Bekijk' }}</rr-button>
           </rr-button-cell>
         </rr-list-item>
       </rr-list>
@@ -229,9 +229,6 @@ function addOutput() {
   justify-content: space-between;
   padding: 6px 12px;
   min-height: 36px;
-}
-.machine-readable rr-list[variant="box"] rr-list-item + rr-list-item {
-  border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 .add-button {
   display: inline-flex;
