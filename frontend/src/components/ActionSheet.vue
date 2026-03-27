@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { buildOperationTree } from '../utils/operationTree.js';
 import OperationSettings from './OperationSettings.vue';
 
@@ -10,18 +10,13 @@ const props = defineProps({
 
 const emit = defineEmits(['close']);
 
-const sheetEl = ref(null);
-
 const operationTree = computed(() => props.action ? buildOperationTree(props.action) : []);
 
 const selectedOpIndex = ref(0);
 
-watch(() => props.action, async (val) => {
+watch(() => props.action, () => {
   const tree = operationTree.value;
   selectedOpIndex.value = tree.length > 0 ? tree.length - 1 : 0;
-  await nextTick();
-  if (val) sheetEl.value?.show();
-  else sheetEl.value?.hide();
 }, { immediate: true });
 
 const selectedOperation = computed(() => operationTree.value[selectedOpIndex.value] ?? null);
@@ -43,11 +38,26 @@ function selectOperationByNode(node) {
   const idx = operationTree.value.findIndex(op => op.node === node);
   if (idx >= 0) selectedOpIndex.value = idx;
 }
+
+function handleKeydown(e) {
+  if (e.key === 'Escape' && props.action) {
+    emit('close');
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
 <template>
-  <rr-sheet ref="sheetEl" placement="right" @close="emit('close')">
-    <div class="action-sheet-content">
+  <div v-if="action" class="action-sheet-overlay" @click.self="emit('close')">
+    <div class="action-sheet-backdrop" @click="emit('close')"></div>
+    <div class="action-sheet-panel">
       <!-- Header -->
       <rr-toolbar size="md">
         <rr-toolbar-start-area>
@@ -63,7 +73,7 @@ function selectOperationByNode(node) {
       </rr-toolbar>
 
       <!-- Body -->
-      <div class="action-sheet-body" v-if="action">
+      <div class="action-sheet-body">
         <rr-simple-section>
           <!-- Section A: Bovenliggende operaties -->
           <template v-if="parentOperations.length">
@@ -96,16 +106,36 @@ function selectOperationByNode(node) {
         </rr-button>
       </div>
     </div>
-  </rr-sheet>
+  </div>
 </template>
 
 <style>
-.action-sheet-content {
+.action-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+}
+.action-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.1);
+}
+.action-sheet-panel {
+  position: relative;
+  width: 640px;
+  max-width: 100vw;
+  background: #fff;
   display: flex;
   flex-direction: column;
   height: 100%;
-  width: 640px;
-  max-width: 100vw;
+  box-shadow: 0px 16px 64px 0px rgba(0, 0, 0, 0.11),
+              0px 8px 32px 0px rgba(0, 0, 0, 0.09),
+              0px 4px 16px 0px rgba(0, 0, 0, 0.06),
+              0px 2px 8px 0px rgba(0, 0, 0, 0.04),
+              0px 1px 4px 0px rgba(0, 0, 0, 0.03),
+              0px 0px 2px 0px rgba(0, 0, 0, 0.02);
 }
 .action-sheet-body {
   flex: 1;
