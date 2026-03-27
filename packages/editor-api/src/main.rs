@@ -41,6 +41,14 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}",
             get(corpus_handlers::get_corpus_law),
+        )
+        .route(
+            "/api/corpus/laws/{law_id}/scenarios",
+            get(corpus_handlers::list_scenarios),
+        )
+        .route(
+            "/api/corpus/laws/{law_id}/scenarios/{filename}",
+            get(corpus_handlers::get_scenario),
         );
 
     let app = Router::new()

@@ -222,7 +222,7 @@ loadIndex();
               <rr-toolbar-item>
                 <rr-tab-bar size="md">
                   <rr-tab-bar-item selected>Bibliotheek</rr-tab-bar-item>
-                  <rr-tab-bar-item href="editor.html">Editor</rr-tab-bar-item>
+                  <rr-tab-bar-item href="/editor.html">Editor</rr-tab-bar-item>
                 </rr-tab-bar>
               </rr-toolbar-item>
             </rr-toolbar-start-area>
@@ -304,7 +304,7 @@ loadIndex();
                     </rr-toolbar-start-area>
                     <rr-toolbar-end-area>
                       <rr-toolbar-item>
-                        <a v-if="selectedLawId" :href="`editor.html?law=${encodeURIComponent(selectedLawId)}`">
+                        <a v-if="selectedLawId" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
                           <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
                         </a>
                         <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
@@ -361,7 +361,7 @@ loadIndex();
                   </rr-toolbar-start-area>
                   <rr-toolbar-end-area>
                     <rr-toolbar-item>
-                      <a v-if="selectedLawId" :href="`editor.html?law=${encodeURIComponent(selectedLawId)}`">
+                      <a v-if="selectedLawId" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
                         <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
                       </a>
                       <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>

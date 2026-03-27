@@ -1,11 +1,26 @@
 # syntax=docker/dockerfile:1
-# Stage 1: Build frontend
+# Stage 1a: Build WASM module using cargo + wasm-bindgen-cli (no wasm-pack needed)
+FROM rust:1.94-alpine AS wasm-builder
+RUN apk add --no-cache musl-dev
+RUN rustup target add wasm32-unknown-unknown
+RUN cargo install wasm-bindgen-cli@0.2.114 --locked
+WORKDIR /build
+COPY packages/Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY packages/engine/ packages/engine/
+COPY packages/shared/ packages/shared/
+RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
+    wasm-bindgen --target web --out-dir /wasm-pkg \
+      target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+
+# Stage 1b: Build frontend (with WASM module)
 FROM node:24-alpine AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
 RUN --mount=type=secret,id=GITHUB_TOKEN \
     GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) npm ci
 COPY frontend/ .
+COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
 RUN npm run build
 
 # Stage 2: Chef base

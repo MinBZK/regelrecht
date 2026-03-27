@@ -18,6 +18,7 @@
 # Frontend
 node_modules/
 frontend/dist/
+frontend/public/wasm/pkg/
 packages/admin/static/
 
 # Rust

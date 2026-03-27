@@ -6,8 +6,16 @@ import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
+import ScenarioPanel from './components/ScenarioPanel.vue';
 
-const { articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
+const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
+
+const rightPaneView = ref('machine');
+
+function onRightPaneChange(event) {
+  const value = event.target?.value ?? event.detail?.[0];
+  if (value) rightPaneView.value = value;
+}
 
 const activeAction = ref(null);
 const activeEditItem = ref(null);
@@ -229,18 +237,21 @@ function selectArticle(number) {
             </rr-page>
           </rr-split-view-pane>
 
-          <!-- Main: Machine Readable -->
+          <!-- Main: Machine Readable / Test -->
           <rr-split-view-pane slot="main" has-content>
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-title-bar size="5">Machine Readable</rr-title-bar>
+                    <rr-segmented-control size="md" :value="rightPaneView" @change="onRightPaneChange">
+                      <rr-segmented-control-item value="machine">Machine Readable</rr-segmented-control-item>
+                      <rr-segmented-control-item value="test">Test</rr-segmented-control-item>
+                    </rr-segmented-control>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
               </rr-toolbar>
 
-              <rr-simple-section>
+              <rr-simple-section v-if="rightPaneView === 'machine'">
                 <MachineReadable
                   :article="editedArticle"
                   :editable="true"
@@ -248,6 +259,12 @@ function selectArticle(number) {
                   @open-action="activeAction = $event"
                 />
               </rr-simple-section>
+
+              <ScenarioPanel
+                v-if="rightPaneView === 'test'"
+                :law-id="lawId"
+                :law-yaml="rawYaml"
+              />
             </rr-page>
           </rr-split-view-pane>
 

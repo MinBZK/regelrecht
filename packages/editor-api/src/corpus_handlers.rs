@@ -2,6 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::state::AppState;
 
@@ -128,5 +129,114 @@ pub async fn get_corpus_law(
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
         law.yaml_content.clone(),
+    ))
+}
+
+/// A scenario file entry.
+#[derive(Debug, Serialize)]
+pub struct ScenarioEntry {
+    pub filename: String,
+}
+
+/// Derive the scenarios directory from a law's file_path.
+///
+/// Given a law file at `.../wet_op_de_zorgtoeslag/2025-01-01.yaml`,
+/// the scenarios directory is `.../wet_op_de_zorgtoeslag/scenarios/`.
+fn scenarios_dir_for_law(file_path: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(file_path);
+    let parent = path.parent()?;
+    Some(parent.join("scenarios"))
+}
+
+/// GET /api/corpus/laws/{law_id}/scenarios — list available scenario files.
+pub async fn list_scenarios(
+    State(state): State<AppState>,
+    Path(law_id): Path<String>,
+) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
+    // Resolve the scenarios directory while holding the lock, then drop it before I/O.
+    let scenarios_dir = {
+        let corpus = state.corpus.read().await;
+        let law = corpus
+            .source_map
+            .get_law(&law_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+        match scenarios_dir_for_law(&law.file_path) {
+            Some(dir) => dir,
+            _ => return Ok(Json(Vec::new())),
+        }
+    };
+
+    if !scenarios_dir.is_dir() {
+        return Ok(Json(Vec::new()));
+    }
+
+    let mut entries = Vec::new();
+    if let Ok(read_dir) = std::fs::read_dir(&scenarios_dir) {
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "feature") {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    entries.push(ScenarioEntry {
+                        filename: name.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    entries.sort_by(|a, b| a.filename.cmp(&b.filename));
+    Ok(Json(entries))
+}
+
+/// GET /api/corpus/laws/{law_id}/scenarios/{filename} — return raw .feature content.
+pub async fn get_scenario(
+    State(state): State<AppState>,
+    Path((law_id, filename)): Path<(String, String)>,
+) -> Result<
+    (
+        StatusCode,
+        [(axum::http::HeaderName, &'static str); 1],
+        String,
+    ),
+    (StatusCode, String),
+> {
+    // Reject path traversal attempts
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err((StatusCode::BAD_REQUEST, "Invalid filename".to_string()));
+    }
+
+    if !filename.ends_with(".feature") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Only .feature files are served".to_string(),
+        ));
+    }
+
+    // Resolve path while holding the lock, then drop it before I/O.
+    let file_path = {
+        let corpus = state.corpus.read().await;
+        let law = corpus
+            .source_map
+            .get_law(&law_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+        let scenarios_dir = scenarios_dir_for_law(&law.file_path)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, "No scenarios directory".to_string()))?;
+        scenarios_dir.join(&filename)
+    };
+
+    let content = std::fs::read_to_string(&file_path).map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Scenario '{}' not found", filename),
+        )
+    })?;
+
+    Ok((
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )],
+        content,
     ))
 }
