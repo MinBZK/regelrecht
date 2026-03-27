@@ -78,7 +78,7 @@ cucumber = "0.22"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 walkdir = "2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
 name = "uri_parsing"
