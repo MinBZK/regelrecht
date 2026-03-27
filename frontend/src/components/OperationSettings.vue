@@ -176,20 +176,6 @@ function currentDropdownValue(val) {
   margin-bottom: 4px;
 }
 
-/* Consistent field widths in settings list */
-.settings-list rr-list-item {
-  display: grid;
-  grid-template-columns: 100px 1fr;
-  gap: 0 12px;
-  align-items: center;
-}
-.settings-list rr-cell {
-  width: 100%;
-}
-.settings-list rr-text-field,
-.settings-list rr-dropdown {
-  width: 100%;
-}
 
 .value-row {
   display: flex;
