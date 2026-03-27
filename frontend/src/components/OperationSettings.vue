@@ -124,7 +124,7 @@ function currentDropdownValue(val) {
         <rr-text-cell>Type</rr-text-cell>
         <rr-cell>
           <rr-dropdown size="md">
-            <select :value="operation.operation" aria-label="Operatie type">
+            <select aria-label="Operatie type" :value="operation.operation">
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </rr-dropdown>
@@ -140,9 +140,9 @@ function currentDropdownValue(val) {
               <rr-text-field size="md" :value="String(val._value)" is-full-width></rr-text-field>
             </template>
             <template v-else>
-              <rr-dropdown size="md">
-                <select :value="currentDropdownValue(val._value)" aria-label="Waarde">
-                  <option v-for="opt in valueDropdownOptions(val._value)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              <rr-dropdown size="md" style="flex: 1; min-width: 0;">
+                <select :aria-label="val._label" :value="currentDropdownValue(val._value)">
+                  <option v-for="opt in valueDropdownOptions(val._value)" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                 </select>
               </rr-dropdown>
             </template>
@@ -173,7 +173,7 @@ function currentDropdownValue(val) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 /* Consistent field widths in settings list */

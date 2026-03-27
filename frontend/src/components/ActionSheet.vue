@@ -8,15 +8,6 @@ const props = defineProps({
   article: { type: Object, default: null },
 });
 
-const outputOptions = computed(() => {
-  const outputs = props.article?.machine_readable?.execution?.output;
-  if (!Array.isArray(outputs)) return [];
-  return outputs.map(o => ({
-    value: o.name,
-    label: `${o.name.replace(/_/g, ' ')} (${o.type})`,
-  }));
-});
-
 const emit = defineEmits(['close']);
 
 const sheetEl = ref(null);
@@ -74,24 +65,6 @@ function selectOperationByNode(node) {
       <!-- Body -->
       <div class="action-sheet-body" v-if="action">
         <rr-simple-section>
-          <!-- Output binding -->
-          <rr-title-bar size="5">Output</rr-title-bar>
-          <rr-spacer size="4"></rr-spacer>
-          <rr-list variant="box">
-            <rr-list-item size="md">
-              <rr-text-cell>Verbonden aan</rr-text-cell>
-              <rr-cell>
-                <rr-dropdown size="md">
-                  <select :value="action?.output" aria-label="Verbonden output">
-                    <option v-for="opt in outputOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                  </select>
-                </rr-dropdown>
-              </rr-cell>
-            </rr-list-item>
-          </rr-list>
-
-          <rr-spacer size="16"></rr-spacer>
-
           <!-- Section A: Bovenliggende operaties -->
           <template v-if="parentOperations.length">
             <rr-title-bar size="5">Bovenliggende operaties</rr-title-bar>
@@ -108,7 +81,7 @@ function selectOperationByNode(node) {
               </rr-list-item>
             </rr-list>
 
-            <rr-spacer size="16"></rr-spacer>
+            <rr-spacer size="8"></rr-spacer>
           </template>
 
           <!-- Section B: Operation Settings -->
@@ -119,7 +92,7 @@ function selectOperationByNode(node) {
       <!-- Footer -->
       <div class="action-sheet-footer">
         <rr-button variant="accent-filled" size="md" full-width @click="emit('close')">
-          Sluiten
+          Opslaan
         </rr-button>
       </div>
     </div>
