@@ -161,10 +161,14 @@ pub async fn list_scenarios(
             .get_law(&law_id)
             .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
         match scenarios_dir_for_law(&law.file_path) {
-            Some(dir) if dir.is_dir() => dir,
+            Some(dir) => dir,
             _ => return Ok(Json(Vec::new())),
         }
     };
+
+    if !scenarios_dir.is_dir() {
+        return Ok(Json(Vec::new()));
+    }
 
     let mut entries = Vec::new();
     if let Ok(read_dir) = std::fs::read_dir(&scenarios_dir) {
