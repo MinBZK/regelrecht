@@ -32,7 +32,7 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
 
@@ -59,6 +59,6 @@ Feature: Zorgtoeslag eligibility
       | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
       | 999993653 | null           | null            | null     | null                 |
     Given parameter "bsn" is "999993653"
-    When I evaluate "heeft_recht_op_zorgtoeslag" of "wet_op_de_zorgtoeslag"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is false
