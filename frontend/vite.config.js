@@ -12,6 +12,18 @@ export default defineConfig({
         },
       },
     }),
+    {
+      name: 'library-spa-fallback',
+      configureServer(server) {
+        server.middlewares.use((req, _res, next) => {
+          const url = req.url.split('?')[0];
+          if (url === '/' || (url.startsWith('/library') && !url.includes('.'))) {
+            req.url = '/index.html';
+          }
+          next();
+        });
+      },
+    },
   ],
   test: {
     environment: 'happy-dom',

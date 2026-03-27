@@ -104,7 +104,7 @@ function selectArticle(number) {
             <rr-toolbar-start-area>
               <rr-toolbar-item>
                 <rr-tab-bar size="md">
-                  <rr-tab-bar-item href="index.html">Bibliotheek</rr-tab-bar-item>
+                  <rr-tab-bar-item href="/library">Bibliotheek</rr-tab-bar-item>
                   <rr-tab-bar-item selected>Editor</rr-tab-bar-item>
                 </rr-tab-bar>
               </rr-toolbar-item>
