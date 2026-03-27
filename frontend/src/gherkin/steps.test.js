@@ -22,10 +22,13 @@ describe('parseValue', () => {
     expect(parseValue('-0.5')).toBeCloseTo(-0.5);
   });
 
-  it('returns strings for non-numeric', () => {
+  it('returns strings for non-numeric values', () => {
     expect(parseValue('hello')).toBe('hello');
-    expect(parseValue('999993653')).toBe(999993653);
     expect(parseValue('Amsterdam')).toBe('Amsterdam');
+  });
+
+  it('parses large numeric strings as integers', () => {
+    expect(parseValue('999993653')).toBe(999993653);
   });
 });
 
