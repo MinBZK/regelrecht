@@ -1,16 +1,17 @@
 # syntax=docker/dockerfile:1
-# Stage 1a: Build WASM module
-# Use rust:1.86 for wasm-pack compatibility (1.87+ requires nightly --artifact-dir)
-FROM rust:1.86-alpine AS wasm-builder
-RUN apk add --no-cache musl-dev curl
+# Stage 1a: Build WASM module using cargo + wasm-bindgen-cli (no wasm-pack needed)
+FROM rust:1.94-alpine AS wasm-builder
+RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
-RUN cargo install wasm-pack --locked
+RUN cargo install wasm-bindgen-cli --locked
 WORKDIR /build
 COPY packages/Cargo.lock ./
 RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
 COPY packages/engine/ packages/engine/
 COPY packages/shared/ packages/shared/
-RUN wasm-pack build packages/engine --target web --features wasm --out-dir /wasm-pkg
+RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
+    wasm-bindgen --target web --out-dir /wasm-pkg \
+      target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
 FROM node:24-alpine AS frontend-builder
