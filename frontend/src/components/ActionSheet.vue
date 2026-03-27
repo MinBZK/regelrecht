@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { buildOperationTree } from '../utils/operationTree.js';
 import OperationSettings from './OperationSettings.vue';
 
@@ -8,29 +8,15 @@ const props = defineProps({
   article: { type: Object, default: null },
 });
 
-const outputOptions = computed(() => {
-  const outputs = props.article?.machine_readable?.execution?.output;
-  if (!Array.isArray(outputs)) return [];
-  return outputs.map(o => ({
-    value: o.name,
-    label: `${o.name.replace(/_/g, ' ')} (${o.type})`,
-  }));
-});
-
 const emit = defineEmits(['close']);
-
-const sheetEl = ref(null);
 
 const operationTree = computed(() => props.action ? buildOperationTree(props.action) : []);
 
 const selectedOpIndex = ref(0);
 
-watch(() => props.action, async (val) => {
+watch(() => props.action, () => {
   const tree = operationTree.value;
   selectedOpIndex.value = tree.length > 0 ? tree.length - 1 : 0;
-  await nextTick();
-  if (val) sheetEl.value?.show();
-  else sheetEl.value?.hide();
 }, { immediate: true });
 
 const selectedOperation = computed(() => operationTree.value[selectedOpIndex.value] ?? null);
@@ -52,11 +38,26 @@ function selectOperationByNode(node) {
   const idx = operationTree.value.findIndex(op => op.node === node);
   if (idx >= 0) selectedOpIndex.value = idx;
 }
+
+function handleKeydown(e) {
+  if (e.key === 'Escape' && props.action) {
+    emit('close');
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
+});
 </script>
 
 <template>
-  <rr-sheet ref="sheetEl" placement="right" @close="emit('close')">
-    <div class="action-sheet-content">
+  <div v-if="action" class="action-sheet-overlay" @click.self="emit('close')">
+    <div class="action-sheet-backdrop" @click="emit('close')"></div>
+    <div class="action-sheet-panel">
       <!-- Header -->
       <rr-toolbar size="md">
         <rr-toolbar-start-area>
@@ -72,26 +73,8 @@ function selectOperationByNode(node) {
       </rr-toolbar>
 
       <!-- Body -->
-      <div class="action-sheet-body" v-if="action">
+      <div class="action-sheet-body">
         <rr-simple-section>
-          <!-- Output binding -->
-          <rr-title-bar size="5">Output</rr-title-bar>
-          <rr-spacer size="4"></rr-spacer>
-          <rr-list variant="box">
-            <rr-list-item size="md">
-              <rr-text-cell>Verbonden aan</rr-text-cell>
-              <rr-cell>
-                <rr-dropdown size="md">
-                  <select :value="action?.output" aria-label="Verbonden output">
-                    <option v-for="opt in outputOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                  </select>
-                </rr-dropdown>
-              </rr-cell>
-            </rr-list-item>
-          </rr-list>
-
-          <rr-spacer size="16"></rr-spacer>
-
           <!-- Section A: Bovenliggende operaties -->
           <template v-if="parentOperations.length">
             <rr-title-bar size="5">Bovenliggende operaties</rr-title-bar>
@@ -108,7 +91,7 @@ function selectOperationByNode(node) {
               </rr-list-item>
             </rr-list>
 
-            <rr-spacer size="16"></rr-spacer>
+            <rr-spacer size="8"></rr-spacer>
           </template>
 
           <!-- Section B: Operation Settings -->
@@ -119,20 +102,40 @@ function selectOperationByNode(node) {
       <!-- Footer -->
       <div class="action-sheet-footer">
         <rr-button variant="accent-filled" size="md" full-width @click="emit('close')">
-          Sluiten
+          Opslaan
         </rr-button>
       </div>
     </div>
-  </rr-sheet>
+  </div>
 </template>
 
 <style>
-.action-sheet-content {
+.action-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: flex-end;
+}
+.action-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.1);
+}
+.action-sheet-panel {
+  position: relative;
+  width: 640px;
+  max-width: 100vw;
+  background: #fff;
   display: flex;
   flex-direction: column;
   height: 100%;
-  width: 640px;
-  max-width: 100vw;
+  box-shadow: 0px 16px 64px 0px rgba(0, 0, 0, 0.11),
+              0px 8px 32px 0px rgba(0, 0, 0, 0.09),
+              0px 4px 16px 0px rgba(0, 0, 0, 0.06),
+              0px 2px 8px 0px rgba(0, 0, 0, 0.04),
+              0px 1px 4px 0px rgba(0, 0, 0, 0.03),
+              0px 0px 2px 0px rgba(0, 0, 0, 0.02);
 }
 .action-sheet-body {
   flex: 1;
