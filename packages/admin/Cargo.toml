@@ -44,7 +44,7 @@ tower = "0.5"
 tower-sessions-memory-store = "0.14"
 wiremock = "0.6"
 rsa = "0.9"
-sha2 = "0.10"
+sha2 = "0.11"
 uuid = { version = "1", features = ["v4"] }
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres"] }
