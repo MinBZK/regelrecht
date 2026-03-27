@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 
 const props = defineProps({
   item: { type: Object, default: null },
@@ -7,6 +7,7 @@ const props = defineProps({
 
 const emit = defineEmits(['save', 'close']);
 
+const sheetEl = ref(null);
 const values = ref({});
 
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
@@ -32,8 +33,12 @@ function fromDisplay(value, controlType) {
   return value;
 }
 
-watch(() => props.item, (item) => {
-  if (!item) return;
+watch(() => props.item, async (item) => {
+  if (!item) {
+    sheetEl.value?.hide();
+    return;
+  }
+
   const s = item.section;
   if (s === 'definition' || s === 'add-definition') {
     const val = item.rawDef != null ? (typeof item.rawDef === 'object' ? item.rawDef.value : item.rawDef) : 0;
@@ -65,6 +70,9 @@ watch(() => props.item, (item) => {
       type: item.data?.type ?? 'string',
     };
   }
+
+  await nextTick();
+  sheetEl.value?.show();
 }, { immediate: true });
 
 function save() {
@@ -131,24 +139,16 @@ const sectionLabels = {
   'output': 'Output',
   'add-output': 'Nieuwe output',
 };
-
-function handleKeydown(e) {
-  if (e.key === 'Escape' && props.item) emit('close');
-}
-
-onMounted(() => document.addEventListener('keydown', handleKeydown));
-onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
 </script>
 
 <template>
-  <div v-if="item" class="edit-sheet-overlay">
-    <div class="edit-sheet-backdrop" @click="emit('close')"></div>
-    <div class="edit-sheet-panel">
+  <rr-sheet ref="sheetEl" placement="right" @close="emit('close')">
+    <div class="edit-sheet-content">
       <!-- Header -->
       <rr-toolbar size="md">
         <rr-toolbar-start-area>
           <rr-toolbar-item>
-            <span class="edit-sheet-title">{{ sectionLabels[item.section] || 'Bewerk' }}</span>
+            <rr-title-bar v-if="item" size="4">{{ sectionLabels[item.section] || 'Bewerk' }}</rr-title-bar>
           </rr-toolbar-item>
         </rr-toolbar-start-area>
         <rr-toolbar-end-area>
@@ -159,7 +159,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
       </rr-toolbar>
 
       <!-- Body -->
-      <div class="edit-sheet-body">
+      <div class="edit-sheet-body" v-if="item">
         <rr-simple-section>
           <!-- Definition -->
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
@@ -175,15 +175,15 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
                 <rr-cell>
                   <div v-if="values.controlType === 'currency'" class="edit-sheet-value-group">
                     <span class="edit-sheet-unit">&euro;</span>
-                    <input type="number" step="0.01" v-model.number="values.displayValue" class="edit-sheet-input">
+                    <rr-number-field :value="values.displayValue" step="0.01" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></rr-number-field>
                   </div>
                   <div v-else-if="values.controlType === 'percentage'" class="edit-sheet-value-group">
-                    <input type="number" step="0.001" v-model.number="values.displayValue" class="edit-sheet-input">
+                    <rr-number-field :value="values.displayValue" step="0.001" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></rr-number-field>
                     <span class="edit-sheet-unit">%</span>
                   </div>
-                  <input v-else-if="values.controlType === 'boolean'" type="checkbox" v-model="values.displayValue" class="edit-sheet-checkbox">
-                  <input v-else-if="values.controlType === 'number'" type="number" v-model.number="values.displayValue" class="edit-sheet-input edit-sheet-input--full">
-                  <input v-else type="text" v-model="values.displayValue" class="edit-sheet-input edit-sheet-input--full">
+                  <rr-switch-field v-else-if="values.controlType === 'boolean'" :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</rr-switch-field>
+                  <rr-number-field v-else-if="values.controlType === 'number'" :value="values.displayValue" full-width hide-spin-buttons @change="values.displayValue = $event.detail?.value ?? values.displayValue"></rr-number-field>
+                  <rr-text-field v-else size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></rr-text-field>
                 </rr-cell>
               </rr-list-item>
             </rr-list>
@@ -201,9 +201,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
               <rr-list-item size="md">
                 <rr-text-cell>Type</rr-text-cell>
                 <rr-cell>
-                  <select v-model="values.type" class="edit-sheet-select">
-                    <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
-                  </select>
+                  <rr-dropdown size="md">
+                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
+                      <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                  </rr-dropdown>
                 </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
@@ -227,9 +229,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
               <rr-list-item size="md">
                 <rr-text-cell>Type</rr-text-cell>
                 <rr-cell>
-                  <select v-model="values.type" class="edit-sheet-select">
-                    <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
-                  </select>
+                  <rr-dropdown size="md">
+                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
+                      <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                  </rr-dropdown>
                 </rr-cell>
               </rr-list-item>
               <rr-list-item size="md">
@@ -259,9 +263,11 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
               <rr-list-item size="md">
                 <rr-text-cell>Type</rr-text-cell>
                 <rr-cell>
-                  <select v-model="values.type" class="edit-sheet-select">
-                    <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
-                  </select>
+                  <rr-dropdown size="md">
+                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
+                      <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                  </rr-dropdown>
                 </rr-cell>
               </rr-list-item>
             </rr-list>
@@ -271,47 +277,21 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
 
       <!-- Footer -->
       <div class="edit-sheet-footer">
-        <rr-button variant="accent-filled" size="md" style="width: 100%;" @click="save">
+        <rr-button variant="accent-filled" size="md" full-width @click="save">
           Opslaan
         </rr-button>
       </div>
     </div>
-  </div>
+  </rr-sheet>
 </template>
 
 <style>
-.edit-sheet-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: flex-end;
-}
-.edit-sheet-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.1);
-}
-.edit-sheet-panel {
-  position: relative;
-  width: 480px;
-  background: #fff;
+.edit-sheet-content {
   display: flex;
   flex-direction: column;
   height: 100%;
-  box-shadow: 0px 16px 64px 0px rgba(0, 0, 0, 0.11),
-              0px 8px 32px 0px rgba(0, 0, 0, 0.09),
-              0px 4px 16px 0px rgba(0, 0, 0, 0.06),
-              0px 2px 8px 0px rgba(0, 0, 0, 0.04),
-              0px 1px 4px 0px rgba(0, 0, 0, 0.03),
-              0px 0px 2px 0px rgba(0, 0, 0, 0.02);
-}
-.edit-sheet-title {
-  font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
-  font-weight: 550;
-  font-size: 20px;
-  line-height: 1.4;
-  color: var(--semantics-text-primary-color, #333B44);
+  width: 480px;
+  max-width: 100vw;
 }
 .edit-sheet-body {
   flex: 1;
@@ -321,35 +301,17 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
   padding: 0 16px 16px;
 }
 
-/* Form fields */
-.edit-sheet-panel .settings-list rr-list-item {
+/* Form field layout in settings list */
+.edit-sheet-content .settings-list rr-list-item {
   display: grid;
   grid-template-columns: 120px 1fr;
   gap: 0 12px;
   align-items: center;
 }
-.edit-sheet-panel .settings-list rr-cell {
+.edit-sheet-content .settings-list rr-cell {
   width: 100%;
 }
-.edit-sheet-panel .settings-list rr-text-field {
-  width: 100%;
-}
-.edit-sheet-input {
-  padding: 8px 12px;
-  border: 1px solid var(--semantics-dividers-color, #D1D5DB);
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: inherit;
-  background: white;
-  color: var(--semantics-text-primary-color, #333B44);
-  outline: none;
-  min-width: 0;
-}
-.edit-sheet-input:focus {
-  border-color: #154273;
-  box-shadow: 0 0 0 2px rgba(21, 66, 115, 0.15);
-}
-.edit-sheet-input--full {
+.edit-sheet-content .settings-list rr-text-field {
   width: 100%;
 }
 .edit-sheet-value-group {
@@ -358,7 +320,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
   gap: 6px;
   width: 100%;
 }
-.edit-sheet-value-group .edit-sheet-input {
+.edit-sheet-value-group rr-number-field {
   flex: 1;
   min-width: 0;
 }
@@ -367,26 +329,5 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown));
   font-weight: 500;
   color: var(--semantics-text-secondary-color, #6B7280);
   flex-shrink: 0;
-}
-.edit-sheet-select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--semantics-dividers-color, #D1D5DB);
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: inherit;
-  background: white;
-  color: var(--semantics-text-primary-color, #333B44);
-  outline: none;
-  appearance: auto;
-}
-.edit-sheet-select:focus {
-  border-color: #154273;
-  box-shadow: 0 0 0 2px rgba(21, 66, 115, 0.15);
-}
-.edit-sheet-checkbox {
-  width: 20px;
-  height: 20px;
-  accent-color: #154273;
 }
 </style>

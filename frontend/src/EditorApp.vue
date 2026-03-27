@@ -116,15 +116,13 @@ function selectArticle(number) {
             </rr-toolbar-center-area>
             <rr-toolbar-end-area>
               <rr-toolbar-item>
-                <rr-icon-button variant="neutral-tinted" size="m" title="Notificaties">
-                  <img slot="__icon" src="/assets/icons/bell.svg" alt="Notificaties" width="24" height="24">
+                <rr-icon-button variant="neutral-tinted" size="m" icon="inbox" title="Notificaties">
                 </rr-icon-button>
               </rr-toolbar-item>
               <rr-toolbar-item>
                 <rr-button-bar size="md">
                   <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="m" has-menu title="Account">
-                    <img slot="__icon" src="/assets/icons/person.svg" alt="Account" width="24" height="24">
+                  <rr-icon-button variant="neutral-tinted" size="m" icon="person-circle" has-menu title="Account">
                   </rr-icon-button>
                 </rr-button-bar>
               </rr-toolbar-item>
@@ -162,9 +160,8 @@ function selectArticle(number) {
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-button variant="neutral-tinted" size="md">
+                    <rr-button variant="neutral-tinted" size="md" expandable>
                       Tekst
-                      <img src="/assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
                     </rr-button>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
@@ -172,23 +169,23 @@ function selectArticle(number) {
                   <rr-toolbar-item>
                     <rr-segmented-control size="md" content-type="icons">
                       <rr-segmented-control-item value="bold" title="Bold">
-                        <img src="/assets/icons/bold.svg" alt="Bold" width="20" height="20">
+                        <rr-icon name="bold"></rr-icon>
                       </rr-segmented-control-item>
                       <rr-segmented-control-item value="italic" title="Italic">
-                        <img src="/assets/icons/italic.svg" alt="Italic" width="20" height="20">
+                        <rr-icon name="italic"></rr-icon>
                       </rr-segmented-control-item>
                     </rr-segmented-control>
                   </rr-toolbar-item>
                   <rr-toolbar-item>
                     <rr-segmented-control size="md" content-type="icons">
                       <rr-segmented-control-item value="hr" title="Horizontale lijn">
-                        <img src="/assets/icons/minus.svg" alt="Lijn" width="20" height="20">
+                        <rr-icon name="minus"></rr-icon>
                       </rr-segmented-control-item>
                       <rr-segmented-control-item value="ul" title="Bullet list">
-                        <img src="/assets/icons/bullet-list.svg" alt="Bullet list" width="20" height="20">
+                        <rr-icon name="bullet-list"></rr-icon>
                       </rr-segmented-control-item>
                       <rr-segmented-control-item value="ol" title="Numbered list">
-                        <img src="/assets/icons/numbered-list.svg" alt="Numbered list" width="20" height="20">
+                        <rr-icon name="numbered-list"></rr-icon>
                       </rr-segmented-control-item>
                     </rr-segmented-control>
                   </rr-toolbar-item>
@@ -207,7 +204,7 @@ function selectArticle(number) {
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <span class="editor-pane-title">YAML</span>
+                    <rr-title-bar size="5">YAML</rr-title-bar>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
                 <rr-toolbar-end-area>
@@ -238,7 +235,7 @@ function selectArticle(number) {
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <span class="editor-pane-title">Machine Readable</span>
+                    <rr-title-bar size="5">Machine Readable</rr-title-bar>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
               </rr-toolbar>
@@ -264,13 +261,6 @@ function selectArticle(number) {
 </template>
 
 <style>
-.editor-pane-title {
-  font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
-  font-weight: 550;
-  font-size: 14px;
-  color: var(--semantics-text-primary-color, #333B44);
-}
-
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;

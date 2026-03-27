@@ -65,20 +65,24 @@ function findBewerkButtons(wrapper) {
   return wrapper.findAll('rr-button').filter((b) => b.text() === 'Bewerk');
 }
 
+function findBekijkButtons(wrapper) {
+  return wrapper.findAll('rr-button').filter((b) => b.text() === 'Bekijk');
+}
+
 async function clickBewerk(wrapper, index) {
   const buttons = findBewerkButtons(wrapper);
   await buttons[index].trigger('click');
 }
 
 function findAddButton(wrapper, text) {
-  return wrapper.findAll('.add-button').find((b) => b.text().includes(text));
+  return wrapper.findAll('rr-button').find((b) => b.text().includes(`Nieuwe ${text}`));
 }
 
 describe('MachineReadable', () => {
   describe('display mode', () => {
     it('renders all sections', () => {
       const wrapper = mountEditable();
-      const headings = wrapper.findAll('h3');
+      const headings = wrapper.findAll('rr-title-bar');
       const titles = headings.map((h) => h.text());
       expect(titles).toContain('Definities');
       expect(titles).toContain('Parameters');
@@ -214,7 +218,8 @@ describe('MachineReadable', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      expect(wrapper.findAll('.add-button').length).toBe(0);
+      const addButtons = wrapper.findAll('rr-button').filter((b) => b.text().includes('Nieuwe'));
+      expect(addButtons.length).toBe(0);
     });
 
     it('emits open-edit for new definition', async () => {
@@ -251,20 +256,20 @@ describe('MachineReadable', () => {
   });
 
   describe('non-editable mode', () => {
-    it('only shows Bewerk button for actions when editable is false', () => {
+    it('only shows Bekijk button for actions when editable is false', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const buttons = findBewerkButtons(wrapper);
-      // Only the action Bewerk button is rendered
+      const buttons = findBekijkButtons(wrapper);
+      // Only the action Bekijk button is rendered
       expect(buttons.length).toBe(1);
     });
 
-    it('action Bewerk emits open-action even when not editable', async () => {
+    it('action Bekijk emits open-action even when not editable', async () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const buttons = findBewerkButtons(wrapper);
+      const buttons = findBekijkButtons(wrapper);
       await buttons[0].trigger('click');
       expect(wrapper.emitted('open-action')).toHaveLength(1);
       expect(wrapper.emitted('open-edit')).toBeUndefined();

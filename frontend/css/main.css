@@ -1,12 +1,26 @@
-/* Main CSS - Import all stylesheets */
+/* Main CSS - Minimal app-level styles */
+/* Component styles are provided by @minbzk/storybook (imported in JS entry points) */
 
-@import 'reset.css';
-@import 'variables.css';
-@import 'layout.css';
+@import url('../fonts/fonts.css');
 
-/* Components */
-@import 'components/list.css';
-@import 'components/tabs.css';
-@import 'components/collapsible.css';
-@import 'components/panes.css';
-@import 'components/editor.css';
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--rr-font-family-sans, 'RijksSansVF', system-ui, -apple-system, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

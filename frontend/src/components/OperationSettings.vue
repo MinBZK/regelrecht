@@ -105,9 +105,8 @@ function currentDropdownValue(val) {
 <template>
   <div v-if="operation">
     <div class="settings-title-bar">
-      <h3 class="section-title" style="margin: 0;">Instellingen operatie {{ operation.number }}</h3>
-      <rr-icon-button variant="neutral-tinted" size="s" title="Meer opties">
-        <img slot="__icon" src="/assets/icons/ellipsis-horizontal.svg" alt="" width="20" height="20">
+      <rr-title-bar size="4">Instellingen operatie {{ operation.number }}</rr-title-bar>
+      <rr-icon-button variant="neutral-tinted" size="s" icon="ellipsis" title="Meer opties">
       </rr-icon-button>
     </div>
 
@@ -124,7 +123,11 @@ function currentDropdownValue(val) {
       <rr-list-item size="md">
         <rr-text-cell>Type</rr-text-cell>
         <rr-cell>
-          <rr-drop-down-field size="md" :value="operation.operation" .options="typeOptions"></rr-drop-down-field>
+          <rr-dropdown size="md">
+            <select :value="operation.operation" aria-label="Operatie type">
+              <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </rr-dropdown>
         </rr-cell>
       </rr-list-item>
 
@@ -137,15 +140,13 @@ function currentDropdownValue(val) {
               <rr-text-field size="md" :value="String(val._value)" is-full-width></rr-text-field>
             </template>
             <template v-else>
-              <rr-drop-down-field
-                size="md"
-                is-full-width
-                :value="currentDropdownValue(val._value)"
-                .options="valueDropdownOptions(val._value)"
-              ></rr-drop-down-field>
+              <rr-dropdown size="md">
+                <select :value="currentDropdownValue(val._value)" aria-label="Waarde">
+                  <option v-for="opt in valueDropdownOptions(val._value)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+              </rr-dropdown>
             </template>
-            <rr-icon-button variant="neutral-tinted" size="s" title="Verwijder waarde">
-              <img slot="__icon" src="/assets/icons/minus.svg" alt="" width="20" height="20">
+            <rr-icon-button variant="neutral-tinted" size="s" icon="minus" title="Verwijder waarde">
             </rr-icon-button>
           </div>
           <p v-if="isNestedOperation(val._value)" class="value-help-text">
@@ -157,8 +158,8 @@ function currentDropdownValue(val) {
 
       <!-- Add value -->
       <rr-list-item size="md">
-        <rr-button variant="neutral-tinted" size="md" style="width: 100%;" has-leading-icon>
-          <img slot="icon-start" src="/assets/icons/plus.svg" alt="" width="16" height="16">
+        <rr-button variant="neutral-tinted" size="md" style="width: 100%;">
+          <rr-icon slot="start" name="plus-small"></rr-icon>
           Voeg waarde toe
         </rr-button>
       </rr-list-item>
@@ -186,7 +187,7 @@ function currentDropdownValue(val) {
   width: 100%;
 }
 .settings-list rr-text-field,
-.settings-list rr-drop-down-field {
+.settings-list rr-dropdown {
   width: 100%;
 }
 
@@ -197,7 +198,7 @@ function currentDropdownValue(val) {
   width: 100%;
 }
 .value-row rr-text-field,
-.value-row rr-drop-down-field {
+.value-row rr-dropdown {
   flex: 1;
   min-width: 0;
 }

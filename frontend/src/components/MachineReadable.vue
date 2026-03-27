@@ -101,28 +101,26 @@ function addOutput() {
 </script>
 
 <template>
-  <div v-if="!mr" class="machine-readable" style="padding: 32px; color: #999; text-align: center;">
+  <div v-if="!mr" style="padding: 32px; color: var(--semantics-text-secondary-color, #999); text-align: center;">
     Geen machine-leesbare gegevens voor dit artikel
   </div>
 
-  <div v-else class="machine-readable">
+  <div v-else>
     <!-- Metadata: produces -->
     <rr-list v-if="produces" variant="box">
       <rr-list-item v-if="produces.legal_character" size="md">
         <rr-text-cell>Juridische basis</rr-text-cell>
         <rr-cell>
-          <rr-button variant="neutral-tinted" size="md">
+          <rr-button variant="neutral-tinted" size="md" expandable>
             {{ produces.legal_character }}
-            <img src="/assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
           </rr-button>
         </rr-cell>
       </rr-list-item>
       <rr-list-item v-if="produces.decision_type" size="md">
         <rr-text-cell>Besluit-type</rr-text-cell>
         <rr-cell>
-          <rr-button variant="neutral-tinted" size="md">
+          <rr-button variant="neutral-tinted" size="md" expandable>
             {{ produces.decision_type }}
-            <img src="/assets/icons/chevron-down-small.svg" alt="" width="16" height="16">
           </rr-button>
         </rr-cell>
       </rr-list-item>
@@ -132,7 +130,8 @@ function addOutput() {
 
     <!-- Definities -->
     <template v-if="definitions.length || editable">
-      <h3 class="machine-section-title">Definities</h3>
+      <rr-title-bar size="5">Definities</rr-title-bar>
+      <rr-spacer size="4"></rr-spacer>
       <rr-list variant="box">
         <rr-list-item v-for="def in definitions" :key="def.name" size="md">
           <rr-text-cell>{{ def.name }} = {{ formatValue(def.value, def.unit) }}</rr-text-cell>
@@ -141,7 +140,10 @@ function addOutput() {
           </rr-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
-          <button class="add-button" @click="addDef">+ Nieuwe definitie</button>
+          <rr-button variant="neutral-tinted" size="sm" @click="addDef">
+            <rr-icon slot="start" name="plus-small"></rr-icon>
+            Nieuwe definitie
+          </rr-button>
         </rr-list-item>
       </rr-list>
       <rr-spacer size="12"></rr-spacer>
@@ -149,7 +151,8 @@ function addOutput() {
 
     <!-- Parameters -->
     <template v-if="parameters.length || editable">
-      <h3 class="machine-section-title">Parameters</h3>
+      <rr-title-bar size="5">Parameters</rr-title-bar>
+      <rr-spacer size="4"></rr-spacer>
       <rr-list variant="box">
         <rr-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
           <rr-text-cell>{{ param.name }} ({{ param.type }})</rr-text-cell>
@@ -158,7 +161,10 @@ function addOutput() {
           </rr-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
-          <button class="add-button" @click="addParam">+ Nieuwe parameter</button>
+          <rr-button variant="neutral-tinted" size="sm" @click="addParam">
+            <rr-icon slot="start" name="plus-small"></rr-icon>
+            Nieuwe parameter
+          </rr-button>
         </rr-list-item>
       </rr-list>
       <rr-spacer size="12"></rr-spacer>
@@ -166,7 +172,8 @@ function addOutput() {
 
     <!-- Inputs -->
     <template v-if="inputs.length || editable">
-      <h3 class="machine-section-title">Inputs</h3>
+      <rr-title-bar size="5">Inputs</rr-title-bar>
+      <rr-spacer size="4"></rr-spacer>
       <rr-list variant="box">
         <rr-list-item v-for="(input, index) in inputs" :key="input.name" size="md">
           <rr-text-cell>{{ input.name }} ({{ input.type }})<template v-if="input.source"> — {{ input.source }}</template></rr-text-cell>
@@ -175,7 +182,10 @@ function addOutput() {
           </rr-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
-          <button class="add-button" @click="addInput">+ Nieuwe input</button>
+          <rr-button variant="neutral-tinted" size="sm" @click="addInput">
+            <rr-icon slot="start" name="plus-small"></rr-icon>
+            Nieuwe input
+          </rr-button>
         </rr-list-item>
       </rr-list>
       <rr-spacer size="12"></rr-spacer>
@@ -183,7 +193,8 @@ function addOutput() {
 
     <!-- Outputs -->
     <template v-if="outputs.length || editable">
-      <h3 class="machine-section-title">Outputs</h3>
+      <rr-title-bar size="5">Outputs</rr-title-bar>
+      <rr-spacer size="4"></rr-spacer>
       <rr-list variant="box">
         <rr-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
           <rr-text-cell>{{ output.name }} ({{ output.type }})</rr-text-cell>
@@ -192,7 +203,10 @@ function addOutput() {
           </rr-cell>
         </rr-list-item>
         <rr-list-item v-if="editable" size="md">
-          <button class="add-button" @click="addOutput">+ Nieuwe output</button>
+          <rr-button variant="neutral-tinted" size="sm" @click="addOutput">
+            <rr-icon slot="start" name="plus-small"></rr-icon>
+            Nieuwe output
+          </rr-button>
         </rr-list-item>
       </rr-list>
       <rr-spacer size="12"></rr-spacer>
@@ -200,7 +214,8 @@ function addOutput() {
 
     <!-- Acties -->
     <template v-if="actions.length">
-      <h3 class="machine-section-title">Acties</h3>
+      <rr-title-bar size="5">Acties</rr-title-bar>
+      <rr-spacer size="4"></rr-spacer>
       <rr-list variant="box">
         <rr-list-item v-for="(action, index) in actions" :key="index" size="md">
           <rr-text-cell>{{ action.output }}</rr-text-cell>
@@ -213,32 +228,3 @@ function addOutput() {
     </template>
   </div>
 </template>
-
-<style>
-.machine-section-title {
-  font-family: var(--rr-font-family-title, 'RijksSansVF', sans-serif);
-  font-weight: 550;
-  font-size: 16px;
-  line-height: 1.3;
-  color: var(--semantics-text-primary-color, #333B44);
-  margin: 0 0 4px 0;
-}
-.add-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 14px;
-  border: none;
-  border-radius: 20px;
-  background: var(--semantics-surfaces-tinted-background-color, #E8EBF0);
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  color: var(--semantics-text-primary-color, #4B5563);
-  cursor: pointer;
-}
-.add-button:hover {
-  background: #D5DAE1;
-  color: #333B44;
-}
-</style>
