@@ -31,9 +31,6 @@ export default defineConfig({
     pool: 'vmThreads',
     testTimeout: 10000,
   },
-  optimizeDeps: {
-    exclude: ['regelrecht-engine'],
-  },
   build: {
     cssTarget: ['chrome123', 'edge123', 'firefox120', 'safari18'],
     outDir: 'dist',

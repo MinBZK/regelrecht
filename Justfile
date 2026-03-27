@@ -15,7 +15,7 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
-    wasm-pack build packages/engine --target web --features wasm --out-dir ../../frontend/src/wasm/pkg
+    wasm-pack build packages/engine --target web --features wasm --out-dir ../../frontend/public/wasm/pkg
 
 # --- Quality checks ---
 
