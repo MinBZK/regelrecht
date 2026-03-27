@@ -4,6 +4,7 @@ Feature: Zorgtoeslag eligibility
     Given the calculation date is "2025-01-01"
     Given law "wet_basisregistratie_personen" is loaded
     Given law "zorgverzekeringswet" is loaded
+    Given law "penitentiaire_beginselenwet" is loaded
     Given law "regeling_standaardpremie" is loaded
     Given law "algemene_wet_inkomensafhankelijke_regelingen" is loaded
     Given law "wet_inkomstenbelasting_2001" is loaded
