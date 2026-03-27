@@ -68,9 +68,10 @@ export function createStepDefinitions({ loadDependency }) {
       },
     },
     {
+      // Quoted values are always strings — preserves identifiers like BSNs.
       pattern: /^parameter "([^"]+)" is "([^"]*)"$/,
       execute: async (ctx, _engine, match) => {
-        ctx.parameters[match[1]] = parseValue(match[2]);
+        ctx.parameters[match[1]] = match[2];
       },
     },
     {
