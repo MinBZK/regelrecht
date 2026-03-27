@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # Stage 1a: Build WASM module
-FROM rust:1.94-alpine AS wasm-builder
+# Use rust:1.86 for wasm-pack compatibility (1.87+ requires nightly --artifact-dir)
+FROM rust:1.86-alpine AS wasm-builder
 RUN apk add --no-cache musl-dev curl
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install wasm-pack --locked
