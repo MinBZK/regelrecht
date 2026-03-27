@@ -20,6 +20,35 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Clean up stale review comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+
+          # Dismiss all previous claude[bot] reviews
+          gh api "repos/${REPO}/pulls/${PR}/reviews" \
+            --paginate --jq '.[] | select(.user.login == "claude[bot]" and (.state == "CHANGES_REQUESTED" or .state == "COMMENTED")) | .id' \
+          | while read -r review_id; do
+              gh api -X PUT "repos/${REPO}/pulls/${PR}/reviews/${review_id}/dismissals" \
+                -f message="Superseded by new review" -f event="DISMISS" 2>/dev/null || true
+            done
+
+          # Delete all previous claude[bot] inline review comments
+          gh api "repos/${REPO}/pulls/${PR}/comments" \
+            --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
+          | while read -r comment_id; do
+              gh api -X DELETE "repos/${REPO}/pulls/comments/${comment_id}" 2>/dev/null || true
+            done
+
+          # Delete all previous claude[bot] issue comments (sticky comment is managed by the action)
+          gh api "repos/${REPO}/issues/${PR}/comments" \
+            --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
+          | while read -r comment_id; do
+              gh api -X DELETE "repos/${REPO}/issues/comments/${comment_id}" 2>/dev/null || true
+            done
+
       - name: Run Claude Dependabot Review
         id: claude-dependabot
         uses: anthropics/claude-code-action@v1
