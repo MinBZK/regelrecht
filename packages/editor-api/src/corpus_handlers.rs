@@ -153,16 +153,17 @@ pub async fn list_scenarios(
     State(state): State<AppState>,
     Path(law_id): Path<String>,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    let corpus = state.corpus.read().await;
-
-    let law = corpus
-        .source_map
-        .get_law(&law_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
-
-    let scenarios_dir = match scenarios_dir_for_law(&law.file_path) {
-        Some(dir) if dir.is_dir() => dir,
-        _ => return Ok(Json(Vec::new())),
+    // Resolve the scenarios directory while holding the lock, then drop it before I/O.
+    let scenarios_dir = {
+        let corpus = state.corpus.read().await;
+        let law = corpus
+            .source_map
+            .get_law(&law_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+        match scenarios_dir_for_law(&law.file_path) {
+            Some(dir) if dir.is_dir() => dir,
+            _ => return Ok(Json(Vec::new())),
+        }
     };
 
     let mut entries = Vec::new();
@@ -207,17 +208,18 @@ pub async fn get_scenario(
         ));
     }
 
-    let corpus = state.corpus.read().await;
+    // Resolve path while holding the lock, then drop it before I/O.
+    let file_path = {
+        let corpus = state.corpus.read().await;
+        let law = corpus
+            .source_map
+            .get_law(&law_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+        let scenarios_dir = scenarios_dir_for_law(&law.file_path)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, "No scenarios directory".to_string()))?;
+        scenarios_dir.join(&filename)
+    };
 
-    let law = corpus
-        .source_map
-        .get_law(&law_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
-
-    let scenarios_dir = scenarios_dir_for_law(&law.file_path)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "No scenarios directory".to_string()))?;
-
-    let file_path = scenarios_dir.join(&filename);
     let content = std::fs::read_to_string(&file_path).map_err(|_| {
         (
             StatusCode::NOT_FOUND,

@@ -33,7 +33,10 @@ export function parseValue(str) {
 
 /**
  * Parse a data table row into a record object using the header row.
- * Values are auto-typed via parseValue().
+ * Values are kept as strings — the engine handles type coercion at its
+ * own boundary. This avoids silently converting string identifiers like
+ * BSNs ("999993653") to numbers, which would break data source key lookups.
+ * Only "null" is converted to actual null (absence of value).
  */
 function tableToRecords(dataTable) {
   if (!dataTable || dataTable.length < 2) return [];
@@ -41,7 +44,8 @@ function tableToRecords(dataTable) {
   return dataTable.slice(1).map((row) => {
     const record = {};
     headers.forEach((h, i) => {
-      record[h] = parseValue(row[i] || '');
+      const cell = row[i] || '';
+      record[h] = cell === 'null' ? null : cell;
     });
     return record;
   });
