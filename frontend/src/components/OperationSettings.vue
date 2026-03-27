@@ -176,6 +176,19 @@ function currentDropdownValue(val) {
   margin-bottom: 4px;
 }
 
+.settings-list rr-text-cell {
+  width: 80px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.settings-list rr-cell {
+  flex: 1;
+  min-width: 0;
+}
+.settings-list rr-text-field,
+.settings-list rr-dropdown {
+  width: 100%;
+}
 
 .value-row {
   display: flex;
