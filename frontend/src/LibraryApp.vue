@@ -147,7 +147,7 @@ async function loadLaw(lawId) {
 }
 
 function selectLaw(lawId) {
-  if (lawId === selectedLawId.value) return;
+  if (lawId === selectedLawId.value && !lawError.value) return;
   selectedLawId.value = lawId;
   selectedArticleNumber.value = null;
   activeAction.value = null;
@@ -170,7 +170,7 @@ onBeforeRouteUpdate((to) => {
   const newArticle = to.params.articleNumber;
 
   if (!newLawId) {
-    // Navigated to /library with no lawId — reset and auto-select
+    // Navigated to /library with no lawId — reset and redirect to first law
     selectedLawId.value = null;
     selectedLaw.value = null;
     selectedArticleNumber.value = null;
@@ -181,7 +181,7 @@ onBeforeRouteUpdate((to) => {
       const firstLawId = list[0].law_id;
       selectedLawId.value = firstLawId;
       loadLaw(firstLawId);
-      router.replace({ name: 'library', params: { lawId: firstLawId } });
+      return { name: 'library', params: { lawId: firstLawId } };
     }
   } else if (newLawId !== selectedLawId.value) {
     selectedLawId.value = newLawId;
