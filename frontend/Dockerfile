@@ -3,7 +3,7 @@
 FROM rust:1.94-alpine AS wasm-builder
 RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
-RUN cargo install wasm-bindgen-cli --locked
+RUN cargo install wasm-bindgen-cli@0.2.114 --locked
 WORKDIR /build
 COPY packages/Cargo.lock ./
 RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml

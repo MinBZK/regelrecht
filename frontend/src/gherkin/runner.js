@@ -68,9 +68,10 @@ async function runScenario(scenario, background, engine, stepDefs) {
   // Clean up data sources after each scenario
   engine.clearDataSources();
 
-  const scenarioStatus = stepResults.every((s) => s.status === 'passed')
-    ? 'passed'
-    : 'failed';
+  const scenarioStatus =
+    stepResults.length > 0 && stepResults.every((s) => s.status === 'passed')
+      ? 'passed'
+      : 'failed';
 
   return {
     name: scenario.name,
