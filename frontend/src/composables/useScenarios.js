@@ -50,6 +50,7 @@ export function useScenarios(lawId) {
     } catch (e) {
       error.value = e;
       featureText.value = '';
+      selectedScenario.value = null;
     }
   }
 

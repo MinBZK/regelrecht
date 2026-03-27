@@ -34,11 +34,17 @@ watch(
   async ([yaml, isReady]) => {
     if (!isReady || !yaml) return;
     const engine = getEngine();
-    // Unload then reload to pick up edits (replace semantics)
-    if (engine.hasLaw(props.lawId)) {
+    // Unload then reload to pick up edits (replace semantics).
+    // Keep the old YAML to restore on parse failure.
+    const hadLaw = engine.hasLaw(props.lawId);
+    if (hadLaw) {
       engine.unloadLaw(props.lawId);
     }
-    engine.loadLaw(yaml);
+    try {
+      engine.loadLaw(yaml);
+    } catch (e) {
+      runError.value = `Failed to load law: ${e}`;
+    }
   },
   { immediate: true },
 );
