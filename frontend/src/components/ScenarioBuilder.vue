@@ -100,7 +100,7 @@ const gherkinPreview = computed(() => {
   const dataSources = dataSourceGroups.value.map((group) => {
     const key = `${group.lawId}:${group.articleNumber}`;
     return {
-      sourceName: `${group.lawId}_${group.articleNumber}`,
+      sourceName: `${group.lawId}_art${group.articleNumber}`,
       keyField: group.keyField,
       rows: dataSourceRows.value[key] || [],
     };

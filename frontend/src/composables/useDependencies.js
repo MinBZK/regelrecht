@@ -40,29 +40,37 @@ export function extractRegulationRefs(law) {
  * @returns {Promise<string[]>} Law IDs that implement open_terms of lawId
  */
 async function discoverImplementors(lawId, allLaws) {
+  const candidates = allLaws.filter((entry) => entry.id !== lawId);
+
+  // Fetch all candidate laws in parallel (batched)
+  const BATCH_SIZE = 10;
   const implementors = [];
 
-  for (const entry of allLaws) {
-    if (entry.id === lawId) continue;
+  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+    const batch = candidates.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (entry) => {
+        const res = await fetch(`/api/corpus/laws/${encodeURIComponent(entry.id)}`);
+        if (!res.ok) return null;
+        const text = await res.text();
+        const law = yaml.load(text);
 
-    try {
-      const res = await fetch(`/api/corpus/laws/${encodeURIComponent(entry.id)}`);
-      if (!res.ok) continue;
-      const text = await res.text();
-      const law = yaml.load(text);
-
-      for (const article of law.articles || []) {
-        const impls = article.machine_readable?.implements || [];
-        for (const impl of impls) {
-          if (impl.law === lawId) {
-            implementors.push(law.$id || entry.id);
-            break;
+        for (const article of law.articles || []) {
+          const impls = article.machine_readable?.implements || [];
+          for (const impl of impls) {
+            if (impl.law === lawId) {
+              return law.$id || entry.id;
+            }
           }
         }
-        if (implementors.includes(law.$id || entry.id)) break;
+        return null;
+      }),
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        implementors.push(result.value);
       }
-    } catch {
-      // Skip laws that can't be parsed
     }
   }
 

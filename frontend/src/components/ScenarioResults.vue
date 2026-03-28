@@ -26,10 +26,9 @@ function formatOutputValue(value, name) {
 }
 
 function isLikelyEurocent(name, value) {
-  // Heuristic: amounts named "hoogte" or large integers are likely eurocent
+  // Heuristic: integer amounts with monetary-sounding names are likely eurocent
   return (
     Number.isInteger(value) &&
-    Math.abs(value) > 100 &&
     (name.includes('hoogte') || name.includes('bedrag') || name.includes('premie'))
   );
 }
