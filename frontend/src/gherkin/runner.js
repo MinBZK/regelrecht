@@ -29,6 +29,7 @@ export async function runFeature(parsed, engine, { loadDependency }) {
       parsed.background,
       engine,
       stepDefs,
+      loadDependency,
     );
     results.push(result);
   }
@@ -38,8 +39,9 @@ export async function runFeature(parsed, engine, { loadDependency }) {
 
 /**
  * Run a single scenario (including background steps).
+ * When a step fails with "Law not found", auto-loads the missing law and retries.
  */
-async function runScenario(scenario, background, engine, stepDefs) {
+async function runScenario(scenario, background, engine, stepDefs, loadDependency) {
   const ctx = new ExecutionContext();
   const stepResults = [];
   let failed = false;
@@ -57,7 +59,22 @@ async function runScenario(scenario, background, engine, stepDefs) {
       continue;
     }
 
-    const result = await executeStep(step, ctx, engine, stepDefs);
+    let result = await executeStep(step, ctx, engine, stepDefs);
+
+    // Auto-load missing laws on "Law not found" errors (retry once)
+    if (result.status === 'failed' && result.error && loadDependency) {
+      const lawNotFound = result.error.match(/Law ['"]?([^'"]+)['"]? not found/i)
+        || result.error.match(/Law not loaded: ['"]?([^'"]+)['"]?/i);
+      if (lawNotFound) {
+        try {
+          await loadDependency(lawNotFound[1]);
+          result = await executeStep(step, ctx, engine, stepDefs);
+        } catch {
+          // Keep original error if auto-load fails
+        }
+      }
+    }
+
     stepResults.push(result);
 
     if (result.status === 'failed' || result.status === 'undefined') {
