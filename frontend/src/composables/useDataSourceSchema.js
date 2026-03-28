@@ -81,7 +81,7 @@ export function extractDataSourceGroups(law) {
  * Resolve the human-readable name of a law.
  * Handles the `#output_name` convention.
  */
-function resolveLawName(law) {
+export function resolveLawName(law) {
   const name = law.name;
   if (!name) return law.$id || 'Onbekende wet';
 
@@ -108,6 +108,7 @@ function resolveLawName(law) {
  * @returns {Array<{name: string, type: string, articleNumber: string, type_spec: object|null}>}
  */
 export function extractOutputs(law) {
+  const seen = new Set();
   const outputs = [];
 
   for (const article of law.articles || []) {
@@ -119,12 +120,15 @@ export function extractOutputs(law) {
     if (!produces) continue;
 
     for (const output of execution.output) {
-      outputs.push({
-        name: output.name,
-        type: output.type || 'string',
-        articleNumber: String(article.number),
-        type_spec: output.type_spec || null,
-      });
+      if (!seen.has(output.name)) {
+        seen.add(output.name);
+        outputs.push({
+          name: output.name,
+          type: output.type || 'string',
+          articleNumber: String(article.number),
+          type_spec: output.type_spec || null,
+        });
+      }
     }
   }
 

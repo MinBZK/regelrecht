@@ -41,11 +41,12 @@ export function generateGherkin(formState) {
 
     lines.push(`    And the following "${ds.sourceName}" data with key "${ds.keyField}":`);
 
-    // Collect all column names from all rows
+    // Collect all column names from all rows (skip internal _id)
     const columns = [];
     const seen = new Set();
     for (const row of ds.rows) {
       for (const key of Object.keys(row)) {
+        if (key === '_id') continue;
         if (!seen.has(key)) {
           seen.add(key);
           columns.push(key);

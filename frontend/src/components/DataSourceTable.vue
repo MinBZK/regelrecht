@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed } from 'vue';
 
+let nextRowId = 0;
+
 const props = defineProps({
   title: { type: String, required: true },
   keyField: { type: String, default: 'bsn' },
@@ -23,7 +25,7 @@ function toggleExpand() {
 }
 
 function addRow() {
-  const newRow = {};
+  const newRow = { _id: ++nextRowId };
   // Pre-fill key field if there's a common value from existing rows
   newRow[props.keyField] = rows.value.length > 0
     ? rows.value[0][props.keyField] || ''
@@ -118,12 +120,12 @@ const rowCount = computed(() => rows.value.length);
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, ri) in rows" :key="ri">
+            <tr v-for="(row, ri) in rows" :key="row._id ?? ri">
               <td v-for="col in allColumns" :key="col.name">
                 <template v-if="col.type === 'boolean'">
                   <select
                     class="ds-cell-input ds-cell-select"
-                    :value="String(row[col.name] ?? 'null')"
+                    :value="String(row[col.name] || 'null')"
                     @change="updateCell(ri, col.name, $event.target.value)"
                   >
                     <option value="true">true</option>

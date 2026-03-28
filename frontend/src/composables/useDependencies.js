@@ -39,8 +39,8 @@ export function extractRegulationRefs(law) {
  * @param {object[]} allLaws - Full corpus law list (from /api/corpus/laws)
  * @returns {Promise<string[]>} Law IDs that implement open_terms of lawId
  */
-async function discoverImplementors(lawId, allLaws) {
-  const candidates = allLaws.filter((entry) => entry.id !== lawId);
+async function discoverImplementors(lawId, allLaws, fetchLawYaml) {
+  const candidates = allLaws.filter((entry) => entry.law_id !== lawId);
 
   // Fetch all candidate laws in parallel (batched)
   const BATCH_SIZE = 10;
@@ -50,16 +50,19 @@ async function discoverImplementors(lawId, allLaws) {
     const batch = candidates.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async (entry) => {
-        const res = await fetch(`/api/corpus/laws/${encodeURIComponent(entry.id)}`);
-        if (!res.ok) return null;
-        const text = await res.text();
+        let text;
+        try {
+          text = await fetchLawYaml(entry.law_id);
+        } catch {
+          return null;
+        }
         const law = yaml.load(text);
 
         for (const article of law.articles || []) {
           const impls = article.machine_readable?.implements || [];
           for (const impl of impls) {
             if (impl.law === lawId) {
-              return law.$id || entry.id;
+              return law.$id || entry.law_id;
             }
           }
         }
@@ -117,6 +120,7 @@ export function useDependencies() {
           const implementors = await discoverImplementors(
             mainLaw.$id,
             allLaws,
+            fetchLawYaml,
           );
           for (const implId of implementors) {
             if (!visited.has(implId)) {
@@ -130,7 +134,7 @@ export function useDependencies() {
       }
 
       // Phase 3: Load all collected dependencies
-      const total = toLoad.length;
+      let total = toLoad.length;
       let loaded = 0;
 
       for (const lawId of toLoad) {
@@ -154,6 +158,7 @@ export function useDependencies() {
           collectDeps(depLaw, visited, newDeps);
           if (newDeps.length > 0) {
             toLoad.push(...newDeps);
+            total = toLoad.length;
           }
         } catch (e) {
           console.warn(`Failed to load dependency '${lawId}':`, e);

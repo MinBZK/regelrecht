@@ -42,8 +42,16 @@ function matchStatus(outputName, actualValue, expectations) {
   const actual = normalizeForCompare(actualValue);
   const exp = normalizeForCompare(expected);
 
-  if (actual === exp) return 'passed';
+  if (primitiveEqual(actual, exp)) return 'passed';
   return 'failed';
+}
+
+function primitiveEqual(a, b) {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a === 'number') return Math.abs(a - b) < 1e-9;
+  return false;
 }
 
 function normalizeForCompare(value) {

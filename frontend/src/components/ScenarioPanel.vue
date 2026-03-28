@@ -26,8 +26,8 @@ watch(
         engine.unloadLaw(props.lawId);
       }
       engine.loadLaw(yaml);
-    } catch {
-      // ScenarioBuilder/ScenarioGherkin handle errors independently
+    } catch (e) {
+      console.warn(`Failed to load law '${props.lawId}' into engine:`, e);
     }
   },
   { immediate: true },
@@ -59,22 +59,26 @@ function onModeChange(event) {
       </div>
 
       <!-- Form mode -->
-      <ScenarioBuilder
-        v-if="mode === 'form'"
-        :law-id="lawId"
-        :law-yaml="lawYaml"
-        :engine="getEngine()"
-        :ready="ready"
-      />
+      <KeepAlive>
+        <ScenarioBuilder
+          v-if="mode === 'form'"
+          :law-id="lawId"
+          :law-yaml="lawYaml"
+          :engine="getEngine()"
+          :ready="ready"
+        />
+      </KeepAlive>
 
       <!-- Gherkin mode -->
-      <ScenarioGherkin
-        v-if="mode === 'gherkin'"
-        :law-id="lawId"
-        :engine="getEngine()"
-        :ready="ready"
-        :load-dependency="loadDependency"
-      />
+      <KeepAlive>
+        <ScenarioGherkin
+          v-if="mode === 'gherkin'"
+          :law-id="lawId"
+          :engine="getEngine()"
+          :ready="ready"
+          :load-dependency="loadDependency"
+        />
+      </KeepAlive>
     </template>
   </div>
 </template>

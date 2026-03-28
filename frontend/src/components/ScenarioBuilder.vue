@@ -2,8 +2,9 @@
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
 import { useDependencies } from '../composables/useDependencies.js';
-import { useDataSourceSchema } from '../composables/useDataSourceSchema.js';
+import { useDataSourceSchema, resolveLawName } from '../composables/useDataSourceSchema.js';
 import { generateGherkin } from '../gherkin/generator.js';
+import { parseValue } from '../gherkin/steps.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioResults from './ScenarioResults.vue';
 
@@ -56,10 +57,14 @@ async function fetchLawYaml(lawId) {
 }
 
 // --- Load dependencies when law YAML changes ---
+let watchVersion = 0;
+
 watch(
   [() => props.lawYaml, () => props.ready],
   async ([lawYaml, isReady]) => {
     if (!lawYaml || !isReady || !props.engine) return;
+
+    const version = ++watchVersion;
 
     // Reset state
     result.value = null;
@@ -67,14 +72,16 @@ watch(
 
     // Load dependencies
     await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
+    if (version !== watchVersion) return;
 
     // Build schema from main law + deps
     await buildSchema(lawYaml, loadedDeps.value, fetchLawYaml);
+    if (version !== watchVersion) return;
 
     // Initialize parameter values
     const params = {};
     for (const p of lawParameters.value) {
-      params[p.name] = parameterValues.value[p.name] || '';
+      params[p.name] = parameterValues.value[p.name] ?? '';
     }
     parameterValues.value = params;
 
@@ -95,6 +102,18 @@ function setRows(group, rows) {
   dataSourceRows.value = { ...dataSourceRows.value, [key]: rows };
 }
 
+// --- Derived law name (only re-computes when lawYaml changes) ---
+const lawName = computed(() => {
+  let mainLaw = null;
+  try {
+    mainLaw = props.lawYaml ? yaml.load(props.lawYaml) : null;
+  } catch {
+    // Invalid YAML — fall back to lawId for the name
+  }
+  if (mainLaw?.name?.startsWith?.('#')) return resolveLawName(mainLaw);
+  return mainLaw?.name || props.lawId;
+});
+
 // --- Gherkin preview ---
 const gherkinPreview = computed(() => {
   const dataSources = dataSourceGroups.value.map((group) => {
@@ -111,37 +130,15 @@ const gherkinPreview = computed(() => {
     expectedValue: expectations.value[name] ?? null,
   }));
 
-  const mainLaw = props.lawYaml ? yaml.load(props.lawYaml) : null;
-  const lawName = mainLaw?.name?.startsWith?.('#')
-    ? resolveLawName(mainLaw)
-    : (mainLaw?.name || props.lawId);
-
   return generateGherkin({
     lawId: props.lawId,
-    lawName,
+    lawName: lawName.value,
     calculationDate: calculationDate.value,
     parameters: parameterValues.value,
     dataSources,
     selectedOutputs: outputs,
   });
 });
-
-function resolveLawName(law) {
-  const name = law.name;
-  if (typeof name === 'string' && name.startsWith('#')) {
-    const outputName = name.slice(1);
-    for (const article of law.articles || []) {
-      const actions = article.machine_readable?.execution?.actions;
-      if (!actions) continue;
-      for (const action of actions) {
-        if (action.output === outputName && typeof action.value === 'string') {
-          return action.value;
-        }
-      }
-    }
-  }
-  return name || law.$id || '';
-}
 
 // --- Execute ---
 async function execute() {
@@ -165,14 +162,27 @@ async function execute() {
 
       // Use a descriptive source name
       const sourceName = `${group.lawId}_art${group.articleNumber}`;
-      engine.registerDataSource(sourceName, group.keyField, rows);
+
+      // Type-coerce string values (form inputs are always strings)
+      const typedRows = rows.map((row) => {
+        const typed = {};
+        for (const [k, v] of Object.entries(row)) {
+          if (k === '_id') continue;  // internal row ID, not a data field
+          typed[k] = typeof v === 'string' ? parseValue(v) : v;
+        }
+        return typed;
+      });
+      engine.registerDataSource(sourceName, group.keyField, typedRows);
     }
 
-    // Build parameters
+    // Build parameters — coerce number-typed params, keep strings as strings
     const params = {};
+    const paramTypes = Object.fromEntries(
+      lawParameters.value.map((p) => [p.name, p.type]),
+    );
     for (const [k, v] of Object.entries(parameterValues.value)) {
       if (v !== '' && v !== null && v !== undefined) {
-        params[k] = v;
+        params[k] = paramTypes[k] === 'number' ? parseValue(v) : v;
       }
     }
 
@@ -254,7 +264,7 @@ const filledSourceCount = computed(() => {
               <input
                 class="sb-param-input"
                 :type="param.type === 'number' ? 'number' : 'text'"
-                :value="parameterValues[param.name] || ''"
+                :value="parameterValues[param.name] ?? ''"
                 @input="parameterValues = { ...parameterValues, [param.name]: $event.target.value }"
                 :placeholder="param.name"
               />
