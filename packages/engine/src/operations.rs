@@ -873,9 +873,15 @@ fn execute_date_add<R: ValueResolver>(
     // Years: add to year component, clamp day to last day of target month
     if let Some(years) = years {
         let years_val = evaluate_value(years, resolver, depth)?;
-        let years_int = years_val.as_int().ok_or_else(|| {
+        let years_i64 = years_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'years' must be a number".to_string())
-        })? as i32;
+        })?;
+        let years_int = i32::try_from(years_i64).map_err(|_| {
+            EngineError::InvalidOperation(format!(
+                "DATE_ADD 'years' value {} exceeds supported range",
+                years_i64
+            ))
+        })?;
         let target_year = result_date.year() + years_int;
         let clamped_day = result_date
             .day()
@@ -937,7 +943,12 @@ fn execute_date_add<R: ValueResolver>(
 /// doesn't exist in that month (e.g., Jan 31 + 1 month = Feb 28).
 fn add_months(date: NaiveDate, months: i64) -> Result<NaiveDate> {
     let total_months = date.year() as i64 * 12 + (date.month() as i64 - 1) + months;
-    let target_year = (total_months.div_euclid(12)) as i32;
+    let target_year = i32::try_from(total_months.div_euclid(12)).map_err(|_| {
+        EngineError::InvalidOperation(format!(
+            "DATE_ADD: year out of range after adding {} months",
+            months
+        ))
+    })?;
     let target_month = (total_months.rem_euclid(12) + 1) as u32;
     let clamped_day = date.day().min(days_in_month(target_year, target_month));
 
@@ -966,10 +977,15 @@ fn execute_date_construct<R: ValueResolver>(
     let month_val = evaluate_value(month, resolver, depth)?;
     let day_val = evaluate_value(day, resolver, depth)?;
 
-    let y = year_val
+    let y_i64 = year_val
         .as_int()
-        .ok_or_else(|| EngineError::InvalidOperation("DATE 'year' must be a number".to_string()))?
-        as i32;
+        .ok_or_else(|| EngineError::InvalidOperation("DATE 'year' must be a number".to_string()))?;
+    let y = i32::try_from(y_i64).map_err(|_| {
+        EngineError::InvalidOperation(format!(
+            "DATE 'year' value {} exceeds supported range",
+            y_i64
+        ))
+    })?;
     let m = month_val
         .as_int()
         .ok_or_else(|| EngineError::InvalidOperation("DATE 'month' must be a number".to_string()))?

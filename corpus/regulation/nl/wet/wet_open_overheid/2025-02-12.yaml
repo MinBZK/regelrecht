@@ -669,6 +669,10 @@ articles:
           - name: informatie_datum
             type: date
             required: true
+          - name: peildatum
+            type: date
+            required: true
+            description: Datum waarop de leeftijd van de informatie wordt berekend (doorgaans datum van het verzoek)
         output:
           - name: informatie_leeftijd_jaren
             type: number
@@ -679,7 +683,7 @@ articles:
             value:
               operation: AGE
               date_of_birth: $informatie_datum
-              reference_date: $referencedate
+              reference_date: $peildatum
           - output: verzwaarde_motiveringsplicht
             value:
               operation: GREATER_THAN_OR_EQUAL
