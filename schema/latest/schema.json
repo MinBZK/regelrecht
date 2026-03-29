@@ -723,7 +723,7 @@
     },
     "dateAddOperation": {
       "type": "object",
-      "description": "Add days and/or weeks to a date",
+      "description": "Add years, months, weeks, and/or days to a date. Applied coarsest-to-finest: years → months → weeks → days. Month/year additions use the Dutch legal 'corresponding numbered day' rule: the day is clamped to the last day of the target month (e.g., Jan 31 + 1 month = Feb 28).",
       "required": [
         "operation",
         "date"
@@ -737,13 +737,21 @@
           "$ref": "#/definitions/operationValue",
           "description": "Base date"
         },
-        "days": {
+        "years": {
           "$ref": "#/definitions/operationValue",
-          "description": "Number of days to add"
+          "description": "Number of years to add (clamped to last day of target month)"
+        },
+        "months": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Number of months to add (clamped to last day of target month)"
         },
         "weeks": {
           "$ref": "#/definitions/operationValue",
           "description": "Number of weeks to add"
+        },
+        "days": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Number of days to add"
         },
         "legal_basis": {
           "$ref": "#/definitions/legalBasis"

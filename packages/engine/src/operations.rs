@@ -280,9 +280,21 @@ fn execute_operation_internal<R: ValueResolver>(
             date_of_birth,
             reference_date,
         } => execute_age(date_of_birth, reference_date, resolver, depth),
-        ActionOperation::DateAdd { date, days, weeks } => {
-            execute_date_add(date, days.as_ref(), weeks.as_ref(), resolver, depth)
-        }
+        ActionOperation::DateAdd {
+            date,
+            years,
+            months,
+            weeks,
+            days,
+        } => execute_date_add(
+            date,
+            years.as_ref(),
+            months.as_ref(),
+            weeks.as_ref(),
+            days.as_ref(),
+            resolver,
+            depth,
+        ),
         ActionOperation::Date { year, month, day } => {
             execute_date_construct(year, month, day, resolver, depth)
         }
@@ -843,30 +855,56 @@ fn execute_age<R: ValueResolver>(
     Ok(Value::Int(age))
 }
 
-/// Execute DATE_ADD operation: add days and/or weeks to a date.
+/// Execute DATE_ADD operation: add years, months, weeks, and/or days to a date.
 ///
-/// # Arguments
-/// - `date`: Base date (ISO 8601 YYYY-MM-DD)
-/// - `days`: Number of days to add (optional)
-/// - `weeks`: Number of weeks to add (optional)
+/// Applied in order: years → months → weeks → days (coarsest to finest).
+///
+/// For months and years, uses the Dutch legal "corresponding numbered day" rule
+/// (overeenkomstig genummerde dag): the result lands on the same day number in the
+/// target month, clamped to the last day of that month when the day doesn't exist.
+/// E.g., Jan 31 + 1 month = Feb 28 (or 29 in leap year).
+/// Confirmed by HR 1 September 2017 (ECLI:NL:HR:2017:2225).
 fn execute_date_add<R: ValueResolver>(
     date: &ActionValue,
-    days: Option<&ActionValue>,
+    years: Option<&ActionValue>,
+    months: Option<&ActionValue>,
     weeks: Option<&ActionValue>,
+    days: Option<&ActionValue>,
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
     let date_val = evaluate_value(date, resolver, depth)?;
     let mut result_date = parse_date(&date_val)?;
 
-    if let Some(days) = days {
-        let days_val = evaluate_value(days, resolver, depth)?;
-        let days_int = days_val.as_int().ok_or_else(|| {
-            EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
-        })?;
-        result_date += chrono::Duration::days(days_int);
+    // Years: add to year component, clamp day to last day of target month
+    if let Some(years) = years {
+        let years_val = evaluate_value(years, resolver, depth)?;
+        let years_int = years_val.as_int().ok_or_else(|| {
+            EngineError::InvalidOperation("DATE_ADD 'years' must be a number".to_string())
+        })? as i32;
+        let target_year = result_date.year() + years_int;
+        let clamped_day = result_date
+            .day()
+            .min(days_in_month(target_year, result_date.month()));
+        result_date = NaiveDate::from_ymd_opt(target_year, result_date.month(), clamped_day)
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "DATE_ADD: invalid date after adding {} years",
+                    years_int
+                ))
+            })?;
     }
 
+    // Months: add to month component, clamp day to last day of target month
+    if let Some(months) = months {
+        let months_val = evaluate_value(months, resolver, depth)?;
+        let months_int = months_val.as_int().ok_or_else(|| {
+            EngineError::InvalidOperation("DATE_ADD 'months' must be a number".to_string())
+        })?;
+        result_date = add_months(result_date, months_int)?;
+    }
+
+    // Weeks
     if let Some(weeks) = weeks {
         let weeks_val = evaluate_value(weeks, resolver, depth)?;
         let weeks_int = weeks_val.as_int().ok_or_else(|| {
@@ -875,7 +913,34 @@ fn execute_date_add<R: ValueResolver>(
         result_date += chrono::Duration::weeks(weeks_int);
     }
 
+    // Days
+    if let Some(days) = days {
+        let days_val = evaluate_value(days, resolver, depth)?;
+        let days_int = days_val.as_int().ok_or_else(|| {
+            EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
+        })?;
+        result_date += chrono::Duration::days(days_int);
+    }
+
     Ok(Value::String(result_date.format("%Y-%m-%d").to_string()))
+}
+
+/// Add months to a date using Dutch legal "corresponding numbered day" rule.
+///
+/// Clamps the day to the last day of the target month when the original day
+/// doesn't exist in that month.
+fn add_months(date: NaiveDate, months: i64) -> Result<NaiveDate> {
+    let total_months = date.year() as i64 * 12 + (date.month() as i64 - 1) + months;
+    let target_year = (total_months.div_euclid(12)) as i32;
+    let target_month = (total_months.rem_euclid(12) + 1) as u32;
+    let clamped_day = date.day().min(days_in_month(target_year, target_month));
+
+    NaiveDate::from_ymd_opt(target_year, target_month, clamped_day).ok_or_else(|| {
+        EngineError::InvalidOperation(format!(
+            "DATE_ADD: invalid date after adding {} months",
+            months
+        ))
+    })
 }
 
 /// Execute DATE operation: construct a date from year, month, day components.
@@ -971,7 +1036,7 @@ fn parse_date(value: &Value) -> Result<NaiveDate> {
 /// For end-of-month edge cases (e.g., Jan 31 -> Feb 28), if `earlier.day()`
 /// exceeds the number of days in `later`'s month, it is capped to the last
 /// day of that month so the month is correctly counted as complete.
-#[allow(dead_code)] // Will be used when DATE_ADD gains months support
+#[allow(dead_code)] // Retained for potential future date-difference operations
 fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
     let (earlier, later, sign) = if date1 >= date2 {
         (date2, date1, 1)
@@ -2185,6 +2250,8 @@ mod tests {
             let resolver = TestResolver::new();
             let op = ActionOperation::DateAdd {
                 date: lit("2025-01-10"),
+                years: None,
+                months: None,
                 days: Some(lit(5i64)),
                 weeks: None,
             };
@@ -2198,6 +2265,8 @@ mod tests {
             let resolver = TestResolver::new();
             let op = ActionOperation::DateAdd {
                 date: lit("2025-01-01"),
+                years: None,
+                months: None,
                 days: None,
                 weeks: Some(lit(2i64)),
             };
@@ -2211,6 +2280,8 @@ mod tests {
             let resolver = TestResolver::new();
             let op = ActionOperation::DateAdd {
                 date: lit("2025-01-01"),
+                years: None,
+                months: None,
                 days: Some(lit(3i64)),
                 weeks: Some(lit(1i64)),
             };
@@ -2225,12 +2296,149 @@ mod tests {
             let resolver = TestResolver::new();
             let op = ActionOperation::DateAdd {
                 date: lit("2025-01-15"),
+                years: None,
+                months: None,
                 days: Some(lit(-5i64)),
                 weeks: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
             assert_eq!(result, Value::String("2025-01-10".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-03-15"),
+                years: None,
+                months: Some(lit(2i64)),
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-05-15".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_end_of_month_clamping() {
+            // Jan 31 + 1 month = Feb 28 (not March 1)
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-31"),
+                years: None,
+                months: Some(lit(1i64)),
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_end_of_month_leap_year() {
+            // Jan 31 + 1 month in leap year = Feb 29
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2024-01-31"),
+                years: None,
+                months: Some(lit(1i64)),
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2024-02-29".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_negative() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-03-31"),
+                years: None,
+                months: Some(lit(-1i64)),
+                weeks: None,
+                days: None,
+            };
+            // Mar 31 - 1 month = Feb 28
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_six_months() {
+            // "binnen zes maanden" from Aug 31
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-08-31"),
+                years: None,
+                months: Some(lit(6i64)),
+                weeks: None,
+                days: None,
+            };
+            // Aug 31 + 6 months = Feb 28
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2026-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_years() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-06-15"),
+                years: Some(lit(2i64)),
+                months: None,
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2027-06-15".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_years_leap_day() {
+            // Feb 29 + 1 year = Feb 28 (non-leap year)
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2024-02-29"),
+                years: Some(lit(1i64)),
+                months: None,
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_years_leap_day_to_leap_year() {
+            // Feb 29 + 4 years = Feb 29 (another leap year)
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2024-02-29"),
+                years: Some(lit(4i64)),
+                months: None,
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2028-02-29".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_combined_years_months_weeks_days() {
+            // 2025-01-15 + 1 year + 2 months + 1 week + 3 days
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-15"),
+                years: Some(lit(1i64)),
+                months: Some(lit(2i64)),
+                weeks: Some(lit(1i64)),
+                days: Some(lit(3i64)),
+            };
+            // +1y = 2026-01-15, +2m = 2026-03-15, +1w = 2026-03-22, +3d = 2026-03-25
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2026-03-25".to_string()));
         }
 
         #[test]

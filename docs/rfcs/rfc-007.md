@@ -223,11 +223,11 @@ output:
 
 #### Date arithmetic operations
 
-All operations are pure functions. No domain knowledge. These six operations (`DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `NEXT_WORKING_DAY`, `LIST`, `CONCAT`) extend the operation set defined in RFC-004 (Uniform Operation Syntax). Date operations use named parameters (`date`, `days`, `weeks`) rather than RFC-004's positional `values` array, because their operands are heterogeneous (a date and a duration are not interchangeable list items).
+All operations are pure functions. No domain knowledge. These six operations (`DATE_ADD`, `DATE`, `DAY_OF_WEEK`, `NEXT_WORKING_DAY`, `LIST`, `CONCAT`) extend the operation set defined in RFC-004 (Uniform Operation Syntax). Date operations use named parameters (`date`, `years`, `months`, `weeks`, `days`) rather than RFC-004's positional `values` array, because their operands are heterogeneous (a date and a duration are not interchangeable list items).
 
 | Operation | Input | Output | Example |
 |-----------|-------|--------|---------|
-| `DATE_ADD` | date + days/weeks | date | `2026-03-12 + 4 weeks → 2026-04-09` |
+| `DATE_ADD` | date + years/months/weeks/days | date | `2026-03-12 + 4 weeks → 2026-04-09` |
 | `DATE` | year + month + day | date | `DATE(2026, 4, 27) → 2026-04-27` |
 | `DAY_OF_WEEK` | date | number (0=mon..6=sun) | `DAY_OF_WEEK(2026-04-27) → 0` |
 | `NEXT_WORKING_DAY` | date + list of dates | date | advances past weekends + listed dates |

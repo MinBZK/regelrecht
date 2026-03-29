@@ -255,9 +255,13 @@ pub enum ActionOperation {
     DateAdd {
         date: ActionValue,
         #[serde(default)]
-        days: Option<ActionValue>,
+        years: Option<ActionValue>,
+        #[serde(default)]
+        months: Option<ActionValue>,
         #[serde(default)]
         weeks: Option<ActionValue>,
+        #[serde(default)]
+        days: Option<ActionValue>,
     },
     #[serde(rename = "DATE")]
     Date {
