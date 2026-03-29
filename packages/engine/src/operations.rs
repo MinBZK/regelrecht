@@ -241,12 +241,8 @@ fn execute_operation_internal<R: ValueResolver>(
         }
 
         // Null checking operations
-        ActionOperation::IsNull { subject } => {
-            execute_null_check(subject, resolver, depth, false)
-        }
-        ActionOperation::NotNull { subject } => {
-            execute_null_check(subject, resolver, depth, true)
-        }
+        ActionOperation::IsNull { subject } => execute_null_check(subject, resolver, depth, false),
+        ActionOperation::NotNull { subject } => execute_null_check(subject, resolver, depth, true),
 
         // Collection operations
         ActionOperation::In {
@@ -683,11 +679,7 @@ fn execute_or<R: ValueResolver>(
 /// Execute NOT operation: logical negation.
 ///
 /// Takes a single `value` field (which should be a boolean-returning operation).
-fn execute_not<R: ValueResolver>(
-    value: &ActionValue,
-    resolver: &R,
-    depth: usize,
-) -> Result<Value> {
+fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize) -> Result<Value> {
     let val = evaluate_value(value, resolver, depth)?;
     Ok(Value::Bool(!val.to_bool()))
 }

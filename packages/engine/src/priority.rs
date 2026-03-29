@@ -81,7 +81,10 @@ fn validate_date_for_comparison<'a>(
 ///
 /// Returns `Ordering::Greater` if `a` outranks `b`, `Ordering::Less` if `b` outranks `a`.
 /// Returns `Err` if both have the same layer and date (ambiguous).
-pub fn compare_law_priority(a: &ArticleBasedLaw, b: &ArticleBasedLaw) -> Result<std::cmp::Ordering> {
+pub fn compare_law_priority(
+    a: &ArticleBasedLaw,
+    b: &ArticleBasedLaw,
+) -> Result<std::cmp::Ordering> {
     let a_rank = layer_rank(&a.regulatory_layer);
     let b_rank = layer_rank(&b.regulatory_layer);
 
@@ -139,8 +142,10 @@ pub fn resolve_candidate<'a>(
                 reason = if cand_rank < best_rank {
                     format!(
                         "lex superior: {} ({:?}) outranks {} ({:?})",
-                        candidate.law.id, candidate.law.regulatory_layer,
-                        prev_id, best.law.regulatory_layer,
+                        candidate.law.id,
+                        candidate.law.regulatory_layer,
+                        prev_id,
+                        best.law.regulatory_layer,
                     )
                 } else {
                     format!(

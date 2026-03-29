@@ -771,7 +771,8 @@ impl LawExecutionService {
     /// Fire hooks that match the given article's `produces` annotation.
     ///
     /// For each matching hook, executes the hook article and merges its outputs.
-    /// First-writer-wins: if multiple hooks produce the same output, the first value is kept.
+    /// When multiple hooks produce the same output, conflicts are resolved via
+    /// `compare_law_priority` (lex superior / lex posterior).
     ///
     /// # Arguments
     /// * `hook_point` - Whether to fire pre_actions or post_actions hooks
