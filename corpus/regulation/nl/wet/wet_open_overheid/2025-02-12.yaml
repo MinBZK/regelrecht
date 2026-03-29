@@ -673,7 +673,7 @@ articles:
               reference_date: $referencedate
           - output: verzwaarde_motiveringsplicht
             value:
-              operation: GREATER_THAN
+              operation: GREATER_THAN_OR_EQUAL
               subject: $informatie_leeftijd_jaren
               value: 5
 
