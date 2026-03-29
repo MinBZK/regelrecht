@@ -70,9 +70,9 @@ def parse_wti_metadata(wti_tree):
 
     # Type (regulatory layer)
     VALID_LAYERS = {
-        "GRONDWET", "WET", "AMVB", "MINISTERIELE_REGELING", "BELEIDSREGEL",
-        "EU_VERORDENING", "EU_RICHTLIJN", "VERDRAG", "UITVOERINGSBELEID",
-        "GEMEENTELIJKE_VERORDENING", "PROVINCIALE_VERORDENING",
+        "GRONDWET", "WET", "AMVB", "KONINKLIJK_BESLUIT", "MINISTERIELE_REGELING",
+        "BELEIDSREGEL", "EU_VERORDENING", "EU_RICHTLIJN", "VERDRAG",
+        "UITVOERINGSBELEID", "GEMEENTELIJKE_VERORDENING", "PROVINCIALE_VERORDENING",
     }
     soort = wti_tree.find(f".//{{{NS}}}soort-regeling")
     if soort is not None:
@@ -84,12 +84,13 @@ def parse_wti_metadata(wti_tree):
             "ministeriele regeling": "MINISTERIELE_REGELING",
             "ministeriële regeling": "MINISTERIELE_REGELING",
             "beleidsregel": "BELEIDSREGEL",
+            "koninklijk besluit": "KONINKLIJK_BESLUIT",
         }
         layer = type_mapping.get(soort_text, soort_text.upper().replace(" ", "_"))
         if layer not in VALID_LAYERS:
             raise ValueError(
                 f"'{soort_text}' maps to '{layer}' which is not a valid "
-                f"schema v0.4.0 regulatory_layer. Map manually to e.g. AMVB."
+                f"schema v0.5.0 regulatory_layer. Map manually to e.g. AMVB."
             )
         metadata["regulatory_layer"] = layer
 
@@ -196,9 +197,9 @@ def generate_yaml(metadata, articles, effective_date):
     bwb_id = metadata.get("bwb_id")
     law_id = slugify(metadata.get("title", bwb_id or "unknown"))
 
-    # Create YAML structure matching schema v0.4.0
+    # Create YAML structure matching schema v0.5.0
     law_data = {
-        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json",
+        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json",
         "$id": law_id,
         "name": metadata.get("title", law_id),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),

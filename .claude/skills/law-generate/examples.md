@@ -1,6 +1,6 @@
 # Law Generate - Usage Examples
 
-All examples below conform to schema v0.4.0 and pass `just validate`.
+All examples below conform to schema v0.5.0 and pass `just validate`.
 
 ## Example 1: Simple Constant (direct value assignment)
 
@@ -160,12 +160,13 @@ machine_readable:
       - output: toepasselijke_grens
         value:
           operation: IF
-          when:
-            operation: EQUALS
-            subject: $heeft_partner
-            value: true
-          then: $VERMOGENSGRENS_GEHUWD
-          else: $VERMOGENSGRENS_ALLEENSTAAND
+          cases:
+            - when:
+                operation: EQUALS
+                subject: $heeft_partner
+                value: true
+              then: $VERMOGENSGRENS_GEHUWD
+          default: $VERMOGENSGRENS_ALLEENSTAAND
       - output: vermogen_onder_grens
         value:
           operation: LESS_THAN_OR_EQUAL
@@ -175,7 +176,7 @@ machine_readable:
 
 **Key points:**
 - Internal reference: `source: { output: "vermogen_onder_grens" }` (no `regulation`)
-- `IF` uses `when`/`then`/`else` (NOT `condition`/`then_value`/`else_value`)
+- `IF` uses `cases`/`default` (NOT `when`/`then`/`else`)
 - Intermediate output `toepasselijke_grens` is referenced by later action
 
 ---
@@ -200,7 +201,6 @@ machine_readable:
       - name: standaardpremie
         type: amount
         source:
-          regulation: regeling_standaardpremie
           output: standaardpremie
         type_spec:
           unit: eurocent
@@ -233,16 +233,28 @@ machine_readable:
             - 0
             - operation: SUBTRACT
               values:
-                - $standaardpremie
-                - operation: MULTIPLY
-                  values:
-                    - operation: IF
-                      when:
+                - operation: IF
+                  cases:
+                    - when:
                         operation: EQUALS
                         subject: $heeft_toeslagpartner
                         value: true
-                      then: $percentage_drempelinkomen_partner
-                      else: $percentage_drempelinkomen_alleenstaande
+                      then:
+                        operation: MULTIPLY
+                        values:
+                          - 2
+                          - $standaardpremie
+                  default: $standaardpremie
+                - operation: MULTIPLY
+                  values:
+                    - operation: IF
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_toeslagpartner
+                            value: true
+                          then: $percentage_drempelinkomen_partner
+                      default: $percentage_drempelinkomen_alleenstaande
                     - $toetsingsinkomen
 ```
 
@@ -251,6 +263,7 @@ machine_readable:
 - Operations nest deeply: MAX → SUBTRACT → MULTIPLY → IF
 - Each nested operation is a full operation object
 - No `subject`/`value` on arithmetic — only `values` array
+- IF uses `cases`/`default` everywhere
 
 ---
 
@@ -324,13 +337,13 @@ machine_readable:
 
 ---
 
-## Example 7: SWITCH Operation
+## Example 7: IF with Multiple Cases (replaces SWITCH)
 
 ```yaml
 actions:
   - output: normbedrag
     value:
-      operation: SWITCH
+      operation: IF
       cases:
         - when:
             operation: AND
@@ -355,9 +368,201 @@ actions:
       default: 0
 ```
 
+**Key points:**
+- Use `IF` with `cases`/`default` for multi-branch conditionals (SWITCH does not exist in v0.5.0)
+- Cases are evaluated in order; the first matching case wins
+- Each case has `when` (condition) and `then` (result value)
+- `default` is the fallback if no case matches
+
 ---
 
-## Example 8: MvT Passage to Gherkin Scenario
+## Example 8: AGE Operation
+
+From Wet open overheid — calculating how old a document is:
+
+```yaml
+actions:
+  - output: informatie_leeftijd_jaren
+    value:
+      operation: AGE
+      date_of_birth: $informatie_datum
+      reference_date: $peildatum
+  - output: verzwaarde_motiveringsplicht
+    value:
+      operation: GREATER_THAN_OR_EQUAL
+      subject: $informatie_leeftijd_jaren
+      value: 5
+```
+
+**Key points:**
+- AGE calculates complete years between two dates
+- Works for any "age" calculation, not just people (document age, policy age, etc.)
+- Uses `date_of_birth` and `reference_date` (not subject/value)
+- `$peildatum` must be declared as a parameter — it is NOT a built-in
+
+---
+
+## Example 9: DATE_ADD Operation (deadline calculations)
+
+From AWB article 6:8 — calculating appeal deadlines:
+
+```yaml
+machine_readable:
+  hooks:
+    - hook_point: post_actions
+      applies_to:
+        legal_character: BESCHIKKING
+        stage: BEKENDMAKING
+  execution:
+    parameters:
+      - name: bekendmaking_datum
+        type: date
+        required: true
+        description: Datum waarop het besluit is bekendgemaakt
+    input:
+      - name: bezwaartermijn_weken
+        type: number
+        source:
+          regulation: algemene_wet_bestuursrecht
+          output: bezwaartermijn_weken
+    output:
+      - name: bezwaartermijn_startdatum
+        type: date
+      - name: bezwaartermijn_einddatum
+        type: date
+    actions:
+      # "met ingang van de dag na die waarop het besluit is bekendgemaakt"
+      - output: bezwaartermijn_startdatum
+        value:
+          operation: DATE_ADD
+          date: $bekendmaking_datum
+          days: 1
+      # einddatum = bekendmaking + termijn in weken
+      - output: bezwaartermijn_einddatum
+        value:
+          operation: DATE_ADD
+          date: $bekendmaking_datum
+          weeks: $bezwaartermijn_weken
+```
+
+**Key points:**
+- DATE_ADD supports `years`, `months`, `weeks`, `days` (all optional)
+- Multiple duration components can be combined in one operation
+- Values can be literals or $variable references
+- Combined with hooks, this fires automatically for all BESCHIKKING decisions
+
+---
+
+## Example 10: Hooks Pattern (AWB cross-cutting concern)
+
+From AWB article 3:46 — motivation requirement:
+
+```yaml
+machine_readable:
+  hooks:
+    - hook_point: pre_actions
+      applies_to:
+        legal_character: BESCHIKKING
+        stage: BESLUIT
+  execution:
+    output:
+      - name: motivering_vereist
+        type: boolean
+    actions:
+      - output: motivering_vereist
+        value: true
+```
+
+**Key points:**
+- `pre_actions` fires before the target article's actions execute
+- `post_actions` fires after the target article's actions
+- `applies_to.legal_character` is required
+- `applies_to.stage` is optional (defaults to BESLUIT)
+- This creates a cross-cutting obligation that applies to ALL beschikkingen
+
+---
+
+## Example 11: Overrides Pattern (lex specialis)
+
+From Vreemdelingenwet 2000 article 69 — overriding the standard AWB appeal deadline:
+
+```yaml
+machine_readable:
+  overrides:
+    - law: algemene_wet_bestuursrecht
+      article: '6:7'
+      output: bezwaartermijn_weken
+  execution:
+    output:
+      - name: bezwaartermijn_weken
+        type: number
+    actions:
+      - output: bezwaartermijn_weken
+        value: 4
+```
+
+**Legal Text:**
+```
+In afwijking van artikel 6:7 van de Algemene wet bestuursrecht bedraagt
+de termijn voor het indienen van een bezwaar- of beroepschrift vier weken.
+```
+
+**Key points:**
+- `overrides` declares which law, article, and output are being replaced
+- The output name must match what is declared in overrides
+- The engine substitutes this output wherever the overridden article's output is used
+- Pattern: "In afwijking van artikel X van wet Y" signals an override
+
+---
+
+## Example 12: NOT Operation (negation patterns)
+
+```yaml
+# Simple negation of a variable
+actions:
+  - output: openbaarmaking_toegestaan
+    value:
+      operation: AND
+      conditions:
+        - operation: NOT
+          value: $heeft_absolute_weigeringsgrond
+        - operation: NOT
+          value: $heeft_relatieve_weigeringsgrond
+
+# Negation of a comparison
+actions:
+  - output: niet_verzekerd
+    value:
+      operation: NOT
+      value:
+        operation: EQUALS
+        subject: $is_verzekerd
+        value: true
+
+# Negation of a compound condition
+actions:
+  - output: geen_uitzondering
+    value:
+      operation: NOT
+      value:
+        operation: AND
+        conditions:
+          - $is_milieu_informatie
+          - $betreft_emissies
+```
+
+**Key points:**
+- NOT uses `value:` (not `subject:` or `conditions:`)
+- Can negate a `$variable` directly, a comparison, or a compound condition
+- Use NOT to express "tenzij", "niet", "geen" in legal text
+- Replaces the removed NOT_EQUALS, NOT_IN, NOT_NULL operations:
+  - NOT_EQUALS → `NOT` + `EQUALS`
+  - NOT_IN → `NOT` + `IN`
+  - NOT_NULL → use `NOT` + `EQUALS` with null, or restructure as a positive check
+
+---
+
+## Example 13: MvT Passage to Gherkin Scenario
 
 Shows how to convert a Memorie van Toelichting passage into a BDD scenario.
 
@@ -414,19 +619,8 @@ Feature: Zorgtoeslag — scenarios uit Memorie van Toelichting
 
 ## Common Mistakes and Fixes
 
-### Mistake 1: Wrong IF syntax
-**Wrong (old/invalid):**
-```yaml
-operation: IF_THEN_ELSE
-condition:
-  operation: EQUALS
-  subject: $x
-  value: true
-then_value: 100
-else_value: 0
-```
-
-**Correct:**
+### Mistake 1: Wrong IF syntax (v0.4.0 style)
+**Wrong (v0.4.0 — removed):**
 ```yaml
 operation: IF
 when:
@@ -437,7 +631,38 @@ then: 100
 else: 0
 ```
 
-### Mistake 2: Using url instead of regulation for source
+**Correct (v0.5.0):**
+```yaml
+operation: IF
+cases:
+  - when:
+      operation: EQUALS
+      subject: $x
+      value: true
+    then: 100
+default: 0
+```
+
+### Mistake 2: Using SWITCH (removed in v0.5.0)
+**Wrong:**
+```yaml
+operation: SWITCH
+cases:
+  - when: ...
+    then: ...
+default: 0
+```
+
+**Correct (use IF instead):**
+```yaml
+operation: IF
+cases:
+  - when: ...
+    then: ...
+default: 0
+```
+
+### Mistake 3: Using url instead of regulation for source
 **Wrong:**
 ```yaml
 source:
@@ -453,7 +678,7 @@ source:
     bsn: $bsn
 ```
 
-### Mistake 3: Using subject/value for arithmetic
+### Mistake 4: Using subject/value for arithmetic
 **Wrong:**
 ```yaml
 operation: SUBTRACT
@@ -469,7 +694,7 @@ values:
   - $korting
 ```
 
-### Mistake 4: Using values for logical operations
+### Mistake 5: Using values for logical operations
 **Wrong:**
 ```yaml
 operation: AND
@@ -488,21 +713,57 @@ conditions:
     value: true
 ```
 
-### Mistake 5: Using public/endpoint at wrong level
+### Mistake 6: Using SUBTRACT_DATE for age (removed in v0.5.0)
 **Wrong:**
 ```yaml
-machine_readable:
-  public: true
-  endpoint: "bepaal_recht"
+operation: SUBTRACT_DATE
+subject: $peildatum
+value: $geboortedatum
+unit: years
 ```
 
-**Correct (endpoint is valid, public is NOT a schema field):**
+**Correct:**
 ```yaml
-machine_readable:
-  endpoint: "bepaal_recht"
+operation: AGE
+date_of_birth: $geboortedatum
+reference_date: $peildatum
 ```
 
-### Mistake 6: Wrong monetary type
+### Mistake 7: Using CONCAT (removed in v0.5.0)
+**Wrong:**
+```yaml
+operation: CONCAT
+values:
+  - "Beschikking "
+  - $wet_naam
+```
+
+**Correct (use ADD for string concatenation):**
+```yaml
+operation: ADD
+values:
+  - "Beschikking "
+  - $wet_naam
+```
+
+### Mistake 8: Using NOT_EQUALS, NOT_IN, NOT_NULL (removed in v0.5.0)
+**Wrong:**
+```yaml
+operation: NOT_EQUALS
+subject: $status
+value: "ACTIEF"
+```
+
+**Correct (use NOT + positive operation):**
+```yaml
+operation: NOT
+value:
+  operation: EQUALS
+  subject: $status
+  value: "ACTIEF"
+```
+
+### Mistake 9: Wrong monetary type
 **Wrong:**
 ```yaml
 output:
@@ -519,7 +780,35 @@ output:
       unit: eurocent
 ```
 
-### Mistake 7: Missing $ prefix on variable
+### Mistake 10: Treating $referencedate as a built-in
+**Wrong (not declaring it):**
+```yaml
+execution:
+  actions:
+    - output: leeftijd
+      value:
+        operation: AGE
+        date_of_birth: $geboortedatum
+        reference_date: $referencedate  # ERROR: undeclared variable
+```
+
+**Correct (declare as parameter):**
+```yaml
+execution:
+  parameters:
+    - name: referencedate
+      type: date
+      required: true
+      description: Peildatum voor berekening
+  actions:
+    - output: leeftijd
+      value:
+        operation: AGE
+        date_of_birth: $geboortedatum
+        reference_date: $referencedate
+```
+
+### Mistake 11: Missing $ prefix on variable
 **Wrong:**
 ```yaml
 subject: toetsingsinkomen
