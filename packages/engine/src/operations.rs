@@ -859,11 +859,13 @@ fn execute_age<R: ValueResolver>(
 ///
 /// Applied in order: years → months → weeks → days (coarsest to finest).
 ///
-/// For months and years, uses the Dutch legal "corresponding numbered day" rule
-/// (overeenkomstig genummerde dag): the result lands on the same day number in the
-/// target month, clamped to the last day of that month when the day doesn't exist.
-/// E.g., Jan 31 + 1 month = Feb 28 (or 29 in leap year).
-/// Confirmed by HR 1 September 2017 (ECLI:NL:HR:2017:2225).
+/// For months and years, uses standard calendar arithmetic: the result lands on
+/// the same day number in the target month, clamped to the last day of that month
+/// when the day doesn't exist. E.g., Jan 31 + 1 month = Feb 28 (or 29 in leap year).
+///
+/// This is not domain knowledge in the engine — it is pure calendar math. The Hoge
+/// Raad confirmed that Dutch legal termijnberekening follows standard calendar
+/// arithmetic (HR 1 September 2017, ECLI:NL:HR:2017:2225).
 fn execute_date_add<R: ValueResolver>(
     date: &ActionValue,
     years: Option<&ActionValue>,
@@ -925,10 +927,10 @@ fn execute_date_add<R: ValueResolver>(
     Ok(Value::String(result_date.format("%Y-%m-%d").to_string()))
 }
 
-/// Add months to a date using Dutch legal "corresponding numbered day" rule.
+/// Add months to a date using standard calendar arithmetic.
 ///
 /// Clamps the day to the last day of the target month when the original day
-/// doesn't exist in that month.
+/// doesn't exist in that month (e.g., Jan 31 + 1 month = Feb 28).
 fn add_months(date: NaiveDate, months: i64) -> Result<NaiveDate> {
     let total_months = date.year() as i64 * 12 + (date.month() as i64 - 1) + months;
     let target_year = (total_months.div_euclid(12)) as i32;
