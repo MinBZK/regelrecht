@@ -151,7 +151,7 @@ Map `<bwb-dl:soort>` to `regulatory_layer`:
 | beleidsregel | BELEIDSREGEL |
 
 **Note:** `KONINKLIJK_BESLUIT`, `VERORDENING`, and `REGELING` are NOT valid
-schema v0.3.2 enum values. Map koninklijk besluiten to the closest match
+schema v0.4.0 enum values. Map koninklijk besluiten to the closest match
 (e.g., `AMVB`) or ask the user. Valid values: GRONDWET, WET, AMVB,
 MINISTERIELE_REGELING, BELEIDSREGEL, EU_VERORDENING, EU_RICHTLIJN,
 VERDRAG, UITVOERINGSBELEID, GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING.
@@ -160,10 +160,12 @@ VERDRAG, UITVOERINGSBELEID, GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING.
 
 **Schema URL:**
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.2/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
 ```
 
 **Required Fields (always):**
+- `$schema` (string) — URL to the schema
+- `$id` (string) — law slug identifier (e.g., `participatiewet`)
 - `regulatory_layer` (enum)
 - `publication_date` (string, YYYY-MM-DD)
 - `url` (string, top-level)
@@ -181,8 +183,7 @@ https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.
 - `machine_readable` (object) - NOT included by this skill
 - `references` (array)
 
-**Note:** Schema v0.3.2 has NO `$schema`, `$id`, `uuid`, `effective_date`, or `identifiers` fields.
-All identifiers (`bwb_id`, `url`) are top-level, not nested.
+**Note:** All identifiers (`bwb_id`, `url`) are top-level, not nested.
 
 ## File System Structure
 

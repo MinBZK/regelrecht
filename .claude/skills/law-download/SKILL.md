@@ -228,6 +228,8 @@ xmlns:bwb="http://www.overheid.nl/2011/BWB"
 
 **Target Structure:**
 ```yaml
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
+$id: "{LAW_SLUG}"
 name: "{LAW_TITLE}"
 regulatory_layer: "{MAPPED_LAYER}"
 publication_date: "{YYYY-MM-DD}"
@@ -251,8 +253,7 @@ articles:
 - Keep text as-is (no eurocent conversion)
 - Include ALL articles from the law
 - Use proper YAML multiline string format (`|`) for text
-- Schema v0.3.2 uses top-level `bwb_id`, `url`, `valid_from`, `name` — NOT nested under `identifiers`
-- No `$schema`, `$id`, `uuid`, or `effective_date` fields — those are not in the schema
+- All identifiers (`bwb_id`, `url`) are top-level, not nested
 
 ### Step 8: Save File
 

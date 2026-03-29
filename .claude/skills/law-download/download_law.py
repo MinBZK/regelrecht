@@ -89,7 +89,7 @@ def parse_wti_metadata(wti_tree):
         if layer not in VALID_LAYERS:
             raise ValueError(
                 f"'{soort_text}' maps to '{layer}' which is not a valid "
-                f"schema v0.3.2 regulatory_layer. Map manually to e.g. AMVB."
+                f"schema v0.4.0 regulatory_layer. Map manually to e.g. AMVB."
             )
         metadata["regulatory_layer"] = layer
 
@@ -196,9 +196,10 @@ def generate_yaml(metadata, articles, effective_date):
     bwb_id = metadata.get("bwb_id")
     law_id = slugify(metadata.get("title", bwb_id or "unknown"))
 
-    # Create YAML structure matching schema v0.3.2
-    # Schema has top-level bwb_id, url, valid_from, name (no $schema, $id, uuid, identifiers)
+    # Create YAML structure matching schema v0.4.0
     law_data = {
+        "$schema": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json",
+        "$id": law_id,
         "name": metadata.get("title", law_id),
         "regulatory_layer": metadata.get("regulatory_layer", "WET"),
         "publication_date": metadata.get("publication_date", effective_date),
