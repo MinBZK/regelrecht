@@ -438,51 +438,163 @@ impl<'a> ArticleEngine<'a> {
     /// This is needed because actions can have operations specified inline
     /// rather than as nested ActionValue::Operation.
     ///
-    /// # Limitations
-    ///
-    /// IF (cases/default), date operations, and LIST at the action level are
-    /// NOT supported because the `Action` struct doesn't have those fields.
-    /// They must be nested inside `value` as an `ActionValue::Operation`.
-    ///
-    /// ```yaml
-    /// # CORRECT - use value wrapper:
-    /// - output: result
-    ///   value:
-    ///     operation: IF
-    ///     cases: [...]
-    /// ```
+    /// Only comparison, arithmetic, aggregate, and logical operations are supported
+    /// at the action level because the `Action` struct only has `subject`, `value`,
+    /// `values`, and `conditions` fields. IF, date operations, and LIST must be
+    /// nested inside `value` as an `ActionValue::Operation`.
     fn action_to_operation(
         &self,
         action: &Action,
         operation: &crate::types::Operation,
     ) -> Result<ActionOperation> {
-        Ok(ActionOperation {
-            operation: *operation, // Operation is Copy
-            subject: action.subject.clone(),
-            value: action.value.clone(),
-            values: action.values.clone(),
-            conditions: action.conditions.clone(),
-            // IF-specific fields: Action struct doesn't have these,
-            // so IF (cases/default) must be nested inside `value`
-            cases: None,
-            default: None,
-            // Date operation fields: must be nested inside `value`
-            date: None,
-            days: None,
-            weeks: None,
-            year: None,
-            month: None,
-            day: None,
-            date_of_birth: None,
-            reference_date: None,
-            // LIST items: must be nested inside `value`
-            items: None,
-            // Backward compatibility fields
-            when: action.when.clone(),
-            then: action.then.clone(),
-            else_branch: action.else_branch.clone(),
-            unit: action.unit.clone(),
-        })
+        use crate::types::Operation;
+
+        match operation {
+            // Comparison operations (subject + value)
+            Operation::Equals
+            | Operation::NotEquals
+            | Operation::GreaterThan
+            | Operation::LessThan
+            | Operation::GreaterThanOrEqual
+            | Operation::LessThanOrEqual => {
+                let subject = action.subject.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(format!(
+                        "{} requires 'subject' at action level",
+                        operation.name()
+                    ))
+                })?;
+                let value = action.value.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(format!(
+                        "{} requires 'value' at action level",
+                        operation.name()
+                    ))
+                })?;
+                Ok(match operation {
+                    Operation::Equals => ActionOperation::Equals { subject, value },
+                    Operation::NotEquals => ActionOperation::NotEquals { subject, value },
+                    Operation::GreaterThan => ActionOperation::GreaterThan { subject, value },
+                    Operation::LessThan => ActionOperation::LessThan { subject, value },
+                    Operation::GreaterThanOrEqual => {
+                        ActionOperation::GreaterThanOrEqual { subject, value }
+                    }
+                    Operation::LessThanOrEqual => {
+                        ActionOperation::LessThanOrEqual { subject, value }
+                    }
+                    _ => unreachable!(),
+                })
+            }
+
+            // Arithmetic operations (values)
+            Operation::Add | Operation::Subtract | Operation::Multiply | Operation::Divide => {
+                let values = action.values.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(format!(
+                        "{} requires 'values' at action level",
+                        operation.name()
+                    ))
+                })?;
+                Ok(match operation {
+                    Operation::Add => ActionOperation::Add { values },
+                    Operation::Subtract => ActionOperation::Subtract { values },
+                    Operation::Multiply => ActionOperation::Multiply { values },
+                    Operation::Divide => ActionOperation::Divide { values },
+                    _ => unreachable!(),
+                })
+            }
+
+            // Aggregate operations (values)
+            Operation::Max | Operation::Min => {
+                let values = action.values.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(format!(
+                        "{} requires 'values' at action level",
+                        operation.name()
+                    ))
+                })?;
+                Ok(match operation {
+                    Operation::Max => ActionOperation::Max { values },
+                    Operation::Min => ActionOperation::Min { values },
+                    _ => unreachable!(),
+                })
+            }
+
+            // Logical operations
+            Operation::And | Operation::Or => {
+                let conditions = action.conditions.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(format!(
+                        "{} requires 'conditions' at action level",
+                        operation.name()
+                    ))
+                })?;
+                Ok(match operation {
+                    Operation::And => ActionOperation::And { conditions },
+                    Operation::Or => ActionOperation::Or { conditions },
+                    _ => unreachable!(),
+                })
+            }
+
+            Operation::Not => {
+                let value = action.value.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(
+                        "NOT requires 'value' at action level".to_string(),
+                    )
+                })?;
+                Ok(ActionOperation::Not { value })
+            }
+
+            // Null check operations (subject only)
+            Operation::IsNull => {
+                let subject = action.subject.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(
+                        "IS_NULL requires 'subject' at action level".to_string(),
+                    )
+                })?;
+                Ok(ActionOperation::IsNull { subject })
+            }
+            Operation::NotNull => {
+                let subject = action.subject.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(
+                        "NOT_NULL requires 'subject' at action level".to_string(),
+                    )
+                })?;
+                Ok(ActionOperation::NotNull { subject })
+            }
+
+            // Collection: IN/NOT_IN (subject + value/values)
+            Operation::In => {
+                let subject = action.subject.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(
+                        "IN requires 'subject' at action level".to_string(),
+                    )
+                })?;
+                Ok(ActionOperation::In {
+                    subject,
+                    value: action.value.clone(),
+                    values: action.values.clone(),
+                })
+            }
+            Operation::NotIn => {
+                let subject = action.subject.clone().ok_or_else(|| {
+                    EngineError::InvalidOperation(
+                        "NOT_IN requires 'subject' at action level".to_string(),
+                    )
+                })?;
+                Ok(ActionOperation::NotIn {
+                    subject,
+                    value: action.value.clone(),
+                    values: action.values.clone(),
+                })
+            }
+
+            // Operations not supported at action level
+            Operation::If
+            | Operation::List
+            | Operation::Age
+            | Operation::DateAdd
+            | Operation::Date
+            | Operation::DayOfWeek => Err(EngineError::InvalidOperation(format!(
+                "{} must be nested inside 'value', not used directly at action level",
+                operation.name()
+            ))),
+        }
     }
 
     /// Get actions from the article's execution spec.

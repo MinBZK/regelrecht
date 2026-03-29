@@ -361,8 +361,7 @@ pub enum Operation {
     Date,
     DayOfWeek,
 
-    // Backward compatibility aliases (v0.4.0 and earlier)
-    // These are accepted during deserialization but map to compositions of the above
+    // Additional operations
     #[serde(rename = "NOT_EQUALS")]
     NotEquals,
     #[serde(rename = "IS_NULL")]
@@ -371,11 +370,6 @@ pub enum Operation {
     NotNull,
     #[serde(rename = "NOT_IN")]
     NotIn,
-    #[serde(rename = "SUBTRACT_DATE")]
-    SubtractDate,
-    /// Old IF with when/then/else (v0.4.0)
-    #[serde(rename = "CONCAT")]
-    Concat,
 }
 
 impl Operation {
@@ -451,13 +445,10 @@ impl Operation {
             Operation::DateAdd => "DATE_ADD",
             Operation::Date => "DATE",
             Operation::DayOfWeek => "DAY_OF_WEEK",
-            // Backward compatibility
             Operation::NotEquals => "NOT_EQUALS",
             Operation::IsNull => "IS_NULL",
             Operation::NotNull => "NOT_NULL",
             Operation::NotIn => "NOT_IN",
-            Operation::SubtractDate => "SUBTRACT_DATE",
-            Operation::Concat => "CONCAT",
         }
     }
 }

@@ -136,9 +136,9 @@ pub struct Case {
 /// Represents a value in an action - can be a literal, variable reference, or nested operation.
 ///
 /// Uses `#[serde(untagged)]` for flexible YAML parsing. The Operation variant is tried first,
-/// but this is safe because `ActionOperation.operation` is a required field - any YAML object
-/// lacking an `operation` key will fail to deserialize as ActionOperation and fall through
-/// to the Literal variant.
+/// but this is safe because `ActionOperation` is an internally-tagged enum keyed on `"operation"` -
+/// any YAML object lacking an `operation` key will fail to deserialize as ActionOperation and
+/// fall through to the Literal variant.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ActionValue {
@@ -148,68 +148,158 @@ pub enum ActionValue {
     Literal(Value),
 }
 
-/// Represents an operation within an action
+/// Represents an operation within an action.
+///
+/// Uses an internally-tagged enum (`"operation"` field) so that each variant
+/// only carries the fields it actually needs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ActionOperation {
-    pub operation: Operation,
-    /// Subject for comparison operations
-    #[serde(default)]
-    pub subject: Option<ActionValue>,
-    /// Single value for comparison/assignment
-    #[serde(default)]
-    pub value: Option<ActionValue>,
-    /// Multiple values for aggregate/arithmetic operations
-    #[serde(default)]
-    pub values: Option<Vec<ActionValue>>,
-    /// Conditions for AND/OR operations
-    #[serde(default)]
-    pub conditions: Option<Vec<ActionValue>>,
-    /// Cases for IF operations (cases/default syntax)
-    #[serde(default)]
-    pub cases: Option<Vec<Case>>,
-    /// Default value for IF operations (cases/default syntax)
-    #[serde(default)]
-    pub default: Option<ActionValue>,
-    /// Date value for DATE_ADD, DAY_OF_WEEK operations
-    #[serde(default)]
-    pub date: Option<ActionValue>,
-    /// Days to add for DATE_ADD
-    #[serde(default)]
-    pub days: Option<ActionValue>,
-    /// Weeks to add for DATE_ADD
-    #[serde(default)]
-    pub weeks: Option<ActionValue>,
-    /// Year component for DATE operation
-    #[serde(default)]
-    pub year: Option<ActionValue>,
-    /// Month component for DATE operation
-    #[serde(default)]
-    pub month: Option<ActionValue>,
-    /// Day component for DATE operation
-    #[serde(default)]
-    pub day: Option<ActionValue>,
-    /// Date of birth for AGE operation
-    #[serde(default)]
-    pub date_of_birth: Option<ActionValue>,
-    /// Reference date for AGE operation
-    #[serde(default)]
-    pub reference_date: Option<ActionValue>,
-    /// Items for LIST operation
-    #[serde(default)]
-    pub items: Option<Vec<ActionValue>>,
-    // Backward compatibility fields (v0.4.0 and earlier)
-    /// Condition for old IF operations (when/then/else syntax)
-    #[serde(default)]
-    pub when: Option<ActionValue>,
-    /// Then branch for old IF operations
-    #[serde(default)]
-    pub then: Option<ActionValue>,
-    /// Else branch for old IF operations
-    #[serde(rename = "else", default)]
-    pub else_branch: Option<ActionValue>,
-    /// Unit for old SUBTRACT_DATE operation ("days", "months", "years")
-    #[serde(default)]
-    pub unit: Option<String>,
+#[serde(tag = "operation")]
+pub enum ActionOperation {
+    // Comparison (subject + value)
+    #[serde(rename = "EQUALS")]
+    Equals {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "NOT_EQUALS")]
+    NotEquals {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "GREATER_THAN")]
+    GreaterThan {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "LESS_THAN")]
+    LessThan {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "GREATER_THAN_OR_EQUAL")]
+    GreaterThanOrEqual {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "LESS_THAN_OR_EQUAL")]
+    LessThanOrEqual {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+
+    // Arithmetic (values)
+    #[serde(rename = "ADD")]
+    Add { values: Vec<ActionValue> },
+    #[serde(rename = "SUBTRACT")]
+    Subtract { values: Vec<ActionValue> },
+    #[serde(rename = "MULTIPLY")]
+    Multiply { values: Vec<ActionValue> },
+    #[serde(rename = "DIVIDE")]
+    Divide { values: Vec<ActionValue> },
+
+    // Aggregate (values)
+    #[serde(rename = "MAX")]
+    Max { values: Vec<ActionValue> },
+    #[serde(rename = "MIN")]
+    Min { values: Vec<ActionValue> },
+
+    // Logical
+    #[serde(rename = "AND")]
+    And { conditions: Vec<ActionValue> },
+    #[serde(rename = "OR")]
+    Or { conditions: Vec<ActionValue> },
+    #[serde(rename = "NOT")]
+    Not { value: ActionValue },
+
+    // Conditional
+    #[serde(rename = "IF", alias = "SWITCH")]
+    If {
+        cases: Vec<Case>,
+        #[serde(default)]
+        default: Option<ActionValue>,
+    },
+
+    // Null checking
+    #[serde(rename = "IS_NULL")]
+    IsNull { subject: ActionValue },
+    #[serde(rename = "NOT_NULL")]
+    NotNull { subject: ActionValue },
+
+    // Collection
+    #[serde(rename = "IN")]
+    In {
+        subject: ActionValue,
+        #[serde(default)]
+        value: Option<ActionValue>,
+        #[serde(default)]
+        values: Option<Vec<ActionValue>>,
+    },
+    #[serde(rename = "NOT_IN")]
+    NotIn {
+        subject: ActionValue,
+        #[serde(default)]
+        value: Option<ActionValue>,
+        #[serde(default)]
+        values: Option<Vec<ActionValue>>,
+    },
+    #[serde(rename = "LIST")]
+    List { items: Vec<ActionValue> },
+
+    // Date
+    #[serde(rename = "AGE")]
+    Age {
+        date_of_birth: ActionValue,
+        reference_date: ActionValue,
+    },
+    #[serde(rename = "DATE_ADD")]
+    DateAdd {
+        date: ActionValue,
+        #[serde(default)]
+        days: Option<ActionValue>,
+        #[serde(default)]
+        weeks: Option<ActionValue>,
+    },
+    #[serde(rename = "DATE")]
+    Date {
+        year: ActionValue,
+        month: ActionValue,
+        day: ActionValue,
+    },
+    #[serde(rename = "DAY_OF_WEEK")]
+    DayOfWeek { date: ActionValue },
+}
+
+impl ActionOperation {
+    /// Get the operation name as a static uppercase string (for tracing).
+    pub fn operation_name(&self) -> &'static str {
+        match self {
+            ActionOperation::Equals { .. } => "EQUALS",
+            ActionOperation::NotEquals { .. } => "NOT_EQUALS",
+            ActionOperation::GreaterThan { .. } => "GREATER_THAN",
+            ActionOperation::LessThan { .. } => "LESS_THAN",
+            ActionOperation::GreaterThanOrEqual { .. } => "GREATER_THAN_OR_EQUAL",
+            ActionOperation::LessThanOrEqual { .. } => "LESS_THAN_OR_EQUAL",
+            ActionOperation::Add { .. } => "ADD",
+            ActionOperation::Subtract { .. } => "SUBTRACT",
+            ActionOperation::Multiply { .. } => "MULTIPLY",
+            ActionOperation::Divide { .. } => "DIVIDE",
+            ActionOperation::Max { .. } => "MAX",
+            ActionOperation::Min { .. } => "MIN",
+            ActionOperation::And { .. } => "AND",
+            ActionOperation::Or { .. } => "OR",
+            ActionOperation::Not { .. } => "NOT",
+            ActionOperation::If { .. } => "IF",
+            ActionOperation::IsNull { .. } => "IS_NULL",
+            ActionOperation::NotNull { .. } => "NOT_NULL",
+            ActionOperation::In { .. } => "IN",
+            ActionOperation::NotIn { .. } => "NOT_IN",
+            ActionOperation::List { .. } => "LIST",
+            ActionOperation::Age { .. } => "AGE",
+            ActionOperation::DateAdd { .. } => "DATE_ADD",
+            ActionOperation::Date { .. } => "DATE",
+            ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
+        }
+    }
 }
 
 /// Action definition in execution spec
@@ -231,19 +321,6 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
-    // Backward compatibility fields (v0.4.0 and earlier)
-    /// Condition for old IF operations (when/then/else syntax)
-    #[serde(default)]
-    pub when: Option<ActionValue>,
-    /// Then branch for old IF operations
-    #[serde(default)]
-    pub then: Option<ActionValue>,
-    /// Else branch for old IF operations
-    #[serde(rename = "else", default)]
-    pub else_branch: Option<ActionValue>,
-    /// Unit for old SUBTRACT_DATE operation
-    #[serde(default)]
-    pub unit: Option<String>,
 }
 
 /// Execution specification within machine_readable section
@@ -1213,9 +1290,16 @@ articles:
 
         match &actions[0].value {
             Some(ActionValue::Operation(op)) => {
-                assert_eq!(op.operation, Operation::If);
-                assert!(op.cases.is_some());
-                assert!(op.default.is_some());
+                assert!(
+                    matches!(
+                        op.as_ref(),
+                        ActionOperation::If {
+                            cases: _,
+                            default: Some(_)
+                        }
+                    ),
+                    "Expected IF operation with cases and default"
+                );
             }
             _ => panic!("Expected operation value"),
         }
