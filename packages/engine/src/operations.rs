@@ -904,7 +904,13 @@ fn execute_date_add<R: ValueResolver>(
         let weeks_int = weeks_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'weeks' must be a number".to_string())
         })?;
-        result_date += chrono::Duration::weeks(weeks_int);
+        result_date = result_date
+            .checked_add_signed(chrono::Duration::weeks(weeks_int))
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(
+                    "DATE_ADD: date out of range after adding weeks".to_string(),
+                )
+            })?;
     }
 
     // Days
@@ -913,7 +919,13 @@ fn execute_date_add<R: ValueResolver>(
         let days_int = days_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
         })?;
-        result_date += chrono::Duration::days(days_int);
+        result_date = result_date
+            .checked_add_signed(chrono::Duration::days(days_int))
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(
+                    "DATE_ADD: date out of range after adding days".to_string(),
+                )
+            })?;
     }
 
     Ok(Value::String(result_date.format("%Y-%m-%d").to_string()))
