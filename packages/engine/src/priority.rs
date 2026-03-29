@@ -77,6 +77,38 @@ fn validate_date_for_comparison<'a>(
     Ok(date)
 }
 
+/// Compare two laws by priority: lex superior (layer rank), then lex posterior (valid_from).
+///
+/// Returns `Ordering::Greater` if `a` outranks `b`, `Ordering::Less` if `b` outranks `a`.
+/// Returns `Err` if both have the same layer and date (ambiguous).
+pub fn compare_law_priority(a: &ArticleBasedLaw, b: &ArticleBasedLaw) -> Result<std::cmp::Ordering> {
+    let a_rank = layer_rank(&a.regulatory_layer);
+    let b_rank = layer_rank(&b.regulatory_layer);
+
+    if a_rank < b_rank {
+        return Ok(std::cmp::Ordering::Greater); // a has higher authority
+    }
+    if a_rank > b_rank {
+        return Ok(std::cmp::Ordering::Less); // b has higher authority
+    }
+
+    // Same layer: compare valid_from dates (lex posterior)
+    let a_date = validate_date_for_comparison(&a.id, &a.valid_from)?;
+    let b_date = validate_date_for_comparison(&b.id, &b.valid_from)?;
+
+    if a_date > b_date {
+        Ok(std::cmp::Ordering::Greater)
+    } else if a_date < b_date {
+        Ok(std::cmp::Ordering::Less)
+    } else {
+        Err(EngineError::ResolutionError(format!(
+            "Ambiguous priority: '{}' and '{}' both have regulatory layer {:?} and valid_from '{}' \
+             — cannot determine winner",
+            a.id, b.id, a.regulatory_layer, a_date
+        )))
+    }
+}
+
 /// Pick the winning candidate from a list of implementations.
 ///
 /// Resolution rules:
@@ -98,38 +130,30 @@ pub fn resolve_candidate<'a>(
     let mut reason = format!("only candidate ({})", best.law.id);
 
     for candidate in &candidates[1..] {
-        let best_priority = layer_rank(&best.law.regulatory_layer);
-        let candidate_priority = layer_rank(&candidate.law.regulatory_layer);
-
-        if candidate_priority < best_priority {
-            // Lower number = higher authority (lex superior)
-            let prev_id = best.law.id.clone();
-            let prev_layer = best.law.regulatory_layer;
-            best = candidate;
-            reason = format!(
-                "lex superior: {} ({:?}) outranks {} ({:?})",
-                candidate.law.id, candidate.law.regulatory_layer, prev_id, prev_layer,
-            );
-        } else if candidate_priority == best_priority {
-            // Same layer: compare valid_from dates (lex posterior)
-            let best_date = validate_date_for_comparison(&best.law.id, &best.law.valid_from)?;
-            let candidate_date =
-                validate_date_for_comparison(&candidate.law.id, &candidate.law.valid_from)?;
-
-            if candidate_date > best_date {
+        match compare_law_priority(candidate.law, best.law)? {
+            std::cmp::Ordering::Greater => {
                 let prev_id = best.law.id.clone();
-                let prev_date = best_date.to_string();
+                let best_rank = layer_rank(&best.law.regulatory_layer);
+                let cand_rank = layer_rank(&candidate.law.regulatory_layer);
                 best = candidate;
-                reason = format!(
-                    "lex posterior: {} (valid_from {}) is newer than {} (valid_from {})",
-                    candidate.law.id, candidate_date, prev_id, prev_date,
-                );
-            } else if candidate_date == best_date {
-                // Same layer, same date: ambiguous — this is a law authoring error
-                return Err(EngineError::ResolutionError(format!(
-                    "Ambiguous priority: {} and {} both have regulatory layer {:?} and valid_from '{}' — cannot determine winner",
-                    best.law.id, candidate.law.id, best.law.regulatory_layer, best_date
-                )));
+                reason = if cand_rank < best_rank {
+                    format!(
+                        "lex superior: {} ({:?}) outranks {} ({:?})",
+                        candidate.law.id, candidate.law.regulatory_layer,
+                        prev_id, best.law.regulatory_layer,
+                    )
+                } else {
+                    format!(
+                        "lex posterior: {} (valid_from {}) is newer than {} (valid_from {})",
+                        candidate.law.id,
+                        candidate.law.valid_from.as_deref().unwrap_or("?"),
+                        prev_id,
+                        best.law.valid_from.as_deref().unwrap_or("?"),
+                    )
+                };
+            }
+            std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
+                // Equal is unreachable: compare_law_priority returns Err for ambiguous
             }
         }
     }

@@ -882,25 +882,15 @@ impl LawExecutionService {
                         if let Some(existing_law) = output_sources.get(&name) {
                             // Conflict: two hooks produce same output.
                             // Resolve via lex superior / lex posterior.
-                            let existing_priority =
-                                priority::layer_rank(&existing_law.regulatory_layer);
-                            let new_priority = priority::layer_rank(&hook_law.regulatory_layer);
-                            if new_priority < existing_priority {
-                                // New hook has higher authority (lower rank = higher)
-                                hook_outputs.insert(name.clone(), value);
-                                output_sources.insert(name, hook_law);
-                            } else if new_priority == existing_priority {
-                                // Same layer: lex posterior (newer valid_from wins)
-                                let existing_date =
-                                    existing_law.valid_from.as_deref().unwrap_or("");
-                                let new_date = hook_law.valid_from.as_deref().unwrap_or("");
-                                if new_date > existing_date {
+                            match priority::compare_law_priority(hook_law, existing_law)? {
+                                std::cmp::Ordering::Greater => {
                                     hook_outputs.insert(name.clone(), value);
                                     output_sources.insert(name, hook_law);
                                 }
-                                // If same date: keep first (ambiguous, but deterministic)
+                                std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
+                                    // existing wins or unreachable (Equal → Err above)
+                                }
                             }
-                            // else: existing has higher authority, keep it
                         } else {
                             output_sources.insert(name.clone(), hook_law);
                             hook_outputs.insert(name, value);
