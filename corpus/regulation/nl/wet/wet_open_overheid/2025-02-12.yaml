@@ -597,21 +597,30 @@ articles:
                   - $bevat_identificatienummers
           - output: heeft_relatieve_weigeringsgrond
             value:
-              operation: AND
-              conditions:
-                - operation: NOT
-                  value: $belang_openbaarheid_weegt_zwaarder
-                - operation: OR
-                  conditions:
-                    - $raakt_internationale_betrekkingen
-                    - $raakt_economische_belangen
-                    - $raakt_opsporing_vervolging
-                    - $raakt_inspectie_toezicht
-                    - $raakt_persoonlijke_levenssfeer
-                    - $raakt_concurrentiegevoelige_gegevens
-                    - $raakt_milieubescherming
-                    - $raakt_beveiliging_personen
-                    - $raakt_goed_functioneren_staat
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - $is_milieu_informatie
+                      - $betreft_emissies
+                  then: false
+              default:
+                operation: AND
+                conditions:
+                  - operation: NOT
+                    value: $belang_openbaarheid_weegt_zwaarder
+                  - operation: OR
+                    conditions:
+                      - $raakt_internationale_betrekkingen
+                      - $raakt_economische_belangen
+                      - $raakt_opsporing_vervolging
+                      - $raakt_inspectie_toezicht
+                      - $raakt_persoonlijke_levenssfeer
+                      - $raakt_concurrentiegevoelige_gegevens
+                      - $raakt_milieubescherming
+                      - $raakt_beveiliging_personen
+                      - $raakt_goed_functioneren_staat
           - output: openbaarmaking_toegestaan
             value:
               operation: AND
