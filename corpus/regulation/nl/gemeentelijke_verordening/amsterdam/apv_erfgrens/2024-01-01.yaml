@@ -41,6 +41,10 @@ articles:
             type: string
             required: true
             description: Type beplanting - "boom" of "heg_of_heester"
+          - name: postcode
+            type: string
+            required: true
+            description: Postcodegebied van de locatie
 
         output:
           - name: minimale_afstand_cm
@@ -48,14 +52,25 @@ articles:
             description: Minimale afstand tot erfgrens in centimeters
 
         actions:
-          # Amsterdam: 1 meter voor bomen, 0,5 meter voor heggen
+          # Lid 1: 1 meter voor bomen, alleen in centrum (postcodegebied 1011-1018)
+          # Lid 2: 0,5 meter voor heggen in heel Amsterdam
           - output: minimale_afstand_cm
             value:
               operation: IF
               cases:
                 - when:
-                    operation: EQUALS
-                    subject: $type_beplanting
-                    value: boom
-                  then: 100  # 1 meter voor bomen (ipv 2 meter uit BW)
-              default: 50  # 0,5 meter voor heggen (zelfde als BW)
+                    operation: AND
+                    conditions:
+                      - operation: EQUALS
+                        subject: $type_beplanting
+                        value: boom
+                      - operation: AND
+                        conditions:
+                          - operation: GREATER_THAN_OR_EQUAL
+                            subject: $postcode
+                            value: '1011'
+                          - operation: LESS_THAN_OR_EQUAL
+                            subject: $postcode
+                            value: '1018'
+                  then: 100  # lid 1: 1 meter voor bomen in centrum
+              default: 50  # lid 2: 0,5 meter voor heggen (en bomen buiten centrum)

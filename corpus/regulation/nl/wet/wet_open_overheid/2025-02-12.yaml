@@ -739,7 +739,8 @@ articles:
               reference_date: $peildatum
           - output: verzwaarde_motiveringsplicht
             value:
-              operation: GREATER_THAN_OR_EQUAL
+              # "ouder is dan vijf jaar" = strictly older than 5 years
+              operation: GREATER_THAN
               subject: $informatie_leeftijd_jaren
               value: 5
 
