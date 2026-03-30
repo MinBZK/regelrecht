@@ -11,6 +11,9 @@
   "optionalDependencies": {
     "@minbzk/storybook": "^0.8.12"
   },
+  "overrides": {
+    "esbuild": "^0.25.0"
+  },
   "devDependencies": {
     "mermaid": "^11.4.1",
     "vitepress": "^1.6.3",
