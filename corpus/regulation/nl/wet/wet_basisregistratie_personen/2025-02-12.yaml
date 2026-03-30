@@ -355,6 +355,9 @@ articles:
           - name: bsn
             type: string
             required: true
+          - name: peildatum
+            type: date
+            required: true
         input:
           - name: geboortedatum
             type: string
@@ -367,7 +370,7 @@ articles:
             value:
               operation: AGE
               date_of_birth: $geboortedatum
-              reference_date: $referencedate
+              reference_date: $peildatum
   - number: '2.8'
     text: |-
       Artikel 2.8 1 De gegevens over de burgerlijke staat worden, indien zij feiten betreffen die zich in Nederland

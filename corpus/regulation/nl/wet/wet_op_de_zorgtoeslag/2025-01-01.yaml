@@ -80,6 +80,7 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                peildatum: $referencedate
           - name: is_verzekerde
             type: boolean
             source:
