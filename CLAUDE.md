@@ -96,9 +96,9 @@ See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` for a worki
 
 This project uses an RFC process for design decisions.
 
-- **Location**: `doc/rfcs/`
-- **Process document**: See `doc/rfcs/RFC-000-rfc-process.md`
-- **Template**: Use `doc/rfcs/RFC-TEMPLATE.md`
+- **Location**: `docs/rfcs/`
+- **Process document**: See `docs/rfcs/rfc-000.md`
+- **Template**: Use `docs/rfcs/template.md`
 
 ### When to Write an RFC
 
