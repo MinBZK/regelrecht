@@ -121,34 +121,20 @@ articles:
           - name: verdragsinschrijving
             type: boolean
             source: {}
-          - name: is_gedetineerd
-            type: boolean
-            source:
-              regulation: penitentiaire_beginselenwet
-              output: is_gedetineerd
-              parameters:
-                bsn: $bsn
         output:
           - name: is_verzekerd
             type: boolean
         actions:
           - output: is_verzekerd
             value:
-              operation: AND
+              operation: OR
               conditions:
-                - operation: OR
-                  conditions:
-                    - operation: IN
-                      subject: $polis_status
-                      value: $actieve_polis_statussen
-                    - operation: EQUALS
-                      subject: $verdragsinschrijving
-                      value: true
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $is_gedetineerd
-                    value: true
+                - operation: IN
+                  subject: $polis_status
+                  value: $actieve_polis_statussen
+                - operation: EQUALS
+                  subject: $verdragsinschrijving
+                  value: true
   - number: '3'
     text: |-
       Artikel 3 1 Een zorgverzekeraar is verplicht met of ten behoeve van iedere verzekeringsplichtige die in zijn

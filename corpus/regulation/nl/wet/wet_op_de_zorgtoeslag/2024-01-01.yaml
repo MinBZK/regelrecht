@@ -73,26 +73,11 @@ articles:
             type: string
             required: true
         input:
-          - name: leeftijd
-            type: number
-            source:
-              regulation: wet_basisregistratie_personen
-              output: leeftijd
-              parameters:
-                bsn: $bsn
-                peildatum: $referencedate
           - name: is_verzekerde
             type: boolean
             source:
               regulation: zorgverzekeringswet
               output: is_verzekerd
-              parameters:
-                bsn: $bsn
-          - name: is_forensisch
-            type: boolean
-            source:
-              regulation: wet_forensische_zorg
-              output: is_forensisch
               parameters:
                 bsn: $bsn
           - name: heeft_toeslagpartner
@@ -209,17 +194,9 @@ articles:
             value:
               operation: AND
               conditions:
-                - operation: GREATER_THAN_OR_EQUAL
-                  subject: $leeftijd
-                  value: 18
                 - operation: EQUALS
                   subject: $is_verzekerde
                   value: true
-                - operation: NOT
-                  value:
-                    operation: EQUALS
-                    subject: $is_forensisch
-                    value: true
                 - operation: EQUALS
                   subject: $vermogen_onder_grens
                   value: true

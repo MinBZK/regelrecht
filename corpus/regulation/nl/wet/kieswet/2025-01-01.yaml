@@ -32,6 +32,11 @@ articles:
             type: string
             required: true
         input:
+          - name: kandidaatstellingsdatum
+            type: date
+            source:
+              output: kandidaatstellingsdatum_tweede_kamer
+              description: Dag van de kandidaatstelling
           - name: verkiezingsdatum
             type: date
             source:
@@ -48,15 +53,12 @@ articles:
               description: Leeftijd op de dag van de stemming conform art. B1 lid 1
           - name: heeft_nederlandse_nationaliteit
             type: boolean
-            description: Nederlander zijn (Art B1 lid 1) — TODO output ontbreekt in BRP corpus
+            description: Nederlander zijn op dag van kandidaatstelling (Art B1 lid 1) — TODO output ontbreekt in BRP corpus
             source: {}
-          - name: heeft_kiesrecht_uitsluiting
-            type: boolean
-            source:
-              output: kiesrecht_uitsluiting
-              parameters:
-                bsn: $bsn
-              description: Uitsluiting van kiesrecht door rechterlijke uitspraak (art. B5 Kieswet)
+          - name: werkelijke_woonplaats
+            type: string
+            description: Werkelijke woonplaats op dag van kandidaatstelling (Art B1 lid 1)
+            source: {}
         output:
           - name: heeft_kiesrecht_tweede_kamer
             type: boolean
@@ -71,9 +73,14 @@ articles:
                 - operation: GREATER_THAN_OR_EQUAL
                   subject: $leeftijd_op_verkiezingsdatum
                   value: $MINIMUM_LEEFTIJD
-                - operation: EQUALS
-                  subject: $heeft_kiesrecht_uitsluiting
-                  value: false
+                - operation: NOT
+                  value:
+                    operation: IN
+                    subject: $werkelijke_woonplaats
+                    values:
+                      - ARUBA
+                      - CURACAO
+                      - SINT_MAARTEN
   - number: B5
     text: |-
       Van het kiesrecht zijn uitgesloten zij die bij onherroepelijke rechterlijke uitspraak van het kiesrecht zijn
