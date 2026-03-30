@@ -77,8 +77,7 @@ articles:
           value: 1
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: ANDERE_HANDELING
+          legal_character: WAARDEBEPALING
         parameters:
           - name: bsn
             type: string

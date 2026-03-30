@@ -232,8 +232,7 @@ articles:
           value: 155958
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: WAARDEBEPALING
         parameters:
           - name: bsn
             type: string
