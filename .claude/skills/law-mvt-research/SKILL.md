@@ -3,7 +3,11 @@ name: law-mvt-research
 description: >
   Searches for Memorie van Toelichting (explanatory memoranda) for a Dutch law
   and generates Gherkin test scenarios from legislature-intended examples.
-  Use when you want MvT-derived BDD scenarios without generating machine_readable.
+  Use this skill proactively when: user wants MvT-derived BDD scenarios,
+  mentions "memorie van toelichting", "MvT", "parlementaire stukken",
+  "rekenvoorbeelden", or "kamerstukken" in the context of Dutch law.
+  Activate automatically when a new law YAML file is created and the user
+  discusses testing or validation.
 allowed-tools: Read, Write, WebFetch, WebSearch, Bash, Grep, Glob
 user-invocable: true
 ---

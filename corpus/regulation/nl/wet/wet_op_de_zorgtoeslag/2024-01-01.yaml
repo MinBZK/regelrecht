@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: zorgtoeslagwet
 regulatory_layer: WET
 publication_date: '2023-12-20'
@@ -140,64 +140,70 @@ articles:
                 - operation: SUBTRACT
                   values:
                     - operation: IF
-                      when:
-                        operation: EQUALS
-                        subject: $heeft_toeslagpartner
-                        value: true
-                      then:
-                        operation: MULTIPLY
-                        values:
-                          - 2
-                          - $standaardpremie
-                      else: $standaardpremie
+                      cases:
+                        - when:
+                            operation: EQUALS
+                            subject: $heeft_toeslagpartner
+                            value: true
+                          then:
+                            operation: MULTIPLY
+                            values:
+                              - 2
+                              - $standaardpremie
+                      default: $standaardpremie
                     - operation: ADD
                       values:
                         - operation: MULTIPLY
                           values:
                             - operation: IF
-                              when:
-                                operation: EQUALS
-                                subject: $heeft_toeslagpartner
-                                value: true
-                              then: $percentage_drempelinkomen_partner
-                              else: $percentage_drempelinkomen_alleenstaande
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $heeft_toeslagpartner
+                                    value: true
+                                  then: $percentage_drempelinkomen_partner
+                              default: $percentage_drempelinkomen_alleenstaande
                             - operation: MIN
                               values:
                                 - $toetsingsinkomen
                                 - operation: IF
-                                  when:
-                                    operation: EQUALS
-                                    subject: $heeft_toeslagpartner
-                                    value: true
-                                  then: $drempelinkomen_aanvrager_met_toeslagpartner
-                                  else: $drempelinkomen_alleenstaande
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $heeft_toeslagpartner
+                                        value: true
+                                      then: $drempelinkomen_aanvrager_met_toeslagpartner
+                                  default: $drempelinkomen_alleenstaande
                         - operation: IF
-                          when:
-                            operation: GREATER_THAN
-                            subject: $toetsingsinkomen
-                            value:
-                              operation: IF
-                              when:
-                                operation: EQUALS
-                                subject: $heeft_toeslagpartner
-                                value: true
-                              then: $drempelinkomen_aanvrager_met_toeslagpartner
-                              else: $drempelinkomen_alleenstaande
-                          then:
-                            operation: MULTIPLY
-                            values:
-                              - operation: SUBTRACT
+                          cases:
+                            - when:
+                                operation: GREATER_THAN
+                                subject: $toetsingsinkomen
+                                value:
+                                  operation: IF
+                                  cases:
+                                    - when:
+                                        operation: EQUALS
+                                        subject: $heeft_toeslagpartner
+                                        value: true
+                                      then: $drempelinkomen_aanvrager_met_toeslagpartner
+                                  default: $drempelinkomen_alleenstaande
+                              then:
+                                operation: MULTIPLY
                                 values:
-                                  - $toetsingsinkomen
-                                  - operation: IF
-                                    when:
-                                      operation: EQUALS
-                                      subject: $heeft_toeslagpartner
-                                      value: true
-                                    then: $drempelinkomen_aanvrager_met_toeslagpartner
-                                    else: $drempelinkomen_alleenstaande
-                              - $percentage_toetsingsinkomen
-                          else: 0
+                                  - operation: SUBTRACT
+                                    values:
+                                      - $toetsingsinkomen
+                                      - operation: IF
+                                        cases:
+                                          - when:
+                                              operation: EQUALS
+                                              subject: $heeft_toeslagpartner
+                                              value: true
+                                            then: $drempelinkomen_aanvrager_met_toeslagpartner
+                                        default: $drempelinkomen_alleenstaande
+                                  - $percentage_toetsingsinkomen
+                          default: 0
           - output: heeft_recht_op_zorgtoeslag
             value:
               operation: AND
@@ -208,9 +214,11 @@ articles:
                 - operation: EQUALS
                   subject: $is_verzekerde
                   value: true
-                - operation: NOT_EQUALS
-                  subject: $is_forensisch
-                  value: true
+                - operation: NOT
+                  value:
+                    operation: EQUALS
+                    subject: $is_forensisch
+                    value: true
                 - operation: EQUALS
                   subject: $vermogen_onder_grens
                   value: true
@@ -265,23 +273,27 @@ articles:
               subject: $vermogen
               value:
                 operation: IF
-                when:
-                  operation: EQUALS
-                  subject: $heeft_toeslagpartner
-                  value: true
-                then: $vermogensgrens_aanvrager_met_toeslagpartner
-                else: $vermogensgrens_alleenstaand
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $heeft_toeslagpartner
+                      value: true
+                    then: $vermogensgrens_aanvrager_met_toeslagpartner
+                default: $vermogensgrens_alleenstaand
   - number: '4'
     text: |-
       Onze Minister stelt uiterlijk 22 dagen voorafgaande aan het berekeningsjaar bij regeling de standaardpremie voor
       het berekeningsjaar vast.
     url: https://wetten.overheid.nl/BWBR0018451/2024-01-01#Artikel4
     machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 4 Wet op de zorgtoeslag
       execution:
-        parameters:
-          - name: reference_year
-            type: number
-            required: false
         output:
           - name: standaardpremie
             type: amount
@@ -289,12 +301,7 @@ articles:
               unit: eurocent
         actions:
           - output: standaardpremie
-            resolve:
-              type: ministeriele_regeling
-              output: standaardpremie
-              match:
-                output: berekeningsjaar
-                value: $referencedate.year
+            value: $standaardpremie
   - number: 4a
     text: |-
       Voor de persoon, bedoeld in artikel 69 van de Zorgverzekeringswet, wordt de standaardpremie aangepast aan de hand

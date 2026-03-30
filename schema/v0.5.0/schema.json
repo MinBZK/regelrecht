@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json",
-  "title": "Machine-Readable Dutch Law Schema v0.4.0",
+  "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json",
+  "title": "Machine-Readable Dutch Law Schema v0.5.0",
   "description": "Article-based schema for machine-readable representation of Dutch laws and regulations",
   "type": "object",
   "required": [
@@ -31,6 +31,7 @@
         "GRONDWET",
         "WET",
         "AMVB",
+        "KONINKLIJK_BESLUIT",
         "MINISTERIELE_REGELING",
         "BELEIDSREGEL",
         "EU_VERORDENING",
@@ -215,6 +216,86 @@
           }
         },
         "additionalProperties": false
+      }
+    },
+    "procedure": {
+      "type": "array",
+      "description": "AWB-defined procedure lifecycles for administrative decisions (RFC-008)",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "applies_to",
+          "stages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for this procedure (e.g., 'beschikking', 'beschikking_uov')"
+          },
+          "default": {
+            "type": "boolean",
+            "description": "Whether this is the default procedure for its legal_character"
+          },
+          "applies_to": {
+            "type": "object",
+            "required": [
+              "legal_character"
+            ],
+            "properties": {
+              "legal_character": {
+                "type": "string",
+                "description": "Legal character this procedure governs"
+              }
+            }
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Stage name (e.g., AANVRAAG, BESLUIT, BEKENDMAKING)"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Human-readable description"
+                },
+                "requires": {
+                  "type": "array",
+                  "description": "External inputs required to enter this stage",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "type"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "string",
+                          "number",
+                          "boolean",
+                          "date",
+                          "array",
+                          "object"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -493,8 +574,7 @@
             "MULTIPLY",
             "DIVIDE",
             "MIN",
-            "MAX",
-            "CONCAT"
+            "MAX"
           ]
         },
         "values": {
@@ -550,19 +630,15 @@
           "type": "string",
           "enum": [
             "EQUALS",
-            "NOT_EQUALS",
-            "NOT_NULL",
             "GREATER_THAN",
             "LESS_THAN",
             "GREATER_THAN_OR_EQUAL",
-            "LESS_THAN_OR_EQUAL",
-            "IN",
-            "NOT_IN"
+            "LESS_THAN_OR_EQUAL"
           ]
         },
         "subject": {
-          "$ref": "#/definitions/variableReference",
-          "description": "Variable to compare"
+          "$ref": "#/definitions/operationValue",
+          "description": "Value to compare"
         },
         "value": {
           "$ref": "#/definitions/operationValue",
@@ -574,30 +650,21 @@
       },
       "additionalProperties": false
     },
-    "conditionalOperation": {
+    "notOperation": {
       "type": "object",
-      "description": "Conditional operation (IF-WHEN-THEN-ELSE)",
+      "description": "Logical NOT - negates a boolean value",
       "required": [
         "operation",
-        "when",
-        "then"
+        "value"
       ],
       "properties": {
         "operation": {
           "type": "string",
-          "const": "IF"
+          "const": "NOT"
         },
-        "when": {
+        "value": {
           "$ref": "#/definitions/operationValue",
-          "description": "Condition to evaluate - can be a boolean variable, literal, or operation"
-        },
-        "then": {
-          "$ref": "#/definitions/operationValue",
-          "description": "Value when test is true"
-        },
-        "else": {
-          "$ref": "#/definitions/operationValue",
-          "description": "Value when test is false"
+          "description": "Value to negate"
         },
         "legal_basis": {
           "$ref": "#/definitions/legalBasis"
@@ -605,9 +672,9 @@
       },
       "additionalProperties": false
     },
-    "switchOperation": {
+    "ifOperation": {
       "type": "object",
-      "description": "Switch/case operation for multiple conditional branches",
+      "description": "Conditional operation with multiple cases evaluated in order",
       "required": [
         "operation",
         "cases"
@@ -615,7 +682,7 @@
       "properties": {
         "operation": {
           "type": "string",
-          "const": "SWITCH"
+          "const": "IF"
         },
         "cases": {
           "type": "array",
@@ -649,58 +716,176 @@
       },
       "additionalProperties": false
     },
-    "otherOperation": {
+    "inOperation": {
       "type": "object",
-      "description": "Other operations (NOT, FOREACH) - fallback with flexible properties",
+      "description": "Membership test - checks if subject is in a list",
       "required": [
-        "operation"
+        "operation",
+        "subject"
       ],
       "properties": {
         "operation": {
           "type": "string",
-          "enum": [
-            "NOT",
-            "FOREACH"
-          ]
+          "const": "IN"
+        },
+        "subject": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Value to check"
+        },
+        "value": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Single value or list reference to check against"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/operationValue"
+          },
+          "description": "Inline list to check against"
         },
         "legal_basis": {
           "$ref": "#/definitions/legalBasis"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
-    "dateOperation": {
+    "listOperation": {
       "type": "object",
-      "description": "Date arithmetic operations that compute date differences",
+      "description": "Construct an array from items",
       "required": [
         "operation",
-        "subject",
-        "value"
+        "items"
       ],
       "properties": {
         "operation": {
           "type": "string",
-          "enum": [
-            "SUBTRACT_DATE"
-          ]
+          "const": "LIST"
         },
-        "subject": {
-          "$ref": "#/definitions/operationValue",
-          "description": "The first date (minuend)"
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/operationValue"
+          },
+          "description": "Items in the list"
         },
-        "value": {
-          "$ref": "#/definitions/operationValue",
-          "description": "The second date (subtrahend)"
-        },
-        "unit": {
+        "legal_basis": {
+          "$ref": "#/definitions/legalBasis"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ageOperation": {
+      "type": "object",
+      "description": "Calculate age in complete years between two dates",
+      "required": [
+        "operation",
+        "date_of_birth",
+        "reference_date"
+      ],
+      "properties": {
+        "operation": {
           "type": "string",
-          "enum": [
-            "days",
-            "months",
-            "years"
-          ],
-          "default": "days",
-          "description": "Unit of measurement for the date difference"
+          "const": "AGE"
+        },
+        "date_of_birth": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Date of birth"
+        },
+        "reference_date": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Reference date to calculate age at"
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/legalBasis"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dateAddOperation": {
+      "type": "object",
+      "description": "Add years, months, weeks, and/or days to a date. Applied coarsest-to-finest: years → months → weeks → days. Month/year additions use the Dutch legal 'corresponding numbered day' rule: the day is clamped to the last day of the target month (e.g., Jan 31 + 1 month = Feb 28).",
+      "required": [
+        "operation",
+        "date"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "DATE_ADD"
+        },
+        "date": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Base date"
+        },
+        "years": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Number of years to add (clamped to last day of target month)"
+        },
+        "months": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Number of months to add (clamped to last day of target month)"
+        },
+        "weeks": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Number of weeks to add"
+        },
+        "days": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Number of days to add"
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/legalBasis"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dateConstructOperation": {
+      "type": "object",
+      "description": "Construct a date from year, month, day components",
+      "required": [
+        "operation",
+        "year",
+        "month",
+        "day"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "DATE"
+        },
+        "year": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Year"
+        },
+        "month": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Month (1-12)"
+        },
+        "day": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Day (1-31)"
+        },
+        "legal_basis": {
+          "$ref": "#/definitions/legalBasis"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dayOfWeekOperation": {
+      "type": "object",
+      "description": "Get the day of the week (0=Monday, 6=Sunday)",
+      "required": [
+        "operation",
+        "date"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "const": "DAY_OF_WEEK"
+        },
+        "date": {
+          "$ref": "#/definitions/operationValue",
+          "description": "Date to check"
         },
         "legal_basis": {
           "$ref": "#/definitions/legalBasis"
@@ -722,19 +907,17 @@
         "OR",
         "NOT",
         "EQUALS",
-        "NOT_EQUALS",
-        "NOT_NULL",
         "GREATER_THAN",
         "LESS_THAN",
         "GREATER_THAN_OR_EQUAL",
         "LESS_THAN_OR_EQUAL",
-        "IN",
-        "NOT_IN",
-        "CONCAT",
         "IF",
-        "SWITCH",
-        "FOREACH",
-        "SUBTRACT_DATE"
+        "IN",
+        "LIST",
+        "AGE",
+        "DATE_ADD",
+        "DATE",
+        "DAY_OF_WEEK"
       ]
     },
     "operation": {
@@ -750,16 +933,28 @@
           "$ref": "#/definitions/comparisonOperation"
         },
         {
-          "$ref": "#/definitions/conditionalOperation"
+          "$ref": "#/definitions/notOperation"
         },
         {
-          "$ref": "#/definitions/switchOperation"
+          "$ref": "#/definitions/ifOperation"
         },
         {
-          "$ref": "#/definitions/dateOperation"
+          "$ref": "#/definitions/inOperation"
         },
         {
-          "$ref": "#/definitions/otherOperation"
+          "$ref": "#/definitions/listOperation"
+        },
+        {
+          "$ref": "#/definitions/ageOperation"
+        },
+        {
+          "$ref": "#/definitions/dateAddOperation"
+        },
+        {
+          "$ref": "#/definitions/dateConstructOperation"
+        },
+        {
+          "$ref": "#/definitions/dayOfWeekOperation"
         }
       ]
     },
@@ -808,6 +1003,25 @@
           "description": "Operands for the operation",
           "items": {
             "$ref": "#/definitions/operationValue"
+          }
+        },
+        "resolve": {
+          "type": "object",
+          "description": "Delegation resolution - resolve value from an implementing regulation",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Regulatory layer to search for implementation"
+            },
+            "output": {
+              "type": "string",
+              "description": "Output field to retrieve"
+            },
+            "match": {
+              "type": "object",
+              "description": "Matching criteria for selecting the right implementation",
+              "additionalProperties": true
+            }
           }
         },
         "legal_basis": {
@@ -912,6 +1126,7 @@
                   "GRONDWET",
                   "WET",
                   "AMVB",
+                  "KONINKLIJK_BESLUIT",
                   "MINISTERIELE_REGELING",
                   "BELEIDSREGEL",
                   "EU_VERORDENING",
@@ -1171,6 +1386,10 @@
                     "AANSLAG"
                   ],
                   "description": "Type of decision produced"
+                },
+                "procedure_id": {
+                  "type": "string",
+                  "description": "Selects a specific AWB procedure variant. When absent, the default procedure for the legal_character is used."
                 }
               }
             },
@@ -1204,6 +1423,83 @@
             }
           },
           "additionalProperties": false
+        },
+        "hooks": {
+          "type": "array",
+          "description": "Hook declarations: this article fires when matching lifecycle events occur (RFC-007)",
+          "items": {
+            "type": "object",
+            "required": [
+              "hook_point",
+              "applies_to"
+            ],
+            "properties": {
+              "hook_point": {
+                "type": "string",
+                "enum": [
+                  "pre_actions",
+                  "post_actions"
+                ],
+                "description": "When in the lifecycle this hook fires"
+              },
+              "applies_to": {
+                "type": "object",
+                "properties": {
+                  "legal_character": {
+                    "type": "string",
+                    "enum": [
+                      "BESCHIKKING",
+                      "TOETS",
+                      "WAARDEBEPALING",
+                      "BESLUIT_VAN_ALGEMENE_STREKKING",
+                      "INFORMATIEF"
+                    ],
+                    "description": "Match articles that produce this legal character"
+                  },
+                  "decision_type": {
+                    "type": "string",
+                    "description": "Optionally narrow to a specific decision type"
+                  },
+                  "stage": {
+                    "type": "string",
+                    "description": "Lifecycle stage at which this hook fires (e.g., BESLUIT, BEKENDMAKING). Defaults to BESLUIT."
+                  }
+                },
+                "required": [
+                  "legal_character"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "overrides": {
+          "type": "array",
+          "description": "Override declarations: this article replaces another article's output (RFC-007, lex specialis)",
+          "items": {
+            "type": "object",
+            "required": [
+              "law",
+              "article",
+              "output"
+            ],
+            "properties": {
+              "law": {
+                "type": "string",
+                "description": "The $id of the law being overridden"
+              },
+              "article": {
+                "type": "string",
+                "description": "The article number being overridden"
+              },
+              "output": {
+                "type": "string",
+                "description": "The specific output being replaced"
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false

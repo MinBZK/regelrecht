@@ -305,6 +305,8 @@ fn type_label(t: &PathNodeType) -> &'static str {
         PathNodeType::Article => "article",
         PathNodeType::Cached => "cached",
         PathNodeType::OpenTermResolution => "open_term",
+        PathNodeType::HookResolution => "hook",
+        PathNodeType::OverrideResolution => "override",
     }
 }
 
@@ -320,6 +322,8 @@ fn resolve_label(rt: &ResolveType) -> &'static str {
         ResolveType::ResolvedInput => "res_input",
         ResolveType::DataSource => "data",
         ResolveType::OpenTerm => "open_term",
+        ResolveType::Hook => "hook",
+        ResolveType::Override => "override",
     }
 }
 

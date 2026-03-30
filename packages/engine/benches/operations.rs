@@ -1,7 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use regelrecht_engine::operations::{evaluate_value, execute_operation, ValueResolver};
-use regelrecht_engine::types::Operation;
-use regelrecht_engine::{ActionOperation, ActionValue, Value};
+use regelrecht_engine::{ActionOperation, ActionValue, Case, Value};
 use std::collections::HashMap;
 
 /// Simple resolver backed by a HashMap (no tracing overhead).
@@ -44,148 +43,67 @@ fn bench_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("operations");
 
     // EQUALS with literals
-    let equals_op = ActionOperation {
-        operation: Operation::Equals,
-        subject: Some(literal(Value::Int(42))),
-        value: Some(literal(Value::Int(42))),
-        values: None,
-        when: None,
-        then: None,
-        else_branch: None,
-        conditions: None,
-        cases: None,
-        default: None,
-        unit: None,
+    let equals_op = ActionOperation::Equals {
+        subject: literal(Value::Int(42)),
+        value: literal(Value::Int(42)),
     };
     group.bench_function("equals_literals", |b| {
         b.iter(|| execute_operation(black_box(&equals_op), &resolver, 0))
     });
 
     // EQUALS with variable resolution
-    let equals_var_op = ActionOperation {
-        operation: Operation::Equals,
-        subject: Some(var_ref("x")),
-        value: Some(literal(Value::Int(42))),
-        values: None,
-        when: None,
-        then: None,
-        else_branch: None,
-        conditions: None,
-        cases: None,
-        default: None,
-        unit: None,
+    let equals_var_op = ActionOperation::Equals {
+        subject: var_ref("x"),
+        value: literal(Value::Int(42)),
     };
     group.bench_function("equals_with_var", |b| {
         b.iter(|| execute_operation(black_box(&equals_var_op), &resolver, 0))
     });
 
     // ADD with values
-    let add_op = ActionOperation {
-        operation: Operation::Add,
-        subject: None,
-        value: None,
-        values: Some(vec![var_ref("x"), var_ref("y"), literal(Value::Int(100))]),
-        when: None,
-        then: None,
-        else_branch: None,
-        conditions: None,
-        cases: None,
-        default: None,
-        unit: None,
+    let add_op = ActionOperation::Add {
+        values: vec![var_ref("x"), var_ref("y"), literal(Value::Int(100))],
     };
     group.bench_function("add_three_values", |b| {
         b.iter(|| execute_operation(black_box(&add_op), &resolver, 0))
     });
 
     // MULTIPLY
-    let mul_op = ActionOperation {
-        operation: Operation::Multiply,
-        subject: None,
-        value: None,
-        values: Some(vec![var_ref("income"), literal(Value::Float(0.1345))]),
-        when: None,
-        then: None,
-        else_branch: None,
-        conditions: None,
-        cases: None,
-        default: None,
-        unit: None,
+    let mul_op = ActionOperation::Multiply {
+        values: vec![var_ref("income"), literal(Value::Float(0.1345))],
     };
     group.bench_function("multiply", |b| {
         b.iter(|| execute_operation(black_box(&mul_op), &resolver, 0))
     });
 
-    // IF conditional
-    let if_op = ActionOperation {
-        operation: Operation::If,
-        subject: None,
-        value: None,
-        values: None,
-        when: Some(ActionValue::Operation(Box::new(ActionOperation {
-            operation: Operation::GreaterThan,
-            subject: Some(var_ref("income")),
-            value: Some(var_ref("threshold")),
-            values: None,
-            when: None,
-            then: None,
-            else_branch: None,
-            conditions: None,
-            cases: None,
-            default: None,
-            unit: None,
-        }))),
-        then: Some(literal(Value::Int(100))),
-        else_branch: Some(literal(Value::Int(0))),
-        conditions: None,
-        cases: None,
-        default: None,
-        unit: None,
+    // IF conditional (cases/default syntax)
+    let if_op = ActionOperation::If {
+        cases: vec![Case {
+            when: ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                subject: var_ref("income"),
+                value: var_ref("threshold"),
+            })),
+            then: literal(Value::Int(100)),
+        }],
+        default: Some(literal(Value::Int(0))),
     };
     group.bench_function("if_conditional", |b| {
         b.iter(|| execute_operation(black_box(&if_op), &resolver, 0))
     });
 
     // AND with 3 conditions
-    let and_op = ActionOperation {
-        operation: Operation::And,
-        subject: None,
-        value: None,
-        values: None,
-        when: None,
-        then: None,
-        else_branch: None,
-        conditions: Some(vec![
+    let and_op = ActionOperation::And {
+        conditions: vec![
             var_ref("flag"),
-            ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::GreaterThan,
-                subject: Some(var_ref("x")),
-                value: Some(literal(Value::Int(0))),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            ActionValue::Operation(Box::new(ActionOperation::GreaterThan {
+                subject: var_ref("x"),
+                value: literal(Value::Int(0)),
             })),
-            ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::Equals,
-                subject: Some(var_ref("name")),
-                value: Some(literal(Value::String("test".to_string()))),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            ActionValue::Operation(Box::new(ActionOperation::Equals {
+                subject: var_ref("name"),
+                value: literal(Value::String("test".to_string())),
             })),
-        ]),
-        cases: None,
-        default: None,
-        unit: None,
+        ],
     };
     group.bench_function("and_three_conditions", |b| {
         b.iter(|| execute_operation(black_box(&and_op), &resolver, 0))

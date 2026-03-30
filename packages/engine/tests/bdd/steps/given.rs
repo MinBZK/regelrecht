@@ -36,6 +36,17 @@ fn set_citizen_data(world: &mut RegelrechtWorld, step: &Step) {
 }
 
 // =============================================================================
+// Bezwaartermijn steps
+// =============================================================================
+
+#[given("a vreemdelingenwet application with:")]
+fn set_vreemdelingenwet_data(world: &mut RegelrechtWorld, step: &Step) {
+    if let Some(table) = &step.table {
+        world.parameters = parse_table_to_params(table);
+    }
+}
+
+// =============================================================================
 // Erfgrensbeplanting steps
 // =============================================================================
 

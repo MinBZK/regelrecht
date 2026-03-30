@@ -6,27 +6,26 @@ export const OPERATION_LABELS = {
   DIVIDE: 'delen',
   MIN: 'minimum',
   MAX: 'maximum',
-  CONCAT: 'samenvoegen',
   // Vergelijking
   EQUALS: 'gelijk aan',
-  NOT_EQUALS: 'niet gelijk aan',
   GREATER_THAN: 'groter dan',
   GREATER_THAN_OR_EQUAL: 'groter dan of gelijk',
   LESS_THAN: 'kleiner dan',
   LESS_THAN_OR_EQUAL: 'kleiner dan of gelijk',
-  NOT_NULL: 'heeft waarde',
   IN: 'in lijst',
-  NOT_IN: 'niet in lijst',
   // Logisch
   AND: 'en',
   OR: 'of',
   NOT: 'niet',
   // Conditioneel
-  IF: 'voorwaarde',
-  SWITCH: 'keuze',
-  // Overig
-  FOREACH: 'voor elk',
-  SUBTRACT_DATE: 'datum aftrekken',
+  IF: 'als/dan',
+  // Datum
+  AGE: 'leeftijd',
+  DATE_ADD: 'datum optellen',
+  DATE: 'datum',
+  DAY_OF_WEEK: 'dag van de week',
+  // Verzameling
+  LIST: 'lijst',
 };
 
 export function collectAvailableVariables(article) {
@@ -160,13 +159,7 @@ export function describeSubtitle(node) {
     }
   }
 
-  if (node.operation === 'IF') {
-    if (node.when) args.push(`als ${formatArgName(node.when)}`);
-    if (node.then !== undefined) args.push(`dan ${formatArgName(node.then)}`);
-    if (node.else !== undefined) args.push(`anders ${formatArgName(node.else)}`);
-  }
-
-  if (node.operation === 'SWITCH' && Array.isArray(node.cases)) {
+  if (node.operation === 'IF' && Array.isArray(node.cases)) {
     args.push(`${node.cases.length} gevallen`);
     if (node.default !== undefined) args.push(`standaard ${formatArgName(node.default)}`);
   }

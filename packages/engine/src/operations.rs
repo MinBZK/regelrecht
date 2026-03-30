@@ -1,18 +1,23 @@
 //! Operation execution for the RegelRecht engine
 //!
-//! This module implements the execution logic for all 21 operation types:
-//! - **Comparison (6):** EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
-//! - **Arithmetic (4):** ADD, SUBTRACT, MULTIPLY, DIVIDE
-//! - **Aggregate (2):** MAX, MIN
-//! - **Logical (2):** AND, OR
-//! - **Conditional (2):** IF, SWITCH
-//! - **Null checking (2):** IS_NULL, NOT_NULL
-//! - **Membership testing (2):** IN, NOT_IN
-//! - **Date operations (1):** SUBTRACT_DATE
+//! Implements the execution logic for all operation types in the v0.5.0 schema,
+//! plus engine-only operations retained for backward compatibility.
+//!
+//! **Schema v0.5.0 operations:**
+//! - **Comparison:** EQUALS, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
+//! - **Arithmetic:** ADD, SUBTRACT, MULTIPLY, DIVIDE
+//! - **Aggregate:** MAX, MIN
+//! - **Logical:** AND, OR, NOT
+//! - **Conditional:** IF (multi-case with cases/default)
+//! - **Collection:** IN, LIST
+//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK
+//!
+//! **Engine-only (not in schema, accepted for backward compatibility):**
+//! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
 
-use crate::article::{ActionOperation, ActionValue};
+use crate::article::{ActionOperation, ActionValue, Case};
 use crate::error::{EngineError, Result};
-use crate::types::{Operation, PathNodeType, Value};
+use crate::types::{PathNodeType, Value};
 use chrono::{Datelike, NaiveDate};
 
 /// Maximum nesting depth for operations to prevent stack overflow
@@ -127,24 +132,24 @@ pub fn execute_operation<R: ValueResolver>(
         return Err(EngineError::MaxDepthExceeded(depth));
     }
 
+    let op_name = op.operation_name();
     let tracing = resolver.has_trace();
     if tracing {
-        resolver.trace_push(op.operation.name(), PathNodeType::Operation);
+        resolver.trace_push(op_name, PathNodeType::Operation);
     }
 
     let result = execute_operation_internal(op, resolver, depth);
 
     if tracing {
-        let op_name = op.operation.name();
         match &result {
             Ok(value) => {
                 resolver.trace_set_result(value.clone());
-                // For IF, execute_if already set a message with branch info;
-                // incorporate it instead of overwriting.
+                // For IF (cases/default), execute_if already set a message
+                // with case match info; incorporate it instead of overwriting.
                 let existing_msg = resolver.trace_get_message();
-                let msg = if op.operation == Operation::If {
-                    if let Some(branch) = existing_msg {
-                        format!("IF({}) = {}", branch, format_value_for_trace(value))
+                let msg = if matches!(op, ActionOperation::If { .. }) {
+                    if let Some(case_info) = existing_msg {
+                        format!("IF({}) = {}", case_info, format_value_for_trace(value))
                     } else {
                         format!(
                             "Compute {}(...) = {}",
@@ -199,68 +204,103 @@ fn execute_operation_internal<R: ValueResolver>(
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    match op.operation {
+    match op {
         // Comparison operations
-        Operation::Equals => execute_equality(op, resolver, depth, false),
-        Operation::NotEquals => execute_equality(op, resolver, depth, true),
-        Operation::GreaterThan => execute_numeric_comparison(op, resolver, depth, |a, b| a > b),
-        Operation::LessThan => execute_numeric_comparison(op, resolver, depth, |a, b| a < b),
-        Operation::GreaterThanOrEqual => {
-            execute_numeric_comparison(op, resolver, depth, |a, b| a >= b)
+        ActionOperation::Equals { subject, value } => {
+            execute_equality(subject, value, resolver, depth, false)
         }
-        Operation::LessThanOrEqual => {
-            execute_numeric_comparison(op, resolver, depth, |a, b| a <= b)
+        ActionOperation::NotEquals { subject, value } => {
+            execute_equality(subject, value, resolver, depth, true)
+        }
+        ActionOperation::GreaterThan { subject, value } => {
+            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a > b)
+        }
+        ActionOperation::LessThan { subject, value } => {
+            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a < b)
+        }
+        ActionOperation::GreaterThanOrEqual { subject, value } => {
+            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a >= b)
+        }
+        ActionOperation::LessThanOrEqual { subject, value } => {
+            execute_numeric_comparison(subject, value, resolver, depth, |a, b| a <= b)
         }
 
-        // Arithmetic operations
-        Operation::Add => execute_add(op, resolver, depth),
-        Operation::Subtract => execute_subtract(op, resolver, depth),
-        Operation::Multiply => execute_multiply(op, resolver, depth),
-        Operation::Divide => execute_divide(op, resolver, depth),
+        // Arithmetic
+        ActionOperation::Add { values } => execute_add(values, resolver, depth),
+        ActionOperation::Subtract { values } => execute_subtract(values, resolver, depth),
+        ActionOperation::Multiply { values } => execute_multiply(values, resolver, depth),
+        ActionOperation::Divide { values } => execute_divide(values, resolver, depth),
 
-        // Aggregate operations
-        Operation::Max => execute_aggregate(op, resolver, depth, f64::max),
-        Operation::Min => execute_aggregate(op, resolver, depth, f64::min),
+        // Aggregate
+        ActionOperation::Max { values } => execute_aggregate(values, resolver, depth, f64::max),
+        ActionOperation::Min { values } => execute_aggregate(values, resolver, depth, f64::min),
 
-        // Logical operations
-        Operation::And => execute_and(op, resolver, depth),
-        Operation::Or => execute_or(op, resolver, depth),
+        // Logical
+        ActionOperation::And { conditions } => execute_and(conditions, resolver, depth),
+        ActionOperation::Or { conditions } => execute_or(conditions, resolver, depth),
+        ActionOperation::Not { value } => execute_not(value, resolver, depth),
 
-        // Conditional operations
-        Operation::If => execute_if(op, resolver, depth),
-        Operation::Switch => execute_switch(op, resolver, depth),
+        // Conditional (multi-case with cases/default)
+        ActionOperation::If { cases, default } => {
+            execute_if(cases, default.as_ref(), resolver, depth)
+        }
 
         // Null checking operations
-        Operation::IsNull => execute_null_check(op, resolver, depth, false),
-        Operation::NotNull => execute_null_check(op, resolver, depth, true),
+        ActionOperation::IsNull { subject } => execute_null_check(subject, resolver, depth, false),
+        ActionOperation::NotNull { subject } => execute_null_check(subject, resolver, depth, true),
 
-        // Membership testing operations
-        Operation::In => execute_membership(op, resolver, depth, false),
-        Operation::NotIn => execute_membership(op, resolver, depth, true),
+        // Collection operations
+        ActionOperation::In {
+            subject,
+            value,
+            values,
+        } => execute_membership(
+            subject,
+            value.as_ref(),
+            values.as_deref(),
+            resolver,
+            depth,
+            false,
+        ),
+        ActionOperation::NotIn {
+            subject,
+            value,
+            values,
+        } => execute_membership(
+            subject,
+            value.as_ref(),
+            values.as_deref(),
+            resolver,
+            depth,
+            true,
+        ),
+        ActionOperation::List { items } => execute_list(items, resolver, depth),
 
-        // Date operations
-        Operation::SubtractDate => execute_subtract_date(op, resolver, depth),
+        // Date
+        ActionOperation::Age {
+            date_of_birth,
+            reference_date,
+        } => execute_age(date_of_birth, reference_date, resolver, depth),
+        ActionOperation::DateAdd {
+            date,
+            years,
+            months,
+            weeks,
+            days,
+        } => execute_date_add(
+            date,
+            years.as_ref(),
+            months.as_ref(),
+            weeks.as_ref(),
+            days.as_ref(),
+            resolver,
+            depth,
+        ),
+        ActionOperation::Date { year, month, day } => {
+            execute_date_construct(year, month, day, resolver, depth)
+        }
+        ActionOperation::DayOfWeek { date } => execute_day_of_week(date, resolver, depth),
     }
-}
-
-// =============================================================================
-// Field Extraction Helpers
-// =============================================================================
-
-/// Extract the `subject` field from an operation, or return a descriptive error.
-fn require_subject(op: &ActionOperation) -> Result<&ActionValue> {
-    op.subject.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation(format!("{} requires 'subject'", op.operation.name()))
-    })
-}
-
-/// Extract both `subject` and `value` fields from an operation, or return a descriptive error.
-fn require_subject_value(op: &ActionOperation) -> Result<(&ActionValue, &ActionValue)> {
-    let subject = require_subject(op)?;
-    let value = op.value.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation(format!("{} requires 'value'", op.operation.name()))
-    })?;
-    Ok((subject, value))
 }
 
 // =============================================================================
@@ -311,13 +351,12 @@ pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
 /// - Non-numeric types use structural equality
 /// - When `negate` is true, the result is inverted (NOT_EQUALS).
 fn execute_equality<R: ValueResolver>(
-    op: &ActionOperation,
+    subject: &ActionValue,
+    value: &ActionValue,
     resolver: &R,
     depth: usize,
     negate: bool,
 ) -> Result<Value> {
-    let (subject, value) = require_subject_value(op)?;
-
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
 
@@ -329,7 +368,8 @@ fn execute_equality<R: ValueResolver>(
 ///
 /// Converts values to f64 for comparison to handle both Int and Float types.
 fn execute_numeric_comparison<R: ValueResolver, F>(
-    op: &ActionOperation,
+    subject: &ActionValue,
+    value: &ActionValue,
     resolver: &R,
     depth: usize,
     compare: F,
@@ -337,8 +377,6 @@ fn execute_numeric_comparison<R: ValueResolver, F>(
 where
     F: Fn(f64, f64) -> bool,
 {
-    let (subject, value) = require_subject_value(op)?;
-
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
 
@@ -352,34 +390,81 @@ where
 // Arithmetic Operations
 // =============================================================================
 
-/// Execute ADD operation: sum of all values.
+/// Execute ADD operation: sum numbers, concatenate arrays, or concatenate strings.
+///
+/// The type of the first value determines the operation mode:
+/// - Numbers: sum all values
+/// - Arrays: concatenate all arrays
+/// - Strings: concatenate all strings
 fn execute_add<R: ValueResolver>(
-    op: &ActionOperation,
+    values: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let values = get_values(op)?;
     let evaluated = evaluate_values(values, resolver, depth)?;
 
-    let mut sum = 0.0;
-    let mut has_float = false;
-
-    for val in &evaluated {
-        match val {
-            Value::Int(_) => sum += to_number(val)?,
-            Value::Float(f) => {
-                sum += f;
-                has_float = true;
-            }
-            _ => return Err(type_error("number", val)),
-        }
+    if evaluated.is_empty() {
+        return Err(EngineError::InvalidOperation(
+            "ADD requires at least one value".to_string(),
+        ));
     }
 
-    Ok(if has_float {
-        Value::Float(sum)
-    } else {
-        Value::Int(f64_to_i64_safe(sum)?)
-    })
+    // Determine type from first value
+    match &evaluated[0] {
+        Value::Array(_) => {
+            // Concatenate arrays
+            let mut result = Vec::new();
+            for val in &evaluated {
+                match val {
+                    Value::Array(arr) => result.extend(arr.iter().cloned()),
+                    _ => {
+                        return Err(EngineError::TypeMismatch {
+                            expected: "array".to_string(),
+                            actual: format!("{:?}", val),
+                        })
+                    }
+                }
+            }
+            Ok(Value::Array(result))
+        }
+        Value::String(_) => {
+            // Concatenate strings
+            let mut result = String::new();
+            for val in &evaluated {
+                match val {
+                    Value::String(s) => result.push_str(s),
+                    _ => {
+                        return Err(EngineError::TypeMismatch {
+                            expected: "string".to_string(),
+                            actual: format!("{:?}", val),
+                        })
+                    }
+                }
+            }
+            Ok(Value::String(result))
+        }
+        Value::Int(_) | Value::Float(_) => {
+            // Original numeric addition
+            let mut sum = 0.0;
+            let mut has_float = false;
+            for val in &evaluated {
+                match val {
+                    Value::Int(_) => sum += to_number(val)?,
+                    Value::Float(f) => {
+                        sum += f;
+                        has_float = true;
+                    }
+                    _ => return Err(type_error("number", val)),
+                }
+            }
+            Ok(if has_float {
+                Value::Float(sum)
+            } else {
+                Value::Int(f64_to_i64_safe(sum)?)
+            })
+        }
+        _ => Err(type_error("number, string, or array", &evaluated[0])),
+    }
 }
 
 /// Execute SUBTRACT operation: first value minus all subsequent values.
@@ -387,11 +472,10 @@ fn execute_add<R: ValueResolver>(
 /// Note: Uses `to_number()` which validates that integers are within the
 /// safe range for f64 conversion (±2^53).
 fn execute_subtract<R: ValueResolver>(
-    op: &ActionOperation,
+    values: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let values = get_values(op)?;
     if values.is_empty() {
         return Err(EngineError::InvalidOperation(
             "SUBTRACT requires at least one value".to_string(),
@@ -426,11 +510,10 @@ fn execute_subtract<R: ValueResolver>(
 /// Note: Uses `to_number()` which validates that integers are within the
 /// safe range for f64 conversion (±2^53).
 fn execute_multiply<R: ValueResolver>(
-    op: &ActionOperation,
+    values: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let values = get_values(op)?;
     if values.is_empty() {
         return Err(EngineError::InvalidOperation(
             "MULTIPLY requires at least one value".to_string(),
@@ -465,11 +548,10 @@ fn execute_multiply<R: ValueResolver>(
 /// Returns `Err(DivisionByZero)` for division by zero.
 /// Returns `Err(InvalidOperation)` for NaN or Infinity results.
 fn execute_divide<R: ValueResolver>(
-    op: &ActionOperation,
+    values: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let values = get_values(op)?;
     if values.is_empty() {
         return Err(EngineError::InvalidOperation(
             "DIVIDE requires at least one value".to_string(),
@@ -514,7 +596,7 @@ fn execute_divide<R: ValueResolver>(
 
 /// Execute aggregate operation (MAX, MIN).
 fn execute_aggregate<R: ValueResolver, F>(
-    op: &ActionOperation,
+    values: &[ActionValue],
     resolver: &R,
     depth: usize,
     combine: F,
@@ -522,7 +604,6 @@ fn execute_aggregate<R: ValueResolver, F>(
 where
     F: Fn(f64, f64) -> f64,
 {
-    let values = get_values(op)?;
     if values.is_empty() {
         return Err(EngineError::InvalidOperation(
             "Aggregate operation requires at least one value".to_string(),
@@ -560,15 +641,10 @@ where
 
 /// Execute AND operation: short-circuit evaluation, returns false if any condition is false.
 fn execute_and<R: ValueResolver>(
-    op: &ActionOperation,
+    conditions: &[ActionValue],
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let conditions = op
-        .conditions
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("AND requires 'conditions'".to_string()))?;
-
     let tracing = resolver.has_trace();
     let mut results: Option<Vec<Value>> = if tracing { Some(Vec::new()) } else { None };
     for condition in conditions {
@@ -590,12 +666,11 @@ fn execute_and<R: ValueResolver>(
 }
 
 /// Execute OR operation: short-circuit evaluation, returns true if any condition is true.
-fn execute_or<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize) -> Result<Value> {
-    let conditions = op
-        .conditions
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("OR requires 'conditions'".to_string()))?;
-
+fn execute_or<R: ValueResolver>(
+    conditions: &[ActionValue],
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
         if val.to_bool() {
@@ -606,100 +681,74 @@ fn execute_or<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize
     Ok(Value::Bool(false))
 }
 
+/// Execute NOT operation: logical negation.
+///
+/// Takes a single `value` field (which should be a boolean-returning operation).
+fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize) -> Result<Value> {
+    let val = evaluate_value(value, resolver, depth)?;
+    Ok(Value::Bool(!val.to_bool()))
+}
+
 // =============================================================================
 // Conditional Operations
 // =============================================================================
 
-/// Execute IF operation: evaluates condition, returns then or else branch.
-fn execute_if<R: ValueResolver>(op: &ActionOperation, resolver: &R, depth: usize) -> Result<Value> {
-    let when = op
-        .when
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("IF requires 'when'".to_string()))?;
-    let then = op
-        .then
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("IF requires 'then'".to_string()))?;
-
-    let tracing = resolver.has_trace();
-
-    // Wrap condition evaluation in a WHEN label node
-    if tracing {
-        resolver.trace_push("WHEN", PathNodeType::Operation);
-    }
-    let condition_result = evaluate_value(when, resolver, depth).inspect_err(|_| {
-        if tracing {
-            resolver.trace_pop();
-        }
-    })?;
-    if tracing {
-        resolver.trace_set_result(condition_result.clone());
-        resolver.trace_set_message(format!(
-            "WHEN: {}",
-            format_value_for_trace(&condition_result)
-        ));
-        resolver.trace_pop();
-    }
-
-    if condition_result.to_bool() {
-        if tracing {
-            resolver.trace_push("THEN", PathNodeType::Operation);
-        }
-        let result = evaluate_value(then, resolver, depth).inspect_err(|_| {
-            if tracing {
-                resolver.trace_pop();
-            }
-        })?;
-        if tracing {
-            resolver.trace_set_result(result.clone());
-            resolver.trace_set_message(format!("THEN: {}", format_value_for_trace(&result)));
-            resolver.trace_pop();
-            resolver.trace_set_message("took THEN".to_string());
-        }
-        Ok(result)
-    } else if let Some(else_branch) = &op.else_branch {
-        if tracing {
-            resolver.trace_push("ELSE", PathNodeType::Operation);
-        }
-        let result = evaluate_value(else_branch, resolver, depth).inspect_err(|_| {
-            if tracing {
-                resolver.trace_pop();
-            }
-        })?;
-        if tracing {
-            resolver.trace_set_result(result.clone());
-            resolver.trace_set_message(format!("ELSE: {}", format_value_for_trace(&result)));
-            resolver.trace_pop();
-            resolver.trace_set_message("took ELSE".to_string());
-        }
-        Ok(result)
-    } else {
-        Ok(Value::Null)
-    }
-}
-
-/// Execute SWITCH operation: evaluates cases in order, returns first matching case.
-fn execute_switch<R: ValueResolver>(
-    op: &ActionOperation,
+/// Execute IF operation: evaluates cases in order, returns first matching case's value.
+fn execute_if<R: ValueResolver>(
+    cases: &[Case],
+    default: Option<&ActionValue>,
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let cases = op
-        .cases
-        .as_ref()
-        .ok_or_else(|| EngineError::InvalidOperation("SWITCH requires 'cases'".to_string()))?;
+    let tracing = resolver.has_trace();
 
-    for case in cases {
+    for (i, case) in cases.iter().enumerate() {
+        if tracing {
+            resolver.trace_push(&format!("CASE_{}", i), PathNodeType::Operation);
+        }
         let condition_result = evaluate_value(&case.when, resolver, depth)?;
+        if tracing {
+            resolver.trace_set_result(condition_result.clone());
+            resolver.trace_set_message(format!(
+                "CASE {}: {}",
+                i,
+                format_value_for_trace(&condition_result)
+            ));
+            resolver.trace_pop();
+        }
+
         if condition_result.to_bool() {
-            return evaluate_value(&case.then, resolver, depth);
+            if tracing {
+                resolver.trace_push("THEN", PathNodeType::Operation);
+            }
+            let result = evaluate_value(&case.then, resolver, depth)?;
+            if tracing {
+                resolver.trace_set_result(result.clone());
+                resolver.trace_set_message(format!("THEN: {}", format_value_for_trace(&result)));
+                resolver.trace_pop();
+                resolver.trace_set_message(format!("case {} matched", i));
+            }
+            return Ok(result);
         }
     }
 
     // Return default if no case matched
-    if let Some(default) = &op.default {
-        evaluate_value(default, resolver, depth)
+    if let Some(default) = default {
+        if tracing {
+            resolver.trace_push("DEFAULT", PathNodeType::Operation);
+        }
+        let result = evaluate_value(default, resolver, depth)?;
+        if tracing {
+            resolver.trace_set_result(result.clone());
+            resolver.trace_set_message(format!("DEFAULT: {}", format_value_for_trace(&result)));
+            resolver.trace_pop();
+            resolver.trace_set_message("took default".to_string());
+        }
+        Ok(result)
     } else {
+        if tracing {
+            resolver.trace_set_message("no case matched, no default".to_string());
+        }
         Ok(Value::Null)
     }
 }
@@ -712,62 +761,51 @@ fn execute_switch<R: ValueResolver>(
 ///
 /// When `negate` is true, returns true if the subject is *not* null (NOT_NULL).
 fn execute_null_check<R: ValueResolver>(
-    op: &ActionOperation,
+    subject: &ActionValue,
     resolver: &R,
     depth: usize,
     negate: bool,
 ) -> Result<Value> {
-    let subject = require_subject(op)?;
-
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let is_null = subject_val.is_null();
     Ok(Value::Bool(if negate { !is_null } else { is_null }))
 }
 
 // =============================================================================
-// Membership Testing Operations
+// Collection Operations
 // =============================================================================
-
-/// Resolve the membership check values from an operation.
-///
-/// Supports both `values: [...]` (inline list) and `value: $list_ref` (reference to a
-/// definition list). When `value` resolves to a non-array, it is wrapped in a single-element vec.
-fn resolve_membership_values<R: ValueResolver>(
-    op: &ActionOperation,
-    op_name: &str,
-    resolver: &R,
-    depth: usize,
-) -> Result<Vec<Value>> {
-    if let Some(values) = &op.values {
-        evaluate_values(values, resolver, depth)
-    } else if let Some(value) = &op.value {
-        let resolved = evaluate_value(value, resolver, depth)?;
-        match resolved {
-            Value::Array(items) => Ok(items),
-            other => Ok(vec![other]),
-        }
-    } else {
-        Err(EngineError::InvalidOperation(format!(
-            "{op_name} requires 'values' or 'value'"
-        )))
-    }
-}
 
 /// Execute IN / NOT_IN operation.
 ///
 /// Uses Python-style numeric coercion for equality comparison.
 /// When `negate` is true, returns true if subject is *not* in the list (NOT_IN).
+///
+/// Supports both `values: [...]` (inline list) and `value: $list_ref` (reference to a
+/// definition list). When `value` resolves to a non-array, it is wrapped in a single-element vec.
 fn execute_membership<R: ValueResolver>(
-    op: &ActionOperation,
+    subject: &ActionValue,
+    value: Option<&ActionValue>,
+    values: Option<&[ActionValue]>,
     resolver: &R,
     depth: usize,
     negate: bool,
 ) -> Result<Value> {
-    let subject = require_subject(op)?;
-
     let subject_val = evaluate_value(subject, resolver, depth)?;
-    let op_name = op.operation.name();
-    let check_values = resolve_membership_values(op, op_name, resolver, depth)?;
+
+    let check_values = if let Some(values) = values {
+        evaluate_values(values, resolver, depth)?
+    } else if let Some(value) = value {
+        let resolved = evaluate_value(value, resolver, depth)?;
+        match resolved {
+            Value::Array(items) => items,
+            other => vec![other],
+        }
+    } else {
+        let op_name = if negate { "NOT_IN" } else { "IN" };
+        return Err(EngineError::InvalidOperation(format!(
+            "{op_name} requires 'values' or 'value'"
+        )));
+    };
 
     let found = check_values
         .iter()
@@ -775,60 +813,213 @@ fn execute_membership<R: ValueResolver>(
     Ok(Value::Bool(if negate { !found } else { found }))
 }
 
+/// Execute LIST operation: construct an array from items.
+fn execute_list<R: ValueResolver>(
+    items: &[ActionValue],
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let values: Vec<Value> = items
+        .iter()
+        .map(|item| evaluate_value(item, resolver, depth))
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(Value::Array(values))
+}
+
 // =============================================================================
 // Date Operations
 // =============================================================================
 
-/// Execute SUBTRACT_DATE operation: calculate the difference between two dates.
-///
-/// Calculates the difference between the subject date and the value date.
-/// Returns a positive number if subject is after value, negative if before.
+/// Execute AGE operation: calculate age in whole years from date_of_birth to reference_date.
 ///
 /// # Arguments
-/// - `subject`: The first date (minuend)
-/// - `value`: The second date (subtrahend)
-/// - `unit`: The unit of measurement ("days", "months", "years")
-///
-/// # Date Parsing
-/// Dates should be in ISO 8601 format (YYYY-MM-DD).
-///
-/// # Calculation Details
-/// - **days**: Uses exact calendar day difference
-/// - **months**: Uses proper calendar arithmetic, not days/30 approximation
-/// - **years**: Uses proper calendar arithmetic, not days/365 approximation
-///
-/// For months and years, the calculation counts complete units between the dates.
-/// A month is counted as complete when the same day-of-month is reached (or end of month).
-fn execute_subtract_date<R: ValueResolver>(
-    op: &ActionOperation,
+/// - `date_of_birth`: Birth date (ISO 8601 YYYY-MM-DD)
+/// - `reference_date`: Date to calculate age at (ISO 8601 YYYY-MM-DD)
+fn execute_age<R: ValueResolver>(
+    date_of_birth: &ActionValue,
+    reference_date: &ActionValue,
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let (subject, value) = require_subject_value(op)?;
+    let dob_val = evaluate_value(date_of_birth, resolver, depth)?;
+    let ref_val = evaluate_value(reference_date, resolver, depth)?;
 
-    let subject_val = evaluate_value(subject, resolver, depth)?;
-    let value_val = evaluate_value(value, resolver, depth)?;
+    let dob_date = parse_date(&dob_val)?;
+    let ref_date_parsed = parse_date(&ref_val)?;
 
-    // Parse dates from string values
-    let subject_date = parse_date(&subject_val)?;
-    let value_date = parse_date(&value_val)?;
+    let age = calculate_years_difference(ref_date_parsed, dob_date);
+    Ok(Value::Int(age))
+}
 
-    // Get unit, defaulting to "days"
-    let unit = op.unit.as_deref().unwrap_or("days");
+/// Execute DATE_ADD operation: add years, months, weeks, and/or days to a date.
+///
+/// Applied in order: years → months → weeks → days (coarsest to finest).
+///
+/// For months and years, uses standard calendar arithmetic: the result lands on
+/// the same day number in the target month, clamped to the last day of that month
+/// when the day doesn't exist. E.g., Jan 31 + 1 month = Feb 28 (or 29 in leap year).
+///
+/// This is not domain knowledge in the engine — it is pure calendar math. The Hoge
+/// Raad confirmed that Dutch legal termijnberekening follows standard calendar
+/// arithmetic (HR 1 September 2017, ECLI:NL:HR:2017:2225).
+fn execute_date_add<R: ValueResolver>(
+    date: &ActionValue,
+    years: Option<&ActionValue>,
+    months: Option<&ActionValue>,
+    weeks: Option<&ActionValue>,
+    days: Option<&ActionValue>,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let date_val = evaluate_value(date, resolver, depth)?;
+    let mut result_date = parse_date(&date_val)?;
 
-    let result = match unit {
-        "days" => calculate_days_difference(subject_date, value_date),
-        "months" => calculate_months_difference(subject_date, value_date),
-        "years" => calculate_years_difference(subject_date, value_date),
-        other => {
-            return Err(EngineError::InvalidOperation(format!(
-                "SUBTRACT_DATE: unsupported unit '{}'. Expected 'days', 'months', or 'years'",
-                other
-            )));
-        }
-    };
+    // Years: add to year component, clamp day to last day of target month
+    if let Some(years) = years {
+        let years_val = evaluate_value(years, resolver, depth)?;
+        let years_i64 = years_val.as_int().ok_or_else(|| {
+            EngineError::InvalidOperation("DATE_ADD 'years' must be a number".to_string())
+        })?;
+        let years_int = i32::try_from(years_i64).map_err(|_| {
+            EngineError::InvalidOperation(format!(
+                "DATE_ADD 'years' value {} exceeds supported range",
+                years_i64
+            ))
+        })?;
+        let target_year = result_date.year() + years_int;
+        let clamped_day = result_date
+            .day()
+            .min(days_in_month(target_year, result_date.month()));
+        result_date = NaiveDate::from_ymd_opt(target_year, result_date.month(), clamped_day)
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "DATE_ADD: invalid date after adding {} years",
+                    years_int
+                ))
+            })?;
+    }
 
-    Ok(Value::Int(result))
+    // Months: add to month component, clamp day to last day of target month
+    if let Some(months) = months {
+        let months_val = evaluate_value(months, resolver, depth)?;
+        let months_int = months_val.as_int().ok_or_else(|| {
+            EngineError::InvalidOperation("DATE_ADD 'months' must be a number".to_string())
+        })?;
+        result_date = add_months(result_date, months_int)?;
+    }
+
+    // Weeks
+    if let Some(weeks) = weeks {
+        let weeks_val = evaluate_value(weeks, resolver, depth)?;
+        let weeks_int = weeks_val.as_int().ok_or_else(|| {
+            EngineError::InvalidOperation("DATE_ADD 'weeks' must be a number".to_string())
+        })?;
+        result_date = result_date
+            .checked_add_signed(chrono::Duration::weeks(weeks_int))
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(
+                    "DATE_ADD: date out of range after adding weeks".to_string(),
+                )
+            })?;
+    }
+
+    // Days
+    if let Some(days) = days {
+        let days_val = evaluate_value(days, resolver, depth)?;
+        let days_int = days_val.as_int().ok_or_else(|| {
+            EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
+        })?;
+        result_date = result_date
+            .checked_add_signed(chrono::Duration::days(days_int))
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(
+                    "DATE_ADD: date out of range after adding days".to_string(),
+                )
+            })?;
+    }
+
+    Ok(Value::String(result_date.format("%Y-%m-%d").to_string()))
+}
+
+/// Add months to a date using standard calendar arithmetic.
+///
+/// Clamps the day to the last day of the target month when the original day
+/// doesn't exist in that month (e.g., Jan 31 + 1 month = Feb 28).
+fn add_months(date: NaiveDate, months: i64) -> Result<NaiveDate> {
+    let total_months = date.year() as i64 * 12 + (date.month() as i64 - 1) + months;
+    let target_year = i32::try_from(total_months.div_euclid(12)).map_err(|_| {
+        EngineError::InvalidOperation(format!(
+            "DATE_ADD: year out of range after adding {} months",
+            months
+        ))
+    })?;
+    let target_month = (total_months.rem_euclid(12) + 1) as u32;
+    let clamped_day = date.day().min(days_in_month(target_year, target_month));
+
+    NaiveDate::from_ymd_opt(target_year, target_month, clamped_day).ok_or_else(|| {
+        EngineError::InvalidOperation(format!(
+            "DATE_ADD: invalid date after adding {} months",
+            months
+        ))
+    })
+}
+
+/// Execute DATE operation: construct a date from year, month, day components.
+///
+/// # Arguments
+/// - `year`: Year component (integer)
+/// - `month`: Month component (integer, 1-12)
+/// - `day`: Day component (integer, 1-31)
+fn execute_date_construct<R: ValueResolver>(
+    year: &ActionValue,
+    month: &ActionValue,
+    day: &ActionValue,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let year_val = evaluate_value(year, resolver, depth)?;
+    let month_val = evaluate_value(month, resolver, depth)?;
+    let day_val = evaluate_value(day, resolver, depth)?;
+
+    let y_i64 = year_val
+        .as_int()
+        .ok_or_else(|| EngineError::InvalidOperation("DATE 'year' must be a number".to_string()))?;
+    let y = i32::try_from(y_i64).map_err(|_| {
+        EngineError::InvalidOperation(format!(
+            "DATE 'year' value {} exceeds supported range",
+            y_i64
+        ))
+    })?;
+    let m = month_val
+        .as_int()
+        .ok_or_else(|| EngineError::InvalidOperation("DATE 'month' must be a number".to_string()))?
+        as u32;
+    let d = day_val
+        .as_int()
+        .ok_or_else(|| EngineError::InvalidOperation("DATE 'day' must be a number".to_string()))?
+        as u32;
+
+    let date = NaiveDate::from_ymd_opt(y, m, d).ok_or_else(|| {
+        EngineError::InvalidOperation(format!("DATE: invalid date {}-{}-{}", y, m, d))
+    })?;
+
+    Ok(Value::String(date.format("%Y-%m-%d").to_string()))
+}
+
+/// Execute DAY_OF_WEEK operation: get the weekday number for a date.
+///
+/// Returns an integer where 0=Monday, 6=Sunday.
+///
+/// # Arguments
+/// - `date`: Date to get weekday for (ISO 8601 YYYY-MM-DD)
+fn execute_day_of_week<R: ValueResolver>(
+    date: &ActionValue,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let parsed = parse_date(&evaluate_value(date, resolver, depth)?)?;
+    Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
 }
 
 /// Parse a date from a Value.
@@ -865,18 +1056,14 @@ fn parse_date(value: &Value) -> Result<NaiveDate> {
     }
 }
 
-/// Calculate the difference in days between two dates.
-fn calculate_days_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
-    (date1 - date2).num_days()
-}
-
 /// Calculate the difference in complete months between two dates.
 ///
 /// Uses proper calendar arithmetic. A month is counted as complete when
 /// the same day-of-month (or end of month if day doesn't exist) is reached.
-/// For end-of-month edge cases (e.g., Jan 31 → Feb 28), if `earlier.day()`
+/// For end-of-month edge cases (e.g., Jan 31 -> Feb 28), if `earlier.day()`
 /// exceeds the number of days in `later`'s month, it is capped to the last
 /// day of that month so the month is correctly counted as complete.
+#[allow(dead_code)] // Retained for potential future date-difference operations
 fn calculate_months_difference(date1: NaiveDate, date2: NaiveDate) -> i64 {
     let (earlier, later, sign) = if date1 >= date2 {
         (date2, date1, 1)
@@ -984,13 +1171,6 @@ pub(crate) fn f64_to_i64_safe(f: f64) -> Result<i64> {
     Ok(f as i64)
 }
 
-/// Get the 'values' array from an operation, or return an error.
-fn get_values(op: &ActionOperation) -> Result<&Vec<ActionValue>> {
-    op.values.as_ref().ok_or_else(|| {
-        EngineError::InvalidOperation(format!("{:?} requires 'values'", op.operation))
-    })
-}
-
 /// Evaluate a slice of ActionValues to concrete Values.
 fn evaluate_values<R: ValueResolver>(
     values: &[ActionValue],
@@ -1091,18 +1271,9 @@ mod tests {
         #[test]
         fn test_equals_integers() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Equals,
-                subject: Some(lit(42i64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Equals {
+                subject: lit(42i64),
+                value: lit(42i64),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1112,18 +1283,9 @@ mod tests {
         #[test]
         fn test_equals_different_values() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Equals,
-                subject: Some(lit(42i64)),
-                value: Some(lit(43i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Equals {
+                subject: lit(42i64),
+                value: lit(43i64),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1131,41 +1293,11 @@ mod tests {
         }
 
         #[test]
-        fn test_not_equals() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::NotEquals,
-                subject: Some(lit(42i64)),
-                value: Some(lit(43i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(true));
-        }
-
-        #[test]
         fn test_greater_than() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::GreaterThan,
-                subject: Some(lit(50i64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::GreaterThan {
+                subject: lit(50i64),
+                value: lit(42i64),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1175,18 +1307,9 @@ mod tests {
         #[test]
         fn test_less_than() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::LessThan,
-                subject: Some(lit(30i64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::LessThan {
+                subject: lit(30i64),
+                value: lit(42i64),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1197,38 +1320,18 @@ mod tests {
         fn test_greater_than_or_equal() {
             let resolver = TestResolver::new();
 
-            // Test equal case
-            let op = ActionOperation {
-                operation: Operation::GreaterThanOrEqual,
-                subject: Some(lit(42i64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::GreaterThanOrEqual {
+                subject: lit(42i64),
+                value: lit(42i64),
             };
             assert_eq!(
                 execute_operation(&op, &resolver, 0).unwrap(),
                 Value::Bool(true)
             );
 
-            // Test greater case
-            let op2 = ActionOperation {
-                operation: Operation::GreaterThanOrEqual,
-                subject: Some(lit(50i64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op2 = ActionOperation::GreaterThanOrEqual {
+                subject: lit(50i64),
+                value: lit(42i64),
             };
             assert_eq!(
                 execute_operation(&op2, &resolver, 0).unwrap(),
@@ -1240,38 +1343,18 @@ mod tests {
         fn test_less_than_or_equal() {
             let resolver = TestResolver::new();
 
-            // Test equal case
-            let op = ActionOperation {
-                operation: Operation::LessThanOrEqual,
-                subject: Some(lit(42i64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::LessThanOrEqual {
+                subject: lit(42i64),
+                value: lit(42i64),
             };
             assert_eq!(
                 execute_operation(&op, &resolver, 0).unwrap(),
                 Value::Bool(true)
             );
 
-            // Test less case
-            let op2 = ActionOperation {
-                operation: Operation::LessThanOrEqual,
-                subject: Some(lit(30i64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op2 = ActionOperation::LessThanOrEqual {
+                subject: lit(30i64),
+                value: lit(42i64),
             };
             assert_eq!(
                 execute_operation(&op2, &resolver, 0).unwrap(),
@@ -1285,18 +1368,9 @@ mod tests {
                 .with_var("age", 25i64)
                 .with_var("min_age", 18i64);
 
-            let op = ActionOperation {
-                operation: Operation::GreaterThanOrEqual,
-                subject: Some(var("age")),
-                value: Some(var("min_age")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::GreaterThanOrEqual {
+                subject: var("age"),
+                value: var("min_age"),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1307,56 +1381,23 @@ mod tests {
         fn test_comparison_mixed_int_float() {
             let resolver = TestResolver::new();
 
-            // Int(42) == Float(42.0) should be true (Python-style numeric coercion)
-            let op = ActionOperation {
-                operation: Operation::Equals,
-                subject: Some(lit(42i64)),
-                value: Some(lit(42.0f64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Equals {
+                subject: lit(42i64),
+                value: lit(42.0f64),
             };
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(true));
+            assert_eq!(
+                execute_operation(&op, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
 
-            // Float(42.0) == Int(42) should also be true (symmetric)
-            let op2 = ActionOperation {
-                operation: Operation::Equals,
-                subject: Some(lit(42.0f64)),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op2 = ActionOperation::Equals {
+                subject: lit(42.0f64),
+                value: lit(42i64),
             };
-            let result2 = execute_operation(&op2, &resolver, 0).unwrap();
-            assert_eq!(result2, Value::Bool(true));
-
-            // Int(42) != Float(42.5) should be true
-            let op3 = ActionOperation {
-                operation: Operation::NotEquals,
-                subject: Some(lit(42i64)),
-                value: Some(lit(42.5f64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-            let result3 = execute_operation(&op3, &resolver, 0).unwrap();
-            assert_eq!(result3, Value::Bool(true));
+            assert_eq!(
+                execute_operation(&op2, &resolver, 0).unwrap(),
+                Value::Bool(true)
+            );
         }
     }
 
@@ -1370,18 +1411,8 @@ mod tests {
         #[test]
         fn test_add_integers() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Add,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(10i64), lit(20i64), lit(30i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Add {
+                values: vec![lit(10i64), lit(20i64), lit(30i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1391,18 +1422,8 @@ mod tests {
         #[test]
         fn test_add_with_floats() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Add,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(10i64), lit(20.5f64), lit(30i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Add {
+                values: vec![lit(10i64), lit(20.5f64), lit(30i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1412,18 +1433,8 @@ mod tests {
         #[test]
         fn test_subtract() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Subtract,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(100i64), lit(30i64), lit(20i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Subtract {
+                values: vec![lit(100i64), lit(30i64), lit(20i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1433,18 +1444,8 @@ mod tests {
         #[test]
         fn test_multiply() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Multiply,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(2i64), lit(3i64), lit(4i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Multiply {
+                values: vec![lit(2i64), lit(3i64), lit(4i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1454,18 +1455,8 @@ mod tests {
         #[test]
         fn test_divide() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Divide,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(100i64), lit(2i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Divide {
+                values: vec![lit(100i64), lit(2i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1475,18 +1466,8 @@ mod tests {
         #[test]
         fn test_divide_by_zero() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Divide,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(100i64), lit(0i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Divide {
+                values: vec![lit(100i64), lit(0i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0);
@@ -1499,22 +1480,45 @@ mod tests {
                 .with_var("base", 1000i64)
                 .with_var("rate", 0.05f64);
 
-            let op = ActionOperation {
-                operation: Operation::Multiply,
-                subject: None,
-                value: None,
-                values: Some(vec![var("base"), var("rate")]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Multiply {
+                values: vec![var("base"), var("rate")],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
             assert_eq!(result, Value::Float(50.0));
+        }
+
+        #[test]
+        fn test_add_arrays() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Add {
+                values: vec![
+                    lit(Value::Array(vec![Value::Int(1), Value::Int(2)])),
+                    lit(Value::Array(vec![Value::Int(3), Value::Int(4)])),
+                ],
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(
+                result,
+                Value::Array(vec![
+                    Value::Int(1),
+                    Value::Int(2),
+                    Value::Int(3),
+                    Value::Int(4)
+                ])
+            );
+        }
+
+        #[test]
+        fn test_add_strings() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Add {
+                values: vec![lit("hello"), lit(" "), lit("world")],
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("hello world".to_string()));
         }
     }
 
@@ -1528,18 +1532,8 @@ mod tests {
         #[test]
         fn test_max() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Max,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(10i64), lit(50i64), lit(30i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Max {
+                values: vec![lit(10i64), lit(50i64), lit(30i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1549,18 +1543,8 @@ mod tests {
         #[test]
         fn test_min() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Min,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(10i64), lit(50i64), lit(30i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Min {
+                values: vec![lit(10i64), lit(50i64), lit(30i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1570,18 +1554,8 @@ mod tests {
         #[test]
         fn test_max_with_floats() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Max,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(10.5f64), lit(50.3f64), lit(30.7f64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Max {
+                values: vec![lit(10.5f64), lit(50.3f64), lit(30.7f64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1591,18 +1565,8 @@ mod tests {
         #[test]
         fn test_max_with_zero() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Max,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(0i64), lit(-10i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Max {
+                values: vec![lit(0i64), lit(-10i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1620,18 +1584,8 @@ mod tests {
         #[test]
         fn test_and_all_true() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::And,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: Some(vec![lit(true), lit(true), lit(true)]),
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::And {
+                conditions: vec![lit(true), lit(true), lit(true)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1641,18 +1595,8 @@ mod tests {
         #[test]
         fn test_and_one_false() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::And,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: Some(vec![lit(true), lit(false), lit(true)]),
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::And {
+                conditions: vec![lit(true), lit(false), lit(true)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1662,18 +1606,8 @@ mod tests {
         #[test]
         fn test_or_one_true() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Or,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: Some(vec![lit(false), lit(true), lit(false)]),
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Or {
+                conditions: vec![lit(false), lit(true), lit(false)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1683,18 +1617,8 @@ mod tests {
         #[test]
         fn test_or_all_false() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Or,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: Some(vec![lit(false), lit(false), lit(false)]),
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Or {
+                conditions: vec![lit(false), lit(false), lit(false)],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1707,63 +1631,92 @@ mod tests {
                 .with_var("age", 25i64)
                 .with_var("has_insurance", true);
 
-            // AND with nested operations: age >= 18 AND has_insurance
-            let age_check = ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::GreaterThanOrEqual,
-                subject: Some(var("age")),
-                value: Some(lit(18i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            }));
+            let age_check_op = ActionOperation::GreaterThanOrEqual {
+                subject: var("age"),
+                value: lit(18i64),
+            };
+            let age_check = ActionValue::Operation(Box::new(age_check_op));
 
-            let op = ActionOperation {
-                operation: Operation::And,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: Some(vec![age_check, var("has_insurance")]),
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::And {
+                conditions: vec![age_check, var("has_insurance")],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
             assert_eq!(result, Value::Bool(true));
         }
+
+        #[test]
+        fn test_not_negates_true() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Not { value: lit(true) };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(false));
+        }
+
+        #[test]
+        fn test_not_negates_false() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Not { value: lit(false) };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_not_wrapping_equals() {
+            let resolver = TestResolver::new();
+
+            // NOT(EQUALS(42, 42)) should be false
+            let eq_op = ActionOperation::Equals {
+                subject: lit(42i64),
+                value: lit(42i64),
+            };
+
+            let op = ActionOperation::Not {
+                value: ActionValue::Operation(Box::new(eq_op)),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(false));
+
+            // NOT(EQUALS(42, 43)) should be true
+            let eq_op2 = ActionOperation::Equals {
+                subject: lit(42i64),
+                value: lit(43i64),
+            };
+
+            let op2 = ActionOperation::Not {
+                value: ActionValue::Operation(Box::new(eq_op2)),
+            };
+
+            let result2 = execute_operation(&op2, &resolver, 0).unwrap();
+            assert_eq!(result2, Value::Bool(true));
+        }
     }
 
     // -------------------------------------------------------------------------
-    // Conditional Operations Tests
+    // Conditional Operations Tests (IF with cases/default)
     // -------------------------------------------------------------------------
 
     mod conditional {
         use super::*;
-        use crate::article::SwitchCase;
 
         #[test]
-        fn test_if_true_branch() {
+        fn test_if_first_match() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::If,
-                subject: None,
-                value: None,
-                values: None,
-                when: Some(lit(true)),
-                then: Some(lit(100i64)),
-                else_branch: Some(lit(50i64)),
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: lit(true),
+                        then: lit(100i64),
+                    },
+                    Case {
+                        when: lit(true),
+                        then: lit(200i64),
+                    },
+                ],
+                default: Some(lit(0i64)),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1771,77 +1724,20 @@ mod tests {
         }
 
         #[test]
-        fn test_if_false_branch() {
+        fn test_if_second_match() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::If,
-                subject: None,
-                value: None,
-                values: None,
-                when: Some(lit(false)),
-                then: Some(lit(100i64)),
-                else_branch: Some(lit(50i64)),
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(50));
-        }
-
-        #[test]
-        fn test_if_no_else_returns_null() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::If,
-                subject: None,
-                value: None,
-                values: None,
-                when: Some(lit(false)),
-                then: Some(lit(100i64)),
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Null);
-        }
-
-        #[test]
-        fn test_if_with_nested_condition() {
-            let resolver = TestResolver::new().with_var("has_partner", true);
-
-            let condition = ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::Equals,
-                subject: Some(var("has_partner")),
-                value: Some(lit(true)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            }));
-
-            let op = ActionOperation {
-                operation: Operation::If,
-                subject: None,
-                value: None,
-                values: None,
-                when: Some(condition),
-                then: Some(lit(200i64)),
-                else_branch: Some(lit(100i64)),
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: lit(false),
+                        then: lit(100i64),
+                    },
+                    Case {
+                        when: lit(true),
+                        then: lit(200i64),
+                    },
+                ],
+                default: Some(lit(0i64)),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1849,89 +1745,20 @@ mod tests {
         }
 
         #[test]
-        fn test_switch_first_match() {
+        fn test_if_default() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Switch,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: Some(vec![
-                    SwitchCase {
-                        when: lit(true),
-                        then: lit(100i64),
-                    },
-                    SwitchCase {
-                        when: lit(true),
-                        then: lit(200i64),
-                    },
-                ]),
-                default: Some(lit(0i64)),
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(100));
-        }
-
-        #[test]
-        fn test_switch_second_match() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Switch,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: Some(vec![
-                    SwitchCase {
+            let op = ActionOperation::If {
+                cases: vec![
+                    Case {
                         when: lit(false),
                         then: lit(100i64),
                     },
-                    SwitchCase {
-                        when: lit(true),
-                        then: lit(200i64),
-                    },
-                ]),
-                default: Some(lit(0i64)),
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(200));
-        }
-
-        #[test]
-        fn test_switch_default() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Switch,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: Some(vec![
-                    SwitchCase {
-                        when: lit(false),
-                        then: lit(100i64),
-                    },
-                    SwitchCase {
+                    Case {
                         when: lit(false),
                         then: lit(200i64),
                     },
-                ]),
+                ],
                 default: Some(lit(0i64)),
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1939,23 +1766,14 @@ mod tests {
         }
 
         #[test]
-        fn test_switch_no_default_returns_null() {
+        fn test_if_no_default_returns_null() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Switch,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: Some(vec![SwitchCase {
+            let op = ActionOperation::If {
+                cases: vec![Case {
                     when: lit(false),
                     then: lit(100i64),
-                }]),
+                }],
                 default: None,
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -1963,54 +1781,31 @@ mod tests {
         }
 
         #[test]
-        fn test_switch_with_nested_conditions() {
+        fn test_if_with_nested_conditions() {
             let resolver = TestResolver::new().with_var("status", "active");
 
-            let op = ActionOperation {
-                operation: Operation::Switch,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: Some(vec![
-                    SwitchCase {
-                        when: ActionValue::Operation(Box::new(ActionOperation {
-                            operation: Operation::Equals,
-                            subject: Some(var("status")),
-                            value: Some(lit("pending")),
-                            values: None,
-                            when: None,
-                            then: None,
-                            else_branch: None,
-                            conditions: None,
-                            cases: None,
-                            default: None,
-                            unit: None,
-                        })),
+            let pending_check = ActionOperation::Equals {
+                subject: var("status"),
+                value: lit("pending"),
+            };
+
+            let active_check = ActionOperation::Equals {
+                subject: var("status"),
+                value: lit("active"),
+            };
+
+            let op = ActionOperation::If {
+                cases: vec![
+                    Case {
+                        when: ActionValue::Operation(Box::new(pending_check)),
                         then: lit(10i64),
                     },
-                    SwitchCase {
-                        when: ActionValue::Operation(Box::new(ActionOperation {
-                            operation: Operation::Equals,
-                            subject: Some(var("status")),
-                            value: Some(lit("active")),
-                            values: None,
-                            when: None,
-                            then: None,
-                            else_branch: None,
-                            conditions: None,
-                            cases: None,
-                            default: None,
-                            unit: None,
-                        })),
+                    Case {
+                        when: ActionValue::Operation(Box::new(active_check)),
                         then: lit(20i64),
                     },
-                ]),
+                ],
                 default: Some(lit(0i64)),
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2030,32 +1825,13 @@ mod tests {
             // MAX(0, 100 - 50) = MAX(0, 50) = 50
             let resolver = TestResolver::new();
 
-            let subtract_op = ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::Subtract,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(100i64), lit(50i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            }));
+            let sub_op = ActionOperation::Subtract {
+                values: vec![lit(100i64), lit(50i64)],
+            };
+            let subtract_val = ActionValue::Operation(Box::new(sub_op));
 
-            let op = ActionOperation {
-                operation: Operation::Max,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(0i64), subtract_op]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Max {
+                values: vec![lit(0i64), subtract_val],
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2065,62 +1841,31 @@ mod tests {
         #[test]
         fn test_deeply_nested_operations() {
             // IF (10 > 5) THEN (2 * 3) ELSE (1 + 1)
+            // Expressed as IF with cases: [case(10>5 -> 2*3)], default: 1+1
             let resolver = TestResolver::new();
 
-            let condition = ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::GreaterThan,
-                subject: Some(lit(10i64)),
-                value: Some(lit(5i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            }));
+            let gt_op = ActionOperation::GreaterThan {
+                subject: lit(10i64),
+                value: lit(5i64),
+            };
+            let condition = ActionValue::Operation(Box::new(gt_op));
 
-            let then_branch = ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::Multiply,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(2i64), lit(3i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            }));
+            let mul_op = ActionOperation::Multiply {
+                values: vec![lit(2i64), lit(3i64)],
+            };
+            let then_branch = ActionValue::Operation(Box::new(mul_op));
 
-            let else_branch = ActionValue::Operation(Box::new(ActionOperation {
-                operation: Operation::Add,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(1i64), lit(1i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            }));
+            let add_op = ActionOperation::Add {
+                values: vec![lit(1i64), lit(1i64)],
+            };
+            let else_branch = ActionValue::Operation(Box::new(add_op));
 
-            let op = ActionOperation {
-                operation: Operation::If,
-                subject: None,
-                value: None,
-                values: None,
-                when: Some(condition),
-                then: Some(then_branch),
-                else_branch: Some(else_branch),
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::If {
+                cases: vec![Case {
+                    when: condition,
+                    then: then_branch,
+                }],
+                default: Some(else_branch),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2136,62 +1881,10 @@ mod tests {
         use super::*;
 
         #[test]
-        fn test_missing_subject_in_comparison() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Equals,
-                subject: None,
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-
-        #[test]
-        fn test_missing_values_in_add() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Add,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-
-        #[test]
         fn test_type_mismatch_in_arithmetic() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Add,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(10i64), lit("not a number")]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Add {
+                values: vec![lit(10i64), lit("not a number")],
             };
 
             let result = execute_operation(&op, &resolver, 0);
@@ -2201,18 +1894,9 @@ mod tests {
         #[test]
         fn test_variable_not_found() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Equals,
-                subject: Some(var("nonexistent")),
-                value: Some(lit(42i64)),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Equals {
+                subject: var("nonexistent"),
+                value: lit(42i64),
             };
 
             let result = execute_operation(&op, &resolver, 0);
@@ -2220,63 +1904,10 @@ mod tests {
         }
 
         #[test]
-        fn test_missing_when_in_if() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::If,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: Some(lit(100i64)),
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-
-        #[test]
-        fn test_missing_cases_in_switch() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Switch,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: Some(lit(0i64)),
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-
-        #[test]
         fn test_overflow_detection() {
             let resolver = TestResolver::new();
-            // Use values that will overflow when multiplied
-            let op = ActionOperation {
-                operation: Operation::Multiply,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(i64::MAX), lit(2i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Multiply {
+                values: vec![lit(i64::MAX), lit(2i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0);
@@ -2285,40 +1916,31 @@ mod tests {
 
         #[test]
         fn test_max_depth_exceeded() {
-            // Create a deeply nested operation that exceeds MAX_OPERATION_DEPTH
             let resolver = TestResolver::new();
 
-            // Build nested IF operations
             let mut nested: ActionValue = lit(42i64);
             for _ in 0..=MAX_OPERATION_DEPTH + 1 {
-                nested = ActionValue::Operation(Box::new(ActionOperation {
-                    operation: Operation::If,
-                    subject: None,
-                    value: None,
-                    values: None,
-                    when: Some(lit(true)),
-                    then: Some(nested),
-                    else_branch: None,
-                    conditions: None,
-                    cases: None,
+                let if_op = ActionOperation::If {
+                    cases: vec![Case {
+                        when: lit(true),
+                        then: nested,
+                    }],
                     default: None,
-                    unit: None,
-                }));
+                };
+                nested = ActionValue::Operation(Box::new(if_op));
             }
 
             if let ActionValue::Operation(op) = nested {
                 let result = execute_operation(&op, &resolver, 0);
                 assert!(
                     matches!(result, Err(EngineError::MaxDepthExceeded(_))),
-                    "Expected MaxDepthExceeded but got {:?}",
-                    result
+                    "Expected MaxDepthExceeded error"
                 );
             }
         }
 
         #[test]
         fn test_nan_detection_in_f64_to_i64() {
-            // Test that NaN is properly detected
             let result = f64_to_i64_safe(f64::NAN);
             assert!(matches!(result, Err(EngineError::ArithmeticOverflow(_))));
             if let Err(EngineError::ArithmeticOverflow(msg)) = result {
@@ -2328,7 +1950,6 @@ mod tests {
 
         #[test]
         fn test_infinity_detection_in_f64_to_i64() {
-            // Test that infinity is properly detected
             let result_pos = f64_to_i64_safe(f64::INFINITY);
             assert!(matches!(
                 result_pos,
@@ -2344,7 +1965,6 @@ mod tests {
 
         #[test]
         fn test_i64_range_overflow_detection() {
-            // Test values beyond i64 range
             let result_high = f64_to_i64_safe(1e20);
             assert!(matches!(
                 result_high,
@@ -2360,18 +1980,15 @@ mod tests {
 
         #[test]
         fn test_valid_f64_to_i64_conversion() {
-            // Test valid conversions work correctly
             assert_eq!(f64_to_i64_safe(42.0).unwrap(), 42);
             assert_eq!(f64_to_i64_safe(-42.0).unwrap(), -42);
             assert_eq!(f64_to_i64_safe(0.0).unwrap(), 0);
-            assert_eq!(f64_to_i64_safe(0.9).unwrap(), 0); // truncates
-            assert_eq!(f64_to_i64_safe(-0.9).unwrap(), 0); // truncates towards zero
+            assert_eq!(f64_to_i64_safe(0.9).unwrap(), 0);
+            assert_eq!(f64_to_i64_safe(-0.9).unwrap(), 0);
         }
 
         #[test]
         fn test_f64_to_i64_rejects_i64_max_as_f64() {
-            // i64::MAX as f64 rounds up to 9223372036854775808.0 (i64::MAX + 1).
-            // `f as i64` would saturate to i64::MAX, which is semantically wrong.
             let result = f64_to_i64_safe(i64::MAX as f64);
             assert!(
                 matches!(result, Err(EngineError::ArithmeticOverflow(_))),
@@ -2382,7 +1999,6 @@ mod tests {
 
         #[test]
         fn test_nan_equality() {
-            // NaN == NaN should be true in our implementation (unlike IEEE 754)
             let nan1 = Value::Float(f64::NAN);
             let nan2 = Value::Float(f64::NAN);
             assert!(
@@ -2390,243 +2006,63 @@ mod tests {
                 "Two NaN values should be considered equal"
             );
 
-            // NaN != any integer
-            let nan = Value::Float(f64::NAN);
-            let int = Value::Int(42);
-            assert!(
-                !values_equal(&nan, &int),
-                "NaN should not equal any integer"
-            );
-            assert!(
-                !values_equal(&int, &nan),
-                "Any integer should not equal NaN"
-            );
-
-            // NaN != regular float
-            let nan = Value::Float(f64::NAN);
-            let float = Value::Float(42.0);
-            assert!(
-                !values_equal(&nan, &float),
-                "NaN should not equal regular float"
-            );
+            assert!(!values_equal(&Value::Float(f64::NAN), &Value::Int(42)));
+            assert!(!values_equal(&Value::Int(42), &Value::Float(f64::NAN)));
+            assert!(!values_equal(&Value::Float(f64::NAN), &Value::Float(42.0)));
         }
 
         #[test]
         fn test_large_integer_precision_error() {
-            // Integers beyond 2^53 should error when converted to f64
             let large_int = Value::Int(MAX_SAFE_INTEGER + 1);
-            let result = to_number(&large_int);
-            assert!(
-                matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Large integer should cause overflow error, got: {:?}",
-                result
-            );
+            assert!(matches!(
+                to_number(&large_int),
+                Err(EngineError::ArithmeticOverflow(_))
+            ));
 
             let small_int = Value::Int(MIN_SAFE_INTEGER - 1);
-            let result = to_number(&small_int);
-            assert!(
-                matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Small integer should cause overflow error, got: {:?}",
-                result
-            );
+            assert!(matches!(
+                to_number(&small_int),
+                Err(EngineError::ArithmeticOverflow(_))
+            ));
 
-            // Within safe range should work
             let safe_int = Value::Int(MAX_SAFE_INTEGER);
-            let result = to_number(&safe_int);
-            assert!(result.is_ok(), "Safe integer should convert successfully");
-            assert_eq!(result.unwrap(), MAX_SAFE_INTEGER as f64);
+            assert_eq!(to_number(&safe_int).unwrap(), MAX_SAFE_INTEGER as f64);
 
             let safe_neg = Value::Int(MIN_SAFE_INTEGER);
-            let result = to_number(&safe_neg);
-            assert!(result.is_ok(), "Safe negative should convert successfully");
-            assert_eq!(result.unwrap(), MIN_SAFE_INTEGER as f64);
+            assert_eq!(to_number(&safe_neg).unwrap(), MIN_SAFE_INTEGER as f64);
         }
 
         #[test]
         fn test_arithmetic_with_large_integer() {
-            // Addition with integers beyond safe range (>2^53) should fail
             let large_value: i64 = 9_007_199_254_740_993; // MAX_SAFE_INTEGER + 1
 
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::Add,
-                subject: None,
-                value: None,
-                values: Some(vec![lit(large_value), lit(1i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::Add {
+                values: vec![lit(large_value), lit(1i64)],
             };
 
             let result = execute_operation(&op, &resolver, 0);
             assert!(
                 matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Large integer in arithmetic should cause overflow error, got: {:?}",
-                result
+                "Large integer in arithmetic should cause overflow error"
             );
         }
     }
 
     // -------------------------------------------------------------------------
-    // Null Checking Operations Tests
+    // Collection Operations Tests
     // -------------------------------------------------------------------------
 
-    mod null_checking {
-        use super::*;
-
-        #[test]
-        fn test_is_null_with_null_value() {
-            let resolver = TestResolver::new().with_var("nullable", Value::Null);
-            let op = ActionOperation {
-                operation: Operation::IsNull,
-                subject: Some(var("nullable")),
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(true));
-        }
-
-        #[test]
-        fn test_is_null_with_non_null_value() {
-            let resolver = TestResolver::new().with_var("value", 42i64);
-            let op = ActionOperation {
-                operation: Operation::IsNull,
-                subject: Some(var("value")),
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(false));
-        }
-
-        #[test]
-        fn test_is_null_with_literal_null() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::IsNull,
-                subject: Some(ActionValue::Literal(Value::Null)),
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(true));
-        }
-
-        #[test]
-        fn test_not_null_with_null_value() {
-            let resolver = TestResolver::new().with_var("nullable", Value::Null);
-            let op = ActionOperation {
-                operation: Operation::NotNull,
-                subject: Some(var("nullable")),
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(false));
-        }
-
-        #[test]
-        fn test_not_null_with_non_null_value() {
-            let resolver = TestResolver::new().with_var("value", "hello");
-            let op = ActionOperation {
-                operation: Operation::NotNull,
-                subject: Some(var("value")),
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(true));
-        }
-
-        #[test]
-        fn test_is_null_missing_subject() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::IsNull,
-                subject: None,
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Membership Testing Operations Tests
-    // -------------------------------------------------------------------------
-
-    mod membership {
+    mod collection {
         use super::*;
 
         #[test]
         fn test_in_found() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::In,
-                subject: Some(lit(42i64)),
+            let op = ActionOperation::In {
+                subject: lit(42i64),
                 value: None,
                 values: Some(vec![lit(10i64), lit(20i64), lit(42i64), lit(50i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2636,18 +2072,10 @@ mod tests {
         #[test]
         fn test_in_not_found() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::In,
-                subject: Some(lit(99i64)),
+            let op = ActionOperation::In {
+                subject: lit(99i64),
                 value: None,
                 values: Some(vec![lit(10i64), lit(20i64), lit(42i64), lit(50i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2657,18 +2085,10 @@ mod tests {
         #[test]
         fn test_in_with_strings() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::In,
-                subject: Some(lit("apple")),
+            let op = ActionOperation::In {
+                subject: lit("apple"),
                 value: None,
                 values: Some(vec![lit("banana"), lit("apple"), lit("orange")]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2677,62 +2097,11 @@ mod tests {
 
         #[test]
         fn test_in_with_mixed_int_float() {
-            // 42 should be found in [10, 42.0, 50] due to numeric coercion
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::In,
-                subject: Some(lit(42i64)),
+            let op = ActionOperation::In {
+                subject: lit(42i64),
                 value: None,
                 values: Some(vec![lit(10i64), lit(42.0f64), lit(50i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(true));
-        }
-
-        #[test]
-        fn test_not_in_found() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::NotIn,
-                subject: Some(lit(42i64)),
-                value: None,
-                values: Some(vec![lit(10i64), lit(20i64), lit(42i64), lit(50i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Bool(false));
-        }
-
-        #[test]
-        fn test_not_in_not_found() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::NotIn,
-                subject: Some(lit(99i64)),
-                value: None,
-                values: Some(vec![lit(10i64), lit(20i64), lit(42i64), lit(50i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2741,26 +2110,12 @@ mod tests {
 
         #[test]
         fn test_in_with_variables() {
-            let resolver = TestResolver::new().with_var("status", "active").with_var(
-                "valid_statuses",
-                Value::Array(vec![
-                    Value::String("active".to_string()),
-                    Value::String("pending".to_string()),
-                ]),
-            );
+            let resolver = TestResolver::new().with_var("status", "active");
 
-            let op = ActionOperation {
-                operation: Operation::In,
-                subject: Some(var("status")),
+            let op = ActionOperation::In {
+                subject: var("status"),
                 value: None,
                 values: Some(vec![lit("active"), lit("pending"), lit("inactive")]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -2768,20 +2123,12 @@ mod tests {
         }
 
         #[test]
-        fn test_in_missing_subject() {
+        fn test_in_missing_values() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::In,
-                subject: None,
+            let op = ActionOperation::In {
+                subject: lit(42i64),
                 value: None,
-                values: Some(vec![lit(1i64), lit(2i64)]),
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+                values: None,
             };
 
             let result = execute_operation(&op, &resolver, 0);
@@ -2789,24 +2136,35 @@ mod tests {
         }
 
         #[test]
-        fn test_in_missing_values() {
+        fn test_list_construct() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::In,
-                subject: Some(lit(42i64)),
-                value: None,
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
+            let op = ActionOperation::List {
+                items: vec![lit(1i64), lit(2i64), lit(3i64)],
             };
 
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(
+                result,
+                Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+            );
+        }
+
+        #[test]
+        fn test_list_with_mixed_types() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::List {
+                items: vec![lit(1i64), lit("two"), lit(true)],
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(
+                result,
+                Value::Array(vec![
+                    Value::Int(1),
+                    Value::String("two".to_string()),
+                    Value::Bool(true),
+                ])
+            );
         }
     }
 
@@ -2818,295 +2176,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn test_subtract_date_days_positive() {
+        fn test_age_exact_birthday() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-01-15")),
-                value: Some(lit("2025-01-10")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("days".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(5));
-        }
-
-        #[test]
-        fn test_subtract_date_days_negative() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-01-10")),
-                value: Some(lit("2025-01-15")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("days".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(-5));
-        }
-
-        #[test]
-        fn test_subtract_date_days_default_unit() {
-            // When unit is not specified, should default to days
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-01-20")),
-                value: Some(lit("2025-01-01")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: None,
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(19));
-        }
-
-        #[test]
-        fn test_subtract_date_months_same_day() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-05-15")),
-                value: Some(lit("2025-01-15")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(4));
-        }
-
-        #[test]
-        fn test_subtract_date_months_incomplete() {
-            // From Jan 15 to May 14 = 3 complete months (not 4)
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-05-14")),
-                value: Some(lit("2025-01-15")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(3));
-        }
-
-        #[test]
-        fn test_subtract_date_months_end_of_month() {
-            let resolver = TestResolver::new();
-
-            // Jan 31 → Feb 28: should be 1 month (Feb 28 is last day of Feb)
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-02-28")),
-                value: Some(lit("2025-01-31")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
-
-            // Jan 29 → Feb 28: should be 1 month (28 < 29, but 28 is max for Feb)
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-02-28")),
-                value: Some(lit("2025-01-29")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
-
-            // Jan 30 → Feb 28: should be 1 month
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-02-28")),
-                value: Some(lit("2025-01-30")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
-
-            // Jan 31 → Feb 15: should be 0 months (haven't reached day 31 or end of Feb)
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-02-15")),
-                value: Some(lit("2025-01-31")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(0));
-
-            // Mar 31 → Apr 30: should be 1 month (30 is last day of Apr)
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-04-30")),
-                value: Some(lit("2025-03-31")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
-
-            // Leap year: Jan 31 → Feb 29: should be 1 month
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2024-02-29")),
-                value: Some(lit("2024-01-31")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("months".to_string()),
-            };
-            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(1));
-        }
-
-        #[test]
-        fn test_subtract_date_years() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-06-15")),
-                value: Some(lit("2020-06-15")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("years".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(5));
-        }
-
-        #[test]
-        fn test_subtract_date_years_incomplete() {
-            // From 2020-06-15 to 2025-06-14 = 4 complete years (not 5)
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-06-14")),
-                value: Some(lit("2020-06-15")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("years".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(4));
-        }
-
-        #[test]
-        fn test_subtract_date_years_negative() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2020-01-01")),
-                value: Some(lit("2025-01-01")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("years".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(-5));
-        }
-
-        #[test]
-        fn test_subtract_date_with_variables() {
-            let resolver = TestResolver::new()
-                .with_var("birth_date", "1990-03-15")
-                .with_var("reference_date", "2025-03-15");
-
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(var("reference_date")),
-                value: Some(var("birth_date")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("years".to_string()),
+            let op = ActionOperation::Age {
+                date_of_birth: lit("1990-03-15"),
+                reference_date: lit("2025-03-15"),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -3114,149 +2188,24 @@ mod tests {
         }
 
         #[test]
-        fn test_subtract_date_invalid_format() {
+        fn test_age_before_birthday() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("15-01-2025")), // Wrong format
-                value: Some(lit("2025-01-10")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("days".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-
-        #[test]
-        fn test_subtract_date_invalid_unit() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-01-15")),
-                value: Some(lit("2025-01-10")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("weeks".to_string()), // Unsupported unit
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-
-        #[test]
-        fn test_subtract_date_missing_subject() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: None,
-                value: Some(lit("2025-01-10")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("days".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
-        }
-
-        #[test]
-        fn test_subtract_date_non_string_value() {
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit(12345i64)), // Not a date string
-                value: Some(lit("2025-01-10")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("days".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::TypeMismatch { .. })));
-        }
-
-        #[test]
-        fn test_subtract_date_leap_year() {
-            // Test Feb 29 on a leap year
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2024-03-01")),
-                value: Some(lit("2024-02-28")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("days".to_string()),
+            let op = ActionOperation::Age {
+                date_of_birth: lit("1990-03-15"),
+                reference_date: lit("2025-03-14"),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(2)); // Feb 29 exists in 2024
+            assert_eq!(result, Value::Int(34));
         }
 
         #[test]
-        fn test_subtract_date_same_date() {
+        fn test_age_feb29_birthday_on_non_leap_year() {
+            // Per Dutch law (BW art. 1:2): Feb 28 counts as birthday
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2025-01-15")),
-                value: Some(lit("2025-01-15")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("days".to_string()),
-            };
-
-            let result = execute_operation(&op, &resolver, 0).unwrap();
-            assert_eq!(result, Value::Int(0));
-        }
-
-        #[test]
-        fn test_subtract_date_years_feb29_birthday_on_feb28() {
-            // Born Feb 29 (leap year). On Feb 28 of a non-leap year, the person
-            // should have turned their age (per Dutch law: BW art. 1:2).
-            let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2001-02-28")),
-                value: Some(lit("2000-02-29")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("years".to_string()),
+            let op = ActionOperation::Age {
+                date_of_birth: lit("2000-02-29"),
+                reference_date: lit("2001-02-28"),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -3264,22 +2213,11 @@ mod tests {
         }
 
         #[test]
-        fn test_subtract_date_years_feb29_birthday_before_feb28() {
-            // Born Feb 29. On Feb 27 of a non-leap year, the birthday hasn't
-            // happened yet — should be 0 years.
+        fn test_age_feb29_birthday_before_feb28() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2001-02-27")),
-                value: Some(lit("2000-02-29")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("years".to_string()),
+            let op = ActionOperation::Age {
+                date_of_birth: lit("2000-02-29"),
+                reference_date: lit("2001-02-27"),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -3287,25 +2225,306 @@ mod tests {
         }
 
         #[test]
-        fn test_subtract_date_years_feb29_birthday_on_leap_year() {
-            // Born Feb 29. On Feb 29 of the next leap year, exactly 4 years.
+        fn test_age_feb29_birthday_on_leap_year() {
             let resolver = TestResolver::new();
-            let op = ActionOperation {
-                operation: Operation::SubtractDate,
-                subject: Some(lit("2004-02-29")),
-                value: Some(lit("2000-02-29")),
-                values: None,
-                when: None,
-                then: None,
-                else_branch: None,
-                conditions: None,
-                cases: None,
-                default: None,
-                unit: Some("years".to_string()),
+            let op = ActionOperation::Age {
+                date_of_birth: lit("2000-02-29"),
+                reference_date: lit("2004-02-29"),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
             assert_eq!(result, Value::Int(4));
+        }
+
+        #[test]
+        fn test_age_with_variables() {
+            let resolver = TestResolver::new()
+                .with_var("birth_date", "1990-03-15")
+                .with_var("ref_date", "2025-03-15");
+
+            let op = ActionOperation::Age {
+                date_of_birth: var("birth_date"),
+                reference_date: var("ref_date"),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Int(35));
+        }
+
+        #[test]
+        fn test_age_with_object_date() {
+            let mut date_obj = HashMap::new();
+            date_obj.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
+            date_obj.insert("year".to_string(), Value::Int(2025));
+            date_obj.insert("month".to_string(), Value::Int(1));
+            date_obj.insert("day".to_string(), Value::Int(1));
+
+            let resolver = TestResolver::new()
+                .with_var("referencedate", Value::Object(date_obj))
+                .with_var("geboortedatum", Value::String("2005-01-01".to_string()));
+
+            let op = ActionOperation::Age {
+                date_of_birth: var("geboortedatum"),
+                reference_date: var("referencedate"),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Int(20));
+        }
+
+        #[test]
+        fn test_date_add_days() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-10"),
+                years: None,
+                months: None,
+                days: Some(lit(5i64)),
+                weeks: None,
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-01-15".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_weeks() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-01"),
+                years: None,
+                months: None,
+                days: None,
+                weeks: Some(lit(2i64)),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-01-15".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_days_and_weeks() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-01"),
+                years: None,
+                months: None,
+                days: Some(lit(3i64)),
+                weeks: Some(lit(1i64)),
+            };
+
+            // 1 week + 3 days = 10 days from Jan 1 = Jan 11
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-01-11".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_negative_days() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-15"),
+                years: None,
+                months: None,
+                days: Some(lit(-5i64)),
+                weeks: None,
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-01-10".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-03-15"),
+                years: None,
+                months: Some(lit(2i64)),
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-05-15".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_end_of_month_clamping() {
+            // Jan 31 + 1 month = Feb 28 (not March 1)
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-31"),
+                years: None,
+                months: Some(lit(1i64)),
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_end_of_month_leap_year() {
+            // Jan 31 + 1 month in leap year = Feb 29
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2024-01-31"),
+                years: None,
+                months: Some(lit(1i64)),
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2024-02-29".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_negative() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-03-31"),
+                years: None,
+                months: Some(lit(-1i64)),
+                weeks: None,
+                days: None,
+            };
+            // Mar 31 - 1 month = Feb 28
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_months_six_months() {
+            // "binnen zes maanden" from Aug 31
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-08-31"),
+                years: None,
+                months: Some(lit(6i64)),
+                weeks: None,
+                days: None,
+            };
+            // Aug 31 + 6 months = Feb 28
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2026-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_years() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-06-15"),
+                years: Some(lit(2i64)),
+                months: None,
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2027-06-15".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_years_leap_day() {
+            // Feb 29 + 1 year = Feb 28 (non-leap year)
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2024-02-29"),
+                years: Some(lit(1i64)),
+                months: None,
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-02-28".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_years_leap_day_to_leap_year() {
+            // Feb 29 + 4 years = Feb 29 (another leap year)
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2024-02-29"),
+                years: Some(lit(4i64)),
+                months: None,
+                weeks: None,
+                days: None,
+            };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2028-02-29".to_string()));
+        }
+
+        #[test]
+        fn test_date_add_combined_years_months_weeks_days() {
+            // 2025-01-15 + 1 year + 2 months + 1 week + 3 days
+            let resolver = TestResolver::new();
+            let op = ActionOperation::DateAdd {
+                date: lit("2025-01-15"),
+                years: Some(lit(1i64)),
+                months: Some(lit(2i64)),
+                weeks: Some(lit(1i64)),
+                days: Some(lit(3i64)),
+            };
+            // +1y = 2026-01-15, +2m = 2026-03-15, +1w = 2026-03-22, +3d = 2026-03-25
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2026-03-25".to_string()));
+        }
+
+        #[test]
+        fn test_date_construct() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Date {
+                year: lit(2025i64),
+                month: lit(3i64),
+                day: lit(15i64),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2025-03-15".to_string()));
+        }
+
+        #[test]
+        fn test_date_construct_leap_year() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Date {
+                year: lit(2024i64),
+                month: lit(2i64),
+                day: lit(29i64),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::String("2024-02-29".to_string()));
+        }
+
+        #[test]
+        fn test_date_construct_invalid() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::Date {
+                year: lit(2025i64),
+                month: lit(2i64),
+                day: lit(30i64), // Feb 30 doesn't exist
+            };
+
+            let result = execute_operation(&op, &resolver, 0);
+            assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
+        }
+
+        #[test]
+        fn test_day_of_week() {
+            let resolver = TestResolver::new();
+
+            // 2025-01-06 is a Monday (weekday 0)
+            let op = ActionOperation::DayOfWeek {
+                date: lit("2025-01-06"),
+            };
+            assert_eq!(execute_operation(&op, &resolver, 0).unwrap(), Value::Int(0));
+
+            // 2025-01-12 is a Sunday (weekday 6)
+            let op2 = ActionOperation::DayOfWeek {
+                date: lit("2025-01-12"),
+            };
+            assert_eq!(
+                execute_operation(&op2, &resolver, 0).unwrap(),
+                Value::Int(6)
+            );
         }
     }
 
@@ -3314,58 +2533,21 @@ mod tests {
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_subtract_date_with_object_subject() {
-        // Simulates $referencedate resolving to {iso: "2025-01-01", year: 2025, month: 1, day: 1}
+    fn test_parse_date_with_object() {
         let mut date_obj = HashMap::new();
         date_obj.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
         date_obj.insert("year".to_string(), Value::Int(2025));
-        date_obj.insert("month".to_string(), Value::Int(1));
-        date_obj.insert("day".to_string(), Value::Int(1));
 
-        let resolver = TestResolver::new()
-            .with_var("referencedate", Value::Object(date_obj))
-            .with_var("geboortedatum", Value::String("2005-01-01".to_string()));
-
-        let op = ActionOperation {
-            operation: Operation::SubtractDate,
-            subject: Some(var("referencedate")),
-            value: Some(var("geboortedatum")),
-            values: None,
-            when: None,
-            then: None,
-            else_branch: None,
-            conditions: None,
-            cases: None,
-            default: None,
-            unit: Some("years".to_string()),
-        };
-
-        let result = execute_operation(&op, &resolver, 0).unwrap();
-        assert_eq!(result, Value::Int(20));
+        let result = parse_date(&Value::Object(date_obj)).unwrap();
+        assert_eq!(result.to_string(), "2025-01-01");
     }
 
     #[test]
-    fn test_subtract_date_object_without_iso_field() {
+    fn test_parse_date_object_without_iso_field() {
         let mut date_obj = HashMap::new();
         date_obj.insert("year".to_string(), Value::Int(2025));
 
-        let resolver = TestResolver::new().with_var("bad_date", Value::Object(date_obj));
-
-        let op = ActionOperation {
-            operation: Operation::SubtractDate,
-            subject: Some(var("bad_date")),
-            value: Some(lit("2020-01-01")),
-            values: None,
-            when: None,
-            then: None,
-            else_branch: None,
-            conditions: None,
-            cases: None,
-            default: None,
-            unit: Some("years".to_string()),
-        };
-
-        let result = execute_operation(&op, &resolver, 0);
+        let result = parse_date(&Value::Object(date_obj));
         assert!(matches!(result, Err(EngineError::TypeMismatch { .. })));
     }
 
@@ -3375,11 +2557,9 @@ mod tests {
 
     #[test]
     fn test_values_equal_precision_guard() {
-        // Integers beyond ±2^53 can't be exactly represented as f64
-        let large_int = MAX_SAFE_INTEGER + 1; // 2^53 + 1
-        let large_neg = MIN_SAFE_INTEGER - 1; // -(2^53) - 1
+        let large_int = MAX_SAFE_INTEGER + 1;
+        let large_neg = MIN_SAFE_INTEGER - 1;
 
-        // These should return false because the integer can't be exactly represented
         assert!(!values_equal(
             &Value::Int(large_int),
             &Value::Float(large_int as f64)
@@ -3389,7 +2569,6 @@ mod tests {
             &Value::Int(large_neg)
         ));
 
-        // Integers within safe range should still work
         assert!(values_equal(&Value::Int(42), &Value::Float(42.0)));
         assert!(values_equal(&Value::Float(42.0), &Value::Int(42)));
         assert!(values_equal(
@@ -3397,7 +2576,6 @@ mod tests {
             &Value::Float(MAX_SAFE_INTEGER as f64)
         ));
 
-        // NaN handling
         assert!(values_equal(
             &Value::Float(f64::NAN),
             &Value::Float(f64::NAN)

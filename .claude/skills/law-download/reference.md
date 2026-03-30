@@ -149,18 +149,18 @@ Map `<bwb-dl:soort>` to `regulatory_layer`:
 | ministeriele regeling | MINISTERIELE_REGELING |
 | ministeriële regeling | MINISTERIELE_REGELING |
 | beleidsregel | BELEIDSREGEL |
+| koninklijk besluit | KONINKLIJK_BESLUIT |
 
-**Note:** `KONINKLIJK_BESLUIT`, `VERORDENING`, and `REGELING` are NOT valid
-schema v0.4.0 enum values. Map koninklijk besluiten to the closest match
-(e.g., `AMVB`) or ask the user. Valid values: GRONDWET, WET, AMVB,
-MINISTERIELE_REGELING, BELEIDSREGEL, EU_VERORDENING, EU_RICHTLIJN,
-VERDRAG, UITVOERINGSBELEID, GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING.
+**Note:** `VERORDENING` and `REGELING` are NOT valid schema v0.5.0 enum values.
+Valid values: GRONDWET, WET, AMVB, KONINKLIJK_BESLUIT, MINISTERIELE_REGELING,
+BELEIDSREGEL, EU_VERORDENING, EU_RICHTLIJN, VERDRAG, UITVOERINGSBELEID,
+GEMEENTELIJKE_VERORDENING, PROVINCIALE_VERORDENING.
 
 ## Target YAML Schema
 
 **Schema URL:**
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 ```
 
 **Required Fields (always):**

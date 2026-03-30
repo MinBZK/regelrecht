@@ -4,8 +4,11 @@ description: >
   Generates machine_readable execution logic for Dutch law YAML files through an
   iterative generate-validate-test loop. Creates machine_readable sections,
   validates against the schema, runs BDD tests, and iterates until correct
-  (up to 3 iterations). Use when you already have MvT scenarios and want to
-  generate the executable YAML logic.
+  (up to 3 iterations). Use this skill proactively when: editing or creating
+  machine_readable sections in law YAML files, working with corpus regulation
+  files, or when user mentions 'generate', 'machine_readable', or wants to make
+  a law executable. Activate automatically when user discusses law YAML files
+  that need executable logic.
 allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 user-invocable: true
 ---
@@ -16,14 +19,16 @@ Generates `machine_readable` sections for Dutch law YAML files through an iterat
 cycle of creation, validation, and BDD testing.
 
 **CRITICAL**: All generated YAML MUST pass `just validate <file>`. The schema is the
-single source of truth. When in doubt, consult `schema/latest/schema.json` and study
-working examples in `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`.
+single source of truth. When in doubt, consult `schema/v0.5.0/schema.json` and study
+working examples in the corpus.
 
 ## Setup
 
 1. Read the target law YAML file
-2. Read the zorgtoeslag example as few-shot reference:
-   `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
+2. Read reference examples as few-shot context:
+   - `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` — basic patterns, IF/cases, cross-law references
+   - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/2026-01-01.yaml` — hooks, procedures, DATE_ADD
+   - `corpus/regulation/nl/wet/vreemdelingenwet_2000/2026-01-01.yaml` — overrides (lex specialis)
 3. Read the schema reference: `.claude/skills/law-generate/reference.md`
 4. Read the examples: `.claude/skills/law-generate/examples.md`
 5. Read an existing feature file as Gherkin reference:
@@ -110,7 +115,7 @@ machine_readable:
 
 **Arithmetic** — use `values` array (NOT `subject`/`value`):
 ```yaml
-operation: ADD          # or SUBTRACT, MULTIPLY, DIVIDE, MIN, MAX, CONCAT
+operation: ADD          # or SUBTRACT, MULTIPLY, DIVIDE, MIN, MAX
 values:
   - $operand_1
   - $operand_2
@@ -118,23 +123,19 @@ values:
 
 **Comparison** — use `subject` + `value`:
 ```yaml
-operation: EQUALS       # or NOT_EQUALS, GREATER_THAN, LESS_THAN,
+operation: EQUALS       # or GREATER_THAN, LESS_THAN,
                         # GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
 subject: $variable      # MUST be a $variable reference
 value: 18               # literal or $variable
 ```
 
-**Membership** — use `subject` + `value` (array):
+**Membership** — use `subject` + `value` or `values`:
 ```yaml
-operation: IN           # or NOT_IN
+operation: IN
 subject: $status
-value: ["ACTIEF", "GEPAUZEERD"]
-```
-
-**Null check** — use `subject` only:
-```yaml
-operation: NOT_NULL
-subject: $some_field
+values: ["ACTIEF", "GEPAUZEERD"]
+# OR with a single reference:
+# value: $allowed_statuses
 ```
 
 **Logical** — use `conditions` array:
@@ -149,40 +150,152 @@ conditions:
     value: true
 ```
 
-**Conditional IF** — use `when`/`then`/`else` (NOT `condition`/`then_value`/`else_value`):
+**NOT** — negation, use `value`:
 ```yaml
-operation: IF
-when:
+operation: NOT
+value:
   operation: EQUALS
-  subject: $heeft_partner
+  subject: $is_verzekerd
   value: true
-then: $bedrag_partner
-else: $bedrag_alleenstaand
 ```
 
-**SWITCH** — use `cases` array:
+**Conditional IF** — use `cases`/`default` (NOT `when`/`then`/`else`):
 ```yaml
-operation: SWITCH
+operation: IF
 cases:
   - when:
       operation: EQUALS
-      subject: $categorie
-      value: "A"
-    then: 100000
+      subject: $heeft_partner
+      value: true
+    then: $bedrag_partner
   - when:
       operation: EQUALS
       subject: $categorie
       value: "B"
     then: 75000
-default: 50000
+default: $bedrag_alleenstaand
 ```
 
-**Date** — use `subject` + `value` + `unit`:
+**Date: AGE** — calculate age in complete years:
 ```yaml
-operation: SUBTRACT_DATE
-subject: $peildatum
-value: $geboortedatum
-unit: years
+operation: AGE
+date_of_birth: $geboortedatum
+reference_date: $peildatum
+```
+
+**Date: DATE_ADD** — add duration to a date:
+```yaml
+operation: DATE_ADD
+date: $bekendmaking_datum
+weeks: 6              # optional: years, months, weeks, days
+```
+
+**Date: DATE** — construct date from components:
+```yaml
+operation: DATE
+year: $jaar
+month: 1
+day: 1
+```
+
+**Date: DAY_OF_WEEK** — get weekday (0=Monday, 6=Sunday):
+```yaml
+operation: DAY_OF_WEEK
+date: $datum
+```
+
+**Collection: LIST** — construct an array:
+```yaml
+operation: LIST
+items:
+  - $item_1
+  - $item_2
+  - "literal_value"
+```
+
+### Hooks — Reactive Execution (AWB cross-cutting concerns)
+
+Hooks allow articles (typically from the AWB) to fire automatically when matching
+lifecycle events occur. Used for cross-cutting legal requirements like motivation
+obligations and appeal deadlines.
+
+```yaml
+machine_readable:
+  hooks:
+    - hook_point: pre_actions    # or post_actions
+      applies_to:
+        legal_character: BESCHIKKING
+        stage: BESLUIT           # optional: AANVRAAG, BEHANDELING, BESLUIT, BEKENDMAKING, BEZWAAR
+  execution:
+    output:
+      - name: motivering_vereist
+        type: boolean
+    actions:
+      - output: motivering_vereist
+        value: true
+```
+
+### Overrides — Lex Specialis Declarations
+
+When a specific law overrides a general law's output (e.g., Vreemdelingenwet
+overriding AWB's appeal deadline):
+
+```yaml
+machine_readable:
+  overrides:
+    - law: algemene_wet_bestuursrecht
+      article: '6:7'
+      output: bezwaartermijn_weken
+  execution:
+    output:
+      - name: bezwaartermijn_weken
+        type: number
+    actions:
+      - output: bezwaartermijn_weken
+        value: 4
+```
+
+### Procedures — AWB Lifecycle Stages (top-level)
+
+Procedures define the lifecycle stages for administrative decisions. They are
+declared at the **top level** of the YAML file (not inside articles):
+
+```yaml
+procedure:
+  - id: beschikking
+    default: true
+    applies_to:
+      legal_character: BESCHIKKING
+    stages:
+      - name: AANVRAAG
+        description: Belanghebbende dient aanvraag in (AWB 4:1)
+        requires:
+          - name: aanvraag_datum
+            type: date
+      - name: BEHANDELING
+        description: Bestuursorgaan onderzoekt de aanvraag (AWB 3:2)
+      - name: BESLUIT
+        description: Bestuursorgaan neemt besluit (AWB 1:3)
+      - name: BEKENDMAKING
+        description: Besluit wordt bekendgemaakt (AWB 3:41)
+      - name: BEZWAAR
+        description: Bezwaarperiode (AWB 6:4 e.v.)
+```
+
+### Produces — Legal Character and Decision Type
+
+Articles that produce binding decisions should declare what they produce:
+
+```yaml
+execution:
+  produces:
+    legal_character: BESCHIKKING    # BESCHIKKING | TOETS | WAARDEBEPALING |
+                                    # BESLUIT_VAN_ALGEMENE_STREKKING | INFORMATIEF
+    decision_type: TOEKENNING       # TOEKENNING | AFWIJZING | GOEDKEURING |
+                                    # GEEN_BESLUIT | ALGEMEEN_VERBINDEND_VOORSCHRIFT |
+                                    # BELEIDSREGEL | VOORBEREIDINGSBESLUIT |
+                                    # ANDERE_HANDELING | AANSLAG
+    procedure_id: beschikking_uov   # optional: selects specific procedure variant
 ```
 
 ### Cross-Law References (source)
@@ -241,15 +354,12 @@ machine_readable:
 
 For monetary values, use `type: amount` with `type_spec: { unit: eurocent }`.
 
-### Built-in Variables
+### $referencedate Is NOT a Built-in Variable
 
-The engine provides `$referencedate` as a built-in variable representing the
-calculation/reference date. It supports dot notation for property access:
-- `$referencedate.year` — the year component (integer)
-- `$referencedate` — the full date
-
-This is NOT a parameter — it is automatically available in all executions and does
-not need to be declared in `parameters` or `input`.
+`$referencedate` is NOT automatically available. It must be declared as a
+`parameter` with `type: date` if used. The engine resolves it from whatever the
+caller passes for that parameter name. Some corpus files use it as a convention,
+but it has no special status in the engine.
 
 ### When to Skip Articles
 
@@ -264,7 +374,9 @@ Articles that SHOULD be made executable:
 - Eligibility checks ("heeft recht op ... indien")
 - Calculations ("bedraagt", "wordt berekend", "vermenigvuldigd met")
 - Thresholds ("niet meer dan", "ten minste")
-- Conditional amounts (SWITCH/IF patterns based on categories)
+- Conditional amounts (IF patterns based on categories)
+- Age-dependent rules ("de leeftijd van X jaar heeft bereikt")
+- Deadline calculations ("binnen X weken na")
 
 ### Other Rules
 - Convert monetary amounts to eurocent (€100 = 10000)
@@ -276,29 +388,29 @@ Articles that SHOULD be made executable:
 ### Available Operations
 | Category | Operations |
 |----------|------------|
-| Arithmetic | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE`, `MIN`, `MAX`, `CONCAT` |
-| Comparison | `EQUALS`, `NOT_EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
-| Logical | `AND`, `OR` |
-| Membership | `IN`, `NOT_IN` |
-| Null check | `NOT_NULL` |
-| Conditional | `IF`, `SWITCH` |
-| Iteration | `FOREACH` |
-| Date | `SUBTRACT_DATE` |
-| Other | `NOT` |
+| Arithmetic | `ADD`, `SUBTRACT`, `MULTIPLY`, `DIVIDE`, `MIN`, `MAX` |
+| Comparison | `EQUALS`, `GREATER_THAN`, `LESS_THAN`, `GREATER_THAN_OR_EQUAL`, `LESS_THAN_OR_EQUAL` |
+| Logical | `AND`, `OR`, `NOT` |
+| Membership | `IN` |
+| Conditional | `IF` (with `cases`/`default`) |
+| Collection | `LIST` |
+| Date | `AGE`, `DATE_ADD`, `DATE`, `DAY_OF_WEEK` |
 
 ### Common Legal Text → Operation Mappings
 | Legal Text | Operation |
 |------------|-----------|
-| "heeft bereikt de leeftijd van 18 jaar" | `GREATER_THAN_OR_EQUAL`, subject: $leeftijd, value: 18 |
+| "heeft bereikt de leeftijd van 18 jaar" | `AGE` + `GREATER_THAN_OR_EQUAL`, value: 18 |
 | "niet meer bedraagt dan X" | `LESS_THAN_OR_EQUAL` |
 | "ten minste X" | `GREATER_THAN_OR_EQUAL` |
 | "indien ... en ..." | `AND` with `conditions` array |
 | "indien ... of ..." | `OR` with `conditions` array |
-| "niet ..." | `NOT` |
+| "niet ..." / "tenzij" | `NOT` wrapping the positive condition |
 | "gelijk aan" | `EQUALS` |
 | "vermenigvuldigd met" | `MULTIPLY` with `values` array |
 | "verminderd met" | `SUBTRACT` with `values` array |
 | "vermeerderd met" | `ADD` with `values` array |
+| "binnen X weken na" | `DATE_ADD` with `weeks` |
+| "in afwijking van artikel X" | `overrides` declaration |
 
 ## Phase 1.5: Capture BDD Baseline
 

@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: afstemmingsverordening_participatiewet_diemen
 regulatory_layer: GEMEENTELIJKE_VERORDENING
 publication_date: '2014-12-18'
@@ -108,7 +108,7 @@ articles:
         actions:
           - output: verlaging_percentage
             value:
-              operation: SWITCH
+              operation: IF
               cases:
                 - when:
                     operation: EQUALS
@@ -132,7 +132,7 @@ articles:
                   then: $percentage_categorie_3
           - output: duur_maanden
             value:
-              operation: SWITCH
+              operation: IF
               cases:
                 - when:
                     operation: EQUALS

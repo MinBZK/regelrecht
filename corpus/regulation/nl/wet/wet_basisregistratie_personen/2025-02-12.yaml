@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: wet_basisregistratie_personen
 regulatory_layer: WET
 publication_date: '2021-08-26'
@@ -365,10 +365,9 @@ articles:
         actions:
           - output: leeftijd
             value:
-              operation: SUBTRACT_DATE
-              subject: $referencedate
-              value: $geboortedatum
-              unit: years
+              operation: AGE
+              date_of_birth: $geboortedatum
+              reference_date: $referencedate
   - number: Artikel 2.8
     text: |-
       Artikel 2.8 1 De gegevens over de burgerlijke staat worden, indien zij feiten betreffen die zich in Nederland

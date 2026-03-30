@@ -19,13 +19,16 @@
 //! The resolver enforces a maximum number of loaded laws (see [`crate::config::MAX_LOADED_LAWS`])
 //! to prevent memory exhaustion attacks.
 
-use crate::article::{Article, ArticleBasedLaw};
+use crate::article::{Article, ArticleBasedLaw, HookFilter, HookPoint, ProcedureDefinition};
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::priority::{self, Candidate};
 use crate::types::Value;
 use chrono::NaiveDate;
 use std::collections::HashMap;
+
+/// A hook index entry: (law_id, article_number, filter).
+type HookEntry = (String, String, HookFilter);
 
 /// Resolves cross-law references and provides law registry functionality.
 ///
@@ -71,6 +74,17 @@ pub struct RuleResolver {
     output_index: HashMap<String, String>,
     /// IoC index: (law_id, article, open_term_id) -> list of (implementing_law_id, implementing_article_number)
     implements_index: HashMap<(String, String, String), Vec<(String, String)>>,
+    /// Hook index: (hook_point, legal_character) -> list of (law_id, article_number, filter)
+    /// Enables O(1) lookup of hooks that should fire for a given lifecycle event.
+    hooks_index: HashMap<(HookPoint, String), Vec<HookEntry>>,
+    /// Override index: (target_law, target_article, output) -> list of (overriding_law, overriding_article)
+    /// Enables O(1) lookup of lex specialis overrides for a given output.
+    overrides_index: HashMap<(String, String, String), Vec<(String, String)>>,
+    /// Procedure index: (legal_character, procedure_id) -> (procedure definition, defining_law_id)
+    /// Loaded from laws that define `procedure:` (typically the AWB).
+    procedure_index: HashMap<(String, String), (ProcedureDefinition, String)>,
+    /// Maps legal_character -> default procedure_id for that character.
+    procedure_defaults: HashMap<String, String>,
 }
 
 impl Default for RuleResolver {
@@ -86,6 +100,10 @@ impl RuleResolver {
             law_versions: HashMap::new(),
             output_index: HashMap::new(),
             implements_index: HashMap::new(),
+            hooks_index: HashMap::new(),
+            overrides_index: HashMap::new(),
+            procedure_index: HashMap::new(),
+            procedure_defaults: HashMap::new(),
         }
     }
 
@@ -552,7 +570,7 @@ impl RuleResolver {
         }
     }
 
-    /// Rebuild output and implements indexes for a specific law using its most recent version.
+    /// Rebuild output, implements, hook, override, and procedure indexes for a specific law.
     fn rebuild_indexes_for_law(&mut self, law_id: &str) {
         // Remove old output index entries
         self.output_index
@@ -564,10 +582,49 @@ impl RuleResolver {
         }
         self.implements_index.retain(|_, v| !v.is_empty());
 
+        // Remove old hook index entries for this law
+        for entries in self.hooks_index.values_mut() {
+            entries.retain(|(hook_law_id, _, _)| hook_law_id != law_id);
+        }
+        self.hooks_index.retain(|_, v| !v.is_empty());
+
+        // Remove old override index entries for this law
+        for entries in self.overrides_index.values_mut() {
+            entries.retain(|(ovr_law_id, _)| ovr_law_id != law_id);
+        }
+        self.overrides_index.retain(|_, v| !v.is_empty());
+
+        // Remove old procedure index entries defined by this law
+        self.procedure_index
+            .retain(|_, (_, defining_law)| defining_law != law_id);
+        // Clean up defaults whose backing procedure no longer exists
+        let proc_index = &self.procedure_index;
+        self.procedure_defaults
+            .retain(|lc, proc_id| proc_index.contains_key(&(lc.clone(), proc_id.clone())));
+
         // Add new index entries from the most recent version
         // Access law_versions directly to avoid borrowing self through get_law()
         if let Some(versions) = self.law_versions.get(law_id) {
             if let Some(law) = versions.first() {
+                // Procedure index (top-level)
+                if let Some(procedures) = &law.procedure {
+                    for proc_def in procedures {
+                        let key = (
+                            proc_def.applies_to.legal_character.clone(),
+                            proc_def.id.clone(),
+                        );
+                        self.procedure_index
+                            .insert(key, (proc_def.clone(), law_id.to_string()));
+
+                        if proc_def.default.unwrap_or(false) {
+                            self.procedure_defaults.insert(
+                                proc_def.applies_to.legal_character.clone(),
+                                proc_def.id.clone(),
+                            );
+                        }
+                    }
+                }
+
                 for article in &law.articles {
                     // Output index
                     if let Some(exec) = article.get_execution_spec() {
@@ -596,6 +653,33 @@ impl RuleResolver {
                             }
                         }
                     }
+
+                    // Hooks index
+                    if let Some(hook_decls) = article.get_hooks() {
+                        for decl in hook_decls {
+                            if let Some(ref legal_char) = decl.applies_to.legal_character {
+                                let key = (decl.hook_point, legal_char.clone());
+                                let entry = (
+                                    law_id.to_string(),
+                                    article.number.clone(),
+                                    decl.applies_to.clone(),
+                                );
+                                self.hooks_index.entry(key).or_default().push(entry);
+                            }
+                        }
+                    }
+
+                    // Overrides index
+                    if let Some(ovr_decls) = article.get_overrides() {
+                        for decl in ovr_decls {
+                            let key = (decl.law.clone(), decl.article.clone(), decl.output.clone());
+                            let entry = (law_id.to_string(), article.number.clone());
+                            let candidates = self.overrides_index.entry(key).or_default();
+                            if !candidates.contains(&entry) {
+                                candidates.push(entry);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -612,6 +696,138 @@ impl RuleResolver {
             candidates.retain(|(impl_law_id, _)| impl_law_id != law_id);
         }
         self.implements_index.retain(|_, v| !v.is_empty());
+
+        // Remove hook index entries for this law
+        for entries in self.hooks_index.values_mut() {
+            entries.retain(|(hook_law_id, _, _)| hook_law_id != law_id);
+        }
+        self.hooks_index.retain(|_, v| !v.is_empty());
+
+        // Remove override index entries for this law
+        for entries in self.overrides_index.values_mut() {
+            entries.retain(|(ovr_law_id, _)| ovr_law_id != law_id);
+        }
+        self.overrides_index.retain(|_, v| !v.is_empty());
+
+        // Remove procedure index entries defined by this law
+        self.procedure_index
+            .retain(|_, (_, defining_law)| defining_law != law_id);
+        let proc_index = &self.procedure_index;
+        self.procedure_defaults
+            .retain(|lc, proc_id| proc_index.contains_key(&(lc.clone(), proc_id.clone())));
+    }
+
+    /// Find hooks that match a given lifecycle event.
+    ///
+    /// Returns matching (law_id, article_number, filter) entries.
+    /// Filters by stage: if the hook has a stage, it must match; if not, it defaults to "BESLUIT".
+    pub fn find_hooks(
+        &self,
+        hook_point: HookPoint,
+        legal_character: &str,
+        decision_type: Option<&str>,
+        stage: &str,
+    ) -> Vec<&(String, String, HookFilter)> {
+        let key = (hook_point, legal_character.to_string());
+        let Some(entries) = self.hooks_index.get(&key) else {
+            return Vec::new();
+        };
+
+        entries
+            .iter()
+            .filter(|(_, _, filter)| {
+                // Stage filter: absent defaults to BESLUIT (backward compat per RFC-008)
+                let hook_stage = filter.stage.as_deref().unwrap_or("BESLUIT");
+                if hook_stage != stage {
+                    return false;
+                }
+
+                // Decision type filter: if specified, must match
+                if let Some(ref filter_dt) = filter.decision_type {
+                    match decision_type {
+                        Some(dt) if dt == filter_dt => {}
+                        _ => return false,
+                    }
+                }
+
+                true
+            })
+            .collect()
+    }
+
+    /// Find overrides for a specific article output.
+    ///
+    /// Returns matching (overriding_law_id, overriding_article_number) entries.
+    pub fn find_overrides(
+        &self,
+        target_law: &str,
+        target_article: &str,
+        output: &str,
+    ) -> &[(String, String)] {
+        let key = (
+            target_law.to_string(),
+            target_article.to_string(),
+            output.to_string(),
+        );
+        self.overrides_index
+            .get(&key)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Find a procedure definition for a given legal character and optional procedure ID.
+    ///
+    /// If procedure_id is None, returns the default procedure for the legal character.
+    pub fn find_procedure(
+        &self,
+        legal_character: &str,
+        procedure_id: Option<&str>,
+    ) -> Option<&ProcedureDefinition> {
+        let proc_id = match procedure_id {
+            Some(id) => id.to_string(),
+            None => self.procedure_defaults.get(legal_character)?.clone(),
+        };
+        let key = (legal_character.to_string(), proc_id);
+        self.procedure_index.get(&key).map(|(def, _)| def)
+    }
+
+    /// Validate that all override targets exist in loaded laws.
+    ///
+    /// Returns a list of validation errors for overrides that reference
+    /// non-existent laws, articles, or outputs.
+    pub fn validate_override_targets(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+        for ((target_law, target_article, target_output), overriders) in &self.overrides_index {
+            // Check target law exists
+            let Some(law) = self.get_law(target_law) else {
+                for (ovr_law, ovr_art) in overriders {
+                    errors.push(format!(
+                        "Override {ovr_law}:{ovr_art} targets non-existent law '{target_law}'"
+                    ));
+                }
+                continue;
+            };
+
+            // Check target article exists
+            let Some(article) = law.find_article_by_number(target_article) else {
+                for (ovr_law, ovr_art) in overriders {
+                    errors.push(format!(
+                        "Override {ovr_law}:{ovr_art} targets non-existent article '{target_article}' in '{target_law}'"
+                    ));
+                }
+                continue;
+            };
+
+            // Check target output exists
+            if !article.has_output(target_output) {
+                for (ovr_law, ovr_art) in overriders {
+                    errors.push(format!(
+                        "Override {ovr_law}:{ovr_art} targets non-existent output '{target_output}' on '{target_law}:{target_article}'"
+                    ));
+                }
+            }
+        }
+        errors
     }
 }
 

@@ -118,11 +118,15 @@ pub struct Produces {
     /// Type of decision (e.g., "TOEKENNING", "GOEDKEURING")
     #[serde(default)]
     pub decision_type: Option<String>,
+    /// Selects a specific AWB procedure variant (RFC-008).
+    /// When absent, the default procedure for the legal_character is used.
+    #[serde(default)]
+    pub procedure_id: Option<String>,
 }
 
-/// A single case in a SWITCH operation
+/// A single case in an IF operation (cases/default syntax)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SwitchCase {
+pub struct Case {
     /// Condition to evaluate
     pub when: ActionValue,
     /// Value to return if condition is true
@@ -132,9 +136,9 @@ pub struct SwitchCase {
 /// Represents a value in an action - can be a literal, variable reference, or nested operation.
 ///
 /// Uses `#[serde(untagged)]` for flexible YAML parsing. The Operation variant is tried first,
-/// but this is safe because `ActionOperation.operation` is a required field - any YAML object
-/// lacking an `operation` key will fail to deserialize as ActionOperation and fall through
-/// to the Literal variant.
+/// but this is safe because `ActionOperation` is an internally-tagged enum keyed on `"operation"` -
+/// any YAML object lacking an `operation` key will fail to deserialize as ActionOperation and
+/// fall through to the Literal variant.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ActionValue {
@@ -144,40 +148,162 @@ pub enum ActionValue {
     Literal(Value),
 }
 
-/// Represents an operation within an action
+/// Represents an operation within an action.
+///
+/// Uses an internally-tagged enum (`"operation"` field) so that each variant
+/// only carries the fields it actually needs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ActionOperation {
-    pub operation: Operation,
-    /// Subject for comparison operations
-    #[serde(default)]
-    pub subject: Option<ActionValue>,
-    /// Single value for comparison/assignment
-    #[serde(default)]
-    pub value: Option<ActionValue>,
-    /// Multiple values for aggregate/arithmetic operations
-    #[serde(default)]
-    pub values: Option<Vec<ActionValue>>,
-    /// Condition for IF operations
-    #[serde(default)]
-    pub when: Option<ActionValue>,
-    /// Then branch for IF operations
-    #[serde(default)]
-    pub then: Option<ActionValue>,
-    /// Else branch for IF operations
-    #[serde(rename = "else", default)]
-    pub else_branch: Option<ActionValue>,
-    /// Conditions for AND/OR operations
-    #[serde(default)]
-    pub conditions: Option<Vec<ActionValue>>,
-    /// Cases for SWITCH operations
-    #[serde(default)]
-    pub cases: Option<Vec<SwitchCase>>,
-    /// Default value for SWITCH operations
-    #[serde(default)]
-    pub default: Option<ActionValue>,
-    /// Unit for SUBTRACT_DATE operation ("days", "months", "years")
-    #[serde(default)]
-    pub unit: Option<String>,
+#[serde(tag = "operation")]
+pub enum ActionOperation {
+    // Comparison (subject + value)
+    #[serde(rename = "EQUALS")]
+    Equals {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "NOT_EQUALS")]
+    NotEquals {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "GREATER_THAN")]
+    GreaterThan {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "LESS_THAN")]
+    LessThan {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "GREATER_THAN_OR_EQUAL")]
+    GreaterThanOrEqual {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+    #[serde(rename = "LESS_THAN_OR_EQUAL")]
+    LessThanOrEqual {
+        subject: ActionValue,
+        value: ActionValue,
+    },
+
+    // Arithmetic (values)
+    #[serde(rename = "ADD")]
+    Add { values: Vec<ActionValue> },
+    #[serde(rename = "SUBTRACT")]
+    Subtract { values: Vec<ActionValue> },
+    #[serde(rename = "MULTIPLY")]
+    Multiply { values: Vec<ActionValue> },
+    #[serde(rename = "DIVIDE")]
+    Divide { values: Vec<ActionValue> },
+
+    // Aggregate (values)
+    #[serde(rename = "MAX")]
+    Max { values: Vec<ActionValue> },
+    #[serde(rename = "MIN")]
+    Min { values: Vec<ActionValue> },
+
+    // Logical
+    #[serde(rename = "AND")]
+    And { conditions: Vec<ActionValue> },
+    #[serde(rename = "OR")]
+    Or { conditions: Vec<ActionValue> },
+    #[serde(rename = "NOT")]
+    Not { value: ActionValue },
+
+    // Conditional
+    #[serde(rename = "IF", alias = "SWITCH")]
+    If {
+        cases: Vec<Case>,
+        #[serde(default)]
+        default: Option<ActionValue>,
+    },
+
+    // Null checking
+    #[serde(rename = "IS_NULL")]
+    IsNull { subject: ActionValue },
+    #[serde(rename = "NOT_NULL")]
+    NotNull { subject: ActionValue },
+
+    // Collection
+    #[serde(rename = "IN")]
+    In {
+        subject: ActionValue,
+        #[serde(default)]
+        value: Option<ActionValue>,
+        #[serde(default)]
+        values: Option<Vec<ActionValue>>,
+    },
+    #[serde(rename = "NOT_IN")]
+    NotIn {
+        subject: ActionValue,
+        #[serde(default)]
+        value: Option<ActionValue>,
+        #[serde(default)]
+        values: Option<Vec<ActionValue>>,
+    },
+    #[serde(rename = "LIST")]
+    List { items: Vec<ActionValue> },
+
+    // Date
+    #[serde(rename = "AGE")]
+    Age {
+        date_of_birth: ActionValue,
+        reference_date: ActionValue,
+    },
+    #[serde(rename = "DATE_ADD")]
+    DateAdd {
+        date: ActionValue,
+        #[serde(default)]
+        years: Option<ActionValue>,
+        #[serde(default)]
+        months: Option<ActionValue>,
+        #[serde(default)]
+        weeks: Option<ActionValue>,
+        #[serde(default)]
+        days: Option<ActionValue>,
+    },
+    #[serde(rename = "DATE")]
+    Date {
+        year: ActionValue,
+        month: ActionValue,
+        day: ActionValue,
+    },
+    #[serde(rename = "DAY_OF_WEEK")]
+    DayOfWeek { date: ActionValue },
+}
+
+impl ActionOperation {
+    /// Get the operation name as a static uppercase string (for tracing).
+    pub fn operation_name(&self) -> &'static str {
+        match self {
+            ActionOperation::Equals { .. } => "EQUALS",
+            ActionOperation::NotEquals { .. } => "NOT_EQUALS",
+            ActionOperation::GreaterThan { .. } => "GREATER_THAN",
+            ActionOperation::LessThan { .. } => "LESS_THAN",
+            ActionOperation::GreaterThanOrEqual { .. } => "GREATER_THAN_OR_EQUAL",
+            ActionOperation::LessThanOrEqual { .. } => "LESS_THAN_OR_EQUAL",
+            ActionOperation::Add { .. } => "ADD",
+            ActionOperation::Subtract { .. } => "SUBTRACT",
+            ActionOperation::Multiply { .. } => "MULTIPLY",
+            ActionOperation::Divide { .. } => "DIVIDE",
+            ActionOperation::Max { .. } => "MAX",
+            ActionOperation::Min { .. } => "MIN",
+            ActionOperation::And { .. } => "AND",
+            ActionOperation::Or { .. } => "OR",
+            ActionOperation::Not { .. } => "NOT",
+            ActionOperation::If { .. } => "IF",
+            ActionOperation::IsNull { .. } => "IS_NULL",
+            ActionOperation::NotNull { .. } => "NOT_NULL",
+            ActionOperation::In { .. } => "IN",
+            ActionOperation::NotIn { .. } => "NOT_IN",
+            ActionOperation::List { .. } => "LIST",
+            ActionOperation::Age { .. } => "AGE",
+            ActionOperation::DateAdd { .. } => "DATE_ADD",
+            ActionOperation::Date { .. } => "DATE",
+            ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
+        }
+    }
 }
 
 /// Action definition in execution spec
@@ -196,21 +322,9 @@ pub struct Action {
     /// Subject for comparison operations
     #[serde(default)]
     pub subject: Option<ActionValue>,
-    /// Condition for IF operations
-    #[serde(default)]
-    pub when: Option<ActionValue>,
-    /// Then branch for IF operations
-    #[serde(default)]
-    pub then: Option<ActionValue>,
-    /// Else branch for IF operations
-    #[serde(rename = "else", default)]
-    pub else_branch: Option<ActionValue>,
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
-    /// Unit for SUBTRACT_DATE operation ("days", "months", "years")
-    #[serde(default)]
-    pub unit: Option<String>,
 }
 
 /// Execution specification within machine_readable section
@@ -307,6 +421,101 @@ pub struct ImplementsDeclaration {
     pub gelet_op: Option<String>,
 }
 
+/// Lifecycle point at which a hook fires
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HookPoint {
+    /// Fires between open-term resolution and action execution
+    PreActions,
+    /// Fires between action execution and result return
+    PostActions,
+}
+
+/// Filter that determines when a hook fires
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HookFilter {
+    /// Match articles that produce this legal character (e.g., "BESCHIKKING")
+    #[serde(default)]
+    pub legal_character: Option<String>,
+    /// Optionally narrow to a specific decision type (e.g., "TOEKENNING")
+    #[serde(default)]
+    pub decision_type: Option<String>,
+    /// Lifecycle stage at which this hook fires (e.g., "BESLUIT", "BEKENDMAKING")
+    /// When absent, defaults to BESLUIT for backward compatibility.
+    #[serde(default)]
+    pub stage: Option<String>,
+}
+
+/// Declaration that an article fires as a hook on matching lifecycle events (RFC-007)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HookDeclaration {
+    /// When in the lifecycle this hook fires
+    pub hook_point: HookPoint,
+    /// What triggers this hook
+    pub applies_to: HookFilter,
+}
+
+/// Declaration that an article overrides another article's output (RFC-007, lex specialis)
+///
+/// Used for "in afwijking van artikel X" patterns where one law unilaterally
+/// replaces another law's output value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OverrideDeclaration {
+    /// The $id of the law being overridden
+    pub law: String,
+    /// The article number being overridden
+    pub article: String,
+    /// The specific output being replaced
+    pub output: String,
+}
+
+/// A required input for a procedure stage
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StageRequirement {
+    /// Name of the required input
+    pub name: String,
+    /// Data type of the required input
+    #[serde(rename = "type")]
+    pub req_type: ParameterType,
+}
+
+/// A stage in an AWB-defined procedure lifecycle (RFC-008)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Stage {
+    /// Stage name (e.g., "AANVRAAG", "BESLUIT", "BEKENDMAKING")
+    pub name: String,
+    /// Human-readable description
+    #[serde(default)]
+    pub description: Option<String>,
+    /// External inputs required to enter this stage
+    #[serde(default)]
+    pub requires: Option<Vec<StageRequirement>>,
+}
+
+/// Filter for which legal character a procedure applies to
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProcedureAppliesTo {
+    /// Legal character (e.g., "BESCHIKKING")
+    pub legal_character: String,
+}
+
+/// A procedure definition — an AWB-defined lifecycle for a legal character (RFC-008)
+///
+/// Procedures are defined by the AWB, not by specific laws. Laws declare which
+/// procedure they participate in via `produces.legal_character`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProcedureDefinition {
+    /// Unique identifier for this procedure (e.g., "beschikking", "beschikking_uov")
+    pub id: String,
+    /// Whether this is the default procedure for its legal_character
+    #[serde(default)]
+    pub default: Option<bool>,
+    /// Which legal character this procedure governs
+    pub applies_to: ProcedureAppliesTo,
+    /// Ordered sequence of lifecycle stages
+    pub stages: Vec<Stage>,
+}
+
 /// Machine-readable section of an article
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineReadable {
@@ -324,6 +533,12 @@ pub struct MachineReadable {
     /// Declares which open terms from higher-level laws this article fills
     #[serde(default)]
     pub implements: Option<Vec<ImplementsDeclaration>>,
+    /// Hook declarations: this article fires when matching lifecycle events occur (RFC-007)
+    #[serde(default)]
+    pub hooks: Option<Vec<HookDeclaration>>,
+    /// Override declarations: this article replaces another article's output (RFC-007)
+    #[serde(default)]
+    pub overrides: Option<Vec<OverrideDeclaration>>,
 }
 
 /// Represents a single article in a law
@@ -420,6 +635,26 @@ impl Article {
             .as_ref()
             .and_then(|mr| mr.implements.as_ref())
     }
+
+    /// Get hook declarations from this article.
+    pub fn get_hooks(&self) -> Option<&Vec<HookDeclaration>> {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.hooks.as_ref())
+    }
+
+    /// Get override declarations from this article.
+    pub fn get_overrides(&self) -> Option<&Vec<OverrideDeclaration>> {
+        self.machine_readable
+            .as_ref()
+            .and_then(|mr| mr.overrides.as_ref())
+    }
+
+    /// Get the produces specification from this article.
+    pub fn get_produces(&self) -> Option<&Produces> {
+        self.get_execution_spec()
+            .and_then(|exec| exec.produces.as_ref())
+    }
 }
 
 /// Represents an article-based law document
@@ -468,6 +703,9 @@ pub struct ArticleBasedLaw {
     /// Legal basis references
     #[serde(default)]
     pub legal_basis: Option<Vec<LegalBasis>>,
+    /// AWB-defined procedure lifecycles (RFC-008)
+    #[serde(default)]
+    pub procedure: Option<Vec<ProcedureDefinition>>,
     /// Articles in the law
     #[serde(default)]
     pub articles: Vec<Article>,
@@ -1040,12 +1278,13 @@ articles:
           - output: result
             value:
               operation: IF
-              when:
-                operation: EQUALS
-                subject: $has_partner
-                value: true
-              then: 100
-              else: 50
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $has_partner
+                    value: true
+                  then: 100
+              default: 50
 "#;
         let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
         let article = &law.articles[0];
@@ -1055,10 +1294,16 @@ articles:
 
         match &actions[0].value {
             Some(ActionValue::Operation(op)) => {
-                assert_eq!(op.operation, Operation::If);
-                assert!(op.when.is_some());
-                assert!(op.then.is_some());
-                assert!(op.else_branch.is_some());
+                assert!(
+                    matches!(
+                        op.as_ref(),
+                        ActionOperation::If {
+                            cases: _,
+                            default: Some(_)
+                        }
+                    ),
+                    "Expected IF operation with cases and default"
+                );
             }
             _ => panic!("Expected operation value"),
         }

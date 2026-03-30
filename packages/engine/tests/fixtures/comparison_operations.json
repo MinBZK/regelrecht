@@ -18,7 +18,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 10\n            then: \"equal\"\n            else: \"not_equal\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: EQUALS\n                    subject: 10\n                    value: 10\n                  then: \"equal\"\n              default: \"not_equal\"",
       "law_id": "test_comparison",
       "output_name": "result"
     },
@@ -36,7 +36,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 20\n            then: \"equal\"\n            else: \"not_equal\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: EQUALS\n                    subject: 10\n                    value: 20\n                  then: \"equal\"\n              default: \"not_equal\"",
       "law_id": "test_comparison",
       "output_name": "result"
     },
@@ -54,7 +54,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: NOT_EQUALS\n              subject: 10\n              value: 20\n            then: \"not_equal\"\n            else: \"equal\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: NOT_EQUALS\n                    subject: 10\n                    value: 20\n                  then: \"not_equal\"\n              default: \"equal\"",
       "law_id": "test_comparison",
       "output_name": "result"
     },
@@ -72,7 +72,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: GREATER_THAN\n              subject: 20\n              value: 10\n            then: \"greater\"\n            else: \"not_greater\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: GREATER_THAN\n                    subject: 20\n                    value: 10\n                  then: \"greater\"\n              default: \"not_greater\"",
       "law_id": "test_comparison",
       "output_name": "result"
     },
@@ -90,7 +90,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: LESS_THAN\n              subject: 10\n              value: 20\n            then: \"less\"\n            else: \"not_less\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: LESS_THAN\n                    subject: 10\n                    value: 20\n                  then: \"less\"\n              default: \"not_less\"",
       "law_id": "test_comparison",
       "output_name": "result"
     },
@@ -108,7 +108,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: GREATER_THAN_OR_EQUAL\n              subject: 10\n              value: 10\n            then: \"gte\"\n            else: \"not_gte\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: GREATER_THAN_OR_EQUAL\n                    subject: 10\n                    value: 10\n                  then: \"gte\"\n              default: \"not_gte\"",
       "law_id": "test_comparison",
       "output_name": "result"
     },
@@ -126,7 +126,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: LESS_THAN_OR_EQUAL\n              subject: 10\n              value: 10\n            then: \"lte\"\n            else: \"not_lte\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: LESS_THAN_OR_EQUAL\n                    subject: 10\n                    value: 10\n                  then: \"lte\"\n              default: \"not_lte\"",
       "law_id": "test_comparison",
       "output_name": "result"
     },
@@ -144,7 +144,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      definitions:\n        THRESHOLD: 18\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: GREATER_THAN\n              subject: $THRESHOLD\n              value: 15\n            then: \"above\"\n            else: \"below\"\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      definitions:\n        THRESHOLD: 18\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: IF\n              cases:\n                - when:\n                    operation: GREATER_THAN\n                    subject: $THRESHOLD\n                    value: 15\n                  then: \"above\"\n              default: \"below\"",
       "law_id": "test_comparison",
       "output_name": "result"
     }

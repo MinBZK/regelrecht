@@ -52,8 +52,9 @@ pub mod telemetry;
 
 // Re-export commonly used items
 pub use article::{
-    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Execution, MachineReadable,
-    Source, SwitchCase,
+    Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
+    HookDeclaration, HookFilter, HookPoint, MachineReadable, OverrideDeclaration,
+    ProcedureDefinition, Source, Stage,
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
@@ -65,7 +66,7 @@ pub use engine::{ArticleEngine, ArticleResult};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
 pub use resolver::RuleResolver;
-pub use service::{LawExecutionService, LawInfo, ServiceProvider};
+pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
 pub use types::{Operation, ParameterType, PathNodeType, RegulatoryLayer, ResolveType, Value};
 pub use uri::{internal_reference, ReferenceType, RegelrechtUri, RegelrechtUriBuilder};

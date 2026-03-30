@@ -25,18 +25,20 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, MachineReadable};
+use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, MachineReadable};
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
 use crate::engine::{ArticleEngine, ArticleResult};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
+use crate::priority;
 use crate::resolver::RuleResolver;
 use crate::trace::TraceBuilder;
 use crate::types::{PathNodeType, RegulatoryLayer, ResolveType, Value};
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -74,6 +76,9 @@ struct ResolutionContext<'a> {
     trace: Option<Rc<RefCell<TraceBuilder>>>,
     /// Per-execution memoization cache: hash key → CacheEntry
     cache: HashMap<u64, CacheEntry>,
+    /// The law that initiated the current execution chain (for override scoping).
+    /// Overrides only apply when declared by this law.
+    contextual_law_id: Option<String>,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -85,6 +90,7 @@ impl<'a> ResolutionContext<'a> {
             depth: 0,
             trace: None,
             cache: HashMap::new(),
+            contextual_law_id: None,
         }
     }
 
@@ -96,6 +102,7 @@ impl<'a> ResolutionContext<'a> {
             depth: 0,
             trace: Some(trace),
             cache: HashMap::new(),
+            contextual_law_id: None,
         }
     }
 
@@ -277,6 +284,40 @@ pub struct LawInfo {
     pub article_count: usize,
 }
 
+/// State of a decision progressing through an AWB-defined procedure lifecycle (RFC-008).
+///
+/// The engine is stateless — this struct is passed in by the caller and returned
+/// with updates. The orchestration layer persists it between stages.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StageState {
+    /// Which AWB procedure this decision follows (e.g., "beschikking")
+    pub procedure_id: String,
+    /// The law that initiated execution (for override scoping)
+    pub contextual_law: String,
+    /// Current lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
+    pub current_stage: String,
+    /// Outputs accumulated from all completed stages
+    pub accumulated_outputs: HashMap<String, Value>,
+    /// Original parameters from the initial execution
+    pub parameters: HashMap<String, Value>,
+}
+
+/// Outcome of a stage-aware execution step.
+#[derive(Debug)]
+pub enum ExecutionOutcome {
+    /// All stages completed — final result
+    Complete(ArticleResult),
+    /// Execution yielded — waiting for external input to advance
+    Yielded {
+        /// Updated decision state
+        state: StageState,
+        /// Outputs computed so far (including this stage)
+        outputs: HashMap<String, Value>,
+        /// Inputs required to advance to the next stage
+        pending_inputs: Vec<String>,
+    },
+}
+
 /// High-level service for executing laws with automatic cross-law resolution.
 ///
 /// `LawExecutionService` wraps a `RuleResolver` and implements `ServiceProvider`
@@ -376,6 +417,7 @@ impl LawExecutionService {
         calculation_date: &str,
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::new(calculation_date);
+        res_ctx.contextual_law_id = Some(law_id.to_string());
         self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
     }
 
@@ -414,6 +456,7 @@ impl LawExecutionService {
         }
 
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
+        res_ctx.contextual_law_id = Some(law_id.to_string());
         let mut result =
             self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
 
@@ -431,6 +474,183 @@ impl LawExecutionService {
         }
 
         Ok(result)
+    }
+
+    /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
+    ///
+    /// For laws that produce a `legal_character` with an associated AWB procedure,
+    /// this method executes one stage at a time and yields when external input is needed.
+    ///
+    /// # Arguments
+    /// * `law_id` - The law being executed (e.g., "vreemdelingenwet_2000")
+    /// * `output_name` - The output to calculate
+    /// * `state` - Current decision state (None for initial execution)
+    /// * `parameters` - Input parameters (merged with accumulated outputs if resuming)
+    /// * `calculation_date` - Date for calculations
+    ///
+    /// # Returns
+    /// `ExecutionOutcome::Complete` if all stages are done, or
+    /// `ExecutionOutcome::Yielded` if waiting for external input.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, state, parameters), fields(law_id = %law_id, output = %output_name)))]
+    pub fn execute_stage(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        state: Option<StageState>,
+        parameters: HashMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<ExecutionOutcome> {
+        // Look up the law and article
+        let ref_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
+        let law = self
+            .resolver
+            .get_law_for_date(law_id, ref_date)
+            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+        let article = self
+            .resolver
+            .get_article_by_output(law_id, output_name, ref_date)
+            .ok_or_else(|| EngineError::OutputNotFound {
+                law_id: law_id.to_string(),
+                output: output_name.to_string(),
+            })?;
+
+        // Check if this article produces something with a procedure
+        let produces = article.get_produces();
+        let legal_character = produces.and_then(|p| p.legal_character.as_deref());
+        let procedure_id = produces.and_then(|p| p.procedure_id.as_deref());
+
+        // Look up procedure definition
+        let procedure =
+            legal_character.and_then(|lc| self.resolver.find_procedure(lc, procedure_id));
+
+        // If no procedure, fall through to normal single-stage execution
+        let Some(procedure) = procedure else {
+            let result =
+                self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?;
+            return Ok(ExecutionOutcome::Complete(result));
+        };
+
+        // Determine current stage
+        let mut stage_state = match state {
+            Some(s) => s,
+            None => {
+                // Initial execution: start at the first stage
+                let first_stage = procedure.stages.first().ok_or_else(|| {
+                    EngineError::InvalidOperation("Procedure has no stages".to_string())
+                })?;
+
+                StageState {
+                    procedure_id: procedure.id.clone(),
+                    contextual_law: law_id.to_string(),
+                    current_stage: first_stage.name.clone(),
+                    accumulated_outputs: HashMap::new(),
+                    parameters: parameters.clone(),
+                }
+            }
+        };
+
+        // Find current stage in procedure
+        let stage_idx = procedure
+            .stages
+            .iter()
+            .position(|s| s.name == stage_state.current_stage)
+            .ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "Stage '{}' not found in procedure '{}'",
+                    stage_state.current_stage, procedure.id
+                ))
+            })?;
+
+        let stage = &procedure.stages[stage_idx];
+
+        // Check if required inputs for this stage are present
+        if let Some(requires) = &stage.requires {
+            let mut missing = Vec::new();
+            for req in requires {
+                if !parameters.contains_key(&req.name)
+                    && !stage_state.accumulated_outputs.contains_key(&req.name)
+                {
+                    missing.push(req.name.clone());
+                }
+            }
+            if !missing.is_empty() {
+                let outputs = stage_state.accumulated_outputs.clone();
+                return Ok(ExecutionOutcome::Yielded {
+                    state: stage_state,
+                    outputs,
+                    pending_inputs: missing,
+                });
+            }
+        }
+
+        // Merge accumulated outputs + new parameters for this stage's execution
+        let mut stage_params = stage_state.parameters.clone();
+        for (k, v) in &stage_state.accumulated_outputs {
+            stage_params.insert(k.clone(), v.clone());
+        }
+        for (k, v) in &parameters {
+            stage_params.insert(k.clone(), v.clone());
+        }
+
+        // Execute the article with stage-aware hook firing
+        let mut res_ctx = ResolutionContext::new(calculation_date);
+        res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
+
+        // Execute the article with stage-aware hook firing.
+        let result = self.evaluate_article_with_service(
+            article,
+            law,
+            stage_params,
+            Some(output_name),
+            &stage.name,
+            &mut res_ctx,
+        )?;
+
+        // Merge outputs into accumulated state
+        for (k, v) in &result.outputs {
+            stage_state.accumulated_outputs.insert(k.clone(), v.clone());
+        }
+
+        // Advance to next stage
+        if stage_idx + 1 < procedure.stages.len() {
+            let next_stage = &procedure.stages[stage_idx + 1];
+            stage_state.current_stage = next_stage.name.clone();
+
+            // Check if next stage needs external inputs
+            if let Some(requires) = &next_stage.requires {
+                let mut missing = Vec::new();
+                for req in requires {
+                    if !stage_state.accumulated_outputs.contains_key(&req.name)
+                        && !stage_state.parameters.contains_key(&req.name)
+                        && !parameters.contains_key(&req.name)
+                    {
+                        missing.push(req.name.clone());
+                    }
+                }
+
+                if !missing.is_empty() {
+                    return Ok(ExecutionOutcome::Yielded {
+                        outputs: stage_state.accumulated_outputs.clone(),
+                        state: stage_state,
+                        pending_inputs: missing,
+                    });
+                }
+            }
+
+            // Next stage has all inputs — continue executing (recursive)
+            return self.execute_stage(
+                law_id,
+                output_name,
+                Some(stage_state),
+                parameters,
+                calculation_date,
+            );
+        }
+
+        // All stages complete
+        let mut final_result = result;
+        final_result.outputs = stage_state.accumulated_outputs;
+        Ok(ExecutionOutcome::Complete(final_result))
     }
 
     /// Internal method with cycle tracking.
@@ -520,12 +740,13 @@ impl LawExecutionService {
         // Clone parameters for cache storage before moving into evaluation
         let params_for_cache = parameters.clone();
 
-        // Execute with service provider
+        // Execute with service provider (default stage BESLUIT for cross-law calls)
         let result = self.evaluate_article_with_service(
             article,
             law,
             parameters,
             Some(output_name),
+            "BESLUIT",
             res_ctx,
         )?;
 
@@ -547,13 +768,273 @@ impl LawExecutionService {
         Ok(result)
     }
 
+    /// Fire hooks that match the given article's `produces` annotation.
+    ///
+    /// For each matching hook, executes the hook article and merges its outputs.
+    /// When multiple hooks produce the same output, conflicts are resolved via
+    /// `compare_law_priority` (lex superior / lex posterior).
+    ///
+    /// # Arguments
+    /// * `hook_point` - Whether to fire pre_actions or post_actions hooks
+    /// * `article` - The article whose `produces` triggers hooks
+    /// * `law` - The law containing the article
+    /// * `stage` - The lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
+    /// * `parameters` - Parameters available to hook articles
+    /// * `res_ctx` - Resolution context for cycle detection and tracing
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, article, _law, parameters, res_ctx), fields(hook_point = ?hook_point, law_id = %_law.id, article = %article.number)))]
+    fn fire_hooks(
+        &self,
+        hook_point: HookPoint,
+        article: &Article,
+        _law: &ArticleBasedLaw,
+        stage: &str,
+        parameters: &HashMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<HashMap<String, Value>> {
+        let mut hook_outputs: HashMap<String, Value> = HashMap::new();
+        // Track which law produced each output for priority resolution
+        let mut output_sources: HashMap<String, &ArticleBasedLaw> = HashMap::new();
+
+        // Only fire hooks if the article declares what it produces
+        let produces = match article.get_produces() {
+            Some(p) => p,
+            None => return Ok(hook_outputs),
+        };
+
+        let legal_character = match &produces.legal_character {
+            Some(lc) => lc.as_str(),
+            None => return Ok(hook_outputs),
+        };
+
+        let decision_type = produces.decision_type.as_deref();
+
+        // Find matching hooks
+        let matching_hooks =
+            self.resolver
+                .find_hooks(hook_point, legal_character, decision_type, stage);
+
+        if matching_hooks.is_empty() {
+            return Ok(hook_outputs);
+        }
+
+        tracing::debug!(
+            hook_point = ?hook_point,
+            legal_character = legal_character,
+            stage = stage,
+            matches = matching_hooks.len(),
+            "Firing hooks"
+        );
+
+        for (hook_law_id, hook_article_number, _filter) in matching_hooks {
+            // Cycle detection: don't re-enter a hook we're already executing
+            let hook_key = format!("hook:{}\0{}", hook_law_id, hook_article_number);
+            if res_ctx.is_visited(&hook_key) {
+                tracing::debug!(hook_key = %hook_key, "Skipping hook: cycle detected");
+                continue;
+            }
+
+            // Look up the hook article
+            let ref_date = res_ctx.reference_date();
+            let Some(hook_law) = self.resolver.get_law_for_date(hook_law_id, ref_date) else {
+                tracing::warn!(hook_law_id = %hook_law_id, "Hook law not found");
+                continue;
+            };
+            let Some(hook_article) = hook_law.find_article_by_number(hook_article_number) else {
+                tracing::warn!(
+                    hook_law_id = %hook_law_id,
+                    hook_article = %hook_article_number,
+                    "Hook article not found"
+                );
+                continue;
+            };
+
+            // Filter parameters: only pass parameters declared by the hook article (least privilege)
+            let hook_params = Self::filter_parameters_for_article(hook_article, parameters);
+
+            // Trace the hook execution
+            res_ctx.trace_push(
+                format!("{}:{}", hook_law_id, hook_article_number),
+                PathNodeType::HookResolution,
+            );
+            res_ctx.trace_set_message(format!(
+                "Hook {:?} on {} stage {} → {}:{}",
+                hook_point, legal_character, stage, hook_law_id, hook_article_number
+            ));
+
+            // Enter scope for cycle detection
+            res_ctx.enter(hook_key.clone());
+
+            // Execute the hook article
+            let hook_result = self.evaluate_article_with_service(
+                hook_article,
+                hook_law,
+                hook_params,
+                None,      // hooks produce all their outputs
+                "BESLUIT", // hook articles themselves are not procedure-aware
+                res_ctx,
+            );
+
+            // Leave scope (even on error)
+            res_ctx.leave(&hook_key);
+
+            match hook_result {
+                Ok(result) => {
+                    for (name, value) in result.outputs {
+                        if let Some(existing_law) = output_sources.get(&name) {
+                            // Conflict: two hooks produce same output.
+                            // Resolve via lex superior / lex posterior.
+                            match priority::compare_law_priority(hook_law, existing_law)? {
+                                std::cmp::Ordering::Greater => {
+                                    hook_outputs.insert(name.clone(), value);
+                                    output_sources.insert(name, hook_law);
+                                }
+                                std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
+                                    // existing wins or unreachable (Equal → Err above)
+                                }
+                            }
+                        } else {
+                            output_sources.insert(name.clone(), hook_law);
+                            hook_outputs.insert(name, value);
+                        }
+                    }
+                    res_ctx.trace_pop();
+                }
+                Err(e) => {
+                    // If a hook fires (stage matches), it must succeed.
+                    // A missing variable means the law cannot be applied — that's an error.
+                    res_ctx.trace_pop();
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(hook_outputs)
+    }
+
+    /// Apply lex specialis overrides to an article's outputs.
+    ///
+    /// For each output in the result, checks if an override exists from the contextual law.
+    /// If found, executes the overriding article and replaces the output value.
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, result, article, law, parameters, res_ctx), fields(law_id = %law.id, article = %article.number)))]
+    fn apply_overrides(
+        &self,
+        result: &mut ArticleResult,
+        article: &Article,
+        law: &ArticleBasedLaw,
+        parameters: &HashMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<()> {
+        let contextual_law_id = match &res_ctx.contextual_law_id {
+            Some(id) => id.clone(),
+            None => return Ok(()), // No contextual law → no overrides apply
+        };
+
+        // Check each output for overrides
+        let output_names: Vec<String> = result.outputs.keys().cloned().collect();
+        for output_name in output_names {
+            let overrides = self
+                .resolver
+                .find_overrides(&law.id, &article.number, &output_name);
+
+            if overrides.is_empty() {
+                continue;
+            }
+
+            // Filter: only overrides from the contextual law apply
+            let applicable: Vec<_> = overrides
+                .iter()
+                .filter(|(ovr_law_id, _)| *ovr_law_id == contextual_law_id)
+                .collect();
+
+            if applicable.is_empty() {
+                continue;
+            }
+
+            if applicable.len() > 1 {
+                return Err(EngineError::InvalidOperation(format!(
+                    "Multiple overrides from '{}' for output '{}' on '{}:{}'",
+                    contextual_law_id, output_name, law.id, article.number
+                )));
+            }
+
+            let (ovr_law_id, ovr_article_number) = applicable[0];
+
+            // Cycle detection
+            let ovr_key = format!("override:{}\0{}", ovr_law_id, ovr_article_number);
+            if res_ctx.is_visited(&ovr_key) {
+                tracing::debug!(ovr_key = %ovr_key, "Skipping override: cycle detected");
+                continue;
+            }
+
+            // Look up overriding article
+            let ref_date = res_ctx.reference_date();
+            let Some(ovr_law) = self.resolver.get_law_for_date(ovr_law_id, ref_date) else {
+                continue;
+            };
+            let Some(ovr_article) = ovr_law.find_article_by_number(ovr_article_number) else {
+                continue;
+            };
+
+            // Trace
+            res_ctx.trace_push(
+                format!("{}:{}", ovr_law_id, ovr_article_number),
+                PathNodeType::OverrideResolution,
+            );
+            res_ctx.trace_set_message(format!(
+                "Lex specialis: {}:{} overrides {}:{}.{}",
+                ovr_law_id, ovr_article_number, law.id, article.number, output_name
+            ));
+
+            // Execute overriding article
+            let ovr_params = Self::filter_parameters_for_article(ovr_article, parameters);
+            res_ctx.enter(ovr_key.clone());
+
+            let ovr_result = self.evaluate_article_with_service(
+                ovr_article,
+                ovr_law,
+                ovr_params,
+                Some(&output_name),
+                "BESLUIT", // override articles are not procedure-aware
+                res_ctx,
+            );
+
+            res_ctx.leave(&ovr_key);
+
+            match ovr_result {
+                Ok(ovr_output) => {
+                    if let Some(value) = ovr_output.outputs.get(&output_name) {
+                        tracing::debug!(
+                            output = %output_name,
+                            from = %law.id,
+                            to = %ovr_law_id,
+                            "Override applied"
+                        );
+                        result.outputs.insert(output_name.clone(), value.clone());
+                        res_ctx.trace_set_result(value.clone());
+                    }
+                    res_ctx.trace_pop();
+                }
+                Err(e) => {
+                    res_ctx.trace_pop();
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Execute an article with ServiceProvider support.
+    ///
+    /// The `stage` parameter controls which lifecycle stage hooks fire at.
+    /// For direct (non-procedure) execution, pass `"BESLUIT"` as default.
     fn evaluate_article_with_service(
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
         parameters: HashMap<String, Value>,
         requested_output: Option<&str>,
+        stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
         // Create execution context
@@ -589,21 +1070,59 @@ impl LawExecutionService {
             combined_params.insert(name, value);
         }
 
+        // Fire pre_actions hooks (between open term resolution and action execution).
+        let pre_hook_outputs = self.fire_hooks(
+            HookPoint::PreActions,
+            article,
+            law,
+            stage,
+            &combined_params,
+            res_ctx,
+        )?;
+        for (name, value) in &pre_hook_outputs {
+            combined_params.insert(name.clone(), value.clone());
+        }
+
         // Use traced evaluation if trace is available
         let mut result = if let Some(ref tb) = res_ctx.trace {
             engine.evaluate_with_trace(
-                combined_params,
+                combined_params.clone(),
                 res_ctx.calculation_date,
                 requested_output,
                 Rc::clone(tb),
             )?
         } else {
             engine.evaluate_with_output(
-                combined_params,
+                combined_params.clone(),
                 res_ctx.calculation_date,
                 requested_output,
             )?
         };
+
+        // Fire post_actions hooks (between action execution and result return).
+        // Post-hooks receive both parameters and article outputs.
+        let mut post_params = combined_params;
+        for (name, value) in &result.outputs {
+            post_params.insert(name.clone(), value.clone());
+        }
+        let post_hook_outputs = self.fire_hooks(
+            HookPoint::PostActions,
+            article,
+            law,
+            stage,
+            &post_params,
+            res_ctx,
+        )?;
+        for (name, value) in post_hook_outputs {
+            result.outputs.entry(name).or_insert(value);
+        }
+        // Merge pre-hook outputs into result too (they are part of the execution)
+        for (name, value) in pre_hook_outputs {
+            result.outputs.entry(name).or_insert(value);
+        }
+
+        // Apply lex specialis overrides
+        self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
 
         // Enforce TypeSpec: round eurocent outputs to integer.
         // This applies only to top-level article outputs (the API boundary).
@@ -746,6 +1265,7 @@ impl LawExecutionService {
                     impl_law,
                     impl_params,
                     Some(&term.id),
+                    "BESLUIT",
                     res_ctx,
                 ) {
                     Ok(r) => r,
@@ -811,6 +1331,8 @@ impl LawExecutionService {
                             competent_authority: None,
                             open_terms: None,
                             implements: None,
+                            hooks: None,
+                            overrides: None,
                         }),
                     };
 
@@ -975,6 +1497,7 @@ impl LawExecutionService {
                     law,
                     ref_params,
                     Some(output_name),
+                    "BESLUIT",
                     res_ctx,
                 )?;
 

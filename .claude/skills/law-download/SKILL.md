@@ -1,14 +1,13 @@
 ---
 name: law-download
 description: >
-  Downloads Dutch official legal publications including national laws (wetten,
-  ministeriele regelingen, koninklijk besluiten), local regulations (lokale
-  verordeningen, gemeentelijk beleid), and implementation policies
-  (uitvoeringsbeleid) from government databases (BWB, CVDR) and converts them
-  to YAML format with textual content only. Use when user wants to download,
-  fetch, or import any Dutch regulation by name or type. Run this before
-  /law-interpret to create the text-only YAML that law-interpret then makes
-  executable.
+  Downloads Dutch official legal publications including national laws, local
+  regulations, and implementation policies from government sources (wetten.overheid.nl,
+  lokaleregelgeving.overheid.nl). Use this skill proactively when: user mentions
+  downloading, fetching, or importing a Dutch law by name or BWB/CVDR identifier,
+  when a source.regulation reference points to a law not in the corpus, or when
+  user provides a wetten.overheid.nl URL. Activate automatically when user mentions
+  a specific Dutch law name, BWB identifier (BWBR...), or CVDR identifier.
 allowed-tools: Read, Write, WebFetch, Bash, Grep, Glob
 user-invocable: true
 ---
@@ -179,7 +178,8 @@ xmlns:bwb-dl="http://www.geonovum.nl/bwb-dl/1.0"
   - "AMvB" → "AMVB"
   - "ministeriele regeling" → "MINISTERIELE_REGELING"
   - "beleidsregel" → "BELEIDSREGEL"
-  - See schema for full enum list (no KONINKLIJK_BESLUIT — map to closest match)
+  - "koninklijk besluit" → "KONINKLIJK_BESLUIT"
+  - See schema for full enum list
 - `<bwb-dl:citeertitel>` or `<bwb-dl:officiele-titel>` → `name` (and slugified for directory name)
 - First `<bwb-dl:intrekking datum="...">` → `valid_from`
 - `<bwb-dl:publicatiedatum>` → `publication_date`
@@ -228,7 +228,7 @@ xmlns:bwb="http://www.overheid.nl/2011/BWB"
 
 **Target Structure:**
 ```yaml
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 $id: "{LAW_SLUG}"
 name: "{LAW_TITLE}"
 regulatory_layer: "{MAPPED_LAYER}"

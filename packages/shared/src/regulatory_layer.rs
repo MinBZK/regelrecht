@@ -31,6 +31,10 @@ pub enum RegulatoryLayer {
     #[serde(rename = "BELEIDSREGEL")]
     Beleidsregel,
 
+    /// Royal decree (Koninklijk Besluit).
+    #[serde(rename = "KONINKLIJK_BESLUIT")]
+    KoninklijkBesluit,
+
     /// EU regulation (EU-verordening).
     #[serde(rename = "EU_VERORDENING")]
     EuVerordening,
@@ -66,6 +70,7 @@ impl RegulatoryLayer {
             Self::Amvb => "AMVB",
             Self::MinisterieleRegeling => "MINISTERIELE_REGELING",
             Self::Beleidsregel => "BELEIDSREGEL",
+            Self::KoninklijkBesluit => "KONINKLIJK_BESLUIT",
             Self::EuVerordening => "EU_VERORDENING",
             Self::EuRichtlijn => "EU_RICHTLIJN",
             Self::Verdrag => "VERDRAG",
@@ -84,6 +89,7 @@ impl RegulatoryLayer {
             Self::Amvb => "amvb",
             Self::MinisterieleRegeling => "ministeriele_regeling",
             Self::Beleidsregel => "beleidsregel",
+            Self::KoninklijkBesluit => "koninklijk_besluit",
             Self::EuVerordening => "eu_verordening",
             Self::EuRichtlijn => "eu_richtlijn",
             Self::Verdrag => "verdrag",
@@ -139,6 +145,24 @@ mod tests {
         assert_eq!(layer, RegulatoryLayer::Wet);
         let layer: RegulatoryLayer = serde_json::from_str("\"MINISTERIELE_REGELING\"").unwrap();
         assert_eq!(layer, RegulatoryLayer::MinisterieleRegeling);
+    }
+
+    #[test]
+    fn test_koninklijk_besluit_serialization() {
+        assert_eq!(
+            serde_json::to_string(&RegulatoryLayer::KoninklijkBesluit).unwrap(),
+            "\"KONINKLIJK_BESLUIT\""
+        );
+        let layer: RegulatoryLayer = serde_json::from_str("\"KONINKLIJK_BESLUIT\"").unwrap();
+        assert_eq!(layer, RegulatoryLayer::KoninklijkBesluit);
+        assert_eq!(
+            RegulatoryLayer::KoninklijkBesluit.as_str(),
+            "KONINKLIJK_BESLUIT"
+        );
+        assert_eq!(
+            RegulatoryLayer::KoninklijkBesluit.as_dir_name(),
+            "koninklijk_besluit"
+        );
     }
 
     #[test]

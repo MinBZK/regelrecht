@@ -324,9 +324,8 @@ impl fmt::Display for Value {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Operation {
-    // Comparison operations (6)
+    // Comparison operations (5)
     Equals,
-    NotEquals,
     GreaterThan,
     LessThan,
     GreaterThanOrEqual,
@@ -342,38 +341,96 @@ pub enum Operation {
     Max,
     Min,
 
-    // Logical operations (2)
+    // Logical operations (3)
     And,
     Or,
+    Not,
 
-    // Conditional operations (2)
+    // Conditional operations (1)
+    /// IF with cases/default syntax (formerly SWITCH)
+    #[serde(alias = "SWITCH")]
     If,
-    Switch,
 
-    // Null checking operations (2)
-    IsNull,
-    NotNull,
-
-    // Membership testing operations (2)
+    // Collection operations (2)
     In,
-    NotIn,
+    List,
 
-    // Date operations (1)
-    SubtractDate,
+    // Date operations (4)
+    Age,
+    DateAdd,
+    Date,
+    DayOfWeek,
+
+    // Engine-only compat aliases — accepted during deserialization but NOT in the
+    // v0.5.0 schema operationType enum. YAML using these will execute correctly but
+    // fail schema validation. New laws should use NOT + the positive operation instead.
+    #[serde(rename = "NOT_EQUALS")]
+    NotEquals,
+    #[serde(rename = "IS_NULL")]
+    IsNull,
+    #[serde(rename = "NOT_NULL")]
+    NotNull,
+    #[serde(rename = "NOT_IN")]
+    NotIn,
 }
 
 impl Operation {
+    /// Check if this is a comparison operation
+    pub fn is_comparison(&self) -> bool {
+        matches!(
+            self,
+            Operation::Equals
+                | Operation::NotEquals
+                | Operation::GreaterThan
+                | Operation::LessThan
+                | Operation::GreaterThanOrEqual
+                | Operation::LessThanOrEqual
+        )
+    }
+
+    /// Check if this is an arithmetic operation
+    pub fn is_arithmetic(&self) -> bool {
+        matches!(
+            self,
+            Operation::Add | Operation::Subtract | Operation::Multiply | Operation::Divide
+        )
+    }
+
+    /// Check if this is an aggregate operation
+    pub fn is_aggregate(&self) -> bool {
+        matches!(self, Operation::Max | Operation::Min)
+    }
+
+    /// Check if this is a logical operation
+    pub fn is_logical(&self) -> bool {
+        matches!(self, Operation::And | Operation::Or | Operation::Not)
+    }
+
+    /// Check if this is a conditional operation
+    pub fn is_conditional(&self) -> bool {
+        matches!(self, Operation::If)
+    }
+
+    /// Check if this is a collection operation
+    pub fn is_collection(&self) -> bool {
+        matches!(self, Operation::In | Operation::List)
+    }
+
+    /// Check if this is a null-check operation
+    pub fn is_null_check(&self) -> bool {
+        matches!(self, Operation::IsNull | Operation::NotNull)
+    }
+
     /// Get the operation name as a static uppercase string.
     ///
     /// Avoids per-invocation `format!("{:?}", op).to_uppercase()` allocations.
     pub fn name(&self) -> &'static str {
         match self {
             Operation::Equals => "EQUALS",
-            Operation::NotEquals => "NOTEQUALS",
-            Operation::GreaterThan => "GREATERTHAN",
-            Operation::LessThan => "LESSTHAN",
-            Operation::GreaterThanOrEqual => "GREATERTHANOREQUAL",
-            Operation::LessThanOrEqual => "LESSTHANOREQUAL",
+            Operation::GreaterThan => "GREATER_THAN",
+            Operation::LessThan => "LESS_THAN",
+            Operation::GreaterThanOrEqual => "GREATER_THAN_OR_EQUAL",
+            Operation::LessThanOrEqual => "LESS_THAN_OR_EQUAL",
             Operation::Add => "ADD",
             Operation::Subtract => "SUBTRACT",
             Operation::Multiply => "MULTIPLY",
@@ -382,13 +439,18 @@ impl Operation {
             Operation::Min => "MIN",
             Operation::And => "AND",
             Operation::Or => "OR",
+            Operation::Not => "NOT",
             Operation::If => "IF",
-            Operation::Switch => "SWITCH",
-            Operation::IsNull => "ISNULL",
-            Operation::NotNull => "NOTNULL",
             Operation::In => "IN",
-            Operation::NotIn => "NOTIN",
-            Operation::SubtractDate => "SUBTRACTDATE",
+            Operation::List => "LIST",
+            Operation::Age => "AGE",
+            Operation::DateAdd => "DATE_ADD",
+            Operation::Date => "DATE",
+            Operation::DayOfWeek => "DAY_OF_WEEK",
+            Operation::NotEquals => "NOT_EQUALS",
+            Operation::IsNull => "IS_NULL",
+            Operation::NotNull => "NOT_NULL",
+            Operation::NotIn => "NOT_IN",
         }
     }
 }
@@ -429,6 +491,10 @@ pub enum PathNodeType {
     Cached,
     /// Open term resolution via IoC (implements lookup)
     OpenTermResolution,
+    /// Hook resolution (lifecycle hook firing, RFC-007)
+    HookResolution,
+    /// Override resolution (lex specialis replacement, RFC-007)
+    OverrideResolution,
 }
 
 /// Resolve type for variable resolution
@@ -455,6 +521,10 @@ pub enum ResolveType {
     DataSource,
     /// Value resolved via open term implementation (IoC)
     OpenTerm,
+    /// Value resolved via lifecycle hook (RFC-007)
+    Hook,
+    /// Value resolved via lex specialis override (RFC-007)
+    Override,
 }
 
 #[cfg(test)]
@@ -496,6 +566,21 @@ mod tests {
 
         let str_val = Value::String("hello".to_string());
         assert_eq!(str_val.as_str(), Some("hello"));
+    }
+
+    #[test]
+    fn test_operation_categories() {
+        assert!(Operation::Equals.is_comparison());
+        assert!(Operation::NotEquals.is_comparison());
+        assert!(Operation::Add.is_arithmetic());
+        assert!(Operation::Max.is_aggregate());
+        assert!(Operation::And.is_logical());
+        assert!(Operation::Not.is_logical());
+        assert!(Operation::If.is_conditional());
+        assert!(Operation::In.is_collection());
+        assert!(Operation::List.is_collection());
+        assert!(Operation::IsNull.is_null_check());
+        assert!(Operation::NotNull.is_null_check());
     }
 
     #[test]
