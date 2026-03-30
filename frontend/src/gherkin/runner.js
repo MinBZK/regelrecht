@@ -67,7 +67,7 @@ async function runScenario(scenario, background, engine, stepDefs, loadDependenc
         || result.error.match(/Law not loaded: ['"]?([^'"]+)['"]?/i);
       if (lawNotFound) {
         try {
-          await loadDependency(lawNotFound[1]);
+          await loadDependency(lawNotFound[1].trim());
           result = await executeStep(step, ctx, engine, stepDefs);
         } catch {
           // Keep original error if auto-load fails
