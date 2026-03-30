@@ -35,6 +35,43 @@ working examples in the corpus.
    `features/bijstand.feature`
 6. Count articles; if >20 articles, process in batches of ~15
 
+## FUNDAMENTAL RULE: Stay Within Scope
+
+Each `machine_readable` section must faithfully interpret ONLY the legal provision it
+belongs to — nothing more, nothing less. The scope is defined by the text field of the
+article, lid, or provision that the machine_readable is attached to.
+
+**Why this matters:** The purpose of machine-readable law is to execute what the law says,
+not what an engineer thinks is efficient. It is very tempting for the engineering mind to
+optimize: to combine conditions from multiple articles into one check, to pull in eligibility
+rules from elsewhere "because they're needed anyway", or to hardcode values that technically
+come from another provision. Resist this temptation. The whole point is to follow the law
+very strictly, even when the law is illogical, redundant, or inefficient.
+
+**Scope violations to avoid:**
+- Do NOT add conditions from other articles. If article 2 says "de verzekerde heeft
+  aanspraak op zorgtoeslag" and the age requirement comes from article 11 of another law,
+  do NOT put `leeftijd >= 18` in article 2's machine_readable. Instead, use a cross-law
+  reference (`source.regulation`) to let the other article determine eligibility.
+- Do NOT hardcode values that come from other provisions. If article 2 uses "drempelinkomen"
+  but the amount is set by a ministerial regulation, declare it as an `open_term` or
+  `input` with `source`, not as a `definition`.
+- Do NOT combine multiple leden into one action unless the law text explicitly combines them.
+  If lid 1 sets a base rule and lid 4 adds an exception, model them as separate outputs
+  or use the structure the text prescribes.
+- Do NOT add "obvious" conditions that aren't in the text. If the article doesn't mention
+  an age check, don't add one — even if you know it's required by another article.
+
+**What to do instead:**
+- Use `input` with `source.regulation` to reference other laws
+- Use `input` with `source.output` to reference other articles in the same law
+- Use `open_terms` for values delegated to lower regulations
+- If an article is a pure orchestration point (like "het college stelt het recht vast"),
+  model it as cross-law references to the articles that define the substantive rules,
+  not as a reimplementation of those rules
+
+**The law may be inefficient. That's fine. Model it as written.**
+
 ## Phase 1: Generate `machine_readable` Sections
 
 For each article with computable logic, generate the `machine_readable` section.
