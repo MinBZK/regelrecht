@@ -7,7 +7,7 @@ bwb_id: BWBR0018450
 url: https://wetten.overheid.nl/BWBR0018450/2025-01-01
 name: '#wet_naam'
 articles:
-  - number: Artikel 1
+  - number: '1'
     text: |-
       Artikel 1 In deze wet en de daarop berustende bepalingen wordt verstaan onder:
 
@@ -81,7 +81,7 @@ articles:
 
       t. bijdragebetalingstijdvak: het kalenderjaar.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel1
-  - number: Artikel 2
+  - number: '2'
     text: |-
       Artikel 2 1 Degene die ingevolge de [Algemene Wet Bijzondere Ziektekosten](jci1.3:c:BWBR0002614) en de daarop
       gebaseerde regelgeving van rechtswege verzekerd is, is verplicht zich krachtens een zorgverzekering te verzekeren
@@ -149,7 +149,7 @@ articles:
                     operation: EQUALS
                     subject: $is_gedetineerd
                     value: true
-  - number: Artikel 3
+  - number: '3'
     text: |-
       Artikel 3 1 Een zorgverzekeraar is verplicht met of ten behoeve van iedere verzekeringsplichtige die in zijn
       werkgebied woont alsmede met of ten behoeve van iedere verzekeringsplichtige die in het buitenland woont,
@@ -181,7 +181,7 @@ articles:
       Nederland hanteert ter beschikking gesteld, en worden, indien eenmaal een zorgverzekering is gesloten, de
       verzekeringnemer alle toegevoegde of gewijzigde varianten die die zorgverzekeraar aanbiedt ter beschikking gesteld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel3
-  - number: Artikel 4
+  - number: '4'
     text: |-
       Artikel 4 1 Degene die een zorgverzekering wenst te sluiten, vermeldt bij het verzoek daartoe het
       sociaal-fiscaalnummer van de te verzekeren persoon.
@@ -201,7 +201,7 @@ articles:
       als een bescheid als bedoeld in [artikel 4:3, tweede lid, van de Algemene wet
       bestuursrecht](jci1.3:c:BWBR0005537&artikel=4:3) .
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel4
-  - number: Artikel 5
+  - number: '5'
     text: |-
       Artikel 5 1 De zorgverzekering gaat in op de dag waarop de zorgverzekeraar het verzoek, bedoeld in artikel 3,
       eerste lid , en, indien het tweede of vijfde lid van dat artikel van toepassing is, de aanduiding van de variant
@@ -230,7 +230,7 @@ articles:
       zonodig in afwijking van [artikel 925, eerste lid, van boek 7 van het Burgerlijk
       Wetboek](jci1.3:c:BWBR0005290&artikel=925) , terug tot en met de dag waarop die plicht ontstond.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel5
-  - number: Artikel 6
+  - number: '6'
     text: |-
       Artikel 6 1 De zorgverzekering eindigt van rechtswege met ingang van de dag volgende op de dag waarop:
 
@@ -261,7 +261,7 @@ articles:
       zorgverzekering zal eindigen of geëindigd is, deelt hij dit, onder vermelding van de reden daarvan en de datum
       waarop de verzekering eindigt of geëindigd is, onverwijld aan de verzekeringnemer mede.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel6
-  - number: Artikel 7
+  - number: '7'
     text: |-
       Artikel 7 1 De verzekeringnemer kan de zorgverzekering voor 1 november van ieder jaar met ingang van 1 januari van
       het volgende kalenderjaar opzeggen.
@@ -287,7 +287,7 @@ articles:
       de verzekerde krachtens de andere zorgverzekering verzekerd wordt, indien die opzegging voorafgaande aan
       laatstbedoelde dag door de zorgverzekeraar is ontvangen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel7
-  - number: Artikel 8
+  - number: '8'
     text: |-
       Artikel 8 1 Aan een opzegging of ontbinding van de zorgverzekering wegens het niet betalen van de verschuldigde
       premie, wordt geen terugwerkende kracht verleend, noch wordt daaraan een verplichting verbonden tot ongedaanmaking
@@ -296,7 +296,7 @@ articles:
       2. Een zorgverzekeraar mag de zorgverzekering gedurende de periode, bedoeld in artikel 24 , niet opzeggen of
       ontbinden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel8
-  - number: Artikel 9
+  - number: '9'
     text: |-
       Artikel 9 1 De zorgverzekeraar verstrekt de verzekeringnemer en, indien deze een ander is dan de verzekeringnemer,
       de verzekerde zo spoedig mogelijk na het sluiten van de zorgverzekering en vervolgens voorafgaande aan ieder
@@ -319,7 +319,7 @@ articles:
       3. Indien de zorgverzekering eindigt om de in artikel 6, eerste lid, onderdeel d , genoemde reden, wordt dat op het
       in het tweede lid bedoelde bewijs aangetekend.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel9
-  - number: Artikel 10
+  - number: '10'
     text: |-
       Artikel 10 Het krachtens de zorgverzekering te verzekeren risico is de behoefte aan:
 
@@ -341,7 +341,7 @@ articles:
       h. vervoer in verband met het ontvangen van zorg of diensten als bedoeld in de onderdelen a tot en met g, dan wel
       in verband met een aanspraak op grond van de [Algemene Wet Bijzondere Ziektekosten](jci1.3:c:BWBR0002614) .
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel10
-  - number: Artikel 11
+  - number: '11'
     text: |-
       Artikel 11 1 De zorgverzekeraar heeft jegens zijn verzekerden een zorgplicht die zodanig wordt vormgegeven, dat de
       verzekerde bij wie het verzekerde risico zich voordoet, krachtens de zorgverzekering recht heeft op prestaties
@@ -373,7 +373,7 @@ articles:
       krachtens het eerste en derde lid, bepaalde om ethische of levensbeschouwelijke redenen controversiële prestaties
       buiten de dekking van de zorgverzekering blijven.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel11
-  - number: Artikel 12
+  - number: '12'
     text: |-
       Artikel 12 1 Bij algemene maatregel van bestuur kunnen ter bescherming van het algemeen belang vormen van zorg of
       overige diensten worden aangewezen die de zorgverzekeraar slechts verstrekt of vergoedt indien tussen hem en de
@@ -393,7 +393,7 @@ articles:
       heeft tegen het sluiten van een overeenkomst met de instelling respectievelijk zorgverzekeraar die om die
       overeenkomst vraagt.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel12
-  - number: Artikel 13
+  - number: '13'
     text: |-
       Artikel 13 1 Indien een verzekerde krachtens zijn zorgverzekering een bepaalde vorm van zorg of een andere dienst
       dient te betrekken van een aanbieder met wie zijn zorgverzekeraar een overeenkomst over deze zorg of dienst en de
@@ -415,7 +415,7 @@ articles:
       beëindigd, houdt een verzekerde die op het moment van beëindiging van de overeenkomst zorg ontvangt van deze
       aanbieder recht op zorgverlening door die aanbieder voor rekening van deze zorgverzekeraar.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel13
-  - number: Artikel 14
+  - number: '14'
     text: |-
       Artikel 14 1 De vraag of een verzekerde behoefte heeft aan een bepaalde vorm van zorg of een bepaalde andere dienst
       wordt slechts op basis van zorginhoudelijke criteria beantwoord.
@@ -428,10 +428,10 @@ articles:
 
       4. Dit lid is nog niet in werking getreden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel14
-  - number: Artikel 14a
+  - number: 14a
     text: Artikel 14a Dit onderdeel is nog niet inwerking getreden
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel14a
-  - number: Artikel 15
+  - number: '15'
     text: |-
       Artikel 15 1 De [artikelen 941, eerste lid](jci1.3:c:BWBR0005290&artikel=941) , en [957 van Boek 7 van het
       Burgerlijk Wetboek](jci1.3:c:BWBR0005290&artikel=957) zijn niet van toepassing.
@@ -440,7 +440,7 @@ articles:
       is de zorgverzekeraar niet bevoegd een verzekerde prestatie geheel of gedeeltelijk te weigeren indien het intreden
       van het verzekerde risico aan de verzekerde is te wijten.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel15
-  - number: Artikel 16
+  - number: '16'
     text: |-
       Artikel 16 1 Krachtens de zorgverzekering is de verzekeringnemer premie verschuldigd.
 
@@ -448,7 +448,7 @@ articles:
       het eerste lid is voor een verzekerde tot de eerste dag van de kalendermaand volgende op de kalendermaand waarin
       hij de leeftijd van achttien jaar heeft bereikt, geen premie verschuldigd.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel16
-  - number: Artikel 17
+  - number: '17'
     text: |-
       Artikel 17 1 De zorgverzekeraar stelt voor iedere variant van de zorgverzekering die hij aanbiedt, de grondslag van
       de premie en de bij die variant behorende premiekorting of premiekortingen vast en neemt deze in de
@@ -476,7 +476,7 @@ articles:
       7. Een wijziging in de grondslag van de premie treedt niet eerder in werking dan met ingang van de eerste dag van
       de tweede kalendermaand volgende op de maand waarin deze aan de verzekeringnemer is medegedeeld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel17
-  - number: Artikel 18
+  - number: '18'
     text: |-
       Artikel 18 1 De zorgverzekeraar kan met een werkgever overeenkomen dat hij een geldelijk voordeel verstrekt indien
       diens werknemers of hun gezinsleden verzekerd worden op basis van een in die overeenkomst aan te wijzen
@@ -502,7 +502,7 @@ articles:
       6. Bij algemene maatregel van bestuur kunnen, om te voorkomen dat afbreuk wordt gedaan aan het sociale karakter van
       de verzekering, nadere en zonodig afwijkende regels worden gesteld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel18
-  - number: Artikel 19
+  - number: '19'
     text: |-
       Artikel 19 1 De zorgverzekeraar biedt van iedere zorgverzekering met een bepaalde combinatie van te verzekeren
       prestaties als bedoeld in artikel 11, eerste lid , een variant zonder eigen risico aan.
@@ -524,12 +524,12 @@ articles:
       zorgverzekeraar de verzekeringnemers die een zorgverzekering met zo’n eigen risico hebben afgesloten, de
       mogelijkheid om te kiezen voor een zorgverzekering met een lager of zonder eigen risico.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel19
-  - number: Artikel 20
+  - number: '20'
     text: |-
       Artikel 20 Bij algemene maatregel van bestuur kunnen vormen van zorg of overige diensten worden aangewezen waarvan
       de kosten tot een bij of krachtens die maatregel te bepalen bedrag buiten een eigen risico vallen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel20
-  - number: Artikel 21
+  - number: '21'
     text: |-
       Artikel 21 1 Indien een zorgverzekering niet op 1 januari van een kalenderjaar ingaat of eindigt, is het in dat
       kalenderjaar voor die overeenkomst geldende bedrag van het eigen risico gelijk aan het voor het gehele kalenderjaar
@@ -550,7 +550,7 @@ articles:
 
       3. Het op grond van het eerste of tweede lid berekende bedrag wordt afgerond op hele euro’s.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel21
-  - number: Artikel 22
+  - number: '22'
     text: |-
       Artikel 22 1 Indien de waarde van de verzekerde prestaties die in een kalenderjaar ten behoeve van een verzekerde
       zijn verstrekt, lager is dan een bij algemene maatregel van bestuur te bepalen bedrag, heeft de verzekerde jegens
@@ -586,7 +586,7 @@ articles:
       jaarlijks bij ministeriële regeling wordt herzien, alsmede de berekeningswijze en de afronding die bij die
       herziening worden gehanteerd.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel22
-  - number: Artikel 23
+  - number: '23'
     text: |-
       Artikel 23 1 Kosten van zorg of een andere dienst worden toegerekend aan het kalenderjaar waarin de zorg of dienst
       is genoten, met dien verstande dat de kosten van zorg of een andere dienst die in twee achtereenvolgende
@@ -603,7 +603,7 @@ articles:
       eerste lid , voor dat kalenderjaar bepaalde bedrag, dan wel het op grond van artikel 22, derde lid , voor dat
       kalenderjaar berekende bedrag, hebben overschreden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel23
-  - number: Artikel 24
+  - number: '24'
     text: |-
       Artikel 24 1 De rechten en plichten uit de zorgverzekering zijn van rechtswege opgeschort gedurende de periode
       waarover Onze Minister van Justitie in het kader van de uitvoering van een rechterlijke uitspraak verantwoordelijk
@@ -612,7 +612,7 @@ articles:
       2. De verzekeringnemer of de verzekerde meldt de zorgverzekeraar de dag waarop de periode, bedoeld in het eerste
       lid, aanvangt en eindigt.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel24
-  - number: Artikel 25
+  - number: '25'
     text: |-
       Artikel 25 1 Een verzekeraar meldt het voornemen zorgverzekeringen aan te bieden en uit te voeren schriftelijk aan
       het College toezicht, onder vermelding van de dag met ingang waarvan hij zorgverzekeringen zal aanbieden.
@@ -623,7 +623,7 @@ articles:
       3. Een zorgverzekeraar legt wijzigingen in zijn modelovereenkomsten of nieuwe modelovereenkomsten voordat deze
       ingaan aan het College toezicht over.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel25
-  - number: Artikel 26
+  - number: '26'
     text: |-
       Artikel 26 1 Het College toezicht tekent de datum van ontvangst aan op het geschrift waarmee de melding, bedoeld in
       artikel 25, eerste lid , is gedaan, alsmede op de modelovereenkomsten of wijzigingen daarvan, bedoeld in artikel
@@ -634,12 +634,12 @@ articles:
       3. Het College toezicht zendt het College zorgverzekeringen onverwijld een afschrift van de melding, de
       modelovereenkomsten of de wijzigingen in de modelovereenkomsten, onder vermelding van de datum van ontvangst ervan.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel26
-  - number: Artikel 27
+  - number: '27'
     text: |-
       Artikel 27 Een verzekeraar die ten onrechte een verzekering als zorgverzekering aanbiedt of uitvoert, is gehouden
       de schade die een verzekeringsplichtige of degene die hem heeft verzekerd dientengevolge lijdt, te vergoeden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel27
-  - number: Artikel 28
+  - number: '28'
     text: |-
       Artikel 28 1 De statuten van een zorgverzekeraar:
 
@@ -654,7 +654,7 @@ articles:
       2. Bij algemene maatregel van bestuur kunnen regels worden gesteld over de mate van invloed die verzekerden ten
       minste op het beleid van een zorgverzekeraar dienen te hebben.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel28
-  - number: Artikel 29
+  - number: '29'
     text: |-
       Artikel 29 1 Het werkgebied van een zorgverzekeraar is Nederland.
 
@@ -669,7 +669,7 @@ articles:
       rechtsopvolger is geweest van, gefuseerd is met, of afgesplitst is van een andere zorgverzekeraar dan wel indien
       deze verzekeraar zorgverzekeringen van een andere zorgverzekeraar heeft overgenomen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel29
-  - number: Artikel 30
+  - number: '30'
     text: |-
       Artikel 30 1 Een zorgverzekeraar die geen zorgverzekeringen meer wenst aan te bieden of uit te voeren, meldt het
       voornemen hiertoe schriftelijk aan het College toezicht, onder vermelding van de dag met ingang waarvan hij geen
@@ -677,7 +677,7 @@ articles:
 
       2. Artikel 26 is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel30
-  - number: Artikel 31
+  - number: '31'
     text: |-
       Artikel 31 1 Indien krachtens [hoofdstuk IX van de Wet toezicht verzekeringsbedrijf
       1993](jci1.3:c:BWBR0006509&hoofdstuk=IX) jegens een zorgverzekeraar of een voormalige zorgverzekeraar de
@@ -690,7 +690,7 @@ articles:
 
       3. Het Rijk is tegenover het College zorgverzekeringen aansprakelijk voor de betalingen, bedoeld in het eerste lid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel31
-  - number: Artikel 32
+  - number: '32'
     text: |-
       Artikel 32 1 Het College zorgverzekeringen kent een zorgverzekeraar die voldaan heeft aan zijn verplichtingen,
       bedoeld in artikel 25 , voor ieder kalenderjaar waarin hij zorgverzekeringen aanbiedt en uitvoert een bijdrage toe.
@@ -724,7 +724,7 @@ articles:
 
       7. De beleidsregels, bedoeld in het vijfde lid, behoeven de goedkeuring van Onze Minister.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel32
-  - number: Artikel 33
+  - number: '33'
     text: |-
       Artikel 33 1 Bij ministeriële regeling kunnen, ingeval van een kernexplosie of natuurramp, of andere buitengewone
       gebeurtenissen die niet tot het normale bedrijfsrisico van zorgverzekeraars kunnen worden gerekend, na aanvang van
@@ -739,7 +739,7 @@ articles:
       4. Artikel 32, vijfde en zevende lid , zijn, met uitzondering van de in het vijfde lid genoemde datum, van
       overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel33
-  - number: Artikel 34
+  - number: '34'
     text: |-
       Artikel 34 1 Uiterlijk in het tweede jaar volgende op het kalenderjaar waarvoor de bijdragen, bedoeld in artikel 32
       en 33 , zijn toegekend, stelt het College zorgverzekeringen de bijdrage vast.
@@ -765,7 +765,7 @@ articles:
       zorgverzekeraar dient te worden betaald respectievelijk van de zorgverzekeraar dient te worden teruggevorderd, te
       verrekenen met een toekenning van een bijdrage als bedoeld in artikel 32 of 33 over een later jaar.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel34
-  - number: Artikel 35
+  - number: '35'
     text: |-
       Artikel 35 1 Het College zorgverzekeringen draagt zorg voor het inrichten en in stand houden van een administratie,
       waarin van iedere verzekerde wordt opgenomen:
@@ -793,12 +793,12 @@ articles:
       b. regels worden gesteld over de inrichting van de administratie van het College zorgverzekeringen, bedoeld in het
       eerste lid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel35
-  - number: Artikel 36
+  - number: '36'
     text: |-
       Artikel 36 Op rechten of verplichtingen die voortvloeien uit hetgeen in deze paragraaf geregeld is, is [titel 4.2
       van de Algemene wet bestuursrecht](jci1.3:c:BWBR0005537&titeldeel=4.2) niet van toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel36
-  - number: Artikel 37
+  - number: '37'
     text: |-
       Artikel 37 1 De zorgverzekeraar zendt binnen zes maanden na afloop van het boekjaar twee exemplaren van zijn
       jaarrekening en van zijn jaarverslag aan het College toezicht.
@@ -815,7 +815,7 @@ articles:
       4. Het College toezicht zendt het College zorgverzekeringen onverwijld één exemplaar van de in het eerste tot en
       met derde lid bedoelde stukken.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel37
-  - number: Artikel 38
+  - number: '38'
     text: |-
       Artikel 38 1 De zorgverzekeraar zendt voor 1 juli aan het College toezicht in tweevoud een uitvoeringsverslag
       waarin hij:
@@ -842,7 +842,7 @@ articles:
 
       5. Artikel 37, vierde lid , is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel38
-  - number: Artikel 39
+  - number: '39'
     text: |-
       Artikel 39 1 Er is een Zorgverzekeringsfonds.
 
@@ -904,7 +904,7 @@ articles:
       4. Uit het Zorgverzekeringsfonds worden, volgens bij ministeriële regeling te stellen regels, middelen gebruikt
       voor het vormen en in stand houden van een voor de doelstelling van het fonds noodzakelijke reserve.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel39
-  - number: Artikel 40
+  - number: '40'
     text: |-
       Artikel 40 1 Het College zorgverzekeringen beheert en administreert afzonderlijk het Zorgverzekeringsfonds.
 
@@ -942,15 +942,15 @@ articles:
       11. Onze Minister kan in overeenstemming met Onze Minister van Financiën, na overleg met het College
       zorgverzekeringen, regels stellen omtrent het tweede, zevende en achtste lid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel40
-  - number: Artikel 41
+  - number: '41'
     text: |-
       Artikel 41 De verzekeringsplichtige is een inkomensafhankelijke bijdrage verschuldigd.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel41
-  - number: Artikel 42
+  - number: '42'
     text: |-
       Artikel 42 De inkomensafhankelijke bijdrage over een jaar wordt geheven over het bijdrage-inkomen van dat jaar.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel42
-  - number: Artikel 43
+  - number: '43'
     text: |-
       Artikel 43 1 Het bijdrage-inkomen van een jaar is het gezamenlijke bedrag van hetgeen door de verzekeringsplichtige
       in dat jaar is genoten aan:
@@ -991,7 +991,7 @@ articles:
       bij de berekening van het als bijdrage-inkomen in aanmerking te nemen loon dat van de inhoudingsplichtige is
       genoten.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel43
-  - number: Artikel 44
+  - number: '44'
     text: |-
       Artikel 44 1 Het bedrag, bedoeld in artikel 43, tweede lid , wordt jaarlijks bij beschikking van Onze Minister, in
       overeenstemming met Onze Minister van Sociale Zaken en Werkgelegenheid en Onze Minister van Financiën, herzien,
@@ -1018,7 +1018,7 @@ articles:
       met Onze Minister van Financiën en kunnen daarbij regels worden gesteld omtrent de wijze van berekening van de
       bijdrage over het gehele kalenderjaar.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel44
-  - number: Artikel 45
+  - number: '45'
     text: |-
       Artikel 45 1 De inkomensafhankelijke bijdrage bedraagt een percentage van het bijdrage-inkomen.
 
@@ -1040,7 +1040,7 @@ articles:
       vaststelling plaats in overeenstemming met Onze Minister van Financiën en kunnen daarbij regels worden gesteld
       omtrent de wijze van berekening van de bijdrage over het gehele kalenderjaar.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel45
-  - number: Artikel 46
+  - number: '46'
     text: |-
       Artikel 46 1 Een verzekeringsplichtige die bij regeling van Onze Minister aan te wijzen loon overeenkomstig de
       wettelijke bepalingen van de loonbelasting geniet, heeft recht op een volledige vergoeding door de
@@ -1048,16 +1048,16 @@ articles:
 
       2. Voor de toepassing van het eerste lid is artikel 43, tweede lid , van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel46
-  - number: Artikel 47
+  - number: '47'
     text: |-
       Artikel 47 Bij regeling van Onze Minister, in overeenstemming met Onze Minister van Financiën en Onze Minister van
       Sociale Zaken en Werkgelegenheid, kunnen nadere regels worden gesteld met betrekking tot deze paragraaf.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel47
-  - number: Artikel 48
+  - number: '48'
     text: |-
       Artikel 48 De rijksbelastingdienst heft de inkomensafhankelijke bijdrage.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel48
-  - number: Artikel 49
+  - number: '49'
     text: |-
       Artikel 49 1 Voor zover het bijdrage-inkomen bestaat uit loon als bedoeld in artikel 43, eerste lid, onderdeel a ,
       dat van een inhoudingsplichtige wordt genoten, wordt de inkomensafhankelijke bijdrage bij wijze van inhouding
@@ -1072,7 +1072,7 @@ articles:
       artikel 43, tweede lid , juncto artikel 45 ten hoogste kan worden geheven verminderd met de bijdrage die op grond
       van het eerste lid is ingehouden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel49
-  - number: Artikel 50
+  - number: '50'
     text: |-
       Artikel 50 1 Indien over het bijdrage-inkomen inkomensafhankelijke bijdrage is ingehouden over een hoger
       bijdrage-inkomen dan het bedrag, bedoeld in artikel 43, tweede lid , stelt de inspecteur, bedoeld in de [Wet
@@ -1103,7 +1103,7 @@ articles:
       Nederland en om die reden de beschikking niet binnen redelijke termijn gegeven kan worden, wordt de termijn met ten
       hoogte zes maanden verlengd en wordt de aanvrager van deze verlenging schriftelijk op de hoogte gesteld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel50
-  - number: Artikel 51
+  - number: '51'
     text: |-
       Artikel 51 1 De rijksbelastingdienst vordert de inkomensafhankelijke bijdrage in.
 
@@ -1112,18 +1112,18 @@ articles:
       onderdeel a, van de Invorderingswet 1990](jci1.3:c:BWBR0004770&artikel=38) , onderscheidenlijk de
       inkomstenbelasting van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel51
-  - number: Artikel 52
+  - number: '52'
     text: |-
       Artikel 52 Bij regeling van Onze Minister en Onze Minister van Financiën worden regels gesteld met betrekking tot
       de afdracht van de inkomensafhankelijke bijdragen alsmede van de daarmee verband houdende bestuurlijke boeten en
       renten door de rijksbelastingdienst aan het Zorgverzekeringsfonds.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel52
-  - number: Artikel 53
+  - number: '53'
     text: |-
       Artikel 53 Bij regeling van Onze Minister, in overeenstemming met Onze Minister van Financiën en Onze Minister van
       Sociale Zaken en Werkgelegenheid, kunnen nadere regels worden gesteld met betrekking tot deze paragraaf.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel53
-  - number: Artikel 54
+  - number: '54'
     text: |-
       Artikel 54 1 Onze Minister verleent jaarlijks aan het Zorgverzekeringsfonds een bijdrage in de financiering van de
       zorgverzekering voor verzekerden jonger dan achttien jaar.
@@ -1133,7 +1133,7 @@ articles:
 
       3. De bijdrage wordt betaald in gelijke maandelijkse delen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel54
-  - number: Artikel 55
+  - number: '55'
     text: |-
       Artikel 55 1 Onze Minister kan, in overeenstemming met Onze Minister van Financiën, een bijdrage aan het
       Zorgverzekeringsfonds verlenen ter gehele of gedeeltelijke betaling van zorg of overige diensten als bedoeld in
@@ -1153,14 +1153,14 @@ articles:
       zorgverzekeringen bijstand verlenen bij het uitvoeren van de ministeriële regeling, bedoeld in het tweede lid, en
       welke vergoeding daar voor de zorgverzekeraars tegenover staat.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel55
-  - number: Artikel 56
+  - number: '56'
     text: |-
       Artikel 56 Indien de situatie, bedoeld in artikel 31, eerste lid , zich heeft voorgedaan, verstrekt Onze Minister
       een bijdrage aan het Zorgverzekeringsfonds ter hoogte van het verschil tussen het bedrag aan voldane vorderingen,
       als bedoeld in artikel 31, eerste lid , en het bedrag dat het College zorgverzekeringen ter zake van de
       vorderingen, bedoeld in artikel 31, tweede lid , heeft ontvangen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel56
-  - number: Artikel 57
+  - number: '57'
     text: |-
       Artikel 57 1 Van de persoon die op grond van artikel 2, tweede lid, onderdeel b , niet verzekeringsplichtig is,
       wordt met overeenkomstige toepassing van [hoofdstuk 5 van de Wet financiering sociale
@@ -1174,7 +1174,7 @@ articles:
       3. De rijksbelastingdienst stort de belasting, bedoeld in het eerste lid, op de rekening, bedoeld in artikel 70,
       eerste dan wel tweede lid .
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel57
-  - number: Artikel 58
+  - number: '58'
     text: |-
       Artikel 58 1 Er is een College voor zorgverzekeringen, dat rechtspersoonlijkheid bezit.
 
@@ -1185,7 +1185,7 @@ articles:
 
       4. Het College zorgverzekeringen wordt in en buiten rechte vertegenwoordigd door de voorzitter.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel58
-  - number: Artikel 59
+  - number: '59'
     text: |-
       Artikel 59 1 Het College zorgverzekeringen bestaat uit een oneven aantal van ten hoogste negen leden, onder wie de
       voorzitter.
@@ -1219,7 +1219,7 @@ articles:
       c. worden andere functies of werkzaamheden dan die, genoemd in het zesde lid, aangewezen, die niet verenigbaar zijn
       met het lidmaatschap van het College zorgverzekeringen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel59
-  - number: Artikel 60
+  - number: '60'
     text: |-
       Artikel 60 1 Het College zorgverzekeringen stelt een bestuursreglement vast.
 
@@ -1233,7 +1233,7 @@ articles:
 
       5. Het bestuursreglement behoeft de goedkeuring van Onze Minister.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel60
-  - number: Artikel 61
+  - number: '61'
     text: |-
       Artikel 61 1 Op de rechtspositie van het personeel van het College zorgverzekeringen zijn de regels die gelden voor
       ambtenaren die zijn aangesteld bij ministeries van toepassing, met dien verstande dat waar in deze regels een
@@ -1242,30 +1242,30 @@ articles:
 
       2. Bij algemene maatregel van bestuur kan worden afgeweken van de in het eerste lid bedoelde regels.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel61
-  - number: Artikel 62
+  - number: '62'
     text: |-
       Artikel 62 Onze Minister kan beleidsregels vaststellen met betrekking tot de werkwijze en de uitoefening van de
       taken van het College zorgverzekeringen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel62
-  - number: Artikel 63
+  - number: '63'
     text: |-
       Artikel 63 1 Een besluit van het College zorgverzekeringen kan bij koninklijk besluit worden vernietigd.
 
       2. Van een besluit tot vernietiging wordt mededeling gedaan door plaatsing in de Staatscourant.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel63
-  - number: Artikel 64
+  - number: '64'
     text: |-
       Artikel 64 1 Het College zorgverzekeringen bevordert de eenduidige uitleg van de aard, inhoud en omvang van de
       prestaties, bedoeld in artikel 11 .
 
       2. Het College zorgverzekeringen kan de zorgverzekeraars met het oog hierop richtlijnen geven.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel64
-  - number: Artikel 65
+  - number: '65'
     text: |-
       Artikel 65 Het College zorgverzekeringen geeft aan zorgverzekeraars, aan zorgaanbieders en aan burgers voorlichting
       over de aard, inhoud en omvang van de prestaties, bedoeld in artikel 11 .
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel65
-  - number: Artikel 66
+  - number: '66'
     text: |-
       Artikel 66 1 Het College zorgverzekeringen rapporteert Onze Minister desgevraagd over voorgenomen beleid inzake
       aard, inhoud en omvang van de prestaties, bedoeld in artikel 11 .
@@ -1273,7 +1273,7 @@ articles:
       2. Het College zorgverzekeringen signaleert gevraagd en ongevraagd aan Onze Minister feitelijke ontwikkelingen die
       aanleiding kunnen geven tot wijzigingen van de aard, inhoud en omvang van de prestaties, bedoeld in artikel 11 .
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel66
-  - number: Artikel 67
+  - number: '67'
     text: |-
       Artikel 67 Het College zorgverzekeringen bevordert de afstemming van de uitvoering:
 
@@ -1282,7 +1282,7 @@ articles:
       b. van deze verzekeringen met de uitvoering van het beleid op andere terreinen van de volksgezondheid en op andere
       terreinen van sociale zekerheid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel67
-  - number: Artikel 68
+  - number: '68'
     text: |-
       Artikel 68 1 Bij ministeriële regeling kan worden bepaald dat het College zorgverzekeringen overeenkomstig in die
       regeling gestelde regels tijdelijk subsidies verstrekt voor zorg of andere diensten, ten aanzien waarvan het
@@ -1302,7 +1302,7 @@ articles:
 
       6. Goedkeuring kan slechts worden onthouden wegens strijd met het recht of het belang van de volksgezondheid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel68
-  - number: Artikel 69
+  - number: '69'
     text: |-
       Artikel 69 1 In het buitenland wonende personen die met toepassing van een Verordening van de Raad van de Europese
       Gemeenschappen dan wel toepassing van zodanige verordening krachtens de overeenkomst betreffende de Europese
@@ -1333,7 +1333,7 @@ articles:
       b. kunnen regels worden gesteld over de wijze waarop het College zorgverzekeringen zijn taak, bedoeld in het vierde
       lid, uitoefent of de organen, bedoeld in onderdeel a, de in dat onderdeel bedoelde werkzaamheden uitvoeren.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel69
-  - number: Artikel 70
+  - number: '70'
     text: |-
       Artikel 70 1 Het College zorgverzekeringen opent voor iedere gemoedsbezwaarde, bedoeld in artikel 2, tweede lid,
       onderdeel b , een rekening, waarop de geheven bijdragevervangende belasting, bedoeld in artikel 57, eerste lid ,
@@ -1382,7 +1382,7 @@ articles:
       12. Het College zorgverzekeringen is bevoegd de werkzaamheden, bedoeld bij of krachtens het eerste tot en met elfde
       lid, onder vergoeding van de daarmee gepaard gaande kosten, uit te besteden aan een of meer zorgverzekeraars.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel70
-  - number: Artikel 71
+  - number: '71'
     text: |-
       Artikel 71 1 Het College zorgverzekeringen zendt jaarlijks voor 1 oktober aan Onze Minister een jaarplan voor het
       volgende kalenderjaar.
@@ -1396,7 +1396,7 @@ articles:
 
       c. een meerjarenraming voor de vier kalenderjaren volgend op het begrotingsjaar.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel71
-  - number: Artikel 72
+  - number: '72'
     text: |-
       Artikel 72 1 Onze Minister stelt jaarlijks voor 1 december het budget voor de beheerskosten van het College
       zorgverzekeringen voor het volgende kalenderjaar vast.
@@ -1422,7 +1422,7 @@ articles:
       7. Het door Onze Minister vastgestelde budget voor de beheerskosten van het College zorgverzekeringen wordt gedekt
       uit ’s Rijks kas.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel72
-  - number: Artikel 73
+  - number: '73'
     text: |-
       Artikel 73 1 Het College zorgverzekeringen zendt jaarlijks voor 15 maart aan Onze Minister een jaarverantwoording
       over het afgelopen kalenderjaar, alsmede het verslag van bevindingen, bedoeld in het zesde lid.
@@ -1449,7 +1449,7 @@ articles:
       6. De accountant voegt bij de verklaring een verslag van zijn bevindingen over de vraag of het beheer en de
       organisatie voldoen aan eisen van rechtmatigheid, ordelijkheid, controleerbaarheid en doelmatigheid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel73
-  - number: Artikel 74
+  - number: '74'
     text: |-
       Artikel 74 1 Het College zorgverzekeringen zendt jaarlijks voor 15 maart aan Onze Minister met betrekking tot het
       Zorgverzekeringsfonds een jaarrekening over het afgelopen kalenderjaar, alsmede het verslag van bevindingen,
@@ -1471,7 +1471,7 @@ articles:
       5. De accountant voegt bij de verklaring een verslag van zijn bevindingen over de vraag of het beheer en de
       organisatie voldoen aan eisen van rechtmatigheid, ordelijkheid, controleerbaarheid en doelmatigheid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel74
-  - number: Artikel 75
+  - number: '75'
     text: |-
       Artikel 75 1 De onderdelen «werkprogramma» en «begroting» van het jaarplan, bedoeld in artikel 71 , het onderdeel
       «jaarrekening» van de jaarverantwoording, bedoeld in artikel 73 , en de jaarrekening, bedoeld in artikel 74 ,
@@ -1499,7 +1499,7 @@ articles:
       4. Bij ministeriële regeling worden regels gesteld over de wijze waarop en de voorwaarden waaronder het budget,
       bedoeld in artikel 72 , wordt vastgesteld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel75
-  - number: Artikel 76
+  - number: '76'
     text: |-
       Artikel 76 1 Na de goedkeuring, bedoeld in artikel 75, eerste lid , stelt het College zorgverzekeringen het
       jaarplan, de jaarverantwoording en de jaarrekening van het Zorgverzekeringsfonds algemeen verkrijgbaar.
@@ -1507,7 +1507,7 @@ articles:
       2. Onze Minister brengt zijn oordeel over het functioneren van het College zorgverzekeringen ter kennis van beide
       Kamers der Staten-Generaal.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel76
-  - number: Artikel 77
+  - number: '77'
     text: |-
       Artikel 77 1 Er is een College van toezicht op de zorgverzekeringen, dat rechtspersoonlijkheid bezit.
 
@@ -1525,21 +1525,21 @@ articles:
 
       4. Het College toezicht wordt in en buiten rechte vertegenwoordigd door de voorzitter.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel77
-  - number: Artikel 78
+  - number: '78'
     text: |-
       Artikel 78 1 Het College toezicht bestaat uit een oneven aantal van ten hoogste vijf leden, onder wie de
       voorzitter.
 
       2. De artikelen 59, tweede tot en met negende lid , en 60 tot en met 63 zijn van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel78
-  - number: Artikel 79
+  - number: '79'
     text: |-
       Artikel 79 1 Het College toezicht wijst de medewerkers aan die toezichthouders zijn als bedoeld in [artikel 5:11
       van de Algemene wet bestuursrecht](jci1.3:c:BWBR0005537&artikel=5:11) .
 
       2. Van een besluit als bedoeld in het eerste lid wordt mededeling gedaan door plaatsing in de Staatscourant.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel79
-  - number: Artikel 80
+  - number: '80'
     text: |-
       Artikel 80 1 Het College toezicht zendt voor 1 november aan Onze Minister en aan het College zorgverzekeringen een
       samenvattend rapport over de rechtmatigheid van de uitvoering van deze wet en de daarop gebaseerde regelgeving door
@@ -1552,7 +1552,7 @@ articles:
       4. Bij ministeriële regeling kunnen regels worden gesteld over de inhoud en inrichting van het rapport, bedoeld in
       het eerste lid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel80
-  - number: Artikel 81
+  - number: '81'
     text: |-
       Artikel 81 1 Het College toezicht maakt, onverminderd zijn bevoegdheid tot eigen onderzoek, zoveel mogelijk gebruik
       van de resultaten van door anderen verrichte controles.
@@ -1561,7 +1561,7 @@ articles:
       werkzaamheden van hen die met de controle zijn belast en lichten hem volledig in over de resultaten van de controle
       door overlegging van rapporten of op andere door het College toezicht aan te geven wijze.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel81
-  - number: Artikel 82
+  - number: '82'
     text: |-
       Artikel 82 1 Het College toezicht rapporteert desgevraagd aan Onze Minister over de uitvoerbaarheid,
       doeltreffendheid en doelmatigheid van voorgenomen beleid in verband met de uitoefening van zijn toezichthoudende
@@ -1572,7 +1572,7 @@ articles:
       3. Het College toezicht kan tevens op verzoek van het College zorgverzekeringen onderzoek bij de zorgverzekeraars
       instellen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel82
-  - number: Artikel 83
+  - number: '83'
     text: |-
       Artikel 83 1 Het College toezicht maakt ten behoeve van de inzichtelijkheid, voor verzekeringsplichtigen, van de
       zorgverzekeringsmarkt informatie openbaar met betrekking tot:
@@ -1587,7 +1587,7 @@ articles:
       3. Bij ministeriële regeling kan nader worden bepaald op welke onderwerpen de openbaarmaking, bedoeld in het eerste
       lid, betrekking heeft.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel83
-  - number: Artikel 84
+  - number: '84'
     text: |-
       Artikel 84 1 Het College zorgverzekeringen kan in overeenstemming met het College toezicht regels stellen met
       betrekking tot de administratie van de zorgverzekeraars.
@@ -1599,11 +1599,11 @@ articles:
       b. de inhoud en inrichting van het accountantsverslag, bedoeld in artikel 38 , en van het aan dat verslag ten
       grondslag liggende onderzoek.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel84
-  - number: Artikel 85
+  - number: '85'
     text: |-
       Artikel 85 Paragraaf 6.3 is, met uitzondering van artikel 74 , van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel85
-  - number: Artikel 86
+  - number: '86'
     text: |-
       Artikel 86 1 De zorgverzekeraar neemt het sociaal-fiscaalnummer van zijn verzekerden en, gedurende zeven jaren na
       het einde van de verzekering, van zijn gewezen verzekerden met het oog op de uitvoering van de zorgverzekering en
@@ -1619,7 +1619,7 @@ articles:
       4. Bij algemene maatregel van bestuur kunnen nadere regels worden gesteld met betrekking tot het eerste en tweede
       lid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel86
-  - number: Artikel 87
+  - number: '87'
     text: |-
       Artikel 87 1 Een zorgaanbieder die aan een verzekerde zorg of andere diensten, bedoeld in artikel 11 , heeft
       verleend, en die de kosten daarvan krachtens een door hem met de zorgverzekeraar gesloten overeenkomst rechtstreeks
@@ -1660,7 +1660,7 @@ articles:
 
       d. aan welke beveiligingseisen elektronische gegevensverstrekking voldoet.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel87
-  - number: Artikel 88
+  - number: '88'
     text: |-
       Artikel 88 1 Een ieder verstrekt op verzoek aan de zorgverzekeraars, het College zorgverzekeringen, het College
       toezicht, Onze Minister, de rijksbelastingdienst, het Uitvoeringsinstituut werknemersverzekeringen, de Sociale
@@ -1681,7 +1681,7 @@ articles:
       4. Bij ministeriële regeling kunnen nadere regels worden gesteld met betrekking tot het eerste, tweede of derde
       lid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel88
-  - number: Artikel 89
+  - number: '89'
     text: |-
       Artikel 89 1 De in artikel 88, eerste lid , bedoelde zorgverzekeraars en instanties zijn bevoegd uit eigen beweging
       en verplicht op verzoek binnen een bij dat verzoek genoemde termijn, uit de onder hun verantwoordelijkheid gevoerde
@@ -1709,7 +1709,7 @@ articles:
 
       6. Bij ministeriële regeling kunnen nadere regels worden gesteld met betrekking tot het eerste of tweede lid.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel89
-  - number: Artikel 90
+  - number: '90'
     text: |-
       Artikel 90 1 Het College toezicht, onderscheidenlijk het College zorgverzekeringen kan na overleg met het College
       zorgverzekeringen, onderscheidenlijk het College toezicht bij regeling bepalen welke gegevens en inlichtingen
@@ -1722,7 +1722,7 @@ articles:
       3. Bij ministeriële regeling kan worden bepaald welke statistische gegevens de zorgverzekeraars verzamelen
       betreffende vormen van zorg en andere diensten.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel90
-  - number: Artikel 91
+  - number: '91'
     text: |-
       Artikel 91 1 Het College zorgverzekeringen en het College toezicht verstrekken Onze Minister uit eigen beweging
       inlichtingen over ontwikkelingen die ertoe leiden of kunnen leiden dat ten behoeve van verzekerden niet vrij kan
@@ -1739,7 +1739,7 @@ articles:
       bestuursorgaan, bedoeld in het tweede lid, aangewezen personen toegang tot en inzage in zakelijke gegevens en
       bescheiden, voor zover dat voor de vervulling van hun taak redelijkerwijs nodig is.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel91
-  - number: Artikel 92
+  - number: '92'
     text: |-
       Artikel 92 1 Een zorgverzekeraar maakt voor de verstrekking of ontvangst van gegevens aan of van personen, aan te
       wijzen door het College zorgverzekeringen, gebruik van een elektronische infrastructuur.
@@ -1757,7 +1757,7 @@ articles:
 
       d. de financiering van het gebruik van de infrastructuur en de wijze waarop de kosten ervan worden verdeeld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel92
-  - number: Artikel 93
+  - number: '93'
     text: |-
       Artikel 93 1 Het is een ieder die uit hoofde van de toepassing van deze wet of van krachtens deze wet genomen
       besluiten enige taak vervult of heeft vervuld, verboden van vertrouwelijke gegevens of inlichtingen die ingevolge
@@ -1800,7 +1800,7 @@ articles:
       lid, van de Comptabiliteitswet 2001](jci1.3:c:BWBR0013891&artikel=91) , verplicht tot geheimhouding, voor zover het
       betreft gegevens en inlichtingen die haar ingevolge het vierde lid, onderdeel c, bekend zijn geworden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel93
-  - number: Artikel 94
+  - number: '94'
     text: |-
       Artikel 94 1 Het College toezicht kan uit hoofde van zijn toezichthoudende taak een aanwijzing geven aan een
       zorgverzekeraar, dan wel aan een verzekeraar die verzekeringen als zorgverzekering aanbiedt of uitvoert die niet
@@ -1859,7 +1859,7 @@ articles:
       11. Indien de verzekeraar na een publicatie als bedoeld in het vierde lid, onderdeel b, alsnog voldoet aan de
       aanwijzing, doet het College toezicht hiervan op dezelfde wijze mededeling als bij de voorafgaande publicatie.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel94
-  - number: Artikel 95
+  - number: '95'
     text: |-
       Artikel 95 1 Het College toezicht kan een zorgverzekeraar een last onder dwangsom opleggen ter zake van overtreding
       van de voorschriften gesteld bij of krachtens de artikelen 3 , 4, tweede tot en met vijfde lid , 5, derde lid , 9 ,
@@ -1876,7 +1876,7 @@ articles:
       van de Algemene wet bestuursrecht](jci1.3:c:BWBR0005537&artikel=5:33) zijn van toepassing, met dien verstande dat
       een door het College toezicht ingevorderde dwangsom aan het Zorgverzekeringsfonds wordt afgedragen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel95
-  - number: Artikel 96
+  - number: '96'
     text: |-
       Artikel 96 1 Indien de zorgverzekering niet binnen vier maanden na het ontstaan van de verzekeringsplicht is
       ingegaan of indien een verzekeringsplichtige niet met ingang van de dag volgende op de dag waarop een
@@ -1907,7 +1907,7 @@ articles:
       7. De zorgverzekeraars dragen de ingevorderde boeten onder aftrek van de vergoeding, bedoeld in het vijfde lid, af
       aan het Zorgverzekeringsfonds.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel96
-  - number: Artikel 97
+  - number: '97'
     text: |-
       Artikel 97 1 Het College toezicht kan een bestuurlijke boete opleggen aan een zorgverzekeraar die niet voldoet aan
       de voorschriften, gesteld bij of krachtens de artikelen 3 , 25, derde lid , 28 , of 29, eerste en tweede lid .
@@ -1920,7 +1920,7 @@ articles:
 
       4. Het College toezicht draagt ingevorderde boeten af aan het Zorgverzekeringsfonds.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel97
-  - number: Artikel 98
+  - number: '98'
     text: |-
       Artikel 98 1 Het College toezicht kan een bestuurlijke boete opleggen aan een zorgverzekeraar die dat college of
       een door hem aangewezen persoon onjuiste of onvolledige informatie heeft verschaft met betrekking tot de aantallen
@@ -1931,7 +1931,7 @@ articles:
 
       3. Het College toezicht draagt ingevorderde boeten af aan het Zorgverzekeringsfonds.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel98
-  - number: Artikel 99
+  - number: '99'
     text: |-
       Artikel 99 1 Het College toezicht kan een bestuurlijke boete opleggen aan een zorgverzekeraar die niet voldoet aan
       de voorschriften, gesteld bij of krachtens de artikelen 4, tweede tot en met vijfde lid , 5, derde lid , 9 , 35,
@@ -1942,7 +1942,7 @@ articles:
 
       3. Het College toezicht draagt ingevorderde boeten af aan het Zorgverzekeringsfonds.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel99
-  - number: Artikel 100
+  - number: '100'
     text: |-
       Artikel 100 1 Het College toezicht kan een bestuurlijke boete opleggen aan degene die niet voldoet aan een hem
       ingevolge artikel 88 of 89 opgelegde verplichting.
@@ -1951,7 +1951,7 @@ articles:
 
       3. Het College toezicht draagt ingevorderde boeten af aan het Zorgverzekeringsfonds.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel100
-  - number: Artikel 101
+  - number: '101'
     text: |-
       Artikel 101 1 In de artikelen 102 tot en met 112 wordt verstaan onder:
 
@@ -1962,7 +1962,7 @@ articles:
       bestuurlijke boete overweegt op te leggen of oplegt. 2 [Artikel 51 van het Wetboek van
       Strafrecht](jci1.3:c:BWBR0001854&artikel=51) is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel101
-  - number: Artikel 102
+  - number: '102'
     text: |-
       Artikel 102 1 Degene die wordt verhoord met het oog op het opleggen van een bestuurlijke boete, is niet verplicht
       ten behoeve daarvan verklaringen omtrent de overtreding af te leggen.
@@ -1971,7 +1971,7 @@ articles:
       geval wanneer hij in de gelegenheid wordt gesteld over het voornemen tot oplegging van de bestuurlijke boete zijn
       zienswijze naar voren te brengen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel102
-  - number: Artikel 103
+  - number: '103'
     text: |-
       Artikel 103 1 Het College zorgverzekeringen dan wel het College toezicht maakt van de overtreding een rapport op.
 
@@ -1986,7 +1986,7 @@ articles:
       3. Indien van de overtreding een proces-verbaal als bedoeld in [artikel 152 van het Wetboek van
       Strafvordering](jci1.3:c:BWBR0001903&artikel=152) is opgemaakt, treedt dit in de plaats van het rapport.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel103
-  - number: Artikel 104
+  - number: '104'
     text: |-
       Artikel 104 1 Het College zorgverzekeringen dan wel het College toezicht stelt de overtreder desgevraagd in de
       gelegenheid de gegevens waarop het opleggen van de bestuurlijke boete, dan wel het voornemen daartoe, berust, in te
@@ -1996,7 +1996,7 @@ articles:
       zorgverzekeringen dan wel het College toezicht er zoveel mogelijk zorg voor dat deze gegevens aan de overtreder
       worden medegedeeld in een voor deze begrijpelijke taal.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel104
-  - number: Artikel 105
+  - number: '105'
     text: |-
       Artikel 105 1 In afwijking van artikel 4.1.2 van de Algemene wet bestuursrecht wordt de overtreder steeds in de
       gelegenheid gesteld zijn zienswijze over het voornemen tot het opleggen van een bestuurlijke boete naar voren te
@@ -2016,7 +2016,7 @@ articles:
       b. de overtreding aan de officier van justitie zal worden voorgelegd, wordt dit schriftelijk aan de overtreder
       medegedeeld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel105
-  - number: Artikel 106
+  - number: '106'
     text: |-
       Artikel 106 1 Het College zorgverzekeringen dan wel het College toezicht legt geen bestuurlijke boete op:
 
@@ -2057,7 +2057,7 @@ articles:
 
       b. het College toezicht niet binnen dertien weken een reactie van de officier van justitie heeft ontvangen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel106
-  - number: Artikel 107
+  - number: '107'
     text: |-
       Artikel 107 1 Het College zorgverzekeringen dan wel het College toezicht legt geen bestuurlijke boete op indien de
       overtreder is overleden.
@@ -2068,7 +2068,7 @@ articles:
       3. Een onherroepelijke bestuurlijke boete vervalt voor zover zij op het in het tweede lid bedoelde tijdstip nog
       niet is betaald.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel107
-  - number: Artikel 108
+  - number: '108'
     text: |-
       Artikel 108 1 Indien de overtreder aannemelijk maakt dat een bestuurlijke boete, berekend op grond van artikel 69
       of artikel 96, derde en vierde lid , wegens bijzondere omstandigheden te hoog is, legt het College
@@ -2079,12 +2079,12 @@ articles:
       met de omstandigheden waaronder de overtreding is gepleegd. 3 [Artikel 1, tweede lid, van het Wetboek van
       Strafrecht](jci1.3:c:BWBR0001854&artikel=1) is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel108
-  - number: Artikel 109
+  - number: '109'
     text: |-
       Artikel 109 Mandaat tot het opleggen van een bestuurlijke boete wordt niet verleend aan degene die van de
       overtreding een rapport of proces-verbaal heeft opgemaakt.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel109
-  - number: Artikel 110
+  - number: '110'
     text: |-
       Artikel 110 1 Het College zorgverzekeringen dan wel het College toezicht beslist omtrent het opleggen van de
       bestuurlijke boete binnen dertien weken na de dagtekening van het rapport.
@@ -2093,7 +2093,7 @@ articles:
       voorgelegd, tot de dag waarop het College zorgverzekeringen dan wel het College toezicht weer bevoegd wordt een
       bestuurlijke boete op te leggen.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel110
-  - number: Artikel 111
+  - number: '111'
     text: |-
       Artikel 111 De beschikking tot oplegging van een bestuurlijke boete vermeldt:
 
@@ -2107,7 +2107,7 @@ articles:
 
       e. de termijn waarbinnen de boete betaald moet worden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel111
-  - number: Artikel 112
+  - number: '112'
     text: |-
       Artikel 112 1 De bevoegdheid tot het opleggen van een bestuurlijke boete vervalt vijf jaren nadat de overtreding
       heeft plaatsgevonden.
@@ -2115,7 +2115,7 @@ articles:
       2. Indien tegen de bestuurlijke boete bezwaar wordt gemaakt of beroep wordt ingesteld, wordt de vervaltermijn
       opgeschort tot onherroepelijk op het bezwaar of beroep is beslist.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel112
-  - number: Artikel 113
+  - number: '113'
     text: |-
       Artikel 113 1 Een boete wordt betaald binnen zes weken na inwerkingtreding van de beschikking waarbij de boete is
       opgelegd.
@@ -2147,7 +2147,7 @@ articles:
       9. De bevoegdheid tot invordering vervalt twee jaar nadat de beschikking inzake oplegging van de boete
       onherroepelijk is geworden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel113
-  - number: Artikel 114
+  - number: '114'
     text: |-
       Artikel 114 1 De zorgverzekeraar zorgt ervoor dat zijn verzekeringnemers en verzekerden geschillen over de
       uitvoering van de zorgverzekering kunnen voorleggen aan een onafhankelijke instantie.
@@ -2162,14 +2162,14 @@ articles:
       4. Het College zorgverzekeringen zendt zijn advies binnen vier weken na ontvangst van de adviesaanvraag aan de
       onafhankelijke instantie.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel114
-  - number: Artikel 115
+  - number: '115'
     text: |-
       Artikel 115 In afwijking van [artikel 8:7, tweede lid, van de Algemene wet
       bestuursrecht](jci1.3:c:BWBR0005537&artikel=8:7) is voor beroepen tegen beschikkingen van het College toezicht, als
       bedoeld in de artikelen 94 , 95 , 97 , 98 , 99 of, indien de beschikking tot een verzekeraar is gericht, 100 , de
       rechtbank te Rotterdam bevoegd.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel115
-  - number: Artikel 116
+  - number: '116'
     text: |-
       Artikel 116 1 In afwijking van [artikel 8:7, tweede lid, van de Algemene wet
       bestuursrecht](jci1.3:c:BWBR0005537&artikel=8:7) kan een belanghebbende tegen ingevolge deze wet genomen besluiten,
@@ -2187,7 +2187,7 @@ articles:
 
       c. voor een beschikking, genomen jegens een persoon die behoort tot het personeel van de genoemde colleges.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel116
-  - number: Artikel 117
+  - number: '117'
     text: |-
       Artikel 117 1 Indien beroep is ingesteld tegen een bestuurlijke boete is, in afwijking van de [artikelen
       8:27](jci1.3:c:BWBR0005537&artikel=8:27) en [8:28 van de Algemene wet
@@ -2200,7 +2200,7 @@ articles:
       beslissing omtrent het opleggen van de boete en bepaalt zij dat haar uitspraak in zoverre in de plaatst treedt van
       de vernietigde beschikking.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel117
-  - number: Artikel 118
+  - number: '118'
     text: |-
       Artikel 118 1 Een verzekerde die voor rekening van zijn zorgverzekering bij ministeriële regeling aan te wijzen
       zorg of andere diensten als bedoeld in artikel 11 wenst te genieten, verstrekt aan de persoon of instelling die die
@@ -2217,7 +2217,7 @@ articles:
 
       4. Dit lid is nog niet in werking getreden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel118
-  - number: Artikel 119
+  - number: '119'
     text: |-
       Artikel 119 1 Een overeenkomst met betrekking tot de verzekering van geneeskundige zorg of de kosten daarvan,
       gesloten voor een verzekerde met of ten behoeve van wie tevens een zorgverzekering is gesloten, vervalt met ingang
@@ -2229,53 +2229,53 @@ articles:
       vooruitbetaald, wordt door de verzekeraar al naar gelang van het vervallen gedeelte der overeenkomst terugbetaald,
       onder aftrek van ten hoogste 25% van het terug te betalen bedrag.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel119
-  - number: Artikel 120
+  - number: '120'
     text: |-
       Artikel 120 Een beding van een verzekeraar die een ziektekostenverzekering ter aanvulling van de zorgverzekering
       aanbiedt, inhoudende dat de ziektekostenverzekering eindigt of door de verzekeraar mag worden opgezegd indien met
       of ten behoeve van de verzekerde een zorgverzekering met een andere zorgverzekeraar wordt gesloten, is nietig.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel120
-  - number: Artikel 121
+  - number: '121'
     text: |-
       Artikel 121 De bevoegdheden die [artikel 91 van de Comptabiliteitswet 2001](jci1.3:c:BWBR0013891&artikel=91) de
       Algemene Rekenkamer verschaft ten aanzien van rechtspersonen als bedoeld in het eerste lid, onderdeel d, van dat
       artikel, gelden niet ten aanzien van de wijze waarop zorgverzekeraars de opbrengst van bij of krachtens deze wet
       ingestelde heffingen aanwenden.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel121
-  - number: Artikel 122
+  - number: '122'
     text: |-
       Artikel 122 Een zorgverzekeraar wordt, voor zover deze niet kan worden aangemerkt als onderneming in de zin van
       artikel 81 van het Verdrag tot oprichting van de Europese Gemeenschap, voor de toepassing van de
       [Mededingingswet](jci1.3:c:BWBR0008691) aangemerkt als onderneming in de zin van [artikel 1 van die
       wet](jci1.3:c:BWBR0008691&artikel=1) .
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel122
-  - number: Artikel 123
+  - number: '123'
     text: |-
       Artikel 123 Bij algemene maatregel van bestuur kunnen, zo nodig in afwijking van deze wet, tijdelijke voorzieningen
       worden getroffen voor het geval het College zorgverzekeringen of het College toezicht zijn uit de wet
       voortvloeiende verplichtingen niet naar behoren nakomt.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel123
-  - number: Artikel 124
+  - number: '124'
     text: |-
       Artikel 124 De voordracht voor een krachtens de artikelen 11, derde of vierde lid , 22, vijfde lid , en 32, tweede
       lid , vast te stellen algemene maatregel van bestuur wordt niet eerder gedaan dan vier weken nadat het ontwerp aan
       beide kamers der Staten-Generaal is overgelegd.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel124
-  - number: Artikel 125
+  - number: '125'
     text: |-
       Artikel 125 Onze Minister zendt binnen vijf jaar na de inwerkingtreding van deze wet aan de Staten-Generaal een
       verslag over de doeltreffendheid en de effecten van deze wet in de praktijk.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel125
-  - number: Artikel 126
+  - number: '126'
     text: |-
       Artikel 126 Voor de uitvoering van deze wet kunnen bij algemene maatregel van bestuur nadere regels worden gesteld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel126
-  - number: Artikel 127
+  - number: '127'
     text: |-
       Artikel 127 De artikelen van deze wet treden in werking op een bij koninklijk besluit te bepalen tijdstip, dat voor
       de verschillende artikelen of onderdelen daarvan verschillend kan worden vastgesteld.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel127
-  - number: Artikel 128
+  - number: '128'
     text: |-
       Artikel 128 Deze wet wordt aangehaald als: Zorgverzekeringswet.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel128

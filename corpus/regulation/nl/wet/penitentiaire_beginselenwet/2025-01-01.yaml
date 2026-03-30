@@ -7,7 +7,7 @@ bwb_id: BWBR0009709
 url: https://wetten.overheid.nl/BWBR0009709/2025-01-01
 name: '#wet_naam'
 articles:
-  - number: Artikel 1
+  - number: '1'
     text: |-
       Artikel 1 Voor de toepassing van deze wet en de daarop rustende bepalingen wordt verstaan onder:
 
@@ -74,7 +74,7 @@ articles:
                 - operation: IN
                   subject: $detentiestatus
                   value: $geldige_detentiestatussen
-  - number: Artikel 2
+  - number: '2'
     text: |-
       Artikel 2 1. De tenuitvoerlegging van een vrijheidsstraf of vrijheidsbenemende maatregel vindt, voor zover niet bij of
       k
@@ -95,7 +95,7 @@ articles:
       van
        de handhaving van de orde of de veiligheid in de inrichting noodzakelijk zijn.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel2
-  - number: Artikel 3
+  - number: '3'
     text: |-
       Artikel 3 1. Onze Minister wijst penitentiaire inrichtingen aan.
 
@@ -115,7 +115,7 @@ articles:
       regime
        in een inrichting.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel3
-  - number: Artikel 4
+  - number: '4'
     text: |-
       Artikel 4 1. Een penitentiair programma is een samenstel van activiteiten waaraan wordt deelgenomen door personen ter
       ve
@@ -143,7 +143,7 @@ articles:
       6. Het tweede lid is niet van toepassing op de maatregel tot plaatsing in een inrichting voor de opvang van verslaafden
       als bedoeld in [artikel 38m van het Wetboek van Strafrecht](jci1.3:c:BWBR0001854&artikel=38m).
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel4
-  - number: Artikel 5
+  - number: '5'
     text: |-
       Artikel 5 1. De directeur stelt, in aanvulling op de bij of krachtens deze wet gegeven regels en met inachtneming van
       he
@@ -164,13 +164,13 @@ articles:
 
       4. Aan de directeur is voorbehouden de beslissing omtrent: a. b. c. d. e. f. g. h.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel5
-  - number: Artikel 6
+  - number: '6'
     text: |-
       Artikel 6 De Raad behandelt beroepschriften ingevolge de [hoofdstukken XII](onbekend), [XIII](onbekend) en
       [XV](onbekend
       ), en[ hoofdstuk 7 van de Penitentiaire maatregel](jci1.3:c:BWBR0009398&hoofdstuk=7).
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel6
-  - number: Artikel 7
+  - number: '7'
     text: |-
       Artikel 7 1. Bij elke inrichting dan wel afdeling wordt door Onze Minister een commissie van toezicht ingesteld.
 
@@ -183,14 +183,14 @@ articles:
       d
       e commissie, de benoeming en het ontslag van haar leden alsmede over de werkzaamheden van de maandcommissaris.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel7
-  - number: Artikel 8
+  - number: '8'
     text: |-
       Artikel 8 1. Onze Minister bepaalt de bestemming van elke inrichting of afdeling ingevolge de artikelen 9 tot en met 14
       en stelt regels voor de plaatsing en overplaatsing van de gedetineerden.
 
       2. Onze Minister kan delen van een inrichting als afdeling met een aparte bestemming aanwijzen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel8
-  - number: Artikel 9
+  - number: '9'
     text: |-
       Artikel 9 1. Inrichtingen zijn te onderscheiden in huizen van bewaring, gevangenissen en inrichtingen voor de opvang
       van
@@ -202,7 +202,7 @@ articles:
 
       3. Onze Minister wijst in elk arrondissement ten minste één inrichting of afdeling aan als huis van bewaring.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel9
-  - number: Artikel 10
+  - number: '10'
     text: |-
       Artikel 10 1. Gevangenissen zijn bestemd voor de opneming van personen die tot vrijheidsstraf zijn veroordeeld. Tot
       geva
@@ -220,7 +220,7 @@ articles:
       n
       aar de lengte van de straf of het strafrestant van de daarin op te nemen tot vrijheidsstraf veroordeelden.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel10
-  - number: Artikel 10a
+  - number: 10a
     text: |-
       Artikel 10a 1. Inrichtingen voor de opvang van verslaafden zijn bestemd voor de opvang van personen aan wie een
       maatrege
@@ -230,7 +230,7 @@ articles:
       h
       uis van bewaring aanwijzen als een inrichting voor de opvang van verslaafden.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel10a
-  - number: Artikel 11
+  - number: '11'
     text: |-
       Artikel 11 1. Mannelijke en vrouwelijke gedetineerden worden gescheiden ondergebracht.
 
@@ -246,7 +246,7 @@ articles:
       stel
       len gezamenlijk aan activiteiten deel te nemen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel11
-  - number: Artikel 12
+  - number: '12'
     text: |-
       Artikel 12 1. Onze Minister wijst de inrichtingen of de afdelingen aan waarin kinderen tot een in de aanwijzing
       aangegev
@@ -280,7 +280,7 @@ articles:
       di
       e kosten kan voorzien.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel12
-  - number: Artikel 13
+  - number: '13'
     text: |-
       Artikel 13 1. Inrichtingen of afdelingen daarvan zijn naar de mate van beveiliging als volgt te onderscheiden en aan te
       duiden: a. b. c. d. e.
@@ -292,7 +292,7 @@ articles:
       afd
       eling als bedoeld in het eerste lid in aanmerking te komen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel13
-  - number: Artikel 14
+  - number: '14'
     text: |-
       Artikel 14 1. Inrichtingen of afdelingen daarvan kunnen door Onze Minister worden bestemd voor de onderbrenging van
       gede
@@ -306,7 +306,7 @@ articles:
       afd
       eling als bedoeld in het eerste lid in aanmerking te komen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel14
-  - number: Artikel 15
+  - number: '15'
     text: |-
       Artikel 15 1. De personen ten aanzien van wie de tenuitvoerlegging van vrijheidsstraffen of vrijheidsbenemende
       maatregel
@@ -354,7 +354,7 @@ articles:
       i
       n het eerste onderscheidenlijk het vijfde lid.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel15
-  - number: Artikel 15a
+  - number: 15a
     text: |-
       Artikel 15a In afwijking van artikel 15, eerste lid, eerste volzin, kan de selectiefunctionaris bepalen dat een persoon
       ten aanzien van wie de tenuitvoerlegging van een vrijheidsstraf of een vrijheidsbenemende maatregel is gelast en die in
@@ -363,7 +363,7 @@ articles:
       politiecellencomplex
       en zijn vastgesteld.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel15a
-  - number: Artikel 16
+  - number: '16'
     text: |-
       Artikel 16 1. De directeur bepaalt de wijze van onderbrenging van de gedetineerden die overeenkomstig artikel 15 zijn
       ge
@@ -382,7 +382,7 @@ articles:
 
       5. Onze Minister stelt regels omtrent de eisen waaraan een verblijfsruimte als bedoeld in het tweede lid moet voldoen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel16
-  - number: Artikel 17
+  - number: '17'
     text: |-
       Artikel 17 1. De betrokkene heeft het recht een met redenen omkleed bezwaarschrift in te dienen tegen de beslissing: a.
       b.
@@ -406,7 +406,7 @@ articles:
       kenbaar
        te maken.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel17
-  - number: Artikel 18
+  - number: '18'
     text: |-
       Artikel 18 1. De betrokkene heeft het recht bij de selectiefunctionaris een met redenen omkleed verzoekschrift in te
       die
@@ -418,7 +418,7 @@ articles:
       der
       gelijk verzoekschrift worden ingediend.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel18
-  - number: Artikel 18a
+  - number: 18a
     text: |-
       Artikel 18a 1. De directeur draagt zorg dat zo spoedig mogelijk en in ieder geval binnen een maand na binnenkomst van
       de
@@ -430,11 +430,11 @@ articles:
       moet
        voldoen en de voorschriften die bij de vaststelling of een wijziging van het plan in acht genomen moeten worden.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel18a
-  - number: Artikel 18b
+  - number: 18b
     text: |-
       Artikel 18b De directeur draagt zorg dat de opvang overeenkomstig het plan van opvang plaatsvindt.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel18b
-  - number: Artikel 18c
+  - number: 18c
     text: |-
       Artikel 18c 1. De gedetineerde heeft recht op een periodieke evaluatie door de directeur van het verloop van de opvang.
       Deze evaluatie vindt ten minste eens per zes maanden plaats.
@@ -457,7 +457,7 @@ articles:
       die
       nt te worden gevolgd en de eisen die aan het verslag daarvan ten minste dienen te worden gesteld.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel18c
-  - number: Artikel 19
+  - number: '19'
     text: |-
       Artikel 19 1. De tenuitvoerlegging van een vrijheidsstraf of vrijheidsbenemende maatregel in een inrichting vindt
       plaats
@@ -465,7 +465,7 @@ articles:
 
       2. Onze Minister bepaalt ten aanzien van elke inrichting of afdeling de mate van gemeenschap.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel19
-  - number: Artikel 20
+  - number: '20'
     text: |-
       Artikel 20 1. In een regime van algehele gemeenschap verblijven gedetineerden tezamen in woon- en werkruimten of nemen
       g
@@ -485,13 +485,13 @@ articles:
       o
       p.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel20
-  - number: Artikel 21
+  - number: '21'
     text: |-
       Artikel 21 In een regime van beperkte gemeenschap worden gedetineerden in de gelegenheid gesteld gemeenschappelijk aan
       a
       ctiviteiten deel te nemen. Overigens houden zij zich in de voor hen persoonlijk bestemde verblijfsruimte op.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel21
-  - number: Artikel 22
+  - number: '22'
     text: |-
       Artikel 22 1. In een individueel regime worden gedetineerden in de gelegenheid gesteld aan activiteiten deel te nemen.
       O
@@ -500,7 +500,7 @@ articles:
       2. In een individueel regime bepaalt de directeur de mate waarin de gedetineerde in staat wordt gesteld individueel dan
       wel gemeenschappelijk aan activiteiten deel te nemen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel22
-  - number: Artikel 23
+  - number: '23'
     text: |-
       Artikel 23 1. De directeur kan een gedetineerde uitsluiten van deelname aan een of meer activiteiten: a. b. c. d.
 
@@ -516,7 +516,7 @@ articles:
        treffen
       .
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel23
-  - number: Artikel 24
+  - number: '24'
     text: |-
       Artikel 24 1. De directeur is bevoegd een gedetineerde in afzondering te plaatsen op de gronden genoemd in artikel 23,
       e
@@ -556,7 +556,7 @@ articles:
       7. Onze Minister stelt nadere regels omtrent het verblijf in en de inrichting van de afzonderingscel. Deze betreffen in
       elk geval de rechten die tijdens het verblijf in de afzonderingscel aan de gedetineerde toekomen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel24
-  - number: Artikel 25
+  - number: '25'
     text: |-
       Artikel 25 1. Indien de tenuitvoerlegging van de afzondering in de inrichting of afdeling waarin zij is opgelegd op
       erns
@@ -578,7 +578,7 @@ articles:
       ingevol
       ge het tweede onderscheidenlijk het derde lid.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel25
-  - number: Artikel 26
+  - number: '26'
     text: |-
       Artikel 26 1. Een gedetineerde kan, ingevolge het derde en het vierde lid, worden toegestaan de inrichting te verlaten.
 
@@ -601,13 +601,13 @@ articles:
       aange
       wezen ambtenaren of medewerkers bevelen dat de betrokken persoon naar de daartoe bestemde plaats wordt overgebracht.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel26
-  - number: Artikel 27
+  - number: '27'
     text: |-
       Artikel 27 Het recht van de gedetineerde op onaantastbaarheid van zijn lichaam, zijn kleding en de van zijn lichaam
       afge
       scheiden stoffen en zijn verblijfsruimte kan overeenkomstig de bepalingen van dit hoofdstuk worden beperkt.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel27
-  - number: Artikel 28
+  - number: '28'
     text: |-
       Artikel 28 1. De directeur kan de gedetineerde verplichten een legitimatiebewijs bij zich te dragen en dit op verzoek
       va
@@ -617,7 +617,7 @@ articles:
       vi
       ngerafdruk of het afnemen van een handscan.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel28
-  - number: Artikel 29
+  - number: '29'
     text: |-
       Artikel 29 1. De directeur is bevoegd een gedetineerde bij binnenkomst of bij het verlaten van de inrichting,
       voorafgaan
@@ -648,7 +648,7 @@ articles:
       feite
       n.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel29
-  - number: Artikel 30
+  - number: '30'
     text: |-
       Artikel 30 1. De directeur kan, indien dit noodzakelijk is in het belang van de handhaving van de orde of de veiligheid
       in de inrichting dan wel in verband met de beslissing tot plaatsing of overplaatsing dan wel in verband met de
@@ -662,7 +662,7 @@ articles:
       de
        afgestane urine te laten plaatsvinden. Artikel 29, derde lid, is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel30
-  - number: Artikel 31
+  - number: '31'
     text: |-
       Artikel 31 1. De directeur kan bepalen dat een gedetineerde in het lichaam wordt onderzocht, indien dit noodzakelijk is
       ter afwending van ernstig gevaar voor de handhaving van de orde of de veiligheid in de inrichting dan wel voor de
@@ -681,7 +681,7 @@ articles:
       bev
       oegd deze in beslag te nemen. Artikel 29, vierde lid, laatste volzin, is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel31
-  - number: Artikel 32
+  - number: '32'
     text: |-
       Artikel 32 1. De directeur kan een gedetineerde verplichten te gedogen dat ten aanzien van hem een bepaalde
       geneeskundig
@@ -701,7 +701,7 @@ articles:
       weken na de datum van uitgifte van het Staatsblad waarin hij is geplaatst. Van de plaatsing wordt onverwijld mededeling
       gedaan aan de beide kamers der Staten-Generaal.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel32
-  - number: Artikel 33
+  - number: '33'
     text: |-
       Artikel 33 1. De directeur kan bepalen dat een gedetineerde tijdens de afzondering door bevestiging van mechanische
       midd
@@ -725,7 +725,7 @@ articles:
 
       4. Onze Minister stelt nadere regels omtrent de bevestiging van mechanische middelen aan het lichaam.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel33
-  - number: Artikel 34
+  - number: '34'
     text: |-
       Artikel 34 1. De directeur is bevoegd de verblijfsruimte van een gedetineerde op de aanwezigheid van voorwerpen die
       niet
@@ -733,7 +733,7 @@ articles:
 
       2. Artikel 29, vierde lid, is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel34
-  - number: Artikel 35
+  - number: '35'
     text: |-
       Artikel 35 1. De directeur is bevoegd jegens een gedetineerde geweld te gebruiken dan wel vrijheidsbeperkende middelen
       a
@@ -751,7 +751,7 @@ articles:
 
       4. Onze Minister stelt nadere regels omtrent het gebruik van geweld en de aanwending van vrijheidsbeperkende middelen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel35
-  - number: Artikel 36
+  - number: '36'
     text: |-
       Artikel 36 1. De gedetineerde heeft, behoudens de overeenkomstig het tweede tot en met het vierde lid te stellen
       beperki
@@ -786,7 +786,7 @@ articles:
       geste
       ld met het oog op de voorkoming of opsporing van strafbare feiten.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel36
-  - number: Artikel 37
+  - number: '37'
     text: |-
       Artikel 37 1. Artikel 36, derde en vierde lid, is niet van toepassing op brieven, door de gedetineerde gericht aan of
       af
@@ -801,7 +801,7 @@ articles:
       3. Onze Minister kan nadere regels stellen omtrent de wijze van verzending van brieven aan en door de in het eerste lid
       genoemde personen en instanties.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel37
-  - number: Artikel 38
+  - number: '38'
     text: |-
       Artikel 38 1. De gedetineerde heeft het recht gedurende ten minste één uur per week op in de huisregels vastgestelde
       tij
@@ -854,7 +854,7 @@ articles:
       rechtsbijstand
       verlener bij derden bekend kunnen worden.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel38
-  - number: Artikel 39
+  - number: '39'
     text: |-
       Artikel 39 1. De gedetineerde heeft, behoudens de overeenkomstig het tweede tot en met het vierde lid te stellen
       beperki
@@ -889,7 +889,7 @@ articles:
       telefoongesprek
        voert of wenst te voeren vast te stellen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel39
-  - number: Artikel 40
+  - number: '40'
     text: |-
       Artikel 40 1. De directeur kan toestemming geven voor het voeren van een gesprek tussen de gedetineerde en een
       vertegenw
@@ -907,7 +907,7 @@ articles:
       lid
       , is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel40
-  - number: Artikel 41
+  - number: '41'
     text: |-
       Artikel 41 1. De gedetineerde heeft het recht zijn godsdienst of levensovertuiging, individueel of in gemeenschap met
       an
@@ -927,7 +927,7 @@ articles:
       verzorgi
       ng en op de aanstelling van geestelijke verzorgers bij een inrichting.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel41
-  - number: Artikel 42
+  - number: '42'
     text: |-
       Artikel 42 1. De gedetineerde heeft recht op verzorging door een aan de inrichting verbonden arts of diens vervanger.
 
@@ -943,7 +943,7 @@ articles:
       gede
       tineerden zijn genomen door de aan de inrichting verbonden arts of diens plaatsvervanger.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel42
-  - number: Artikel 43
+  - number: '43'
     text: |-
       Artikel 43 1. De gedetineerde heeft recht op sociale verzorging en hulpverlening.
 
@@ -957,7 +957,7 @@ articles:
       t
       enuitvoerlegging van de vrijheidsbeneming.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel43
-  - number: Artikel 44
+  - number: '44'
     text: |-
       Artikel 44 1. De directeur draagt zorg dat aan de gedetineerde voeding, noodzakelijke kleding en schoeisel worden
       verstr
@@ -983,7 +983,7 @@ articles:
       wel
       ke door de directeur ter beschikking worden gesteld.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel44
-  - number: Artikel 45
+  - number: '45'
     text: |-
       Artikel 45 1. In de huisregels kan worden bepaald dat het bezit van bepaalde soorten voorwerpen binnen de inrichting of
       een bepaalde afdeling daarvan verboden is, indien dit noodzakelijk is in het belang van de handhaving van de orde of de
@@ -1021,7 +1021,7 @@ articles:
       o
       psporing van strafbare feiten.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel45
-  - number: Artikel 46
+  - number: '46'
     text: |-
       Artikel 46 1. Het bezit van contant geld door de gedetineerden in de inrichting of een afdeling is verboden, tenzij in
       d
@@ -1037,7 +1037,7 @@ articles:
       o
       f door middel van zijn rekeningcourant mag beschikken.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel46
-  - number: Artikel 47
+  - number: '47'
     text: |-
       Artikel 47 1. De gedetineerde heeft recht op deelname aan de in de inrichting beschikbare arbeid.
 
@@ -1056,7 +1056,7 @@ articles:
       v
       aststelling en uitbetaling van het arbeidsloon.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel47
-  - number: Artikel 48
+  - number: '48'
     text: |-
       Artikel 48 1. De gedetineerde heeft recht op het kennis nemen van het nieuws, voor eigen rekening, en het wekelijks
       gebr
@@ -1082,7 +1082,7 @@ articles:
       kos
       ten van deze activiteiten alsmede de vooropleiding van de gedetineerde en diens vorderingen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel48
-  - number: Artikel 49
+  - number: '49'
     text: |-
       Artikel 49 1. De gedetineerde heeft recht op recreatie en dagelijks verblijf in de buitenlucht, voor zover zijn
       gezondhe
@@ -1096,7 +1096,7 @@ articles:
       buite
       nlucht te verblijven.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel49
-  - number: Artikel 50
+  - number: '50'
     text: |-
       Artikel 50 1. Indien een ambtenaar of medewerker constateert dat een gedetineerde betrokken is bij feiten die
       onverenigb
@@ -1116,7 +1116,7 @@ articles:
       verslag,
        bedoeld in het eerste lid, is opgemaakt.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel50
-  - number: Artikel 51
+  - number: '51'
     text: |-
       Artikel 51 1. De directeur kan wegens het begaan van feiten als bedoeld in artikel 50, eerste lid, de navolgende
       discipl
@@ -1144,7 +1144,7 @@ articles:
       of
        slechts ten dele ten uitvoer wordt gelegd.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel51
-  - number: Artikel 52
+  - number: '52'
     text: |-
       Artikel 52 1. Indien de tenuitvoerlegging van de opsluiting in een strafcel in de inrichting of afdeling waarin zij is
       o
@@ -1156,7 +1156,7 @@ articles:
 
       3. Onze Minister stelt nadere regels omtrent de procedure van overplaatsing ingevolge het tweede lid.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel52
-  - number: Artikel 53
+  - number: '53'
     text: |-
       Artikel 53 1. Een straf kan geheel of ten dele voorwaardelijk worden opgelegd. De proeftijd bedraagt ten hoogste drie
       ma
@@ -1176,7 +1176,7 @@ articles:
 
       4. De directeur kan een onvoorwaardelijke straf geheel of ten dele omzetten in een voorwaardelijke straf.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel53
-  - number: Artikel 54
+  - number: '54'
     text: |-
       Artikel 54 1. Van elke strafoplegging dan wel wijziging daarvan houdt de directeur aantekening.
 
@@ -1184,7 +1184,7 @@ articles:
       aan
       tekening.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel54
-  - number: Artikel 55
+  - number: '55'
     text: |-
       Artikel 55 1. De gedetineerde aan wie de disciplinaire straf van opsluiting, bedoeld in artikel 51, eerste lid, onder
       a,
@@ -1203,7 +1203,7 @@ articles:
       gev
       al de rechten die tijdens het verblijf in de strafcel aan de gedetineerde toekomen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel55
-  - number: Artikel 56
+  - number: '56'
     text: |-
       Artikel 56 1. De directeur draagt zorg dat de gedetineerde bij binnenkomst in de inrichting, schriftelijk en zoveel
       moge
@@ -1216,7 +1216,7 @@ articles:
       verteg
       enwoordiger van zijn land van zijn detentie op de hoogte te laten stellen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel56
-  - number: Artikel 57
+  - number: '57'
     text: |-
       Artikel 57 1. De directeur stelt de gedetineerde in de gelegenheid te worden gehoord, zoveel mogelijk in een voor hem
       be
@@ -1228,7 +1228,7 @@ articles:
 
       3. Toepassing van het eerste lid, onder b, c, d, e, f en g, kan achterwege blijven indien: a. b.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel57
-  - number: Artikel 58
+  - number: '58'
     text: |-
       Artikel 58 1. De directeur geeft de gedetineerde van elke beslissing als bedoeld in artikel 57, eerste lid, onverwijld
       s
@@ -1251,7 +1251,7 @@ articles:
        de mogelijkheid tot het doen van een verzoek aan de voorzitter van de beroepscommissie om hangende de uitspraak op het
       klaagschrift de tenuitvoerlegging van de beslissing geheel of gedeeltelijk te schorsen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel58
-  - number: Artikel 59
+  - number: '59'
     text: |-
       Artikel 59 Bij of krachtens algemene maatregel van bestuur worden regels gesteld omtrent de aanleg van dossiers. In elk
       geval betreffen deze de omschrijving van gedetineerden over wie een dossier moet worden aangelegd, de aard van de
@@ -1259,7 +1259,7 @@ articles:
        vervatte informatie, het recht op inzage of afschrift van het dossier door de betrokken gedetineerde en de beperkingen
       daarop en de termijn gedurende welke alsmede de wijze waarop het dossier bewaard blijft.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel59
-  - number: Artikel 60
+  - number: '60'
     text: |-
       Artikel 60 1. Een gedetineerde kan bij de beklagcommissie beklag doen over een hem betreffende door of namens de
       directe
@@ -1274,7 +1274,7 @@ articles:
       3. De directeur draagt zorg dat een gedetineerde die beklag wenst te doen daartoe zo spoedig mogelijk in de gelegenheid
       wordt gesteld.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel60
-  - number: Artikel 61
+  - number: '61'
     text: |-
       Artikel 61 1. De gedetineerde doet beklag door de indiening van een klaagschrift bij de beklagcommissie bij de
       inrichtin
@@ -1301,7 +1301,7 @@ articles:
       on
       tvankelijk, indien redelijkerwijs niet kan worden geoordeeld dat de gedetineerde in verzuim is geweest.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel61
-  - number: Artikel 62
+  - number: '62'
     text: |-
       Artikel 62 1. Het klaagschrift wordt behandeld door een door de commissie van toezicht benoemde beklagcommissie,
       bestaan
@@ -1325,7 +1325,7 @@ articles:
       Nederland
        geldend verdrag.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel62
-  - number: Artikel 63
+  - number: '63'
     text: |-
       Artikel 63 1. De secretaris van de beklagcommissie zendt de directeur een afschrift van het klaagschrift toe.
 
@@ -1345,7 +1345,7 @@ articles:
       mededeling
        aan de directeur.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel63
-  - number: Artikel 64
+  - number: '64'
     text: |-
       Artikel 64 1. De beklagcommissie stelt de klager en de directeur in de gelegenheid omtrent het klaagschrift mondeling
       op
@@ -1369,7 +1369,7 @@ articles:
       inli
       chtingen worden ingewonnen, zijn het tweede en derde lid, tweede volzin, van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel64
-  - number: Artikel 65
+  - number: '65'
     text: |-
       Artikel 65 1. De klager heeft het recht zich te doen bijstaan door een rechtsbijstandverlener of een andere
       vertrouwensp
@@ -1396,7 +1396,7 @@ articles:
       secretari
       s wordt ondertekend. Bij verhindering van een van hen wordt de reden daarvan in het verslag vermeld.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel65
-  - number: Artikel 66
+  - number: '66'
     text: |-
       Artikel 66 1. Hangende de uitspraak op het klaagschrift kan de voorzitter van de beroepscommissie op verzoek van de
       klag
@@ -1406,7 +1406,7 @@ articles:
 
       2. De voorzitter doet hiervan onverwijld mededeling aan de directeur en de klager.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel66
-  - number: Artikel 67
+  - number: '67'
     text: |-
       Artikel 67 1. De beklagcommissie doet zo spoedig mogelijk, doch in ieder geval binnen een termijn van vier weken te
       reke
@@ -1463,7 +1463,7 @@ articles:
       bepaalde
        van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel67
-  - number: Artikel 68
+  - number: '68'
     text: |-
       Artikel 68 1. De uitspraak van de beklagcommissie strekt tot gehele of gedeeltelijke: a. b. c.
 
@@ -1484,7 +1484,7 @@ articles:
        tegemo
       etkoming, die geldelijk van aard kan zijn, vast.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel68
-  - number: Artikel 69
+  - number: '69'
     text: |-
       Artikel 69 1. Tegen de uitspraak van de beklagcommissie kunnen de directeur en de klager beroep instellen door het
       indie
@@ -1504,7 +1504,7 @@ articles:
        verst
       ande dat de beroepscommissie kan bepalen dat: a. b. c.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel69
-  - number: Artikel 70
+  - number: '70'
     text: |-
       Artikel 70 1. Het indienen van een beroepschrift schorst de tenuitvoerlegging van de uitspraak van de beklagcommissie
       ni
@@ -1516,7 +1516,7 @@ articles:
       beklag
       commissie geheel of gedeeltelijk schorsen. Hij doet hiervan onverwijld mededeling aan de directeur en de klager.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel70
-  - number: Artikel 71
+  - number: '71'
     text: |-
       Artikel 71 1. De beroepscommissie doet zo spoedig mogelijk uitspraak.
 
@@ -1529,7 +1529,7 @@ articles:
       m
       et vijfde volzin, vierde en zevende lid, van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel71
-  - number: Artikel 72
+  - number: '72'
     text: |-
       Artikel 72 1. De betrokkene heeft het recht tegen de beslissing van de selectiefunctionaris op het bezwaar- of
       verzoeksc
@@ -1547,7 +1547,7 @@ articles:
       comm
       issie, bedoeld in artikel 73, eerste lid.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel72
-  - number: Artikel 73
+  - number: '73'
     text: |-
       Artikel 73 1. Het beroepschrift wordt behandeld door een door de Raad benoemde commissie van drie leden, die wordt
       bijge
@@ -1571,13 +1571,13 @@ articles:
       a.
        b. c.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel73
-  - number: Artikel 74
+  - number: '74'
     text: |-
       Artikel 74 De directeur draagt zorg voor een regelmatig overleg met gedetineerden over zaken die rechtstreeks de
       detenti
       e raken.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel74
-  - number: Artikel 75
+  - number: '75'
     text: |-
       Artikel 75 1. De in de artikelen 17 en 18, alsmede in de hoofdstukken XI tot en met XIII aan de gedetineerde toegekende
       rechten kunnen, behoudens ingeval de selectiefunctionaris of beklag- of beroepscommissie van oordeel is dat
@@ -1586,7 +1586,7 @@ articles:
 
       2. De directeur draagt zorg dat de in het eerste lid genoemde personen op deze rechten opmerkzaam worden gemaakt.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel75
-  - number: Artikel 76
+  - number: '76'
     text: |-
       Artikel 76 1. De plaatsing van een tot vrijheidsstraf veroordeelde in een justitiële inrichting voor verpleging van
       ter
@@ -1607,7 +1607,7 @@ articles:
       gestelden](jci1.3:c:BWBR00
       08765&hoofdstuk=XVI) is van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel76
-  - number: Artikel 77
+  - number: '77'
     text: |-
       Artikel 77 1. Een onveroordeelde die met toepassing van [artikel 196](jci1.3:c:BWBR0001903&artikel=196),
       [317](jci1.3:c:
@@ -1627,65 +1627,65 @@ articles:
        e
       en huis van bewaring verblijft, indien de inrichting tot klinische observatie bestemd tevens huis van bewaring is.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel77
-  - number: Artikel 78
+  - number: '78'
     text: |-
       Artikel 78 Voor zover de regels van de krijgsmacht daartoe aanleiding geven kan bij militaire gedetineerden van de
       bepal
       ingen in deze wet worden afgeweken.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel78
-  - number: Artikel 79
+  - number: '79'
     text: |-
       Artikel 79 Wijzigt het Wetboek van Strafrecht.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel79
-  - number: Artikel 80
+  - number: '80'
     text: |-
       Artikel 80 Wijzigt het Wetboek van Strafvordering.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel80
-  - number: Artikel 81
+  - number: '81'
     text: |-
       Artikel 81 Wijzigt de Wet op de rechterlijke organisatie.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel81
-  - number: Artikel 82
+  - number: '82'
     text: |-
       Artikel 82 Wijzigt de Wet op de economische delicten.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel82
-  - number: Artikel 83
+  - number: '83'
     text: |-
       Artikel 83 Wijzigt de Wet bijzondere opnemingen in psychiatrische ziekenhuizen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel83
-  - number: Artikel 84
+  - number: '84'
     text: |-
       Artikel 84 Wijzigt de Invoeringswet Wetboek van Strafvordering.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel84
-  - number: Artikel 85
+  - number: '85'
     text: |-
       Artikel 85 Wijzigt de Wet op de rechtsbijstand.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel85
-  - number: Artikel 86
+  - number: '86'
     text: |-
       Artikel 86 Wijzigt de Arbeidsomstandighedenwet.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel86
-  - number: Artikel 87
+  - number: '87'
     text: |-
       Artikel 87 Wijzigt de Wet ziekenhuisvoorzieningen.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel87
-  - number: Artikel 88
+  - number: '88'
     text: |-
       Artikel 88 Wijzigt de Wet op het voortgezet onderwijs.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel88
-  - number: Artikel 89
+  - number: '89'
     text: |-
       Artikel 89 Wijzigt de Oorlogswet voor Nederland.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel89
-  - number: Artikel 90
+  - number: '90'
     text: |-
       Artikel 90 Wijzigt de Beginselenwet verpleging ter beschikking gestelden.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel90
-  - number: Artikel 91
+  - number: '91'
     text: |-
       Artikel 91 De Beginselenwet gevangeniswezen wordt ingetrokken, met uitzondering van de artikelen 2 tot en met 5.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel91
-  - number: Artikel 92
+  - number: '92'
     text: |-
       Artikel 92 De regels en de bestemmingen van gevangenissen en huizen van bewaring vastgesteld krachtens [artikel 22 van
       h
@@ -1693,18 +1693,18 @@ articles:
       we
       t, worden geacht te zijn vastgesteld krachtens de toepasselijke bepalingen van deze wet.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel92
-  - number: Artikel 93
+  - number: '93'
     text: |-
       Artikel 93 Deze wet heeft geen gevolgen voor klaagschriften of beroepschriften die zijn ingediend voor de
       inwerkingtredi
       ng van deze wet.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel93
-  - number: Artikel 94
+  - number: '94'
     text: |-
       Artikel 94 Deze wet treedt in werking op een bij koninklijk besluit te bepalen tijdstip. Bij koninklijk besluit kan een
       ander tijdstip worden vastgesteld waarop artikel 76 in werking treedt.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel94
-  - number: Artikel 95
+  - number: '95'
     text: |-
       Artikel 95 Deze wet wordt aangehaald als: Penitentiaire beginselenwet.
     url: https://wetten.overheid.nl/BWBR0009709/2025-01-01#Artikel95
