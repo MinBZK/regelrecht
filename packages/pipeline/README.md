@@ -4,7 +4,7 @@ PostgreSQL-backed job queue and law status tracking for the RegelRecht processin
 
 ## What is this?
 
-The pipeline crate provides the infrastructure that orchestrates the law processing workflow: harvesting laws from wetten.nl and enriching them with machine-readable interpretations. It sits between the [Harvester](../harvester/) and the Corpus Juris in the [system architecture](../../doc/architecture/system-overview.md).
+The pipeline crate provides the infrastructure that orchestrates the law processing workflow: harvesting laws from wetten.nl and enriching them with machine-readable interpretations. It sits between the [Harvester](../harvester/) and the Corpus Juris in the [system architecture](../../docs/architecture/overview.md).
 
 ```
 wetten.nl ──→ [Harvester] ──→ [Pipeline: job queue] ──→ [Corpus Juris]
@@ -26,7 +26,7 @@ Laws are processed in two stages — **harvest** (download + convert from wetten
 
 ## Architecture fit
 
-In the [C4 container diagram](../../doc/architecture/system-overview.md), the pipeline is part of the **CI/CD Pipeline** layer. It coordinates the Harvester and future enrichment steps:
+In the [C4 container diagram](../../docs/architecture/overview.md), the pipeline is part of the **CI/CD Pipeline** layer. It coordinates the Harvester and future enrichment steps:
 
 | Component | Role |
 |-----------|------|
