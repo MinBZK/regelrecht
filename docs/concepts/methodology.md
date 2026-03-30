@@ -20,12 +20,9 @@ flowchart LR
 
 ### Why Execution-First?
 
-1. **Fast feedback**: Errors surface immediately through execution, not after lengthy analysis
-2. **Concrete verification**: Test cases from the Memorie van Toelichting provide ground truth
-3. **Iterative refinement**: Each cycle improves the interpretation based on actual results
-4. **Reverse validation**: After generation, every element is checked against the source text to catch hallucinated logic
+Errors surface immediately through execution rather than after lengthy analysis. Test cases from the Memorie van Toelichting (MvT) provide ground truth. Each cycle improves the interpretation based on actual results. And after generation, every element is checked against the source text to catch hallucinated logic.
 
-## The Three-Step Loop
+## The Loop: Generate, Validate, Reverse-Check
 
 ### 1. Generate
 

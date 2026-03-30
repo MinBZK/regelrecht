@@ -38,8 +38,8 @@ flowchart LR
 |--------|---------|
 | `job_queue.rs` | Job creation, claiming (`FOR UPDATE SKIP LOCKED`), completion, failure with auto-retry |
 | `law_status.rs` | Per-law status tracking through 8 states |
-| `harvest.rs` | Harvest execution — download XML from BWB, convert to YAML |
-| `enrich.rs` | Enrichment execution — call LLM to add `machine_readable` sections |
+| `harvest.rs` | Harvest execution - download XML from BWB, convert to YAML |
+| `enrich.rs` | Enrichment execution - call LLM to add `machine_readable` sections |
 | `worker.rs` | Polling loops for harvest and enrich workers |
 | `models.rs` | Data types: `Job`, `LawEntry`, `JobType`, `JobStatus`, `LawStatusValue`, `Priority` |
 | `config.rs` | Configuration from environment variables |
@@ -59,7 +59,7 @@ stateDiagram-v2
     Processing --> Failed: reap_orphaned_jobs (no retries)
 ```
 
-Workers claim jobs atomically using PostgreSQL's `FOR UPDATE SKIP LOCKED` — multiple workers can safely process jobs concurrently without blocking each other.
+Workers claim jobs atomically using PostgreSQL's `FOR UPDATE SKIP LOCKED` - multiple workers can safely process jobs concurrently without blocking each other.
 
 ### Automatic Retries
 
@@ -128,9 +128,9 @@ The LLM subprocess runs with a stripped environment (allowlisted vars only) for 
 
 Two tables with PostgreSQL enums:
 
-**`jobs`** — Job queue with retry tracking, priority ordering, and JSONB payload/result/progress columns. Partial index `WHERE status = 'pending'` for efficient claiming.
+**`jobs`** - Job queue with retry tracking, priority ordering, and JSONB payload/result/progress columns. Partial index `WHERE status = 'pending'` for efficient claiming.
 
-**`law_entries`** — Per-law status tracking with foreign keys to harvest/enrich jobs and a coverage score (0.0–1.0).
+**`law_entries`** - Per-law status tracking with foreign keys to harvest/enrich jobs and a coverage score (0.0–1.0).
 
 Migrations run automatically at startup using an advisory lock for coordination.
 
@@ -141,9 +141,9 @@ just pipeline-test               # Unit tests (no Docker)
 just pipeline-integration-test   # Integration tests (Docker + testcontainers)
 ```
 
-Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances — no local database setup required.
+Integration tests use `testcontainers` to spin up ephemeral PostgreSQL instances - no local database setup required.
 
 ## Further Reading
 
-- [Harvester](./harvester) — the BWB law downloader used by harvest jobs
-- [Architecture](/architecture/overview) — where the pipeline fits in the system
+- [Harvester](./harvester) - the BWB law downloader used by harvest jobs
+- [Architecture](/guide/architecture) - where the pipeline fits in the system

@@ -4,18 +4,19 @@ The law format is defined by a JSON Schema. All law YAML files in the corpus mus
 
 ## Current Version
 
-The current schema version is **v0.4.0**.
+The current schema version is **v0.5.0**.
 
 Schema URL:
 ```
-https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json
+https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
 ```
 
 ## Version History
 
 | Version | Description |
 |---------|-------------|
-| v0.4.0 | Current — latest stable schema |
+| v0.5.0 | Current - operation set with engine, corpus migration, and WOO support |
+| v0.4.0 | Open terms, implements, legal character, type specifications |
 | v0.3.2 | Minor fixes |
 | v0.3.1 | Patch release |
 | v0.3.0 | Added cross-law references |
@@ -42,4 +43,4 @@ The schema defines:
 - **Cross-references**: `source` blocks pointing to other regulations
 - **Open terms**: `open_terms` and `implements` for delegation
 
-See [Law Format](/guide/law-format) for a guided walkthrough.
+See [Law Format](/concepts/law-format) for a guided walkthrough.

@@ -22,9 +22,9 @@ export default withMermaid(
       logo: '/logo.svg',
       nav: [
         { text: 'Guide', link: '/guide/what-is-regelrecht' },
-        { text: 'Architecture', link: '/architecture/overview' },
-        { text: 'Method', link: '/method/validatiemethode' },
+        { text: 'Concepts', link: '/concepts/how-it-works' },
         { text: 'Components', link: '/components/engine' },
+        { text: 'Operations', link: '/operations/deployment' },
         { text: 'RFCs', link: '/rfcs/' },
         { text: 'Reference', link: '/reference/glossary' },
       ],
@@ -34,8 +34,8 @@ export default withMermaid(
             text: 'Introduction',
             items: [
               { text: 'What is RegelRecht?', link: '/guide/what-is-regelrecht' },
+              { text: 'Architecture Overview', link: '/guide/architecture' },
               { text: 'Getting Started', link: '/guide/getting-started' },
-              { text: 'Law Format', link: '/guide/law-format' },
             ],
           },
           {
@@ -46,31 +46,78 @@ export default withMermaid(
             ],
           },
         ],
-        '/architecture/': [
+        '/concepts/': [
           {
-            text: 'Architecture',
+            text: 'How It Works',
             items: [
-              { text: 'System Overview', link: '/architecture/overview' },
-              { text: 'Methodology', link: '/architecture/methodology' },
+              { text: 'Overview', link: '/concepts/how-it-works' },
+              { text: 'Law Format', link: '/concepts/law-format' },
+              { text: 'Cross-Law References', link: '/concepts/cross-law-references' },
+              { text: 'Inversion of Control', link: '/concepts/inversion-of-control' },
+              { text: 'Hooks and Reactive Execution', link: '/concepts/hooks-and-reactive-execution' },
+              { text: 'Multi-Org Execution', link: '/concepts/multi-org-execution' },
+              { text: 'Federated Corpus', link: '/concepts/federated-corpus' },
             ],
           },
-        ],
-        '/method/': [
           {
-            text: 'Method',
+            text: 'Methodology',
             items: [
-              { text: 'Validatiemethode', link: '/method/validatiemethode' },
+              { text: 'Validation Methodology', link: '/concepts/methodology' },
+              { text: 'Validatiemethode', link: '/concepts/validatiemethode' },
             ],
           },
         ],
         '/components/': [
           {
-            text: 'Components',
+            text: 'Core',
             items: [
               { text: 'Execution Engine', link: '/components/engine' },
+              { text: 'Corpus Library', link: '/components/corpus' },
+            ],
+          },
+          {
+            text: 'Processing',
+            items: [
               { text: 'Pipeline', link: '/components/pipeline' },
               { text: 'Harvester', link: '/components/harvester' },
-              { text: 'Frontend', link: '/components/frontend' },
+            ],
+          },
+          {
+            text: 'User Interfaces',
+            items: [
+              { text: 'Editor', link: '/components/frontend' },
+              { text: 'Editor API', link: '/components/editor-api' },
+              { text: 'Admin Dashboard', link: '/components/admin' },
+              { text: 'Lawmaking Frontend', link: '/components/lawmaking' },
+              { text: 'Landing Page', link: '/components/landing' },
+              { text: 'TUI', link: '/components/tui' },
+            ],
+          },
+          {
+            text: 'Observability',
+            items: [
+              { text: 'Grafana', link: '/components/grafana' },
+            ],
+          },
+        ],
+        '/operations/': [
+          {
+            text: 'Deployment',
+            items: [
+              { text: 'CI/CD Pipeline', link: '/operations/ci-cd' },
+              { text: 'Deployment', link: '/operations/deployment' },
+            ],
+          },
+          {
+            text: 'Corpus Management',
+            items: [
+              { text: 'Adding a Law', link: '/operations/adding-a-law' },
+            ],
+          },
+          {
+            text: 'Contributing',
+            items: [
+              { text: 'Contributing Guide', link: '/operations/contributing' },
             ],
           },
         ],
@@ -99,6 +146,13 @@ export default withMermaid(
             items: [
               { text: 'Glossary', link: '/reference/glossary' },
               { text: 'Schema', link: '/reference/schema' },
+            ],
+          },
+          {
+            text: 'Known Issues',
+            items: [
+              { text: 'Article ID Collision', link: '/reference/issues/issue-article-id-collision' },
+              { text: 'Phased Implementation', link: '/reference/issues/issue-phased-implementation' },
             ],
           },
         ],
