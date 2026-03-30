@@ -1,13 +1,10 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
-import yaml from 'js-yaml';
 import { useDependencies } from '../composables/useDependencies.js';
-import { useDataSourceSchema, resolveLawName } from '../composables/useDataSourceSchema.js';
-import { generateGherkin } from '../gherkin/generator.js';
+import { useDataSourceSchema } from '../composables/useDataSourceSchema.js';
 import { parseValue } from '../gherkin/steps.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioResults from './ScenarioResults.vue';
-import ScenarioVisual from './ScenarioVisual.vue';
 
 const props = defineProps({
   lawId: { type: String, required: true },
@@ -103,94 +100,6 @@ function setRows(group, rows) {
   dataSourceRows.value = { ...dataSourceRows.value, [key]: rows };
 }
 
-// --- Derived law name (only re-computes when lawYaml changes) ---
-const lawName = computed(() => {
-  let mainLaw = null;
-  try {
-    mainLaw = props.lawYaml ? yaml.load(props.lawYaml) : null;
-  } catch {
-    // Invalid YAML — fall back to lawId for the name
-  }
-  if (mainLaw?.name?.startsWith?.('#')) return resolveLawName(mainLaw);
-  return mainLaw?.name || props.lawId;
-});
-
-// --- Gherkin preview ---
-const gherkinPreview = computed(() => {
-  const dataSources = dataSourceGroups.value.map((group) => {
-    const key = `${group.lawId}:${group.articleNumber}`;
-    return {
-      sourceName: `${group.lawId}_art${group.articleNumber}`,
-      keyField: group.keyField,
-      rows: dataSourceRows.value[key] || [],
-    };
-  });
-
-  const outputs = selectedOutputs.value.map((name) => ({
-    name,
-    expectedValue: expectations.value[name] ?? null,
-  }));
-
-  return generateGherkin({
-    lawId: props.lawId,
-    lawName: lawName.value,
-    calculationDate: calculationDate.value,
-    parameters: parameterValues.value,
-    dataSources,
-    selectedOutputs: outputs,
-  });
-});
-
-// --- Visual preview state (adapter for ScenarioVisual) ---
-const builderVisualState = computed(() => {
-  const dsEntries = dataSourceGroups.value.map((group) => {
-    const key = `${group.lawId}:${group.articleNumber}`;
-    const rows = dataSourceRows.value[key] || [];
-    const headers = [group.keyField, ...group.fields.map((f) => f.name)];
-    const uniqueHeaders = [...new Set(headers)];
-    return {
-      sourceName: `${group.lawId}_art${group.articleNumber}`,
-      keyField: group.keyField,
-      headers: uniqueHeaders,
-      rows: rows.map((row) => uniqueHeaders.map((h) => String(row[h] ?? ''))),
-    };
-  });
-
-  const params = Object.entries(parameterValues.value)
-    .filter(([, v]) => v !== '' && v !== null && v !== undefined)
-    .map(([name, value]) => ({ name, value }));
-
-  const assertions = selectedOutputs.value
-    .filter((name) => expectations.value[name] != null && expectations.value[name] !== '')
-    .map((name) => {
-      const exp = expectations.value[name];
-      if (exp === true || exp === 'true') return { assertionType: 'boolean', outputName: name, value: true };
-      if (exp === false || exp === 'false') return { assertionType: 'boolean', outputName: name, value: false };
-      if (typeof exp === 'number' || /^-?\d+(\.\d+)?$/.test(exp)) return { assertionType: 'equals', outputName: name, value: Number(exp) };
-      return { assertionType: 'equalsString', outputName: name, value: String(exp) };
-    });
-
-  return {
-    featureName: lawName.value,
-    background: null,
-    scenarios: [{
-      name: `Test ${props.lawId}`,
-      tags: [],
-      setup: {
-        calculationDate: calculationDate.value || null,
-        dependencies: loadedDeps.value || [],
-        parameters: params,
-        dataSources: dsEntries,
-      },
-      execution: selectedOutputs.value.length > 0
-        ? { outputName: selectedOutputs.value[0], lawId: props.lawId }
-        : null,
-      assertions,
-      unmatchedSteps: [],
-    }],
-  };
-});
-
 // --- Execute ---
 async function execute() {
   if (!props.engine || !props.ready) return;
@@ -283,11 +192,7 @@ const filledSourceCount = computed(() => {
 
 <template>
   <div class="sb-container">
-    <!-- Split pane layout -->
-    <div class="sb-split">
-      <!-- LEFT: Input panel -->
-      <div class="sb-input-panel">
-        <div class="sb-scroll">
+    <div class="sb-scroll">
           <!-- Dependencies loading -->
           <div v-if="depsLoading" class="sb-section sb-deps-loading">
             <div class="sb-section-title">Afhankelijkheden laden</div>
@@ -400,39 +305,26 @@ const filledSourceCount = computed(() => {
               </div>
             </div>
           </div>
-        </div>
+
+      <!-- Execute button -->
+      <div class="sb-execute-bar">
+        <button
+          class="sb-execute-btn"
+          @click="execute"
+          :disabled="!ready || running || selectedOutputs.length === 0"
+          type="button"
+        >
+          {{ running ? 'Bezig...' : 'Uitvoeren \u25B6' }}
+        </button>
       </div>
 
-      <!-- RIGHT: Scenario panel -->
-      <div class="sb-scenario-panel">
-        <div class="sb-scroll">
-          <!-- Visual preview -->
-          <ScenarioVisual
-            :form-state="builderVisualState"
-            :readonly="true"
-          />
-
-          <!-- Execute button -->
-          <div class="sb-execute-bar">
-            <button
-              class="sb-execute-btn"
-              @click="execute"
-              :disabled="!ready || running || selectedOutputs.length === 0"
-              type="button"
-            >
-              {{ running ? 'Bezig...' : 'Uitvoeren \u25B6' }}
-            </button>
-          </div>
-
-          <!-- Results -->
-          <ScenarioResults
-            :result="result"
-            :expectations="expectations"
-            :error="runError"
-            :running="running"
-          />
-        </div>
-      </div>
+      <!-- Results -->
+      <ScenarioResults
+        :result="result"
+        :expectations="expectations"
+        :error="runError"
+        :running="running"
+      />
     </div>
   </div>
 </template>
@@ -441,22 +333,6 @@ const filledSourceCount = computed(() => {
 .sb-container {
   height: 100%;
   font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.sb-split {
-  display: flex;
-  height: 100%;
-}
-
-.sb-input-panel {
-  flex: 1;
-  border-right: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  min-width: 0;
-}
-
-.sb-scenario-panel {
-  flex: 1;
-  min-width: 0;
 }
 
 .sb-scroll {
@@ -612,23 +488,6 @@ const filledSourceCount = computed(() => {
 .sb-expect-input:focus {
   outline: none;
   border-color: #154273;
-}
-
-/* Gherkin preview */
-.sb-gherkin-preview {
-  background: #1e1e2e;
-  min-height: 120px;
-}
-
-.sb-gherkin-code {
-  margin: 0;
-  padding: 16px;
-  color: #cdd6f4;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 /* Execute bar */

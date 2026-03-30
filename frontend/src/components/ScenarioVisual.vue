@@ -40,12 +40,9 @@ function assertionResult(scenarioIndex, assertionIndex) {
   const result = scenarioResult(scenarioIndex);
   if (!result) return null;
 
-  // Find the assertion steps in the results (they're the Then steps)
-  // Count assertion steps to find the right one
   const scenario = props.formState.scenarios[scenarioIndex];
   const effective = getEffectiveSetup(props.formState, scenarioIndex);
 
-  // Count setup steps: date + deps + params + data sources + execution
   let setupStepCount = 0;
   if (effective.calculationDate) setupStepCount++;
   setupStepCount += effective.dependencies.length;
@@ -53,7 +50,6 @@ function assertionResult(scenarioIndex, assertionIndex) {
   setupStepCount += effective.dataSources.length;
   if (scenario.execution) setupStepCount++;
 
-  // Unmatched steps in background and scenario
   const bgUnmatched = props.formState.background?.unmatchedSteps?.length || 0;
   setupStepCount += bgUnmatched;
   setupStepCount += scenario.unmatchedSteps?.length || 0;
@@ -67,34 +63,26 @@ function assertionResult(scenarioIndex, assertionIndex) {
 
 function formatAssertionLabel(assertion) {
   switch (assertion.assertionType) {
-    case 'succeeds':
-      return 'Uitvoering slaagt';
-    case 'fails':
-      return 'Uitvoering mislukt';
-    case 'failsWith':
-      return `Uitvoering mislukt met "${assertion.value}"`;
-    case 'boolean':
-      return `${assertion.outputName} = ${assertion.value ? 'ja' : 'nee'}`;
-    case 'equals':
-      return `${assertion.outputName} = ${assertion.value}`;
-    case 'equalsString':
-      return `${assertion.outputName} = "${assertion.value}"`;
-    case 'null':
-      return `${assertion.outputName} = null`;
-    case 'contains':
-      return `${assertion.outputName} bevat "${assertion.value}"`;
-    default:
-      return `${assertion.assertionType}`;
+    case 'succeeds': return 'Uitvoering slaagt';
+    case 'fails': return 'Uitvoering mislukt';
+    case 'failsWith': return `Fout: "${assertion.value}"`;
+    case 'boolean': return `${assertion.outputName} = ${assertion.value ? 'ja' : 'nee'}`;
+    case 'equals': return `${assertion.outputName} = ${assertion.value}`;
+    case 'equalsString': return `${assertion.outputName} = "${assertion.value}"`;
+    case 'null': return `${assertion.outputName} = null`;
+    case 'contains': return `${assertion.outputName} bevat "${assertion.value}"`;
+    default: return `${assertion.assertionType}`;
   }
 }
 
-function assertionIcon(stepResult) {
-  if (!stepResult) return '\u25CB'; // empty circle
-  switch (stepResult.status) {
+function stepIcon(status) {
+  if (!status) return '\u25CB';
+  switch (status) {
     case 'passed': return '\u2713';
     case 'failed': return '\u2717';
     case 'skipped': return '\u2014';
-    default: return '?';
+    case 'undefined': return '?';
+    default: return '\u25CB';
   }
 }
 
@@ -114,20 +102,14 @@ function dataSourceToTableProps(ds) {
 
 <template>
   <div class="sv-container">
-    <!-- Background info (if present) -->
-    <div v-if="formState.background" class="sv-background">
-      <div class="sv-bg-label">Achtergrond</div>
-      <div v-if="formState.background.calculationDate" class="sv-bg-item">
-        <span class="sv-bg-icon">\uD83D\uDCC5</span>
-        <span class="sv-bg-text">{{ formState.background.calculationDate }}</span>
-      </div>
-      <div v-if="formState.background.dependencies.length > 0" class="sv-deps">
-        <span
-          v-for="dep in formState.background.dependencies"
-          :key="dep"
-          class="sv-dep-pill"
-        >{{ dep }}</span>
-      </div>
+    <!-- Background (compact inline) -->
+    <div v-if="formState.background" class="sv-bg">
+      <span v-if="formState.background.calculationDate" class="sv-bg-date">{{ formState.background.calculationDate }}</span>
+      <span
+        v-for="dep in formState.background.dependencies"
+        :key="dep"
+        class="sv-dep-pill"
+      >{{ dep }}</span>
     </div>
 
     <!-- Scenarios -->
@@ -142,58 +124,40 @@ function dataSourceToTableProps(ds) {
     >
       <!-- Scenario header -->
       <button class="sv-scenario-header" @click="toggleScenario(si)" type="button">
-        <span class="sv-scenario-toggle">{{ expandedScenarios.has(si) ? '\u25BE' : '\u25B8' }}</span>
+        <span class="sv-toggle">{{ expandedScenarios.has(si) ? '\u25BE' : '\u25B8' }}</span>
         <span class="sv-scenario-name">{{ scenario.name }}</span>
         <span
           v-if="scenarioResult(si)"
-          class="sv-scenario-badge"
-          :class="`sv-scenario-badge--${scenarioStatus(si)}`"
-        >
-          {{ scenarioStatus(si) === 'passed' ? 'GESLAAGD' : 'MISLUKT' }}
-        </span>
+          class="sv-badge"
+          :class="`sv-badge--${scenarioStatus(si)}`"
+        >{{ scenarioStatus(si) === 'passed' ? 'OK' : 'FAIL' }}</span>
       </button>
 
       <!-- Scenario body -->
-      <div v-if="expandedScenarios.has(si)" class="sv-scenario-body">
-        <!-- Setup section -->
-        <div class="sv-section">
-          <div class="sv-section-title">Invoer</div>
-
-          <!-- Calculation date (scenario-level override or from background) -->
+      <div v-if="expandedScenarios.has(si)" class="sv-body">
+        <!-- Compact setup: date + params on one line each -->
+        <div class="sv-setup">
           <div
             v-if="scenario.setup.calculationDate || formState.background?.calculationDate"
-            class="sv-field"
+            class="sv-kv"
           >
-            <span class="sv-field-label">Berekeningsdatum</span>
-            <span class="sv-field-value">{{ scenario.setup.calculationDate || formState.background?.calculationDate }}</span>
+            <span class="sv-k">Datum</span>
+            <span class="sv-v">{{ scenario.setup.calculationDate || formState.background?.calculationDate }}</span>
           </div>
-
-          <!-- Extra dependencies (scenario-level) -->
-          <div v-if="scenario.setup.dependencies.length > 0" class="sv-field">
-            <span class="sv-field-label">Extra afhankelijkheden</span>
-            <div class="sv-deps">
-              <span
-                v-for="dep in scenario.setup.dependencies"
-                :key="dep"
-                class="sv-dep-pill"
-              >{{ dep }}</span>
-            </div>
+          <div v-for="param in scenario.setup.parameters" :key="param.name" class="sv-kv">
+            <span class="sv-k">{{ param.name }}</span>
+            <span class="sv-v">{{ param.value }}</span>
           </div>
-
-          <!-- Parameters -->
-          <div
-            v-for="param in scenario.setup.parameters"
-            :key="param.name"
-            class="sv-field"
-          >
-            <span class="sv-field-label">{{ param.name }}</span>
-            <span class="sv-field-value">{{ param.value }}</span>
+          <div v-if="scenario.setup.dependencies.length > 0" class="sv-kv">
+            <span class="sv-k">Deps</span>
+            <span class="sv-deps-inline">
+              <span v-for="dep in scenario.setup.dependencies" :key="dep" class="sv-dep-pill">{{ dep }}</span>
+            </span>
           </div>
         </div>
 
-        <!-- Data sources -->
-        <div v-if="scenario.setup.dataSources.length > 0" class="sv-section">
-          <div class="sv-section-title">Gegevensbronnen</div>
+        <!-- Data sources (collapsed by default for compactness) -->
+        <div v-if="scenario.setup.dataSources.length > 0" class="sv-ds-section">
           <DataSourceTable
             v-for="(ds, di) in scenario.setup.dataSources"
             :key="di"
@@ -201,55 +165,62 @@ function dataSourceToTableProps(ds) {
             :key-field="dataSourceToTableProps(ds).keyField"
             :fields="dataSourceToTableProps(ds).fields"
             :model-value="dataSourceToTableProps(ds).rows"
-            :default-expanded="true"
+            :default-expanded="false"
             :readonly="readonly"
           />
         </div>
 
         <!-- Execution -->
-        <div v-if="scenario.execution" class="sv-section">
-          <div class="sv-section-title">Uitvoering</div>
-          <div class="sv-execution">
-            Evalueer <code>{{ scenario.execution.outputName }}</code> van <code>{{ scenario.execution.lawId }}</code>
-          </div>
+        <div v-if="scenario.execution" class="sv-exec">
+          Evalueer <code>{{ scenario.execution.outputName }}</code> van <code>{{ scenario.execution.lawId }}</code>
         </div>
 
         <!-- Assertions -->
-        <div v-if="scenario.assertions.length > 0" class="sv-section">
-          <div class="sv-section-title">Verwachte resultaten</div>
+        <div v-if="scenario.assertions.length > 0" class="sv-assertions">
           <div
             v-for="(assertion, ai) in scenario.assertions"
             :key="ai"
-            class="sv-assertion"
-            :class="assertionResult(si, ai) ? `sv-assertion--${assertionResult(si, ai).status}` : ''"
+            class="sv-assert"
+            :class="assertionResult(si, ai) ? `sv-assert--${assertionResult(si, ai).status}` : ''"
           >
-            <span class="sv-assertion-icon">{{ assertionIcon(assertionResult(si, ai)) }}</span>
-            <span class="sv-assertion-label">{{ formatAssertionLabel(assertion) }}</span>
-            <span
-              v-if="assertionResult(si, ai)?.status === 'passed'"
-              class="sv-assertion-badge sv-assertion-badge--pass"
-            >GESLAAGD</span>
-            <span
-              v-if="assertionResult(si, ai)?.status === 'failed'"
-              class="sv-assertion-badge sv-assertion-badge--fail"
-            >MISLUKT</span>
-            <div
-              v-if="assertionResult(si, ai)?.error"
-              class="sv-assertion-error"
-            >{{ assertionResult(si, ai).error }}</div>
+            <span class="sv-assert-icon">{{ stepIcon(assertionResult(si, ai)?.status) }}</span>
+            <span class="sv-assert-text">{{ formatAssertionLabel(assertion) }}</span>
+            <span v-if="assertionResult(si, ai)?.status === 'passed'" class="sv-badge sv-badge--passed">OK</span>
+            <span v-if="assertionResult(si, ai)?.status === 'failed'" class="sv-badge sv-badge--failed">FAIL</span>
+          </div>
+          <div
+            v-for="(assertion, ai) in scenario.assertions"
+            :key="`err-${ai}`"
+          >
+            <div v-if="assertionResult(si, ai)?.error" class="sv-assert-error">
+              {{ assertionResult(si, ai).error }}
+            </div>
           </div>
         </div>
 
         <!-- Unmatched steps -->
-        <div v-if="scenario.unmatchedSteps.length > 0" class="sv-section">
-          <div class="sv-section-title">Overige stappen</div>
-          <div
-            v-for="(step, i) in scenario.unmatchedSteps"
-            :key="i"
-            class="sv-unmatched"
-          >
-            <span class="sv-unmatched-keyword">{{ step.keyword }}</span>
-            {{ step.text }}
+        <div v-if="scenario.unmatchedSteps.length > 0" class="sv-unmatched-section">
+          <div v-for="(step, i) in scenario.unmatchedSteps" :key="i" class="sv-unmatched">
+            <span class="sv-unmatched-kw">{{ step.keyword }}</span> {{ step.text }}
+          </div>
+        </div>
+
+        <!-- Engine trace (step-by-step execution log) -->
+        <div v-if="scenarioResult(si)" class="sv-trace">
+          <button class="sv-trace-toggle" @click="$event.target.closest('.sv-trace').classList.toggle('sv-trace--open')" type="button">
+            Engine trace ({{ scenarioResult(si).steps.length }} stappen)
+          </button>
+          <div class="sv-trace-body">
+            <div
+              v-for="(step, i) in scenarioResult(si).steps"
+              :key="i"
+              class="sv-trace-step"
+              :class="`sv-trace-step--${step.status}`"
+            >
+              <span class="sv-trace-icon">{{ stepIcon(step.status) }}</span>
+              <span class="sv-trace-text">{{ step.text }}</span>
+              <div v-if="step.error" class="sv-trace-err">{{ step.error }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -257,7 +228,7 @@ function dataSourceToTableProps(ds) {
 
     <!-- Empty state -->
     <div v-if="formState.scenarios.length === 0" class="sv-empty">
-      Geen scenario's gevonden in dit bestand.
+      Geen scenario's gevonden.
     </div>
   </div>
 </template>
@@ -265,89 +236,57 @@ function dataSourceToTableProps(ds) {
 <style scoped>
 .sv-container {
   font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
-  padding: 8px 0;
+  font-size: 12px;
 }
 
-/* Background */
-.sv-background {
-  padding: 10px 16px;
-  margin: 0 8px 8px;
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
-  border-radius: 8px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-}
-
-.sv-bg-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--semantics-text-color-secondary, #666);
-  margin-bottom: 6px;
-}
-
-.sv-bg-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  margin-bottom: 4px;
-}
-
-.sv-bg-icon {
-  font-size: 14px;
-}
-
-.sv-bg-text {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
-}
-
-/* Dependencies */
-.sv-deps {
+/* Background bar */
+.sv-bg {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
-  margin-top: 4px;
+  padding: 6px 10px;
+  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
+  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
+.sv-bg-date {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* Dependency pills */
 .sv-dep-pill {
   display: inline-block;
-  padding: 2px 8px;
-  font-size: 11px;
+  padding: 1px 6px;
+  font-size: 10px;
   font-family: 'SF Mono', 'Fira Code', monospace;
   background: #e8eef5;
   color: #154273;
-  border-radius: 4px;
+  border-radius: 3px;
   white-space: nowrap;
 }
 
 /* Scenario card */
 .sv-scenario {
-  margin: 0 8px 8px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 8px;
-  overflow: hidden;
+  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
-.sv-scenario--passed {
-  border-color: #afa;
-}
-
-.sv-scenario--failed {
-  border-color: #faa;
-}
+.sv-scenario--passed { background: #fcfff8; }
+.sv-scenario--failed { background: #fffcf8; }
 
 .sv-scenario-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  padding: 10px 12px;
-  background: white;
+  padding: 6px 10px;
+  background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
   text-align: left;
@@ -358,170 +297,209 @@ function dataSourceToTableProps(ds) {
   background: var(--semantics-surfaces-color-secondary, #F8F9FA);
 }
 
-.sv-scenario-toggle {
+.sv-toggle {
   flex-shrink: 0;
-  width: 12px;
-  font-size: 11px;
-  color: var(--semantics-text-color-secondary, #666);
+  width: 10px;
+  font-size: 10px;
+  color: #999;
 }
 
-.sv-scenario-name {
-  flex: 1;
-}
+.sv-scenario-name { flex: 1; }
 
-.sv-scenario-badge {
-  font-size: 11px;
+/* Badges */
+.sv-badge {
+  font-size: 9px;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
-.sv-scenario-badge--passed {
-  background: #efe;
-  color: #060;
-}
+.sv-badge--passed { background: #efe; color: #060; }
+.sv-badge--failed { background: #fee; color: #c00; }
 
-.sv-scenario-badge--failed {
-  background: #fee;
-  color: #c00;
-}
-
-/* Scenario body */
-.sv-scenario-body {
+/* Body */
+.sv-body {
   border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
-/* Sections */
-.sv-section {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
+/* Setup key-value pairs */
+.sv-setup {
+  padding: 4px 10px;
 }
 
-.sv-section:last-child {
-  border-bottom: none;
-}
-
-.sv-section-title {
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: var(--semantics-text-color-secondary, #666);
-  margin-bottom: 8px;
-}
-
-/* Fields */
-.sv-field {
+.sv-kv {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 4px;
-  font-size: 13px;
+  gap: 8px;
+  padding: 1px 0;
 }
 
-.sv-field-label {
+.sv-k {
+  font-size: 11px;
   font-weight: 600;
-  font-size: 12px;
-  color: var(--semantics-text-color-secondary, #666);
-  min-width: 100px;
+  color: #888;
+  min-width: 50px;
   flex-shrink: 0;
 }
 
-.sv-field-value {
+.sv-v {
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
+  font-size: 11px;
   color: var(--semantics-text-color-primary, #1C2029);
+}
+
+.sv-deps-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+/* Data sources */
+.sv-ds-section {
+  padding: 2px 10px 4px;
 }
 
 /* Execution */
-.sv-execution {
-  font-size: 13px;
-  color: var(--semantics-text-color-primary, #1C2029);
+.sv-exec {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: #555;
+  border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
-.sv-execution code {
+.sv-exec code {
   font-family: 'SF Mono', 'Fira Code', monospace;
   background: var(--semantics-surfaces-color-secondary, #F0F1F3);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 12px;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 11px;
 }
 
 /* Assertions */
-.sv-assertion {
+.sv-assertions {
+  padding: 4px 10px;
+  border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+
+.sv-assert {
   display: flex;
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 0;
-  font-size: 13px;
+  gap: 5px;
+  padding: 1px 0;
 }
 
-.sv-assertion-icon {
+.sv-assert-icon {
   flex-shrink: 0;
-  width: 16px;
+  width: 12px;
   text-align: center;
   font-weight: bold;
-  font-size: 13px;
-}
-
-.sv-assertion--passed .sv-assertion-icon { color: #060; }
-.sv-assertion--failed .sv-assertion-icon { color: #c00; }
-.sv-assertion--skipped .sv-assertion-icon { color: #999; }
-
-.sv-assertion-label {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-}
-
-.sv-assertion-badge {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.sv-assertion-badge--pass {
-  background: #efe;
-  color: #060;
-}
-
-.sv-assertion-badge--fail {
-  background: #fee;
-  color: #c00;
-}
-
-.sv-assertion-error {
-  width: 100%;
-  margin-left: 22px;
-  margin-top: 2px;
   font-size: 11px;
+}
+
+.sv-assert--passed .sv-assert-icon { color: #060; }
+.sv-assert--failed .sv-assert-icon { color: #c00; }
+.sv-assert--skipped .sv-assert-icon { color: #999; }
+
+.sv-assert-text {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
+.sv-assert-error {
+  padding: 2px 0 2px 17px;
+  font-size: 10px;
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: #c00;
   word-break: break-word;
 }
 
 /* Unmatched steps */
-.sv-unmatched {
-  padding: 3px 0;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  color: var(--semantics-text-color-secondary, #666);
+.sv-unmatched-section {
+  padding: 4px 10px;
+  border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
-.sv-unmatched-keyword {
+.sv-unmatched {
+  padding: 1px 0;
+  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: #888;
+}
+
+.sv-unmatched-kw {
   font-weight: 700;
   color: #154273;
 }
 
+/* Engine trace — collapsed by default */
+.sv-trace {
+  border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+
+.sv-trace-toggle {
+  display: block;
+  width: 100%;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  color: #888;
+  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sv-trace-toggle:hover {
+  color: #154273;
+}
+
+.sv-trace-body {
+  display: none;
+  padding: 4px 10px 6px;
+  background: #fafbfc;
+}
+
+.sv-trace--open .sv-trace-body {
+  display: block;
+}
+
+.sv-trace-step {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 1px 0;
+  font-size: 10px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.sv-trace-icon {
+  flex-shrink: 0;
+  width: 10px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.sv-trace-step--passed .sv-trace-icon { color: #060; }
+.sv-trace-step--failed .sv-trace-icon { color: #c00; }
+.sv-trace-step--skipped .sv-trace-icon { color: #999; }
+.sv-trace-step--undefined .sv-trace-icon { color: #f80; }
+
+.sv-trace-step--skipped { color: #999; }
+
+.sv-trace-err {
+  margin-left: 15px;
+  color: #c00;
+  font-size: 10px;
+  word-break: break-word;
+}
+
 /* Empty state */
 .sv-empty {
-  padding: 24px 16px;
+  padding: 16px;
   text-align: center;
-  font-size: 13px;
-  color: var(--semantics-text-color-secondary, #999);
+  font-size: 12px;
+  color: #999;
   font-style: italic;
 }
 </style>
