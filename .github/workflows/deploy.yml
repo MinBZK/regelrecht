@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened, closed, labeled]
 
 permissions: {}
 
@@ -16,7 +16,9 @@ env:
 jobs:
   changes:
     runs-on: ubuntu-latest
-    if: github.event.action != 'closed'
+    if: >-
+      github.event.action != 'closed' &&
+      (github.event.action != 'labeled' || startsWith(github.event.label.name, 'deploy:'))
     permissions:
       contents: read
     outputs:
@@ -58,7 +60,9 @@ jobs:
   # -- Build jobs --
   # Editor always builds (not conditional on changes)
   build:
-    if: github.event.action != 'closed'
+    if: >-
+      github.event.action != 'closed' &&
+      (github.event.action != 'labeled' || startsWith(github.event.label.name, 'deploy:'))
     permissions:
       contents: read
       packages: write
@@ -105,7 +109,8 @@ jobs:
       github.event.action != 'closed' &&
       (
         (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-        needs.changes.outputs.enrich-worker == 'true'
+        needs.changes.outputs.enrich-worker == 'true' ||
+        contains(github.event.pull_request.labels.*.name, 'deploy:enrich-worker')
       )
     permissions:
       contents: read
@@ -239,7 +244,9 @@ jobs:
           comment-header: '## Preview Deployment'
 
       - name: Deploy enrich-worker to ZAD (Preview)
-        if: needs.build-enrich-worker.result != 'failure'
+        if: >-
+          (needs.changes.outputs.enrich-worker == 'true' || contains(github.event.pull_request.labels.*.name, 'deploy:enrich-worker')) &&
+          needs.build-enrich-worker.result != 'failure'
         uses: RijksICTGilde/zad-actions/deploy@v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
