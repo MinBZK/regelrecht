@@ -10,6 +10,7 @@ import {
 const props = defineProps({
   operation: { type: Object, default: null },
   article: { type: Object, default: null },
+  resolvedTitle: { type: String, default: null },
 });
 
 const emit = defineEmits(['select-operation']);
@@ -115,7 +116,7 @@ function currentDropdownValue(val) {
       <rr-list-item size="md">
         <rr-text-cell>Titel</rr-text-cell>
         <rr-cell>
-          <rr-text-field size="md" :value="operation.title"></rr-text-field>
+          <rr-text-field size="md" :value="resolvedTitle || operation.title"></rr-text-field>
         </rr-cell>
       </rr-list-item>
 

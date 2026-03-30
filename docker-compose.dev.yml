@@ -75,6 +75,10 @@ services:
       dockerfile: frontend/Dockerfile
       secrets:
         - GITHUB_TOKEN
+    environment:
+      VLAM_API_KEY: ${VLAM_API_KEY:-}
+      VLAM_BASE_URL: ${VLAM_BASE_URL:-}
+      VLAM_MODEL: ${VLAM_MODEL:-}
     ports:
       - ${FRONTEND_PORT:-3000}:8000
 

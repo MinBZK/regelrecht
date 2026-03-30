@@ -5,16 +5,18 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use tokio::sync::RwLock;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
+mod ai_handlers;
 mod corpus_handlers;
 mod middleware;
 mod state;
+mod vlam_client;
 
 use state::{AppState, CorpusState};
 
@@ -29,8 +31,26 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
+    let vlam = match vlam_client::VlamConfig::from_env() {
+        Some(config) => match vlam_client::VlamClient::new(config) {
+            Ok(client) => {
+                tracing::info!("VLAM AI title generation enabled");
+                Some(client)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to initialize VLAM client");
+                None
+            }
+        },
+        None => {
+            tracing::info!("VLAM_API_KEY not set, AI title generation disabled");
+            None
+        }
+    };
+
     let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
+        vlam,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -49,6 +69,10 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
+        )
+        .route(
+            "/api/ai/operation-titles",
+            post(ai_handlers::generate_operation_titles),
         );
 
     let app = Router::new()
