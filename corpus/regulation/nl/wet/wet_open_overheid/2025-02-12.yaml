@@ -395,8 +395,13 @@ articles:
             type: number
           - name: uiterste_beslisdatum
             type: date
-          - name: openbaarmaking_datum
+          - name: uiterste_openbaarmaking_datum
             type: date
+            description: >-
+              Bovengrens voor openbaarmaking. Art 4.4 lid 5 zegt "twee weken nadat
+              de beslissing is bekendgemaakt" — de werkelijke openbaarmaking hangt af
+              van de feitelijke bekendmakingsdatum, niet de uiterste beslisdatum.
+              Deze output berekent de bovengrens (uiterste beslisdatum als basis).
         actions:
           - output: beslistermijn_weken
             value:
@@ -417,7 +422,7 @@ articles:
               operation: DATE_ADD
               date: $verzoek_ontvangst_datum
               weeks: $beslistermijn_weken
-          - output: openbaarmaking_datum
+          - output: uiterste_openbaarmaking_datum
             value:
               operation: IF
               cases:

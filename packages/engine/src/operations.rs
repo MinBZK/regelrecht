@@ -1,14 +1,19 @@
 //! Operation execution for the RegelRecht engine
 //!
-//! This module implements the execution logic for all 25 operation types:
-//! - **Comparison (6):** EQUALS, NOT_EQUALS, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
-//! - **Arithmetic (4):** ADD, SUBTRACT, MULTIPLY, DIVIDE
-//! - **Aggregate (2):** MAX, MIN
-//! - **Logical (3):** AND, OR, NOT
-//! - **Conditional (1):** IF (multi-case with cases/default)
-//! - **Null checking (2):** IS_NULL, NOT_NULL
-//! - **Collection (3):** IN, NOT_IN, LIST
-//! - **Date (4):** AGE, DATE_ADD, DATE, DAY_OF_WEEK
+//! Implements the execution logic for all operation types in the v0.5.0 schema,
+//! plus engine-only operations retained for backward compatibility.
+//!
+//! **Schema v0.5.0 operations:**
+//! - **Comparison:** EQUALS, GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL
+//! - **Arithmetic:** ADD, SUBTRACT, MULTIPLY, DIVIDE
+//! - **Aggregate:** MAX, MIN
+//! - **Logical:** AND, OR, NOT
+//! - **Conditional:** IF (multi-case with cases/default)
+//! - **Collection:** IN, LIST
+//! - **Date:** AGE, DATE_ADD, DATE, DAY_OF_WEEK
+//!
+//! **Engine-only (not in schema, accepted for backward compatibility):**
+//! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
 
 use crate::article::{ActionOperation, ActionValue, Case};
 use crate::error::{EngineError, Result};

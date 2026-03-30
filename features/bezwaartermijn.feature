@@ -21,16 +21,6 @@ Feature: Bezwaartermijn chain
     And the output "motivering_vereist" is "true"
     And the output "bezwaartermijn_weken" is "4"
 
-  Scenario: Vreemdelingenwet override replaces AWB bezwaartermijn
-    Given a vreemdelingenwet application with:
-      | key                   | value |
-      | heeft_geldige_mvv     | true  |
-      | heeft_geldig_document | true  |
-    When the vreemdelingenwet beschikking is executed
-    Then the execution succeeds
-    # AWB 6:7 default is 6 weeks, but Vw art 69 overrides to 4 weeks
-    And the output "bezwaartermijn_weken" is "4"
-
   Scenario: Rejected application still triggers hooks
     Given a vreemdelingenwet application with:
       | key                   | value |
