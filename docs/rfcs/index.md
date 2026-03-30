@@ -15,6 +15,7 @@ Design decisions in RegelRecht are documented through RFCs. Each RFC captures th
 | [RFC-006](./rfc-006) | Language Choice | Accepted |
 | [RFC-007](./rfc-007) | Cross-Law Execution | Accepted |
 | [RFC-008](./rfc-008) | Bestuursrecht / AWB Procedures | Accepted |
+| [RFC-009](./rfc-009) | Multi-Organisation Execution | Proposed |
 | [RFC-010](./rfc-010) | Federated Corpus | Accepted |
 
 ## Writing an RFC
@@ -26,4 +27,4 @@ See [RFC-000](./rfc-000) for the process. RFCs are warranted for:
 - Cross-cutting design patterns
 - Integration patterns between components
 
-The template is at `doc/rfcs/RFC-TEMPLATE.md` in the repository.
+The template is at `docs/rfcs/template.md` in the repository.

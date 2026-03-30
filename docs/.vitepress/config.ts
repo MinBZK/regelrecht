@@ -23,6 +23,7 @@ export default withMermaid(
       nav: [
         { text: 'Guide', link: '/guide/what-is-regelrecht' },
         { text: 'Architecture', link: '/architecture/overview' },
+        { text: 'Method', link: '/method/validatiemethode' },
         { text: 'Components', link: '/components/engine' },
         { text: 'RFCs', link: '/rfcs/' },
         { text: 'Reference', link: '/reference/glossary' },
@@ -54,6 +55,14 @@ export default withMermaid(
             ],
           },
         ],
+        '/method/': [
+          {
+            text: 'Method',
+            items: [
+              { text: 'Validatiemethode', link: '/method/validatiemethode' },
+            ],
+          },
+        ],
         '/components/': [
           {
             text: 'Components',
@@ -79,6 +88,7 @@ export default withMermaid(
               { text: 'RFC-006: Language Choice', link: '/rfcs/rfc-006' },
               { text: 'RFC-007: Cross-Law Execution', link: '/rfcs/rfc-007' },
               { text: 'RFC-008: Bestuursrecht/AWB', link: '/rfcs/rfc-008' },
+              { text: 'RFC-009: Multi-Org Execution', link: '/rfcs/rfc-009' },
               { text: 'RFC-010: Federated Corpus', link: '/rfcs/rfc-010' },
             ],
           },

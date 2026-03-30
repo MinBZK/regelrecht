@@ -34,7 +34,7 @@ As of 2024, **both versions remain valid simultaneously**:
 
 ## XML Structure
 
-See: `doc/issues/awb-2024-01-01.xml` (lines 6685-6731)
+See AWB XML from wetten.nl (article 8:36c, lines 6685-6731)
 
 ```xml
 <artikel label="Artikel 8:36c" inwerking="2020-04-15" bron="Stb.2016-288">
@@ -152,5 +152,5 @@ All `<redactie>` elements must be excluded from the extracted text. They are edi
 
 ## Test Data
 
-- XML file: `doc/issues/awb-2024-01-01.xml`
+- XML source: AWB from wetten.nl
 - Article 8:36c location: lines 6685-6731
