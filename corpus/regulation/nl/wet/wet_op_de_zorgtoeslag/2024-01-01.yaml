@@ -286,11 +286,14 @@ articles:
       het berekeningsjaar vast.
     url: https://wetten.overheid.nl/BWBR0018451/2024-01-01#Artikel4
     machine_readable:
+      open_terms:
+        - id: standaardpremie
+          type: amount
+          required: true
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 4 Wet op de zorgtoeslag
       execution:
-        parameters:
-          - name: reference_year
-            type: number
-            required: false
         output:
           - name: standaardpremie
             type: amount
@@ -298,12 +301,7 @@ articles:
               unit: eurocent
         actions:
           - output: standaardpremie
-            resolve:
-              type: ministeriele_regeling
-              output: standaardpremie
-              match:
-                output: berekeningsjaar
-                value: $referencedate.year
+            value: $standaardpremie
   - number: 4a
     text: |-
       Voor de persoon, bedoeld in artikel 69 van de Zorgverzekeringswet, wordt de standaardpremie aangepast aan de hand

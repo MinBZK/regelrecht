@@ -24,6 +24,11 @@ articles:
       1.987,–.
     url: https://wetten.overheid.nl/BWBR0049005/2024-01-01#Artikel1
     machine_readable:
+      implements:
+        - law: zorgtoeslagwet
+          article: '4'
+          open_term: standaardpremie
+          gelet_op: Gelet op artikel 4 van de Wet op de zorgtoeslag
       execution:
         output:
           - name: standaardpremie

@@ -361,7 +361,9 @@ pub enum Operation {
     Date,
     DayOfWeek,
 
-    // Additional operations
+    // Engine-only compat aliases — accepted during deserialization but NOT in the
+    // v0.5.0 schema operationType enum. YAML using these will execute correctly but
+    // fail schema validation. New laws should use NOT + the positive operation instead.
     #[serde(rename = "NOT_EQUALS")]
     NotEquals,
     #[serde(rename = "IS_NULL")]
