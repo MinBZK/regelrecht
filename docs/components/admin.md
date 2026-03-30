@@ -26,10 +26,10 @@ The backend is a Rust Axum server that connects to PostgreSQL (via the pipeline 
 ## Key API endpoints
 
 - `GET /api/jobs` - list jobs with pagination and status filters
-- `POST /api/jobs/harvest` - enqueue a harvest job
-- `POST /api/jobs/enrich` - enqueue an enrichment job
-- `GET /api/laws` - list law entries with status
-- `GET /api/metrics` - Prometheus metrics
+- `POST /api/harvest-jobs` - enqueue a harvest job
+- `POST /api/enrich-jobs` - enqueue enrichment jobs
+- `GET /api/law_entries` - list law entries with status
+- `GET /metrics` - Prometheus metrics
 
 ## Running locally
 

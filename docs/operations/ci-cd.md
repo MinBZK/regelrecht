@@ -42,7 +42,7 @@ CI uses path filters to determine which checks to run:
 
 | Change group | Triggers on changes to |
 |---|---|
-| `ci` | `packages/engine/`, `packages/harvester/`, `packages/shared/`, `corpus/`, `features/`, `schema/` |
+| `ci` | `packages/corpus/`, `packages/engine/`, `packages/harvester/`, `packages/pipeline/`, `corpus/regulation/`, `features/`, `schema/` |
 | `admin` | `packages/admin/` |
 | `editor-api` | `packages/editor-api/` |
 
