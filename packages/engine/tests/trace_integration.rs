@@ -150,11 +150,37 @@ fn test_zorgtoeslag_trace_output_format() {
     // Render the box-drawing trace
     let rendered = trace.render_box_drawing();
 
-    // Snapshot comparison against expected trace output
+    // Snapshot comparison against expected trace output.
+    // Sort lines within each "Resolving from" block to handle HashMap iteration
+    // order differences between platforms (macOS vs Linux).
+    let normalize = |s: &str| -> Vec<String> {
+        let lines: Vec<&str> = s.trim().lines().collect();
+        let mut result = Vec::new();
+        let mut i = 0;
+        while i < lines.len() {
+            // Collect consecutive "Resolving from" lines and sort them
+            if lines[i].contains("Resolving from") {
+                let start = i;
+                while i < lines.len() && lines[i].contains("Resolving from") {
+                    i += 1;
+                }
+                let mut group: Vec<&str> = lines[start..i].to_vec();
+                group.sort();
+                result.extend(group.iter().map(|s| s.to_string()));
+            } else {
+                result.push(lines[i].to_string());
+                i += 1;
+            }
+        }
+        result
+    };
+
     let expected = include_str!("expected_zorgtoeslag_trace.txt");
+    let actual_norm = normalize(&rendered);
+    let expected_norm = normalize(expected);
     assert_eq!(
-        rendered.trim(),
-        expected.trim(),
+        actual_norm,
+        expected_norm,
         "Trace output does not match expected snapshot.\n\n--- ACTUAL ---\n{}\n--- EXPECTED ---\n{}",
         rendered,
         expected

@@ -2,11 +2,12 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ╟──Evaluating rules for zorgtoeslagwet (hoogte_zorgtoeslag)
 ║   ╟──URI call: wet_basisregistratie_personen#leeftijd
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
+║   ║   ╟──Resolving from CONTEXT: $REFERENCEDATE = {'day': 1, 'iso': '2025-01-01', 'month': 1, 'year': 2025}
 ║   ║   ╟──Resolving from DATA_SOURCE: $GEBOORTEDATUM = '2005-01-01'
 ║   ║   ╙──Computing leeftijd
 ║   ║       ├──Compute AGE(...) = 20
 ║   ║       │   ├──Resolving from PARAMETERS: $GEBOORTEDATUM = '2005-01-01'
-║   ║       │   └──Resolving from CONTEXT: $REFERENCEDATE = {'day': 1, 'iso': '2025-01-01', 'month': 1, 'year': 2025}
+║   ║       │   └──Resolving from PARAMETERS: $PEILDATUM = {'day': 1, 'iso': '2025-01-01', 'month': 1, 'year': 2025}
 ║   ║       └──Result: leeftijd = 20
 ║   ╟──URI call: zorgverzekeringswet#is_verzekerd
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
