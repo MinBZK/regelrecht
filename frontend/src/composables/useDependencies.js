@@ -189,10 +189,10 @@ function collectDeps(law, visited, toLoad) {
   if (selfId) visited.add(selfId);
 
   const refs = extractRegulationRefs(law);
-  for (const ref of refs) {
-    if (!visited.has(ref)) {
-      visited.add(ref);
-      toLoad.push(ref);
+  for (const depId of refs) {
+    if (!visited.has(depId)) {
+      visited.add(depId);
+      toLoad.push(depId);
     }
   }
 }

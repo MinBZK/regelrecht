@@ -33,7 +33,7 @@ const {
 } = useDataSourceSchema();
 
 // --- Form state ---
-const calculationDate = ref('2025-01-01');
+const calculationDate = ref(new Date().toISOString().slice(0, 10));
 const parameterValues = ref({});
 const dataSourceRows = ref({});  // keyed by "lawId:articleNumber"
 const selectedOutputs = ref([]);
