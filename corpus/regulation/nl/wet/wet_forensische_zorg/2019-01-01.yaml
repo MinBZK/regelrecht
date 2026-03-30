@@ -10,7 +10,7 @@ name: '#wet_naam'
 competent_authority:
   name: Minister van Justitie en Veiligheid
 articles:
-  - number: Artikel 1.1
+  - number: '1.1'
     text: |-
       Artikel 1.1 1. In deze wet en de daarop berustende bepalingen wordt verstaan onder:
 
@@ -71,14 +71,14 @@ articles:
                 - operation: IN
                   subject: $juridische_grondslag
                   value: $geldige_juridische_titels
-  - number: Artikel 2.1
+  - number: '2.1'
     text: |-
       Artikel 2.1 De tenuitvoerlegging van een vrijheidsbenemende straf of maatregel wordt zo veel
       mogelijk dienstbaar gemaakt aan de voorbereiding van de terugkeer van de forensische patient in
       de maatschappij en de vermindering van de kans op recidive, met inachtneming van de veiligheid
       van de samenleving.
     url: https://wetten.overheid.nl/BWBR0040634/2019-01-01#Hoofdstuk2_Artikel2.1
-  - number: Artikel 10.3
+  - number: '10.3'
     text: |-
       Artikel 10.3 Deze wet wordt aangehaald als: Wet forensische zorg.
     url: https://wetten.overheid.nl/BWBR0040634/2019-01-01#Hoofdstuk10_Artikel10.3

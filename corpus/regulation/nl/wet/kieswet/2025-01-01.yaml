@@ -44,15 +44,12 @@ articles:
               output: leeftijd
               parameters:
                 bsn: $bsn
+                peildatum: $verkiezingsdatum
               description: Leeftijd op de dag van de stemming conform art. B1 lid 1
           - name: heeft_nederlandse_nationaliteit
             type: boolean
-            source:
-              regulation: wet_basisregistratie_personen
-              output: heeft_nederlandse_nationaliteit
-              parameters:
-                bsn: $bsn
-              description: Nationaliteit op de dag van de kandidaatstelling conform art. B1 lid 1
+            description: Nederlander zijn (Art B1 lid 1) — TODO output ontbreekt in BRP corpus
+            source: {}
           - name: heeft_kiesrecht_uitsluiting
             type: boolean
             source:

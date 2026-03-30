@@ -101,19 +101,16 @@ articles:
         input:
           - name: is_ingezetene
             type: boolean
-            source:
-              regulation: wet_basisregistratie_personen
-              output: is_ingezetene
+            description: Ingezetene per BRP (Art 2.1.1 lid a) — TODO output ontbreekt in BRP corpus
+            source: {}
           - name: betaalt_loonbelasting_nederland
             type: boolean
-            source:
-              regulation: wet_inkomstenbelasting_2001
-              output: betaalt_loonbelasting
+            description: Loonbelasting in NL (Art 2.1.1 lid b) — TODO output ontbreekt in WIB corpus
+            source: {}
           - name: heeft_rechtmatig_verblijf
             type: boolean
-            source:
-              regulation: vreemdelingenwet_2000
-              output: heeft_rechtmatig_verblijf
+            description: Rechtmatig verblijf (Art 2.1.1 lid c) — TODO output ontbreekt in Vw corpus
+            source: {}
         output:
           - name: is_verzekerd_wlz
             type: boolean
@@ -150,14 +147,12 @@ articles:
               output: is_verzekerd_wlz
           - name: verzekerd_via_verdrag
             type: boolean
-            source:
-              regulation: externe_bron
-              output: verzekerd_via_verdrag
+            description: Verzekerd via verdrag (Art 2.1.2 lid a) — handmatige beoordeling
+            source: {}
           - name: wetgeving_andere_mogendheid
             type: boolean
-            source:
-              regulation: externe_bron
-              output: wetgeving_andere_mogendheid
+            description: Wetgeving andere mogendheid van toepassing (Art 2.1.2 lid b) — handmatige beoordeling
+            source: {}
         output:
           - name: is_verzekerd_wlz_inclusief_verdrag
             type: boolean
