@@ -95,8 +95,8 @@ Uses BEM-inspired naming, all colors via CSS variables, modern CSS features (`:h
 
 | Component | Purpose |
 |-----------|---------|
-| `LibraryApp.vue` | Library page — 3-pane law browser |
-| `EditorApp.vue` | Editor page — split-pane law editor |
+| `LibraryApp.vue` | Library page - 3-pane law browser |
+| `EditorApp.vue` | Editor page - split-pane law editor |
 | `ArticleText.vue` | Formatted article text rendering |
 | `MachineReadable.vue` | Machine-readable visualization |
 | `YamlView.vue` | Raw YAML syntax display |
@@ -107,7 +107,7 @@ Shared logic via `useLaw.js` composable (loads YAML, manages article selection).
 
 ## Data Loading
 
-Laws are served as **static YAML files** — no backend API for law content:
+Laws are served as **static YAML files** - no backend API for law content:
 - `scripts/copy-laws.js` copies laws from `corpus/regulation/` to `public/data/`
 - Index at `/data/index.json` (generated from corpus metadata)
 - Individual laws at `/data/wet/{law_id}/{date}.yaml`
@@ -143,8 +143,8 @@ A separate admin UI exists at `packages/admin/` for pipeline management:
 - **Auth**: Optional OIDC integration
 
 See the admin API endpoints:
-- `GET /api/law_entries` — query law processing status
-- `GET /api/jobs` — query job queue
-- `POST /api/harvest-jobs` — create harvest job
-- `POST /api/enrich-jobs` — create enrich jobs
-- `GET /api/jobs/{id}` — job detail with progress
+- `GET /api/law_entries` - query law processing status
+- `GET /api/jobs` - query job queue
+- `POST /api/harvest-jobs` - create harvest job
+- `POST /api/enrich-jobs` - create enrich jobs
+- `GET /api/jobs/{id}` - job detail with progress

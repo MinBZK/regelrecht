@@ -1,6 +1,6 @@
 # System Overview
 
-RegelRecht is built on two pillars: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a universal runtime that evaluates laws deterministically).
+RegelRecht is built on two pillars: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a runtime that evaluates laws deterministically).
 
 ## System Context
 
@@ -58,14 +58,10 @@ C4Container
 
 ## Design Principles
 
-- **Law as source of truth**: The YAML format stays close to the original legal text structure
-- **Deterministic execution**: Same inputs always produce the same outputs
-- **Traceability**: Every computed value traces back to a specific article and paragraph
-- **Separation of concerns**: Text interpretation is separate from execution
-- **Open by default**: All laws, tooling, and decisions are publicly auditable
+The YAML format stays close to the original legal text structure. Same inputs always produce the same outputs. Every computed value traces back to a specific article and paragraph. Text interpretation is separate from execution. And all laws, tooling, and decisions are publicly auditable.
 
 ## Further Reading
 
-- [Methodology](./methodology) — the execution-first validation approach
-- [Engine](../components/engine) — execution engine architecture
-- [RFC Index](../rfcs/) — all design decisions
+- [Methodology](/concepts/methodology) - the execution-first validation approach
+- [Engine](../components/engine) - execution engine architecture
+- [RFC Index](../rfcs/) - all design decisions

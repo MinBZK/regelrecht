@@ -23,15 +23,15 @@ flowchart LR
 
 ### Pipeline Steps
 
-1. **Validate input** — BWB ID format (`BWBR` + 7 digits) and date
-2. **Download WTI metadata** — title, regulatory layer, publication date
-3. **Resolve consolidation date** — from manifest.xml, find version valid for target date
-4. **Download content XML** — the consolidated law text (with size limit check)
-5. **Parse elements** — via extensible registry of element handlers
-6. **Split articles** — hierarchical splitting into artikel → lid → lijst → li with dot-notation numbering (e.g., `1`, `1.1`, `1.1.a`)
-7. **Normalize text** — fix spacing, Unicode NFKD, wrap at 115 chars
-8. **Generate YAML** — schema-compliant output with yamllint compliance
-9. **Atomic write** — temp file → sync → rename
+1. **Validate input** - BWB ID format (`BWBR` + 7 digits) and date
+2. **Download WTI metadata** - title, regulatory layer, publication date
+3. **Resolve consolidation date** - from manifest.xml, find version valid for target date
+4. **Download content XML** - the consolidated law text (with size limit check)
+5. **Parse elements** - via extensible registry of element handlers
+6. **Split articles** - hierarchical splitting into artikel → lid → lijst → li with dot-notation numbering (e.g., `1`, `1.1`, `1.1.a`)
+7. **Normalize text** - fix spacing, Unicode NFKD, wrap at 115 chars
+8. **Generate YAML** - schema-compliant output with yamllint compliance
+9. **Atomic write** - temp file → sync → rename
 
 ### Element Processing
 
@@ -108,9 +108,9 @@ The regulatory layer is determined from the WTI metadata (`soort-regeling` field
 
 ## Current Limitations
 
-- **Text-only extraction** — tables and complex formatting simplified to text
-- **No machine_readable** — output contains text only; executable logic added separately
-- **Reference extraction incomplete** — cross-references detected but not fully resolved
+- **Text-only extraction** - tables and complex formatting simplified to text
+- **No machine_readable** - output contains text only; executable logic added separately
+- **Reference extraction incomplete** - cross-references detected but not fully resolved
 - **Large laws** require `--max-size` flag (e.g., Wet op het financieel toezicht at 52.6 MB)
 
 ## Testing
@@ -123,5 +123,5 @@ Integration tests use fixtures from `tests/fixtures/zorgtoeslag/` (real WTI and 
 
 ## Further Reading
 
-- [Law Format](/guide/law-format) — the YAML format the harvester produces
-- [Pipeline](./pipeline) — job orchestration for harvesting tasks
+- [Law Format](/concepts/law-format) - the YAML format the harvester produces
+- [Pipeline](./pipeline) - job orchestration for harvesting tasks

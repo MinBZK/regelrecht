@@ -28,7 +28,7 @@ just bdd
 
 ### Deriving Tests from Legislative Intent
 
-Test scenarios are derived from the **Memorie van Toelichting** (MvT) — the explanatory memorandum that accompanies Dutch legislation. The MvT contains examples and reasoning from the legislature that serve as ground truth for expected behavior.
+Test scenarios are derived from the **Memorie van Toelichting** (MvT), the explanatory memorandum that accompanies Dutch legislation. The MvT contains examples and reasoning from the legislature that serve as ground truth for expected behavior.
 
 ## Unit Tests
 

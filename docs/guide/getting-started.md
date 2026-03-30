@@ -79,6 +79,6 @@ regelrecht/
 
 ## Next Steps
 
-- [Law Format](./law-format) — understand how laws are structured
-- [Testing](./testing) — how to write and run tests
-- [Architecture](../architecture/overview) — system design
+- [Law Format](/concepts/law-format) - understand how laws are structured
+- [Testing](./testing) - how to write and run tests
+- [Architecture](./architecture) - system design

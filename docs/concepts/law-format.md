@@ -129,9 +129,9 @@ See [RFC-004: Uniform Operation Syntax](/rfcs/rfc-004) for the full specificatio
 
 ### Variable References
 
-- `$variableName` — reference inputs, outputs, definitions, or parameters
-- `$referencedate.year` — dot notation for property access
-- `#output_name` — internal reference (same law)
+- `$variableName` - reference inputs, outputs, definitions, or parameters
+- `$referencedate.year` - dot notation for property access
+- `#output_name` - internal reference (same law)
 
 ### Cross-Law References
 
@@ -218,6 +218,6 @@ The current corpus contains laws across three regulatory layers:
 
 ## Next Steps
 
-- [Testing](./testing) — writing BDD scenarios for laws
-- [Schema Reference](/reference/schema) — full schema specification
-- [Engine](/components/engine) — how the engine executes laws
+- [Testing](/guide/testing) - writing BDD scenarios for laws
+- [Schema Reference](/reference/schema) - full schema specification
+- [Engine](/components/engine) - how the engine executes laws

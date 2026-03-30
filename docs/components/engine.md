@@ -1,13 +1,13 @@
 # Execution Engine
 
-The execution engine is the core of RegelRecht — a deterministic Rust runtime that evaluates machine-readable Dutch law.
+The execution engine is the core of RegelRecht: a deterministic Rust runtime that evaluates machine-readable Dutch law.
 
 ## Overview
 
 - **Language**: Rust
 - **Location**: `packages/engine/`
 - **Targets**: Native (x86/ARM) and WebAssembly (browser/Node.js)
-- **Key property**: Deterministic — same inputs always produce the same outputs
+- **Key property**: Deterministic - same inputs always produce the same outputs
 
 ## Architecture
 
@@ -27,10 +27,10 @@ flowchart TD
 
 | Module | Purpose |
 |--------|---------|
-| `service.rs` | `LawExecutionService` — top-level API, cross-law orchestration |
-| `engine.rs` | `ArticleEngine` — single article execution |
-| `resolver.rs` | `RuleResolver` — law registry, output→article indexing, IoC lookup |
-| `context.rs` | `RuleContext` — execution state, variable resolution with priority chain |
+| `service.rs` | `LawExecutionService` - top-level API, cross-law orchestration |
+| `engine.rs` | `ArticleEngine` - single article execution |
+| `resolver.rs` | `RuleResolver` - law registry, output→article indexing, IoC lookup |
+| `context.rs` | `RuleContext` - execution state, variable resolution with priority chain |
 | `operations.rs` | 21 operation types (arithmetic, comparison, logical, conditional, date) |
 | `uri.rs` | `regelrecht://` URI parsing for cross-law references |
 | `trace.rs` | Execution tracing with box-drawing visualization |
@@ -57,12 +57,12 @@ flowchart TD
 
 When the engine resolves a `$variable`, it checks these sources in order:
 
-1. **Context variables** — `referencedate`, `referencedate.year`, etc.
-2. **Local scope** — loop variables from `FOREACH`
-3. **Outputs** — values calculated by previous actions in the same article
-4. **Resolved inputs** — cached results from cross-law references
-5. **Definitions** — article-level constants
-6. **Parameters** — direct input parameters
+1. **Context variables** - `referencedate`, `referencedate.year`, etc.
+2. **Local scope** - loop variables from `FOREACH`
+3. **Outputs** - values calculated by previous actions in the same article
+4. **Resolved inputs** - cached results from cross-law references
+5. **Definitions** - article-level constants
+6. **Parameters** - direct input parameters
 
 ## Operations
 
@@ -218,7 +218,7 @@ Key benchmarks: URI parsing, variable resolution, operations, article evaluation
 
 ## Further Reading
 
-- [Law Format](/guide/law-format) — structure of law YAML files
-- [RFC-003: Inversion of Control](/rfcs/rfc-003) — open terms and delegation
-- [RFC-004: Uniform Operations](/rfcs/rfc-004) — operation syntax
-- [RFC-007: Cross-Law Execution](/rfcs/rfc-007) — hooks, overrides, and temporal computation
+- [Law Format](/concepts/law-format) - structure of law YAML files
+- [RFC-003: Inversion of Control](/rfcs/rfc-003) - open terms and delegation
+- [RFC-004: Uniform Operations](/rfcs/rfc-004) - operation syntax
+- [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - hooks, overrides, and temporal computation
