@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{LawExecutionService, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 fn corpus_path() -> PathBuf {
@@ -34,7 +34,7 @@ fn load_all_laws(service: &mut LawExecutionService) {
     }
 }
 
-fn make_record(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
+fn make_record(pairs: &[(&str, Value)]) -> BTreeMap<String, Value> {
     pairs
         .iter()
         .map(|(k, v)| (k.to_string(), v.clone()))
@@ -161,7 +161,7 @@ fn bench_simple_law(c: &mut Criterion) {
             service.evaluate_law_output(
                 black_box("regeling_standaardpremie"),
                 black_box("standaardpremie"),
-                HashMap::new(),
+                BTreeMap::new(),
                 "2025-01-01",
             )
         })
@@ -172,7 +172,7 @@ fn bench_simple_law(c: &mut Criterion) {
             service.evaluate_law_output_with_trace(
                 black_box("regeling_standaardpremie"),
                 black_box("standaardpremie"),
-                HashMap::new(),
+                BTreeMap::new(),
                 "2025-01-01",
             )
         })
@@ -186,7 +186,7 @@ fn bench_complex_law(c: &mut Criterion) {
     load_all_laws(&mut service);
     register_zorgtoeslag_data(&mut service);
 
-    let mut params = HashMap::new();
+    let mut params = BTreeMap::new();
     params.insert("bsn".to_string(), Value::String("999993653".to_string()));
 
     let mut group = c.benchmark_group("service_e2e_complex");

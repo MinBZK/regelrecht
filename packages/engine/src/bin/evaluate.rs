@@ -20,14 +20,14 @@
 //!   - error: Optional<String> — error message if evaluation failed
 
 use regelrecht_engine::{LawExecutionService, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::io::Read;
 
 #[derive(serde::Deserialize)]
 struct EvaluateRequest {
     law_yaml: String,
     output_name: String,
-    params: HashMap<String, serde_json::Value>,
+    params: BTreeMap<String, serde_json::Value>,
     date: String,
     #[serde(default)]
     extra_laws: Vec<String>,
@@ -36,9 +36,9 @@ struct EvaluateRequest {
 #[derive(serde::Serialize)]
 struct EvaluateResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
-    outputs: Option<HashMap<String, serde_json::Value>>,
+    outputs: Option<BTreeMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    resolved_inputs: Option<HashMap<String, serde_json::Value>>,
+    resolved_inputs: Option<BTreeMap<String, serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     article_number: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,7 +123,7 @@ fn main() {
     }
 
     // Convert params
-    let params: HashMap<String, Value> = request
+    let params: BTreeMap<String, Value> = request
         .params
         .iter()
         .map(|(k, v)| (k.clone(), Value::from(v)))
@@ -132,12 +132,12 @@ fn main() {
     // Evaluate
     match service.evaluate_law_output(&law_id, &request.output_name, params, &request.date) {
         Ok(result) => {
-            let outputs: HashMap<String, serde_json::Value> = result
+            let outputs: BTreeMap<String, serde_json::Value> = result
                 .outputs
                 .iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
                 .collect();
-            let resolved_inputs: HashMap<String, serde_json::Value> = result
+            let resolved_inputs: BTreeMap<String, serde_json::Value> = result
                 .resolved_inputs
                 .iter()
                 .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))

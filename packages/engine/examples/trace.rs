@@ -7,7 +7,7 @@
 //!   cargo run --example trace -- zorgtoeslagwet hoogte_zorgtoeslag 2025-01-01 bsn=999993653
 
 use regelrecht_engine::{LawExecutionService, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -23,7 +23,7 @@ fn main() {
     let output_name = &args[1];
     let date = &args[2];
 
-    let mut params: HashMap<String, Value> = HashMap::new();
+    let mut params: BTreeMap<String, Value> = BTreeMap::new();
     for arg in &args[3..] {
         if let Some((key, val)) = arg.split_once('=') {
             let value = parse_value(val);

@@ -51,8 +51,8 @@ pub fn convert_gherkin_value(val: &str) -> Value {
 /// ```
 pub fn parse_table_to_params(
     table: &cucumber::gherkin::Table,
-) -> std::collections::HashMap<String, Value> {
-    let mut params = std::collections::HashMap::new();
+) -> std::collections::BTreeMap<String, Value> {
+    let mut params = std::collections::BTreeMap::new();
 
     for row in &table.rows {
         if row.len() >= 2 {

@@ -6,7 +6,7 @@
 
 use cucumber::World;
 use regelrecht_engine::{ArticleResult, EngineError, LawExecutionService, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 use crate::helpers::regulation_loader::load_all_regulations;
@@ -20,7 +20,7 @@ pub struct RegelrechtWorld {
     /// Calculation date for the current scenario
     pub calculation_date: String,
     /// Parameters for law execution
-    pub parameters: HashMap<String, Value>,
+    pub parameters: BTreeMap<String, Value>,
     /// Last execution result (if successful)
     pub result: Option<ArticleResult>,
     /// Last error (if execution failed)
@@ -49,23 +49,23 @@ impl fmt::Debug for RegelrechtWorld {
 #[derive(Debug, Default, Clone)]
 pub struct ExternalData {
     /// RVIG personal_data
-    pub rvig_personal: HashMap<String, HashMap<String, Value>>,
+    pub rvig_personal: HashMap<String, BTreeMap<String, Value>>,
     /// RVIG relationship_data
-    pub rvig_relationship: HashMap<String, HashMap<String, Value>>,
+    pub rvig_relationship: HashMap<String, BTreeMap<String, Value>>,
     /// RVZ insurance data
-    pub rvz_insurance: HashMap<String, HashMap<String, Value>>,
+    pub rvz_insurance: HashMap<String, BTreeMap<String, Value>>,
     /// Belastingdienst box1 data
-    pub bd_box1: HashMap<String, HashMap<String, Value>>,
+    pub bd_box1: HashMap<String, BTreeMap<String, Value>>,
     /// Belastingdienst box2 data
-    pub bd_box2: HashMap<String, HashMap<String, Value>>,
+    pub bd_box2: HashMap<String, BTreeMap<String, Value>>,
     /// Belastingdienst box3 data
-    pub bd_box3: HashMap<String, HashMap<String, Value>>,
+    pub bd_box3: HashMap<String, BTreeMap<String, Value>>,
     /// DJI detenties data
-    pub dji_detenties: HashMap<String, HashMap<String, Value>>,
+    pub dji_detenties: HashMap<String, BTreeMap<String, Value>>,
     /// DUO inschrijvingen data
-    pub duo_inschrijvingen: HashMap<String, HashMap<String, Value>>,
+    pub duo_inschrijvingen: HashMap<String, BTreeMap<String, Value>>,
     /// DUO studiefinanciering data
-    pub duo_studiefinanciering: HashMap<String, HashMap<String, Value>>,
+    pub duo_studiefinanciering: HashMap<String, BTreeMap<String, Value>>,
 }
 
 impl Default for RegelrechtWorld {
@@ -87,7 +87,7 @@ impl RegelrechtWorld {
         Self {
             service,
             calculation_date: "2024-01-01".to_string(),
-            parameters: HashMap::new(),
+            parameters: BTreeMap::new(),
             result: None,
             error: None,
             external_data: ExternalData::default(),

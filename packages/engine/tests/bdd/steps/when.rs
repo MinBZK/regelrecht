@@ -96,7 +96,7 @@ fn execute_healthcare_allowance(world: &mut RegelrechtWorld) {
 fn register_if_present(
     service: &mut regelrecht_engine::LawExecutionService,
     name: &str,
-    data: &std::collections::HashMap<String, std::collections::HashMap<String, Value>>,
+    data: &std::collections::HashMap<String, std::collections::BTreeMap<String, Value>>,
 ) {
     if !data.is_empty() {
         let records: Vec<_> = data.values().cloned().collect();

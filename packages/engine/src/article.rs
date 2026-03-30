@@ -15,7 +15,7 @@ use crate::config;
 use crate::error::{EngineError, Result};
 use crate::types::{Operation, ParameterType, RegulatoryLayer, Value};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
 
@@ -65,7 +65,7 @@ pub struct Source {
     pub output: Option<String>,
     /// Parameters to pass to the source execution
     #[serde(default)]
-    pub parameters: Option<HashMap<String, String>>,
+    pub parameters: Option<BTreeMap<String, String>>,
 }
 
 /// Parameter definition in execution spec

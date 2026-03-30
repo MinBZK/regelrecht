@@ -1,5 +1,5 @@
 use regelrecht_engine::{ArticleResult, LawExecutionService, LawInfo, PathNode, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::path::Path;
 use tokio::sync::mpsc;
 use walkdir::WalkDir;
@@ -10,7 +10,7 @@ pub enum EngineCommand {
     Evaluate {
         law_id: String,
         output: String,
-        params: HashMap<String, Value>,
+        params: BTreeMap<String, Value>,
         date: String,
     },
 }

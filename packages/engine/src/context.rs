@@ -38,7 +38,7 @@ use crate::trace::TraceBuilder;
 use crate::types::{PathNodeType, ResolveType, Value};
 use chrono::{Datelike, NaiveDate};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 /// Execution context for article evaluation.
@@ -54,19 +54,19 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub struct RuleContext {
     /// Article-level definitions (constants)
-    definitions: Rc<HashMap<String, Value>>,
+    definitions: Rc<BTreeMap<String, Value>>,
 
     /// Input parameters (e.g., BSN, income)
-    parameters: Rc<HashMap<String, Value>>,
+    parameters: Rc<BTreeMap<String, Value>>,
 
     /// Calculated output values
-    outputs: Rc<HashMap<String, Value>>,
+    outputs: Rc<BTreeMap<String, Value>>,
 
     /// Local scope variables (for FOREACH loops)
-    local: HashMap<String, Value>,
+    local: BTreeMap<String, Value>,
 
     /// Cached resolved inputs from cross-law references
-    resolved_inputs: Rc<HashMap<String, Value>>,
+    resolved_inputs: Rc<BTreeMap<String, Value>>,
 
     /// Reference date for calculations
     reference_date: NaiveDate,
@@ -84,18 +84,18 @@ impl RuleContext {
     /// # Arguments
     /// * `parameters` - Input parameters for the execution
     /// * `calculation_date` - Reference date for calculations (YYYY-MM-DD format)
-    pub fn new(parameters: HashMap<String, Value>, calculation_date: &str) -> Result<Self> {
+    pub fn new(parameters: BTreeMap<String, Value>, calculation_date: &str) -> Result<Self> {
         let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d")
             .map_err(|e| EngineError::InvalidDate(format!("{}: {}", calculation_date, e)))?;
 
         let reference_date_value = date_to_value(reference_date);
 
         Ok(Self {
-            definitions: Rc::new(HashMap::new()),
+            definitions: Rc::new(BTreeMap::new()),
             parameters: Rc::new(parameters),
-            outputs: Rc::new(HashMap::with_capacity(8)),
-            local: HashMap::new(),
-            resolved_inputs: Rc::new(HashMap::with_capacity(8)),
+            outputs: Rc::new(BTreeMap::new()),
+            local: BTreeMap::new(),
+            resolved_inputs: Rc::new(BTreeMap::new()),
             reference_date,
             reference_date_value,
             trace: None,
@@ -106,7 +106,7 @@ impl RuleContext {
     ///
     /// Useful for testing.
     #[allow(clippy::expect_used)]
-    pub fn with_defaults(parameters: HashMap<String, Value>) -> Self {
+    pub fn with_defaults(parameters: BTreeMap<String, Value>) -> Self {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         Self::new(parameters, &today).expect("today's date should always be valid")
     }
@@ -124,7 +124,7 @@ impl RuleContext {
     }
 
     /// Set definitions directly from a Value HashMap.
-    pub fn set_definitions_raw(&mut self, definitions: HashMap<String, Value>) {
+    pub fn set_definitions_raw(&mut self, definitions: BTreeMap<String, Value>) {
         self.definitions = Rc::new(definitions);
     }
 
@@ -139,7 +139,7 @@ impl RuleContext {
     }
 
     /// Get all outputs.
-    pub fn outputs(&self) -> &HashMap<String, Value> {
+    pub fn outputs(&self) -> &BTreeMap<String, Value> {
         &self.outputs
     }
 
@@ -159,12 +159,12 @@ impl RuleContext {
     }
 
     /// Get all resolved inputs (cached cross-law results).
-    pub fn resolved_inputs(&self) -> &HashMap<String, Value> {
+    pub fn resolved_inputs(&self) -> &BTreeMap<String, Value> {
         &self.resolved_inputs
     }
 
     /// Get all input parameters.
-    pub fn parameters(&self) -> &HashMap<String, Value> {
+    pub fn parameters(&self) -> &BTreeMap<String, Value> {
         &self.parameters
     }
 
@@ -211,7 +211,7 @@ impl RuleContext {
             definitions: Rc::clone(&self.definitions),
             parameters: Rc::clone(&self.parameters),
             outputs: Rc::clone(&self.outputs),
-            local: HashMap::new(), // Child starts with empty local scope
+            local: BTreeMap::new(), // Child starts with empty local scope
             resolved_inputs: Rc::clone(&self.resolved_inputs),
             reference_date: self.reference_date,
             reference_date_value: self.reference_date_value.clone(),
@@ -425,7 +425,7 @@ impl ValueResolver for RuleContext {
 
 /// Convert a NaiveDate to a Value object with year, month, day properties.
 fn date_to_value(date: NaiveDate) -> Value {
-    let mut obj = HashMap::new();
+    let mut obj = BTreeMap::new();
     obj.insert("year".to_string(), Value::Int(date.year() as i64));
     obj.insert("month".to_string(), Value::Int(date.month() as i64));
     obj.insert("day".to_string(), Value::Int(date.day() as i64));
@@ -494,7 +494,7 @@ mod tests {
     use crate::config;
 
     fn make_context() -> RuleContext {
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("BSN".to_string(), Value::String("123456789".to_string()));
         params.insert("income".to_string(), Value::Int(30000));
 
@@ -519,7 +519,7 @@ mod tests {
     #[test]
     fn test_resolve_definition() {
         let mut ctx = make_context();
-        let mut defs = HashMap::new();
+        let mut defs = BTreeMap::new();
         defs.insert("MAX_INCOME".to_string(), Value::Int(50000));
         defs.insert("TAX_RATE".to_string(), Value::Float(0.21));
         ctx.set_definitions_raw(defs);
@@ -587,7 +587,7 @@ mod tests {
     #[test]
     fn test_priority_output_over_definition() {
         let mut ctx = make_context();
-        let mut defs = HashMap::new();
+        let mut defs = BTreeMap::new();
         defs.insert("x".to_string(), Value::Int(100));
         ctx.set_definitions_raw(defs);
         ctx.set_output("x", Value::Int(200));
@@ -601,7 +601,7 @@ mod tests {
     fn test_priority_definition_over_parameter() {
         let mut ctx = make_context();
         // "income" exists as parameter (30000)
-        let mut defs = HashMap::new();
+        let mut defs = BTreeMap::new();
         defs.insert("income".to_string(), Value::Int(50000));
         ctx.set_definitions_raw(defs);
 
@@ -652,7 +652,7 @@ mod tests {
     fn test_dot_notation_object() {
         let mut ctx = make_context();
 
-        let mut person = HashMap::new();
+        let mut person = BTreeMap::new();
         person.insert("name".to_string(), Value::String("Jan".to_string()));
         person.insert("age".to_string(), Value::Int(35));
         ctx.set_output("person", Value::Object(person));
@@ -668,11 +668,11 @@ mod tests {
     fn test_dot_notation_nested() {
         let mut ctx = make_context();
 
-        let mut address = HashMap::new();
+        let mut address = BTreeMap::new();
         address.insert("city".to_string(), Value::String("Amsterdam".to_string()));
         address.insert("zip".to_string(), Value::String("1012AB".to_string()));
 
-        let mut person = HashMap::new();
+        let mut person = BTreeMap::new();
         person.insert("name".to_string(), Value::String("Jan".to_string()));
         person.insert("address".to_string(), Value::Object(address));
         ctx.set_output("person", Value::Object(person));
@@ -703,7 +703,7 @@ mod tests {
     fn test_dot_notation_not_found() {
         let mut ctx = make_context();
 
-        let mut person = HashMap::new();
+        let mut person = BTreeMap::new();
         person.insert("name".to_string(), Value::String("Jan".to_string()));
         ctx.set_output("person", Value::Object(person));
 
@@ -729,7 +729,7 @@ mod tests {
     fn test_child_context_inherits() {
         let mut ctx = make_context();
         ctx.set_output("parent_output", Value::Int(100));
-        let mut defs = HashMap::new();
+        let mut defs = BTreeMap::new();
         defs.insert("CONSTANT".to_string(), Value::Int(42));
         ctx.set_definitions_raw(defs);
 
@@ -786,14 +786,14 @@ mod tests {
 
     #[test]
     fn test_invalid_date() {
-        let params = HashMap::new();
+        let params = BTreeMap::new();
         let result = RuleContext::new(params, "not-a-date");
         assert!(matches!(result, Err(EngineError::InvalidDate(_))));
     }
 
     #[test]
     fn test_empty_context() {
-        let ctx = RuleContext::with_defaults(HashMap::new());
+        let ctx = RuleContext::with_defaults(BTreeMap::new());
         let result = ctx.resolve("anything");
         assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
     }
@@ -810,7 +810,7 @@ mod tests {
     #[test]
     fn test_priority_resolved_input_over_definition() {
         let mut ctx = make_context();
-        let mut defs = HashMap::new();
+        let mut defs = BTreeMap::new();
         defs.insert("x".to_string(), Value::Int(100));
         ctx.set_definitions_raw(defs);
         ctx.set_resolved_input("x", Value::Int(200));
@@ -826,11 +826,11 @@ mod tests {
 
         // Create a deeply nested object (but not exceeding limit)
         // 5 levels of nesting: {n: {n: {n: {n: {n: {value: 42}}}}}}
-        let mut deep = HashMap::new();
+        let mut deep = BTreeMap::new();
         deep.insert("value".to_string(), Value::Int(42));
 
         for _ in 0..5 {
-            let mut wrapper = HashMap::new();
+            let mut wrapper = BTreeMap::new();
             wrapper.insert("n".to_string(), Value::Object(deep));
             deep = wrapper;
         }
@@ -845,11 +845,11 @@ mod tests {
         // Create a structure that's deeper than MAX_PROPERTY_DEPTH (32)
         // We need (MAX_PROPERTY_DEPTH + 3) levels to trigger the depth limit
         let depth = config::MAX_PROPERTY_DEPTH + 3;
-        let mut very_deep = HashMap::new();
+        let mut very_deep = BTreeMap::new();
         very_deep.insert("end".to_string(), Value::Int(999));
 
         for _ in 0..depth {
-            let mut wrapper = HashMap::new();
+            let mut wrapper = BTreeMap::new();
             wrapper.insert("n".to_string(), Value::Object(very_deep));
             very_deep = wrapper;
         }

@@ -5,7 +5,7 @@
 
 use regelrecht_engine::{LawExecutionService, Value};
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::Path;
 
@@ -145,7 +145,7 @@ fn run_test_case(test: &TestCase) -> Result<(), String> {
     }
 
     // Convert parameters
-    let params: HashMap<String, Value> = test
+    let params: BTreeMap<String, Value> = test
         .parameters
         .iter()
         .map(|(k, v)| (k.clone(), json_to_value(v)))

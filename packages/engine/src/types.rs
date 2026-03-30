@@ -1,7 +1,7 @@
 //! Core types for the RegelRecht engine
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 
 /// Represents any value in the engine (similar to Python's Any)
@@ -27,7 +27,7 @@ pub enum Value {
     /// Array of values
     Array(Vec<Value>),
     /// Object/Map of values
-    Object(HashMap<String, Value>),
+    Object(BTreeMap<String, Value>),
 }
 
 impl PartialEq for Value {
@@ -103,7 +103,7 @@ impl Value {
     }
 
     /// Try to get value as object reference
-    pub fn as_object(&self) -> Option<&HashMap<String, Value>> {
+    pub fn as_object(&self) -> Option<&BTreeMap<String, Value>> {
         match self {
             Value::Object(o) => Some(o),
             _ => None,
@@ -215,7 +215,7 @@ impl From<serde_json::Value> for Value {
                 Value::Array(arr.into_iter().map(Value::from).collect())
             }
             serde_json::Value::Object(obj) => {
-                let map: HashMap<String, Value> =
+                let map: BTreeMap<String, Value> =
                     obj.into_iter().map(|(k, v)| (k, Value::from(v))).collect();
                 Value::Object(map)
             }
@@ -244,7 +244,7 @@ impl From<&serde_json::Value> for Value {
             serde_json::Value::String(s) => Value::String(s.clone()),
             serde_json::Value::Array(arr) => Value::Array(arr.iter().map(Value::from).collect()),
             serde_json::Value::Object(obj) => {
-                let map: HashMap<String, Value> = obj
+                let map: BTreeMap<String, Value> = obj
                     .iter()
                     .map(|(k, v)| (k.clone(), Value::from(v)))
                     .collect();

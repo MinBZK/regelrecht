@@ -1,16 +1,16 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{RuleContext, Value, ValueResolver};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 fn make_context() -> RuleContext {
-    let mut parameters = HashMap::new();
+    let mut parameters = BTreeMap::new();
     parameters.insert("bsn".to_string(), Value::String("999993653".to_string()));
     parameters.insert("inkomen".to_string(), Value::Int(35000));
     parameters.insert("leeftijd".to_string(), Value::Int(30));
 
     let mut ctx = RuleContext::new(parameters, "2025-01-01").unwrap();
 
-    let mut definitions = HashMap::new();
+    let mut definitions = BTreeMap::new();
     definitions.insert("drempelinkomen".to_string(), Value::Int(25000));
     definitions.insert("maximale_toeslag".to_string(), Value::Int(2112));
     ctx.set_definitions_raw(definitions);

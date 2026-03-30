@@ -141,7 +141,7 @@ fn parse_external_data_table(
     table: &cucumber::gherkin::Table,
     storage: &mut std::collections::HashMap<
         String,
-        std::collections::HashMap<String, regelrecht_engine::Value>,
+        std::collections::BTreeMap<String, regelrecht_engine::Value>,
     >,
 ) {
     if table.rows.len() < 2 {
@@ -153,7 +153,7 @@ fn parse_external_data_table(
 
     // Remaining rows are data
     for row in table.rows.iter().skip(1) {
-        let mut record = std::collections::HashMap::new();
+        let mut record = std::collections::BTreeMap::new();
         let mut bsn = String::new();
 
         for (i, cell) in row.iter().enumerate() {
