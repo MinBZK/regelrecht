@@ -9,6 +9,7 @@ const props = defineProps({
   fields: { type: Array, required: true },
   modelValue: { type: Array, default: () => [] },
   defaultExpanded: { type: Boolean, default: false },
+  readonly: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -116,13 +117,16 @@ const rowCount = computed(() => rows.value.length);
               <th v-for="col in allColumns" :key="col.name" :class="{ 'ds-key-col': col.isKey }">
                 {{ col.name }}
               </th>
-              <th class="ds-action-col"></th>
+              <th v-if="!readonly" class="ds-action-col"></th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(row, ri) in rows" :key="row._id ?? ri">
               <td v-for="col in allColumns" :key="col.name">
-                <template v-if="col.type === 'boolean'">
+                <template v-if="readonly">
+                  <span class="ds-cell-readonly" :class="{ 'ds-key-col': col.isKey }">{{ row[col.name] ?? '' }}</span>
+                </template>
+                <template v-else-if="col.type === 'boolean'">
                   <select
                     class="ds-cell-input ds-cell-select"
                     :value="String(row[col.name] || 'null')"
@@ -143,7 +147,7 @@ const rowCount = computed(() => rows.value.length);
                   />
                 </template>
               </td>
-              <td class="ds-action-col">
+              <td v-if="!readonly" class="ds-action-col">
                 <button class="ds-remove-btn" @click="removeRow(ri)" type="button" title="Rij verwijderen">&times;</button>
               </td>
             </tr>
@@ -151,7 +155,7 @@ const rowCount = computed(() => rows.value.length);
         </table>
       </div>
 
-      <button class="ds-add-btn" @click="addRow" type="button">
+      <button v-if="!readonly" class="ds-add-btn" @click="addRow" type="button">
         + Rij toevoegen
       </button>
     </div>
@@ -269,6 +273,15 @@ const rowCount = computed(() => rows.value.length);
 
 .ds-cell-select {
   min-width: 70px;
+}
+
+.ds-cell-readonly {
+  display: block;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--semantics-text-color-primary, #1C2029);
+  white-space: nowrap;
 }
 
 .ds-action-col {

@@ -3,6 +3,8 @@ import { ref, computed } from 'vue';
 import { useScenarios } from '../composables/useScenarios.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { runFeature } from '../gherkin/runner.js';
+import { mapFeatureToForm } from '../gherkin/formMapper.js';
+import ScenarioVisual from './ScenarioVisual.vue';
 
 const props = defineProps({
   lawId: { type: String, required: true },
@@ -24,6 +26,7 @@ const {
 const results = ref(null);
 const running = ref(false);
 const runError = ref(null);
+const viewMode = ref('visual');
 
 function onScenarioSelect(event) {
   const filename = event.target.value;
@@ -48,6 +51,16 @@ async function runScenarios() {
     running.value = false;
   }
 }
+
+const formState = computed(() => {
+  if (!featureText.value) return null;
+  try {
+    const parsed = parseFeature(featureText.value);
+    return mapFeatureToForm(parsed);
+  } catch {
+    return null;
+  }
+});
 
 const summary = computed(() => {
   if (!results.value) return null;
@@ -98,8 +111,41 @@ function stepIcon(status) {
       </button>
     </div>
 
-    <!-- Feature editor -->
-    <div class="scenario-editor-wrap">
+    <!-- View mode toggle -->
+    <div class="scenario-view-toggle">
+      <button
+        class="scenario-toggle-btn"
+        :class="{ active: viewMode === 'visual' }"
+        @click="viewMode = 'visual'"
+        type="button"
+      >Visueel</button>
+      <button
+        class="scenario-toggle-btn"
+        :class="{ active: viewMode === 'text' }"
+        @click="viewMode = 'text'"
+        type="button"
+      >Tekst</button>
+    </div>
+
+    <!-- Visual mode -->
+    <div v-if="viewMode === 'visual'" class="scenario-visual-wrap">
+      <div v-if="!featureText" class="scenario-visual-empty">
+        Selecteer een scenario om de visuele weergave te zien.
+      </div>
+      <div v-else-if="!formState" class="scenario-visual-error">
+        Ongeldige Gherkin syntax &mdash;
+        <a href="#" @click.prevent="viewMode = 'text'">schakel naar tekst</a> om te corrigeren.
+      </div>
+      <ScenarioVisual
+        v-else
+        :form-state="formState"
+        :results="results"
+        :readonly="true"
+      />
+    </div>
+
+    <!-- Text mode (existing editor) -->
+    <div v-if="viewMode === 'text'" class="scenario-editor-wrap">
       <textarea
         v-model="featureText"
         class="scenario-editor"
@@ -111,8 +157,8 @@ function stepIcon(status) {
     <!-- Run error -->
     <div v-if="runError" class="scenario-error">{{ runError }}</div>
 
-    <!-- Results -->
-    <div v-if="results" class="scenario-results">
+    <!-- Results (text mode only — visual mode shows inline) -->
+    <div v-if="results && viewMode === 'text'" class="scenario-results">
       <div v-if="summary" class="scenario-summary" :class="{ 'scenario-summary--pass': summary.allPassed }">
         {{ summary.passed }}/{{ summary.total }} scenarios geslaagd
       </div>
@@ -141,6 +187,11 @@ function stepIcon(status) {
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Summary bar (visual mode) -->
+    <div v-if="results && viewMode === 'visual' && summary" class="scenario-summary" :class="{ 'scenario-summary--pass': summary.allPassed }">
+      {{ summary.passed }}/{{ summary.total }} scenarios geslaagd
     </div>
   </div>
 </template>
@@ -185,6 +236,61 @@ function stepIcon(status) {
 }
 .scenario-run-btn:hover:not(:disabled) {
   background: #1a5490;
+}
+
+/* View toggle */
+.scenario-view-toggle {
+  display: flex;
+  padding: 8px 16px;
+  gap: 0;
+  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+
+.scenario-toggle-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
+  background: white;
+  color: var(--semantics-text-color-secondary, #666);
+  cursor: pointer;
+}
+
+.scenario-toggle-btn:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.scenario-toggle-btn:last-child {
+  border-radius: 0 6px 6px 0;
+  border-left: none;
+}
+
+.scenario-toggle-btn.active {
+  background: #154273;
+  color: white;
+  border-color: #154273;
+}
+
+/* Visual mode */
+.scenario-visual-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.scenario-visual-empty,
+.scenario-visual-error {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--semantics-text-color-secondary, #999);
+  font-style: italic;
+}
+
+.scenario-visual-error a {
+  color: #154273;
+  text-decoration: underline;
 }
 
 .scenario-editor-wrap {

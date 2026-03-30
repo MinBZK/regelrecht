@@ -7,6 +7,7 @@ import { generateGherkin } from '../gherkin/generator.js';
 import { parseValue } from '../gherkin/steps.js';
 import DataSourceTable from './DataSourceTable.vue';
 import ScenarioResults from './ScenarioResults.vue';
+import ScenarioVisual from './ScenarioVisual.vue';
 
 const props = defineProps({
   lawId: { type: String, required: true },
@@ -138,6 +139,56 @@ const gherkinPreview = computed(() => {
     dataSources,
     selectedOutputs: outputs,
   });
+});
+
+// --- Visual preview state (adapter for ScenarioVisual) ---
+const builderVisualState = computed(() => {
+  const dsEntries = dataSourceGroups.value.map((group) => {
+    const key = `${group.lawId}:${group.articleNumber}`;
+    const rows = dataSourceRows.value[key] || [];
+    const headers = [group.keyField, ...group.fields.map((f) => f.name)];
+    const uniqueHeaders = [...new Set(headers)];
+    return {
+      sourceName: `${group.lawId}_art${group.articleNumber}`,
+      keyField: group.keyField,
+      headers: uniqueHeaders,
+      rows: rows.map((row) => uniqueHeaders.map((h) => String(row[h] ?? ''))),
+    };
+  });
+
+  const params = Object.entries(parameterValues.value)
+    .filter(([, v]) => v !== '' && v !== null && v !== undefined)
+    .map(([name, value]) => ({ name, value }));
+
+  const assertions = selectedOutputs.value
+    .filter((name) => expectations.value[name] != null && expectations.value[name] !== '')
+    .map((name) => {
+      const exp = expectations.value[name];
+      if (exp === true || exp === 'true') return { assertionType: 'boolean', outputName: name, value: true };
+      if (exp === false || exp === 'false') return { assertionType: 'boolean', outputName: name, value: false };
+      if (typeof exp === 'number' || /^-?\d+(\.\d+)?$/.test(exp)) return { assertionType: 'equals', outputName: name, value: Number(exp) };
+      return { assertionType: 'equalsString', outputName: name, value: String(exp) };
+    });
+
+  return {
+    featureName: lawName.value,
+    background: null,
+    scenarios: [{
+      name: `Test ${props.lawId}`,
+      tags: [],
+      setup: {
+        calculationDate: calculationDate.value || null,
+        dependencies: loadedDeps.value || [],
+        parameters: params,
+        dataSources: dsEntries,
+      },
+      execution: selectedOutputs.value.length > 0
+        ? { outputName: selectedOutputs.value[0], lawId: props.lawId }
+        : null,
+      assertions,
+      unmatchedSteps: [],
+    }],
+  };
 });
 
 // --- Execute ---
@@ -355,10 +406,11 @@ const filledSourceCount = computed(() => {
       <!-- RIGHT: Scenario panel -->
       <div class="sb-scenario-panel">
         <div class="sb-scroll">
-          <!-- Gherkin preview -->
-          <div class="sb-gherkin-preview">
-            <pre class="sb-gherkin-code">{{ gherkinPreview }}</pre>
-          </div>
+          <!-- Visual preview -->
+          <ScenarioVisual
+            :form-state="builderVisualState"
+            :readonly="true"
+          />
 
           <!-- Execute button -->
           <div class="sb-execute-bar">
