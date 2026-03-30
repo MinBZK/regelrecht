@@ -96,5 +96,5 @@ export function generateGherkin(formState) {
 
 function formatCell(value) {
   if (value === null || value === undefined || value === '') return 'null';
-  return String(value).replace(/\|/g, '\\|');
+  return String(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
