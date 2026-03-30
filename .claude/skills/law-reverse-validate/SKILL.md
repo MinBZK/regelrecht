@@ -18,11 +18,40 @@ Verifies that every element in `machine_readable` sections traces back to the
 original legal text. This catches invented logic, phantom conditions, and
 hallucinated operations that aren't grounded in the law.
 
+## CRITICAL: Scope Audit
+
+The most important check is **scope**: does the machine_readable section stay within the
+boundaries of the legal provision it belongs to?
+
+Each machine_readable must interpret ONLY the text of the article, lid, or provision it is
+attached to. It must not pull in logic, conditions, thresholds, or values from other
+provisions — even when doing so seems "obvious" or "efficient."
+
+This is the most common failure mode. The engineering instinct is to optimize by combining
+logic from multiple articles into one execution block, but this fundamentally breaks the
+contract between the law and its machine-readable interpretation. The law may be redundant,
+circular, or inefficient. That is intentional — model it as the law writes it.
+
+**Scope violations to flag:**
+- Conditions not in this provision's text (e.g., an age check in an article that doesn't
+  mention age — even if age is required by another article)
+- Hardcoded values from other provisions (e.g., drempelinkomen amounts in an article that
+  only references the concept, not the value)
+- Logic from other articles reimplemented instead of referenced via `source`
+- Eligibility conditions from one article stuffed into an orchestration article
+- `legal_character` that doesn't match what this provision does (e.g., BESCHIKKING on a
+  norm article that merely sets amounts)
+
+**When cross-article dependencies are needed, the correct mechanism is:**
+- `input` with `source.regulation` / `source.output` for values from other provisions
+- `open_terms` for delegated values
+- `hooks` / `overrides` for reactive cross-law interactions
+
 ## Instructions
 
 1. Read the target law YAML file
 2. For each article that has a `machine_readable` section:
-   a. Read the article's `text` field carefully
+   a. Read the article's `text` field carefully — this defines the SCOPE
    b. Check every element in the `machine_readable` section:
       - Every `input` field — is it referenced in the legal text?
       - Every `parameter` — is it needed by the legal text?
@@ -39,12 +68,17 @@ hallucinated operations that aren't grounded in the law.
 
 3. Classify each element:
 
-| Traceable in text? | Needed for logic? | Action |
-|-------------------|-------------------|--------|
+| Traceable in THIS provision's text? | Needed for logic? | Action |
+|-------------------------------------|-------------------|--------|
 | YES | YES | Keep |
 | YES | NO | Keep (informational) |
+| NO, but in another provision | YES | **Scope violation** — must be refactored to use `source` reference |
 | NO | YES | Report as assumption |
 | NO | NO | **Remove** |
+
+**Scope violations are the highest priority finding.** They mean logic from one provision
+has leaked into another. This is worse than a missing element, because it produces results
+that look correct but cannot be traced back to the provision that claims to produce them.
 
 4. For elements classified as "Remove": delete them from the YAML using Edit
 5. For elements classified as "Report as assumption": collect them for the report
