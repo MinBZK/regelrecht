@@ -31,7 +31,11 @@ export function generateGherkin(formState) {
   // Parameters
   for (const [name, value] of Object.entries(formState.parameters || {})) {
     if (value !== '' && value !== null && value !== undefined) {
-      lines.push(`    And parameter "${name}" is "${value}"`);
+      if (typeof value === 'number' || /^-?\d+(\.\d+)?$/.test(value)) {
+        lines.push(`    And parameter "${name}" is ${value}`);
+      } else {
+        lines.push(`    And parameter "${name}" is "${value}"`);
+      }
     }
   }
 

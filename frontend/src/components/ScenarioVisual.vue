@@ -53,9 +53,10 @@ function assertionResult(scenarioIndex, assertionIndex) {
   setupStepCount += effective.dataSources.length;
   if (scenario.execution) setupStepCount++;
 
-  // Unmatched steps in background
+  // Unmatched steps in background and scenario
   const bgUnmatched = props.formState.background?.unmatchedSteps?.length || 0;
   setupStepCount += bgUnmatched;
+  setupStepCount += scenario.unmatchedSteps?.length || 0;
 
   const stepIndex = setupStepCount + assertionIndex;
   if (result.steps && result.steps[stepIndex]) {
