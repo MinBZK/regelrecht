@@ -6,7 +6,7 @@
 mod common;
 
 use regelrecht_engine::{LawExecutionService, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use walkdir::WalkDir;
 
 /// Load all regulation YAML files into the service.
@@ -40,7 +40,7 @@ fn load_all_regulations(service: &mut LawExecutionService) -> Result<usize, Stri
 }
 
 /// Helper to create a record HashMap from key-value pairs.
-fn record(entries: Vec<(&str, Value)>) -> HashMap<String, Value> {
+fn record(entries: Vec<(&str, Value)>) -> BTreeMap<String, Value> {
     entries
         .into_iter()
         .map(|(k, v)| (k.to_string(), v))
@@ -124,7 +124,7 @@ fn setup_zorgtoeslag_service() -> LawExecutionService {
 fn test_zorgtoeslag_trace_output_format() {
     let service = setup_zorgtoeslag_service();
 
-    let mut params = HashMap::new();
+    let mut params = BTreeMap::new();
     params.insert("bsn".to_string(), Value::String("999993653".to_string()));
 
     let result = service
@@ -151,36 +151,12 @@ fn test_zorgtoeslag_trace_output_format() {
     let rendered = trace.render_box_drawing();
 
     // Snapshot comparison against expected trace output.
-    // Sort lines within each "Resolving from" block to handle HashMap iteration
-    // order differences between platforms (macOS vs Linux).
-    let normalize = |s: &str| -> Vec<String> {
-        let lines: Vec<&str> = s.trim().lines().collect();
-        let mut result = Vec::new();
-        let mut i = 0;
-        while i < lines.len() {
-            // Collect consecutive "Resolving from" lines and sort them
-            if lines[i].contains("Resolving from") {
-                let start = i;
-                while i < lines.len() && lines[i].contains("Resolving from") {
-                    i += 1;
-                }
-                let mut group: Vec<&str> = lines[start..i].to_vec();
-                group.sort();
-                result.extend(group.iter().map(|s| s.to_string()));
-            } else {
-                result.push(lines[i].to_string());
-                i += 1;
-            }
-        }
-        result
-    };
-
+    // BTreeMap ensures deterministic iteration order, so trace output is
+    // identical across platforms without any normalization.
     let expected = include_str!("expected_zorgtoeslag_trace.txt");
-    let actual_norm = normalize(&rendered);
-    let expected_norm = normalize(expected);
     assert_eq!(
-        actual_norm,
-        expected_norm,
+        rendered.trim(),
+        expected.trim(),
         "Trace output does not match expected snapshot.\n\n--- ACTUAL ---\n{}\n--- EXPECTED ---\n{}",
         rendered,
         expected
@@ -191,7 +167,7 @@ fn test_zorgtoeslag_trace_output_format() {
 fn test_zorgtoeslag_trace_result_matches_non_trace() {
     let service = setup_zorgtoeslag_service();
 
-    let mut params = HashMap::new();
+    let mut params = BTreeMap::new();
     params.insert("bsn".to_string(), Value::String("999993653".to_string()));
 
     // Execute with trace
@@ -220,7 +196,7 @@ fn test_zorgtoeslag_trace_result_matches_non_trace() {
 fn test_trace_disabled_by_default() {
     let service = setup_zorgtoeslag_service();
 
-    let mut params = HashMap::new();
+    let mut params = BTreeMap::new();
     params.insert("bsn".to_string(), Value::String("999993653".to_string()));
 
     // Normal evaluation should not have a trace
@@ -244,7 +220,7 @@ fn test_simple_law_trace() {
         .evaluate_law_output_with_trace(
             "regeling_standaardpremie",
             "standaardpremie",
-            HashMap::new(),
+            BTreeMap::new(),
             "2025-01-01",
         )
         .expect("Standard premium evaluation should succeed");

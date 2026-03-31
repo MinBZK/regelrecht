@@ -12,9 +12,9 @@
 //!
 //! // Create a registry and add a data source
 //! let mut registry = DataSourceRegistry::new();
-//! let mut data = HashMap::new();
+//! let mut data = BTreeMap::new();
 //! data.insert("person_123".to_string(), {
-//!     let mut record = HashMap::new();
+//!     let mut record = BTreeMap::new();
 //!     record.insert("income".to_string(), Value::Int(50000));
 //!     record.insert("age".to_string(), Value::Int(35));
 //!     record
@@ -24,7 +24,7 @@
 //! registry.add_source(Box::new(source));
 //!
 //! // Query the registry
-//! let mut criteria = HashMap::new();
+//! let mut criteria = BTreeMap::new();
 //! criteria.insert("BSN".to_string(), Value::String("123".to_string()));
 //!
 //! if let Some(match_result) = registry.resolve("income", &criteria) {
@@ -33,7 +33,7 @@
 //! ```
 
 use crate::types::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 /// Result of a successful data source query.
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ pub trait DataSource: Send + Sync {
     ///
     /// # Returns
     /// The value if found, or None if no matching record exists.
-    fn get(&self, field: &str, criteria: &HashMap<String, Value>) -> Option<Value>;
+    fn get(&self, field: &str, criteria: &BTreeMap<String, Value>) -> Option<Value>;
 
     /// Get all available fields in this data source.
     fn fields(&self) -> Vec<&str>;
@@ -100,7 +100,7 @@ pub struct DictDataSource {
     name: String,
     priority: i32,
     /// Data: record_key -> field_name (lowercase) -> value
-    data: HashMap<String, HashMap<String, Value>>,
+    data: BTreeMap<String, BTreeMap<String, Value>>,
     /// Index of all available field names (lowercase)
     field_index: HashSet<String>,
     /// When set, `get()` filters criteria to only these fields before building the
@@ -119,7 +119,7 @@ impl DictDataSource {
     pub fn new(
         name: impl Into<String>,
         priority: i32,
-        data: HashMap<String, HashMap<String, Value>>,
+        data: BTreeMap<String, BTreeMap<String, Value>>,
     ) -> Self {
         // Build field index with lowercase field names
         let field_index = data
@@ -163,11 +163,11 @@ impl DictDataSource {
         name: impl Into<String>,
         priority: i32,
         key_field: &str,
-        records: Vec<HashMap<String, Value>>,
+        records: Vec<BTreeMap<String, Value>>,
     ) -> Option<Self> {
         let key_field_lower = key_field.to_lowercase();
         let has_records = !records.is_empty();
-        let mut data = HashMap::new();
+        let mut data = BTreeMap::new();
 
         for record in records {
             // Find the key field (case-insensitive)
@@ -198,7 +198,7 @@ impl DictDataSource {
     /// # Arguments
     /// * `key` - The record key
     /// * `fields` - Field values for this record
-    pub fn store(&mut self, key: impl Into<String>, fields: HashMap<String, Value>) {
+    pub fn store(&mut self, key: impl Into<String>, fields: BTreeMap<String, Value>) {
         let key = key.into();
 
         // Update field index
@@ -238,13 +238,13 @@ impl DataSource for DictDataSource {
         self.field_index.contains(&field.to_lowercase())
     }
 
-    fn get(&self, field: &str, criteria: &HashMap<String, Value>) -> Option<Value> {
+    fn get(&self, field: &str, criteria: &BTreeMap<String, Value>) -> Option<Value> {
         // When key_fields is set (e.g. from_records), filter criteria to only
         // the key fields before building the lookup key. Otherwise a caller
         // passing extra criteria would produce a key that doesn't match any record.
         let key = match &self.key_fields {
             Some(fields) => {
-                let filtered: HashMap<String, Value> = criteria
+                let filtered: BTreeMap<String, Value> = criteria
                     .iter()
                     .filter(|(k, _)| fields.contains(&k.to_lowercase()))
                     .map(|(k, v)| (k.clone(), v.clone()))
@@ -328,7 +328,7 @@ impl DataSourceRegistry {
     pub fn resolve(
         &self,
         field: &str,
-        criteria: &HashMap<String, Value>,
+        criteria: &BTreeMap<String, Value>,
     ) -> Option<DataSourceMatch> {
         for source in &self.sources {
             if !source.has_field(field) {
@@ -386,7 +386,7 @@ impl std::fmt::Debug for DataSourceRegistry {
 /// Build a lookup key from criteria values.
 ///
 /// Sorts criteria by key name and joins values with underscore.
-fn build_lookup_key(criteria: &HashMap<String, Value>) -> String {
+fn build_lookup_key(criteria: &BTreeMap<String, Value>) -> String {
     let mut pairs: Vec<_> = criteria
         .iter()
         .map(|(k, v)| (k.to_lowercase(), v))
@@ -416,16 +416,16 @@ fn value_to_key(value: &Value) -> String {
 mod tests {
     use super::*;
 
-    fn make_person_data() -> HashMap<String, HashMap<String, Value>> {
-        let mut data = HashMap::new();
+    fn make_person_data() -> BTreeMap<String, BTreeMap<String, Value>> {
+        let mut data = BTreeMap::new();
 
-        let mut person1 = HashMap::new();
+        let mut person1 = BTreeMap::new();
         person1.insert("income".to_string(), Value::Int(50000));
         person1.insert("age".to_string(), Value::Int(35));
         person1.insert("name".to_string(), Value::String("Jan".to_string()));
         data.insert("123".to_string(), person1);
 
-        let mut person2 = HashMap::new();
+        let mut person2 = BTreeMap::new();
         person2.insert("income".to_string(), Value::Int(40000));
         person2.insert("age".to_string(), Value::Int(28));
         person2.insert("name".to_string(), Value::String("Piet".to_string()));
@@ -463,7 +463,7 @@ mod tests {
     fn test_dict_source_get() {
         let source = DictDataSource::new("persons", 10, make_person_data());
 
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
 
         let income = source.get("income", &criteria);
@@ -477,7 +477,7 @@ mod tests {
     fn test_dict_source_get_case_insensitive() {
         let source = DictDataSource::new("persons", 10, make_person_data());
 
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
 
         // Field name should be case-insensitive
@@ -490,7 +490,7 @@ mod tests {
     fn test_dict_source_get_not_found() {
         let source = DictDataSource::new("persons", 10, make_person_data());
 
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("999".to_string()));
 
         let result = source.get("income", &criteria);
@@ -499,9 +499,9 @@ mod tests {
 
     #[test]
     fn test_dict_source_store() {
-        let mut source = DictDataSource::new("persons", 10, HashMap::new());
+        let mut source = DictDataSource::new("persons", 10, BTreeMap::new());
 
-        let mut fields = HashMap::new();
+        let mut fields = BTreeMap::new();
         fields.insert("income".to_string(), Value::Int(60000));
         fields.insert("age".to_string(), Value::Int(42));
         source.store("789", fields);
@@ -509,7 +509,7 @@ mod tests {
         assert_eq!(source.record_count(), 1);
         assert!(source.has_field("income"));
 
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("key".to_string(), Value::String("789".to_string()));
         assert_eq!(source.get("income", &criteria), Some(Value::Int(60000)));
     }
@@ -519,13 +519,13 @@ mod tests {
         // Records exist but none contain the key field → should return None
         let records = vec![
             {
-                let mut r = HashMap::new();
+                let mut r = BTreeMap::new();
                 r.insert("name".to_string(), Value::String("Jan".to_string()));
                 r.insert("income".to_string(), Value::Int(50000));
                 r
             },
             {
-                let mut r = HashMap::new();
+                let mut r = BTreeMap::new();
                 r.insert("name".to_string(), Value::String("Piet".to_string()));
                 r.insert("income".to_string(), Value::Int(40000));
                 r
@@ -554,13 +554,13 @@ mod tests {
     fn test_dict_source_from_records() {
         let records = vec![
             {
-                let mut r = HashMap::new();
+                let mut r = BTreeMap::new();
                 r.insert("BSN".to_string(), Value::String("123".to_string()));
                 r.insert("income".to_string(), Value::Int(50000));
                 r
             },
             {
-                let mut r = HashMap::new();
+                let mut r = BTreeMap::new();
                 r.insert("BSN".to_string(), Value::String("456".to_string()));
                 r.insert("income".to_string(), Value::Int(40000));
                 r
@@ -571,7 +571,7 @@ mod tests {
         assert_eq!(source.record_count(), 2);
 
         // Criteria must use the key_field name ("BSN"), not an arbitrary name
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
         assert_eq!(source.get("income", &criteria), Some(Value::Int(50000)));
     }
@@ -602,7 +602,7 @@ mod tests {
             make_person_data(),
         )));
 
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
 
         let result = registry.resolve("income", &criteria).unwrap();
@@ -616,20 +616,20 @@ mod tests {
         let mut registry = DataSourceRegistry::new();
 
         // Add low priority source first
-        let mut low_data = HashMap::new();
-        let mut low_record = HashMap::new();
+        let mut low_data = BTreeMap::new();
+        let mut low_record = BTreeMap::new();
         low_record.insert("value".to_string(), Value::Int(100));
         low_data.insert("key".to_string(), low_record);
         registry.add_source(Box::new(DictDataSource::new("low", 1, low_data)));
 
         // Add high priority source second
-        let mut high_data = HashMap::new();
-        let mut high_record = HashMap::new();
+        let mut high_data = BTreeMap::new();
+        let mut high_record = BTreeMap::new();
         high_record.insert("value".to_string(), Value::Int(200));
         high_data.insert("key".to_string(), high_record);
         registry.add_source(Box::new(DictDataSource::new("high", 10, high_data)));
 
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("k".to_string(), Value::String("key".to_string()));
 
         // High priority source should win
@@ -643,20 +643,20 @@ mod tests {
         let mut registry = DataSourceRegistry::new();
 
         // High priority source without the field
-        let mut high_data = HashMap::new();
-        let mut high_record = HashMap::new();
+        let mut high_data = BTreeMap::new();
+        let mut high_record = BTreeMap::new();
         high_record.insert("other".to_string(), Value::Int(999));
         high_data.insert("key".to_string(), high_record);
         registry.add_source(Box::new(DictDataSource::new("high", 10, high_data)));
 
         // Low priority source with the field
-        let mut low_data = HashMap::new();
-        let mut low_record = HashMap::new();
+        let mut low_data = BTreeMap::new();
+        let mut low_record = BTreeMap::new();
         low_record.insert("value".to_string(), Value::Int(100));
         low_data.insert("key".to_string(), low_record);
         registry.add_source(Box::new(DictDataSource::new("low", 1, low_data)));
 
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("k".to_string(), Value::String("key".to_string()));
 
         // Should fall back to low priority source
@@ -682,8 +682,8 @@ mod tests {
     #[test]
     fn test_registry_clear() {
         let mut registry = DataSourceRegistry::new();
-        registry.add_source(Box::new(DictDataSource::new("a", 1, HashMap::new())));
-        registry.add_source(Box::new(DictDataSource::new("b", 2, HashMap::new())));
+        registry.add_source(Box::new(DictDataSource::new("a", 1, BTreeMap::new())));
+        registry.add_source(Box::new(DictDataSource::new("b", 2, BTreeMap::new())));
 
         registry.clear();
         assert_eq!(registry.source_count(), 0);
@@ -706,9 +706,9 @@ mod tests {
     #[test]
     fn test_registry_list_sources() {
         let mut registry = DataSourceRegistry::new();
-        registry.add_source(Box::new(DictDataSource::new("a", 5, HashMap::new())));
-        registry.add_source(Box::new(DictDataSource::new("b", 10, HashMap::new())));
-        registry.add_source(Box::new(DictDataSource::new("c", 1, HashMap::new())));
+        registry.add_source(Box::new(DictDataSource::new("a", 5, BTreeMap::new())));
+        registry.add_source(Box::new(DictDataSource::new("b", 10, BTreeMap::new())));
+        registry.add_source(Box::new(DictDataSource::new("c", 1, BTreeMap::new())));
 
         let sources = registry.list_sources();
         // Should be sorted by priority (highest first)
@@ -736,7 +736,7 @@ mod tests {
 
     #[test]
     fn test_build_lookup_key_single() {
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
 
         let key = build_lookup_key(&criteria);
@@ -745,7 +745,7 @@ mod tests {
 
     #[test]
     fn test_build_lookup_key_multiple() {
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
         criteria.insert("year".to_string(), Value::Int(2025));
 
@@ -757,11 +757,11 @@ mod tests {
     #[test]
     fn test_build_lookup_key_case_insensitive_sort() {
         // Mixed-case keys should produce the same lookup key regardless of casing
-        let mut criteria_upper = HashMap::new();
+        let mut criteria_upper = BTreeMap::new();
         criteria_upper.insert("BSN".to_string(), Value::String("123".to_string()));
         criteria_upper.insert("Year".to_string(), Value::Int(2025));
 
-        let mut criteria_lower = HashMap::new();
+        let mut criteria_lower = BTreeMap::new();
         criteria_lower.insert("bsn".to_string(), Value::String("123".to_string()));
         criteria_lower.insert("year".to_string(), Value::Int(2025));
 
@@ -788,13 +788,13 @@ mod tests {
         // would cause a key mismatch and the lookup would silently fail.
         let records = vec![
             {
-                let mut r = HashMap::new();
+                let mut r = BTreeMap::new();
                 r.insert("BSN".to_string(), Value::String("123".to_string()));
                 r.insert("income".to_string(), Value::Int(50000));
                 r
             },
             {
-                let mut r = HashMap::new();
+                let mut r = BTreeMap::new();
                 r.insert("BSN".to_string(), Value::String("456".to_string()));
                 r.insert("income".to_string(), Value::Int(40000));
                 r
@@ -805,14 +805,14 @@ mod tests {
 
         // Lookup with multiple criteria — the extra "year" criterion should be
         // ignored because the source was created with key_field="BSN"
-        let mut criteria = HashMap::new();
+        let mut criteria = BTreeMap::new();
         criteria.insert("BSN".to_string(), Value::String("123".to_string()));
         criteria.insert("year".to_string(), Value::Int(2025));
 
         assert_eq!(source.get("income", &criteria), Some(Value::Int(50000)));
 
         // Single criterion should still work
-        let mut criteria_single = HashMap::new();
+        let mut criteria_single = BTreeMap::new();
         criteria_single.insert("BSN".to_string(), Value::String("456".to_string()));
         assert_eq!(
             source.get("income", &criteria_single),

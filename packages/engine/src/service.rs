@@ -7,13 +7,13 @@
 //!
 //! ```ignore
 //! use regelrecht_engine::{LawExecutionService, Value};
-//! use std::collections::HashMap;
+//! use std::collections::BTreeMap;
 //!
 //! let mut service = LawExecutionService::new();
 //! service.load_law(zorgtoeslagwet_yaml)?;
 //! service.load_law(regeling_standaardpremie_yaml)?;
 //!
-//! let mut params = HashMap::new();
+//! let mut params = BTreeMap::new();
 //! params.insert("BSN".to_string(), Value::String("123456789".to_string()));
 //!
 //! // This will automatically resolve cross-law references
@@ -40,7 +40,7 @@ use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -59,8 +59,8 @@ use std::rc::Rc;
 type CacheEntry = (
     String,
     String,
-    HashMap<String, Value>,
-    HashMap<String, Value>,
+    BTreeMap<String, Value>,
+    BTreeMap<String, Value>,
 );
 
 /// Uses a scoped push/pop pattern for the visited set to avoid
@@ -170,7 +170,7 @@ impl<'a> ResolutionContext<'a> {
 /// Parameters are sorted by key for consistent hashing within a process.
 /// Note: `DefaultHasher` is randomly seeded per process, so keys are only
 /// valid for per-execution memoization (not persisted across runs).
-fn cache_key(law_id: &str, output_name: &str, params: &HashMap<String, Value>) -> u64 {
+fn cache_key(law_id: &str, output_name: &str, params: &BTreeMap<String, Value>) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     law_id.hash(&mut hasher);
     output_name.hash(&mut hasher);
@@ -236,7 +236,7 @@ pub trait ServiceProvider {
     fn evaluate_uri(
         &self,
         uri: &str,
-        parameters: &HashMap<String, Value>,
+        parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult>;
 
@@ -257,7 +257,7 @@ pub trait ServiceProvider {
         &self,
         regulation: &str,
         output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
+        source_parameters: Option<&BTreeMap<String, String>>,
         context: &RuleContext,
         calculation_date: &str,
     ) -> Result<Value>;
@@ -297,9 +297,9 @@ pub struct StageState {
     /// Current lifecycle stage (e.g., "BESLUIT", "BEKENDMAKING")
     pub current_stage: String,
     /// Outputs accumulated from all completed stages
-    pub accumulated_outputs: HashMap<String, Value>,
+    pub accumulated_outputs: BTreeMap<String, Value>,
     /// Original parameters from the initial execution
-    pub parameters: HashMap<String, Value>,
+    pub parameters: BTreeMap<String, Value>,
 }
 
 /// Outcome of a stage-aware execution step.
@@ -312,7 +312,7 @@ pub enum ExecutionOutcome {
         /// Updated decision state
         state: StageState,
         /// Outputs computed so far (including this stage)
-        outputs: HashMap<String, Value>,
+        outputs: BTreeMap<String, Value>,
         /// Inputs required to advance to the next stage
         pending_inputs: Vec<String>,
     },
@@ -413,7 +413,7 @@ impl LawExecutionService {
         &self,
         law_id: &str,
         output_name: &str,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::new(calculation_date);
@@ -429,7 +429,7 @@ impl LawExecutionService {
         &self,
         law_id: &str,
         output_name: &str,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
         let trace = Rc::new(RefCell::new(TraceBuilder::new()));
@@ -506,7 +506,12 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace);
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
+        self.evaluate_law_output_internal(
+            law_id,
+            output_name,
+            parameters.into_iter().collect(),
+            &mut res_ctx,
+        )
     }
 
     /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
@@ -530,7 +535,7 @@ impl LawExecutionService {
         law_id: &str,
         output_name: &str,
         state: Option<StageState>,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ExecutionOutcome> {
         self.execute_stage_internal(
@@ -560,7 +565,7 @@ impl LawExecutionService {
             law_id,
             output_name,
             state,
-            parameters,
+            parameters.into_iter().collect(),
             calculation_date,
             Some(trace),
         )
@@ -572,7 +577,7 @@ impl LawExecutionService {
         law_id: &str,
         output_name: &str,
         state: Option<StageState>,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
     ) -> Result<ExecutionOutcome> {
@@ -605,12 +610,17 @@ impl LawExecutionService {
                 self.evaluate_law_output_with_shared_trace(
                     law_id,
                     output_name,
-                    parameters,
+                    parameters.into_iter().collect(),
                     calculation_date,
                     tb,
                 )?
             } else {
-                self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?
+                self.evaluate_law_output(
+                    law_id,
+                    output_name,
+                    parameters.into_iter().collect(),
+                    calculation_date,
+                )?
             };
             return Ok(ExecutionOutcome::Complete(result));
         };
@@ -628,7 +638,7 @@ impl LawExecutionService {
                     procedure_id: procedure.id.clone(),
                     contextual_law: law_id.to_string(),
                     current_stage: first_stage.name.clone(),
-                    accumulated_outputs: HashMap::new(),
+                    accumulated_outputs: BTreeMap::new(),
                     parameters: parameters.clone(),
                 }
             }
@@ -749,7 +759,7 @@ impl LawExecutionService {
         &self,
         law_id: &str,
         output_name: &str,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
         // --- Cache check (before depth check: cached results don't increase depth) ---
@@ -779,7 +789,7 @@ impl LawExecutionService {
                 res_ctx.trace_pop();
                 return Ok(ArticleResult {
                     outputs: cached_outputs.clone(),
-                    resolved_inputs: HashMap::new(),
+                    resolved_inputs: BTreeMap::new(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
                     law_uuid: None,
@@ -886,12 +896,12 @@ impl LawExecutionService {
         article: &Article,
         _law: &ArticleBasedLaw,
         stage: &str,
-        parameters: &HashMap<String, Value>,
+        parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<HashMap<String, Value>> {
-        let mut hook_outputs: HashMap<String, Value> = HashMap::new();
+    ) -> Result<BTreeMap<String, Value>> {
+        let mut hook_outputs: BTreeMap<String, Value> = BTreeMap::new();
         // Track which law produced each output for priority resolution
-        let mut output_sources: HashMap<String, &ArticleBasedLaw> = HashMap::new();
+        let mut output_sources: BTreeMap<String, &ArticleBasedLaw> = BTreeMap::new();
 
         // Only fire hooks if the article declares what it produces
         let produces = match article.get_produces() {
@@ -1019,7 +1029,7 @@ impl LawExecutionService {
         result: &mut ArticleResult,
         article: &Article,
         law: &ArticleBasedLaw,
-        parameters: &HashMap<String, Value>,
+        parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
         let contextual_law_id = match &res_ctx.contextual_law_id {
@@ -1130,7 +1140,7 @@ impl LawExecutionService {
         &self,
         article: &Article,
         law: &ArticleBasedLaw,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         requested_output: Option<&str>,
         stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
@@ -1264,8 +1274,8 @@ impl LawExecutionService {
         law: &ArticleBasedLaw,
         context: &RuleContext,
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<HashMap<String, Value>> {
-        let mut resolved = HashMap::new();
+    ) -> Result<BTreeMap<String, Value>> {
+        let mut resolved = BTreeMap::new();
 
         let open_terms = match article.get_open_terms() {
             Some(terms) => terms,
@@ -1308,12 +1318,18 @@ impl LawExecutionService {
             res_ctx.trace_set_resolve_type(ResolveType::OpenTerm);
 
             // Look up implementations (filtered by execution scope)
+            // Convert BTreeMap to HashMap at the resolver boundary
+            let scope: HashMap<String, Value> = context
+                .parameters()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
             let implementations = match self.resolver.find_implementations(
                 &law.id,
                 &article.number,
                 &term.id,
                 res_ctx.reference_date(),
-                context.parameters(),
+                &scope,
             ) {
                 Ok(impls) => impls,
                 Err(e) => {
@@ -1520,7 +1536,7 @@ impl LawExecutionService {
         article: &Article,
         law: &ArticleBasedLaw,
         context: &mut RuleContext,
-        parameters: &HashMap<String, Value>,
+        parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
         let inputs = article.get_inputs();
@@ -1646,7 +1662,7 @@ impl LawExecutionService {
         &self,
         regulation: &str,
         output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
+        source_parameters: Option<&BTreeMap<String, String>>,
         context: &RuleContext,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<Value> {
@@ -1718,16 +1734,16 @@ impl LawExecutionService {
     /// execution.parameters section.
     fn filter_parameters_for_article(
         article: &Article,
-        all_params: &HashMap<String, Value>,
-    ) -> HashMap<String, Value> {
+        all_params: &BTreeMap<String, Value>,
+    ) -> BTreeMap<String, Value> {
         let Some(exec) = article.get_execution_spec() else {
-            return HashMap::new();
+            return BTreeMap::new();
         };
         let Some(declared_params) = &exec.parameters else {
-            return HashMap::new();
+            return BTreeMap::new();
         };
 
-        let mut filtered = HashMap::new();
+        let mut filtered = BTreeMap::new();
         for param in declared_params {
             if let Some(value) = all_params.get(&param.name) {
                 filtered.insert(param.name.clone(), value.clone());
@@ -1739,10 +1755,10 @@ impl LawExecutionService {
     /// Build parameters for a target article from source parameter mapping.
     fn build_target_parameters(
         &self,
-        source_parameters: Option<&HashMap<String, String>>,
+        source_parameters: Option<&BTreeMap<String, String>>,
         context: &RuleContext,
-    ) -> Result<HashMap<String, Value>> {
-        let mut params = HashMap::new();
+    ) -> Result<BTreeMap<String, Value>> {
+        let mut params = BTreeMap::new();
 
         if let Some(param_map) = source_parameters {
             for (target_name, source_ref) in param_map {
@@ -1852,7 +1868,7 @@ impl LawExecutionService {
         &mut self,
         name: impl Into<String>,
         priority: i32,
-        data: HashMap<String, HashMap<String, Value>>,
+        data: BTreeMap<String, BTreeMap<String, Value>>,
     ) {
         self.data_registry
             .add_source(Box::new(DictDataSource::new(name, priority, data)));
@@ -1878,7 +1894,7 @@ impl LawExecutionService {
         &mut self,
         name: &str,
         key_field: &str,
-        records: Vec<HashMap<String, Value>>,
+        records: Vec<BTreeMap<String, Value>>,
     ) -> Result<()> {
         match DictDataSource::from_records(name, 10, key_field, records) {
             Some(source) => {
@@ -1912,7 +1928,7 @@ impl ServiceProvider for LawExecutionService {
     fn evaluate_uri(
         &self,
         uri: &str,
-        parameters: &HashMap<String, Value>,
+        parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
         let parsed = RegelrechtUri::parse(uri)?;
@@ -1933,7 +1949,7 @@ impl ServiceProvider for LawExecutionService {
         &self,
         regulation: &str,
         output: &str,
-        source_parameters: Option<&HashMap<String, String>>,
+        source_parameters: Option<&BTreeMap<String, String>>,
         context: &RuleContext,
         calculation_date: &str,
     ) -> Result<Value> {
@@ -2024,7 +2040,7 @@ articles:
         service.load_law(make_base_law()).unwrap();
 
         let result = service
-            .evaluate_law_output("base_law", "base_value", HashMap::new(), "2025-01-01")
+            .evaluate_law_output("base_law", "base_value", BTreeMap::new(), "2025-01-01")
             .unwrap();
 
         assert_eq!(result.outputs.get("base_value"), Some(&Value::Int(100)));
@@ -2045,7 +2061,7 @@ articles:
             .evaluate_law_output(
                 "dependent_law",
                 "doubled_value",
-                HashMap::new(),
+                BTreeMap::new(),
                 "2025-01-01",
             )
             .unwrap();
@@ -2063,7 +2079,7 @@ articles:
         let result = service.evaluate_law_output(
             "dependent_law",
             "doubled_value",
-            HashMap::new(),
+            BTreeMap::new(),
             "2025-01-01",
         );
 
@@ -2086,7 +2102,7 @@ articles:
         let result = service
             .evaluate_uri(
                 "regelrecht://base_law/base_value",
-                &HashMap::new(),
+                &BTreeMap::new(),
                 "2025-01-01",
             )
             .unwrap();
@@ -2151,7 +2167,8 @@ articles:
         service.load_law(law_a).unwrap();
         service.load_law(law_b).unwrap();
 
-        let result = service.evaluate_law_output("law_a", "output_a", HashMap::new(), "2025-01-01");
+        let result =
+            service.evaluate_law_output("law_a", "output_a", BTreeMap::new(), "2025-01-01");
 
         assert!(
             matches!(result, Err(EngineError::CircularReference(_))),
@@ -2201,7 +2218,7 @@ articles:
         service.load_law(law).unwrap();
 
         // Provide the value directly - should skip external resolution
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("external_value".to_string(), Value::Int(50));
 
         let result = service
@@ -2302,7 +2319,7 @@ articles:
                 .evaluate_law_output(
                     "zorgtoeslagwet",
                     "standaardpremie",
-                    HashMap::new(),
+                    BTreeMap::new(),
                     "2025-01-01",
                 )
                 .unwrap();
@@ -2433,7 +2450,12 @@ articles:
 
         // Reference date 2024-06-15 should use v1 (BASE_VALUE=100)
         let result = service
-            .evaluate_law_output("cross_law_consumer", "result", HashMap::new(), "2024-06-15")
+            .evaluate_law_output(
+                "cross_law_consumer",
+                "result",
+                BTreeMap::new(),
+                "2024-06-15",
+            )
             .unwrap();
         assert_eq!(
             result.outputs.get("result"),
@@ -2443,7 +2465,12 @@ articles:
 
         // Reference date 2025-06-15 should use v2 (BASE_VALUE=200)
         let result = service
-            .evaluate_law_output("cross_law_consumer", "result", HashMap::new(), "2025-06-15")
+            .evaluate_law_output(
+                "cross_law_consumer",
+                "result",
+                BTreeMap::new(),
+                "2025-06-15",
+            )
             .unwrap();
         assert_eq!(
             result.outputs.get("result"),
@@ -2496,7 +2523,7 @@ articles:
         service.load_law(law).unwrap();
 
         // Register data source with the input field
-        let mut record = HashMap::new();
+        let mut record = BTreeMap::new();
         record.insert("BSN".to_string(), Value::String("123".to_string()));
         record.insert("external_value".to_string(), Value::Int(42));
 
@@ -2504,7 +2531,7 @@ articles:
             .register_dict_source("test_data", "BSN", vec![record])
             .unwrap();
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("BSN".to_string(), Value::String("123".to_string()));
 
         let result = service
@@ -2523,7 +2550,7 @@ articles:
         service.load_law(make_dependent_law()).unwrap();
 
         // Register a data source with an unrelated field
-        let mut record = HashMap::new();
+        let mut record = BTreeMap::new();
         record.insert("key".to_string(), Value::String("x".to_string()));
         record.insert("unrelated_field".to_string(), Value::Int(999));
 
@@ -2536,7 +2563,7 @@ articles:
             .evaluate_law_output(
                 "dependent_law",
                 "doubled_value",
-                HashMap::new(),
+                BTreeMap::new(),
                 "2025-01-01",
             )
             .unwrap();
@@ -2582,7 +2609,7 @@ articles:
         service.load_law(law).unwrap();
 
         // Register data source with external_value = 100
-        let mut record = HashMap::new();
+        let mut record = BTreeMap::new();
         record.insert("BSN".to_string(), Value::String("123".to_string()));
         record.insert("external_value".to_string(), Value::Int(100));
 
@@ -2591,7 +2618,7 @@ articles:
             .unwrap();
 
         // Pass external_value = 50 as parameter (should win)
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("BSN".to_string(), Value::String("123".to_string()));
         params.insert("external_value".to_string(), Value::Int(50));
 
@@ -2667,7 +2694,7 @@ articles:
             .evaluate_law_output(
                 "zorgtoeslag_ioc",
                 "standaardpremie",
-                HashMap::new(),
+                BTreeMap::new(),
                 "2025-01-01",
             )
             .unwrap();
@@ -2687,7 +2714,7 @@ articles:
         let result = service.evaluate_law_output(
             "zorgtoeslag_ioc",
             "standaardpremie",
-            HashMap::new(),
+            BTreeMap::new(),
             "2025-01-01",
         );
 
@@ -2725,7 +2752,7 @@ articles:
 
         // Should succeed — optional term not implemented is fine
         let result = service
-            .evaluate_law_output("optional_term_law", "result", HashMap::new(), "2025-01-01")
+            .evaluate_law_output("optional_term_law", "result", BTreeMap::new(), "2025-01-01")
             .unwrap();
 
         assert_eq!(result.outputs.get("result"), Some(&Value::Int(42)));
@@ -2765,7 +2792,7 @@ articles:
             .evaluate_law_output(
                 "default_term_law",
                 "redelijk_percentage",
-                HashMap::new(),
+                BTreeMap::new(),
                 "2025-01-01",
             )
             .unwrap();
@@ -2834,7 +2861,7 @@ articles:
             .evaluate_law_output(
                 "default_override_law",
                 "percentage",
-                HashMap::new(),
+                BTreeMap::new(),
                 "2025-07-01",
             )
             .unwrap();
@@ -2919,7 +2946,7 @@ articles:
 
         // Calculate for 2025: should use the 2025 version
         let result = service
-            .evaluate_law_output("test_higher_law", "result", HashMap::new(), "2025-06-01")
+            .evaluate_law_output("test_higher_law", "result", BTreeMap::new(), "2025-06-01")
             .unwrap();
         assert_eq!(
             result.outputs.get("result"),
@@ -2929,7 +2956,7 @@ articles:
 
         // Calculate for 2026: should use the 2026 version
         let result = service
-            .evaluate_law_output("test_higher_law", "result", HashMap::new(), "2026-06-01")
+            .evaluate_law_output("test_higher_law", "result", BTreeMap::new(), "2026-06-01")
             .unwrap();
         assert_eq!(
             result.outputs.get("result"),

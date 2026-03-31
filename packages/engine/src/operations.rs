@@ -1222,7 +1222,7 @@ fn type_error(expected: &str, actual: &Value) -> EngineError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
 
     /// Simple resolver for testing that uses a HashMap
     struct TestResolver {
@@ -2253,7 +2253,7 @@ mod tests {
 
         #[test]
         fn test_age_with_object_date() {
-            let mut date_obj = HashMap::new();
+            let mut date_obj = BTreeMap::new();
             date_obj.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
             date_obj.insert("year".to_string(), Value::Int(2025));
             date_obj.insert("month".to_string(), Value::Int(1));
@@ -2534,7 +2534,7 @@ mod tests {
 
     #[test]
     fn test_parse_date_with_object() {
-        let mut date_obj = HashMap::new();
+        let mut date_obj = BTreeMap::new();
         date_obj.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
         date_obj.insert("year".to_string(), Value::Int(2025));
 
@@ -2544,7 +2544,7 @@ mod tests {
 
     #[test]
     fn test_parse_date_object_without_iso_field() {
-        let mut date_obj = HashMap::new();
+        let mut date_obj = BTreeMap::new();
         date_obj.insert("year".to_string(), Value::Int(2025));
 
         let result = parse_date(&Value::Object(date_obj));

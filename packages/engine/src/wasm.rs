@@ -55,7 +55,7 @@
 
 use serde::Serialize;
 use serde_wasm_bindgen::Serializer;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
 use crate::config;
@@ -87,8 +87,8 @@ fn engine_error_to_wasm(err: EngineError) -> JsValue {
 /// Serializable result for execute()
 #[derive(Serialize)]
 struct WasmExecuteResult {
-    outputs: HashMap<String, Value>,
-    resolved_inputs: HashMap<String, Value>,
+    outputs: BTreeMap<String, Value>,
+    resolved_inputs: BTreeMap<String, Value>,
     article_number: String,
     law_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -174,7 +174,7 @@ impl WasmEngine {
         parameters: JsValue,
         calculation_date: &str,
     ) -> Result<JsValue, JsValue> {
-        let params: HashMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
+        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
             .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
 
         let result = self
@@ -278,7 +278,7 @@ impl WasmEngine {
         key_field: &str,
         records: JsValue,
     ) -> Result<(), JsValue> {
-        let parsed: Vec<HashMap<String, Value>> = serde_wasm_bindgen::from_value(records)
+        let parsed: Vec<BTreeMap<String, Value>> = serde_wasm_bindgen::from_value(records)
             .map_err(|e| wasm_error(&format!("Failed to parse records: {}", e)))?;
 
         self.service
@@ -476,7 +476,7 @@ articles:
         load_law(&mut engine, law_b);
 
         // Execute via the service directly (can't use JsValue in native tests)
-        let params = HashMap::new();
+        let params = BTreeMap::new();
         let result = engine
             .service
             .evaluate_law_output("law_b", "doubled", params, "2025-01-01")
@@ -521,7 +521,7 @@ articles:
 
         // Register data source
         let records = vec![{
-            let mut r = HashMap::new();
+            let mut r = BTreeMap::new();
             r.insert("bsn".to_string(), Value::String("123".to_string()));
             r.insert("age".to_string(), Value::Int(25));
             r
@@ -531,7 +531,7 @@ articles:
             .register_dict_source("people", "bsn", records)
             .unwrap();
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("bsn".to_string(), Value::String("123".to_string()));
 
         let result = engine

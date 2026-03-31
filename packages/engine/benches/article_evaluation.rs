@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use regelrecht_engine::{ArticleBasedLaw, ArticleEngine, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 const SIMPLE_LAW_YAML: &str = r#"
 $id: bench_simple
@@ -110,7 +110,7 @@ fn bench_article_evaluate(c: &mut Criterion) {
     group.bench_function("simple_conditional", |b| {
         let article = &simple_law.articles[0];
         let engine = ArticleEngine::new(article, &simple_law);
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("inkomen".to_string(), Value::Int(35000));
         params.insert("drempel".to_string(), Value::Int(25000));
         b.iter(|| engine.evaluate(black_box(params.clone()), "2025-01-01"))
@@ -120,7 +120,7 @@ fn bench_article_evaluate(c: &mut Criterion) {
     group.bench_function("nested_arithmetic", |b| {
         let article = &arithmetic_law.articles[0];
         let engine = ArticleEngine::new(article, &arithmetic_law);
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("a".to_string(), Value::Int(100));
         params.insert("b".to_string(), Value::Int(200));
         params.insert("c".to_string(), Value::Int(300));
@@ -131,7 +131,7 @@ fn bench_article_evaluate(c: &mut Criterion) {
     group.bench_function("simple_with_trace", |b| {
         let article = &simple_law.articles[0];
         let engine = ArticleEngine::new(article, &simple_law);
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("inkomen".to_string(), Value::Int(35000));
         params.insert("drempel".to_string(), Value::Int(25000));
         b.iter(|| {

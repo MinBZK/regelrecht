@@ -255,7 +255,7 @@ fn execute_law(
         .evaluate_law_output(
             law_id,
             output,
-            std::collections::HashMap::new(),
+            std::collections::BTreeMap::new(),
             "2025-01-01",
         )
         .ok()
@@ -398,7 +398,7 @@ fn test_multi_repo_reversed_priority() {
 #[test]
 fn test_source_map_to_engine() {
     use regelrecht_engine::LawExecutionService;
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     let central_dir = fixtures_dir().join("central");
     let gemeente_a_dir = fixtures_dir().join("gemeente-a");
@@ -430,7 +430,7 @@ fn test_source_map_to_engine() {
 
     // Execute a law from the central source
     let result = service
-        .evaluate_law_output("test_wet", "test_value", HashMap::new(), "2025-01-01")
+        .evaluate_law_output("test_wet", "test_value", BTreeMap::new(), "2025-01-01")
         .unwrap();
 
     assert_eq!(
@@ -443,7 +443,7 @@ fn test_source_map_to_engine() {
         .evaluate_law_output(
             "test_verordening_a",
             "local_rate",
-            HashMap::new(),
+            BTreeMap::new(),
             "2025-01-01",
         )
         .unwrap();
@@ -459,7 +459,7 @@ fn test_source_map_to_engine() {
 #[test]
 fn test_priority_conflict_correct_law_executes() {
     use regelrecht_engine::LawExecutionService;
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     let central_dir = fixtures_dir().join("central");
     let overlap_dir = fixtures_dir().join("overlap");
@@ -481,7 +481,7 @@ fn test_priority_conflict_correct_law_executes() {
     // Central outputs 200, overlap outputs 999
     // Central should win (priority 1 < 10)
     let result = service
-        .evaluate_law_output("test_wet", "test_value", HashMap::new(), "2025-01-01")
+        .evaluate_law_output("test_wet", "test_value", BTreeMap::new(), "2025-01-01")
         .unwrap();
 
     // Should be 200 (from central), not 999 (from overlap)

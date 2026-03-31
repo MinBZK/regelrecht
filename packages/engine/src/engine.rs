@@ -6,13 +6,13 @@
 //!
 //! ```ignore
 //! use regelrecht_engine::{ArticleEngine, ArticleBasedLaw, Value};
-//! use std::collections::HashMap;
+//! use std::collections::BTreeMap;
 //!
 //! let law = ArticleBasedLaw::from_yaml_file("path/to/law.yaml")?;
 //! let article = law.find_article_by_output("some_output").unwrap();
 //!
 //! let engine = ArticleEngine::new(article, &law);
-//! let mut params = HashMap::new();
+//! let mut params = BTreeMap::new();
 //! params.insert("BSN".to_string(), Value::String("123456789".to_string()));
 //!
 //! let result = engine.evaluate(params, "2025-01-01")?;
@@ -27,16 +27,16 @@ use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
 /// Result of article execution
 #[derive(Debug, Clone)]
 pub struct ArticleResult {
     /// Calculated output values
-    pub outputs: HashMap<String, Value>,
+    pub outputs: BTreeMap<String, Value>,
     /// Resolved input values (from cross-law references)
-    pub resolved_inputs: HashMap<String, Value>,
+    pub resolved_inputs: BTreeMap<String, Value>,
     /// Article number that was executed
     pub article_number: String,
     /// Law ID containing the article
@@ -80,7 +80,7 @@ impl<'a> ArticleEngine<'a> {
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %self.law.id, article = %self.article.number)))]
     pub fn evaluate(
         &self,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
         self.evaluate_with_output(parameters, calculation_date, None)
@@ -98,7 +98,7 @@ impl<'a> ArticleEngine<'a> {
     /// * `Err(EngineError)` - If execution fails
     pub fn evaluate_with_output(
         &self,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
@@ -113,7 +113,7 @@ impl<'a> ArticleEngine<'a> {
     /// Same as `evaluate_with_output` but accepts a shared trace builder.
     pub fn evaluate_with_trace(
         &self,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
@@ -140,7 +140,7 @@ impl<'a> ArticleEngine<'a> {
     /// * `depth` - Current resolution depth
     fn evaluate_internal(
         &self,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
         visited: Vec<String>,
@@ -159,7 +159,7 @@ impl<'a> ArticleEngine<'a> {
     /// Internal evaluation with optional tracing.
     fn evaluate_internal_traced(
         &self,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
         visited: Vec<String>,
@@ -242,7 +242,7 @@ impl<'a> ArticleEngine<'a> {
     fn resolve_input_sources(
         &self,
         context: &mut RuleContext,
-        parameters: &HashMap<String, Value>,
+        parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
         visited: &[String],
         depth: usize,
@@ -313,7 +313,7 @@ impl<'a> ArticleEngine<'a> {
     fn resolve_internal_reference(
         &self,
         output_name: &str,
-        parameters: &HashMap<String, Value>,
+        parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
         visited: &[String],
         depth: usize,
@@ -706,7 +706,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(25));
 
         let result = engine.evaluate(params, "2025-01-01").unwrap();
@@ -723,7 +723,7 @@ articles:
         let engine = ArticleEngine::new(article, &law);
 
         // Age 15 is less than MIN_AGE (18)
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(15));
 
         let result = engine.evaluate(params, "2025-01-01").unwrap();
@@ -738,7 +738,7 @@ articles:
         let engine = ArticleEngine::new(article, &law);
 
         // Adult case
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(25));
         let result = engine.evaluate(params, "2025-01-01").unwrap();
         assert_eq!(
@@ -747,7 +747,7 @@ articles:
         );
 
         // Minor case
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(15));
         let result = engine.evaluate(params, "2025-01-01").unwrap();
         assert_eq!(
@@ -766,7 +766,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("income".to_string(), Value::Int(5000));
 
         let result = engine.evaluate(params, "2025-01-01").unwrap();
@@ -788,7 +788,7 @@ articles:
         let engine = ArticleEngine::new(article, &law);
 
         // Income below deduction
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("income".to_string(), Value::Int(500));
 
         let result = engine.evaluate(params, "2025-01-01").unwrap();
@@ -810,7 +810,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(25));
 
         // Request specific output (used for article lookup)
@@ -835,7 +835,7 @@ articles:
         let engine = ArticleEngine::new(article, &law);
 
         // No parameters - age is missing
-        let params = HashMap::new();
+        let params = BTreeMap::new();
         let result = engine.evaluate(params, "2025-01-01");
 
         assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
@@ -847,7 +847,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("age".to_string(), Value::Int(25));
 
         let result = engine.evaluate(params, "not-a-date");
@@ -880,7 +880,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let result = engine.evaluate(HashMap::new(), "2025-06-15").unwrap();
+        let result = engine.evaluate(BTreeMap::new(), "2025-06-15").unwrap();
 
         assert_eq!(result.outputs.get("current_year"), Some(&Value::Int(2025)));
     }
@@ -933,7 +933,7 @@ articles:
         let article = law.find_article_by_number("2").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let result = engine.evaluate(HashMap::new(), "2025-01-01").unwrap();
+        let result = engine.evaluate(BTreeMap::new(), "2025-01-01").unwrap();
 
         // doubled_amount should be 100 * 2 = 200
         assert_eq!(result.outputs.get("doubled_amount"), Some(&Value::Int(200)));
@@ -1003,7 +1003,7 @@ articles:
         let article = law.find_article_by_number("3").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let result = engine.evaluate(HashMap::new(), "2025-01-01").unwrap();
+        let result = engine.evaluate(BTreeMap::new(), "2025-01-01").unwrap();
 
         // Chain: first_value = 10, second_value = 10 + 5 = 15, third_value = 15 * 2 = 30
         assert_eq!(result.outputs.get("third_value"), Some(&Value::Int(30)));
@@ -1061,7 +1061,7 @@ articles:
         let article = law.find_article_by_number("2").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         params.insert("multiplier".to_string(), Value::Int(3));
 
         let result = engine.evaluate(params, "2025-01-01").unwrap();
@@ -1098,7 +1098,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let result = engine.evaluate(HashMap::new(), "2025-01-01");
+        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
 
         assert!(matches!(result, Err(EngineError::CircularReference(_))));
     }
@@ -1154,7 +1154,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let result = engine.evaluate(HashMap::new(), "2025-01-01");
+        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
 
         assert!(
             matches!(result, Err(EngineError::CircularReference(_))),
@@ -1223,7 +1223,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let result = engine.evaluate(HashMap::new(), "2025-01-01");
+        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
 
         assert!(
             matches!(result, Err(EngineError::CircularReference(_))),
@@ -1261,7 +1261,7 @@ articles:
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
-        let result = engine.evaluate(HashMap::new(), "2025-01-01");
+        let result = engine.evaluate(BTreeMap::new(), "2025-01-01");
 
         assert!(
             matches!(
@@ -1356,7 +1356,7 @@ articles:
             // Test with vermogen under threshold for single person
             // The article requires: vermogen, heeft_toeslagpartner
             // Thresholds: €161.329 single, €203.643 with partner
-            let mut params = HashMap::new();
+            let mut params = BTreeMap::new();
             params.insert("vermogen".to_string(), Value::Int(100000)); // €1000 in cents, well under €161.329
             params.insert("heeft_toeslagpartner".to_string(), Value::Bool(false));
 
@@ -1384,7 +1384,7 @@ articles:
             let engine = ArticleEngine::new(article, &law);
 
             // Execute with minimal params
-            let result = engine.evaluate(HashMap::new(), "2025-01-01").unwrap();
+            let result = engine.evaluate(BTreeMap::new(), "2025-01-01").unwrap();
 
             // Should have standaardpremie output (211200 eurocent = €2112 for 2025)
             assert_eq!(

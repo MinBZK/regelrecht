@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 use regelrecht_engine::{ArticleResult, LawInfo, PathNode, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Focus {
@@ -339,7 +339,7 @@ impl EngineView {
             None => return,
         };
 
-        let mut params = HashMap::new();
+        let mut params = BTreeMap::new();
         for p in &self.params {
             if !p.name.is_empty() && !p.value.is_empty() {
                 params.insert(p.name.clone(), parse_value(&p.value));
