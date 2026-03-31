@@ -387,11 +387,18 @@ const scenarioNames = computed(() => {
               {{ value.sourceName }}
               <span class="sb-section-badge">{{ value.rows.length }} rij(en)</span>
             </div>
-            <div class="sb-scenario-source-fields">
-              <span v-for="field in Object.keys(value.rows[0] || {}).filter(k => k !== '_id')" :key="field" class="sb-scenario-field">
-                {{ field }}
-              </span>
-            </div>
+            <table class="sb-scenario-table">
+              <thead>
+                <tr>
+                  <th v-for="field in Object.keys(value.rows[0] || {}).filter(k => k !== '_id')" :key="field">{{ field }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, ri) in value.rows" :key="ri">
+                  <td v-for="field in Object.keys(row).filter(k => k !== '_id')" :key="field">{{ row[field] }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -678,23 +685,29 @@ const scenarioNames = computed(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  margin-bottom: 6px;
 }
 
-.sb-scenario-source-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.sb-scenario-field {
-  font-size: 10px;
+.sb-scenario-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
   font-family: 'SF Mono', 'Fira Code', monospace;
-  padding: 1px 5px;
-  background: white;
-  border-radius: 3px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+
+.sb-scenario-table th {
+  text-align: left;
+  padding: 3px 6px;
+  font-weight: 600;
   color: var(--semantics-text-color-secondary, #666);
+  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
+  white-space: nowrap;
+}
+
+.sb-scenario-table td {
+  padding: 3px 6px;
+  color: var(--semantics-text-color-primary, #1C2029);
+  white-space: nowrap;
 }
 
 /* Execute bar */
