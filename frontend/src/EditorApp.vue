@@ -5,7 +5,6 @@ import { useLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useExecution } from './composables/useExecution.js';
 import ArticleText from './components/ArticleText.vue';
-import MachineReadable from './components/MachineReadable.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
@@ -13,21 +12,14 @@ import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
 
-const rightPaneView = ref('machine');
-const isTestMode = computed(() => rightPaneView.value === 'test');
 const middlePaneView = ref('form');
-
-function onRightPaneChange(event) {
-  const value = event.target?.value ?? event.detail?.[0];
-  if (value) rightPaneView.value = value;
-}
 
 function onMiddlePaneChange(event) {
   const value = event.target?.value ?? event.detail?.[0];
   if (value) middlePaneView.value = value;
 }
 
-// --- Engine (shared for test mode) ---
+// --- Engine ---
 const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
 initEngine().catch(() => {});
 
@@ -49,7 +41,7 @@ watch(
   { immediate: true },
 );
 
-// --- Execution state (shared between form and trace panels) ---
+// --- Execution state (shared between form and result panels) ---
 const {
   result: execResult,
   trace: execTrace,
@@ -58,7 +50,6 @@ const {
   error: execError,
   expectations: execExpectations,
   execute: execExecute,
-  reset: execReset,
 } = useExecution();
 
 function handleFormExecute(payload) {
@@ -67,23 +58,16 @@ function handleFormExecute(payload) {
   execExecute(engine, payload);
 }
 
-// Reset execution state when switching away from test mode
-watch(isTestMode, (isTest) => {
-  if (!isTest) execReset();
-});
-
 // --- Editor state ---
 const activeAction = ref(null);
 const activeEditItem = ref(null);
 const parseError = ref(null);
 
-// ── Reactive data model (single source of truth) ──
 const machineReadable = ref(null);
 const yamlSource = ref('');
 
 const dumpOpts = { lineWidth: 80, noRefs: true };
 
-// Initialize from article
 watch(selectedArticle, (article) => {
   activeAction.value = null;
   activeEditItem.value = null;
@@ -93,13 +77,11 @@ watch(selectedArticle, (article) => {
   parseError.value = null;
 }, { immediate: true });
 
-// Virtual article for components (reads from machineReadable)
 const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
   return { ...selectedArticle.value, machine_readable: machineReadable.value };
 });
 
-// YAML textarea input → parse to model
 function onYamlInput(event) {
   const text = event.target.value;
   yamlSource.value = text;
@@ -112,7 +94,6 @@ function onYamlInput(event) {
   }
 }
 
-// Right-panel save → update model → re-dump YAML
 function handleSave({ section, key, newKey, index, data }) {
   const mr = machineReadable.value
     ? JSON.parse(JSON.stringify(machineReadable.value))
@@ -169,14 +150,6 @@ function selectArticle(number) {
                 </rr-tab-bar>
               </rr-toolbar-item>
             </rr-toolbar-start-area>
-            <rr-toolbar-center-area>
-              <rr-toolbar-item>
-                <rr-segmented-control size="md" :value="rightPaneView" @change="onRightPaneChange">
-                  <rr-segmented-control-item value="machine">Machine Readable</rr-segmented-control-item>
-                  <rr-segmented-control-item value="test">Test</rr-segmented-control-item>
-                </rr-segmented-control>
-              </rr-toolbar-item>
-            </rr-toolbar-center-area>
             <rr-toolbar-end-area>
               <rr-toolbar-item>
                 <rr-button-bar size="md">
@@ -211,7 +184,7 @@ function selectArticle(number) {
           Kon de wet niet laden: {{ error.message }}
         </div>
 
-        <!-- 3-column equal layout -->
+        <!-- 3-column equal layout: Text | Form | Result -->
         <div v-else class="editor-layout">
           <!-- Left: Article Text -->
           <div class="editor-pane">
@@ -283,30 +256,18 @@ function selectArticle(number) {
             </rr-page>
           </div>
 
-          <!-- Right: Machine Readable or Execution Trace -->
+          <!-- Right: Execution Result -->
           <div class="editor-pane">
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-title-bar size="5">{{ isTestMode ? 'Resultaat' : 'Machine Readable' }}</rr-title-bar>
+                    <rr-title-bar size="5">Resultaat</rr-title-bar>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
               </rr-toolbar>
 
-              <!-- Machine Readable view -->
-              <rr-simple-section v-if="!isTestMode">
-                <MachineReadable
-                  :article="editedArticle"
-                  :editable="true"
-                  @open-edit="activeEditItem = $event"
-                  @open-action="activeAction = $event"
-                />
-              </rr-simple-section>
-
-              <!-- Execution Trace view -->
               <ExecutionTraceView
-                v-else
                 :result="execResult"
                 :trace="execTrace"
                 :trace-text="execTraceText"
@@ -326,7 +287,6 @@ function selectArticle(number) {
 </template>
 
 <style>
-/* Editor: 3-column equal-width layout */
 .editor-layout {
   display: flex;
   flex: 1;
@@ -345,7 +305,6 @@ function selectArticle(number) {
   border-right: none;
 }
 
-/* Engine error */
 .editor-engine-error {
   padding: 12px 16px;
   background: #fee;
@@ -365,7 +324,6 @@ function selectArticle(number) {
   border-radius: 3px;
 }
 
-/* YAML editor */
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;
