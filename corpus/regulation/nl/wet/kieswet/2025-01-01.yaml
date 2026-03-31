@@ -33,12 +33,16 @@ articles:
             required: true
           - name: is_tien_jaar_ingezetene_geweest
             type: boolean
-            required: false
-            description: Lid 2a — gedurende ten minste tien jaren ingezetene van Nederland geweest
+            required: true
+            description: >-
+              Lid 2a — gedurende ten minste tien jaren ingezetene van
+              Nederland geweest (false indien niet van toepassing)
           - name: is_in_openbare_dienst_bes
             type: boolean
-            required: false
-            description: Lid 2b — in Nederlandse openbare dienst in Aruba/Curacao/Sint Maarten (of gezinslid daarvan)
+            required: true
+            description: >-
+              Lid 2b — in Nederlandse openbare dienst in Aruba/Curacao/
+              Sint Maarten of gezinslid daarvan (false indien n.v.t.)
           - name: verkiezingsdatum
             type: date
             required: true
