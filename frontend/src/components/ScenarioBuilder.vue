@@ -402,16 +402,18 @@ const scenarioNames = computed(() => {
           </div>
         </div>
 
-        <!-- Schema-derived data source tables (for manual entry) -->
-        <DataSourceTable
-          v-for="group in dataSourceGroups"
-          :key="`${group.lawId}:${group.articleNumber}`"
-          :title="group.lawName"
-          :key-field="group.keyField"
-          :fields="group.fields"
-          :model-value="getRows(group)"
-          @update:model-value="setRows(group, $event)"
-        />
+        <!-- Schema-derived data source tables (only shown when no scenario is loaded) -->
+        <template v-if="directSourceCount === 0">
+          <DataSourceTable
+            v-for="group in dataSourceGroups"
+            :key="`${group.lawId}:${group.articleNumber}`"
+            :title="group.lawName"
+            :key-field="group.keyField"
+            :fields="group.fields"
+            :model-value="getRows(group)"
+            @update:model-value="setRows(group, $event)"
+          />
+        </template>
       </div>
 
       <!-- Outputs -->
