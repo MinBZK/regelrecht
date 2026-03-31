@@ -17,11 +17,17 @@ async function initEngine() {
 
   initPromise = (async () => {
     try {
-      // WASM pkg is served as a static asset from public/wasm/pkg/ (in Docker)
-      // or src/wasm/pkg/ (local dev via `just wasm-build`).
-      const wasmPath = '/wasm/pkg/regelrecht_engine.js';
-      const wasm = await import(/* @vite-ignore */ wasmPath);
-      await wasm.default();
+      // WASM pkg lives in public/wasm/pkg/ and is served as a static asset.
+      // Use fetch + blob URL to load the JS glue, avoiding Vite's restriction
+      // on importing files from /public in source code.
+      const jsRes = await fetch('/wasm/pkg/regelrecht_engine.js');
+      if (!jsRes.ok) throw new Error(`Failed to fetch WASM JS glue: ${jsRes.status}`);
+      const jsText = await jsRes.text();
+      const blob = new Blob([jsText], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      const wasm = await import(/* @vite-ignore */ blobUrl);
+      URL.revokeObjectURL(blobUrl);
+      await wasm.default('/wasm/pkg/regelrecht_engine_bg.wasm');
       engineInstance = new wasm.WasmEngine();
       ready.value = true;
       return engineInstance;
