@@ -457,23 +457,56 @@ impl LawExecutionService {
 
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        let mut result =
-            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)?;
+        let result =
+            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx);
 
         // Drop res_ctx so it releases its Rc clone
         drop(res_ctx);
 
-        // Set the result on the top-level article node and pop it
-        {
-            let mut tb = trace.borrow_mut();
-            if let Some(value) = result.outputs.get(output_name) {
-                tb.set_result(value.clone());
+        match result {
+            Ok(mut result) => {
+                // Set the result on the top-level article node and pop it
+                let mut tb = trace.borrow_mut();
+                if let Some(value) = result.outputs.get(output_name) {
+                    tb.set_result(value.clone());
+                }
+                // Pop returns the completed top-level node
+                result.trace = tb.pop();
+                Ok(result)
             }
-            // Pop returns the completed top-level node
-            result.trace = tb.pop();
-        }
+            Err(e) => {
+                // Pop the top-level node so the partial trace is not lost
+                let mut tb = trace.borrow_mut();
+                tb.set_message(format!("Execution failed: {}", e));
+                let partial_trace = tb.pop();
 
-        Ok(result)
+                // Return an error result that still carries the partial trace.
+                // Since Result<ArticleResult> can't carry both, we embed the
+                // trace in the error via EngineError::TracedError.
+                Err(EngineError::TracedError {
+                    source: Box::new(e),
+                    trace: partial_trace.map(Box::new),
+                })
+            }
+        }
+    }
+
+    /// Execute a law output using an existing shared trace builder.
+    ///
+    /// Unlike `evaluate_law_output_with_trace` which creates its own root trace node,
+    /// this method appends to an existing trace tree. Used by `execute_stage_internal`
+    /// when falling through to non-procedure execution.
+    fn evaluate_law_output_with_shared_trace(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: HashMap<String, Value>,
+        calculation_date: &str,
+        trace: Rc<RefCell<TraceBuilder>>,
+    ) -> Result<ArticleResult> {
+        let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace);
+        res_ctx.contextual_law_id = Some(law_id.to_string());
+        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
     }
 
     /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
@@ -500,6 +533,49 @@ impl LawExecutionService {
         parameters: HashMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ExecutionOutcome> {
+        self.execute_stage_internal(
+            law_id,
+            output_name,
+            state,
+            parameters,
+            calculation_date,
+            None,
+        )
+    }
+
+    /// Execute a single lifecycle stage with tracing enabled.
+    ///
+    /// Same as `execute_stage` but accepts a shared trace builder so the
+    /// staged execution is recorded in the trace tree.
+    pub fn execute_stage_with_trace(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        state: Option<StageState>,
+        parameters: HashMap<String, Value>,
+        calculation_date: &str,
+        trace: Rc<RefCell<TraceBuilder>>,
+    ) -> Result<ExecutionOutcome> {
+        self.execute_stage_internal(
+            law_id,
+            output_name,
+            state,
+            parameters,
+            calculation_date,
+            Some(trace),
+        )
+    }
+
+    /// Internal stage execution with optional tracing.
+    fn execute_stage_internal(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        state: Option<StageState>,
+        parameters: HashMap<String, Value>,
+        calculation_date: &str,
+        trace: Option<Rc<RefCell<TraceBuilder>>>,
+    ) -> Result<ExecutionOutcome> {
         // Look up the law and article
         let ref_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
         let law = self
@@ -525,8 +601,17 @@ impl LawExecutionService {
 
         // If no procedure, fall through to normal single-stage execution
         let Some(procedure) = procedure else {
-            let result =
-                self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?;
+            let result = if let Some(tb) = trace {
+                self.evaluate_law_output_with_shared_trace(
+                    law_id,
+                    output_name,
+                    parameters,
+                    calculation_date,
+                    tb,
+                )?
+            } else {
+                self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?
+            };
             return Ok(ExecutionOutcome::Complete(result));
         };
 
@@ -593,7 +678,11 @@ impl LawExecutionService {
         }
 
         // Execute the article with stage-aware hook firing
-        let mut res_ctx = ResolutionContext::new(calculation_date);
+        let mut res_ctx = if let Some(ref tb) = trace {
+            ResolutionContext::with_trace(calculation_date, Rc::clone(tb))
+        } else {
+            ResolutionContext::new(calculation_date)
+        };
         res_ctx.contextual_law_id = Some(stage_state.contextual_law.clone());
 
         // Execute the article with stage-aware hook firing.
@@ -638,12 +727,13 @@ impl LawExecutionService {
             }
 
             // Next stage has all inputs — continue executing (recursive)
-            return self.execute_stage(
+            return self.execute_stage_internal(
                 law_id,
                 output_name,
                 Some(stage_state),
                 parameters,
                 calculation_date,
+                trace,
             );
         }
 
@@ -713,6 +803,14 @@ impl LawExecutionService {
                 depth = res_ctx.depth,
                 "Cross-law resolution depth exceeded"
             );
+            res_ctx.trace_push(format!("{}#{}", law_id, output_name), PathNodeType::UriCall);
+            res_ctx.trace_set_message(format!(
+                "Cross-law resolution depth exceeded {} levels ({}:{})",
+                config::MAX_CROSS_LAW_DEPTH,
+                law_id,
+                output_name
+            ));
+            res_ctx.trace_pop();
             return Err(EngineError::CircularReference(format!(
                 "Cross-law resolution depth exceeded {} levels. \
                  Possible circular reference involving {}:{}",
@@ -1284,7 +1382,7 @@ impl LawExecutionService {
                     // Trace success
                     res_ctx.trace_set_result(value.clone());
                     res_ctx.trace_set_message(format!(
-                        "Open term '{}' resolved from {} article {}",
+                        "Open term '{}' implemented by {} article {}",
                         term.id, impl_law.id, impl_article.number
                     ));
                     res_ctx.trace_pop();
@@ -1370,20 +1468,16 @@ impl LawExecutionService {
                         .unwrap_or(Value::Null);
 
                     res_ctx.trace_set_result(default_value.clone());
-                    res_ctx.trace_set_message(format!(
-                        "Open term '{}' resolved from default",
-                        term.id
-                    ));
+                    res_ctx
+                        .trace_set_message(format!("Open term '{}' using default value", term.id));
                     res_ctx.trace_pop();
 
                     resolved.insert(term.id.clone(), default_value);
                 } else {
                     // Default exists but has no actions — treat as null
                     res_ctx.trace_set_result(Value::Null);
-                    res_ctx.trace_set_message(format!(
-                        "Open term '{}' resolved from empty default",
-                        term.id
-                    ));
+                    res_ctx
+                        .trace_set_message(format!("Open term '{}' using empty default", term.id));
                     res_ctx.trace_pop();
                     resolved.insert(term.id.clone(), Value::Null);
                 }
@@ -1484,30 +1578,63 @@ impl LawExecutionService {
                 // Internal reference (same-law) with output specified.
                 // Resolve through the service layer so cross-law inputs of the
                 // referenced article are properly handled.
-                let ref_article = law.find_article_by_output(output_name).ok_or_else(|| {
-                    EngineError::OutputNotFound {
-                        law_id: law.id.clone(),
-                        output: output_name.to_string(),
+                res_ctx.trace_push(format!("{}#{}", law.id, output_name), PathNodeType::Resolve);
+                res_ctx.trace_set_resolve_type(ResolveType::ResolvedInput);
+                res_ctx
+                    .trace_set_message(format!("Internal reference: {}#{}", law.id, output_name));
+
+                let ref_article = match law.find_article_by_output(output_name) {
+                    Some(a) => a,
+                    None => {
+                        res_ctx.trace_set_message(format!(
+                            "Internal reference failed: output '{}' not found in {}",
+                            output_name, law.id
+                        ));
+                        res_ctx.trace_pop();
+                        return Err(EngineError::OutputNotFound {
+                            law_id: law.id.clone(),
+                            output: output_name.to_string(),
+                        });
                     }
-                })?;
+                };
 
                 let ref_params = parameters.clone();
-                let result = self.evaluate_article_with_service(
+                let result = match self.evaluate_article_with_service(
                     ref_article,
                     law,
                     ref_params,
                     Some(output_name),
                     "BESLUIT",
                     res_ctx,
-                )?;
+                ) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        res_ctx.trace_set_message(format!("Internal reference failed: {}", e));
+                        res_ctx.trace_pop();
+                        return Err(e);
+                    }
+                };
 
                 if let Some(value) = result.outputs.get(output_name) {
+                    res_ctx.trace_set_result(value.clone());
+                    res_ctx.trace_pop();
                     context.set_resolved_input(&input.name, value.clone());
+                } else {
+                    res_ctx.trace_set_message(format!(
+                        "Internal reference: output '{}' not in result from article {}",
+                        output_name, ref_article.number
+                    ));
+                    res_ctx.trace_pop();
                 }
             } else {
                 // Empty source (source: {}) — resolved from DataSourceRegistry only.
-                // If DataSourceRegistry didn't match above, leave unresolved
-                // (engine will use null/default).
+                // If DataSourceRegistry didn't match above, leave unresolved.
+                res_ctx.trace_push(&input.name, PathNodeType::Resolve);
+                res_ctx.trace_set_message(format!(
+                    "Input '{}' has empty source and no data source match, left unresolved",
+                    input.name
+                ));
+                res_ctx.trace_pop();
             }
         }
 
