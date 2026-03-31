@@ -84,17 +84,10 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
     .fetch_one(pool)
     .await?;
 
-    let recently_failed: (i64, i64) = sqlx::query_as(
+    let recently_failed: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT \
              COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '1 hour'), \
-             COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '24 hours') \
-         FROM jobs WHERE status = 'failed'",
-    )
-    .fetch_one(pool)
-    .await?;
-
-    let failed_by_type: (i64, i64, i64, i64) = sqlx::query_as(
-        "SELECT \
+             COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '24 hours'), \
              COUNT(*) FILTER (WHERE job_type = 'harvest'), \
              COUNT(*) FILTER (WHERE job_type = 'enrich'), \
              COUNT(*) FILTER (WHERE job_type = 'harvest' \
@@ -113,10 +106,10 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
         recently_failed_jobs: recently_failed.0,
         recently_failed_jobs_24h: recently_failed.1,
         failed_by_type: FailedByType {
-            harvest_total: failed_by_type.0,
-            enrich_total: failed_by_type.1,
-            harvest_24h: failed_by_type.2,
-            enrich_24h: failed_by_type.3,
+            harvest_total: recently_failed.2,
+            enrich_total: recently_failed.3,
+            harvest_24h: recently_failed.4,
+            enrich_24h: recently_failed.5,
         },
     })
 }
