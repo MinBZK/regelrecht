@@ -15,10 +15,16 @@ const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticle
 
 const rightPaneView = ref('machine');
 const isTestMode = computed(() => rightPaneView.value === 'test');
+const middlePaneView = ref('form');
 
 function onRightPaneChange(event) {
   const value = event.target?.value ?? event.detail?.[0];
   if (value) rightPaneView.value = value;
+}
+
+function onMiddlePaneChange(event) {
+  const value = event.target?.value ?? event.detail?.[0];
+  if (value) middlePaneView.value = value;
 }
 
 // --- Engine (shared for test mode) ---
@@ -28,7 +34,7 @@ initEngine().catch(() => {});
 // Load current law into engine when YAML is available
 watch(
   [() => rawYaml.value, engineReady],
-  async ([lawYaml, isReady]) => {
+  ([lawYaml, isReady]) => {
     if (!isReady || !lawYaml) return;
     const engine = getEngine();
     try {
@@ -112,7 +118,6 @@ function handleSave({ section, key, newKey, index, data }) {
     ? JSON.parse(JSON.stringify(machineReadable.value))
     : {};
 
-  // Ensure structure exists for adds
   if (!mr.definitions) mr.definitions = {};
   if (!mr.execution) mr.execution = {};
   if (!mr.execution.parameters) mr.execution.parameters = [];
@@ -120,9 +125,7 @@ function handleSave({ section, key, newKey, index, data }) {
   if (!mr.execution.output) mr.execution.output = [];
 
   if (section === 'definition') {
-    if (newKey && newKey !== key) {
-      delete mr.definitions[key];
-    }
+    if (newKey && newKey !== key) delete mr.definitions[key];
     mr.definitions[newKey || key] = data;
   } else if (section === 'add-definition') {
     mr.definitions[key] = data;
@@ -140,7 +143,6 @@ function handleSave({ section, key, newKey, index, data }) {
     mr.execution.output.push(data);
   }
 
-  // Trigger reactivity + sync YAML
   machineReadable.value = mr;
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
@@ -177,10 +179,6 @@ function selectArticle(number) {
             </rr-toolbar-center-area>
             <rr-toolbar-end-area>
               <rr-toolbar-item>
-                <rr-icon-button variant="neutral-tinted" size="m" icon="inbox" title="Notificaties">
-                </rr-icon-button>
-              </rr-toolbar-item>
-              <rr-toolbar-item>
                 <rr-button-bar size="md">
                   <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
                   <rr-icon-button variant="neutral-tinted" size="m" icon="person-circle" has-menu title="Account">
@@ -213,104 +211,10 @@ function selectArticle(number) {
           Kon de wet niet laden: {{ error.message }}
         </div>
 
-        <!-- Machine Readable mode: original 3-column navigation layout -->
-        <rr-navigation-split-view v-else-if="!isTestMode">
-
-          <!-- Sidebar: Text -->
-          <rr-split-view-pane slot="sidebar" has-content>
-            <rr-page header-sticky>
-              <rr-toolbar slot="header" size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-button variant="neutral-tinted" size="md" expandable>
-                      Tekst
-                    </rr-button>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-                <rr-toolbar-end-area>
-                  <rr-toolbar-item>
-                    <rr-segmented-control size="md" content-type="icons">
-                      <rr-segmented-control-item value="bold" title="Bold">
-                        <rr-icon name="bold"></rr-icon>
-                      </rr-segmented-control-item>
-                      <rr-segmented-control-item value="italic" title="Italic">
-                        <rr-icon name="italic"></rr-icon>
-                      </rr-segmented-control-item>
-                    </rr-segmented-control>
-                  </rr-toolbar-item>
-                  <rr-toolbar-item>
-                    <rr-segmented-control size="md" content-type="icons">
-                      <rr-segmented-control-item value="hr" title="Horizontale lijn">
-                        <rr-icon name="minus"></rr-icon>
-                      </rr-segmented-control-item>
-                      <rr-segmented-control-item value="ul" title="Bullet list">
-                        <rr-icon name="bullet-list"></rr-icon>
-                      </rr-segmented-control-item>
-                      <rr-segmented-control-item value="ol" title="Numbered list">
-                        <rr-icon name="numbered-list"></rr-icon>
-                      </rr-segmented-control-item>
-                    </rr-segmented-control>
-                  </rr-toolbar-item>
-                </rr-toolbar-end-area>
-              </rr-toolbar>
-
-              <rr-simple-section>
-                <ArticleText :article="selectedArticle" />
-              </rr-simple-section>
-            </rr-page>
-          </rr-split-view-pane>
-
-          <!-- Secondary Sidebar: YAML -->
-          <rr-split-view-pane slot="secondary-sidebar" has-content>
-            <rr-page header-sticky>
-              <rr-toolbar slot="header" size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-title-bar size="5">YAML</rr-title-bar>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-                <rr-toolbar-end-area>
-                  <rr-toolbar-item v-if="parseError">
-                    <span class="editor-parse-error">YAML parse error</span>
-                  </rr-toolbar-item>
-                </rr-toolbar-end-area>
-              </rr-toolbar>
-
-              <div class="editor-yaml-wrap">
-                <textarea
-                  :value="yamlSource"
-                  @input="onYamlInput"
-                  class="editor-yaml-textarea"
-                  spellcheck="false"
-                  autocomplete="off"
-                  autocorrect="off"
-                  autocapitalize="off"
-                ></textarea>
-                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
-              </div>
-            </rr-page>
-          </rr-split-view-pane>
-
-          <!-- Main: Machine Readable -->
-          <rr-split-view-pane slot="main" has-content>
-            <rr-page header-sticky>
-              <rr-simple-section>
-                <MachineReadable
-                  :article="editedArticle"
-                  :editable="true"
-                  @open-edit="activeEditItem = $event"
-                  @open-action="activeAction = $event"
-                />
-              </rr-simple-section>
-            </rr-page>
-          </rr-split-view-pane>
-
-        </rr-navigation-split-view>
-
-        <!-- Test mode: equal 3-column layout -->
-        <div v-else class="test-mode-layout">
+        <!-- 3-column equal layout -->
+        <div v-else class="editor-layout">
           <!-- Left: Article Text -->
-          <div class="test-pane">
+          <div class="editor-pane">
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
@@ -325,49 +229,84 @@ function selectArticle(number) {
             </rr-page>
           </div>
 
-          <!-- Middle: Form -->
-          <div class="test-pane">
+          <!-- Middle: Form or YAML -->
+          <div class="editor-pane">
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-title-bar size="5">Formulier</rr-title-bar>
+                    <rr-segmented-control size="md" :value="middlePaneView" @change="onMiddlePaneChange">
+                      <rr-segmented-control-item value="form">Formulier</rr-segmented-control-item>
+                      <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                    </rr-segmented-control>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
+                <rr-toolbar-end-area>
+                  <rr-toolbar-item v-if="middlePaneView === 'yaml' && parseError">
+                    <span class="editor-parse-error">YAML parse error</span>
+                  </rr-toolbar-item>
+                </rr-toolbar-end-area>
               </rr-toolbar>
 
-              <!-- Engine error -->
-              <div v-if="engineInitError" class="test-engine-error">
-                WASM engine failed to load: {{ engineInitError.message }}
-                <div class="test-engine-error-hint">
-                  Run <code>just wasm-build</code> to build the WASM module.
+              <!-- Form view -->
+              <div v-if="middlePaneView === 'form'">
+                <div v-if="engineInitError" class="editor-engine-error">
+                  WASM engine failed to load: {{ engineInitError.message }}
+                  <div class="editor-engine-error-hint">
+                    Run <code>just wasm-build</code> to build the WASM module.
+                  </div>
                 </div>
+                <ScenarioBuilder
+                  v-else
+                  :law-id="lawId"
+                  :law-yaml="rawYaml"
+                  :engine="getEngine()"
+                  :ready="engineReady"
+                  :running="execRunning"
+                  @execute="handleFormExecute"
+                />
               </div>
 
-              <ScenarioBuilder
-                v-else
-                :law-id="lawId"
-                :law-yaml="rawYaml"
-                :engine="getEngine()"
-                :ready="engineReady"
-                :running="execRunning"
-                @execute="handleFormExecute"
-              />
+              <!-- YAML view -->
+              <div v-if="middlePaneView === 'yaml'" class="editor-yaml-wrap">
+                <textarea
+                  :value="yamlSource"
+                  @input="onYamlInput"
+                  class="editor-yaml-textarea"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                ></textarea>
+                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+              </div>
             </rr-page>
           </div>
 
-          <!-- Right: Execution Trace -->
-          <div class="test-pane">
+          <!-- Right: Machine Readable or Execution Trace -->
+          <div class="editor-pane">
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-title-bar size="5">Resultaat</rr-title-bar>
+                    <rr-title-bar size="5">{{ isTestMode ? 'Resultaat' : 'Machine Readable' }}</rr-title-bar>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
               </rr-toolbar>
 
+              <!-- Machine Readable view -->
+              <rr-simple-section v-if="!isTestMode">
+                <MachineReadable
+                  :article="editedArticle"
+                  :editable="true"
+                  @open-edit="activeEditItem = $event"
+                  @open-action="activeAction = $event"
+                />
+              </rr-simple-section>
+
+              <!-- Execution Trace view -->
               <ExecutionTraceView
+                v-else
                 :result="execResult"
                 :trace="execTrace"
                 :trace-text="execTraceText"
@@ -387,45 +326,46 @@ function selectArticle(number) {
 </template>
 
 <style>
-/* Test mode: 3-column equal-width layout */
-.test-mode-layout {
+/* Editor: 3-column equal-width layout */
+.editor-layout {
   display: flex;
   flex: 1;
   min-height: 0;
   height: 100%;
 }
 
-.test-pane {
+.editor-pane {
   flex: 1 1 0;
   min-width: 0;
   overflow: hidden;
   border-right: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
-.test-pane:last-child {
+.editor-pane:last-child {
   border-right: none;
 }
 
-.test-engine-error {
+/* Engine error */
+.editor-engine-error {
   padding: 12px 16px;
   background: #fee;
   color: #c00;
   font-size: 13px;
 }
 
-.test-engine-error-hint {
+.editor-engine-error-hint {
   margin-top: 4px;
   font-size: 12px;
   color: #999;
 }
 
-.test-engine-error-hint code {
+.editor-engine-error-hint code {
   background: #eee;
   padding: 1px 4px;
   border-radius: 3px;
 }
 
-/* Editor YAML styles */
+/* YAML editor */
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;

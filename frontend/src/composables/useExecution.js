@@ -64,17 +64,38 @@ export function useExecution() {
         }
       }
 
-      // Execute with trace
-      const execResult = engine.executeWithTrace(
-        payload.lawId,
-        payload.outputName,
-        params,
-        payload.calculationDate,
-      );
+      // Try executeWithTrace first, fall back to execute
+      let execResult;
+      if (typeof engine.executeWithTrace === 'function') {
+        try {
+          execResult = engine.executeWithTrace(
+            payload.lawId,
+            payload.outputName,
+            params,
+            payload.calculationDate,
+          );
+          trace.value = execResult.trace || null;
+          traceText.value = execResult.trace_text || null;
+        } catch (traceErr) {
+          // Trace execution failed — fall back to non-traced execution
+          console.warn('executeWithTrace failed, falling back to execute:', traceErr);
+          execResult = engine.execute(
+            payload.lawId,
+            payload.outputName,
+            params,
+            payload.calculationDate,
+          );
+        }
+      } else {
+        execResult = engine.execute(
+          payload.lawId,
+          payload.outputName,
+          params,
+          payload.calculationDate,
+        );
+      }
 
       result.value = execResult;
-      trace.value = execResult.trace || null;
-      traceText.value = execResult.trace_text || null;
     } catch (e) {
       // Check if the error is a traced error (JS object with trace data)
       if (e && typeof e === 'object' && e.error) {
