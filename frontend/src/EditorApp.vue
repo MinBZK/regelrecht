@@ -2,21 +2,71 @@
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
 import { useLaw } from './composables/useLaw.js';
+import { useEngine } from './composables/useEngine.js';
+import { useExecution } from './composables/useExecution.js';
 import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
-import ScenarioPanel from './components/ScenarioPanel.vue';
+import ScenarioBuilder from './components/ScenarioBuilder.vue';
+import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
 
 const rightPaneView = ref('machine');
+const isTestMode = computed(() => rightPaneView.value === 'test');
 
 function onRightPaneChange(event) {
   const value = event.target?.value ?? event.detail?.[0];
   if (value) rightPaneView.value = value;
 }
 
+// --- Engine (shared for test mode) ---
+const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
+initEngine().catch(() => {});
+
+// Load current law into engine when YAML is available
+watch(
+  [() => rawYaml.value, engineReady],
+  async ([lawYaml, isReady]) => {
+    if (!isReady || !lawYaml) return;
+    const engine = getEngine();
+    try {
+      if (engine.hasLaw(lawId.value)) {
+        engine.unloadLaw(lawId.value);
+      }
+      engine.loadLaw(lawYaml);
+    } catch (e) {
+      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+    }
+  },
+  { immediate: true },
+);
+
+// --- Execution state (shared between form and trace panels) ---
+const {
+  result: execResult,
+  trace: execTrace,
+  traceText: execTraceText,
+  running: execRunning,
+  error: execError,
+  expectations: execExpectations,
+  execute: execExecute,
+  reset: execReset,
+} = useExecution();
+
+function handleFormExecute(payload) {
+  const engine = getEngine();
+  if (!engine) return;
+  execExecute(engine, payload);
+}
+
+// Reset execution state when switching away from test mode
+watch(isTestMode, (isTest) => {
+  if (!isTest) execReset();
+});
+
+// --- Editor state ---
 const activeAction = ref(null);
 const activeEditItem = ref(null);
 const parseError = ref(null);
@@ -119,7 +169,10 @@ function selectArticle(number) {
             </rr-toolbar-start-area>
             <rr-toolbar-center-area>
               <rr-toolbar-item>
-                <rr-search-field size="md" placeholder="Zoeken"></rr-search-field>
+                <rr-segmented-control size="md" :value="rightPaneView" @change="onRightPaneChange">
+                  <rr-segmented-control-item value="machine">Machine Readable</rr-segmented-control-item>
+                  <rr-segmented-control-item value="test">Test</rr-segmented-control-item>
+                </rr-segmented-control>
               </rr-toolbar-item>
             </rr-toolbar-center-area>
             <rr-toolbar-end-area>
@@ -153,14 +206,15 @@ function selectArticle(number) {
         </rr-container>
       </rr-split-view-pane>
 
-      <!-- Main: Navigation Split View -->
+      <!-- Main content area -->
       <rr-split-view-pane slot="main">
         <!-- Error state -->
         <div v-if="error" style="padding: 32px; color: #c00; text-align: center;">
           Kon de wet niet laden: {{ error.message }}
         </div>
 
-        <rr-navigation-split-view v-else>
+        <!-- Machine Readable mode: original 3-column navigation layout -->
+        <rr-navigation-split-view v-else-if="!isTestMode">
 
           <!-- Sidebar: Text -->
           <rr-split-view-pane slot="sidebar" has-content>
@@ -237,21 +291,10 @@ function selectArticle(number) {
             </rr-page>
           </rr-split-view-pane>
 
-          <!-- Main: Machine Readable / Test -->
+          <!-- Main: Machine Readable -->
           <rr-split-view-pane slot="main" has-content>
             <rr-page header-sticky>
-              <rr-toolbar slot="header" size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-segmented-control size="md" :value="rightPaneView" @change="onRightPaneChange">
-                      <rr-segmented-control-item value="machine">Machine Readable</rr-segmented-control-item>
-                      <rr-segmented-control-item value="test">Test</rr-segmented-control-item>
-                    </rr-segmented-control>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-              </rr-toolbar>
-
-              <rr-simple-section v-if="rightPaneView === 'machine'">
+              <rr-simple-section>
                 <MachineReadable
                   :article="editedArticle"
                   :editable="true"
@@ -259,16 +302,82 @@ function selectArticle(number) {
                   @open-action="activeAction = $event"
                 />
               </rr-simple-section>
-
-              <ScenarioPanel
-                v-if="rightPaneView === 'test'"
-                :law-id="lawId"
-                :law-yaml="rawYaml"
-              />
             </rr-page>
           </rr-split-view-pane>
 
         </rr-navigation-split-view>
+
+        <!-- Test mode: equal 3-column layout -->
+        <div v-else class="test-mode-layout">
+          <!-- Left: Article Text -->
+          <div class="test-pane">
+            <rr-page header-sticky>
+              <rr-toolbar slot="header" size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <rr-title-bar size="5">Tekst</rr-title-bar>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+              </rr-toolbar>
+              <rr-simple-section>
+                <ArticleText :article="selectedArticle" />
+              </rr-simple-section>
+            </rr-page>
+          </div>
+
+          <!-- Middle: Form -->
+          <div class="test-pane">
+            <rr-page header-sticky>
+              <rr-toolbar slot="header" size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <rr-title-bar size="5">Formulier</rr-title-bar>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+              </rr-toolbar>
+
+              <!-- Engine error -->
+              <div v-if="engineInitError" class="test-engine-error">
+                WASM engine failed to load: {{ engineInitError.message }}
+                <div class="test-engine-error-hint">
+                  Run <code>just wasm-build</code> to build the WASM module.
+                </div>
+              </div>
+
+              <ScenarioBuilder
+                v-else
+                :law-id="lawId"
+                :law-yaml="rawYaml"
+                :engine="getEngine()"
+                :ready="engineReady"
+                :running="execRunning"
+                @execute="handleFormExecute"
+              />
+            </rr-page>
+          </div>
+
+          <!-- Right: Execution Trace -->
+          <div class="test-pane">
+            <rr-page header-sticky>
+              <rr-toolbar slot="header" size="md">
+                <rr-toolbar-start-area>
+                  <rr-toolbar-item>
+                    <rr-title-bar size="5">Resultaat</rr-title-bar>
+                  </rr-toolbar-item>
+                </rr-toolbar-start-area>
+              </rr-toolbar>
+
+              <ExecutionTraceView
+                :result="execResult"
+                :trace="execTrace"
+                :trace-text="execTraceText"
+                :expectations="execExpectations"
+                :error="execError"
+                :running="execRunning"
+              />
+            </rr-page>
+          </div>
+        </div>
       </rr-split-view-pane>
     </rr-bar-split-view>
   </rr-app-view>
@@ -278,6 +387,45 @@ function selectArticle(number) {
 </template>
 
 <style>
+/* Test mode: 3-column equal-width layout */
+.test-mode-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.test-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+
+.test-pane:last-child {
+  border-right: none;
+}
+
+.test-engine-error {
+  padding: 12px 16px;
+  background: #fee;
+  color: #c00;
+  font-size: 13px;
+}
+
+.test-engine-error-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #999;
+}
+
+.test-engine-error-hint code {
+  background: #eee;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* Editor YAML styles */
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;

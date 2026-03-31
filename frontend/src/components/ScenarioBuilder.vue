@@ -2,16 +2,20 @@
 import { ref, computed, watch } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useDataSourceSchema } from '../composables/useDataSourceSchema.js';
-import { parseValue } from '../gherkin/steps.js';
+import { useScenarios } from '../composables/useScenarios.js';
+import { parseFeature } from '../gherkin/parser.js';
+import { mapFeatureToForm, getEffectiveSetup } from '../gherkin/formMapper.js';
 import DataSourceTable from './DataSourceTable.vue';
-import ScenarioResults from './ScenarioResults.vue';
 
 const props = defineProps({
   lawId: { type: String, required: true },
   lawYaml: { type: String, default: null },
   engine: { type: Object, default: null },
   ready: { type: Boolean, default: false },
+  running: { type: Boolean, default: false },
 });
+
+const emit = defineEmits(['execute']);
 
 // --- Dependencies ---
 const {
@@ -30,17 +34,45 @@ const {
   buildSchema,
 } = useDataSourceSchema();
 
+// --- Scenario loading ---
+const lawIdRef = computed(() => props.lawId);
+const {
+  scenarios: scenarioFiles,
+  selectedScenario: selectedScenarioFile,
+  featureText,
+  loading: scenariosLoading,
+  selectScenario: selectScenarioFile,
+} = useScenarios(lawIdRef);
+
+const selectedScenarioIndex = ref(0);
+const formState = ref(null);
+
+// Parse feature file when loaded
+watch(featureText, (text) => {
+  if (!text) {
+    formState.value = null;
+    selectedScenarioIndex.value = 0;
+    return;
+  }
+  try {
+    const parsed = parseFeature(text);
+    formState.value = mapFeatureToForm(parsed);
+    selectedScenarioIndex.value = 0;
+    // Auto-populate from first scenario
+    if (formState.value.scenarios.length > 0) {
+      populateFromScenario(0);
+    }
+  } catch {
+    formState.value = null;
+  }
+});
+
 // --- Form state ---
 const calculationDate = ref(new Date().toISOString().slice(0, 10));
 const parameterValues = ref({});
-const dataSourceRows = ref({});  // keyed by "lawId:articleNumber"
+const dataSourceRows = ref({});
 const selectedOutputs = ref([]);
 const expectations = ref({});
-
-// --- Execution state ---
-const result = ref(null);
-const running = ref(false);
-const runError = ref(null);
 
 // Cache for fetched law YAML texts
 const yamlCache = {};
@@ -64,10 +96,6 @@ watch(
 
     const version = ++watchVersion;
 
-    // Reset state
-    result.value = null;
-    runError.value = null;
-
     // Load dependencies
     await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
     if (version !== watchVersion) return;
@@ -76,18 +104,121 @@ watch(
     await buildSchema(lawYaml, loadedDeps.value, fetchLawYaml);
     if (version !== watchVersion) return;
 
-    // Initialize parameter values
-    const params = {};
-    for (const p of lawParameters.value) {
-      params[p.name] = parameterValues.value[p.name] ?? '';
+    // Initialize parameter values (only if not already populated from scenario)
+    if (Object.keys(parameterValues.value).length === 0) {
+      const params = {};
+      for (const p of lawParameters.value) {
+        params[p.name] = '';
+      }
+      parameterValues.value = params;
     }
-    parameterValues.value = params;
 
     // Initialize selected outputs with all outputs checked
-    selectedOutputs.value = lawOutputs.value.map((o) => o.name);
+    if (selectedOutputs.value.length === 0) {
+      selectedOutputs.value = lawOutputs.value.map((o) => o.name);
+    }
   },
   { immediate: true },
 );
+
+// --- Populate form from scenario ---
+async function populateFromScenario(index) {
+  if (!formState.value) return;
+  selectedScenarioIndex.value = index;
+
+  const setup = getEffectiveSetup(formState.value, index);
+  if (!setup) return;
+
+  const scenario = formState.value.scenarios[index];
+
+  // Set calculation date
+  if (setup.calculationDate) {
+    calculationDate.value = setup.calculationDate;
+  }
+
+  // Set parameters
+  const params = {};
+  for (const p of setup.parameters) {
+    params[p.name] = p.value;
+  }
+  // Merge with existing parameter names from schema
+  for (const p of lawParameters.value) {
+    if (!(p.name in params)) {
+      params[p.name] = parameterValues.value[p.name] ?? '';
+    }
+  }
+  parameterValues.value = params;
+
+  // Set data source rows - use source name directly from feature file
+  const newRows = {};
+  for (const ds of setup.dataSources) {
+    const rows = ds.rows.map((row, i) => {
+      const obj = { _id: i };
+      ds.headers.forEach((h, j) => { obj[h] = row[j] ?? ''; });
+      return obj;
+    });
+
+    // Try to match to schema groups first, fall back to direct sourceName key
+    let matched = false;
+    for (const group of dataSourceGroups.value) {
+      const groupSourceName = `${group.lawId}_art${group.articleNumber}`;
+      if (ds.sourceName === groupSourceName || ds.sourceName.includes(group.lawId)) {
+        const key = `${group.lawId}:${group.articleNumber}`;
+        newRows[key] = rows;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      // Store by source name for direct registration
+      newRows[`_direct:${ds.sourceName}`] = { sourceName: ds.sourceName, keyField: ds.keyField, rows };
+    }
+  }
+  dataSourceRows.value = newRows;
+
+  // Set expectations from assertions
+  const exp = {};
+  for (const assertion of scenario.assertions || []) {
+    if (assertion.outputName && assertion.value !== null && assertion.value !== undefined) {
+      exp[assertion.outputName] = String(assertion.value);
+    }
+  }
+  expectations.value = exp;
+
+  // Select outputs referenced in assertions
+  if (scenario.assertions?.length > 0) {
+    const assertedOutputs = scenario.assertions
+      .filter((a) => a.outputName)
+      .map((a) => a.outputName);
+    if (assertedOutputs.length > 0) {
+      selectedOutputs.value = [...new Set([...assertedOutputs, ...selectedOutputs.value])];
+    }
+  }
+
+  // Load dependencies specified in scenario
+  if (props.engine && props.ready) {
+    for (const depId of setup.dependencies) {
+      try {
+        if (!props.engine.hasLaw(depId)) {
+          const yaml = await fetchLawYaml(depId);
+          props.engine.loadLaw(yaml);
+        }
+      } catch (e) {
+        console.warn(`Failed to load scenario dependency '${depId}':`, e);
+      }
+    }
+  }
+}
+
+function onScenarioFileSelect(event) {
+  const filename = event.target.value;
+  if (filename) selectScenarioFile(filename);
+}
+
+function onScenarioSelect(event) {
+  const index = parseInt(event.target.value, 10);
+  if (!isNaN(index)) populateFromScenario(index);
+}
 
 // --- Data source row getter/setter ---
 function getRows(group) {
@@ -100,69 +231,43 @@ function setRows(group, rows) {
   dataSourceRows.value = { ...dataSourceRows.value, [key]: rows };
 }
 
-// --- Execute ---
-async function execute() {
-  if (!props.engine || !props.ready) return;
+// --- Execute (emit to parent) ---
+function handleExecute() {
+  const outputName = selectedOutputs.value[0];
+  if (!outputName) return;
 
-  running.value = true;
-  result.value = null;
-  runError.value = null;
-
-  try {
-    const engine = props.engine;
-
-    // Clear previous data sources
-    engine.clearDataSources();
-
-    // Register data source tables
-    for (const group of dataSourceGroups.value) {
-      const key = `${group.lawId}:${group.articleNumber}`;
-      const rows = dataSourceRows.value[key] || [];
-      if (rows.length === 0) continue;
-
-      // Use a descriptive source name
-      const sourceName = `${group.lawId}_art${group.articleNumber}`;
-
-      // Type-coerce string values (form inputs are always strings)
-      const typedRows = rows.map((row) => {
-        const typed = {};
-        for (const [k, v] of Object.entries(row)) {
-          if (k === '_id') continue;  // internal row ID, not a data field
-          typed[k] = typeof v === 'string' ? parseValue(v) : v;
-        }
-        return typed;
-      });
-      engine.registerDataSource(sourceName, group.keyField, typedRows);
-    }
-
-    // Build parameters — coerce number-typed params, keep strings as strings
-    const params = {};
-    const paramTypes = Object.fromEntries(
-      lawParameters.value.map((p) => [p.name, p.type]),
-    );
-    for (const [k, v] of Object.entries(parameterValues.value)) {
-      if (v !== '' && v !== null && v !== undefined) {
-        params[k] = paramTypes[k] === 'number' ? parseValue(v) : v;
-      }
-    }
-
-    // Execute for the first selected output (the engine returns all outputs)
-    const outputName = selectedOutputs.value[0];
-    if (!outputName) {
-      throw new Error('Selecteer minimaal één output');
-    }
-
-    result.value = engine.execute(
-      props.lawId,
-      outputName,
-      params,
-      calculationDate.value,
-    );
-  } catch (e) {
-    runError.value = e.message || String(e);
-  } finally {
-    running.value = false;
+  // Collect all data sources
+  const dataSources = [];
+  for (const group of dataSourceGroups.value) {
+    const key = `${group.lawId}:${group.articleNumber}`;
+    const rows = dataSourceRows.value[key] || [];
+    if (rows.length === 0) continue;
+    dataSources.push({
+      sourceName: `${group.lawId}_art${group.articleNumber}`,
+      keyField: group.keyField,
+      rows,
+    });
   }
+
+  // Also include directly-keyed data sources from feature files
+  for (const [key, value] of Object.entries(dataSourceRows.value)) {
+    if (key.startsWith('_direct:') && value.rows?.length > 0) {
+      dataSources.push({
+        sourceName: value.sourceName,
+        keyField: value.keyField,
+        rows: value.rows,
+      });
+    }
+  }
+
+  emit('execute', {
+    lawId: props.lawId,
+    outputName,
+    parameters: { ...parameterValues.value },
+    calculationDate: calculationDate.value,
+    dataSources,
+    expectations: { ...expectations.value },
+  });
 }
 
 // --- Output toggle ---
@@ -188,143 +293,168 @@ const filledSourceCount = computed(() => {
   }
   return count;
 });
+
+const scenarioNames = computed(() => {
+  if (!formState.value) return [];
+  return formState.value.scenarios.map((s) => s.name);
+});
 </script>
 
 <template>
   <div class="sb-container">
     <div class="sb-scroll">
-          <!-- Dependencies loading -->
-          <div v-if="depsLoading" class="sb-section sb-deps-loading">
-            <div class="sb-section-title">Afhankelijkheden laden</div>
-            <div class="sb-deps-progress">{{ depsProgress }}</div>
-          </div>
-          <div v-else-if="depsError" class="sb-section sb-deps-error">
-            Fout: {{ depsError }}
-          </div>
+      <!-- Scenario selector -->
+      <div class="sb-section" v-if="scenarioFiles.length > 0 || scenariosLoading">
+        <div class="sb-section-title">Scenario</div>
+        <div v-if="scenariosLoading" class="sb-deps-progress">Scenario's laden...</div>
+        <template v-else>
+          <select
+            v-if="scenarioFiles.length > 0"
+            class="sb-select"
+            :value="selectedScenarioFile"
+            @change="onScenarioFileSelect"
+          >
+            <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
+              {{ sf.filename }}
+            </option>
+          </select>
+          <select
+            v-if="scenarioNames.length > 1"
+            class="sb-select sb-select--scenario"
+            :value="selectedScenarioIndex"
+            @change="onScenarioSelect"
+          >
+            <option v-for="(name, i) in scenarioNames" :key="i" :value="i">
+              {{ name }}
+            </option>
+          </select>
+        </template>
+      </div>
 
-          <!-- Calculation date -->
-          <div class="sb-section">
-            <label class="sb-label">Berekeningsdatum</label>
+      <!-- Dependencies loading -->
+      <div v-if="depsLoading" class="sb-section sb-deps-loading">
+        <div class="sb-section-title">Afhankelijkheden laden</div>
+        <div class="sb-deps-progress">{{ depsProgress }}</div>
+      </div>
+      <div v-else-if="depsError" class="sb-section sb-deps-error">
+        Fout: {{ depsError }}
+      </div>
+
+      <!-- Calculation date -->
+      <div class="sb-section">
+        <label class="sb-label">Berekeningsdatum</label>
+        <input
+          type="date"
+          class="sb-date-input"
+          v-model="calculationDate"
+        />
+      </div>
+
+      <!-- Parameters -->
+      <div v-if="lawParameters.length > 0" class="sb-section">
+        <div class="sb-section-title">Parameters</div>
+        <div v-for="param in lawParameters" :key="param.name" class="sb-param-row">
+          <label class="sb-param-label">{{ param.name }}</label>
+          <input
+            class="sb-param-input"
+            :type="param.type === 'number' ? 'number' : 'text'"
+            :value="parameterValues[param.name] ?? ''"
+            @input="parameterValues = { ...parameterValues, [param.name]: $event.target.value }"
+            :placeholder="param.name"
+          />
+        </div>
+      </div>
+
+      <!-- Data sources -->
+      <div v-if="dataSourceGroups.length > 0" class="sb-section">
+        <div class="sb-section-title">
+          Gegevensbronnen
+          <span class="sb-section-badge" v-if="!depsLoading">
+            {{ filledSourceCount }}/{{ dataSourceGroups.length }}
+          </span>
+        </div>
+
+        <DataSourceTable
+          v-for="group in dataSourceGroups"
+          :key="`${group.lawId}:${group.articleNumber}`"
+          :title="group.lawName"
+          :key-field="group.keyField"
+          :fields="group.fields"
+          :model-value="getRows(group)"
+          @update:model-value="setRows(group, $event)"
+        />
+      </div>
+
+      <!-- Outputs -->
+      <div v-if="lawOutputs.length > 0" class="sb-section">
+        <div class="sb-section-title">Output</div>
+        <div v-for="output in lawOutputs" :key="output.name" class="sb-output-row">
+          <label class="sb-output-check">
             <input
-              type="date"
-              class="sb-date-input"
-              v-model="calculationDate"
+              type="checkbox"
+              :checked="selectedOutputs.includes(output.name)"
+              @change="toggleOutput(output.name)"
             />
-          </div>
-
-          <!-- Parameters -->
-          <div v-if="lawParameters.length > 0" class="sb-section">
-            <div class="sb-section-title">Parameters</div>
-            <div v-for="param in lawParameters" :key="param.name" class="sb-param-row">
-              <label class="sb-param-label">{{ param.name }}</label>
-              <input
-                class="sb-param-input"
-                :type="param.type === 'number' ? 'number' : 'text'"
-                :value="parameterValues[param.name] ?? ''"
-                @input="parameterValues = { ...parameterValues, [param.name]: $event.target.value }"
-                :placeholder="param.name"
-              />
-            </div>
-          </div>
-
-          <!-- Data sources -->
-          <div v-if="dataSourceGroups.length > 0" class="sb-section">
-            <div class="sb-section-title">
-              Gegevensbronnen
-              <span class="sb-section-badge" v-if="!depsLoading">
-                {{ filledSourceCount }}/{{ dataSourceGroups.length }}
-              </span>
-            </div>
-
-            <DataSourceTable
-              v-for="group in dataSourceGroups"
-              :key="`${group.lawId}:${group.articleNumber}`"
-              :title="group.lawName"
-              :key-field="group.keyField"
-              :fields="group.fields"
-              :model-value="getRows(group)"
-              @update:model-value="setRows(group, $event)"
-            />
-          </div>
-
-          <!-- Outputs -->
-          <div v-if="lawOutputs.length > 0" class="sb-section">
-            <div class="sb-section-title">Output</div>
-            <div v-for="output in lawOutputs" :key="output.name" class="sb-output-row">
-              <label class="sb-output-check">
+            <span>{{ output.name }}</span>
+          </label>
+          <div v-if="selectedOutputs.includes(output.name)" class="sb-output-expect">
+            <label class="sb-expect-label">Verwacht:</label>
+            <template v-if="output.type === 'boolean'">
+              <label class="sb-radio">
                 <input
-                  type="checkbox"
-                  :checked="selectedOutputs.includes(output.name)"
-                  @change="toggleOutput(output.name)"
+                  type="radio"
+                  :name="`expect-${output.name}`"
+                  value="true"
+                  :checked="expectations[output.name] === 'true'"
+                  @change="setExpectation(output.name, 'true')"
                 />
-                <span>{{ output.name }}</span>
+                ja
               </label>
-              <div v-if="selectedOutputs.includes(output.name)" class="sb-output-expect">
-                <label class="sb-expect-label">Verwacht:</label>
-                <template v-if="output.type === 'boolean'">
-                  <label class="sb-radio">
-                    <input
-                      type="radio"
-                      :name="`expect-${output.name}`"
-                      value="true"
-                      :checked="expectations[output.name] === 'true'"
-                      @change="setExpectation(output.name, 'true')"
-                    />
-                    ja
-                  </label>
-                  <label class="sb-radio">
-                    <input
-                      type="radio"
-                      :name="`expect-${output.name}`"
-                      value="false"
-                      :checked="expectations[output.name] === 'false'"
-                      @change="setExpectation(output.name, 'false')"
-                    />
-                    nee
-                  </label>
-                  <label class="sb-radio">
-                    <input
-                      type="radio"
-                      :name="`expect-${output.name}`"
-                      value=""
-                      :checked="!expectations[output.name]"
-                      @change="setExpectation(output.name, null)"
-                    />
-                    &mdash;
-                  </label>
-                </template>
-                <template v-else>
-                  <input
-                    class="sb-expect-input"
-                    type="text"
-                    :value="expectations[output.name] || ''"
-                    @input="setExpectation(output.name, $event.target.value || null)"
-                    placeholder="waarde"
-                  />
-                </template>
-              </div>
-            </div>
+              <label class="sb-radio">
+                <input
+                  type="radio"
+                  :name="`expect-${output.name}`"
+                  value="false"
+                  :checked="expectations[output.name] === 'false'"
+                  @change="setExpectation(output.name, 'false')"
+                />
+                nee
+              </label>
+              <label class="sb-radio">
+                <input
+                  type="radio"
+                  :name="`expect-${output.name}`"
+                  value=""
+                  :checked="!expectations[output.name]"
+                  @change="setExpectation(output.name, null)"
+                />
+                &mdash;
+              </label>
+            </template>
+            <template v-else>
+              <input
+                class="sb-expect-input"
+                type="text"
+                :value="expectations[output.name] || ''"
+                @input="setExpectation(output.name, $event.target.value || null)"
+                placeholder="waarde"
+              />
+            </template>
           </div>
+        </div>
+      </div>
 
       <!-- Execute button -->
       <div class="sb-execute-bar">
         <button
           class="sb-execute-btn"
-          @click="execute"
+          @click="handleExecute"
           :disabled="!ready || running || selectedOutputs.length === 0"
           type="button"
         >
           {{ running ? 'Bezig...' : 'Uitvoeren \u25B6' }}
         </button>
       </div>
-
-      <!-- Results -->
-      <ScenarioResults
-        :result="result"
-        :expectations="expectations"
-        :error="runError"
-        :running="running"
-      />
     </div>
   </div>
 </template>
@@ -363,6 +493,26 @@ const filledSourceCount = computed(() => {
   border-radius: 4px;
   background: var(--semantics-surfaces-color-secondary, #F0F1F3);
   color: var(--semantics-text-color-secondary, #666);
+}
+
+/* Select (scenario selector) */
+.sb-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  background: white;
+}
+
+.sb-select:focus {
+  outline: none;
+  border-color: #154273;
+}
+
+.sb-select--scenario {
+  margin-top: 6px;
 }
 
 /* Date input */

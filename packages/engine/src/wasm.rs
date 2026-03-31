@@ -61,6 +61,7 @@ use wasm_bindgen::prelude::*;
 use crate::config;
 use crate::error::EngineError;
 use crate::service::LawExecutionService;
+use crate::trace::PathNode;
 use crate::types::{RegulatoryLayer, Value};
 
 /// Create a serializer that converts HashMaps to JavaScript objects (not Maps)
@@ -93,6 +94,21 @@ struct WasmExecuteResult {
     law_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     law_uuid: Option<String>,
+}
+
+/// Serializable result for executeWithTrace()
+#[derive(Serialize)]
+struct WasmExecuteResultWithTrace {
+    outputs: BTreeMap<String, Value>,
+    resolved_inputs: BTreeMap<String, Value>,
+    article_number: String,
+    law_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    law_uuid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace: Option<PathNode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trace_text: Option<String>,
 }
 
 /// Serializable law info for get_law_info()
@@ -196,6 +212,81 @@ impl WasmEngine {
                 law_id, e
             ))
         })
+    }
+
+    /// Execute a law output with tracing enabled.
+    ///
+    /// Same as `execute()` but includes a full execution trace tree in the
+    /// result. The trace captures every resolution step, cross-law call, and
+    /// operation performed during evaluation.
+    ///
+    /// # Returns
+    /// * `Ok(JsValue)` - JavaScript object with `outputs`, `trace` (tree), `trace_text` (box-drawing)
+    /// * `Err(JsValue)` - Error message if execution fails (may include partial trace)
+    #[wasm_bindgen(js_name = executeWithTrace)]
+    pub fn execute_with_trace(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: JsValue,
+        calculation_date: &str,
+    ) -> Result<JsValue, JsValue> {
+        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
+            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+
+        match self.service.evaluate_law_output_with_trace(
+            law_id,
+            output_name,
+            params,
+            calculation_date,
+        ) {
+            Ok(result) => {
+                let trace_text = result.trace.as_ref().map(|t| t.render_box_drawing());
+                let wasm_result = WasmExecuteResultWithTrace {
+                    outputs: result.outputs,
+                    resolved_inputs: result.resolved_inputs,
+                    article_number: result.article_number,
+                    law_id: result.law_id,
+                    law_uuid: result.law_uuid,
+                    trace: result.trace,
+                    trace_text,
+                };
+
+                wasm_result.serialize(&js_serializer()).map_err(|e| {
+                    wasm_error(&format!(
+                        "Failed to serialize traced result for law '{}': {}",
+                        law_id, e
+                    ))
+                })
+            }
+            Err(EngineError::TracedError { source, trace }) => {
+                // Return partial trace alongside the error by encoding both
+                // into a structured error object
+                let trace_node = trace.map(|t| *t);
+                let trace_text = trace_node.as_ref().map(|t| t.render_box_drawing());
+
+                #[derive(Serialize)]
+                struct TracedErrorResult {
+                    error: String,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    trace: Option<PathNode>,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    trace_text: Option<String>,
+                }
+
+                let err_result = TracedErrorResult {
+                    error: source.to_string(),
+                    trace: trace_node,
+                    trace_text,
+                };
+
+                match err_result.serialize(&js_serializer()) {
+                    Ok(js_val) => Err(js_val),
+                    Err(_) => Err(wasm_error(&source.to_string())),
+                }
+            }
+            Err(other) => Err(engine_error_to_wasm(other)),
+        }
     }
 
     /// List all loaded law IDs (sorted alphabetically).
@@ -544,5 +635,29 @@ articles:
         // Clear and verify
         engine.clear_data_sources();
         assert_eq!(engine.service.data_source_count(), 0);
+    }
+
+    #[test]
+    fn test_wasm_engine_execute_with_trace() {
+        let mut engine = WasmEngine::new();
+        load_law(&mut engine, MINIMAL_LAW_YAML);
+
+        let mut params = BTreeMap::new();
+        params.insert("value".to_string(), Value::Int(21));
+
+        let result = engine
+            .service
+            .evaluate_law_output_with_trace("test_law", "result", params, "2025-01-01")
+            .unwrap();
+
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(42)));
+        assert!(result.trace.is_some(), "Trace should be populated");
+
+        let trace = result.trace.unwrap();
+        assert!(!trace.children.is_empty(), "Trace should have children");
+
+        // Verify box-drawing rendering works
+        let text = trace.render_box_drawing();
+        assert!(!text.is_empty(), "Box-drawing trace should not be empty");
     }
 }
