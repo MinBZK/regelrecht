@@ -12,6 +12,7 @@
 //! errors to external callers (API responses, WASM, etc.) to prevent
 //! information disclosure.
 
+use crate::trace::PathNode;
 use thiserror::Error;
 
 /// Main error type for engine operations
@@ -103,6 +104,16 @@ pub enum EngineError {
         input_name: String,
         regulation: String,
         output: String,
+    },
+
+    /// Wraps an error that occurred during traced execution, carrying the partial trace.
+    ///
+    /// This variant is returned by `evaluate_law_output_with_trace` when execution
+    /// fails, so callers can inspect the trace up to the point of failure.
+    #[error("{source}")]
+    TracedError {
+        source: Box<EngineError>,
+        trace: Option<Box<PathNode>>,
     },
 }
 
@@ -231,6 +242,7 @@ impl From<EngineError> for ExternalError {
             }
             EngineError::DataSourceError(_) => ExternalError::DataSourceError,
             EngineError::InvalidDate(_) => ExternalError::InvalidDate,
+            EngineError::TracedError { source, .. } => ExternalError::from(*source),
         }
     }
 }
