@@ -232,8 +232,7 @@ articles:
           value: 155958
       execution:
         produces:
-          legal_character: BESCHIKKING
-          decision_type: TOEKENNING
+          legal_character: WAARDEBEPALING
         parameters:
           - name: bsn
             type: string
@@ -264,7 +263,10 @@ articles:
           - name: voldoet_aan_voorwaarden_artikel_21
             type: boolean
         actions:
-          # Check eligibility conditions
+          # Check eligibility conditions: "21 jaar of ouder doch jonger dan de
+          # pensioengerechtigde leeftijd". Note: kostendelende medebewoners does NOT
+          # exclude from Art 21 — it determines WHICH norm applies (Art 21 vs Art 22a),
+          # not WHETHER someone qualifies.
           - output: voldoet_aan_voorwaarden_artikel_21
             value:
               operation: AND
@@ -274,9 +276,6 @@ articles:
                   value: 21
                 - operation: EQUALS
                   subject: $heeft_pensioengerechtigde_leeftijd_bereikt
-                  value: false
-                - operation: EQUALS
-                  subject: $heeft_kostendelende_medebewoners
                   value: false
           # Calculate the norm based on household type
           - output: normbedrag_artikel_21
@@ -372,200 +371,74 @@ articles:
       tijde van de aanvraag van algemene bijstand jonger dan 27 jaar zijn.
     url: https://wetten.overheid.nl/BWBR0015703/2022-03-15#Artikel43
     machine_readable:
-      # Dit artikel orkestreert de volledige bijstandsaanvraag:
-      # 1. Controleert registratie bij UWV
-      # 2. Bepaalt recht op bijstand (art. 11)
-      # 3. Berekent normbedrag (art. 21)
-      # 4. Past eventuele verlaging toe (Afstemmingsverordening)
-      # 5. Berekent finale uitkering
-      # Outputs zoals heeft_recht_op_bijstand, uitkering_bedrag zijn de publieke endpoints
+      # Art. 43 is an orchestration article: "Het college stelt het recht op
+      # bijstand op schriftelijke aanvraag of ambtshalve vast."
+      # It does NOT define eligibility or norm amounts — those come from:
+      #   - Art. 11: eligibility (rechthebbenden)
+      #   - Art. 21: norm amounts (normbedragen)
+      #   - Art. 8/verordening: verlaging (via open_term)
+      # Art. 43 is where the college actually decides (BESCHIKKING).
       execution:
         produces:
           legal_character: BESCHIKKING
           decision_type: TOEKENNING
         parameters:
-          # Identificatie van de aanvrager
           - name: bsn
             type: string
             required: true
             description: Burgerservicenummer van de aanvrager
 
-          - name: gemeente_code
-            type: string
-            required: true
-            description: Gemeentecode van de gemeente die de aanvraag behandelt (bijv. GM0384 voor Diemen)
-
-          # TODO: Deze gegevens komen uit UWV werkzoekendenregistratie
-          - name: is_geregistreerd_als_werkzoekende
-            type: boolean
-            required: true
-            description: 'Is geregistreerd als werkzoekende bij UWV (bron: UWV)'
-
-          # TODO: Deze gegevens komen uit wet_basisregistratie_personen (BRP)
-          - name: is_nederlander
-            type: boolean
-            required: true
-            description: 'Heeft Nederlandse nationaliteit (bron: BRP)'
-          - name: is_gelijkgestelde_vreemdeling
-            type: boolean
-            required: false
-            description: 'Is gelijkgestelde vreemdeling art. 11 lid 2 (bron: BRP)'
-          - name: woont_in_nederland
-            type: boolean
-            required: true
-            description: 'Woont in Nederland (bron: BRP)'
-          - name: leeftijd
-            type: number
-            required: true
-            description: 'Leeftijd in jaren (bron: BRP)'
-          - name: is_alleenstaande
-            type: boolean
-            required: true
-            description: 'Is alleenstaande (bron: BRP)'
-          - name: heeft_kostendelende_medebewoners
-            type: boolean
-            required: false
-            description: 'Heeft kostendelende medebewoners (bron: BRP)'
-
-          # TODO: Dit moet uit algemene_ouderdomswet komen
-          - name: heeft_pensioengerechtigde_leeftijd_bereikt
-            type: boolean
-            required: false
-            description: 'Heeft AOW-leeftijd bereikt (bron: AOW)'
-
-          # TODO: Dit moet uit participatiewet_middelentoets komen (complexe berekening)
-          - name: heeft_voldoende_middelen
-            type: boolean
-            required: true
-            description: 'Heeft voldoende middelen voor levensonderhoud (bron: middelentoets)'
-
-          - name: gedragscategorie
-            type: number
-            required: false
-            description: Gedragscategorie (0=geen, 1, 2 of 3) voor afstemmingsverordening
-
         input:
-          - name: verlaging_percentage_uit_verordening
+          # Eligibility from Art. 21 (interim; should eventually come from Art. 11)
+          - name: heeft_recht_op_bijstand
+            type: boolean
+            description: Voldoet aan voorwaarden voor bijstand (art. 21, interim voor art. 11)
+            source:
+              output: voldoet_aan_voorwaarden_artikel_21
+          # Norm amount from Art. 21
+          - name: normbedrag_artikel_21
+            type: amount
+            description: Normbedrag per kalendermaand (art. 21)
+            source:
+              output: normbedrag_artikel_21
+            type_spec:
+              unit: eurocent
+          # Verlaging from the verordening via Art. 8's open_term
+          - name: verlaging_percentage
             type: number
-            description: Verlagingspercentage uit gemeentelijke afstemmingsverordening
+            description: Verlagingspercentage uit gemeentelijke afstemmingsverordening (art. 8)
             source:
               output: verlaging_percentage
-          - name: duur_maanden_uit_verordening
-            type: number
-            description: Duur van de verlaging uit gemeentelijke afstemmingsverordening
-            source:
-              output: duur_maanden
 
         output:
           - name: heeft_recht_op_bijstand
             type: boolean
             description: Heeft de aanvrager recht op bijstand?
-          - name: reden_afwijzing
-            type: string
-            description: Reden van afwijzing indien geen recht
           - name: uitkering_bedrag
             type: amount
             type_spec:
               unit: eurocent
             description: Finale uitkering na eventuele verlaging
+
         actions:
-          # === Stap 1: Controleer UWV-registratie ===
-          - output: voldoet_aan_uwv_registratie
-            value:
-              operation: EQUALS
-              subject: $is_geregistreerd_als_werkzoekende
-              value: true
-
-          # === Stap 2: Controleer nationaliteit (art. 11 lid 1-2) ===
-          - output: voldoet_aan_nationaliteit
-            value:
-              operation: OR
-              conditions:
-                - operation: EQUALS
-                  subject: $is_nederlander
-                  value: true
-                - operation: EQUALS
-                  subject: $is_gelijkgestelde_vreemdeling
-                  value: true
-
-          # === Stap 3: Controleer woonplaats (art. 11 lid 1) ===
-          - output: voldoet_aan_woonplaats
-            value:
-              operation: EQUALS
-              subject: $woont_in_nederland
-              value: true
-
-          # === Stap 4: Controleer leeftijd (art. 21: 21+ en < pensioen) ===
-          - output: voldoet_aan_leeftijd
-            value:
-              operation: AND
-              conditions:
-                - operation: GREATER_THAN_OR_EQUAL
-                  subject: $leeftijd
-                  value: 21
-                - operation: EQUALS
-                  subject: $heeft_pensioengerechtigde_leeftijd_bereikt
-                  value: false
-                - operation: EQUALS
-                  subject: $heeft_kostendelende_medebewoners
-                  value: false
-
-          # === Stap 5: Controleer middelen (art. 11: geen middelen) ===
-          - output: heeft_onvoldoende_middelen
-            value:
-              operation: EQUALS
-              subject: $heeft_voldoende_middelen
-              value: false
-
-          # === Stap 6: Bepaal recht op bijstand ===
+          # Pass-through: eligibility from Art 21 (interim for Art 11)
           - output: heeft_recht_op_bijstand
-            value:
-              operation: AND
-              conditions:
-                - $voldoet_aan_uwv_registratie
-                - $voldoet_aan_nationaliteit
-                - $voldoet_aan_woonplaats
-                - $voldoet_aan_leeftijd
-                - $heeft_onvoldoende_middelen
+            value: $heeft_recht_op_bijstand
 
-          # === Stap 7: Bepaal reden afwijzing indien geen recht ===
-          - output: reden_afwijzing
+          # === Stap 1: Bereken verlagingsbedrag ===
+          # uitkering = normbedrag * (1 - verlaging_percentage / 100)
+          - output: verlaging_bedrag
             value:
-              operation: IF
-              cases:
-                - when:
-                    operation: EQUALS
-                    subject: $heeft_recht_op_bijstand
-                    value: true
-                  then: null
-                - when:
-                    operation: EQUALS
-                    subject: $voldoet_aan_uwv_registratie
-                    value: false
-                  then: Niet geregistreerd als werkzoekende bij UWV
-                - when:
-                    operation: EQUALS
-                    subject: $voldoet_aan_nationaliteit
-                    value: false
-                  then: Geen Nederlander of gelijkgestelde vreemdeling
-                - when:
-                    operation: EQUALS
-                    subject: $voldoet_aan_woonplaats
-                    value: false
-                  then: Woont niet in Nederland
-                - when:
-                    operation: EQUALS
-                    subject: $voldoet_aan_leeftijd
-                    value: false
-                  then: Voldoet niet aan leeftijdseis (21+ en onder pensioenleeftijd, geen kostendelers)
-                - when:
-                    operation: EQUALS
-                    subject: $heeft_onvoldoende_middelen
-                    value: false
-                  then: Beschikt over voldoende middelen
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $normbedrag_artikel_21
+                    - $verlaging_percentage
+                - 100
 
-          # === Stap 8: Bepaal normbedrag (art. 21) ===
-          - output: normbedrag
+          # === Stap 2: Bereken finale uitkering ===
+          - output: uitkering_bedrag
             value:
               operation: IF
               cases:
@@ -574,41 +447,11 @@ articles:
                     subject: $heeft_recht_op_bijstand
                     value: false
                   then: 0
-                - when:
-                    operation: EQUALS
-                    subject: $is_alleenstaande
-                    value: true
-                  then: 109171  # € 1.091,71
-              default: 155958  # € 1.559,58 (gehuwden)
-
-          # === Stap 9: Verlagingspercentage uit gemeentelijke verordening ===
-          # De verordening bepaalt intern of en welke verlaging van toepassing is
-          - output: verlaging_percentage
-            value: $verlaging_percentage_uit_verordening
-
-          # === Stap 9b: Duur uit gemeentelijke verordening ===
-          - output: duur_maanden
-            value: $duur_maanden_uit_verordening
-
-          # === Stap 10: Bereken verlagingsbedrag ===
-          # Verlagingsbedrag = normbedrag * verlaging_percentage / 100
-          - output: verlaging_bedrag
-            value:
-              operation: DIVIDE
-              values:
-                - operation: MULTIPLY
-                  values:
-                    - $normbedrag
-                    - $verlaging_percentage
-                - 100
-
-          # === Stap 11: Bereken finale uitkering ===
-          - output: uitkering_bedrag
-            value:
-              operation: SUBTRACT
-              values:
-                - $normbedrag
-                - $verlaging_bedrag
+              default:
+                operation: SUBTRACT
+                values:
+                  - $normbedrag_artikel_21
+                  - $verlaging_bedrag
 
   - number: '69'
     text: |-

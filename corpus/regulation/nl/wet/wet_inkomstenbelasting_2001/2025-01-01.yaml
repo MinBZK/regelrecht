@@ -91,17 +91,6 @@ articles:
       rendementsgrondslag aan het begin van het kalenderjaar (peildatum 1 januari) wordt als uitgangspunt genomen.
     url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel5.2
     machine_readable:
-      definitions:
-        heffingsvrije_voet_alleenstaand:
-          value: 5768400
-        heffingsvrije_voet_partners:
-          value: 11536800
-        rendement_spaargeld:
-          value: 0.0144
-        rendement_overige_bezittingen:
-          value: 0.0588
-        rendement_schulden:
-          value: 0.0247
       execution:
         parameters:
           - name: bsn
@@ -120,23 +109,8 @@ articles:
           - name: schulden
             type: number
             source: {}
-          - name: heeft_toeslagpartner
-            type: boolean
-            source:
-              regulation: algemene_wet_inkomensafhankelijke_regelingen
-              output: heeft_toeslagpartner
-              parameters:
-                bsn: $bsn
         output:
           - name: rendementsgrondslag
-            type: amount
-            type_spec:
-              unit: eurocent
-          - name: box3_bezittingen
-            type: amount
-            type_spec:
-              unit: eurocent
-          - name: box3_inkomen
             type: amount
             type_spec:
               unit: eurocent
@@ -151,65 +125,6 @@ articles:
                     - $beleggingen
                     - $onroerend_goed
                 - $schulden
-          - output: box3_bezittingen
-            value:
-              operation: MAX
-              values:
-                - 0
-                - operation: SUBTRACT
-                  values:
-                    - operation: ADD
-                      values:
-                        - $spaargeld
-                        - $beleggingen
-                        - $onroerend_goed
-                    - $schulden
-                    - operation: IF
-                      cases:
-                        - when:
-                            operation: EQUALS
-                            subject: $heeft_toeslagpartner
-                            value: true
-                          then: $heffingsvrije_voet_partners
-                      default: $heffingsvrije_voet_alleenstaand
-          - output: box3_inkomen
-            value:
-              operation: IF
-              cases:
-                - when:
-                    operation: GREATER_THAN
-                    subject: $rendementsgrondslag
-                    value: 0
-                  then:
-                    operation: MAX
-                    values:
-                      - 0
-                      - operation: MULTIPLY
-                        values:
-                          - $box3_bezittingen
-                          - operation: DIVIDE
-                            values:
-                              - operation: SUBTRACT
-                                values:
-                                  - operation: ADD
-                                    values:
-                                      - operation: MULTIPLY
-                                        values:
-                                          - $spaargeld
-                                          - $rendement_spaargeld
-                                      - operation: MULTIPLY
-                                        values:
-                                          - operation: ADD
-                                            values:
-                                              - $beleggingen
-                                              - $onroerend_goed
-                                          - $rendement_overige_bezittingen
-                                  - operation: MULTIPLY
-                                    values:
-                                      - $schulden
-                                      - $rendement_schulden
-                              - $rendementsgrondslag
-              default: 0
 
   - number: '2.18'
     text: |-
@@ -241,25 +156,20 @@ articles:
               output: box2_inkomen
               parameters:
                 bsn: $bsn
-          - name: box3_inkomen
-            type: amount
-            type_spec:
-              unit: eurocent
-            source:
-              regulation: wet_inkomstenbelasting_2001
-              output: box3_inkomen
-              parameters:
-                bsn: $bsn
+        # TODO: box3_inkomen requires Art 5.2a (forfaitair rendement) and
+        # Art 5.5 (heffingsvrij vermogen) to be implemented — see #383
         output:
           - name: toetsingsinkomen
             type: amount
             type_spec:
               unit: eurocent
         actions:
+          # Art 2.18: "het gezamenlijke bedrag van het inkomen uit werk en woning,
+          # het inkomen uit aanmerkelijk belang en het belastbaar inkomen uit sparen
+          # en beleggen". Box 3 temporarily excluded until Art 5.2a/5.5 exist (#383).
           - output: toetsingsinkomen
             value:
               operation: ADD
               values:
                 - $box1_inkomen
                 - $box2_inkomen
-                - $box3_inkomen

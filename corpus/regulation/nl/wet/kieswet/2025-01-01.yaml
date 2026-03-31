@@ -31,12 +31,23 @@ articles:
           - name: bsn
             type: string
             required: true
-        input:
+          - name: is_tien_jaar_ingezetene_geweest
+            type: boolean
+            required: true
+            description: >-
+              Lid 2a — gedurende ten minste tien jaren ingezetene van
+              Nederland geweest (false indien niet van toepassing)
+          - name: is_in_openbare_dienst_bes
+            type: boolean
+            required: true
+            description: >-
+              Lid 2b — in Nederlandse openbare dienst in Aruba/Curacao/
+              Sint Maarten of gezinslid daarvan (false indien n.v.t.)
           - name: verkiezingsdatum
             type: date
-            source:
-              output: verkiezingsdatum_tweede_kamer
-              description: Datum van de Tweede Kamerverkiezingen
+            required: true
+            description: Datum van de Tweede Kamerverkiezingen (dag van de stemming)
+        input:
           - name: leeftijd_op_verkiezingsdatum
             type: number
             source:
@@ -48,15 +59,12 @@ articles:
               description: Leeftijd op de dag van de stemming conform art. B1 lid 1
           - name: heeft_nederlandse_nationaliteit
             type: boolean
-            description: Nederlander zijn (Art B1 lid 1) — TODO output ontbreekt in BRP corpus
+            description: Nederlander zijn op dag van kandidaatstelling (Art B1 lid 1) — TODO output ontbreekt in BRP corpus
             source: {}
-          - name: heeft_kiesrecht_uitsluiting
-            type: boolean
-            source:
-              output: kiesrecht_uitsluiting
-              parameters:
-                bsn: $bsn
-              description: Uitsluiting van kiesrecht door rechterlijke uitspraak (art. B5 Kieswet)
+          - name: werkelijke_woonplaats
+            type: string
+            description: Werkelijke woonplaats op dag van kandidaatstelling (Art B1 lid 1)
+            source: {}
         output:
           - name: heeft_kiesrecht_tweede_kamer
             type: boolean
@@ -71,9 +79,27 @@ articles:
                 - operation: GREATER_THAN_OR_EQUAL
                   subject: $leeftijd_op_verkiezingsdatum
                   value: $MINIMUM_LEEFTIJD
-                - operation: EQUALS
-                  subject: $heeft_kiesrecht_uitsluiting
-                  value: false
+                # Lid 1: uitsluiting BES-eilanden, tenzij lid 2 uitzonderingen
+                - operation: NOT
+                  value:
+                    operation: AND
+                    conditions:
+                      - operation: IN
+                        subject: $werkelijke_woonplaats
+                        values:
+                          - ARUBA
+                          - CURACAO
+                          - SINT_MAARTEN
+                      - operation: NOT
+                        value:
+                          operation: OR
+                          conditions:
+                            - operation: EQUALS
+                              subject: $is_tien_jaar_ingezetene_geweest
+                              value: true
+                            - operation: EQUALS
+                              subject: $is_in_openbare_dienst_bes
+                              value: true
   - number: B5
     text: |-
       Van het kiesrecht zijn uitgesloten zij die bij onherroepelijke rechterlijke uitspraak van het kiesrecht zijn

@@ -390,6 +390,12 @@ articles:
           - name: heeft_derde_belanghebbende
             type: boolean
             required: true
+          - name: opschorting_dagen
+            type: number
+            required: true
+            description: >-
+              Lid 3: aantal dagen dat de beslistermijn is opgeschort wegens
+              zienswijzeprocedure (art 4:8 Awb). Geef 0 als geen opschorting.
         output:
           - name: beslistermijn_weken
             type: number
@@ -417,11 +423,13 @@ articles:
           # einddatum = ontvangst + termijn (NIET ontvangst+1 + termijn).
           # "gerekend vanaf de dag na" maakt die dag tot dag 1 (inclusief),
           # dus 4 weken = 28 dagen gerekend vanaf ontvangst+1 = dag 28 = ontvangst + 28.
+          # Lid 3: beslistermijn kan worden opgeschort door zienswijzeprocedure (art 4:8 Awb)
           - output: uiterste_beslisdatum
             value:
               operation: DATE_ADD
               date: $verzoek_ontvangst_datum
               weeks: $beslistermijn_weken
+              days: $opschorting_dagen
           - output: uiterste_openbaarmaking_datum
             value:
               operation: IF
@@ -531,6 +539,12 @@ articles:
           - name: betrokkene_heeft_toestemming
             type: boolean
             required: true
+          - name: persoonsgegevens_kennelijk_openbaar_gemaakt
+            type: boolean
+            required: true
+          - name: verstrekking_geen_inbreuk_levenssfeer
+            type: boolean
+            required: true
           - name: is_milieu_informatie
             type: boolean
             required: true
@@ -567,10 +581,21 @@ articles:
           - name: belang_openbaarheid_weegt_zwaarder
             type: boolean
             required: true
+          - name: onevenredige_benadeling_ander_belang
+            type: boolean
+            required: true
+          - name: bedrijfsgegevens_ernstig_geschaad
+            type: boolean
+            required: true
+          - name: milieu_belang_openbaarheid_weegt_op
+            type: boolean
+            required: true
         output:
           - name: heeft_absolute_weigeringsgrond
             type: boolean
           - name: heeft_relatieve_weigeringsgrond
+            type: boolean
+          - name: heeft_lid5_weigeringsgrond
             type: boolean
           - name: openbaarmaking_toegestaan
             type: boolean
@@ -590,16 +615,38 @@ articles:
                 conditions:
                   - $raakt_eenheid_kroon
                   - $raakt_veiligheid_staat
-                  - $bevat_vertrouwelijke_bedrijfsgegevens
+                  - operation: IF
+                    cases:
+                      - when: $is_milieu_informatie
+                        then:
+                          operation: AND
+                          conditions:
+                            - $bevat_vertrouwelijke_bedrijfsgegevens
+                            - $bedrijfsgegevens_ernstig_geschaad
+                            - operation: NOT
+                              value: $milieu_belang_openbaarheid_weegt_op
+                    default: $bevat_vertrouwelijke_bedrijfsgegevens
                   - operation: AND
                     conditions:
                       - $bevat_bijzondere_persoonsgegevens
                       - operation: NOT
                         value:
+                          operation: OR
+                          conditions:
+                            - operation: EQUALS
+                              subject: $betrokkene_heeft_toestemming
+                              value: true
+                            - operation: EQUALS
+                              subject: $persoonsgegevens_kennelijk_openbaar_gemaakt
+                              value: true
+                  - operation: AND
+                    conditions:
+                      - $bevat_identificatienummers
+                      - operation: NOT
+                        value:
                           operation: EQUALS
-                          subject: $betrokkene_heeft_toestemming
+                          subject: $verstrekking_geen_inbreuk_levenssfeer
                           value: true
-                  - $bevat_identificatienummers
           - output: heeft_relatieve_weigeringsgrond
             value:
               operation: IF
@@ -626,6 +673,13 @@ articles:
                       - $raakt_milieubescherming
                       - $raakt_beveiliging_personen
                       - $raakt_goed_functioneren_staat
+          - output: heeft_lid5_weigeringsgrond
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value: $is_milieu_informatie
+                - $onevenredige_benadeling_ander_belang
           - output: openbaarmaking_toegestaan
             value:
               operation: AND
@@ -634,6 +688,8 @@ articles:
                   value: $heeft_absolute_weigeringsgrond
                 - operation: NOT
                   value: $heeft_relatieve_weigeringsgrond
+                - operation: NOT
+                  value: $heeft_lid5_weigeringsgrond
 
   - number: '5.2'
     text: |-
@@ -691,7 +747,8 @@ articles:
               reference_date: $peildatum
           - output: verzwaarde_motiveringsplicht
             value:
-              operation: GREATER_THAN_OR_EQUAL
+              # "ouder is dan vijf jaar" = strictly older than 5 years
+              operation: GREATER_THAN
               subject: $informatie_leeftijd_jaren
               value: 5
 

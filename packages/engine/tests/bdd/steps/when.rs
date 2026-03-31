@@ -34,7 +34,7 @@ fn execute_erfgrensbeplanting(world: &mut RegelrechtWorld, law_id: String, _arti
 
 #[when("the vreemdelingenwet beschikking is executed")]
 fn execute_vreemdelingenwet_beschikking(world: &mut RegelrechtWorld) {
-    world.execute_law("vreemdelingenwet_2000", "verblijfsvergunning_verleend");
+    world.execute_law("vreemdelingenwet_2000", "minister_is_bevoegd");
 }
 
 // =============================================================================

@@ -10,25 +10,11 @@ Feature: Bezwaartermijn chain
   Background:
     Given the calculation date is "2026-01-01"
 
-  Scenario: Vreemdelingenwet beschikking triggers AWB hooks
-    Given a vreemdelingenwet application with:
-      | key                   | value |
-      | heeft_geldige_mvv     | true  |
-      | heeft_geldig_document | true  |
+  Scenario: Vreemdelingenwet beschikking triggers AWB hooks with override
     When the vreemdelingenwet beschikking is executed
     Then the execution succeeds
-    And the output "verblijfsvergunning_verleend" is "true"
+    And the output "minister_is_bevoegd" is "true"
+    # AWB 3:46 hook fires pre_actions on BESCHIKKING
     And the output "motivering_vereist" is "true"
-    And the output "bezwaartermijn_weken" is "4"
-
-  Scenario: Rejected application still triggers hooks
-    Given a vreemdelingenwet application with:
-      | key                   | value |
-      | heeft_geldige_mvv     | false |
-      | heeft_geldig_document | true  |
-    When the vreemdelingenwet beschikking is executed
-    Then the execution succeeds
-    And the output "verblijfsvergunning_verleend" is "false"
-    # Hooks still fire — motivering is required even for rejections
-    And the output "motivering_vereist" is "true"
+    # AWB 6:7 hook fires post_actions, but Vw art 69 overrides to 4 weeks
     And the output "bezwaartermijn_weken" is "4"

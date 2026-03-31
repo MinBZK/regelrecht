@@ -20,26 +20,12 @@ articles:
       execution:
         produces:
           legal_character: BESCHIKKING
-          decision_type: TOEKENNING
-        parameters:
-          - name: heeft_geldige_mvv
-            type: boolean
-            required: true
-            description: Art 16 lid 1 sub a — geldige machtiging tot voorlopig verblijf
-          - name: heeft_geldig_document
-            type: boolean
-            required: true
-            description: Art 16 lid 1 sub b — geldig document voor grensoverschrijding
         output:
-          - name: verblijfsvergunning_verleend
+          - name: minister_is_bevoegd
             type: boolean
         actions:
-          - output: verblijfsvergunning_verleend
-            value:
-              operation: AND
-              conditions:
-                - $heeft_geldige_mvv
-                - $heeft_geldig_document
+          - output: minister_is_bevoegd
+            value: true
 
   - number: '16'
     text: |-
