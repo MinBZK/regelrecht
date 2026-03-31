@@ -149,7 +149,9 @@ async function populateFromScenario(index) {
   }
   parameterValues.value = params;
 
-  // Set data source rows - use source name directly from feature file
+  // Store scenario data sources directly by their feature file source name.
+  // These are registered with the engine at execution time using the exact
+  // names the law YAML expects (e.g., "personal_data", "insurance", "box1").
   const newRows = {};
   for (const ds of setup.dataSources) {
     const rows = ds.rows.map((row, i) => {
@@ -157,22 +159,11 @@ async function populateFromScenario(index) {
       ds.headers.forEach((h, j) => { obj[h] = row[j] ?? ''; });
       return obj;
     });
-
-    // Try to match to schema groups first, fall back to direct sourceName key
-    let matched = false;
-    for (const group of dataSourceGroups.value) {
-      const groupSourceName = `${group.lawId}_art${group.articleNumber}`;
-      if (ds.sourceName === groupSourceName || ds.sourceName.includes(group.lawId)) {
-        const key = `${group.lawId}:${group.articleNumber}`;
-        newRows[key] = rows;
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) {
-      // Store by source name for direct registration
-      newRows[`_direct:${ds.sourceName}`] = { sourceName: ds.sourceName, keyField: ds.keyField, rows };
-    }
+    newRows[`_direct:${ds.sourceName}`] = {
+      sourceName: ds.sourceName,
+      keyField: ds.keyField,
+      rows,
+    };
   }
   dataSourceRows.value = newRows;
 
@@ -284,15 +275,30 @@ function setExpectation(name, value) {
   expectations.value = { ...expectations.value, [name]: value };
 }
 
-// Count data sources with data
+// Count data sources with data (schema groups + direct scenario sources)
 const filledSourceCount = computed(() => {
   let count = 0;
   for (const group of dataSourceGroups.value) {
     const key = `${group.lawId}:${group.articleNumber}`;
     if ((dataSourceRows.value[key] || []).length > 0) count++;
   }
+  for (const [key, value] of Object.entries(dataSourceRows.value)) {
+    if (key.startsWith('_direct:') && value.rows?.length > 0) count++;
+  }
   return count;
 });
+
+const directSourceCount = computed(() => {
+  let count = 0;
+  for (const key of Object.keys(dataSourceRows.value)) {
+    if (key.startsWith('_direct:')) count++;
+  }
+  return count;
+});
+
+const totalSourceCount = computed(() =>
+  dataSourceGroups.value.length + directSourceCount.value,
+);
 
 const scenarioNames = computed(() => {
   if (!formState.value) return [];
@@ -366,14 +372,30 @@ const scenarioNames = computed(() => {
       </div>
 
       <!-- Data sources -->
-      <div v-if="dataSourceGroups.length > 0" class="sb-section">
+      <div v-if="dataSourceGroups.length > 0 || directSourceCount > 0" class="sb-section">
         <div class="sb-section-title">
           Gegevensbronnen
           <span class="sb-section-badge" v-if="!depsLoading">
-            {{ filledSourceCount }}/{{ dataSourceGroups.length }}
+            {{ filledSourceCount }}/{{ totalSourceCount }}
           </span>
         </div>
 
+        <!-- Scenario-loaded data sources (from feature file) -->
+        <div v-for="(value, key) in dataSourceRows" :key="key">
+          <div v-if="key.startsWith('_direct:')" class="sb-scenario-source">
+            <div class="sb-scenario-source-header">
+              {{ value.sourceName }}
+              <span class="sb-section-badge">{{ value.rows.length }} rij(en)</span>
+            </div>
+            <div class="sb-scenario-source-fields">
+              <span v-for="field in Object.keys(value.rows[0] || {}).filter(k => k !== '_id')" :key="field" class="sb-scenario-field">
+                {{ field }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schema-derived data source tables (for manual entry) -->
         <DataSourceTable
           v-for="group in dataSourceGroups"
           :key="`${group.lawId}:${group.articleNumber}`"
@@ -638,6 +660,41 @@ const scenarioNames = computed(() => {
 .sb-expect-input:focus {
   outline: none;
   border-color: #154273;
+}
+
+/* Scenario data sources (loaded from feature file) */
+.sb-scenario-source {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
+  border-radius: 6px;
+  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+
+.sb-scenario-source-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--semantics-text-color-primary, #1C2029);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sb-scenario-source-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.sb-scenario-field {
+  font-size: 10px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  padding: 1px 5px;
+  background: white;
+  border-radius: 3px;
+  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
+  color: var(--semantics-text-color-secondary, #666);
 }
 
 /* Execute bar */
