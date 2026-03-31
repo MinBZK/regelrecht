@@ -3,7 +3,6 @@ import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
 import { useLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
-import { useExecution } from './composables/useExecution.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -41,21 +40,13 @@ watch(
   { immediate: true },
 );
 
-// --- Execution state (shared between form and result panels) ---
-const {
-  result: execResult,
-  trace: execTrace,
-  traceText: execTraceText,
-  running: execRunning,
-  error: execError,
-  expectations: execExpectations,
-  execute: execExecute,
-} = useExecution();
+// --- Trace state (receives trace from last executed scenario) ---
+const lastTraceText = ref(null);
+const lastResult = ref(null);
 
-function handleFormExecute(payload) {
-  const engine = getEngine();
-  if (!engine) return;
-  execExecute(engine, payload);
+function handleScenarioExecuted({ result, traceText }) {
+  lastResult.value = result;
+  lastTraceText.value = traceText;
 }
 
 // --- Editor state ---
@@ -235,8 +226,7 @@ function selectArticle(number) {
                   :law-yaml="rawYaml"
                   :engine="getEngine()"
                   :ready="engineReady"
-                  :running="execRunning"
-                  @execute="handleFormExecute"
+                  @executed="handleScenarioExecuted"
                 />
               </div>
 
@@ -268,11 +258,8 @@ function selectArticle(number) {
               </rr-toolbar>
 
               <ExecutionTraceView
-                :result="execResult"
-                :trace-text="execTraceText"
-                :expectations="execExpectations"
-                :error="execError"
-                :running="execRunning"
+                :result="lastResult"
+                :trace-text="lastTraceText"
               />
             </rr-page>
           </div>
