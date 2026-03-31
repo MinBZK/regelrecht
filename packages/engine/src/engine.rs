@@ -1324,7 +1324,7 @@ articles:
             let inputs = exec.input.as_ref().unwrap();
             let input = inputs
                 .iter()
-                .find(|i| i.name == "verlaging_percentage_uit_verordening")
+                .find(|i| i.name == "verlaging_percentage")
                 .unwrap();
             let source = input.source.as_ref().unwrap();
             assert_eq!(source.output.as_deref(), Some("verlaging_percentage"));
