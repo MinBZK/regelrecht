@@ -58,14 +58,26 @@ export function useExecution() {
         }
       }
 
-      result.value = engine.execute(
+      // Use executeWithTrace for full execution trace tree
+      const execResult = engine.executeWithTrace(
         payload.lawId,
         payload.outputName,
         params,
         payload.calculationDate,
       );
+
+      result.value = execResult;
+      trace.value = execResult.trace || null;
+      traceText.value = execResult.trace_text || null;
     } catch (e) {
-      error.value = typeof e === 'string' ? e : (e.message || String(e));
+      // TracedError returns a JS object with { error, trace, trace_text }
+      if (e && typeof e === 'object' && e.error) {
+        error.value = e.error;
+        trace.value = e.trace || null;
+        traceText.value = e.trace_text || null;
+      } else {
+        error.value = typeof e === 'string' ? e : (e.message || String(e));
+      }
     } finally {
       running.value = false;
     }

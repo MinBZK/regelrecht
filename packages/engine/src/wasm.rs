@@ -61,7 +61,7 @@ use wasm_bindgen::prelude::*;
 use crate::config;
 use crate::error::EngineError;
 use crate::service::LawExecutionService;
-use crate::trace::PathNode;
+use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{RegulatoryLayer, Value};
 
 /// Create a serializer that converts HashMaps to JavaScript objects (not Maps)
@@ -234,11 +234,14 @@ impl WasmEngine {
         let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
             .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
 
-        match self.service.evaluate_law_output_with_trace(
+        // Use untimed trace builder to avoid Instant::now() JS FFI calls
+        // that cause RefCell aliasing panics in wasm-bindgen.
+        match self.service.evaluate_law_output_with_trace_builder(
             law_id,
             output_name,
             params,
             calculation_date,
+            TraceBuilder::new_untimed(),
         ) {
             Ok(result) => {
                 let trace_text = result.trace.as_ref().map(|t| t.render_box_drawing());
