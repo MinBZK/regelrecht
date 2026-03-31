@@ -72,27 +72,6 @@ function normalizeForCompare(value) {
 const hasContent = computed(() =>
   props.result || props.trace || props.traceText || props.error || props.running,
 );
-
-// Node type display config
-const NODE_TYPE_CONFIG = {
-  Article: { label: 'Artikel', class: 'trace-type--article' },
-  UriCall: { label: 'URI', class: 'trace-type--uri' },
-  Resolve: { label: 'Resolve', class: 'trace-type--resolve' },
-  Operation: { label: 'Operatie', class: 'trace-type--operation' },
-  Action: { label: 'Actie', class: 'trace-type--action' },
-  Requirement: { label: 'Eis', class: 'trace-type--requirement' },
-  Cached: { label: 'Cache', class: 'trace-type--cached' },
-  OpenTermResolution: { label: 'Open term', class: 'trace-type--openterm' },
-};
-
-function nodeConfig(nodeType) {
-  return NODE_TYPE_CONFIG[nodeType] || { label: nodeType, class: 'trace-type--default' };
-}
-
-function nodeResultText(node) {
-  if (node.result === undefined || node.result === null) return null;
-  return formatValue(node.result);
-}
 </script>
 
 <template>
@@ -194,6 +173,19 @@ function nodeResultText(node) {
 <script>
 import { defineComponent, ref as vueRef } from 'vue';
 
+// Single definition of node type display config — shared between
+// the <script setup> helpers and the TraceNode component.
+const NODE_TYPE_CONFIG = {
+  Article: { label: 'Artikel', class: 'trace-type--article' },
+  UriCall: { label: 'URI', class: 'trace-type--uri' },
+  Resolve: { label: 'Resolve', class: 'trace-type--resolve' },
+  Operation: { label: 'Operatie', class: 'trace-type--operation' },
+  Action: { label: 'Actie', class: 'trace-type--action' },
+  Requirement: { label: 'Eis', class: 'trace-type--requirement' },
+  Cached: { label: 'Cache', class: 'trace-type--cached' },
+  OpenTermResolution: { label: 'Open term', class: 'trace-type--openterm' },
+};
+
 const TraceNode = defineComponent({
   name: 'TraceNode',
   props: {
@@ -239,17 +231,6 @@ const TraceNode = defineComponent({
     </div>
   `,
 });
-
-const NODE_TYPE_CONFIG = {
-  Article: { label: 'Artikel', class: 'trace-type--article' },
-  UriCall: { label: 'URI', class: 'trace-type--uri' },
-  Resolve: { label: 'Resolve', class: 'trace-type--resolve' },
-  Operation: { label: 'Operatie', class: 'trace-type--operation' },
-  Action: { label: 'Actie', class: 'trace-type--action' },
-  Requirement: { label: 'Eis', class: 'trace-type--requirement' },
-  Cached: { label: 'Cache', class: 'trace-type--cached' },
-  OpenTermResolution: { label: 'Open term', class: 'trace-type--openterm' },
-};
 
 export default {
   components: { TraceNode },
