@@ -138,14 +138,17 @@ impl CorpusClient {
                     return Ok(());
                 }
                 Err(e) => {
-                    if attempt < Self::MAX_PUSH_ATTEMPTS {
-                        tracing::warn!(
-                            attempt,
-                            max = Self::MAX_PUSH_ATTEMPTS,
-                            error = %e,
-                            "push failed, will retry with rebase"
-                        );
-                    }
+                    tracing::warn!(
+                        attempt,
+                        max = Self::MAX_PUSH_ATTEMPTS,
+                        error = %e,
+                        "push failed{}",
+                        if attempt < Self::MAX_PUSH_ATTEMPTS {
+                            ", will retry with rebase"
+                        } else {
+                            ", all attempts exhausted"
+                        }
+                    );
                     last_error = Some(e);
                 }
             }
@@ -481,8 +484,12 @@ mod tests {
         assert!(log_str.contains("add test file"));
     }
 
+    /// Verify that a worker whose local repo is behind the remote can
+    /// still push successfully via the pull-rebase-push loop.  This
+    /// exercises the same rebase path that resolves real concurrent
+    /// push race conditions ("remote rejected: cannot lock ref").
     #[tokio::test]
-    async fn test_commit_and_push_retries_on_concurrent_push() {
+    async fn test_commit_and_push_rebases_over_concurrent_changes() {
         let dir = tempfile::tempdir().unwrap();
         let bare_path = setup_bare_repo(dir.path()).await;
         let bare_url = format!("file://{}", bare_path.display());
@@ -504,7 +511,8 @@ mod tests {
             .unwrap();
 
         // Worker A now commits — its local repo is behind by one commit.
-        // Without the retry loop this would fail with "remote rejected".
+        // The pull --rebase inside commit_and_push must incorporate B's
+        // changes before pushing.
         let file_a = repo_a.join("from-a.txt");
         tokio::fs::write(&file_a, "from worker A").await.unwrap();
         let config_a = CorpusConfig::new(&bare_url, &repo_a);
