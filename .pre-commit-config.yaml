@@ -36,6 +36,13 @@ repos:
         pass_filenames: false
         types: [rust]
 
+      - id: rust-build-check
+        name: Rust workspace build check
+        entry: just build-check
+        language: system
+        pass_filenames: false
+        types: [rust]
+
       - id: validate-law-yaml
         name: Validate law YAML schema
         entry: just validate
