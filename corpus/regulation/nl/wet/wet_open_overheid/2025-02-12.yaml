@@ -390,6 +390,12 @@ articles:
           - name: heeft_derde_belanghebbende
             type: boolean
             required: true
+          - name: opschorting_dagen
+            type: number
+            required: false
+            description: >-
+              Lid 3: aantal dagen dat de beslistermijn is opgeschort wegens
+              zienswijzeprocedure (art 4:8 Awb). 0 indien geen opschorting.
         output:
           - name: beslistermijn_weken
             type: number
@@ -417,11 +423,13 @@ articles:
           # einddatum = ontvangst + termijn (NIET ontvangst+1 + termijn).
           # "gerekend vanaf de dag na" maakt die dag tot dag 1 (inclusief),
           # dus 4 weken = 28 dagen gerekend vanaf ontvangst+1 = dag 28 = ontvangst + 28.
+          # Lid 3: beslistermijn kan worden opgeschort door zienswijzeprocedure (art 4:8 Awb)
           - output: uiterste_beslisdatum
             value:
               operation: DATE_ADD
               date: $verzoek_ontvangst_datum
               weeks: $beslistermijn_weken
+              days: $opschorting_dagen
           - output: uiterste_openbaarmaking_datum
             value:
               operation: IF
