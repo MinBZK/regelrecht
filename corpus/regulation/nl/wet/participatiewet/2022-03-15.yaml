@@ -421,6 +421,10 @@ articles:
             description: Finale uitkering na eventuele verlaging
 
         actions:
+          # Pass-through: eligibility from Art 21 (interim for Art 11)
+          - output: heeft_recht_op_bijstand
+            value: $heeft_recht_op_bijstand
+
           # === Stap 1: Bereken verlagingsbedrag ===
           # uitkering = normbedrag * (1 - verlaging_percentage / 100)
           - output: verlaging_bedrag

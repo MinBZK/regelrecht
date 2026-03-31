@@ -39,17 +39,11 @@ articles:
             type: boolean
             required: false
             description: Lid 2b — in Nederlandse openbare dienst in Aruba/Curacao/Sint Maarten (of gezinslid daarvan)
-        input:
-          - name: kandidaatstellingsdatum
-            type: date
-            source:
-              output: kandidaatstellingsdatum_tweede_kamer
-              description: Dag van de kandidaatstelling
           - name: verkiezingsdatum
             type: date
-            source:
-              output: verkiezingsdatum_tweede_kamer
-              description: Datum van de Tweede Kamerverkiezingen
+            required: true
+            description: Datum van de Tweede Kamerverkiezingen (dag van de stemming)
+        input:
           - name: leeftijd_op_verkiezingsdatum
             type: number
             source:

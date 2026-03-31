@@ -156,15 +156,7 @@ articles:
               output: box2_inkomen
               parameters:
                 bsn: $bsn
-          - name: box3_inkomen
-            type: amount
-            type_spec:
-              unit: eurocent
-            source:
-              regulation: wet_inkomstenbelasting_2001
-              output: box3_inkomen
-              parameters:
-                bsn: $bsn
+        # TODO: box3_inkomen requires Art 5.2a and Art 5.5 — see #383
         output:
           - name: toetsingsinkomen
             type: amount
@@ -177,4 +169,3 @@ articles:
               values:
                 - $box1_inkomen
                 - $box2_inkomen
-                - $box3_inkomen
