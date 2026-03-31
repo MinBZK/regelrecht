@@ -1,11 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue';
-
 const props = defineProps({
   /** Execution result with outputs */
   result: { type: Object, default: null },
-  /** PathNode trace tree from engine */
-  trace: { type: Object, default: null },
   /** Pre-rendered box-drawing trace text */
   traceText: { type: String, default: null },
   /** Expected output values: { outputName: expectedValue } */
@@ -15,10 +11,6 @@ const props = defineProps({
   /** Whether execution is running */
   running: { type: Boolean, default: false },
 });
-
-const viewMode = ref('tree');
-
-// --- Output result formatting (migrated from ScenarioResults) ---
 
 function formatValue(value) {
   if (value === null || value === undefined) return 'null';
@@ -67,11 +59,14 @@ function normalizeForCompare(value) {
   return value;
 }
 
-// --- Trace tree ---
-
 const hasContent = computed(() =>
-  props.result || props.trace || props.traceText || props.error || props.running,
+  props.result || props.traceText || props.error || props.running,
 );
+</script>
+
+<script>
+import { computed } from 'vue';
+export default {};
 </script>
 
 <template>
@@ -119,123 +114,21 @@ const hasContent = computed(() =>
           </div>
         </div>
 
-        <!-- Trace section -->
-        <div v-if="trace || traceText" class="etv-section">
-          <div class="etv-trace-header">
-            <div class="etv-section-title">Execution trace</div>
-            <div class="etv-view-toggle">
-              <button
-                :class="{ active: viewMode === 'tree' }"
-                @click="viewMode = 'tree'"
-              >Tree</button>
-              <button
-                :class="{ active: viewMode === 'text' }"
-                @click="viewMode = 'text'"
-              >Text</button>
-            </div>
-          </div>
-
-          <!-- Tree view -->
-          <div v-if="viewMode === 'tree' && trace" class="etv-tree">
-            <TraceNode :node="trace" :depth="0" />
-          </div>
-
-          <!-- Text view -->
-          <pre v-if="viewMode === 'text' && traceText" class="etv-trace-text">{{ traceText }}</pre>
+        <!-- Trace text -->
+        <div v-if="traceText" class="etv-section">
+          <div class="etv-section-title">Execution trace</div>
+          <pre class="etv-trace-text">{{ traceText }}</pre>
         </div>
       </template>
 
       <!-- Partial trace on error -->
-      <div v-if="error && (trace || traceText) && !running" class="etv-section">
-        <div class="etv-trace-header">
-          <div class="etv-section-title">Partial trace (tot fout)</div>
-          <div class="etv-view-toggle">
-            <button
-              :class="{ active: viewMode === 'tree' }"
-              @click="viewMode = 'tree'"
-            >Tree</button>
-            <button
-              :class="{ active: viewMode === 'text' }"
-              @click="viewMode = 'text'"
-            >Text</button>
-          </div>
-        </div>
-        <div v-if="viewMode === 'tree' && trace" class="etv-tree">
-          <TraceNode :node="trace" :depth="0" />
-        </div>
-        <pre v-if="viewMode === 'text' && traceText" class="etv-trace-text">{{ traceText }}</pre>
+      <div v-if="error && traceText && !running" class="etv-section">
+        <div class="etv-section-title">Partial trace (tot fout)</div>
+        <pre class="etv-trace-text">{{ traceText }}</pre>
       </div>
     </div>
   </div>
 </template>
-
-<!-- Recursive TraceNode as a nested component -->
-<script>
-import { defineComponent, ref as vueRef } from 'vue';
-
-// Single definition of node type display config — shared between
-// the <script setup> helpers and the TraceNode component.
-const NODE_TYPE_CONFIG = {
-  Article: { label: 'Artikel', class: 'trace-type--article' },
-  UriCall: { label: 'URI', class: 'trace-type--uri' },
-  Resolve: { label: 'Resolve', class: 'trace-type--resolve' },
-  Operation: { label: 'Operatie', class: 'trace-type--operation' },
-  Action: { label: 'Actie', class: 'trace-type--action' },
-  Requirement: { label: 'Eis', class: 'trace-type--requirement' },
-  Cached: { label: 'Cache', class: 'trace-type--cached' },
-  OpenTermResolution: { label: 'Open term', class: 'trace-type--openterm' },
-};
-
-const TraceNode = defineComponent({
-  name: 'TraceNode',
-  props: {
-    node: { type: Object, required: true },
-    depth: { type: Number, default: 0 },
-  },
-  setup(props) {
-    const expanded = vueRef(props.depth < 2);
-
-    const config = NODE_TYPE_CONFIG[props.node.node_type] || { label: props.node.node_type, class: 'trace-type--default' };
-
-    function resultText() {
-      const r = props.node.result;
-      if (r === undefined || r === null) return null;
-      if (typeof r === 'boolean') return r ? 'ja' : 'nee';
-      return String(r);
-    }
-
-    return { expanded, config, resultText };
-  },
-  template: `
-    <div class="tn-node" :class="config.class">
-      <div class="tn-header" @click="expanded = !expanded">
-        <span v-if="node.children && node.children.length" class="tn-toggle">
-          {{ expanded ? '\\u25BE' : '\\u25B8' }}
-        </span>
-        <span v-else class="tn-toggle tn-toggle--leaf">&middot;</span>
-        <span class="tn-type-badge" :class="config.class">{{ config.label }}</span>
-        <span class="tn-name">{{ node.name }}</span>
-        <span v-if="node.resolve_type" class="tn-resolve-badge">{{ node.resolve_type }}</span>
-        <span v-if="resultText()" class="tn-result">= {{ resultText() }}</span>
-        <span v-if="node.duration_us >= 100" class="tn-duration">{{ node.duration_us }}\u00B5s</span>
-      </div>
-      <div v-if="node.message" class="tn-message">{{ node.message }}</div>
-      <div v-if="expanded && node.children && node.children.length" class="tn-children">
-        <TraceNode
-          v-for="(child, i) in node.children"
-          :key="i"
-          :node="child"
-          :depth="depth + 1"
-        />
-      </div>
-    </div>
-  `,
-});
-
-export default {
-  components: { TraceNode },
-};
-</script>
 
 <style scoped>
 .etv-container {
@@ -284,7 +177,6 @@ export default {
   white-space: pre-wrap;
 }
 
-/* Sections */
 .etv-section {
   padding: 12px 16px;
   border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
@@ -297,7 +189,6 @@ export default {
   color: var(--semantics-text-color-primary, #1C2029);
 }
 
-/* Output summary */
 .etv-output {
   display: flex;
   align-items: baseline;
@@ -339,40 +230,6 @@ export default {
 .etv-badge--pass { background: #efe; color: #060; }
 .etv-badge--fail { background: #fee; color: #c00; }
 
-/* Trace header */
-.etv-trace-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.etv-view-toggle {
-  display: flex;
-  gap: 2px;
-}
-
-.etv-view-toggle button {
-  padding: 2px 10px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  background: var(--semantics-surfaces-color-secondary, #F0F1F3);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  color: var(--semantics-text-color-secondary, #666);
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.etv-view-toggle button:first-child { border-radius: 4px 0 0 4px; }
-.etv-view-toggle button:last-child { border-radius: 0 4px 4px 0; }
-
-.etv-view-toggle button.active {
-  background: #154273;
-  color: white;
-  border-color: #154273;
-}
-
-/* Box-drawing text */
 .etv-trace-text {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 11px;
@@ -384,112 +241,5 @@ export default {
   overflow-x: auto;
   white-space: pre;
   margin: 0;
-}
-
-/* Tree view */
-.etv-tree {
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-</style>
-
-<!-- Unscoped styles for recursive TraceNode -->
-<style>
-.tn-node {
-  margin-left: 0;
-}
-
-.tn-children {
-  margin-left: 16px;
-  border-left: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  padding-left: 4px;
-}
-
-.tn-header {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 0;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.tn-header:hover {
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
-}
-
-.tn-toggle {
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  font-size: 10px;
-  color: var(--semantics-text-color-secondary, #666);
-}
-
-.tn-toggle--leaf {
-  color: var(--semantics-dividers-color, #ccc);
-}
-
-.tn-type-badge {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 700;
-  padding: 0 4px;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-
-.trace-type--article .tn-type-badge,
-.tn-type-badge.trace-type--article { background: #e8eaf6; color: #283593; }
-.trace-type--uri .tn-type-badge,
-.tn-type-badge.trace-type--uri { background: #e3f2fd; color: #1565c0; }
-.trace-type--resolve .tn-type-badge,
-.tn-type-badge.trace-type--resolve { background: #e8f5e9; color: #2e7d32; }
-.trace-type--operation .tn-type-badge,
-.tn-type-badge.trace-type--operation { background: #fff3e0; color: #e65100; }
-.trace-type--action .tn-type-badge,
-.tn-type-badge.trace-type--action { background: #fce4ec; color: #c62828; }
-.trace-type--requirement .tn-type-badge,
-.tn-type-badge.trace-type--requirement { background: #f3e5f5; color: #6a1b9a; }
-.trace-type--cached .tn-type-badge,
-.tn-type-badge.trace-type--cached { background: #eceff1; color: #546e7a; }
-.trace-type--openterm .tn-type-badge,
-.tn-type-badge.trace-type--openterm { background: #e0f7fa; color: #00695c; }
-.tn-type-badge.trace-type--default { background: #f5f5f5; color: #666; }
-
-.tn-name {
-  color: var(--semantics-text-color-primary, #1C2029);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tn-resolve-badge {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 600;
-  padding: 0 3px;
-  border-radius: 2px;
-  background: #f0f1f3;
-  color: #888;
-  text-transform: uppercase;
-}
-
-.tn-result {
-  color: #2e7d32;
-  font-weight: 600;
-}
-
-.tn-duration {
-  color: var(--semantics-text-color-secondary, #999);
-  font-size: 10px;
-  margin-left: auto;
-}
-
-.tn-message {
-  font-size: 10px;
-  color: var(--semantics-text-color-secondary, #888);
-  padding-left: 18px;
-  font-style: italic;
 }
 </style>

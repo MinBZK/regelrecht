@@ -269,7 +269,6 @@ function selectArticle(number) {
 
               <ExecutionTraceView
                 :result="execResult"
-                :trace="execTrace"
                 :trace-text="execTraceText"
                 :expectations="execExpectations"
                 :error="execError"
