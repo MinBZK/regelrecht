@@ -9,10 +9,11 @@ Feature: Erfgrensbeplanting via BW 5:42
   # === Amsterdam: gemeente met eigen verordening ===
 
   Scenario: Boom in Amsterdam - gemeente wijkt af van rijkswet
-    # Amsterdam heeft eigen APV: 1 meter voor bomen ipv 2 meter
+    # Amsterdam heeft eigen APV: 1 meter voor bomen in centrum (postcodegebied 1011-1018)
     Given a query with the following data:
       | gemeente_code   | GM0363 |
       | type_beplanting | boom   |
+      | postcode        | 1012   |
     When the erfgrensbeplanting is requested for burgerlijk_wetboek_boek_5 article 42
     Then the minimale_afstand_cm is "100"
     And the minimale_afstand_m is "1"

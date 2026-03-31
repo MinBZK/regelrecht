@@ -108,6 +108,8 @@ Feature: Bijstandsaanvraag via Participatiewet
   # === Afwijzingsscenario's ===
 
   Scenario: Burger jonger dan 21 krijgt geen bijstand
+    # Art. 21 checks leeftijd >= 21. Under-21 fails that check,
+    # which propagates to Art. 43 via heeft_recht_op_bijstand = false.
     Given a citizen with the following data:
       | gemeente_code                          | GM0384       |
       | leeftijd                               | 19           |
@@ -121,56 +123,16 @@ Feature: Bijstandsaanvraag via Participatiewet
       | gedragscategorie                       | 0            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen does not have the right to bijstand
-    And the reden_afwijzing contains "leeftijdseis"
+    And the uitkering_bedrag is "0" eurocent
 
-  Scenario: Burger met voldoende middelen krijgt geen bijstand
-    Given a citizen with the following data:
-      | gemeente_code                          | GM0384       |
-      | leeftijd                               | 35           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
-      | is_alleenstaande                       | true         |
-      | heeft_kostendelende_medebewoners       | false        |
-      | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | true         |
-      | gedragscategorie                       | 0            |
-    When the bijstandsaanvraag is executed for participatiewet article 43
-    Then the citizen does not have the right to bijstand
-    And the reden_afwijzing contains "voldoende middelen"
-
-  Scenario: Niet-Nederlander zonder gelijkstelling krijgt geen bijstand
-    Given a citizen with the following data:
-      | gemeente_code                          | GM0384       |
-      | leeftijd                               | 35           |
-      | is_nederlander                         | false        |
-      | is_gelijkgestelde_vreemdeling          | false        |
-      | woont_in_nederland                     | true         |
-      | is_alleenstaande                       | true         |
-      | heeft_kostendelende_medebewoners       | false        |
-      | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
-      | gedragscategorie                       | 0            |
-    When the bijstandsaanvraag is executed for participatiewet article 43
-    Then the citizen does not have the right to bijstand
-    And the reden_afwijzing contains "Nederlander"
-
-  Scenario: Burger niet geregistreerd als werkzoekende krijgt geen bijstand
-    Given a citizen with the following data:
-      | gemeente_code                          | GM0384       |
-      | leeftijd                               | 35           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
-      | is_alleenstaande                       | true         |
-      | heeft_kostendelende_medebewoners       | false        |
-      | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | false        |
-      | heeft_voldoende_middelen               | false        |
-      | gedragscategorie                       | 0            |
-    When the bijstandsaanvraag is executed for participatiewet article 43
-    Then the citizen does not have the right to bijstand
-    And the reden_afwijzing contains "werkzoekende"
+  # The following rejection scenarios tested conditions that were removed from
+  # Art. 43 as scope violations (nationality, middelen, werkzoekende).
+  # These checks belong in Art. 11 (Rechthebbenden), which is not yet
+  # implemented as machine_readable. Blocked by #384.
+  #
+  # Scenario: Burger met voldoende middelen krijgt geen bijstand
+  # Scenario: Niet-Nederlander zonder gelijkstelling krijgt geen bijstand
+  # Scenario: Burger niet geregistreerd als werkzoekende krijgt geen bijstand
 
   # === Gemeente zonder afstemmingsverordening: volledige bijstand ===
 

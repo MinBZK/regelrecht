@@ -42,9 +42,9 @@ articles:
             required: true
             description: Type beplanting - "boom" of "heg_of_heester"
           - name: postcode
-            type: string
+            type: number
             required: true
-            description: Postcodegebied van de locatie
+            description: Postcodegebied van de locatie (4-cijferig)
 
         output:
           - name: minimale_afstand_cm
@@ -68,9 +68,9 @@ articles:
                         conditions:
                           - operation: GREATER_THAN_OR_EQUAL
                             subject: $postcode
-                            value: '1011'
+                            value: 1011
                           - operation: LESS_THAN_OR_EQUAL
                             subject: $postcode
-                            value: '1018'
+                            value: 1018
                   then: 100  # lid 1: 1 meter voor bomen in centrum
               default: 50  # lid 2: 0,5 meter voor heggen (en bomen buiten centrum)
