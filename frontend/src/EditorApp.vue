@@ -2,32 +2,72 @@
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
 import { useLaw } from './composables/useLaw.js';
+import { useEngine } from './composables/useEngine.js';
+import { useExecution } from './composables/useExecution.js';
 import ArticleText from './components/ArticleText.vue';
-import MachineReadable from './components/MachineReadable.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
-import ScenarioPanel from './components/ScenarioPanel.vue';
+import ScenarioBuilder from './components/ScenarioBuilder.vue';
+import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
 
-const rightPaneView = ref('machine');
+const middlePaneView = ref('form');
 
-function onRightPaneChange(event) {
+function onMiddlePaneChange(event) {
   const value = event.target?.value ?? event.detail?.[0];
-  if (value) rightPaneView.value = value;
+  if (value) middlePaneView.value = value;
 }
 
+// --- Engine ---
+const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
+initEngine().catch(() => {});
+
+// Load current law into engine when YAML is available
+watch(
+  [() => rawYaml.value, engineReady],
+  ([lawYaml, isReady]) => {
+    if (!isReady || !lawYaml) return;
+    const engine = getEngine();
+    try {
+      if (engine.hasLaw(lawId.value)) {
+        engine.unloadLaw(lawId.value);
+      }
+      engine.loadLaw(lawYaml);
+    } catch (e) {
+      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+    }
+  },
+  { immediate: true },
+);
+
+// --- Execution state (shared between form and result panels) ---
+const {
+  result: execResult,
+  trace: execTrace,
+  traceText: execTraceText,
+  running: execRunning,
+  error: execError,
+  expectations: execExpectations,
+  execute: execExecute,
+} = useExecution();
+
+function handleFormExecute(payload) {
+  const engine = getEngine();
+  if (!engine) return;
+  execExecute(engine, payload);
+}
+
+// --- Editor state ---
 const activeAction = ref(null);
 const activeEditItem = ref(null);
 const parseError = ref(null);
 
-// ── Reactive data model (single source of truth) ──
 const machineReadable = ref(null);
 const yamlSource = ref('');
 
 const dumpOpts = { lineWidth: 80, noRefs: true };
 
-// Initialize from article
 watch(selectedArticle, (article) => {
   activeAction.value = null;
   activeEditItem.value = null;
@@ -37,13 +77,11 @@ watch(selectedArticle, (article) => {
   parseError.value = null;
 }, { immediate: true });
 
-// Virtual article for components (reads from machineReadable)
 const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
   return { ...selectedArticle.value, machine_readable: machineReadable.value };
 });
 
-// YAML textarea input → parse to model
 function onYamlInput(event) {
   const text = event.target.value;
   yamlSource.value = text;
@@ -56,13 +94,11 @@ function onYamlInput(event) {
   }
 }
 
-// Right-panel save → update model → re-dump YAML
 function handleSave({ section, key, newKey, index, data }) {
   const mr = machineReadable.value
     ? JSON.parse(JSON.stringify(machineReadable.value))
     : {};
 
-  // Ensure structure exists for adds
   if (!mr.definitions) mr.definitions = {};
   if (!mr.execution) mr.execution = {};
   if (!mr.execution.parameters) mr.execution.parameters = [];
@@ -70,9 +106,7 @@ function handleSave({ section, key, newKey, index, data }) {
   if (!mr.execution.output) mr.execution.output = [];
 
   if (section === 'definition') {
-    if (newKey && newKey !== key) {
-      delete mr.definitions[key];
-    }
+    if (newKey && newKey !== key) delete mr.definitions[key];
     mr.definitions[newKey || key] = data;
   } else if (section === 'add-definition') {
     mr.definitions[key] = data;
@@ -90,7 +124,6 @@ function handleSave({ section, key, newKey, index, data }) {
     mr.execution.output.push(data);
   }
 
-  // Trigger reactivity + sync YAML
   machineReadable.value = mr;
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
@@ -117,16 +150,7 @@ function selectArticle(number) {
                 </rr-tab-bar>
               </rr-toolbar-item>
             </rr-toolbar-start-area>
-            <rr-toolbar-center-area>
-              <rr-toolbar-item>
-                <rr-search-field size="md" placeholder="Zoeken"></rr-search-field>
-              </rr-toolbar-item>
-            </rr-toolbar-center-area>
             <rr-toolbar-end-area>
-              <rr-toolbar-item>
-                <rr-icon-button variant="neutral-tinted" size="m" icon="inbox" title="Notificaties">
-                </rr-icon-button>
-              </rr-toolbar-item>
               <rr-toolbar-item>
                 <rr-button-bar size="md">
                   <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
@@ -153,76 +177,71 @@ function selectArticle(number) {
         </rr-container>
       </rr-split-view-pane>
 
-      <!-- Main: Navigation Split View -->
+      <!-- Main content area -->
       <rr-split-view-pane slot="main">
         <!-- Error state -->
         <div v-if="error" style="padding: 32px; color: #c00; text-align: center;">
           Kon de wet niet laden: {{ error.message }}
         </div>
 
-        <rr-navigation-split-view v-else>
-
-          <!-- Sidebar: Text -->
-          <rr-split-view-pane slot="sidebar" has-content>
+        <!-- 3-column equal layout: Text | Form | Result -->
+        <div v-else class="editor-layout">
+          <!-- Left: Article Text -->
+          <div class="editor-pane">
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-button variant="neutral-tinted" size="md" expandable>
-                      Tekst
-                    </rr-button>
+                    <rr-title-bar size="5">Tekst</rr-title-bar>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
-                <rr-toolbar-end-area>
-                  <rr-toolbar-item>
-                    <rr-segmented-control size="md" content-type="icons">
-                      <rr-segmented-control-item value="bold" title="Bold">
-                        <rr-icon name="bold"></rr-icon>
-                      </rr-segmented-control-item>
-                      <rr-segmented-control-item value="italic" title="Italic">
-                        <rr-icon name="italic"></rr-icon>
-                      </rr-segmented-control-item>
-                    </rr-segmented-control>
-                  </rr-toolbar-item>
-                  <rr-toolbar-item>
-                    <rr-segmented-control size="md" content-type="icons">
-                      <rr-segmented-control-item value="hr" title="Horizontale lijn">
-                        <rr-icon name="minus"></rr-icon>
-                      </rr-segmented-control-item>
-                      <rr-segmented-control-item value="ul" title="Bullet list">
-                        <rr-icon name="bullet-list"></rr-icon>
-                      </rr-segmented-control-item>
-                      <rr-segmented-control-item value="ol" title="Numbered list">
-                        <rr-icon name="numbered-list"></rr-icon>
-                      </rr-segmented-control-item>
-                    </rr-segmented-control>
-                  </rr-toolbar-item>
-                </rr-toolbar-end-area>
               </rr-toolbar>
-
               <rr-simple-section>
                 <ArticleText :article="selectedArticle" />
               </rr-simple-section>
             </rr-page>
-          </rr-split-view-pane>
+          </div>
 
-          <!-- Secondary Sidebar: YAML -->
-          <rr-split-view-pane slot="secondary-sidebar" has-content>
+          <!-- Middle: Form or YAML -->
+          <div class="editor-pane">
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-title-bar size="5">YAML</rr-title-bar>
+                    <rr-segmented-control size="md" :value="middlePaneView" @change="onMiddlePaneChange">
+                      <rr-segmented-control-item value="form">Formulier</rr-segmented-control-item>
+                      <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                    </rr-segmented-control>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
                 <rr-toolbar-end-area>
-                  <rr-toolbar-item v-if="parseError">
+                  <rr-toolbar-item v-if="middlePaneView === 'yaml' && parseError">
                     <span class="editor-parse-error">YAML parse error</span>
                   </rr-toolbar-item>
                 </rr-toolbar-end-area>
               </rr-toolbar>
 
-              <div class="editor-yaml-wrap">
+              <!-- Form view -->
+              <div v-if="middlePaneView === 'form'">
+                <div v-if="engineInitError" class="editor-engine-error">
+                  WASM engine failed to load: {{ engineInitError.message }}
+                  <div class="editor-engine-error-hint">
+                    Run <code>just wasm-build</code> to build the WASM module.
+                  </div>
+                </div>
+                <ScenarioBuilder
+                  v-else
+                  :law-id="lawId"
+                  :law-yaml="rawYaml"
+                  :engine="getEngine()"
+                  :ready="engineReady"
+                  :running="execRunning"
+                  @execute="handleFormExecute"
+                />
+              </div>
+
+              <!-- YAML view -->
+              <div v-if="middlePaneView === 'yaml'" class="editor-yaml-wrap">
                 <textarea
                   :value="yamlSource"
                   @input="onYamlInput"
@@ -235,40 +254,29 @@ function selectArticle(number) {
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </div>
             </rr-page>
-          </rr-split-view-pane>
+          </div>
 
-          <!-- Main: Machine Readable / Test -->
-          <rr-split-view-pane slot="main" has-content>
+          <!-- Right: Execution Result -->
+          <div class="editor-pane">
             <rr-page header-sticky>
               <rr-toolbar slot="header" size="md">
                 <rr-toolbar-start-area>
                   <rr-toolbar-item>
-                    <rr-segmented-control size="md" :value="rightPaneView" @change="onRightPaneChange">
-                      <rr-segmented-control-item value="machine">Machine Readable</rr-segmented-control-item>
-                      <rr-segmented-control-item value="test">Test</rr-segmented-control-item>
-                    </rr-segmented-control>
+                    <rr-title-bar size="5">Resultaat</rr-title-bar>
                   </rr-toolbar-item>
                 </rr-toolbar-start-area>
               </rr-toolbar>
 
-              <rr-simple-section v-if="rightPaneView === 'machine'">
-                <MachineReadable
-                  :article="editedArticle"
-                  :editable="true"
-                  @open-edit="activeEditItem = $event"
-                  @open-action="activeAction = $event"
-                />
-              </rr-simple-section>
-
-              <ScenarioPanel
-                v-if="rightPaneView === 'test'"
-                :law-id="lawId"
-                :law-yaml="rawYaml"
+              <ExecutionTraceView
+                :result="execResult"
+                :trace-text="execTraceText"
+                :expectations="execExpectations"
+                :error="execError"
+                :running="execRunning"
               />
             </rr-page>
-          </rr-split-view-pane>
-
-        </rr-navigation-split-view>
+          </div>
+        </div>
       </rr-split-view-pane>
     </rr-bar-split-view>
   </rr-app-view>
@@ -278,6 +286,43 @@ function selectArticle(number) {
 </template>
 
 <style>
+.editor-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.editor-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--semantics-dividers-color, #E0E3E8);
+}
+
+.editor-pane:last-child {
+  border-right: none;
+}
+
+.editor-engine-error {
+  padding: 12px 16px;
+  background: #fee;
+  color: #c00;
+  font-size: 13px;
+}
+
+.editor-engine-error-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #999;
+}
+
+.editor-engine-error-hint code {
+  background: #eee;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;

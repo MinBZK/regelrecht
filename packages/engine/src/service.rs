@@ -432,7 +432,29 @@ impl LawExecutionService {
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
-        let trace = Rc::new(RefCell::new(TraceBuilder::new()));
+        self.evaluate_law_output_with_trace_builder(
+            law_id,
+            output_name,
+            parameters,
+            calculation_date,
+            TraceBuilder::new(),
+        )
+    }
+
+    /// Execute a law output with a caller-provided trace builder.
+    ///
+    /// Use `TraceBuilder::new()` for timed traces or
+    /// `TraceBuilder::new_untimed()` to avoid `Instant::now()` overhead
+    /// (useful in WASM where timing calls go through JS FFI).
+    pub fn evaluate_law_output_with_trace_builder(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+        trace_builder: TraceBuilder,
+    ) -> Result<ArticleResult> {
+        let trace = Rc::new(RefCell::new(trace_builder));
 
         // Push the top-level article node
         {

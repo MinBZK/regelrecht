@@ -15,7 +15,8 @@ default:
 
 # Build WASM module for browser use
 wasm-build:
-    wasm-pack build packages/engine --target web --features wasm --out-dir ../../frontend/public/wasm/pkg
+    cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm
+    wasm-bindgen --target web --out-dir frontend/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # --- Quality checks ---
 
