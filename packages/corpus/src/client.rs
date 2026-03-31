@@ -73,9 +73,14 @@ impl CorpusClient {
         &self.config.repo_path
     }
 
+    /// Maximum number of rebase+push attempts before giving up.
+    const MAX_PUSH_ATTEMPTS: u32 = 5;
+
     /// Stage the given paths, commit, and push to the remote branch.
     ///
     /// If there are no changes to commit (working tree is clean), this is a no-op.
+    /// Uses a retry loop around rebase+push to handle concurrent push race
+    /// conditions where multiple workers push to the same branch.
     pub async fn commit_and_push(&self, paths: &[PathBuf], message: &str) -> Result<()> {
         // Stage the specific files
         let mut add_args = vec!["add", "--"];
@@ -99,36 +104,60 @@ impl CorpusClient {
         // Commit
         self.run_git(&["commit", "-m", message]).await?;
 
-        // Pull --rebase to incorporate any concurrent remote changes.
-        // If rebase fails, abort it to prevent leaving repo in broken state.
-        if let Err(e) = self
-            .run_git(&["pull", "--rebase", "origin", &self.config.branch])
-            .await
-        {
-            tracing::warn!(error = %e, "pull --rebase failed, aborting rebase");
-            let _ = self.run_git(&["rebase", "--abort"]).await;
-            // Hard-reset to remote to recover from force-pushes or diverged history.
-            // The harvested files are still on disk (written by the harvest step),
-            // so the next retry can re-stage and commit them cleanly.
-            let remote_ref = format!("origin/{}", self.config.branch);
+        // Retry loop: rebase on remote, then push. If push fails due to a
+        // concurrent update, fetch+rebase again and retry with backoff.
+        let mut last_error = None;
+        for attempt in 1..=Self::MAX_PUSH_ATTEMPTS {
+            // Pull --rebase to incorporate any concurrent remote changes.
+            // If rebase fails (conflict), abort and bail out — this is not a
+            // transient race condition but a real merge conflict.
             if let Err(e) = self
-                .run_git(&["fetch", "origin", &self.config.branch])
+                .run_git(&["pull", "--rebase", "origin", &self.config.branch])
                 .await
             {
-                tracing::warn!(error = %e, "fetch failed during rebase recovery");
+                tracing::warn!(attempt, error = %e, "pull --rebase failed, aborting rebase");
+                let _ = self.run_git(&["rebase", "--abort"]).await;
+                // Hard-reset to remote to recover from force-pushes or diverged
+                // history. The harvested files are still on disk so the next
+                // job-level retry can re-stage and commit them cleanly.
+                let remote_ref = format!("origin/{}", self.config.branch);
+                let _ = self
+                    .run_git(&["fetch", "origin", &self.config.branch])
+                    .await;
+                let _ = self.run_git(&["reset", "--hard", &remote_ref]).await;
+                return Err(e);
             }
-            if let Err(e) = self.run_git(&["reset", "--hard", &remote_ref]).await {
-                tracing::warn!(error = %e, "hard-reset failed during rebase recovery");
+
+            // Push — may fail if another worker pushed between our rebase and push.
+            match self.run_git(&["push", "origin", &self.config.branch]).await {
+                Ok(()) => {
+                    if attempt > 1 {
+                        tracing::info!(attempt, "push succeeded after retry");
+                    }
+                    tracing::info!(message = %message, "committed and pushed to corpus repo");
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt < Self::MAX_PUSH_ATTEMPTS {
+                        tracing::warn!(
+                            attempt,
+                            max = Self::MAX_PUSH_ATTEMPTS,
+                            error = %e,
+                            "push failed, will retry with rebase"
+                        );
+                    }
+                    last_error = Some(e);
+                }
             }
-            return Err(e);
+
+            if attempt < Self::MAX_PUSH_ATTEMPTS {
+                // Exponential backoff: 500ms, 1s, 2s, 4s
+                let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                tokio::time::sleep(delay).await;
+            }
         }
 
-        // Push
-        self.run_git(&["push", "origin", &self.config.branch])
-            .await?;
-
-        tracing::info!(message = %message, "committed and pushed to corpus repo");
-        Ok(())
+        Err(last_error.unwrap_or_else(|| CorpusError::Git("push failed after retries".into())))
     }
 
     async fn git_clone(&self) -> Result<()> {
@@ -450,6 +479,57 @@ mod tests {
             .unwrap();
         let log_str = String::from_utf8_lossy(&log.stdout);
         assert!(log_str.contains("add test file"));
+    }
+
+    #[tokio::test]
+    async fn test_commit_and_push_retries_on_concurrent_push() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Clone two working copies simulating two concurrent workers
+        let repo_a = dir.path().join("worker-a");
+        let repo_b = dir.path().join("worker-b");
+        clone_with_config(&bare_path, &repo_a).await;
+        clone_with_config(&bare_path, &repo_b).await;
+
+        // Worker B pushes a commit first (simulating a concurrent push)
+        let file_b = repo_b.join("from-b.txt");
+        tokio::fs::write(&file_b, "from worker B").await.unwrap();
+        let config_b = CorpusConfig::new(&bare_url, &repo_b);
+        let client_b = CorpusClient::new(config_b);
+        client_b
+            .commit_and_push(&[file_b], "worker B commit")
+            .await
+            .unwrap();
+
+        // Worker A now commits — its local repo is behind by one commit.
+        // Without the retry loop this would fail with "remote rejected".
+        let file_a = repo_a.join("from-a.txt");
+        tokio::fs::write(&file_a, "from worker A").await.unwrap();
+        let config_a = CorpusConfig::new(&bare_url, &repo_a);
+        let client_a = CorpusClient::new(config_a);
+        client_a
+            .commit_and_push(&[file_a], "worker A commit")
+            .await
+            .unwrap();
+
+        // Verify both commits are on the remote
+        let log = Command::new("git")
+            .args(["log", "--oneline"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let log_str = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            log_str.contains("worker A commit"),
+            "worker A commit not found in log: {log_str}"
+        );
+        assert!(
+            log_str.contains("worker B commit"),
+            "worker B commit not found in log: {log_str}"
+        );
     }
 
     #[tokio::test]
