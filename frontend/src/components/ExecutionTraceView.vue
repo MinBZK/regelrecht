@@ -11,8 +11,6 @@ const props = defineProps({
   expectations: { type: Object, default: () => ({}) },
   /** Error message if execution failed */
   error: { type: String, default: null },
-  /** Whether execution is running */
-  running: { type: Boolean, default: false },
 });
 
 function matchStatus(outputName, actualValue) {
@@ -20,7 +18,7 @@ function matchStatus(outputName, actualValue) {
 }
 
 const hasContent = computed(() =>
-  props.result || props.traceText || props.error || props.running,
+  props.result || props.traceText || props.error,
 );
 </script>
 
@@ -32,16 +30,13 @@ const hasContent = computed(() =>
         <div class="etv-empty-text">Klik op "Uitvoeren" om de wet uit te voeren en de trace te bekijken.</div>
       </div>
 
-      <!-- Running state -->
-      <div v-else-if="running" class="etv-running">Uitvoeren...</div>
-
       <!-- Error state -->
       <div v-else-if="error && !result" class="etv-error">
         <div class="etv-error-title">Fout bij uitvoering</div>
         <div class="etv-error-message">{{ error }}</div>
       </div>
 
-      <template v-if="result && !running">
+      <template v-if="result">
         <!-- Output summary -->
         <div class="etv-section etv-outputs">
           <div class="etv-section-title">Resultaat</div>
@@ -77,7 +72,7 @@ const hasContent = computed(() =>
       </template>
 
       <!-- Partial trace on error -->
-      <div v-if="error && traceText && !running" class="etv-section">
+      <div v-if="error && traceText" class="etv-section">
         <div class="etv-section-title">Partial trace (tot fout)</div>
         <pre class="etv-trace-text">{{ traceText }}</pre>
       </div>

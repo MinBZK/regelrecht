@@ -72,9 +72,14 @@ watch(
     await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
     if (version !== watchVersion) return;
 
-    // Also load dependencies from scenario background
-    if (formState.value?.background?.dependencies) {
-      for (const depId of formState.value.background.dependencies) {
+    // Also load dependencies from scenario background + per-scenario steps
+    if (formState.value) {
+      const allDeps = new Set();
+      for (const dep of formState.value.background?.dependencies || []) allDeps.add(dep);
+      for (const sc of formState.value.scenarios || []) {
+        for (const dep of sc.setup?.dependencies || []) allDeps.add(dep);
+      }
+      for (const depId of allDeps) {
         try {
           if (!props.engine.hasLaw(depId)) {
             const yaml = await fetchLawYaml(depId);
