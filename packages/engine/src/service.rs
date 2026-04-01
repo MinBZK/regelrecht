@@ -135,13 +135,6 @@ impl<'a> ResolutionContext<'a> {
         }
     }
 
-    /// Pop the current trace node. No-op if tracing is disabled.
-    fn trace_pop(&self) {
-        if let Some(ref tb) = self.trace {
-            tb.borrow_mut().pop();
-        }
-    }
-
     /// Set the result on the current trace node. No-op if tracing is disabled.
     fn trace_set_result(&self, result: Value) {
         if let Some(ref tb) = self.trace {
@@ -162,26 +155,52 @@ impl<'a> ResolutionContext<'a> {
             tb.borrow_mut().set_resolve_type(rt);
         }
     }
+
+    /// Push a trace node and return a guard that auto-pops on drop.
+    ///
+    /// Guarantees balanced push/pop even on early returns or errors.
+    /// Use `set_message`, `set_result`, etc. on `res_ctx` as usual —
+    /// the guard only handles the pop.
+    fn trace_guard(&self, name: impl Into<String>, node_type: PathNodeType) -> TraceGuard {
+        self.trace_push(name, node_type);
+        TraceGuard {
+            trace: self.trace.clone(),
+        }
+    }
+}
+
+/// RAII guard that pops a trace node when dropped.
+///
+/// Created by `ResolutionContext::trace_guard`. Ensures balanced
+/// push/pop even when errors cause early returns. Holds its own
+/// `Rc` to the trace builder so it doesn't borrow `ResolutionContext`,
+/// avoiding conflicts with mutable methods like `enter`/`leave`.
+struct TraceGuard {
+    trace: Option<Rc<RefCell<TraceBuilder>>>,
+}
+
+impl Drop for TraceGuard {
+    fn drop(&mut self) {
+        if let Some(ref tb) = self.trace {
+            tb.borrow_mut().pop();
+        }
+    }
 }
 
 /// Build a cache key from law_id, output_name, and parameters.
 ///
 /// Uses hashing instead of String building to avoid allocations.
-/// Parameters are sorted by key for consistent hashing within a process.
+/// BTreeMap guarantees sorted key order for deterministic hashing.
 /// Note: `DefaultHasher` is randomly seeded per process, so keys are only
 /// valid for per-execution memoization (not persisted across runs).
 fn cache_key(law_id: &str, output_name: &str, params: &BTreeMap<String, Value>) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     law_id.hash(&mut hasher);
     output_name.hash(&mut hasher);
-    // Sort params by key for deterministic hashing
-    let mut keys: Vec<&String> = params.keys().collect();
-    keys.sort_unstable();
-    for key in keys {
+    // BTreeMap iterates in sorted key order — no explicit sort needed
+    for (key, value) in params {
         key.hash(&mut hasher);
-        if let Some(value) = params.get(key) {
-            hash_value(value, &mut hasher);
-        }
+        hash_value(value, &mut hasher);
     }
     hasher.finish()
 }
@@ -207,13 +226,10 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
         }
         Value::Object(map) => {
             map.len().hash(hasher);
-            let mut keys: Vec<&String> = map.keys().collect();
-            keys.sort_unstable();
-            for key in keys {
+            // BTreeMap iterates in sorted key order — no explicit sort needed
+            for (key, v) in map {
                 key.hash(hasher);
-                if let Some(v) = map.get(key) {
-                    hash_value(v, hasher);
-                }
+                hash_value(v, hasher);
             }
         }
     }
@@ -530,18 +546,13 @@ impl LawExecutionService {
         &self,
         law_id: &str,
         output_name: &str,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, trace);
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(
-            law_id,
-            output_name,
-            parameters.into_iter().collect(),
-            &mut res_ctx,
-        )
+        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
     }
 
     /// Execute a single lifecycle stage of a procedure-aware law (RFC-008).
@@ -587,18 +598,49 @@ impl LawExecutionService {
         law_id: &str,
         output_name: &str,
         state: Option<StageState>,
-        parameters: HashMap<String, Value>,
+        parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ExecutionOutcome> {
-        self.execute_stage_internal(
+        // Push a top-level trace node so partial traces are preserved on error,
+        // mirroring evaluate_law_output_with_trace_builder.
+        {
+            let mut tb = trace.borrow_mut();
+            tb.push(
+                format!("{} ({}) [stage]", law_id, output_name),
+                PathNodeType::Article,
+            );
+            tb.set_message(format!(
+                "Stage execution: {} ({} {})",
+                law_id, calculation_date, output_name,
+            ));
+        }
+
+        let result = self.execute_stage_internal(
             law_id,
             output_name,
             state,
-            parameters.into_iter().collect(),
+            parameters,
             calculation_date,
-            Some(trace),
-        )
+            Some(Rc::clone(&trace)),
+        );
+
+        match result {
+            Ok(outcome) => {
+                let mut tb = trace.borrow_mut();
+                tb.pop();
+                Ok(outcome)
+            }
+            Err(e) => {
+                let mut tb = trace.borrow_mut();
+                tb.set_message(format!("Stage execution failed: {}", e));
+                let partial_trace = tb.pop();
+                Err(EngineError::TracedError {
+                    source: Box::new(e),
+                    trace: partial_trace.map(Box::new),
+                })
+            }
+        }
     }
 
     /// Internal stage execution with optional tracing.
@@ -640,17 +682,12 @@ impl LawExecutionService {
                 self.evaluate_law_output_with_shared_trace(
                     law_id,
                     output_name,
-                    parameters.into_iter().collect(),
+                    parameters,
                     calculation_date,
                     tb,
                 )?
             } else {
-                self.evaluate_law_output(
-                    law_id,
-                    output_name,
-                    parameters.into_iter().collect(),
-                    calculation_date,
-                )?
+                self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?
             };
             return Ok(ExecutionOutcome::Complete(result));
         };
@@ -812,11 +849,11 @@ impl LawExecutionService {
                 // Fall through to re-evaluate
             } else {
                 tracing::debug!(law_id, output_name, "Cache hit");
-                res_ctx.trace_push(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
+                let _guard = res_ctx
+                    .trace_guard(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
                 if let Some(val) = cached_outputs.get(output_name) {
                     res_ctx.trace_set_result(val.clone());
                 }
-                res_ctx.trace_pop();
                 return Ok(ArticleResult {
                     outputs: cached_outputs.clone(),
                     resolved_inputs: BTreeMap::new(),
@@ -843,14 +880,14 @@ impl LawExecutionService {
                 depth = res_ctx.depth,
                 "Cross-law resolution depth exceeded"
             );
-            res_ctx.trace_push(format!("{}#{}", law_id, output_name), PathNodeType::UriCall);
+            let _guard =
+                res_ctx.trace_guard(format!("{}#{}", law_id, output_name), PathNodeType::UriCall);
             res_ctx.trace_set_message(format!(
                 "Cross-law resolution depth exceeded {} levels ({}:{})",
                 config::MAX_CROSS_LAW_DEPTH,
                 law_id,
                 output_name
             ));
-            res_ctx.trace_pop();
             return Err(EngineError::CircularReference(format!(
                 "Cross-law resolution depth exceeded {} levels. \
                  Possible circular reference involving {}:{}",
@@ -989,8 +1026,8 @@ impl LawExecutionService {
             // Filter parameters: only pass parameters declared by the hook article (least privilege)
             let hook_params = Self::filter_parameters_for_article(hook_article, parameters);
 
-            // Trace the hook execution
-            res_ctx.trace_push(
+            // Trace the hook execution (guard auto-pops on all exit paths)
+            let _guard = res_ctx.trace_guard(
                 format!("{}:{}", hook_law_id, hook_article_number),
                 PathNodeType::HookResolution,
             );
@@ -1015,33 +1052,26 @@ impl LawExecutionService {
             // Leave scope (even on error)
             res_ctx.leave(&hook_key);
 
-            match hook_result {
-                Ok(result) => {
-                    for (name, value) in result.outputs {
-                        if let Some(existing_law) = output_sources.get(&name) {
-                            // Conflict: two hooks produce same output.
-                            // Resolve via lex superior / lex posterior.
-                            match priority::compare_law_priority(hook_law, existing_law)? {
-                                std::cmp::Ordering::Greater => {
-                                    hook_outputs.insert(name.clone(), value);
-                                    output_sources.insert(name, hook_law);
-                                }
-                                std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
-                                    // existing wins or unreachable (Equal → Err above)
-                                }
-                            }
-                        } else {
-                            output_sources.insert(name.clone(), hook_law);
-                            hook_outputs.insert(name, value);
+            // If a hook fires (stage matches), it must succeed.
+            // A missing variable means the law cannot be applied — that's an error.
+            let result = hook_result?;
+
+            for (name, value) in result.outputs {
+                if let Some(existing_law) = output_sources.get(&name) {
+                    // Conflict: two hooks produce same output.
+                    // Resolve via lex superior / lex posterior.
+                    match priority::compare_law_priority(hook_law, existing_law)? {
+                        std::cmp::Ordering::Greater => {
+                            hook_outputs.insert(name.clone(), value);
+                            output_sources.insert(name, hook_law);
+                        }
+                        std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
+                            // existing wins or unreachable (Equal → Err above)
                         }
                     }
-                    res_ctx.trace_pop();
-                }
-                Err(e) => {
-                    // If a hook fires (stage matches), it must succeed.
-                    // A missing variable means the law cannot be applied — that's an error.
-                    res_ctx.trace_pop();
-                    return Err(e);
+                } else {
+                    output_sources.insert(name.clone(), hook_law);
+                    hook_outputs.insert(name, value);
                 }
             }
         }
@@ -1067,12 +1097,13 @@ impl LawExecutionService {
         for entry in untranslatables {
             // Always record in trace regardless of mode
             let msg = format!("Untranslatable: {} — {}", entry.construct, entry.reason);
-            res_ctx.trace_push(
-                format!("untranslatable:{}", entry.construct),
-                PathNodeType::Article,
-            );
-            res_ctx.trace_set_message(msg.clone());
-            res_ctx.trace_pop();
+            {
+                let _guard = res_ctx.trace_guard(
+                    format!("untranslatable:{}", entry.construct),
+                    PathNodeType::Article,
+                );
+                res_ctx.trace_set_message(msg.clone());
+            }
 
             match self.untranslatable_mode {
                 UntranslatableMode::Error => {
@@ -1186,8 +1217,8 @@ impl LawExecutionService {
                 continue;
             };
 
-            // Trace
-            res_ctx.trace_push(
+            // Trace (guard auto-pops on all exit paths)
+            let _guard = res_ctx.trace_guard(
                 format!("{}:{}", ovr_law_id, ovr_article_number),
                 PathNodeType::OverrideResolution,
             );
@@ -1211,24 +1242,17 @@ impl LawExecutionService {
 
             res_ctx.leave(&ovr_key);
 
-            match ovr_result {
-                Ok(ovr_output) => {
-                    if let Some(value) = ovr_output.outputs.get(&output_name) {
-                        tracing::debug!(
-                            output = %output_name,
-                            from = %law.id,
-                            to = %ovr_law_id,
-                            "Override applied"
-                        );
-                        result.outputs.insert(output_name.clone(), value.clone());
-                        res_ctx.trace_set_result(value.clone());
-                    }
-                    res_ctx.trace_pop();
-                }
-                Err(e) => {
-                    res_ctx.trace_pop();
-                    return Err(e);
-                }
+            let ovr_output = ovr_result?;
+
+            if let Some(value) = ovr_output.outputs.get(&output_name) {
+                tracing::debug!(
+                    output = %output_name,
+                    from = %law.id,
+                    to = %ovr_law_id,
+                    "Override applied"
+                );
+                result.outputs.insert(output_name.clone(), value.clone());
+                res_ctx.trace_set_result(value.clone());
             }
         }
 
@@ -1407,12 +1431,11 @@ impl LawExecutionService {
                     open_term = %term.id,
                     "Circular open term dependency detected"
                 );
-                res_ctx.trace_push(&term.id, PathNodeType::OpenTermResolution);
+                let _guard = res_ctx.trace_guard(&term.id, PathNodeType::OpenTermResolution);
                 res_ctx.trace_set_message(format!(
                     "Circular dependency: open term '{}' on {}#{} is already being resolved",
                     term.id, law.id, article.number
                 ));
-                res_ctx.trace_pop();
                 return Err(EngineError::CircularReference(format!(
                     "Circular open term dependency: '{}' on {} article {} is already being resolved",
                     term.id, law.id, article.number
@@ -1427,8 +1450,8 @@ impl LawExecutionService {
                 "Resolving open term"
             );
 
-            // Trace the open term resolution
-            res_ctx.trace_push(&term.id, PathNodeType::OpenTermResolution);
+            // Trace the open term resolution (guard auto-pops on all exit paths)
+            let _guard = res_ctx.trace_guard(&term.id, PathNodeType::OpenTermResolution);
             res_ctx.trace_set_resolve_type(ResolveType::OpenTerm);
 
             // Look up implementations (filtered by execution scope)
@@ -1451,7 +1474,6 @@ impl LawExecutionService {
                         "Open term '{}': implementation lookup failed: {}",
                         term.id, e
                     ));
-                    res_ctx.trace_pop();
                     res_ctx.leave(&ot_key);
                     return Err(e);
                 }
@@ -1467,7 +1489,6 @@ impl LawExecutionService {
                             "Open term '{}': implementation {} has regulatory_layer {} but delegation_type requires {}",
                             term.id, impl_law.id, actual_layer, expected_type
                         ));
-                        res_ctx.trace_pop();
                         res_ctx.leave(&ot_key);
                         return Err(EngineError::ResolutionError(format!(
                             "Implementation {} for open term '{}' has regulatory_layer {} but delegation_type requires {}",
@@ -1502,21 +1523,17 @@ impl LawExecutionService {
                             "Open term '{}': implementation execution failed: {}",
                             term.id, e
                         ));
-                        res_ctx.trace_pop();
                         res_ctx.leave(&ot_key);
                         return Err(e);
                     }
                 };
 
                 if let Some(value) = result.outputs.get(&term.id) {
-                    // Trace success
                     res_ctx.trace_set_result(value.clone());
                     res_ctx.trace_set_message(format!(
                         "Open term '{}' implemented by {} article {}",
                         term.id, impl_law.id, impl_article.number
                     ));
-                    res_ctx.trace_pop();
-
                     resolved.insert(term.id.clone(), value.clone());
                 } else {
                     // Implementation executed but didn't produce the expected output
@@ -1524,7 +1541,6 @@ impl LawExecutionService {
                         "Open term '{}': implementation {} article {} produced no matching output",
                         term.id, impl_law.id, impl_article.number
                     ));
-                    res_ctx.trace_pop();
                     res_ctx.leave(&ot_key);
                     return Err(EngineError::InvalidOperation(format!(
                         "Implementation {} article {} for open term '{}' did not produce output named '{}'",
@@ -1586,7 +1602,6 @@ impl LawExecutionService {
                                 "Open term '{}': default evaluation failed: {}",
                                 term.id, e
                             ));
-                            res_ctx.trace_pop();
                             res_ctx.leave(&ot_key);
                             return Err(e);
                         }
@@ -1601,15 +1616,12 @@ impl LawExecutionService {
                     res_ctx.trace_set_result(default_value.clone());
                     res_ctx
                         .trace_set_message(format!("Open term '{}' using default value", term.id));
-                    res_ctx.trace_pop();
-
                     resolved.insert(term.id.clone(), default_value);
                 } else {
                     // Default exists but has no actions — treat as null
                     res_ctx.trace_set_result(Value::Null);
                     res_ctx
                         .trace_set_message(format!("Open term '{}' using empty default", term.id));
-                    res_ctx.trace_pop();
                     resolved.insert(term.id.clone(), Value::Null);
                 }
             } else if term.required {
@@ -1618,8 +1630,6 @@ impl LawExecutionService {
                     "Open term '{}' is required but no implementation found",
                     term.id
                 ));
-                res_ctx.trace_pop();
-
                 res_ctx.leave(&ot_key);
                 return Err(EngineError::ResolutionError(format!(
                     "Required open term '{}' on {}#{} has no implementation and no default",
@@ -1639,7 +1649,6 @@ impl LawExecutionService {
                     "Open term '{}' not required, no implementation, resolved as null",
                     term.id
                 ));
-                res_ctx.trace_pop();
                 resolved.insert(term.id.clone(), Value::Null);
             }
 
@@ -1681,14 +1690,15 @@ impl LawExecutionService {
                     );
 
                     // Trace the data source resolution
-                    res_ctx.trace_push(&input.name, PathNodeType::Resolve);
-                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
-                    res_ctx.trace_set_result(data_match.value.clone());
-                    res_ctx.trace_set_message(format!(
-                        "Resolving from SOURCE {}: {}",
-                        data_match.source_name, data_match.value
-                    ));
-                    res_ctx.trace_pop();
+                    {
+                        let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                        res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                        res_ctx.trace_set_result(data_match.value.clone());
+                        res_ctx.trace_set_message(format!(
+                            "Resolving from SOURCE {}: {}",
+                            data_match.source_name, data_match.value
+                        ));
+                    }
 
                     context.set_resolved_input(&input.name, data_match.value);
                     continue;
@@ -1713,7 +1723,8 @@ impl LawExecutionService {
                 // Internal reference (same-law) with output specified.
                 // Resolve through the service layer so cross-law inputs of the
                 // referenced article are properly handled.
-                res_ctx.trace_push(format!("{}#{}", law.id, output_name), PathNodeType::Resolve);
+                let _guard = res_ctx
+                    .trace_guard(format!("{}#{}", law.id, output_name), PathNodeType::Resolve);
                 res_ctx.trace_set_resolve_type(ResolveType::ResolvedInput);
                 res_ctx
                     .trace_set_message(format!("Internal reference: {}#{}", law.id, output_name));
@@ -1725,7 +1736,6 @@ impl LawExecutionService {
                             "Internal reference failed: output '{}' not found in {}",
                             output_name, law.id
                         ));
-                        res_ctx.trace_pop();
                         return Err(EngineError::OutputNotFound {
                             law_id: law.id.clone(),
                             output: output_name.to_string(),
@@ -1745,31 +1755,27 @@ impl LawExecutionService {
                     Ok(r) => r,
                     Err(e) => {
                         res_ctx.trace_set_message(format!("Internal reference failed: {}", e));
-                        res_ctx.trace_pop();
                         return Err(e);
                     }
                 };
 
                 if let Some(value) = result.outputs.get(output_name) {
                     res_ctx.trace_set_result(value.clone());
-                    res_ctx.trace_pop();
                     context.set_resolved_input(&input.name, value.clone());
                 } else {
                     res_ctx.trace_set_message(format!(
                         "Internal reference: output '{}' not in result from article {}",
                         output_name, ref_article.number
                     ));
-                    res_ctx.trace_pop();
                 }
             } else {
                 // Empty source (source: {}) — resolved from DataSourceRegistry only.
                 // If DataSourceRegistry didn't match above, leave unresolved.
-                res_ctx.trace_push(&input.name, PathNodeType::Resolve);
+                let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
                 res_ctx.trace_set_message(format!(
                     "Input '{}' has empty source and no data source match, left unresolved",
                     input.name
                 ));
-                res_ctx.trace_pop();
             }
         }
 
@@ -1794,15 +1800,15 @@ impl LawExecutionService {
             )));
         }
 
-        // Trace cross-law call
-        res_ctx.trace_push(format!("{}#{}", regulation, output), PathNodeType::UriCall);
+        // Trace cross-law call (guard auto-pops on all exit paths)
+        let _guard =
+            res_ctx.trace_guard(format!("{}#{}", regulation, output), PathNodeType::UriCall);
 
         // Build parameters for the target article
         let target_params = match self.build_target_parameters(source_parameters, context) {
             Ok(p) => p,
             Err(e) => {
                 res_ctx.trace_set_message(format!("Failed to build parameters: {}", e));
-                res_ctx.trace_pop();
                 return Err(e);
             }
         };
@@ -1824,7 +1830,6 @@ impl LawExecutionService {
                         "Output '{}' not found in result from {}",
                         output, regulation
                     ));
-                    res_ctx.trace_pop();
                     return Err(EngineError::OutputNotFound {
                         law_id: regulation.to_string(),
                         output: output.to_string(),
@@ -1833,14 +1838,12 @@ impl LawExecutionService {
             },
             Err(e) => {
                 res_ctx.trace_set_message(format!("Execution failed: {}", e));
-                res_ctx.trace_pop();
                 return Err(e);
             }
         };
 
         // Complete trace node
         res_ctx.trace_set_result(value.clone());
-        res_ctx.trace_pop();
 
         Ok(value)
     }
