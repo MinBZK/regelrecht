@@ -33,7 +33,7 @@ articles:
       implements:
         - law: burgerlijk_wetboek_boek_5
           article: '42'
-          open_term: minimale_afstand_cm
+          open_term: gemeentelijke_afstand_cm
           gelet_op: Gelet op artikel 5:42 lid 2 van het Burgerlijk Wetboek
       execution:
         parameters:
@@ -47,15 +47,15 @@ articles:
             description: Postcodegebied van de locatie (4-cijferig)
 
         output:
-          - name: minimale_afstand_cm
+          - name: gemeentelijke_afstand_cm
             type: number
-            description: Minimale afstand tot erfgrens in centimeters
+            description: Gemeentelijke afstand tot erfgrens in centimeters
 
         actions:
           # Lid 1: 1 meter voor bomen in centrum (postcodegebied 1011-1018)
           # Lid 2: 0,5 meter voor heggen in heel Amsterdam
-          # Bomen buiten centrum: APV is silent, BW 5:42 default applies (200cm)
-          - output: minimale_afstand_cm
+          # Bomen buiten centrum: APV zwijgt, retourneert null → BW 5:42 default (200cm)
+          - output: gemeentelijke_afstand_cm
             value:
               operation: IF
               cases:
@@ -65,18 +65,15 @@ articles:
                       - operation: EQUALS
                         subject: $type_beplanting
                         value: boom
-                      - operation: AND
-                        conditions:
-                          - operation: GREATER_THAN_OR_EQUAL
-                            subject: $postcode
-                            value: 1011
-                          - operation: LESS_THAN_OR_EQUAL
-                            subject: $postcode
-                            value: 1018
+                      - operation: GREATER_THAN_OR_EQUAL
+                        subject: $postcode
+                        value: 1011
+                      - operation: LESS_THAN_OR_EQUAL
+                        subject: $postcode
+                        value: 1018
                   then: 100  # lid 1: 1 meter voor bomen in centrum
                 - when:
                     operation: EQUALS
                     subject: $type_beplanting
-                    value: boom
-                  then: 200  # bomen buiten centrum: BW 5:42 default (2 meter)
-              default: 50  # lid 2: 0,5 meter voor heggen
+                    value: heg_of_heester
+                  then: 50  # lid 2: 0,5 meter voor heggen

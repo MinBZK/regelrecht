@@ -639,6 +639,11 @@ articles:
                             - operation: EQUALS
                               subject: $persoonsgegevens_kennelijk_openbaar_gemaakt
                               value: true
+                  # Lid 1(e): identificatienummers — tenzij de verstrekking kennelijk
+                  # geen inbreuk op de levenssfeer maakt. Vergelijk lid 1(d) waar de
+                  # toestemmingsuitzondering WEL is gemodelleerd. Hier is de uitzondering
+                  # opgenomen via $verstrekking_geen_inbreuk_levenssfeer; de beoordeling
+                  # "kennelijk geen inbreuk" vereist menselijke oordeelsvorming.
                   - operation: AND
                     conditions:
                       - $bevat_identificatienummers
@@ -747,7 +752,8 @@ articles:
               reference_date: $peildatum
           - output: verzwaarde_motiveringsplicht
             value:
-              # "ouder is dan vijf jaar" = strictly older than 5 years
+              # "ouder is dan vijf jaar" = strictly older than 5 years (> 5, niet >= 5)
+              # Met AGE in hele jaren is het praktische verschil hooguit één dag op de grens.
               operation: GREATER_THAN
               subject: $informatie_leeftijd_jaren
               value: 5
