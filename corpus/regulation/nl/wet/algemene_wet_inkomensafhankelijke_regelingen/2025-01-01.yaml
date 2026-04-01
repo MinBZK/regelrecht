@@ -79,11 +79,29 @@ articles:
       belanghebbende bij de aanvraag van de tegemoetkoming een van deze personen aan als partner.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel3
     machine_readable:
+      # Art 3 lid 1 definieert partner via meerdere categorieën (a, b.1°-7°, c)
+      # Lid 1a: huwelijk/geregistreerd partnerschap (niet duurzaam gescheiden)
+      # Lid 1b.1°: IB-partnerkeuze
+      # Lid 1b.2°: samenlevingscontract (notarieel)
+      # Lid 1b.3°: gemeenschappelijk kind
+      # Lid 1b.4°: erkend kind
+      # Lid 1b.5°: partner in voorafgaand jaar
+      # Lid 1b.6°: pensioenregistratie
+      # Lid 1b.7°: gezamenlijke eigen woning met hypotheek
+      # Lid 1c: gezamenlijke huishouding > 6 maanden (met uitzonderingen)
       definitions:
         geldige_partnertypen:
           value:
             - HUWELIJK
             - GEREGISTREERD_PARTNERSCHAP
+            - IB_PARTNERKEUZE
+            - SAMENLEVINGSCONTRACT
+            - GEMEENSCHAPPELIJK_KIND
+            - ERKEND_KIND
+            - PARTNER_VOORAFGAAND_JAAR
+            - PENSIOENREGISTRATIE
+            - GEZAMENLIJKE_EIGEN_WONING
+            - GEZAMENLIJKE_HUISHOUDING
       execution:
         parameters:
           - name: bsn
@@ -189,6 +207,13 @@ articles:
       en met het zesde lid.
     url: https://wetten.overheid.nl/BWBR0018472/2025-01-01#Artikel8
     machine_readable:
+      # Art 8 lid 1a: verzamelinkomen uit IB-aanslag
+      # Art 8 lid 1b: belastbaar loon indien geen IB-aanslag (TODO: ontbreekt in bronkoppeling)
+      # Art 8 lid 2: navorderingsaanslag overschrijft lid 1 (TODO: ontbreekt in bronkoppeling)
+      # Art 8 lid 3: buitenlands inkomen wordt opgeteld
+      # Huidige implementatie modelleert alleen lid 1a + lid 3.
+      # Lid 1b en lid 2 vereisen bronkoppelingen naar Belastingdienst-data die
+      # nog niet beschikbaar zijn in het corpus.
       execution:
         parameters:
           - name: bsn

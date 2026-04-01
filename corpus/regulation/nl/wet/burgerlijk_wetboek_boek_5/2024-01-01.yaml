@@ -30,27 +30,16 @@ articles:
 
     machine_readable:
       # Dit artikel machtigt gemeenten om bij verordening kleinere afstanden toe te staan
-      # Dit is het OPTIONELE delegatiepatroon: rijkswet heeft defaults, gemeente KAN afwijken
+      # "tenzij ingevolge een verordening [...] een kleinere afstand is toegelaten"
+      # De "tenzij" structuur: BW stelt defaults, gemeente KAN afwijken
       open_terms:
-        - id: minimale_afstand_cm
+        - id: gemeentelijke_afstand_cm
           type: number
           required: false
           delegated_to: gemeenteraad
           delegation_type: GEMEENTELIJKE_VERORDENING
           legal_basis: artikel 5:42 lid 2 Burgerlijk Wetboek
-          default:
-            actions:
-              - output: minimale_afstand_cm
-                value:
-                  operation: IF
-                  cases:
-                    - when:
-                        operation: EQUALS
-                        subject: $type_beplanting
-                        value: boom
-                      then: 200
-                  default: 50
-      # Publiek endpoint om de minimale afstand te bepalen
+
       execution:
         produces:
           legal_character: INFORMATIEF
@@ -67,6 +56,9 @@ articles:
             description: Type beplanting - "boom" of "heg_of_heester"
 
         output:
+          - name: wettelijke_afstand_cm
+            type: number
+            description: Wettelijke default afstand (lid 2) — intern tussenresultaat
           - name: minimale_afstand_cm
             type: number
             description: De geldende minimale afstand tot de erfgrens in centimeters
@@ -75,10 +67,31 @@ articles:
             description: De geldende minimale afstand tot de erfgrens in meters
 
         actions:
-          # minimale_afstand_cm is resolved via IoC (open term) before actions run:
-          # gemeente verordening if present, otherwise the default (200cm/50cm)
+          # Stap 1: De regel — BW's eigen defaults (lid 2)
+          - output: wettelijke_afstand_cm
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $type_beplanting
+                    value: boom
+                  then: 200
+              default: 50
+
+          # Stap 2: De uitzondering — "tenzij verordening"
+          # Als een gemeente een waarde levert, gebruik die.
+          # Zo niet (null), geldt de regel.
           - output: minimale_afstand_cm
-            value: $minimale_afstand_cm
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $gemeentelijke_afstand_cm
+                    value: null
+                  then: $wettelijke_afstand_cm
+              default: $gemeentelijke_afstand_cm
 
           # Bereken afstand in meters
           - output: minimale_afstand_m

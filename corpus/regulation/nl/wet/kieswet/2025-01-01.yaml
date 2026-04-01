@@ -47,6 +47,14 @@ articles:
             type: date
             required: true
             description: Datum van de Tweede Kamerverkiezingen (dag van de stemming)
+          - name: heeft_nederlandse_nationaliteit
+            type: boolean
+            required: true
+            description: Nederlander zijn op dag van kandidaatstelling (Art B1 lid 1)
+          - name: werkelijke_woonplaats
+            type: string
+            required: true
+            description: Werkelijke woonplaats op dag van kandidaatstelling (Art B1 lid 1)
         input:
           - name: leeftijd_op_verkiezingsdatum
             type: number
@@ -57,14 +65,6 @@ articles:
                 bsn: $bsn
                 peildatum: $verkiezingsdatum
               description: Leeftijd op de dag van de stemming conform art. B1 lid 1
-          - name: heeft_nederlandse_nationaliteit
-            type: boolean
-            description: Nederlander zijn op dag van kandidaatstelling (Art B1 lid 1) — TODO output ontbreekt in BRP corpus
-            source: {}
-          - name: werkelijke_woonplaats
-            type: string
-            description: Werkelijke woonplaats op dag van kandidaatstelling (Art B1 lid 1)
-            source: {}
         output:
           - name: heeft_kiesrecht_tweede_kamer
             type: boolean
