@@ -215,8 +215,7 @@ pub struct JobSummary {
     pub latest_created_at: chrono::DateTime<chrono::Utc>,
 }
 
-const ALLOWED_SORT_COLUMNS_JOB_SUMMARY: &[&str] =
-    &["law_id", "total_jobs", "latest_created_at"];
+const ALLOWED_SORT_COLUMNS_JOB_SUMMARY: &[&str] = &["law_id", "total_jobs", "latest_created_at"];
 
 const ALLOWED_SORT_COLUMNS_JOB: &[&str] = &[
     "id",
