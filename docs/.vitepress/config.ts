@@ -143,6 +143,7 @@ export default withMermaid(
               { text: 'RFC-008: Bestuursrecht/AWB', link: '/rfcs/rfc-008' },
               { text: 'RFC-009: Multi-Org Execution', link: '/rfcs/rfc-009' },
               { text: 'RFC-010: Federated Corpus', link: '/rfcs/rfc-010' },
+              { text: 'RFC-012: Untranslatables', link: '/rfcs/rfc-012' },
             ],
           },
         ],
