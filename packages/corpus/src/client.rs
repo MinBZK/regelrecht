@@ -110,8 +110,10 @@ impl CorpusClient {
         for attempt in 1..=Self::MAX_PUSH_ATTEMPTS {
             // Pull --rebase to incorporate any concurrent remote changes.
             // On shallow clones (--depth 1), rebase may fail if the remote
-            // advanced by many commits. The error-recovery path below handles
-            // this by aborting the rebase and hard-resetting to the remote.
+            // advanced by many commits. The error-recovery path below
+            // restores the working tree (abort rebase + hard-reset to remote)
+            // and propagates the error for job-level retry. The enriched
+            // files remain on disk so the next attempt can re-stage them.
             if let Err(e) = self
                 .run_git(&["pull", "--rebase", "origin", &self.config.branch])
                 .await
