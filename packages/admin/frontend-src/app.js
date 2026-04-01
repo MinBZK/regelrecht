@@ -28,36 +28,39 @@ const TAB_CONFIG = {
     columns: [
       { key: 'law_id', label: 'Law ID', sortable: true },
       { key: 'law_name', label: 'Name', sortable: true },
-      { key: 'status', label: 'Status', sortable: true },
+      { key: 'status', label: 'Status', sortable: true, filter: { options: LAW_STATUSES } },
       { key: 'coverage_score', label: 'Coverage', sortable: true },
       { key: 'updated_at', label: 'Updated', sortable: true },
       { key: '_actions', label: 'Actions', sortable: false },
     ],
     defaultSort: 'updated_at',
-    filters: [
-      { key: 'status', label: 'Status', options: LAW_STATUSES },
-    ],
   },
   jobs: {
     label: 'Jobs',
     endpoint: 'api/jobs',
     columns: [
       { key: 'id', label: 'ID', sortable: true },
-      { key: 'job_type', label: 'Type', sortable: true },
-      { key: 'law_id', label: 'Law ID', sortable: true },
-      { key: 'status', label: 'Status', sortable: true },
+      { key: 'job_type', label: 'Type', sortable: true, filter: { options: JOB_TYPES } },
+      { key: 'law_id', label: 'Law ID', sortable: true, filter: { type: 'text' } },
+      { key: 'status', label: 'Status', sortable: true, filter: { options: JOB_STATUSES } },
       { key: '_error', label: 'Error', sortable: false },
       { key: 'priority', label: 'Priority', sortable: true },
       { key: 'attempts', label: 'Attempts', sortable: true },
       { key: 'created_at', label: 'Created', sortable: true },
     ],
     defaultSort: 'created_at',
-    filters: [
-      { key: 'status', label: 'Status', options: JOB_STATUSES },
-      { key: 'job_type', label: 'Type', options: JOB_TYPES },
-    ],
   },
 };
+
+const GROUPED_COLUMNS = [
+  { key: 'law_id', label: 'Law ID', sortable: true },
+  { key: 'total_jobs', label: 'Jobs', sortable: true },
+  { key: 'pending', label: 'Pending', sortable: false },
+  { key: 'processing', label: 'Processing', sortable: false },
+  { key: 'completed', label: 'Completed', sortable: false },
+  { key: 'failed', label: 'Failed', sortable: false },
+  { key: 'latest_created_at', label: 'Latest', sortable: true },
+];
 
 const STATUS_BADGE_MAP = {
   // Green
@@ -102,6 +105,11 @@ const state = {
   data: [],
   loading: false,
   error: null,
+  // Jobs grouped view
+  viewMode: 'grouped', // 'flat' or 'grouped' (only for jobs tab)
+  expandedLawIds: new Set(),
+  expandedJobsCache: {}, // { [law_id]: Job[] }
+  jobCreationOpen: true,
 };
 
 
@@ -173,6 +181,13 @@ function formatCell(value, key) {
   return escapeHtml(String(value));
 }
 
+// Format a count with a status badge (for grouped view)
+function formatCount(count, statusKey) {
+  if (count === 0) return '<span class="cell-null">0</span>';
+  const variant = STATUS_BADGE_MAP[statusKey] || 'grey';
+  return `<span class="badge badge--${variant}">${count}</span>`;
+}
+
 
 // ---------------------------------------------------------------------------
 // Rendering
@@ -193,81 +208,71 @@ function renderTabs() {
   }
 }
 
-function renderFilters() {
-  const filtersEl = $('#filters');
-  filtersEl.innerHTML = '';
+function renderViewToggle() {
+  const container = $('#view-toggle-container');
+  container.innerHTML = '';
 
-  const config = TAB_CONFIG[state.activeTab];
+  if (state.activeTab !== 'jobs') return;
 
-  const wrapper = document.createElement('div');
-  wrapper.className = 'filter-row';
+  const btn = document.createElement('rr-button');
+  btn.setAttribute('variant', 'neutral-tinted');
+  btn.setAttribute('size', 'md');
+  btn.textContent = state.viewMode === 'grouped' ? 'Flat view' : 'Grouped view';
+  btn.title = state.viewMode === 'grouped'
+    ? 'Show individual jobs'
+    : 'Group jobs by law';
+  btn.addEventListener('click', () => {
+    state.viewMode = state.viewMode === 'grouped' ? 'flat' : 'grouped';
+    state.offset = 0;
+    state.sort = state.viewMode === 'grouped' ? 'latest_created_at' : TAB_CONFIG.jobs.defaultSort;
+    state.order = 'desc';
+    state.expandedLawIds.clear();
+    state.expandedJobsCache = {};
+    renderViewToggle();
+    renderTableHead();
+    loadData();
+  });
 
-  for (const filter of config.filters) {
-    if (filter.type === 'text') {
-      const textField = document.createElement('rr-text-field');
-      textField.setAttribute('size', 'md');
-      textField.setAttribute('placeholder', filter.label);
-      textField.id = `filter-${filter.key}`;
+  container.appendChild(btn);
+}
 
-      if (state.filters[filter.key]) {
-        textField.value = state.filters[filter.key];
-      }
+function renderJobCreation() {
+  const section = $('#job-creation');
+  const body = $('#job-creation-body');
+  const toggle = $('#job-creation-toggle');
 
-      let debounceTimer;
-      textField.addEventListener('input', () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          onFilterChange(filter.key, getFieldValue(textField));
-        }, 300);
-      });
+  section.hidden = false;
 
-      wrapper.appendChild(textField);
-    } else {
-      const dropdown = document.createElement('rr-dropdown');
-      dropdown.setAttribute('size', 'md');
-      dropdown.id = `filter-${filter.key}`;
-
-      const select = document.createElement('select');
-      select.setAttribute('aria-label', filter.label);
-
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = `All ${filter.label}`;
-      select.appendChild(defaultOpt);
-
-      for (const v of filter.options) {
-        const opt = document.createElement('option');
-        opt.value = v;
-        opt.textContent = v;
-        select.appendChild(opt);
-      }
-
-      if (state.filters[filter.key]) {
-        select.value = state.filters[filter.key];
-      }
-
-      select.addEventListener('change', () => {
-        onFilterChange(filter.key, select.value);
-      });
-
-      dropdown.appendChild(select);
-      wrapper.appendChild(dropdown);
-    }
+  if (state.jobCreationOpen) {
+    body.style.display = '';
+    toggle.querySelector('rr-icon')?.setAttribute('name', 'chevron-up');
+  } else {
+    body.style.display = 'none';
+    toggle.querySelector('rr-icon')?.setAttribute('name', 'chevron-down');
   }
+}
 
-  filtersEl.appendChild(wrapper);
+function getActiveColumns() {
+  if (state.activeTab === 'jobs' && state.viewMode === 'grouped') {
+    return GROUPED_COLUMNS;
+  }
+  return TAB_CONFIG[state.activeTab].columns;
 }
 
 function renderTableHead() {
   const thead = $('#table-head');
   thead.innerHTML = '';
 
-  const config = TAB_CONFIG[state.activeTab];
-  const tr = document.createElement('tr');
+  const columns = getActiveColumns();
 
-  for (const col of config.columns) {
+  // Label row
+  const tr = document.createElement('tr');
+  for (const col of columns) {
     const th = document.createElement('th');
-    th.textContent = col.label;
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'th-label';
+    labelSpan.textContent = col.label;
 
     if (col.sortable) {
       th.classList.add('sortable');
@@ -280,11 +285,80 @@ function renderTableHead() {
       indicator.textContent = state.sort === col.key
         ? (state.order === 'asc' ? '\u25B2' : '\u25BC')
         : '\u25BC';
-      th.appendChild(indicator);
+      labelSpan.appendChild(indicator);
 
-      th.addEventListener('click', () => onSort(col.key));
+      th.addEventListener('click', (e) => {
+        // Don't sort when clicking on filter controls
+        if (e.target.closest('.th-filter')) return;
+        onSort(col.key);
+      });
     }
 
+    th.appendChild(labelSpan);
+
+    // Column filter (only in flat view)
+    if (col.filter && !(state.activeTab === 'jobs' && state.viewMode === 'grouped')) {
+      const filterDiv = document.createElement('div');
+      filterDiv.className = 'th-filter';
+
+      if (col.filter.options) {
+        const select = document.createElement('select');
+        select.setAttribute('aria-label', `Filter ${col.label}`);
+
+        const defaultOpt = document.createElement('option');
+        defaultOpt.value = '';
+        defaultOpt.textContent = 'All';
+        select.appendChild(defaultOpt);
+
+        for (const v of col.filter.options) {
+          const opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = v;
+          select.appendChild(opt);
+        }
+
+        if (state.filters[col.key]) {
+          select.value = state.filters[col.key];
+        }
+
+        select.addEventListener('click', (e) => e.stopPropagation());
+        select.addEventListener('change', () => {
+          onFilterChange(col.key, select.value);
+        });
+
+        filterDiv.appendChild(select);
+      } else if (col.filter.type === 'text') {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Filter\u2026';
+        input.setAttribute('aria-label', `Filter ${col.label}`);
+
+        if (state.filters[col.key]) {
+          input.value = state.filters[col.key];
+        }
+
+        input.addEventListener('click', (e) => e.stopPropagation());
+        let debounceTimer;
+        input.addEventListener('input', () => {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            onFilterChange(col.key, input.value.trim());
+          }, 300);
+        });
+
+        filterDiv.appendChild(input);
+      }
+
+      th.appendChild(filterDiv);
+    }
+
+    tr.appendChild(th);
+  }
+
+  // Add expand column header for grouped view
+  if (state.activeTab === 'jobs' && state.viewMode === 'grouped') {
+    const th = document.createElement('th');
+    th.style.width = '40px';
     tr.appendChild(th);
   }
 
@@ -292,15 +366,20 @@ function renderTableHead() {
 }
 
 function renderTableBody() {
+  if (state.activeTab === 'jobs' && state.viewMode === 'grouped') {
+    renderGroupedTableBody();
+    return;
+  }
+
   const tbody = $('#table-body');
   tbody.innerHTML = '';
 
-  const config = TAB_CONFIG[state.activeTab];
+  const columns = getActiveColumns();
 
   if (state.loading) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = config.columns.length;
+    td.colSpan = columns.length;
     td.className = 'table-message';
     td.textContent = 'Loading\u2026';
     tr.appendChild(td);
@@ -311,7 +390,7 @@ function renderTableBody() {
   if (state.error) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = config.columns.length;
+    td.colSpan = columns.length;
     td.className = 'table-message table-message--error';
     td.textContent = `Failed to load data: ${state.error}`;
     tr.appendChild(td);
@@ -322,7 +401,7 @@ function renderTableBody() {
   if (state.data.length === 0) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = config.columns.length;
+    td.colSpan = columns.length;
     td.className = 'table-message';
     td.textContent = 'No data found';
     tr.appendChild(td);
@@ -339,7 +418,7 @@ function renderTableBody() {
       tr.addEventListener('click', () => openDetailPanel(row));
     }
 
-    for (const col of config.columns) {
+    for (const col of columns) {
       const td = document.createElement('td');
       if (col.key === '_error' && state.activeTab === 'jobs') {
         const error = row.result && row.result.error;
@@ -375,6 +454,144 @@ function renderTableBody() {
   }
 }
 
+function renderGroupedTableBody() {
+  const tbody = $('#table-body');
+  tbody.innerHTML = '';
+
+  const columns = GROUPED_COLUMNS;
+  const colCount = columns.length + 1; // +1 for expand column
+
+  if (state.loading) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = colCount;
+    td.className = 'table-message';
+    td.textContent = 'Loading\u2026';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  if (state.error) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = colCount;
+    td.className = 'table-message table-message--error';
+    td.textContent = `Failed to load data: ${state.error}`;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  if (state.data.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = colCount;
+    td.className = 'table-message';
+    td.textContent = 'No data found';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  for (const group of state.data) {
+    const isExpanded = state.expandedLawIds.has(group.law_id);
+
+    // Group header row
+    const tr = document.createElement('tr');
+    tr.className = 'group-row' + (isExpanded ? ' group-row--expanded' : '');
+    tr.addEventListener('click', () => toggleGroupExpansion(group.law_id));
+
+    for (const col of columns) {
+      const td = document.createElement('td');
+      if (col.key === 'law_id') {
+        td.innerHTML = `<span class="cell-mono">${escapeHtml(group.law_id)}</span>`;
+      } else if (['pending', 'processing', 'completed', 'failed'].includes(col.key)) {
+        td.innerHTML = formatCount(group[col.key], col.key);
+      } else if (col.key === 'latest_created_at') {
+        td.innerHTML = formatCell(group[col.key], col.key);
+      } else {
+        td.innerHTML = formatCell(group[col.key], col.key);
+      }
+      tr.appendChild(td);
+    }
+
+    // Expand/collapse indicator
+    const expandTd = document.createElement('td');
+    expandTd.className = 'group-row__toggle';
+    expandTd.textContent = isExpanded ? '\u25B2' : '\u25BC';
+    tr.appendChild(expandTd);
+
+    tbody.appendChild(tr);
+
+    // Expanded child rows
+    if (isExpanded) {
+      const jobs = state.expandedJobsCache[group.law_id];
+      if (!jobs) {
+        // Loading state
+        const loadTr = document.createElement('tr');
+        loadTr.className = 'child-row';
+        const loadTd = document.createElement('td');
+        loadTd.colSpan = colCount;
+        loadTd.className = 'table-message';
+        loadTd.textContent = 'Loading jobs\u2026';
+        loadTr.appendChild(loadTd);
+        tbody.appendChild(loadTr);
+      } else if (jobs.length === 0) {
+        const emptyTr = document.createElement('tr');
+        emptyTr.className = 'child-row';
+        const emptyTd = document.createElement('td');
+        emptyTd.colSpan = colCount;
+        emptyTd.className = 'table-message';
+        emptyTd.textContent = 'No jobs found';
+        emptyTr.appendChild(emptyTd);
+        tbody.appendChild(emptyTr);
+      } else {
+        // Child header row
+        const childHeaderTr = document.createElement('tr');
+        childHeaderTr.className = 'child-header';
+        const childCols = TAB_CONFIG.jobs.columns;
+        for (const col of childCols) {
+          const th = document.createElement('td');
+          th.className = 'child-header__cell';
+          th.textContent = col.label;
+          childHeaderTr.appendChild(th);
+        }
+        tbody.appendChild(childHeaderTr);
+
+        for (const job of jobs) {
+          const jobTr = document.createElement('tr');
+          jobTr.className = 'child-row clickable-row';
+          jobTr.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openDetailPanel(job);
+          });
+
+          for (const col of childCols) {
+            const td = document.createElement('td');
+            if (col.key === '_error') {
+              const error = job.result && job.result.error;
+              if (error) {
+                const span = document.createElement('span');
+                span.className = 'cell-error';
+                span.title = error;
+                span.textContent = error.length > 80 ? error.substring(0, 80) + '\u2026' : error;
+                td.appendChild(span);
+              } else {
+                td.innerHTML = '<span class="cell-null">\u2014</span>';
+              }
+            } else {
+              td.innerHTML = formatCell(job[col.key], col.key);
+            }
+            jobTr.appendChild(td);
+          }
+          tbody.appendChild(jobTr);
+        }
+      }
+    }
+  }
+}
+
 function renderPagination() {
   const container = $('#pagination-container');
   container.innerHTML = '';
@@ -392,7 +609,8 @@ function renderPagination() {
 
   const info = document.createElement('span');
   info.className = 'pagination-info';
-  info.textContent = `${currentPage} / ${totalPages} (${state.totalCount} results)`;
+  const unit = (state.activeTab === 'jobs' && state.viewMode === 'grouped') ? 'laws' : 'results';
+  info.textContent = `${currentPage} / ${totalPages} (${state.totalCount} ${unit})`;
 
   const nextBtn = document.createElement('rr-button');
   nextBtn.setAttribute('variant', 'neutral-tinted');
@@ -437,7 +655,8 @@ function renderRowActions(row) {
 }
 
 function renderAll() {
-  renderFilters();
+  renderViewToggle();
+  renderJobCreation();
   renderTableHead();
   renderTableBody();
   renderPagination();
@@ -470,6 +689,14 @@ function setupLogout() {
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
+
+async function loadData() {
+  if (state.activeTab === 'jobs' && state.viewMode === 'grouped') {
+    await fetchGroupedData();
+  } else {
+    await fetchData();
+  }
+}
 
 async function fetchData() {
   const config = TAB_CONFIG[state.activeTab];
@@ -522,6 +749,88 @@ async function fetchData() {
   }
 }
 
+async function fetchGroupedData() {
+  const params = new URLSearchParams();
+  params.set('sort', state.sort);
+  params.set('order', state.order);
+  params.set('limit', String(state.limit));
+  params.set('offset', String(state.offset));
+
+  for (const [key, value] of Object.entries(state.filters)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  const url = `api/jobs/summary?${params.toString()}`;
+
+  state.loading = true;
+  state.error = null;
+  renderTableBody();
+
+  try {
+    const response = await fetch(url);
+
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`HTTP ${response.status} from ${url}${body ? ': ' + body.substring(0, 200) : ''}`);
+    }
+
+    const json = await response.json();
+
+    state.data = json.data || [];
+    state.totalCount = json.total ?? state.data.length;
+    state.error = null;
+  } catch (err) {
+    console.error('Failed to fetch grouped data:', err);
+    state.data = [];
+    state.totalCount = 0;
+    state.error = err.message;
+  } finally {
+    state.loading = false;
+    renderTableBody();
+    renderPagination();
+  }
+
+  // Re-fetch expanded groups
+  const expandedIds = [...state.expandedLawIds];
+  if (expandedIds.length > 0) {
+    await Promise.all(expandedIds.map((lawId) => fetchJobsForLaw(lawId)));
+    renderTableBody();
+  }
+}
+
+async function fetchJobsForLaw(lawId) {
+  try {
+    const params = new URLSearchParams();
+    params.set('law_id', lawId);
+    params.set('sort', 'created_at');
+    params.set('order', 'desc');
+    params.set('limit', '50');
+
+    // Pass through status/job_type filters
+    if (state.filters.status) params.set('status', state.filters.status);
+    if (state.filters.job_type) params.set('job_type', state.filters.job_type);
+
+    const response = await fetch(`api/jobs?${params.toString()}`);
+
+    if (!response.ok) {
+      state.expandedJobsCache[lawId] = [];
+      return;
+    }
+
+    const json = await response.json();
+    state.expandedJobsCache[lawId] = json.data || [];
+  } catch {
+    state.expandedJobsCache[lawId] = [];
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Event handlers
@@ -531,21 +840,21 @@ function switchTab(tabKey) {
   if (tabKey === state.activeTab) return;
 
   state.activeTab = tabKey;
-  state.sort = TAB_CONFIG[tabKey].defaultSort;
+  state.sort = tabKey === 'jobs' && state.viewMode === 'grouped'
+    ? 'latest_created_at'
+    : TAB_CONFIG[tabKey].defaultSort;
   state.order = 'desc';
   state.offset = 0;
   state.filters = {};
   state.data = [];
   state.totalCount = 0;
   state.error = null;
-
-  // Clear BWB field and sync law_id filter
-  const bwbField = $('#harvest-bwb-id');
-  if (bwbField) setFieldValue(bwbField, '');
+  state.expandedLawIds.clear();
+  state.expandedJobsCache = {};
 
   renderTabs();
   renderAll();
-  fetchData();
+  loadData();
 }
 
 // Web component .value may not always reflect the inner <input> state;
@@ -603,7 +912,7 @@ async function onHarvestSubmit() {
     btn.textContent = 'Queued \u2713';
     btn.removeAttribute('disabled');
     setTimeout(() => { btn.textContent = 'Harvest'; }, 2000);
-    fetchData();
+    loadData();
   } catch (err) {
     alert('Harvest failed: ' + err.message);
     btn.removeAttribute('disabled');
@@ -635,7 +944,7 @@ async function onRowHarvestClick(lawId, btn) {
     }
     const result = await response.json();
     alert(`Created harvest job: ${result.job_id}`);
-    fetchData();
+    loadData();
   } catch (err) {
     alert('Harvest failed: ' + err.message);
   } finally {
@@ -668,7 +977,7 @@ async function onEnrichClick(lawId, btn) {
     }
     const result = await response.json();
     alert(`Created ${result.job_ids.length} enrich job(s) for ${result.providers.join(', ')}`);
-    fetchData();
+    loadData();
   } catch (err) {
     alert('Enrich failed: ' + err.message);
   } finally {
@@ -679,21 +988,39 @@ async function onEnrichClick(lawId, btn) {
 
 function viewJobsForLaw(lawId) {
   state.activeTab = 'jobs';
-  state.sort = TAB_CONFIG.jobs.defaultSort;
+  state.sort = state.viewMode === 'grouped' ? 'latest_created_at' : TAB_CONFIG.jobs.defaultSort;
   state.order = 'desc';
   state.offset = 0;
-  state.filters = { law_id: lawId };
   state.data = [];
   state.totalCount = 0;
   state.error = null;
 
-  // Pre-fill BWB field with the law ID
-  const bwbField = $('#harvest-bwb-id');
-  if (bwbField) setFieldValue(bwbField, lawId);
+  if (state.viewMode === 'grouped') {
+    // In grouped view, clear filters and auto-expand this law
+    state.filters = {};
+    state.expandedLawIds.clear();
+    state.expandedLawIds.add(lawId);
+    state.expandedJobsCache = {};
+  } else {
+    state.filters = { law_id: lawId };
+  }
 
   renderTabs();
   renderAll();
-  fetchData();
+  loadData();
+}
+
+async function toggleGroupExpansion(lawId) {
+  if (state.expandedLawIds.has(lawId)) {
+    state.expandedLawIds.delete(lawId);
+    delete state.expandedJobsCache[lawId];
+    renderTableBody();
+  } else {
+    state.expandedLawIds.add(lawId);
+    renderTableBody(); // Show loading state
+    await fetchJobsForLaw(lawId);
+    renderTableBody(); // Show loaded jobs
+  }
 }
 
 function onSort(key) {
@@ -705,7 +1032,7 @@ function onSort(key) {
   }
   state.offset = 0;
   renderTableHead();
-  fetchData();
+  loadData();
 }
 
 function onFilterChange(key, value) {
@@ -715,13 +1042,13 @@ function onFilterChange(key, value) {
     delete state.filters[key];
   }
   state.offset = 0;
-  fetchData();
+  loadData();
 }
 
 function onPrevPage() {
   if (state.offset > 0) {
     state.offset = Math.max(0, state.offset - state.limit);
-    fetchData();
+    loadData();
   }
 }
 
@@ -730,7 +1057,7 @@ function onNextPage() {
   const currentPage = Math.floor(state.offset / state.limit) + 1;
   if (currentPage < totalPages) {
     state.offset += state.limit;
-    fetchData();
+    loadData();
   }
 }
 
@@ -1017,22 +1344,20 @@ async function init() {
     harvestBtn.addEventListener('click', onHarvestSubmit);
   }
 
-  // BWB field: Enter submits harvest, typing also filters jobs by law_id
+  // BWB field: Enter submits harvest
   const harvestInput = $('#harvest-bwb-id');
   if (harvestInput) {
     harvestInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') onHarvestSubmit();
     });
+  }
 
-    let bwbDebounce;
-    harvestInput.addEventListener('input', () => {
-      clearTimeout(bwbDebounce);
-      bwbDebounce = setTimeout(() => {
-        if (state.activeTab === 'jobs') {
-          const val = getFieldValue(harvestInput).trim();
-          onFilterChange('law_id', val);
-        }
-      }, 300);
+  // Job creation toggle
+  const jobCreationToggle = $('#job-creation-toggle');
+  if (jobCreationToggle) {
+    jobCreationToggle.addEventListener('click', () => {
+      state.jobCreationOpen = !state.jobCreationOpen;
+      renderJobCreation();
     });
   }
 
@@ -1046,10 +1371,10 @@ async function init() {
   // Initial render
   renderTabs();
   renderAll();
-  fetchData();
+  loadData();
 
   // Auto-refresh data every 20 seconds
-  setInterval(() => fetchData(), 20_000);
+  setInterval(() => loadData(), 20_000);
 }
 
 // Start when DOM is ready

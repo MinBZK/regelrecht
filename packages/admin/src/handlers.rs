@@ -194,6 +194,30 @@ pub struct JobsQuery {
     pub offset: Option<i64>,
 }
 
+#[derive(Deserialize)]
+pub struct JobsSummaryQuery {
+    pub status: Option<String>,
+    pub job_type: Option<String>,
+    pub sort: Option<String>,
+    pub order: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct JobSummary {
+    pub law_id: String,
+    pub total_jobs: i64,
+    pub pending: i64,
+    pub processing: i64,
+    pub completed: i64,
+    pub failed: i64,
+    pub latest_created_at: chrono::DateTime<chrono::Utc>,
+}
+
+const ALLOWED_SORT_COLUMNS_JOB_SUMMARY: &[&str] =
+    &["law_id", "total_jobs", "latest_created_at"];
+
 const ALLOWED_SORT_COLUMNS_JOB: &[&str] = &[
     "id",
     "job_type",
@@ -296,6 +320,105 @@ pub async fn list_jobs(
     data_query = data_query.bind(limit).bind(offset);
 
     let data: Vec<Job> = data_query.fetch_all(pool).await.map_err(|e| {
+        tracing::error!(error = %e, "data query failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    Ok(Json(PaginatedResponse {
+        data,
+        total,
+        limit,
+        offset,
+    }))
+}
+
+pub async fn list_jobs_summary(
+    State(state): State<AppState>,
+    Query(params): Query<JobsSummaryQuery>,
+) -> Result<Json<PaginatedResponse<JobSummary>>, (StatusCode, String)> {
+    let pool = &state.pool;
+    let limit = clamped_limit(params.limit);
+    let offset = clamped_offset(params.offset);
+
+    let sort_column = validated_sort_column(
+        params.sort.as_deref(),
+        ALLOWED_SORT_COLUMNS_JOB_SUMMARY,
+        "latest_created_at",
+    )
+    .ok_or((StatusCode::BAD_REQUEST, "invalid sort column".to_string()))?;
+
+    let order = normalized_order(params.order.as_deref());
+
+    // Build dynamic WHERE clause for multi-filter support.
+    let mut where_clauses = Vec::new();
+    let mut bind_index: usize = 1;
+
+    if params.status.is_some() {
+        where_clauses.push(format!("status::text = ${bind_index}"));
+        bind_index += 1;
+    }
+
+    if params.job_type.is_some() {
+        where_clauses.push(format!("job_type::text = ${bind_index}"));
+        bind_index += 1;
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", where_clauses.join(" AND "))
+    };
+
+    // Count query (distinct law_ids matching filters)
+    let count_sql = format!("SELECT COUNT(DISTINCT law_id) FROM jobs {where_sql}");
+
+    let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
+    if let Some(ref status) = params.status {
+        count_query = count_query.bind(status);
+    }
+    if let Some(ref job_type) = params.job_type {
+        count_query = count_query.bind(job_type);
+    }
+
+    let total: i64 = count_query.fetch_one(pool).await.map_err(|e| {
+        tracing::error!(error = %e, "count query failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    // Data query — sort column is validated against an allowlist above, so
+    // interpolating it into the query string is safe.
+    let limit_idx = bind_index;
+    let offset_idx = bind_index + 1;
+
+    let data_sql = format!(
+        "SELECT law_id, \
+         COUNT(*) as total_jobs, \
+         COUNT(*) FILTER (WHERE status = 'pending') as pending, \
+         COUNT(*) FILTER (WHERE status = 'processing') as processing, \
+         COUNT(*) FILTER (WHERE status = 'completed') as completed, \
+         COUNT(*) FILTER (WHERE status = 'failed') as failed, \
+         MAX(created_at) as latest_created_at \
+         FROM jobs {where_sql} \
+         GROUP BY law_id \
+         ORDER BY {sort_column} {order} LIMIT ${limit_idx} OFFSET ${offset_idx}"
+    );
+
+    let mut data_query = sqlx::query_as::<_, JobSummary>(&data_sql);
+    if let Some(ref status) = params.status {
+        data_query = data_query.bind(status);
+    }
+    if let Some(ref job_type) = params.job_type {
+        data_query = data_query.bind(job_type);
+    }
+    data_query = data_query.bind(limit).bind(offset);
+
+    let data: Vec<JobSummary> = data_query.fetch_all(pool).await.map_err(|e| {
         tracing::error!(error = %e, "data query failed");
         (
             StatusCode::INTERNAL_SERVER_ERROR,

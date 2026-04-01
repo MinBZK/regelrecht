@@ -2,11 +2,38 @@
 
 
 /* ============================================================
-   Harvest Form (inline in toolbar)
+   Job Creation Section (collapsible, above table)
    ============================================================ */
 
-.harvest-form,
-.filter-row {
+.job-creation {
+  margin: var(--primitives-space-16) var(--primitives-space-24) 0;
+  background-color: var(--semantics-surfaces-background-color);
+  border: 1px solid var(--semantics-dividers-color);
+  border-radius: var(--primitives-corner-radius-sm);
+  box-shadow: var(--primitives-box-shadows-level-1);
+}
+
+.job-creation__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--primitives-space-8) var(--primitives-space-16);
+}
+
+.job-creation__title {
+  font-size: var(--primitives-font-size-80);
+  font-weight: var(--primitives-font-weight-body-extra-bold);
+  color: var(--semantics-content-secondary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+
+.job-creation__body {
+  padding: 0 var(--primitives-space-16) var(--primitives-space-16);
+}
+
+.harvest-form {
   display: flex;
   align-items: center;
   gap: var(--primitives-space-8);
@@ -67,10 +94,10 @@
   color: var(--semantics-content-secondary-color);
   background-color: var(--semantics-surfaces-tinted-background-color);
   border-bottom: 1px solid var(--semantics-dividers-color);
-  white-space: nowrap;
   user-select: none;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  vertical-align: top;
 }
 
 .data-table th.sortable {
@@ -108,6 +135,40 @@
 
 .data-table tbody tr:last-child td {
   border-bottom: none;
+}
+
+
+/* ============================================================
+   Column Header Filters
+   ============================================================ */
+
+.th-label {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.th-filter {
+  margin-top: var(--primitives-space-4);
+}
+
+.th-filter select,
+.th-filter input {
+  font-family: var(--primitives-font-family-body);
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid var(--semantics-dividers-color);
+  border-radius: var(--primitives-corner-radius-xs);
+  background: var(--semantics-surfaces-background-color);
+  color: var(--semantics-content-color);
+  max-width: 130px;
+  width: 100%;
+}
+
+.th-filter select:focus,
+.th-filter input:focus {
+  outline: 2px solid var(--semantics-accent-color, var(--primitives-color-accent-500));
+  outline-offset: -1px;
 }
 
 
@@ -208,6 +269,55 @@
   display: inline-flex;
   gap: var(--primitives-space-4);
   white-space: nowrap;
+}
+
+
+/* ============================================================
+   Grouped View - Group Rows & Child Rows
+   ============================================================ */
+
+.group-row {
+  cursor: pointer;
+  font-weight: var(--primitives-font-weight-body-extra-bold);
+  background-color: var(--semantics-surfaces-tinted-background-color);
+}
+
+.group-row:hover {
+  background-color: var(--semantics-surfaces-background-color) !important;
+}
+
+.group-row--expanded {
+  border-bottom: none;
+}
+
+.group-row__toggle {
+  text-align: center;
+  font-size: 10px;
+  color: var(--semantics-content-secondary-color);
+  width: 40px;
+}
+
+.child-header {
+  background-color: var(--semantics-surfaces-tinted-background-color);
+}
+
+.child-header__cell {
+  font-size: 11px;
+  font-weight: var(--primitives-font-weight-body-extra-bold);
+  color: var(--semantics-content-secondary-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: var(--primitives-space-4) var(--primitives-space-12);
+  border-bottom: 1px solid var(--semantics-dividers-color);
+}
+
+.child-row {
+  background-color: var(--semantics-surfaces-background-color);
+}
+
+.child-row td {
+  padding-left: var(--primitives-space-16);
+  font-size: var(--primitives-font-size-80);
 }
 
 
