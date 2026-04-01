@@ -109,8 +109,11 @@ impl CorpusClient {
         let mut last_error = None;
         for attempt in 1..=Self::MAX_PUSH_ATTEMPTS {
             // Pull --rebase to incorporate any concurrent remote changes.
-            // If rebase fails (conflict), abort and bail out — this is not a
-            // transient race condition but a real merge conflict.
+            // On shallow clones (--depth 1), rebase may fail if the remote
+            // advanced by many commits. The error-recovery path below
+            // restores the working tree (abort rebase + hard-reset to remote)
+            // and propagates the error for job-level retry. The enriched
+            // files remain on disk so the next attempt can re-stage them.
             if let Err(e) = self
                 .run_git(&["pull", "--rebase", "origin", &self.config.branch])
                 .await
@@ -122,7 +125,7 @@ impl CorpusClient {
                 // job-level retry can re-stage and commit them cleanly.
                 let remote_ref = format!("origin/{}", self.config.branch);
                 let _ = self
-                    .run_git(&["fetch", "origin", &self.config.branch])
+                    .run_git(&["fetch", "--depth", "1", "origin", &self.config.branch])
                     .await;
                 let _ = self.run_git(&["reset", "--hard", &remote_ref]).await;
                 return Err(e);
@@ -170,6 +173,9 @@ impl CorpusClient {
         let output = Command::new("git")
             .args([
                 "clone",
+                "--depth",
+                "1",
+                "--quiet",
                 "--branch",
                 &self.config.branch,
                 "--single-branch",
@@ -208,6 +214,9 @@ impl CorpusClient {
         let output = Command::new("git")
             .args([
                 "clone",
+                "--depth",
+                "1",
+                "--quiet",
                 "--branch",
                 "development",
                 "--single-branch",
@@ -247,7 +256,7 @@ impl CorpusClient {
     }
 
     async fn git_fetch_reset(&self) -> Result<()> {
-        self.run_git(&["fetch", "origin", &self.config.branch])
+        self.run_git(&["fetch", "--depth", "1", "origin", &self.config.branch])
             .await?;
 
         let remote_ref = format!("origin/{}", self.config.branch);
