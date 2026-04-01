@@ -1533,17 +1533,21 @@ impl LawExecutionService {
                     term.id, law.id, article.number
                 )));
             } else {
-                // Not required, no implementation, no default — skip
+                // Not required, no implementation, no default — resolve as null
+                // so downstream actions can check for null and fall back to their
+                // own defaults (e.g., BW 5:42 falls back to the statutory distance
+                // when no municipal verordening overrides it).
                 tracing::debug!(
                     open_term = %term.id,
-                    "Optional open term not implemented, skipping"
+                    "Optional open term not implemented, resolving as null"
                 );
 
                 res_ctx.trace_set_message(format!(
-                    "Open term '{}' not required, no implementation, skipped",
+                    "Open term '{}' not required, no implementation, resolved as null",
                     term.id
                 ));
                 res_ctx.trace_pop();
+                resolved.insert(term.id.clone(), Value::Null);
             }
 
             res_ctx.leave(&ot_key);

@@ -39,6 +39,12 @@ export default withMermaid(
             ],
           },
           {
+            text: 'Translating Law',
+            items: [
+              { text: 'Translation Examples', link: '/guide/translation-examples' },
+            ],
+          },
+          {
             text: 'Development',
             items: [
               { text: 'Dev Environment', link: '/guide/dev-environment' },
