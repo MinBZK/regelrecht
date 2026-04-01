@@ -126,6 +126,17 @@
   opacity: 0.6;
 }
 
+.cell-error {
+  font-size: 12px;
+  color: var(--primitives-color-danger-700);
+  max-width: 300px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .table-message {
   text-align: center;
   padding: var(--primitives-space-24) var(--primitives-space-16);
