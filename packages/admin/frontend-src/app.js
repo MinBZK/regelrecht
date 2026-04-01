@@ -228,6 +228,9 @@ function renderViewToggle() {
     state.order = 'desc';
     state.expandedLawIds.clear();
     state.expandedJobsCache = {};
+    if (state.viewMode === 'grouped') {
+      delete state.filters.law_id;
+    }
     renderViewToggle();
     renderTableHead();
     loadData();
@@ -508,8 +511,6 @@ function renderGroupedTableBody() {
         td.innerHTML = `<span class="cell-mono">${escapeHtml(group.law_id)}</span>`;
       } else if (['pending', 'processing', 'completed', 'failed'].includes(col.key)) {
         td.innerHTML = formatCount(group[col.key], col.key);
-      } else if (col.key === 'latest_created_at') {
-        td.innerHTML = formatCell(group[col.key], col.key);
       } else {
         td.innerHTML = formatCell(group[col.key], col.key);
       }

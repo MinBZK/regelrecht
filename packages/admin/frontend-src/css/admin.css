@@ -282,8 +282,8 @@
   background-color: var(--semantics-surfaces-tinted-background-color);
 }
 
-.group-row:hover {
-  background-color: var(--semantics-surfaces-background-color) !important;
+.data-table tbody tr.group-row:hover {
+  background-color: var(--semantics-surfaces-background-color);
 }
 
 .group-row--expanded {
