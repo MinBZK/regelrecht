@@ -56,6 +56,9 @@ articles:
             description: Type beplanting - "boom" of "heg_of_heester"
 
         output:
+          - name: wettelijke_afstand_cm
+            type: number
+            description: Wettelijke default afstand (lid 2) — intern tussenresultaat
           - name: minimale_afstand_cm
             type: number
             description: De geldende minimale afstand tot de erfgrens in centimeters
