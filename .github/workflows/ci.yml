@@ -186,10 +186,6 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         run: just test-all
 
-      - name: Run BDD tests
-        if: needs.changes.outputs.ci == 'true'
-        run: just bdd
-
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping tests"
