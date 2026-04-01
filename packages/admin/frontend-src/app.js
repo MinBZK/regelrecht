@@ -46,6 +46,7 @@ const TAB_CONFIG = {
       { key: 'job_type', label: 'Type', sortable: true },
       { key: 'law_id', label: 'Law ID', sortable: true },
       { key: 'status', label: 'Status', sortable: true },
+      { key: '_error', label: 'Error', sortable: false },
       { key: 'priority', label: 'Priority', sortable: true },
       { key: 'attempts', label: 'Attempts', sortable: true },
       { key: 'created_at', label: 'Created', sortable: true },
@@ -340,7 +341,18 @@ function renderTableBody() {
 
     for (const col of config.columns) {
       const td = document.createElement('td');
-      if (col.key === '_actions' && state.activeTab === 'law_entries') {
+      if (col.key === '_error' && state.activeTab === 'jobs') {
+        const error = row.result && row.result.error;
+        if (error) {
+          const span = document.createElement('span');
+          span.className = 'cell-error';
+          span.title = error;
+          span.textContent = error.length > 80 ? error.substring(0, 80) + '\u2026' : error;
+          td.appendChild(span);
+        } else {
+          td.innerHTML = '<span class="cell-null">\u2014</span>';
+        }
+      } else if (col.key === '_actions' && state.activeTab === 'law_entries') {
         td.appendChild(renderRowActions(row));
       } else if (col.key === 'law_id' && state.activeTab === 'law_entries') {
         // Clickable law_id to view jobs for this law
