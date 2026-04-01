@@ -1092,12 +1092,12 @@ impl LawExecutionService {
                     );
                 }
                 UntranslatableMode::Propagate => {
-                    tracing::warn!(
-                        law_id,
-                        article = article_number,
-                        construct = %entry.construct,
-                        "Untranslatable construct — outputs will be tainted"
-                    );
+                    // Taint propagation (NaN-like UNTRANSLATABLE value) is not yet
+                    // implemented. Fail explicitly rather than silently behaving like warn.
+                    return Err(EngineError::InvalidOperation(
+                        "propagate mode is not yet implemented — use error, warn, or ignore"
+                            .to_string(),
+                    ));
                 }
                 UntranslatableMode::Warn => {
                     tracing::warn!(

@@ -17,6 +17,13 @@ Feature: Untranslatables — RFC-012
     When the untranslatable test law is executed for output "som_deeltoeslagen"
     Then the execution succeeds
 
+  # === Propagate mode (not yet implemented) ===
+
+  Scenario: Propagate mode is not yet implemented
+    Given the untranslatable mode is "propagate"
+    When the untranslatable test law is executed for output "afgerond_bedrag"
+    Then the execution fails with "propagate mode is not yet implemented"
+
   # === Warn mode ===
 
   Scenario: Warn mode executes unaccepted untranslatable with partial logic
@@ -25,6 +32,7 @@ Feature: Untranslatables — RFC-012
       | bedrag | 1234 |
     When the untranslatable test law is executed for output "afgerond_bedrag"
     Then the execution succeeds
+    And the output "afgerond_bedrag" is "1234"
 
   # === Ignore mode ===
 

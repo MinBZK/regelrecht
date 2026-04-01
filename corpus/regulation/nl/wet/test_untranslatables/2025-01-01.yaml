@@ -42,9 +42,8 @@ articles:
             type: number
         output:
           - name: afgerond_bedrag
-            type: amount
-            type_spec:
-              unit: eurocent
+            type: number
+            description: Rounding NOT applied — value is unrounded
         actions:
           - output: afgerond_bedrag
             value: $bedrag
