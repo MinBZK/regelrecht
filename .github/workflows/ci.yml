@@ -153,8 +153,8 @@ jobs:
         if: needs.changes.outputs.ci != 'true'
         run: echo "No relevant changes, skipping pre-commit"
 
-  test-engine:
-    name: Test Engine
+  test:
+    name: Test
     needs: changes
     runs-on: ubuntu-latest
     steps:
@@ -169,22 +169,15 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
-      - name: Cache cargo registry
+      - name: Cache Rust dependencies
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-engine-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-engine-
-            ${{ runner.os }}-cargo-
+          workspaces: packages
 
-      - name: Run engine unit tests
+      - name: Run all tests
         if: needs.changes.outputs.ci == 'true'
-        run: just test
+        run: just test-all
 
       - name: Run BDD tests
         if: needs.changes.outputs.ci == 'true'
@@ -192,85 +185,7 @@ jobs:
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping engine tests"
-
-  test-harvester-pipeline:
-    name: Test Harvester & Pipeline
-    needs: changes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-        if: needs.changes.outputs.ci == 'true'
-
-      - name: Install just
-        if: needs.changes.outputs.ci == 'true'
-        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b  # v3
-
-      - name: Install Rust toolchain
-        if: needs.changes.outputs.ci == 'true'
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
-
-      - name: Cache cargo registry
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-harvester-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-harvester-
-            ${{ runner.os }}-cargo-
-
-      - name: Run harvester tests
-        if: needs.changes.outputs.ci == 'true'
-        run: just harvester-test
-
-      - name: Run pipeline unit tests
-        if: needs.changes.outputs.ci == 'true'
-        run: just pipeline-test
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping harvester & pipeline tests"
-
-  test-pipeline-integration:
-    name: Test Pipeline Integration
-    needs: changes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-        if: needs.changes.outputs.ci == 'true'
-
-      - name: Install just
-        if: needs.changes.outputs.ci == 'true'
-        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b  # v3
-
-      - name: Install Rust toolchain
-        if: needs.changes.outputs.ci == 'true'
-        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
-
-      - name: Cache cargo registry
-        if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-pipeline-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-pipeline-
-            ${{ runner.os }}-cargo-
-
-      - name: Run pipeline integration tests
-        if: needs.changes.outputs.ci == 'true'
-        run: just pipeline-integration-test
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping pipeline integration tests"
+        run: echo "No relevant changes, skipping tests"
 
   wasm:
     name: WASM Build
