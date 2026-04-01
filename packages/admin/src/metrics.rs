@@ -33,6 +33,21 @@ pub struct MetricsSnapshot {
     pub recently_failed_jobs: i64,
     /// Jobs that permanently failed (exhausted retries) in the last 24 hours.
     pub recently_failed_jobs_24h: i64,
+    /// Failed jobs broken down by job type (harvest/enrich) and time window.
+    pub failed_by_type: FailedByType,
+}
+
+/// Failed job counts split by job type.
+#[derive(Clone, Debug, Default)]
+pub struct FailedByType {
+    /// All-time total of permanently failed harvest jobs.
+    pub harvest_total: i64,
+    /// All-time total of permanently failed enrich jobs.
+    pub enrich_total: i64,
+    /// Permanently failed harvest jobs in the last 24 hours.
+    pub harvest_24h: i64,
+    /// Permanently failed enrich jobs in the last 24 hours.
+    pub enrich_24h: i64,
 }
 
 /// Cached response: the encoded Prometheus text and when it was generated.
@@ -73,10 +88,17 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
     .fetch_one(pool)
     .await?;
 
-    let recently_failed: (i64, i64) = sqlx::query_as(
+    // job_type literals must match pipeline JobType enum variants.
+    let recently_failed: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT \
              COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '1 hour'), \
-             COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '24 hours') \
+             COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '24 hours'), \
+             COUNT(*) FILTER (WHERE job_type = 'harvest'), \
+             COUNT(*) FILTER (WHERE job_type = 'enrich'), \
+             COUNT(*) FILTER (WHERE job_type = 'harvest' \
+                 AND completed_at > NOW() - INTERVAL '24 hours'), \
+             COUNT(*) FILTER (WHERE job_type = 'enrich' \
+                 AND completed_at > NOW() - INTERVAL '24 hours') \
          FROM jobs WHERE status = 'failed'",
     )
     .fetch_one(pool)
@@ -88,6 +110,12 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
         avg_job_duration_secs: avg_duration.0,
         recently_failed_jobs: recently_failed.0,
         recently_failed_jobs_24h: recently_failed.1,
+        failed_by_type: FailedByType {
+            harvest_total: recently_failed.2,
+            enrich_total: recently_failed.3,
+            harvest_24h: recently_failed.4,
+            enrich_24h: recently_failed.5,
+        },
     })
 }
 
@@ -165,6 +193,39 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
     );
     recently_failed_24h.set(snapshot.recently_failed_jobs_24h);
 
+    // Per-type failed metrics (harvest vs enrich).
+    let harvest_failed_total = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_jobs_failed_harvest",
+        "Total number of permanently failed harvest jobs",
+        harvest_failed_total.clone(),
+    );
+    harvest_failed_total.set(snapshot.failed_by_type.harvest_total);
+
+    let enrich_failed_total = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_jobs_failed_enrich",
+        "Total number of permanently failed enrich jobs",
+        enrich_failed_total.clone(),
+    );
+    enrich_failed_total.set(snapshot.failed_by_type.enrich_total);
+
+    let harvest_failed_24h = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_jobs_failed_harvest_24h",
+        "Number of permanently failed harvest jobs in the last 24 hours",
+        harvest_failed_24h.clone(),
+    );
+    harvest_failed_24h.set(snapshot.failed_by_type.harvest_24h);
+
+    let enrich_failed_24h = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_jobs_failed_enrich_24h",
+        "Number of permanently failed enrich jobs in the last 24 hours",
+        enrich_failed_24h.clone(),
+    );
+    enrich_failed_24h.set(snapshot.failed_by_type.enrich_24h);
+
     if let Some(avg) = snapshot.avg_job_duration_secs {
         job_duration_avg.set(avg);
     }
@@ -235,6 +296,7 @@ mod tests {
             avg_job_duration_secs: None,
             recently_failed_jobs: 0,
             recently_failed_jobs_24h: 0,
+            failed_by_type: FailedByType::default(),
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         assert!(
@@ -287,6 +349,12 @@ mod tests {
             avg_job_duration_secs: Some(12.5),
             recently_failed_jobs: 2,
             recently_failed_jobs_24h: 5,
+            failed_by_type: FailedByType {
+                harvest_total: 10,
+                enrich_total: 20,
+                harvest_24h: 1,
+                enrich_24h: 4,
+            },
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
 
@@ -328,6 +396,24 @@ mod tests {
             body.contains("regelrecht_job_duration_avg_seconds 12.5"),
             "avg duration"
         );
+
+        // Per-type failed metrics.
+        assert!(
+            body.contains("regelrecht_jobs_failed_harvest 10"),
+            "harvest failed total"
+        );
+        assert!(
+            body.contains("regelrecht_jobs_failed_enrich 20"),
+            "enrich failed total"
+        );
+        assert!(
+            body.contains("regelrecht_jobs_failed_harvest_24h 1"),
+            "harvest failed 24h"
+        );
+        assert!(
+            body.contains("regelrecht_jobs_failed_enrich_24h 4"),
+            "enrich failed 24h"
+        );
     }
 
     #[test]
@@ -338,6 +424,7 @@ mod tests {
             avg_job_duration_secs: None,
             recently_failed_jobs: 0,
             recently_failed_jobs_24h: 0,
+            failed_by_type: FailedByType::default(),
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         // When no avg duration, the gauge should remain at default (0).
@@ -363,14 +450,18 @@ mod tests {
             avg_job_duration_secs: None,
             recently_failed_jobs: 0,
             recently_failed_jobs_24h: 0,
+            failed_by_type: FailedByType::default(),
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         assert!(
             !body.contains("regelrecht_jobs_completed"),
             "redundant completed metric should not exist"
         );
+        // Check there's no standalone `regelrecht_jobs_failed` metric (the old
+        // name). The new per-type metrics (`regelrecht_jobs_failed_harvest_*`)
+        // are fine — we only reject the bare name followed by a space.
         assert!(
-            !body.contains("regelrecht_jobs_failed"),
+            !body.contains("regelrecht_jobs_failed "),
             "redundant failed metric should not exist"
         );
     }
