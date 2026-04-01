@@ -169,11 +169,18 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
-      - name: Cache Rust dependencies
+      - name: Cache cargo registry
         if: needs.changes.outputs.ci == 'true'
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4  # v2.9.1
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
-          workspaces: packages
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+            ${{ runner.os }}-cargo-
 
       - name: Run all tests
         if: needs.changes.outputs.ci == 'true'
