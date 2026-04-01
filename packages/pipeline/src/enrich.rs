@@ -579,11 +579,9 @@ pub async fn execute_enrich_with_runner(
     // Coverage score measures what the LLM *added* this session, not total coverage.
     let (articles_after, articles_with_machine_readable) = count_article_stats(&yaml_abs).await?;
     if articles_after != articles_before {
-        tracing::warn!(
-            before = articles_before,
-            after = articles_after,
-            "article count changed during enrichment — LLM may have modified YAML structure"
-        );
+        return Err(PipelineError::Enrich(format!(
+            "article count changed during enrichment (before={articles_before}, after={articles_after}) — LLM modified YAML structure"
+        )));
     }
     let newly_enriched = articles_with_machine_readable.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
