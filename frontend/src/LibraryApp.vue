@@ -255,7 +255,7 @@ loadIndex();
           <!-- Sidebar: Wetten Browser -->
           <rr-split-view-pane slot="sidebar" has-content>
             <rr-page sticky-header>
-              <rr-top-title-bar slot="header" toolbar="none" title="Wetten en regels" container="sm"></rr-top-title-bar>
+              <rr-top-title-bar slot="header" title="Wetten en regels"></rr-top-title-bar>
 
               <rr-simple-section container="sm">
                 <div v-if="loading" style="padding: 32px; text-align: center;">Laden...</div>
@@ -288,30 +288,15 @@ loadIndex();
               <rr-top-title-bar
                 slot="header"
                 :title="lawName || 'Selecteer een wet'"
-                container="sm"
-                toolbar="custom"
+                back-label="Wetten"
               >
-                <div slot="toolbar-start">
-                  <rr-toolbar size="md">
-                    <rr-toolbar-start-area>
-                      <rr-toolbar-item>
-                        <rr-icon-button variant="neutral-tinted" size="s" icon="heart" title="Favoriet">
-                        </rr-icon-button>
-                      </rr-toolbar-item>
-                      <rr-toolbar-item>
-                        <rr-button variant="neutral-tinted" size="md">Filter</rr-button>
-                      </rr-toolbar-item>
-                    </rr-toolbar-start-area>
-                    <rr-toolbar-end-area>
-                      <rr-toolbar-item>
-                        <a v-if="selectedLawId" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
-                          <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
-                        </a>
-                        <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
-                      </rr-toolbar-item>
-                    </rr-toolbar-end-area>
-                  </rr-toolbar>
-                </div>
+                <rr-icon-button slot="toolbar" variant="neutral-tinted" size="s" icon="heart" title="Favoriet">
+                </rr-icon-button>
+                <rr-button slot="toolbar" variant="neutral-tinted" size="md">Filter</rr-button>
+                <a v-if="selectedLawId" slot="toolbar" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
+                  <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
+                </a>
+                <rr-button v-else slot="toolbar" variant="accent-filled" size="md" disabled>Bewerk</rr-button>
               </rr-top-title-bar>
 
               <rr-simple-section container="sm">
@@ -346,28 +331,17 @@ loadIndex();
               <rr-top-title-bar
                 slot="header"
                 :title="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
-                container="sm"
-                toolbar="custom"
+                :back-label="lawName || 'Terug'"
               >
-                <rr-toolbar slot="toolbar-start" size="md">
-                  <rr-toolbar-start-area>
-                    <rr-toolbar-item>
-                      <rr-segmented-control size="md" :value="detailView" @change="detailView = $event.detail.value">
-                        <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
-                        <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
-                        <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
-                      </rr-segmented-control>
-                    </rr-toolbar-item>
-                  </rr-toolbar-start-area>
-                  <rr-toolbar-end-area>
-                    <rr-toolbar-item>
-                      <a v-if="selectedLawId" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
-                        <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
-                      </a>
-                      <rr-button v-else variant="accent-filled" size="md" disabled>Bewerk</rr-button>
-                    </rr-toolbar-item>
-                  </rr-toolbar-end-area>
-                </rr-toolbar>
+                <rr-segmented-control slot="toolbar" size="md" :value="detailView" @change="detailView = $event.detail.value">
+                  <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
+                  <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
+                  <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                </rr-segmented-control>
+                <a v-if="selectedLawId" slot="toolbar" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
+                  <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
+                </a>
+                <rr-button v-else slot="toolbar" variant="accent-filled" size="md" disabled>Bewerk</rr-button>
               </rr-top-title-bar>
 
               <rr-simple-section container="sm">

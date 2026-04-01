@@ -178,41 +178,27 @@ function selectArticle(number) {
         </div>
 
         <!-- 3-column equal layout: Text | Form | Result -->
-        <div v-else class="editor-layout">
+        <rr-side-by-side-split-view v-else panes="3">
           <!-- Left: Article Text -->
-          <div class="editor-pane">
-            <rr-page header-sticky>
-              <rr-toolbar slot="header" size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-title-bar size="5">Tekst</rr-title-bar>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-              </rr-toolbar>
+          <rr-split-view-pane slot="pane-1" background="tinted">
+            <rr-page sticky-header>
+              <rr-top-title-bar slot="header" title="Tekst"></rr-top-title-bar>
               <rr-simple-section>
                 <ArticleText :article="selectedArticle" />
               </rr-simple-section>
             </rr-page>
-          </div>
+          </rr-split-view-pane>
 
           <!-- Middle: Form or YAML -->
-          <div class="editor-pane">
-            <rr-page header-sticky>
-              <rr-toolbar slot="header" size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-segmented-control size="md" :value="middlePaneView" @change="onMiddlePaneChange">
-                      <rr-segmented-control-item value="form">Formulier</rr-segmented-control-item>
-                      <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
-                    </rr-segmented-control>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-                <rr-toolbar-end-area>
-                  <rr-toolbar-item v-if="middlePaneView === 'yaml' && parseError">
-                    <span class="editor-parse-error">YAML parse error</span>
-                  </rr-toolbar-item>
-                </rr-toolbar-end-area>
-              </rr-toolbar>
+          <rr-split-view-pane slot="pane-2">
+            <rr-page sticky-header>
+              <rr-top-title-bar slot="header" title="Formulier">
+                <rr-segmented-control slot="toolbar" size="md" :value="middlePaneView" @change="onMiddlePaneChange">
+                  <rr-segmented-control-item value="form">Formulier</rr-segmented-control-item>
+                  <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
+                </rr-segmented-control>
+                <span v-if="middlePaneView === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
+              </rr-top-title-bar>
 
               <!-- Form view -->
               <div v-if="middlePaneView === 'form'">
@@ -246,18 +232,12 @@ function selectArticle(number) {
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </div>
             </rr-page>
-          </div>
+          </rr-split-view-pane>
 
           <!-- Right: Execution Result -->
-          <div class="editor-pane">
-            <rr-page header-sticky>
-              <rr-toolbar slot="header" size="md">
-                <rr-toolbar-start-area>
-                  <rr-toolbar-item>
-                    <rr-title-bar size="5">Resultaat</rr-title-bar>
-                  </rr-toolbar-item>
-                </rr-toolbar-start-area>
-              </rr-toolbar>
+          <rr-split-view-pane slot="pane-3">
+            <rr-page sticky-header>
+              <rr-top-title-bar slot="header" title="Resultaat"></rr-top-title-bar>
 
               <ExecutionTraceView
                 :result="lastResult"
@@ -265,8 +245,8 @@ function selectArticle(number) {
                 :error="lastError"
               />
             </rr-page>
-          </div>
-        </div>
+          </rr-split-view-pane>
+        </rr-side-by-side-split-view>
       </rr-split-view-pane>
     </rr-bar-split-view>
   </rr-app-view>
@@ -276,24 +256,6 @@ function selectArticle(number) {
 </template>
 
 <style>
-.editor-layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-}
-
-.editor-pane {
-  flex: 1 1 0;
-  min-width: 0;
-  overflow: hidden;
-  border-right: 1px solid var(--semantics-dividers-color, #E0E3E8);
-}
-
-.editor-pane:last-child {
-  border-right: none;
-}
-
 .editor-engine-error {
   padding: 12px 16px;
   background: #fee;
