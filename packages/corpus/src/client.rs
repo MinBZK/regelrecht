@@ -109,8 +109,9 @@ impl CorpusClient {
         let mut last_error = None;
         for attempt in 1..=Self::MAX_PUSH_ATTEMPTS {
             // Pull --rebase to incorporate any concurrent remote changes.
-            // If rebase fails (conflict), abort and bail out — this is not a
-            // transient race condition but a real merge conflict.
+            // On shallow clones (--depth 1), rebase may fail if the remote
+            // advanced by many commits. The error-recovery path below handles
+            // this by aborting the rebase and hard-resetting to the remote.
             if let Err(e) = self
                 .run_git(&["pull", "--rebase", "origin", &self.config.branch])
                 .await

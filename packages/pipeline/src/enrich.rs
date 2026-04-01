@@ -322,7 +322,6 @@ const LLM_ENV_ALLOWLIST: &[&str] = &[
     "SHELL",
     "TMPDIR",
     "XDG_",
-    "NODE_OPTIONS",
     // Provider-specific auth
     "ANTHROPIC_API_KEY",
     "VLAM_API_KEY",
@@ -578,7 +577,14 @@ pub async fn execute_enrich_with_runner(
 
     // Count articles with machine_readable after enrichment.
     // Coverage score measures what the LLM *added* this session, not total coverage.
-    let (_, articles_with_machine_readable) = count_article_stats(&yaml_abs).await?;
+    let (articles_after, articles_with_machine_readable) = count_article_stats(&yaml_abs).await?;
+    if articles_after != articles_before {
+        tracing::warn!(
+            before = articles_before,
+            after = articles_after,
+            "article count changed during enrichment — LLM may have modified YAML structure"
+        );
+    }
     let newly_enriched = articles_with_machine_readable.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
     let coverage_score = if articles_needing_enrichment > 0 {
