@@ -164,7 +164,7 @@ interface LawInfo {
 
 ## License
 
-MIT - See [LICENSE](LICENSE) for details.
+EUPL-1.2 - See [LICENSE](../../LICENSE) for details.
 
 ## Links
 

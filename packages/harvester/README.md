@@ -266,7 +266,7 @@ cargo clippy
 
 ## License
 
-MIT - see repository root for full license text.
+EUPL-1.2 - See [LICENSE](../../LICENSE) for details.
 
 ## Links
 

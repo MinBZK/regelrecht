@@ -238,4 +238,4 @@ See `.env.example` for a local development configuration.
 
 ## License
 
-MIT — See [LICENSE](../../LICENSE) for details.
+EUPL-1.2 — See [LICENSE](../../LICENSE) for details.
