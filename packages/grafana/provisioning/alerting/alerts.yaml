@@ -59,14 +59,13 @@ policies:
     group_interval: 5m
     repeat_interval: 1h
     routes:
-      # Summary notification. Defaults to once per day at midnight Amsterdam
-      # time. Set ALERT_REPEAT_INTERVAL (e.g. "1h") to receive more frequent
-      # updates for debugging. The mute is scoped to this route so future
-      # real-time alerts on the root policy are unaffected.
+      # Summary notification: once per day at midnight Amsterdam time.
+      # The mute is scoped to this route so future real-time alerts on
+      # the root policy are unaffected.
       - receiver: mattermost
         matchers:
           - alertname = "Dagelijkse Regelrecht Update"
-        repeat_interval: ${ALERT_REPEAT_INTERVAL}
+        repeat_interval: 24h
         mute_time_intervals:
           - niet-middernacht
 

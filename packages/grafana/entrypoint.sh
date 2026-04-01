@@ -30,20 +30,6 @@ if [ -z "${MATTERMOST_WEBHOOK_URL:-}" ]; then
   export MATTERMOST_WEBHOOK_URL="http://localhost:0/webhook-not-configured"
 fi
 
-# Alert repeat interval. Default: 24h (once daily at midnight).
-# Set to e.g. "1h" to receive hourly updates for debugging.
-export ALERT_REPEAT_INTERVAL="${ALERT_REPEAT_INTERVAL:-24h}"
-
-# When using a non-daily interval, disable the midnight-only mute time
-# so notifications can actually fire every interval.
-if [ "${ALERT_REPEAT_INTERVAL}" != "24h" ]; then
-  echo "INFO: ALERT_REPEAT_INTERVAL=${ALERT_REPEAT_INTERVAL} — disabling midnight-only mute."
-  ALERTS_FILE="/etc/grafana/provisioning/alerting/alerts.yaml"
-  # Remove the mute_time_intervals reference from the daily summary route.
-  # Scoped to the two consecutive lines that form the mute block.
-  sed -i '/mute_time_intervals:/{N;/niet-middernacht/d}' "$ALERTS_FILE"
-fi
-
 # Start Grafana in the background
 /run.sh "$@" &
 GRAFANA_PID=$!
