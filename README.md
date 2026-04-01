@@ -1,5 +1,11 @@
 # regelrecht
 
+[![CI](https://github.com/MinBZK/regelrecht/actions/workflows/ci.yml/badge.svg)](https://github.com/MinBZK/regelrecht/actions/workflows/ci.yml)
+[![License: EUPL-1.2](https://img.shields.io/badge/License-EUPL--1.2-blue.svg)](https://opensource.org/licenses/EUPL-1.2)
+[![Rust 2021](https://img.shields.io/badge/Rust-2021_edition-orange.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/)
+[![Mutation Testing](https://github.com/MinBZK/regelrecht/actions/workflows/mutation-testing.yml/badge.svg)](https://github.com/MinBZK/regelrecht/actions/workflows/mutation-testing.yml)
+[![Docs](https://img.shields.io/badge/docs-regelrecht-green.svg)](https://docs.regelrecht.rijks.app)
+
 RegelRecht MVP - Machine-readable Dutch law execution engine with a web-based editor.
 
 ## Components
@@ -23,4 +29,4 @@ PR preview environments are automatically cleaned up when the PR is closed.
 
 ## Development
 
-See [CLAUDE.md](CLAUDE.md) for detailed development instructions
+See the [docs site](https://docs.regelrecht.rijks.app) for detailed development instructions
