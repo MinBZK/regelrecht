@@ -196,7 +196,7 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
     // Per-type failed metrics (harvest vs enrich).
     let harvest_failed_total = Gauge::<i64, AtomicI64>::default();
     registry.register(
-        "regelrecht_jobs_failed_harvest_total",
+        "regelrecht_jobs_failed_harvest",
         "Total number of permanently failed harvest jobs",
         harvest_failed_total.clone(),
     );
@@ -204,7 +204,7 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
 
     let enrich_failed_total = Gauge::<i64, AtomicI64>::default();
     registry.register(
-        "regelrecht_jobs_failed_enrich_total",
+        "regelrecht_jobs_failed_enrich",
         "Total number of permanently failed enrich jobs",
         enrich_failed_total.clone(),
     );
@@ -399,11 +399,11 @@ mod tests {
 
         // Per-type failed metrics.
         assert!(
-            body.contains("regelrecht_jobs_failed_harvest_total 10"),
+            body.contains("regelrecht_jobs_failed_harvest 10"),
             "harvest failed total"
         );
         assert!(
-            body.contains("regelrecht_jobs_failed_enrich_total 20"),
+            body.contains("regelrecht_jobs_failed_enrich 20"),
             "enrich failed total"
         );
         assert!(
