@@ -40,9 +40,13 @@ pub struct MetricsSnapshot {
 /// Failed job counts split by job type.
 #[derive(Clone, Debug, Default)]
 pub struct FailedByType {
+    /// All-time total of permanently failed harvest jobs.
     pub harvest_total: i64,
+    /// All-time total of permanently failed enrich jobs.
     pub enrich_total: i64,
+    /// Permanently failed harvest jobs in the last 24 hours.
     pub harvest_24h: i64,
+    /// Permanently failed enrich jobs in the last 24 hours.
     pub enrich_24h: i64,
 }
 
@@ -84,6 +88,7 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
     .fetch_one(pool)
     .await?;
 
+    // job_type literals must match pipeline JobType enum variants.
     let recently_failed: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
         "SELECT \
              COUNT(*) FILTER (WHERE completed_at > NOW() - INTERVAL '1 hour'), \

@@ -100,15 +100,6 @@ groups:
               expr: max(regelrecht_laws{status="enriched"})
               instant: true
               refId: B
-          - refId: D
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: PBFA97CFB590B2093
-            model:
-              expr: max(regelrecht_jobs{status="failed"})
-              instant: true
-              refId: D
           - refId: E
             relativeTimeRange:
               from: 600
@@ -127,16 +118,6 @@ groups:
               expr: max(regelrecht_jobs{status="completed"})
               instant: true
               refId: F
-          # Recently failed in last 24h (for the daily summary context).
-          - refId: G
-            relativeTimeRange:
-              from: 600
-              to: 0
-            datasourceUid: PBFA97CFB590B2093
-            model:
-              expr: regelrecht_jobs_recently_failed_24h
-              instant: true
-              refId: G
           # Per-type failed metrics for harvest/enrich split.
           - refId: I
             relativeTimeRange:
@@ -195,8 +176,6 @@ groups:
             Verrijkt: {{ (index $values "B").Value | printf "%.0f" }}
           harvested: '{{ (index $values "A").Value | printf "%.0f" }}'
           enriched: '{{ (index $values "B").Value | printf "%.0f" }}'
-          failed_total: '{{ (index $values "D").Value | printf "%.0f" }}'
-          failed_24h: '{{ (index $values "G").Value | printf "%.0f" }}'
           failed_harvest_24h: '{{ (index $values "I").Value | printf "%.0f" }}'
           failed_enrich_24h: '{{ (index $values "J").Value | printf "%.0f" }}'
           failed_harvest_total: '{{ (index $values "K").Value | printf "%.0f" }}'
