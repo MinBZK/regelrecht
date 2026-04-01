@@ -38,6 +38,20 @@ fn execute_erfgrensbeplanting(world: &mut RegelrechtWorld, law_id: String, _arti
 }
 
 // =============================================================================
+// WOO (Wet open overheid) steps
+// =============================================================================
+
+#[when("the WOO disclosure decision is executed")]
+fn execute_woo_disclosure(world: &mut RegelrechtWorld) {
+    world.execute_law("wet_open_overheid", "openbaarmaking_toegestaan");
+}
+
+#[when("the WOO motivation requirement is checked")]
+fn execute_woo_motivation(world: &mut RegelrechtWorld) {
+    world.execute_law("wet_open_overheid", "verzwaarde_motiveringsplicht");
+}
+
+// =============================================================================
 // Bezwaartermijn steps
 // =============================================================================
 

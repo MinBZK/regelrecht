@@ -3,19 +3,20 @@ Feature: Bijstandsaanvraag via Participatiewet
   Wil ik bijstand kunnen aanvragen bij mijn gemeente
   Zodat ik in mijn levensonderhoud kan voorzien
 
-  # Keten: Participatiewet (Rijkswet) + Afstemmingsverordening (Gemeente)
+  # Keten: Art 43 → Art 21 (normbedrag + leeftijdscheck) + Art 8 (verlaging via open_terms)
   #
-  # Art. 11: Rechthebbenden - Nederlanders zonder middelen
   # Art. 21: Normbedragen - €1.091,71 (alleenstaand) / €1.559,58 (gehuwd)
-  # Art. 8:  Delegatie - gemeente stelt verordening vast
-  # Art. 18: Verlaging - bij niet nakomen verplichtingen
+  #          Leeftijdscheck: >= 21 en niet pensioengerechtigde leeftijd
+  # Art. 8:  Delegatie - gemeente stelt verlaging vast via open_terms
+  # Art. 43: Vaststelling - uitkering = normbedrag - (normbedrag × verlaging%)
+  #
+  # Art. 11 (Rechthebbenden) is not yet machine_readable — nationality/middelen
+  # checks are not part of these scenarios. See #384.
   #
   # Afstemmingsverordening Diemen (GM0384):
   #   Categorie 1: 5%   - niet tijdig registreren UWV
   #   Categorie 2: 30%  - niet meewerken plan van aanpak
   #   Categorie 3: 100% - niet naar vermogen werk zoeken
-  #
-  # Formule: uitkering = normbedrag - (normbedrag × verlaging%)
 
   Background:
     Given the calculation date is "2024-06-01"
@@ -26,13 +27,9 @@ Feature: Bijstandsaanvraag via Participatiewet
     Given a citizen with the following data:
       | gemeente_code                          | GM0384       |
       | leeftijd                               | 35           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
       | is_alleenstaande                       | true         |
       | heeft_kostendelende_medebewoners       | false        |
       | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 0            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen has the right to bijstand
@@ -42,13 +39,9 @@ Feature: Bijstandsaanvraag via Participatiewet
     Given a citizen with the following data:
       | gemeente_code                          | GM0384       |
       | leeftijd                               | 42           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
       | is_alleenstaande                       | false        |
       | heeft_kostendelende_medebewoners       | false        |
       | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 0            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen has the right to bijstand
@@ -59,13 +52,9 @@ Feature: Bijstandsaanvraag via Participatiewet
     Given a citizen with the following data:
       | gemeente_code                          | GM0384       |
       | leeftijd                               | 28           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
       | is_alleenstaande                       | true         |
       | heeft_kostendelende_medebewoners       | false        |
       | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 1            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen has the right to bijstand
@@ -76,13 +65,9 @@ Feature: Bijstandsaanvraag via Participatiewet
     Given a citizen with the following data:
       | gemeente_code                          | GM0384       |
       | leeftijd                               | 45           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
       | is_alleenstaande                       | true         |
       | heeft_kostendelende_medebewoners       | false        |
       | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 2            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen has the right to bijstand
@@ -93,13 +78,9 @@ Feature: Bijstandsaanvraag via Participatiewet
     Given a citizen with the following data:
       | gemeente_code                          | GM0384       |
       | leeftijd                               | 30           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
       | is_alleenstaande                       | true         |
       | heeft_kostendelende_medebewoners       | false        |
       | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 3            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen has the right to bijstand
@@ -113,26 +94,17 @@ Feature: Bijstandsaanvraag via Participatiewet
     Given a citizen with the following data:
       | gemeente_code                          | GM0384       |
       | leeftijd                               | 19           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
       | is_alleenstaande                       | true         |
       | heeft_kostendelende_medebewoners       | false        |
       | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 0            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen does not have the right to bijstand
     And the uitkering_bedrag is "0" eurocent
 
-  # The following rejection scenarios tested conditions that were removed from
-  # Art. 43 as scope violations (nationality, middelen, werkzoekende).
-  # These checks belong in Art. 11 (Rechthebbenden), which is not yet
-  # implemented as machine_readable. Blocked by #384.
-  #
-  # Scenario: Burger met voldoende middelen krijgt geen bijstand
-  # Scenario: Niet-Nederlander zonder gelijkstelling krijgt geen bijstand
-  # Scenario: Burger niet geregistreerd als werkzoekende krijgt geen bijstand
+  # Rejection scenarios for nationality, middelen, and werkzoekende checks
+  # belong in Art. 11 (Rechthebbenden), which has no machine_readable yet.
+  # Blocked by #384.
 
   # === Gemeente zonder afstemmingsverordening: volledige bijstand ===
 
@@ -143,13 +115,9 @@ Feature: Bijstandsaanvraag via Participatiewet
     Given a citizen with the following data:
       | gemeente_code                          | GM9999       |
       | leeftijd                               | 35           |
-      | is_nederlander                         | true         |
-      | woont_in_nederland                     | true         |
       | is_alleenstaande                       | true         |
       | heeft_kostendelende_medebewoners       | false        |
       | heeft_pensioengerechtigde_leeftijd_bereikt | false    |
-      | is_geregistreerd_als_werkzoekende      | true         |
-      | heeft_voldoende_middelen               | false        |
       | gedragscategorie                       | 1            |
     When the bijstandsaanvraag is executed for participatiewet article 43
     Then the citizen has the right to bijstand
