@@ -40,20 +40,10 @@
       </rr-toolbar>
     </div>
 
-    <!-- Job creation section (collapsible, above table) -->
     <div id="job-creation" class="job-creation" hidden>
-      <div class="job-creation__header">
-        <h3 class="job-creation__title">New harvest job</h3>
-        <rr-icon-button id="job-creation-toggle" variant="neutral-transparent" size="sm" accessible-label="Toggle">
-          <rr-icon name="chevron-up"></rr-icon>
-        </rr-icon-button>
-      </div>
-      <div id="job-creation-body" class="job-creation__body">
-        <div class="harvest-form">
-          <rr-text-field id="harvest-bwb-id" size="md" placeholder="BWB ID (e.g. BWBR0018451)"></rr-text-field>
-          <rr-button id="harvest-btn" variant="accent-filled" size="md">Harvest</rr-button>
-        </div>
-      </div>
+      <span class="job-creation__label">New harvest job</span>
+      <rr-text-field id="harvest-bwb-id" size="md" placeholder="BWB ID (e.g. BWBR0018451)"></rr-text-field>
+      <rr-button id="harvest-btn" variant="accent-filled" size="md">Harvest</rr-button>
     </div>
 
     <rr-simple-section>

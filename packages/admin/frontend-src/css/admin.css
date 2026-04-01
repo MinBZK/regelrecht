@@ -6,31 +6,17 @@
    ============================================================ */
 
 .job-creation {
-  margin: var(--primitives-space-16) var(--primitives-space-24) 0;
-  background-color: var(--semantics-surfaces-background-color);
-  border: 1px solid var(--semantics-dividers-color);
-  border-radius: var(--primitives-corner-radius-sm);
-  box-shadow: var(--primitives-box-shadows-level-1);
-}
-
-.job-creation__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--primitives-space-8) var(--primitives-space-16);
+  gap: var(--primitives-space-8);
+  margin: var(--primitives-space-16) var(--primitives-space-24) 0;
 }
 
-.job-creation__title {
+.job-creation__label {
+  font-family: var(--primitives-font-family-body);
   font-size: var(--primitives-font-size-80);
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: var(--semantics-content-secondary-color);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0;
-}
-
-.job-creation__body {
-  padding: 0 var(--primitives-space-16) var(--primitives-space-16);
+  color: var(--semantics-content-color);
+  white-space: nowrap;
 }
 
 .harvest-form {

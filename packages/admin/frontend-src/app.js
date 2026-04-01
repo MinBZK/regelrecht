@@ -54,12 +54,12 @@ const TAB_CONFIG = {
 
 const GROUPED_COLUMNS = [
   { key: 'law_id', label: 'Law ID', sortable: true },
-  { key: 'total_jobs', label: 'Jobs', sortable: true },
+  { key: 'total_jobs', label: 'Jobs', sortable: true, filter: { key: 'status', options: JOB_STATUSES, label: 'Status' } },
   { key: 'pending', label: 'Pending', sortable: false },
   { key: 'processing', label: 'Processing', sortable: false },
   { key: 'completed', label: 'Completed', sortable: false },
   { key: 'failed', label: 'Failed', sortable: false },
-  { key: 'latest_created_at', label: 'Latest', sortable: true },
+  { key: 'latest_created_at', label: 'Latest', sortable: true, filter: { key: 'job_type', options: JOB_TYPES, label: 'Type' } },
 ];
 
 const STATUS_BADGE_MAP = {
@@ -109,7 +109,6 @@ const state = {
   viewMode: 'grouped', // 'flat' or 'grouped' (only for jobs tab)
   expandedLawIds: new Set(),
   expandedJobsCache: {}, // { [law_id]: Job[] }
-  jobCreationOpen: true,
 };
 
 
@@ -228,7 +227,10 @@ function renderViewToggle() {
     state.order = 'desc';
     state.expandedLawIds.clear();
     state.expandedJobsCache = {};
-    state.filters = {};
+    // Keep status/job_type filters across views; clear law_id (not supported in grouped)
+    if (state.viewMode === 'grouped') {
+      delete state.filters.law_id;
+    }
     renderViewToggle();
     renderTableHead();
     loadData();
@@ -238,19 +240,7 @@ function renderViewToggle() {
 }
 
 function renderJobCreation() {
-  const section = $('#job-creation');
-  const body = $('#job-creation-body');
-  const toggle = $('#job-creation-toggle');
-
-  section.hidden = false;
-
-  if (state.jobCreationOpen) {
-    body.style.display = '';
-    toggle.querySelector('rr-icon')?.setAttribute('name', 'chevron-up');
-  } else {
-    body.style.display = 'none';
-    toggle.querySelector('rr-icon')?.setAttribute('name', 'chevron-down');
-  }
+  $('#job-creation').hidden = false;
 }
 
 function getActiveColumns() {
@@ -297,18 +287,21 @@ function renderTableHead() {
 
     th.appendChild(labelSpan);
 
-    // Column filter (only in flat view)
-    if (col.filter && !(state.activeTab === 'jobs' && state.viewMode === 'grouped')) {
+    // Column filter
+    if (col.filter) {
       const filterDiv = document.createElement('div');
       filterDiv.className = 'th-filter';
 
+      const filterKey = col.filter.key || col.key;
+      const filterLabel = col.filter.label || col.label;
+
       if (col.filter.options) {
         const select = document.createElement('select');
-        select.setAttribute('aria-label', `Filter ${col.label}`);
+        select.setAttribute('aria-label', `Filter ${filterLabel}`);
 
         const defaultOpt = document.createElement('option');
         defaultOpt.value = '';
-        defaultOpt.textContent = 'All';
+        defaultOpt.textContent = `All ${filterLabel}`;
         select.appendChild(defaultOpt);
 
         for (const v of col.filter.options) {
@@ -318,13 +311,13 @@ function renderTableHead() {
           select.appendChild(opt);
         }
 
-        if (state.filters[col.key]) {
-          select.value = state.filters[col.key];
+        if (state.filters[filterKey]) {
+          select.value = state.filters[filterKey];
         }
 
         select.addEventListener('click', (e) => e.stopPropagation());
         select.addEventListener('change', () => {
-          onFilterChange(col.key, select.value);
+          onFilterChange(filterKey, select.value);
         });
 
         filterDiv.appendChild(select);
@@ -332,10 +325,10 @@ function renderTableHead() {
         const input = document.createElement('input');
         input.type = 'text';
         input.placeholder = 'Filter\u2026';
-        input.setAttribute('aria-label', `Filter ${col.label}`);
+        input.setAttribute('aria-label', `Filter ${filterLabel}`);
 
-        if (state.filters[col.key]) {
-          input.value = state.filters[col.key];
+        if (state.filters[filterKey]) {
+          input.value = state.filters[filterKey];
         }
 
         input.addEventListener('click', (e) => e.stopPropagation());
@@ -343,7 +336,7 @@ function renderTableHead() {
         input.addEventListener('input', () => {
           clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            onFilterChange(col.key, input.value.trim());
+            onFilterChange(filterKey, input.value.trim());
           }, 300);
         });
 
@@ -1041,6 +1034,8 @@ function onFilterChange(key, value) {
     delete state.filters[key];
   }
   state.offset = 0;
+  // Clear expanded jobs cache so child rows re-fetch with new filters
+  state.expandedJobsCache = {};
   loadData();
 }
 
@@ -1351,14 +1346,7 @@ async function init() {
     });
   }
 
-  // Job creation toggle
-  const jobCreationToggle = $('#job-creation-toggle');
-  if (jobCreationToggle) {
-    jobCreationToggle.addEventListener('click', () => {
-      state.jobCreationOpen = !state.jobCreationOpen;
-      renderJobCreation();
-    });
-  }
+
 
   // Bind detail panel close
   $('#detail-close').addEventListener('click', closeDetailPanel);
