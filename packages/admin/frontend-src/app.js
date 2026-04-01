@@ -228,9 +228,7 @@ function renderViewToggle() {
     state.order = 'desc';
     state.expandedLawIds.clear();
     state.expandedJobsCache = {};
-    if (state.viewMode === 'grouped') {
-      delete state.filters.law_id;
-    }
+    state.filters = {};
     renderViewToggle();
     renderTableHead();
     loadData();
