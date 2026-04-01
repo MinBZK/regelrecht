@@ -141,8 +141,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-precommit-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-precommit-
             ${{ runner.os }}-cargo-
 
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
@@ -176,8 +177,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-engine-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-engine-
             ${{ runner.os }}-cargo-
 
       - name: Run engine unit tests
@@ -216,8 +218,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-harvester-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-harvester-
             ${{ runner.os }}-cargo-
 
       - name: Run harvester tests
@@ -256,8 +259,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-pipeline-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-pipeline-
             ${{ runner.os }}-cargo-
 
       - name: Run pipeline integration tests
@@ -290,8 +294,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-wasm-
             ${{ runner.os }}-cargo-
 
       - name: Build for WASM
@@ -367,8 +372,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-admin-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-admin-
             ${{ runner.os }}-cargo-
 
       - name: Install just
@@ -436,8 +442,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             packages/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-editor-api-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
           restore-keys: |
+            ${{ runner.os }}-cargo-editor-api-
             ${{ runner.os }}-cargo-
 
       - name: Install just
