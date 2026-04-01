@@ -16,7 +16,7 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ╙──Computing heeft_toeslagpartner
 ║   ║       ├──Compute IN(...) = False
 ║   ║       │   ├──Resolving from PARAMETERS: $PARTNERSCHAP_TYPE = 'GEEN'
-║   ║       │   └──Resolving from DEFINITION: $GELDIGE_PARTNERTYPEN = ['HUWELIJK', 'GEREGISTREERD_PARTNERSCHAP']
+║   ║       │   └──Resolving from DEFINITION: $GELDIGE_PARTNERTYPEN = ['HUWELIJK', 'GEREGISTREERD_PARTNERSCHAP', 'IB_PARTNERKEUZE', 'SAMENLEVINGSCONTRACT', 'GEMEENSCHAPPELIJK_KIND', 'ERKEND_KIND', 'PARTNER_VOORAFGAAND_JAAR', 'PENSIOENREGISTRATIE', 'GEZAMENLIJKE_EIGEN_WONING', 'GEZAMENLIJKE_HUISHOUDING']
 ║   ║       └──Result: heeft_toeslagpartner = False
 ║   ╟──Reference: algemene_wet_inkomensafhankelijke_regelingen#toetsingsinkomen
 ║   ║   ╟──Resolving from PARAMETERS: $BSN = '999993653'
