@@ -94,11 +94,11 @@ watch(
   { immediate: true },
 );
 
-// Compute effective setup per scenario
-function getSetup(index) {
-  if (!formState.value) return null;
-  return getEffectiveSetup(formState.value, index);
-}
+// Memoized setup per scenario (avoids new object on every render)
+const scenarioSetups = computed(() => {
+  if (!formState.value) return [];
+  return formState.value.scenarios.map((_, i) => getEffectiveSetup(formState.value, i));
+});
 
 function onScenarioFileSelect(event) {
   const filename = event.target.value;
@@ -150,9 +150,9 @@ function onScenarioExecuted(data) {
           </summary>
           <div class="sb-accordion-body">
             <ScenarioForm
-              v-if="getSetup(i)"
+              v-if="scenarioSetups[i]"
               :scenario="scenario"
-              :setup="getSetup(i)"
+              :setup="scenarioSetups[i]"
               :engine="engine"
               :ready="ready"
               :law-id="lawId"
