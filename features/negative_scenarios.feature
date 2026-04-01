@@ -1,7 +1,7 @@
-Feature: Negative scenarios — engine must not hallucinate results
-  These scenarios verify the engine correctly rejects, returns null, or
-  computes the legally correct "negative" outcome when inputs are missing,
-  boundary conditions are hit, or discretion articles have fixed outcomes.
+Feature: Boundary and edge-case scenarios
+  These scenarios verify the engine handles edge cases correctly:
+  missing inputs, legal boundary conditions, null/absent delegation,
+  and discretion articles with fixed outcomes.
 
   # ==========================================================================
   # Missing required inputs
@@ -93,10 +93,23 @@ Feature: Negative scenarios — engine must not hallucinate results
     Then the execution succeeds
     And the output "verzwaarde_motiveringsplicht" is "true"
 
-  Scenario: Bijstand under 21 — normbedrag check fails via Art 21
-    # Art 21 checks leeftijd >= 21. A 20-year-old fails this check,
+  Scenario: Bijstand at exact age 21 — boundary is accepted
+    # Art 21 checks leeftijd >= 21. Exactly 21 passes.
+    Given the calculation date is "2024-06-01"
+    And a citizen with the following data:
+      | gemeente_code                          | GM0384 |
+      | leeftijd                               | 21     |
+      | is_alleenstaande                       | true   |
+      | heeft_kostendelende_medebewoners       | false  |
+      | heeft_pensioengerechtigde_leeftijd_bereikt | false |
+      | gedragscategorie                       | 0      |
+    When the bijstandsaanvraag is executed for participatiewet article 43
+    Then the citizen has the right to bijstand
+    And the uitkering_bedrag is "109171" eurocent
+
+  Scenario: Bijstand at age 20 — boundary is rejected
+    # Art 21 checks leeftijd >= 21. Age 20 fails this check,
     # propagating heeft_recht_op_bijstand = false through Art 43.
-    # The engine must compute 0 eurocent, not invent an amount.
     Given the calculation date is "2024-06-01"
     And a citizen with the following data:
       | gemeente_code                          | GM0384 |
