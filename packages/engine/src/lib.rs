@@ -54,7 +54,7 @@ pub mod telemetry;
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
     HookDeclaration, HookFilter, HookPoint, MachineReadable, OverrideDeclaration,
-    ProcedureDefinition, Source, Stage,
+    ProcedureDefinition, Source, Stage, UntranslatableEntry,
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
@@ -68,7 +68,9 @@ pub use operations::{evaluate_value, execute_operation, ValueResolver};
 pub use resolver::RuleResolver;
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
-pub use types::{Operation, ParameterType, PathNodeType, RegulatoryLayer, ResolveType, Value};
+pub use types::{
+    Operation, ParameterType, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode, Value,
+};
 pub use uri::{internal_reference, ReferenceType, RegelrechtUri, RegelrechtUriBuilder};
 
 /// Library version

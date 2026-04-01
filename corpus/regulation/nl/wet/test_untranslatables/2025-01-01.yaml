@@ -1,0 +1,98 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.1/schema.json
+$id: test_untranslatables
+name: Testwet onvertaalbare constructies
+regulatory_layer: WET
+bwb_id: BWBR9999901
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+url: https://example.com/test_untranslatables
+
+articles:
+  - number: '1'
+    url: https://example.com/test_untranslatables/1
+    text: >-
+      De basistoeslag bedraagt 1000 eurocent.
+    machine_readable:
+      execution:
+        output:
+          - name: basistoeslag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: basistoeslag
+            value: 1000
+
+  - number: '2'
+    url: https://example.com/test_untranslatables/2
+    text: >-
+      Het bedrag wordt naar boven afgerond op hele euro's.
+    machine_readable:
+      untranslatables:
+        - construct: afronden op hele euro's
+          reason: Rounding is not available as an engine operation
+          suggestion: Add ROUND/CEIL operation to engine
+          legal_text_excerpt: Het bedrag wordt naar boven afgerond op hele euro's
+          accepted: false
+      execution:
+        parameters:
+          - name: bedrag
+            type: number
+        output:
+          - name: afgerond_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: afgerond_bedrag
+            value: $bedrag
+
+  - number: '3'
+    url: https://example.com/test_untranslatables/3
+    text: >-
+      De toegekende toeslag bedraagt tweemaal de basistoeslag.
+    machine_readable:
+      execution:
+        input:
+          - name: basistoeslag
+            type: amount
+            source:
+              output: basistoeslag
+            type_spec:
+              unit: eurocent
+        output:
+          - name: toegekende_toeslag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: toegekende_toeslag
+            value:
+              operation: MULTIPLY
+              values:
+                - $basistoeslag
+                - 2
+
+  - number: '4'
+    url: https://example.com/test_untranslatables/4
+    text: >-
+      De som van alle deeltoeslagen wordt berekend. Dit artikel
+      is geaccepteerd als onvertaalbaar.
+    machine_readable:
+      untranslatables:
+        - construct: som van alle deeltoeslagen
+          reason: Aggregation over variable-length collections is not supported
+          suggestion: Add SUM/FOREACH operation to engine
+          legal_text_excerpt: De som van alle deeltoeslagen wordt berekend
+          accepted: true
+      execution:
+        output:
+          - name: som_deeltoeslagen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: som_deeltoeslagen
+            value: 0

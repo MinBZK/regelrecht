@@ -94,6 +94,15 @@ pub enum EngineError {
     #[error("Invalid date format: {0}")]
     InvalidDate(String),
 
+    /// Article contains untranslatable constructs (RFC-012)
+    #[error("Untranslatable construct in {law_id} article {article}: {construct} — {reason}")]
+    Untranslatable {
+        law_id: String,
+        article: String,
+        construct: String,
+        reason: String,
+    },
+
     /// External reference not resolved - requires ServiceProvider
     #[error(
         "External reference not resolved: input '{input_name}' requires resolution from \
@@ -212,6 +221,10 @@ pub enum ExternalError {
     /// Invalid date format
     #[error("Invalid date format")]
     InvalidDate,
+
+    /// Article contains untranslatable constructs (RFC-012)
+    #[error("Untranslatable construct: {0}")]
+    Untranslatable(String),
 }
 
 impl From<EngineError> for ExternalError {
@@ -242,6 +255,9 @@ impl From<EngineError> for ExternalError {
             }
             EngineError::DataSourceError(_) => ExternalError::DataSourceError,
             EngineError::InvalidDate(_) => ExternalError::InvalidDate,
+            EngineError::Untranslatable { construct, .. } => {
+                ExternalError::Untranslatable(construct)
+            }
             EngineError::TracedError { source, .. } => ExternalError::from(*source),
         }
     }

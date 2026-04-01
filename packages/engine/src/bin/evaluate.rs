@@ -19,7 +19,7 @@
 //!   - law_uuid: Optional<String> — the law UUID if available
 //!   - error: Optional<String> — error message if evaluation failed
 
-use regelrecht_engine::{LawExecutionService, Value};
+use regelrecht_engine::{LawExecutionService, UntranslatableMode, Value};
 use std::collections::BTreeMap;
 use std::io::Read;
 
@@ -102,6 +102,20 @@ fn main() {
     }
 
     let mut service = LawExecutionService::new();
+
+    // Parse --untranslatable=MODE from CLI args (RFC-012)
+    for arg in std::env::args().skip(1) {
+        if let Some(mode_str) = arg.strip_prefix("--untranslatable=") {
+            match mode_str.parse::<UntranslatableMode>() {
+                Ok(mode) => service.set_untranslatable_mode(mode),
+                Err(e) => {
+                    let resp = error_response(e);
+                    println!("{}", serde_json::to_string(&resp).unwrap_or_default());
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
 
     // Load the primary law and capture its ID
     let law_id = match service.load_law(&request.law_yaml) {

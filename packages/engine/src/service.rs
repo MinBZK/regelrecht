@@ -35,7 +35,7 @@ use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::RuleResolver;
 use crate::trace::TraceBuilder;
-use crate::types::{PathNodeType, RegulatoryLayer, ResolveType, Value};
+use crate::types::{PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode, Value};
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -332,6 +332,8 @@ pub struct LawExecutionService {
     data_registry: DataSourceRegistry,
     /// Source provenance tracking: law_id → (source_id, source_name).
     source_info: HashMap<String, (String, String)>,
+    /// How to handle articles with untranslatable constructs (RFC-012)
+    untranslatable_mode: UntranslatableMode,
 }
 
 impl Default for LawExecutionService {
@@ -347,7 +349,13 @@ impl LawExecutionService {
             resolver: RuleResolver::new(),
             data_registry: DataSourceRegistry::new(),
             source_info: HashMap::new(),
+            untranslatable_mode: UntranslatableMode::default(),
         }
+    }
+
+    /// Set the untranslatable handling mode (RFC-012).
+    pub fn set_untranslatable_mode(&mut self, mode: UntranslatableMode) {
+        self.untranslatable_mode = mode;
     }
 
     /// Load a law from YAML string.
@@ -1041,6 +1049,79 @@ impl LawExecutionService {
         Ok(hook_outputs)
     }
 
+    /// Handle untranslatable constructs based on the configured mode (RFC-012).
+    ///
+    /// Called before article execution when the article has `untranslatables` annotations.
+    /// Behavior depends on `self.untranslatable_mode`:
+    /// - `Error`: hard error on unaccepted entries, accepted ones log to trace
+    /// - `Propagate`: always log to trace (taint propagation happens at output level)
+    /// - `Warn`: log warning to trace, continue
+    /// - `Ignore`: only error on unaccepted entries, otherwise silent
+    fn handle_untranslatables(
+        &self,
+        law_id: &str,
+        article_number: &str,
+        untranslatables: &[crate::article::UntranslatableEntry],
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<()> {
+        for entry in untranslatables {
+            // Always record in trace regardless of mode
+            let msg = format!("Untranslatable: {} — {}", entry.construct, entry.reason);
+            res_ctx.trace_push(
+                format!("untranslatable:{}", entry.construct),
+                PathNodeType::Article,
+            );
+            res_ctx.trace_set_message(msg.clone());
+            res_ctx.trace_pop();
+
+            match self.untranslatable_mode {
+                UntranslatableMode::Error => {
+                    if !entry.accepted {
+                        return Err(EngineError::Untranslatable {
+                            law_id: law_id.to_string(),
+                            article: article_number.to_string(),
+                            construct: entry.construct.clone(),
+                            reason: entry.reason.clone(),
+                        });
+                    }
+                    tracing::info!(
+                        law_id,
+                        article = article_number,
+                        construct = %entry.construct,
+                        "Accepted untranslatable, proceeding with partial logic"
+                    );
+                }
+                UntranslatableMode::Propagate => {
+                    tracing::warn!(
+                        law_id,
+                        article = article_number,
+                        construct = %entry.construct,
+                        "Untranslatable construct — outputs will be tainted"
+                    );
+                }
+                UntranslatableMode::Warn => {
+                    tracing::warn!(
+                        law_id,
+                        article = article_number,
+                        construct = %entry.construct,
+                        "Untranslatable construct — executing partial logic"
+                    );
+                }
+                UntranslatableMode::Ignore => {
+                    if !entry.accepted {
+                        return Err(EngineError::Untranslatable {
+                            law_id: law_id.to_string(),
+                            article: article_number.to_string(),
+                            construct: entry.construct.clone(),
+                            reason: entry.reason.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Apply lex specialis overrides to an article's outputs.
     ///
     /// For each output in the result, checks if an override exists from the contextual law.
@@ -1167,6 +1248,17 @@ impl LawExecutionService {
         stage: &str,
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
+        // RFC-012: Check for untranslatable constructs before execution
+        if let Some(untranslatables) = article
+            .machine_readable
+            .as_ref()
+            .and_then(|mr| mr.untranslatables.as_ref())
+        {
+            if !untranslatables.is_empty() {
+                self.handle_untranslatables(&law.id, &article.number, untranslatables, res_ctx)?;
+            }
+        }
+
         // Create execution context
         let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
 
@@ -1469,6 +1561,7 @@ impl LawExecutionService {
                             implements: None,
                             hooks: None,
                             overrides: None,
+                            untranslatables: None,
                         }),
                     };
 

@@ -516,6 +516,24 @@ pub struct ProcedureDefinition {
     pub stages: Vec<Stage>,
 }
 
+/// A legal construct that cannot be expressed with the engine's current operation set (RFC-012)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UntranslatableEntry {
+    /// The legal construct that cannot be translated
+    pub construct: String,
+    /// Why this construct is untranslatable
+    pub reason: String,
+    /// Suggested engine operation or approach to resolve this
+    #[serde(default)]
+    pub suggestion: Option<String>,
+    /// Relevant excerpt from the article's legal text
+    #[serde(default)]
+    pub legal_text_excerpt: Option<String>,
+    /// Whether a human has reviewed and acknowledged this gap
+    #[serde(default)]
+    pub accepted: bool,
+}
+
 /// Machine-readable section of an article
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MachineReadable {
@@ -539,6 +557,9 @@ pub struct MachineReadable {
     /// Override declarations: this article replaces another article's output (RFC-007)
     #[serde(default)]
     pub overrides: Option<Vec<OverrideDeclaration>>,
+    /// Legal constructs that cannot be expressed with the current operation set (RFC-012)
+    #[serde(default)]
+    pub untranslatables: Option<Vec<UntranslatableEntry>>,
 }
 
 /// Represents a single article in a law
