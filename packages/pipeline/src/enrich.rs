@@ -322,6 +322,7 @@ const LLM_ENV_ALLOWLIST: &[&str] = &[
     "SHELL",
     "TMPDIR",
     "XDG_",
+    "NODE_OPTIONS",
     // Provider-specific auth
     "ANTHROPIC_API_KEY",
     "VLAM_API_KEY",
@@ -355,6 +356,7 @@ fn build_command(
             let mut cmd = tokio::process::Command::new(path);
             cmd.env_clear();
             cmd.envs(safe_env);
+            cmd.env("NODE_OPTIONS", "--max-old-space-size=512");
             cmd.arg("run")
                 .arg(prompt)
                 .arg("-f")
@@ -372,6 +374,7 @@ fn build_command(
             let mut cmd = tokio::process::Command::new(path);
             cmd.env_clear();
             cmd.envs(safe_env);
+            cmd.env("NODE_OPTIONS", "--max-old-space-size=512");
             cmd.arg("-p")
                 .arg(prompt)
                 .arg("--allowedTools")
@@ -550,8 +553,7 @@ pub async fn execute_enrich_with_runner(
     }
 
     // Count articles and existing machine_readable sections before enrichment
-    let articles_before = count_articles(&yaml_abs).await?;
-    let machine_readable_before = count_machine_readable_articles(&yaml_abs).await?;
+    let (articles_before, machine_readable_before) = count_article_stats(&yaml_abs).await?;
 
     let provider_name = config.provider.name().to_string();
 
@@ -576,7 +578,7 @@ pub async fn execute_enrich_with_runner(
 
     // Count articles with machine_readable after enrichment.
     // Coverage score measures what the LLM *added* this session, not total coverage.
-    let articles_with_machine_readable = count_machine_readable_articles(&yaml_abs).await?;
+    let (_, articles_with_machine_readable) = count_article_stats(&yaml_abs).await?;
     let newly_enriched = articles_with_machine_readable.saturating_sub(machine_readable_before);
     let articles_needing_enrichment = articles_before.saturating_sub(machine_readable_before);
     let coverage_score = if articles_needing_enrichment > 0 {
@@ -693,18 +695,14 @@ async fn compute_prompt_hash(repo_path: &Path) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Count total articles in a law YAML file.
-async fn count_articles(path: &Path) -> Result<usize> {
+/// Count total articles and articles with `machine_readable` in one parse pass.
+async fn count_article_stats(path: &Path) -> Result<(usize, usize)> {
     let content = tokio::fs::read_to_string(path).await?;
     let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
-    Ok(count_articles_in_value(&value))
-}
-
-/// Count articles that have a `machine_readable` section.
-async fn count_machine_readable_articles(path: &Path) -> Result<usize> {
-    let content = tokio::fs::read_to_string(path).await?;
-    let value: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)?;
-    Ok(count_machine_readable_in_value(&value))
+    Ok((
+        count_articles_in_value(&value),
+        count_machine_readable_in_value(&value),
+    ))
 }
 
 fn count_articles_in_value(value: &serde_yaml_ng::Value) -> usize {

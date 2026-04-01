@@ -122,7 +122,7 @@ impl CorpusClient {
                 // job-level retry can re-stage and commit them cleanly.
                 let remote_ref = format!("origin/{}", self.config.branch);
                 let _ = self
-                    .run_git(&["fetch", "origin", &self.config.branch])
+                    .run_git(&["fetch", "--depth", "1", "origin", &self.config.branch])
                     .await;
                 let _ = self.run_git(&["reset", "--hard", &remote_ref]).await;
                 return Err(e);
@@ -170,6 +170,9 @@ impl CorpusClient {
         let output = Command::new("git")
             .args([
                 "clone",
+                "--depth",
+                "1",
+                "--quiet",
                 "--branch",
                 &self.config.branch,
                 "--single-branch",
@@ -208,6 +211,9 @@ impl CorpusClient {
         let output = Command::new("git")
             .args([
                 "clone",
+                "--depth",
+                "1",
+                "--quiet",
                 "--branch",
                 "development",
                 "--single-branch",
@@ -247,7 +253,7 @@ impl CorpusClient {
     }
 
     async fn git_fetch_reset(&self) -> Result<()> {
-        self.run_git(&["fetch", "origin", &self.config.branch])
+        self.run_git(&["fetch", "--depth", "1", "origin", &self.config.branch])
             .await?;
 
         let remote_ref = format!("origin/{}", self.config.branch);
