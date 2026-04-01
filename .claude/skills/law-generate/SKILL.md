@@ -19,7 +19,7 @@ Generates `machine_readable` sections for Dutch law YAML files through an iterat
 cycle of creation, validation, and BDD testing.
 
 **CRITICAL**: All generated YAML MUST pass `just validate <file>`. The schema is the
-single source of truth. When in doubt, consult `schema/v0.5.0/schema.json` and study
+single source of truth. When in doubt, consult `schema/v0.5.1/schema.json` and study
 working examples in the corpus.
 
 ## Setup
@@ -415,6 +415,43 @@ Articles that SHOULD be made executable:
 - Age-dependent rules ("de leeftijd van X jaar heeft bereikt")
 - Deadline calculations ("binnen X weken na")
 
+### Untranslatables — When to Flag Instead of Approximate (RFC-012)
+
+When the engine's operation set cannot faithfully express a legal construct, do NOT
+approximate. Instead, add an `untranslatables` entry and skip the inexpressible part.
+
+**Flag as untranslatable when you encounter:**
+- **Rounding** — "afronden", "naar boven afgerond", "afgerond op hele euro's"
+- **Aggregation over collections** — "het totaal van", "de som van" over a variable-length set
+- **Table/bracket lookups** — multi-dimensional tables that would need >8 IF cases
+- **Date differences** — "het aantal maanden/jaren tussen X en Y"
+- **String manipulation** — concatenation, pattern matching, substring extraction
+- **Domain-specific formulas** — "berekend volgens de actuariële methode"
+- **Ambiguous conditions** — "redelijke termijn", "zo spoedig mogelijk"
+
+**Format:**
+```yaml
+machine_readable:
+  untranslatables:
+    - construct: "afronden op hele euro's"
+      reason: "Rounding is not available as an engine operation"
+      suggestion: "Add ROUND/CEIL/FLOOR operation to engine"
+      legal_text_excerpt: "Het bedrag wordt naar boven afgerond op hele euro's"
+      accepted: false
+  execution:
+    # Only the parts that CAN be expressed
+```
+
+Required fields: `construct`, `reason`. Optional: `suggestion`, `legal_text_excerpt`,
+`accepted` (boolean, default false — set true only after human review).
+
+**Rules:**
+- Do NOT build a 10+ case IF tree to simulate a table lookup
+- Do NOT use arithmetic tricks to approximate rounding
+- Do NOT hardcode pre-computed aggregation results
+- An article CAN have both `untranslatables` AND `execution` — flag what you can't
+  express, implement what you can
+
 ### Other Rules
 - Convert monetary amounts to eurocent (€100 = 10000)
 - Use `$variable` references for inter-action dependencies
@@ -693,11 +730,13 @@ Interpreted {LAW_NAME}
 
   Iterations needed: {N}
 
+  Untranslatables: {N} construct(s) in {N} article(s)
+  - Article {N}: {construct} — {reason}
+
   Remaining issues:
   - {description of any unresolved failures}
 
   TODOs:
   - {external laws that need to be downloaded/implemented}
-
-  The law is now executable via the engine!
+  - Review untranslatables and set accepted: true for verified gaps
 ```

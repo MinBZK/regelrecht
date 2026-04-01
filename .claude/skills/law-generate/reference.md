@@ -1,6 +1,6 @@
 # Law Generate - Technical Reference
 
-Based on schema v0.5.0 (`schema/v0.5.0/schema.json`). Validate with `just validate`.
+Based on schema v0.5.1 (`schema/v0.5.1/schema.json`). Validate with `just validate`.
 
 ## Complete Machine-Readable Section Structure
 
@@ -498,7 +498,7 @@ This is the opposite of English. So `€1.234,56` means one thousand two hundred
 
 ## External Resources
 
-- **Schema**: `schema/v0.5.0/schema.json` (v0.5.0)
+- **Schema**: `schema/v0.5.1/schema.json` (v0.5.1)
 - **Working examples**:
   - `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml` — basic patterns
   - `corpus/regulation/nl/wet/algemene_wet_bestuursrecht/2026-01-01.yaml` — hooks, procedures

@@ -455,6 +455,41 @@ impl Operation {
     }
 }
 
+/// How the engine handles articles with `untranslatables` annotations (RFC-012).
+///
+/// Controls runtime behavior when an article declares legal constructs that
+/// cannot be faithfully expressed with the current engine operation set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UntranslatableMode {
+    /// Hard error on any unaccepted untranslatable. Accepted ones execute partial logic.
+    #[default]
+    Error,
+    /// Execute partial logic. Outputs from articles with untranslatables carry an
+    /// `UNTRANSLATABLE` taint that propagates through downstream operations (like NaN).
+    Propagate,
+    /// Execute partial logic, log warning in trace. No taint propagation.
+    Warn,
+    /// Execute partial logic silently. Only valid for entries with `accepted: true` —
+    /// unaccepted untranslatables still error.
+    Ignore,
+}
+
+impl std::str::FromStr for UntranslatableMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "error" => Ok(UntranslatableMode::Error),
+            "propagate" => Ok(UntranslatableMode::Propagate),
+            "warn" => Ok(UntranslatableMode::Warn),
+            "ignore" => Ok(UntranslatableMode::Ignore),
+            _ => Err(format!(
+                "unknown untranslatable mode '{s}', expected: error, propagate, warn, ignore"
+            )),
+        }
+    }
+}
+
 /// Re-export the canonical regulatory layer types from the shared crate.
 pub use regelrecht_shared::RegulatoryLayer;
 

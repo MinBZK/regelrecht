@@ -1,6 +1,6 @@
 # Law Generate - Usage Examples
 
-All examples below conform to schema v0.5.0 and pass `just validate`.
+All examples below conform to schema v0.5.1 and pass `just validate`.
 
 ## Example 1: Simple Constant (direct value assignment)
 
@@ -369,7 +369,7 @@ actions:
 ```
 
 **Key points:**
-- Use `IF` with `cases`/`default` for multi-branch conditionals (SWITCH does not exist in v0.5.0)
+- Use `IF` with `cases`/`default` for multi-branch conditionals (SWITCH does not exist in v0.5.1)
 - Cases are evaluated in order; the first matching case wins
 - Each case has `when` (condition) and `then` (result value)
 - `default` is the fallback if no case matches
@@ -631,7 +631,7 @@ then: 100
 else: 0
 ```
 
-**Correct (v0.5.0):**
+**Correct (v0.5.1):**
 ```yaml
 operation: IF
 cases:
@@ -643,7 +643,7 @@ cases:
 default: 0
 ```
 
-### Mistake 2: Using SWITCH (removed in v0.5.0)
+### Mistake 2: Using SWITCH (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: SWITCH
@@ -713,7 +713,7 @@ conditions:
     value: true
 ```
 
-### Mistake 6: Using SUBTRACT_DATE for age (removed in v0.5.0)
+### Mistake 6: Using SUBTRACT_DATE for age (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: SUBTRACT_DATE
@@ -729,7 +729,7 @@ date_of_birth: $geboortedatum
 reference_date: $peildatum
 ```
 
-### Mistake 7: Using CONCAT (removed in v0.5.0)
+### Mistake 7: Using CONCAT (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: CONCAT
@@ -746,7 +746,7 @@ values:
   - $wet_naam
 ```
 
-### Mistake 8: Using NOT_EQUALS, NOT_IN, NOT_NULL (removed in v0.5.0)
+### Mistake 8: Using NOT_EQUALS, NOT_IN, NOT_NULL (removed in v0.5.1)
 **Wrong:**
 ```yaml
 operation: NOT_EQUALS

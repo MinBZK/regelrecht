@@ -8,6 +8,15 @@ use regelrecht_engine::Value;
 use crate::world::RegelrechtWorld;
 
 // =============================================================================
+// Untranslatable steps (RFC-012)
+// =============================================================================
+
+#[when(expr = "the untranslatable test law is executed for output {string}")]
+fn execute_untranslatable_test(world: &mut RegelrechtWorld, output_name: String) {
+    world.execute_law("test_untranslatables", &output_name);
+}
+
+// =============================================================================
 // Bijstand steps
 // =============================================================================
 

@@ -17,6 +17,18 @@ fn set_calculation_date(world: &mut RegelrechtWorld, date: String) {
 }
 
 // =============================================================================
+// Untranslatable steps (RFC-012)
+// =============================================================================
+
+#[given(expr = "the untranslatable mode is {string}")]
+fn set_untranslatable_mode(world: &mut RegelrechtWorld, mode: String) {
+    let mode: regelrecht_engine::UntranslatableMode = mode
+        .parse()
+        .unwrap_or_else(|e| panic!("Invalid untranslatable mode: {e}"));
+    world.service.set_untranslatable_mode(mode);
+}
+
+// =============================================================================
 // Bijstand steps
 // =============================================================================
 

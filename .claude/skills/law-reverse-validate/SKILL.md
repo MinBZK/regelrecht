@@ -96,6 +96,25 @@ Verify that no v0.4.0-only operations are used:
 - No NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN (must use NOT wrapper)
 - No FOREACH (removed from schema)
 
+## Workaround Detection — Untranslatables (RFC-012)
+
+Check for signs that the translator approximated a construct that should be flagged
+as untranslatable:
+
+**Red flags:**
+- `IF` with >8 cases — likely an inlined table lookup. Ask: is this logic written in
+  the law, or is it an approximation of a table?
+- Arithmetic chains that approximate rounding — e.g., `MULTIPLY` then `DIVIDE` by
+  powers of 10. If the law says "afgerond", this should be an untranslatable.
+- Hardcoded values not mentioned in the article's text — may be pre-computed results
+  of a calculation the translator couldn't express
+
+**When you detect a workaround:**
+1. Extract the construct to an `untranslatables` entry
+2. Simplify the execution logic to handle only the translatable parts
+3. Re-run `just validate <file>`
+4. Report in the findings
+
 ## Report
 
 Report findings to the user:
@@ -111,8 +130,10 @@ Reverse Validation for {LAW_NAME}
 
   Assumptions requiring review:
   - Article {N}: {description of assumed element}
-  - Article {M}: {description of assumed element}
 
   Removed elements:
   - Article {N}: {what was removed and why}
+
+  Possible untranslatable workarounds:
+  - Article {N}: {pattern detected} — recommend extracting to untranslatables
 ```
