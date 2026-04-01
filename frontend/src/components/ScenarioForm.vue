@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
+import { formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 
 const props = defineProps({
@@ -41,13 +42,21 @@ function initDataSources() {
 
 const dataSources = ref(initDataSources());
 
-// Re-init when scenario changes
-watch(() => props.setup, () => {
+// Re-init when scenario/setup changes
+watch([() => props.setup, () => props.scenario], () => {
   calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
   parameterValues.value = Object.fromEntries(
     (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
   );
   dataSources.value = initDataSources();
+  expectations.value = Object.fromEntries(
+    (props.scenario.assertions || [])
+      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
+      .map((a) => [a.outputName, String(a.value)]),
+  );
+  selectedOutputs.value = initOutputs();
+  result.value = null;
+  error.value = null;
 }, { deep: true });
 
 // Expectations from scenario assertions
@@ -122,13 +131,16 @@ function execute() {
     emit('executed', {
       result: execResult,
       traceText: execResult.trace_text || null,
+      error: null,
     });
   } catch (e) {
     if (e && typeof e === 'object' && e.error) {
       error.value = e.error;
-      emit('executed', { result: null, traceText: e.trace_text || null });
+      emit('executed', { result: null, traceText: e.trace_text || null, error: e.error });
     } else {
-      error.value = typeof e === 'string' ? e : (e.message || String(e));
+      const msg = typeof e === 'string' ? e : (e.message || String(e));
+      error.value = msg;
+      emit('executed', { result: null, traceText: null, error: msg });
     }
   } finally {
     running.value = false;
@@ -141,39 +153,9 @@ function updateDataSourceRows(index, rows) {
   dataSources.value = updated;
 }
 
-// --- Result formatting ---
-function formatValue(value) {
-  if (value === null || value === undefined) return 'null';
-  if (typeof value === 'boolean') return value ? 'ja' : 'nee';
-  return String(value);
-}
-
-function formatOutputValue(value, name) {
-  const raw = formatValue(value);
-  if (typeof value === 'number' && Number.isInteger(value) &&
-      (name.includes('hoogte') || name.includes('bedrag') || name.includes('premie'))) {
-    return `${raw} (${(value / 100).toFixed(2)} euro)`;
-  }
-  return raw;
-}
-
+// --- Result formatting (delegates to shared utils) ---
 function matchStatus(outputName, actualValue) {
-  if (!(outputName in expectations.value)) return 'neutral';
-  const expected = expectations.value[outputName];
-  if (expected === null || expected === undefined) return 'neutral';
-  const actual = normalize(actualValue);
-  const exp = normalize(expected);
-  if (actual === exp) return 'passed';
-  if (typeof actual === 'number' && typeof exp === 'number' && Math.abs(actual - exp) < 1e-9) return 'passed';
-  return 'failed';
-}
-
-function normalize(v) {
-  if (v === 'true' || v === true) return true;
-  if (v === 'false' || v === false) return false;
-  if (v === 'null' || v === null) return null;
-  if (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)) return Number(v);
-  return v;
+  return _matchStatus(outputName, actualValue, expectations.value);
 }
 </script>
 

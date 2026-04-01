@@ -43,10 +43,12 @@ watch(
 // --- Trace state (receives trace from last executed scenario) ---
 const lastTraceText = ref(null);
 const lastResult = ref(null);
+const lastError = ref(null);
 
-function handleScenarioExecuted({ result, traceText }) {
+function handleScenarioExecuted({ result, traceText, error }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
+  lastError.value = error || null;
 }
 
 // --- Editor state ---
@@ -260,6 +262,7 @@ function selectArticle(number) {
               <ExecutionTraceView
                 :result="lastResult"
                 :trace-text="lastTraceText"
+                :error="lastError"
               />
             </rr-page>
           </div>

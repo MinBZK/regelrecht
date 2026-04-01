@@ -65,7 +65,7 @@ async function fetchLawYaml(lawId) {
 let watchVersion = 0;
 
 watch(
-  [() => props.lawYaml, () => props.ready],
+  [() => props.lawYaml, () => props.ready, formState],
   async ([lawYaml, isReady]) => {
     if (!lawYaml || !isReady || !props.engine) return;
     const version = ++watchVersion;
@@ -145,6 +145,7 @@ function onScenarioExecuted(data) {
           </summary>
           <div class="sb-accordion-body">
             <ScenarioForm
+              v-if="getSetup(i)"
               :scenario="scenario"
               :setup="getSetup(i)"
               :engine="engine"

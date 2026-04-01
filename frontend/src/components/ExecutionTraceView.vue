@@ -1,4 +1,7 @@
 <script setup>
+import { computed } from 'vue';
+import { formatValue, formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+
 const props = defineProps({
   /** Execution result with outputs */
   result: { type: Object, default: null },
@@ -12,61 +15,13 @@ const props = defineProps({
   running: { type: Boolean, default: false },
 });
 
-function formatValue(value) {
-  if (value === null || value === undefined) return 'null';
-  if (typeof value === 'boolean') return value ? 'ja' : 'nee';
-  return String(value);
-}
-
-function formatOutputValue(value, name) {
-  const raw = formatValue(value);
-  if (typeof value === 'number' && isLikelyEurocent(name, value)) {
-    return `${raw} (${(value / 100).toFixed(2)} euro)`;
-  }
-  return raw;
-}
-
-function isLikelyEurocent(name, value) {
-  return (
-    Number.isInteger(value) &&
-    (name.includes('hoogte') || name.includes('bedrag') || name.includes('premie'))
-  );
-}
-
 function matchStatus(outputName, actualValue) {
-  if (!(outputName in props.expectations)) return 'neutral';
-  const expected = props.expectations[outputName];
-  if (expected === null || expected === undefined) return 'neutral';
-
-  const actual = normalizeForCompare(actualValue);
-  const exp = normalizeForCompare(expected);
-  return primitiveEqual(actual, exp) ? 'passed' : 'failed';
-}
-
-function primitiveEqual(a, b) {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (typeof a !== typeof b) return false;
-  if (typeof a === 'number') return Math.abs(a - b) < 1e-9;
-  return false;
-}
-
-function normalizeForCompare(value) {
-  if (value === 'true' || value === true) return true;
-  if (value === 'false' || value === false) return false;
-  if (value === 'null' || value === null) return null;
-  if (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value)) return Number(value);
-  return value;
+  return _matchStatus(outputName, actualValue, props.expectations);
 }
 
 const hasContent = computed(() =>
   props.result || props.traceText || props.error || props.running,
 );
-</script>
-
-<script>
-import { computed } from 'vue';
-export default {};
 </script>
 
 <template>
