@@ -180,6 +180,8 @@ async fn process_next_job(
             law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Harvested).await?;
             tx.commit().await?;
 
+            let _ = law_status::reset_fail_count(pool, &job.law_id, JobType::Harvest).await;
+
             if let Ok(entry) = law_status::get_law(pool, &job.law_id).await {
                 if entry.law_name.is_none() {
                     let _ = law_status::upsert_law(pool, &job.law_id, Some(&result.law_name)).await;
@@ -192,62 +194,72 @@ async fn process_next_job(
             // Uses INSERT ... ON CONFLICT DO NOTHING against the
             // idx_unique_active_enrich_job partial unique index to atomically
             // prevent duplicate enrich jobs — no TOCTOU race possible.
-            for provider_name in crate::enrich::ENRICH_PROVIDERS {
-                let enrich_payload = EnrichPayload {
-                    law_id: job.law_id.clone(),
-                    yaml_path: result.file_path.clone(),
-                    provider: Some((*provider_name).to_string()),
-                };
-                let payload_json = match serde_json::to_value(&enrich_payload) {
-                    Ok(json) => json,
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            law_id = %job.law_id,
-                            provider = %provider_name,
-                            "failed to serialize enrich payload, skipping"
-                        );
-                        continue;
-                    }
-                };
-                let enrich_req =
-                    CreateJobRequest::new(JobType::Enrich, &job.law_id).with_payload(payload_json);
-                match job_queue::create_enrich_job_if_not_exists(pool, enrich_req).await {
-                    Ok(Some(enrich_job)) => {
-                        // Link the first created enrich job to the law entry.
-                        // With dual providers only one enrich_job_id column exists,
-                        // so the first provider's job wins.
-                        if let Err(e) =
-                            law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await
-                        {
+
+            // Skip auto-enrich if law is exhausted for enrich
+            let enrich_exhausted = match law_status::get_law(pool, &job.law_id).await {
+                Ok(law) => law.status == LawStatusValue::EnrichExhausted,
+                Err(_) => false,
+            };
+            if enrich_exhausted {
+                tracing::info!(law_id = %job.law_id, "skipping auto-enrich: law is enrich_exhausted");
+            } else {
+                for provider_name in crate::enrich::ENRICH_PROVIDERS {
+                    let enrich_payload = EnrichPayload {
+                        law_id: job.law_id.clone(),
+                        yaml_path: result.file_path.clone(),
+                        provider: Some((*provider_name).to_string()),
+                    };
+                    let payload_json = match serde_json::to_value(&enrich_payload) {
+                        Ok(json) => json,
+                        Err(e) => {
                             tracing::warn!(
                                 error = %e,
                                 law_id = %job.law_id,
+                                provider = %provider_name,
+                                "failed to serialize enrich payload, skipping"
+                            );
+                            continue;
+                        }
+                    };
+                    let enrich_req = CreateJobRequest::new(JobType::Enrich, &job.law_id)
+                        .with_payload(payload_json);
+                    match job_queue::create_enrich_job_if_not_exists(pool, enrich_req).await {
+                        Ok(Some(enrich_job)) => {
+                            // Link the first created enrich job to the law entry.
+                            // With dual providers only one enrich_job_id column exists,
+                            // so the first provider's job wins.
+                            if let Err(e) =
+                                law_status::set_enrich_job(pool, &job.law_id, enrich_job.id).await
+                            {
+                                tracing::warn!(
+                                    error = %e,
+                                    law_id = %job.law_id,
+                                    enrich_job_id = %enrich_job.id,
+                                    "failed to link enrich job to law entry"
+                                );
+                            }
+                            tracing::info!(
                                 enrich_job_id = %enrich_job.id,
-                                "failed to link enrich job to law entry"
+                                law_id = %job.law_id,
+                                provider = %provider_name,
+                                "auto-created enrich job after harvest"
                             );
                         }
-                        tracing::info!(
-                            enrich_job_id = %enrich_job.id,
-                            law_id = %job.law_id,
-                            provider = %provider_name,
-                            "auto-created enrich job after harvest"
-                        );
-                    }
-                    Ok(None) => {
-                        tracing::info!(
-                            law_id = %job.law_id,
-                            provider = %provider_name,
-                            "skipping enrich job creation: active job already exists"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            law_id = %job.law_id,
-                            provider = %provider_name,
-                            "failed to auto-create enrich job (harvest still succeeded)"
-                        );
+                        Ok(None) => {
+                            tracing::info!(
+                                law_id = %job.law_id,
+                                provider = %provider_name,
+                                "skipping enrich job creation: active job already exists"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                law_id = %job.law_id,
+                                provider = %provider_name,
+                                "failed to auto-create enrich job (harvest still succeeded)"
+                            );
+                        }
                     }
                 }
             }
@@ -259,6 +271,15 @@ async fn process_next_job(
                 let next_depth = current_depth + 1;
                 let mut created = 0u32;
                 for bwb_id in &result.referenced_bwb_ids {
+                    // Skip harvest for exhausted laws
+                    match law_status::get_law(pool, bwb_id).await {
+                        Ok(law) if law.status == LawStatusValue::HarvestExhausted => {
+                            tracing::info!(bwb_id = %bwb_id, "skipping follow-up harvest: law is harvest_exhausted");
+                            continue;
+                        }
+                        _ => {}
+                    }
+
                     let follow_up_payload = HarvestPayload {
                         bwb_id: bwb_id.clone(),
                         date: Some(result.harvest_date.clone()),
@@ -332,6 +353,21 @@ async fn process_next_job(
                         .await
                 {
                     tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to harvest_failed");
+                }
+
+                // Check exhausted threshold
+                match law_status::increment_fail_count(pool, &job.law_id, JobType::Harvest).await {
+                    Ok(count) if count >= config.exhausted_threshold => {
+                        if let Err(e) =
+                            law_status::exhaust_law(pool, &job.law_id, JobType::Harvest).await
+                        {
+                            tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as harvest_exhausted");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment harvest fail count");
+                    }
+                    _ => {}
                 }
             } else {
                 // Job will be retried — reset law status to queued
@@ -418,6 +454,7 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
             &enrich_config,
             config.corpus_config.as_ref(),
             config.job_timeout,
+            config.exhausted_threshold,
         )
         .await
         {
@@ -456,6 +493,7 @@ async fn process_next_enrich_job(
     enrich_config: &EnrichConfig,
     corpus_config: Option<&CorpusConfig>,
     job_timeout: Duration,
+    exhausted_threshold: i32,
 ) -> Result<bool> {
     let job = match job_queue::claim_job(pool, Some(JobType::Enrich)).await? {
         Some(job) => job,
@@ -696,6 +734,8 @@ async fn process_next_enrich_job(
                     }
                 }
                 Ok(()) => {
+                    let _ = law_status::reset_fail_count(pool, &job.law_id, JobType::Enrich).await;
+
                     // Set coverage score outside the transaction (non-critical).
                     // With dual providers, whichever finishes last writes the score.
                     if let Err(e) =
@@ -738,6 +778,24 @@ async fn process_next_enrich_job(
                         .await
                         {
                             tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
+                        }
+
+                        // Check exhausted threshold
+                        match law_status::increment_fail_count(pool, &job.law_id, JobType::Enrich)
+                            .await
+                        {
+                            Ok(count) if count >= exhausted_threshold => {
+                                if let Err(e) =
+                                    law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
+                                        .await
+                                {
+                                    tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as enrich_exhausted");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment enrich fail count");
+                            }
+                            _ => {}
                         }
                     } else {
                         // Job will be retried — atomically reset to Harvested only if

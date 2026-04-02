@@ -131,14 +131,16 @@ pub async fn list_law_entries(
     let query_str = if params.status.is_some() {
         format!(
             "SELECT law_id, law_name, status, coverage_score, \
-             harvest_job_id, enrich_job_id, created_at, updated_at \
+             harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
+             created_at, updated_at \
              FROM law_entries WHERE status::text = $1 \
              ORDER BY {sort_column} {order} LIMIT $2 OFFSET $3"
         )
     } else {
         format!(
             "SELECT law_id, law_name, status, coverage_score, \
-             harvest_job_id, enrich_job_id, created_at, updated_at \
+             harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
+             created_at, updated_at \
              FROM law_entries \
              ORDER BY {sort_column} {order} LIMIT $1 OFFSET $2"
         )
@@ -524,6 +526,16 @@ pub async fn create_harvest_job(
         ));
     }
 
+    // Check if law is exhausted for harvest
+    if let Ok(law) = regelrecht_pipeline::law_status::get_law(&mut *tx, &bwb_id).await {
+        if law.status == regelrecht_pipeline::LawStatusValue::HarvestExhausted {
+            return Err((
+                StatusCode::CONFLICT,
+                format!("{bwb_id} is harvest_exhausted — reset via /api/law_entries/{bwb_id}/reset-exhausted first"),
+            ));
+        }
+    }
+
     sqlx::query(
         "INSERT INTO law_entries (law_id, status) \
          VALUES ($1, 'queued') \
@@ -645,6 +657,16 @@ pub async fn create_enrich_jobs(
                 "internal server error".to_string(),
             )
         })?;
+
+    // Check if law is exhausted for enrich
+    if let Ok(law) = regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
+        if law.status == regelrecht_pipeline::LawStatusValue::EnrichExhausted {
+            return Err((
+                StatusCode::CONFLICT,
+                format!("{law_id} is enrich_exhausted — reset via /api/law_entries/{law_id}/reset-exhausted first"),
+            ));
+        }
+    }
 
     // Look up the law to find its yaml_path from the most recent completed harvest job.
     let harvest_result: Option<(serde_json::Value,)> = sqlx::query_as(
@@ -827,6 +849,65 @@ pub async fn delete_all_jobs(
     tracing::info!(deleted, "deleted non-processing jobs");
 
     Ok(Json(DeleteJobsResponse { deleted }))
+}
+
+// --- Reset exhausted ---
+
+pub async fn reset_exhausted(
+    State(state): State<AppState>,
+    axum::extract::Path(law_id): axum::extract::Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let pool = &state.pool;
+
+    let law = regelrecht_pipeline::law_status::get_law(pool, &law_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to get law");
+            (StatusCode::NOT_FOUND, format!("law not found: {law_id}"))
+        })?;
+
+    let job_type = match law.status {
+        regelrecht_pipeline::LawStatusValue::HarvestExhausted => {
+            regelrecht_pipeline::JobType::Harvest
+        }
+        regelrecht_pipeline::LawStatusValue::EnrichExhausted => {
+            regelrecht_pipeline::JobType::Enrich
+        }
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("{law_id} is not exhausted (status: {:?})", law.status),
+            ))
+        }
+    };
+
+    let new_status = match job_type {
+        regelrecht_pipeline::JobType::Harvest => regelrecht_pipeline::LawStatusValue::HarvestFailed,
+        regelrecht_pipeline::JobType::Enrich => regelrecht_pipeline::LawStatusValue::EnrichFailed,
+    };
+
+    regelrecht_pipeline::law_status::reset_fail_count(pool, &law_id, job_type)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to reset fail count");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to reset fail count".to_string(),
+            )
+        })?;
+
+    regelrecht_pipeline::law_status::update_status(pool, &law_id, new_status)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to update status");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to update status".to_string(),
+            )
+        })?;
+
+    tracing::info!(law_id = %law_id, job_type = ?job_type, "exhausted status reset");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

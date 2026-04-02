@@ -19,6 +19,8 @@ pub struct LawEntry {
     pub coverage_score: Option<f64>,
     pub harvest_job_id: Option<sqlx::types::Uuid>,
     pub enrich_job_id: Option<sqlx::types::Uuid>,
+    pub harvest_fail_count: i32,
+    pub enrich_fail_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -35,6 +35,10 @@ pub struct MetricsSnapshot {
     pub recently_failed_jobs_24h: i64,
     /// Failed jobs broken down by job type (harvest/enrich) and time window.
     pub failed_by_type: FailedByType,
+    /// Number of laws with harvest_exhausted status.
+    pub exhausted_harvest: i64,
+    /// Number of laws with enrich_exhausted status.
+    pub exhausted_enrich: i64,
 }
 
 /// Failed job counts split by job type.
@@ -104,6 +108,15 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
     .fetch_one(pool)
     .await?;
 
+    let exhausted: (i64, i64) = sqlx::query_as(
+        "SELECT \
+             COUNT(*) FILTER (WHERE status = 'harvest_exhausted'), \
+             COUNT(*) FILTER (WHERE status = 'enrich_exhausted') \
+         FROM law_entries",
+    )
+    .fetch_one(pool)
+    .await?;
+
     Ok(MetricsSnapshot {
         jobs_by_status,
         laws_by_status,
@@ -116,6 +129,8 @@ pub async fn fetch_metrics(pool: &PgPool) -> Result<MetricsSnapshot, sqlx::Error
             harvest_24h: recently_failed.4,
             enrich_24h: recently_failed.5,
         },
+        exhausted_harvest: exhausted.0,
+        exhausted_enrich: exhausted.1,
     })
 }
 
@@ -226,6 +241,22 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
     );
     enrich_failed_24h.set(snapshot.failed_by_type.enrich_24h);
 
+    let exhausted_harvest = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_exhausted_harvest",
+        "Number of laws with harvest_exhausted status",
+        exhausted_harvest.clone(),
+    );
+    exhausted_harvest.set(snapshot.exhausted_harvest);
+
+    let exhausted_enrich = Gauge::<i64, AtomicI64>::default();
+    registry.register(
+        "regelrecht_exhausted_enrich",
+        "Number of laws with enrich_exhausted status",
+        exhausted_enrich.clone(),
+    );
+    exhausted_enrich.set(snapshot.exhausted_enrich);
+
     if let Some(avg) = snapshot.avg_job_duration_secs {
         job_duration_avg.set(avg);
     }
@@ -297,6 +328,8 @@ mod tests {
             recently_failed_jobs: 0,
             recently_failed_jobs_24h: 0,
             failed_by_type: FailedByType::default(),
+            exhausted_harvest: 0,
+            exhausted_enrich: 0,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         assert!(
@@ -318,6 +351,14 @@ mod tests {
         assert!(
             body.contains("regelrecht_jobs_recently_failed_24h 0"),
             "should contain recently failed 24h metric"
+        );
+        assert!(
+            body.contains("regelrecht_exhausted_harvest 0"),
+            "should contain exhausted harvest metric"
+        );
+        assert!(
+            body.contains("regelrecht_exhausted_enrich 0"),
+            "should contain exhausted enrich metric"
         );
 
         // Default zero-value gauges should be present for all known statuses.
@@ -355,6 +396,8 @@ mod tests {
                 harvest_24h: 1,
                 enrich_24h: 4,
             },
+            exhausted_harvest: 3,
+            exhausted_enrich: 1,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
 
@@ -425,6 +468,8 @@ mod tests {
             recently_failed_jobs: 0,
             recently_failed_jobs_24h: 0,
             failed_by_type: FailedByType::default(),
+            exhausted_harvest: 0,
+            exhausted_enrich: 0,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         // When no avg duration, the gauge should remain at default (0).
@@ -451,6 +496,8 @@ mod tests {
             recently_failed_jobs: 0,
             recently_failed_jobs_24h: 0,
             failed_by_type: FailedByType::default(),
+            exhausted_harvest: 0,
+            exhausted_enrich: 0,
         };
         let body = encode_metrics(&snapshot).expect("encode should succeed");
         assert!(

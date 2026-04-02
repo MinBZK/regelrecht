@@ -69,6 +69,9 @@ pub struct WorkerConfig {
     /// Jobs stuck in 'processing' longer than this are reaped (reset or failed).
     /// Default: 30 minutes. Configurable via `WORKER_ORPHAN_TIMEOUT_SECS`.
     pub orphan_timeout: Duration,
+    /// Number of consecutive failures before a law is marked as exhausted.
+    /// Default: 10. Configurable via `EXHAUSTED_THRESHOLD`.
+    pub exhausted_threshold: i32,
 }
 
 impl std::fmt::Debug for WorkerConfig {
@@ -83,6 +86,7 @@ impl std::fmt::Debug for WorkerConfig {
             .field("corpus_config", &self.corpus_config)
             .field("job_timeout", &self.job_timeout)
             .field("orphan_timeout", &self.orphan_timeout)
+            .field("exhausted_threshold", &self.exhausted_threshold)
             .finish()
     }
 }
@@ -121,6 +125,11 @@ impl WorkerConfig {
             .and_then(|v| v.parse().ok())
             .unwrap_or(30 * 60); // 30 minutes
 
+        let exhausted_threshold: i32 = std::env::var("EXHAUSTED_THRESHOLD")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+
         Ok(Self {
             database_url,
             max_connections,
@@ -131,6 +140,7 @@ impl WorkerConfig {
             corpus_config,
             job_timeout: Duration::from_secs(job_timeout_secs),
             orphan_timeout: Duration::from_secs(orphan_timeout_secs),
+            exhausted_threshold,
         })
     }
 

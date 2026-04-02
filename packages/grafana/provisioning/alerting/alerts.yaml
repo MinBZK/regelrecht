@@ -30,6 +30,8 @@ contactPoints:
             | :x: **Mislukt verrijking (24u)** | {{ .Annotations.failed_enrich_24h }} jobs |
             | :x: **Totaal mislukt harvesting** | {{ .Annotations.failed_harvest_total }} jobs |
             | :x: **Totaal mislukt verrijking** | {{ .Annotations.failed_enrich_total }} jobs |
+            | :skull: **Exhausted harvesting** | {{ .Annotations.exhausted_harvest }} wetten |
+            | :skull: **Exhausted verrijking** | {{ .Annotations.exhausted_enrich }} wetten |
             | :hourglass: **Openstaand** | {{ .Annotations.pending }} jobs |
             | :white_check_mark: **Afgerond** | {{ .Annotations.completed }} jobs |
             {{ end }}
@@ -154,6 +156,24 @@ groups:
               expr: regelrecht_jobs_failed_enrich
               instant: true
               refId: L
+          - refId: M
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: regelrecht_exhausted_harvest
+              instant: true
+              refId: M
+          - refId: N
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: regelrecht_exhausted_enrich
+              instant: true
+              refId: N
           # Always-fire: A + B + 1 is always > 0.
           - refId: H
             relativeTimeRange:
@@ -181,3 +201,5 @@ groups:
           failed_enrich_total: '{{ (index $values "L").Value | printf "%.0f" }}'
           pending: '{{ (index $values "E").Value | printf "%.0f" }}'
           completed: '{{ (index $values "F").Value | printf "%.0f" }}'
+          exhausted_harvest: '{{ (index $values "M").Value | printf "%.0f" }}'
+          exhausted_enrich: '{{ (index $values "N").Value | printf "%.0f" }}'

@@ -241,3 +241,76 @@ where
 
     Ok(entries)
 }
+
+/// Increment the consecutive fail count for a job type. Returns the new count.
+#[tracing::instrument(skip(executor))]
+pub async fn increment_fail_count<'e, E>(
+    executor: E,
+    law_id: &str,
+    job_type: crate::models::JobType,
+) -> Result<i32>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let column = match job_type {
+        crate::models::JobType::Harvest => "harvest_fail_count",
+        crate::models::JobType::Enrich => "enrich_fail_count",
+    };
+    // Column name is from a match on an enum, not user input — safe to interpolate.
+    let sql = format!(
+        "UPDATE law_entries SET {column} = {column} + 1, updated_at = now() \
+         WHERE law_id = $1 RETURNING {column}"
+    );
+    let count: (i32,) = sqlx::query_as(&sql)
+        .bind(law_id)
+        .fetch_one(executor)
+        .await?;
+
+    tracing::info!(law_id = %law_id, job_type = ?job_type, fail_count = count.0, "fail count incremented");
+    Ok(count.0)
+}
+
+/// Reset the consecutive fail count for a job type to zero.
+#[tracing::instrument(skip(executor))]
+pub async fn reset_fail_count<'e, E>(
+    executor: E,
+    law_id: &str,
+    job_type: crate::models::JobType,
+) -> Result<()>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let column = match job_type {
+        crate::models::JobType::Harvest => "harvest_fail_count",
+        crate::models::JobType::Enrich => "enrich_fail_count",
+    };
+    let sql = format!("UPDATE law_entries SET {column} = 0, updated_at = now() WHERE law_id = $1");
+    sqlx::query(&sql).bind(law_id).execute(executor).await?;
+
+    tracing::info!(law_id = %law_id, job_type = ?job_type, "fail count reset");
+    Ok(())
+}
+
+/// Mark a law as exhausted for a given job type.
+#[tracing::instrument(skip(executor))]
+pub async fn exhaust_law<'e, E>(
+    executor: E,
+    law_id: &str,
+    job_type: crate::models::JobType,
+) -> Result<()>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let status = match job_type {
+        crate::models::JobType::Harvest => LawStatusValue::HarvestExhausted,
+        crate::models::JobType::Enrich => LawStatusValue::EnrichExhausted,
+    };
+    sqlx::query("UPDATE law_entries SET status = $2, updated_at = now() WHERE law_id = $1")
+        .bind(law_id)
+        .bind(status)
+        .execute(executor)
+        .await?;
+
+    tracing::warn!(law_id = %law_id, job_type = ?job_type, "law marked as exhausted");
+    Ok(())
+}

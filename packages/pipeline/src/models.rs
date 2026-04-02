@@ -55,11 +55,17 @@ pub enum LawStatusValue {
     #[sqlx(rename = "harvest_failed")]
     #[serde(rename = "harvest_failed")]
     HarvestFailed,
+    #[sqlx(rename = "harvest_exhausted")]
+    #[serde(rename = "harvest_exhausted")]
+    HarvestExhausted,
     Enriching,
     Enriched,
     #[sqlx(rename = "enrich_failed")]
     #[serde(rename = "enrich_failed")]
     EnrichFailed,
+    #[sqlx(rename = "enrich_exhausted")]
+    #[serde(rename = "enrich_exhausted")]
+    EnrichExhausted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -107,6 +113,8 @@ pub struct LawEntry {
     pub harvest_job_id: Option<Uuid>,
     pub enrich_job_id: Option<Uuid>,
     pub coverage_score: Option<f64>,
+    pub harvest_fail_count: i32,
+    pub enrich_fail_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
