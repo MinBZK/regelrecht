@@ -171,28 +171,28 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 <template>
   <div class="sf-form">
     <!-- Expected outputs at top -->
-    <div v-if="hasExpectations" class="sf-expectations">
-      <div
+    <rr-list v-if="hasExpectations" variant="simple">
+      <rr-list-item
         v-for="(exp, name) in expectations"
         :key="name"
+        size="sm"
         class="sf-expectation"
         :class="result ? `sf-expectation--${matchStatus(name, result.outputs?.[name])}` : (error ? 'sf-expectation--failed' : '')"
       >
-        <div class="sf-expectation-header">
-          <span class="sf-expectation-name">{{ name }}</span>
+        <rr-text-cell size="sm">
+          {{ name }}
           <span v-if="articleMap?.outputToArticle?.get(name)" class="sf-article-tag">
             Art. {{ articleMap.outputToArticle.get(name) }}
           </span>
-        </div>
-        <div class="sf-expectation-values">
-          <span class="sf-expectation-expected">verwacht: {{ formatValue(normalizeForCompare(exp)) }}</span>
-          <template v-if="result && result.outputs">
-            <span class="sf-expectation-arrow">&rarr;</span>
-            <span class="sf-expectation-actual">{{ formatOutputValue(result.outputs[name], name) }}</span>
-          </template>
-        </div>
-      </div>
-    </div>
+        </rr-text-cell>
+        <rr-text-cell size="sm" class="sf-expectation-value">
+          verwacht: {{ formatValue(normalizeForCompare(exp)) }}
+        </rr-text-cell>
+        <rr-text-cell v-if="result && result.outputs" size="sm" class="sf-expectation-actual">
+          &rarr; {{ formatOutputValue(result.outputs[name], name) }}
+        </rr-text-cell>
+      </rr-list-item>
+    </rr-list>
 
     <!-- Error -->
     <div v-if="error && !running" class="sf-error">{{ error }}</div>
@@ -200,26 +200,30 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <!-- Loading indicator -->
     <div v-if="running" class="sf-running">Uitvoeren...</div>
 
-    <!-- Calculation date -->
-    <div class="sf-row">
-      <label class="sf-label">Datum</label>
-      <input type="date" class="sf-date" v-model="calculationDate" />
-    </div>
-
-    <!-- Parameters -->
-    <div v-for="(value, name) in parameterValues" :key="name" class="sf-row">
-      <label class="sf-label">
-        {{ name }}
-        <span v-if="articleMap?.paramToArticle?.get(name)" class="sf-article-tag">
-          Art. {{ articleMap.paramToArticle.get(name) }}
-        </span>
-      </label>
-      <input
-        class="sf-input"
-        :value="value"
-        @input="parameterValues = { ...parameterValues, [name]: $event.target.value }"
-      />
-    </div>
+    <!-- Input: date + parameters -->
+    <rr-list variant="simple" class="sf-input-list">
+      <rr-list-item size="sm">
+        <rr-text-cell size="sm">Datum</rr-text-cell>
+        <rr-cell>
+          <input type="date" class="sf-date" v-model="calculationDate" />
+        </rr-cell>
+      </rr-list-item>
+      <rr-list-item v-for="(value, name) in parameterValues" :key="name" size="sm">
+        <rr-text-cell size="sm">
+          {{ name }}
+          <span v-if="articleMap?.paramToArticle?.get(name)" class="sf-article-tag">
+            Art. {{ articleMap.paramToArticle.get(name) }}
+          </span>
+        </rr-text-cell>
+        <rr-cell>
+          <input
+            class="sf-input"
+            :value="value"
+            @input="parameterValues = { ...parameterValues, [name]: $event.target.value }"
+          />
+        </rr-cell>
+      </rr-list-item>
+    </rr-list>
 
     <!-- Data sources -->
     <DataSourceTable
@@ -235,14 +239,14 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 
     <!-- Details button -->
     <div class="sf-actions-row">
-      <button
-        class="sf-details-btn"
+      <rr-button
+        variant="neutral-tinted"
+        size="sm"
+        :disabled="!result && !error || undefined"
         @click="emit('show-details')"
-        :disabled="!result && !error"
-        type="button"
       >
         Details &#x25B6;
-      </button>
+      </rr-button>
     </div>
   </div>
 </template>
@@ -253,57 +257,25 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 }
 
 /* Expected outputs */
-.sf-expectations {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
 .sf-expectation {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border-left: 3px solid var(--semantics-dividers-color, #ccc);
-  background: var(--semantics-surfaces-color-secondary, #f5f5f5);
-  font-size: 12px;
+  border-left: 3px solid transparent;
 }
 
 .sf-expectation--passed {
-  background: transparent;
   border-left-color: #2e7d32;
 }
 
 .sf-expectation--failed {
-  background: transparent;
   border-left-color: #c62828;
 }
 
-.sf-expectation-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.sf-expectation-name {
-  font-weight: 600;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sf-expectation-values {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.sf-expectation-value {
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
   color: var(--semantics-text-color-secondary, #555);
 }
 
-.sf-expectation-arrow {
-  color: #999;
-}
-
 .sf-expectation-actual {
+  font-family: 'SF Mono', 'Fira Code', monospace;
   font-weight: 600;
   color: var(--semantics-text-color-primary, #1C2029);
 }
@@ -318,21 +290,16 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   border-radius: 3px;
 }
 
-.sf-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+/* Input list */
+.sf-input-list rr-text-cell {
+  width: 80px;
+  min-width: 80px;
+  flex-shrink: 0;
 }
 
-.sf-label {
-  font-size: 12px;
-  font-weight: 600;
-  min-width: 50px;
-  color: var(--semantics-text-color-secondary, #666);
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.sf-input-list rr-cell {
+  flex: 1;
+  min-width: 0;
 }
 
 .sf-date {
@@ -344,7 +311,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 }
 
 .sf-input {
-  flex: 1;
+  width: 100%;
   padding: 4px 6px;
   border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   border-radius: 4px;
@@ -360,30 +327,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 /* Actions row */
 .sf-actions-row {
   padding: 8px 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sf-details-btn {
-  padding: 5px 14px;
-  background: var(--semantics-surfaces-color-secondary, #f0f0f0);
-  color: var(--semantics-text-color-primary, #1C2029);
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.sf-details-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.sf-details-btn:hover:not(:disabled) {
-  background: #e0e0e0;
 }
 
 .sf-running {
