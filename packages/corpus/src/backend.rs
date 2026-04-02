@@ -154,6 +154,26 @@ impl RepoBackend for LocalBackend {
                 self.root.display()
             )));
         }
+
+        // Probe write access: try creating and removing a temporary file.
+        // If the filesystem is read-only (e.g. inside a container), downgrade
+        // to read-only mode rather than failing at save time.
+        if self.writable {
+            let probe = self.root.join(".write-probe");
+            match tokio::fs::write(&probe, b"").await {
+                Ok(()) => {
+                    let _ = tokio::fs::remove_file(&probe).await;
+                }
+                Err(_) => {
+                    tracing::info!(
+                        path = %self.root.display(),
+                        "local source is not writable, disabling writes"
+                    );
+                    self.writable = false;
+                }
+            }
+        }
+
         Ok(())
     }
 

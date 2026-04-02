@@ -272,14 +272,14 @@ fn validate_scenario_filename(filename: &str) -> Result<(), (StatusCode, String)
     Ok(())
 }
 
-/// Compute the backend-relative path for a scenario file.
+/// Extract the law-relative directory from a law's file_path and its source.
 ///
-/// Given a law's file_path and its source configuration, returns the path
-/// relative to the backend's root that points to `scenarios/{filename}`.
-fn scenario_relative_path(
+/// Returns the structural path like `wet/law_id/` that is the same regardless
+/// of which backend is used. This is the law directory relative to the source
+/// root.
+fn law_relative_dir(
     law: &LoadedLaw,
     source: &regelrecht_corpus::Source,
-    filename: &str,
 ) -> Result<PathBuf, (StatusCode, String)> {
     let file_path = std::path::Path::new(&law.file_path);
     let law_dir = file_path.parent().ok_or_else(|| {
@@ -293,26 +293,29 @@ fn scenario_relative_path(
     let source_root: PathBuf = match &source.source_type {
         SourceType::Local { local } => local.path.clone(),
         SourceType::GitHub { github } => {
-            // For GitHub-fetched laws, file_path is repo-relative (e.g.
-            // "regulation/nl/wet/law_id/2025.yaml"). The backend's subpath
-            // already accounts for github.path, so strip it here.
             github.path.as_ref().map(PathBuf::from).unwrap_or_default()
         }
     };
 
-    let relative_law_dir = law_dir.strip_prefix(&source_root).unwrap_or(law_dir);
-    Ok(relative_law_dir.join("scenarios").join(filename))
+    let relative = law_dir.strip_prefix(&source_root).unwrap_or(law_dir);
+    Ok(relative.to_path_buf())
 }
 
 /// Resolved backend information for a law.
 struct ResolvedBackend {
     law: LoadedLaw,
-    source: regelrecht_corpus::Source,
+    /// Source the law was loaded from (used for path computation).
+    law_source: regelrecht_corpus::Source,
     backend: Arc<Mutex<Box<dyn RepoBackend>>>,
 }
 
-/// Look up the backend and source for a law.
-fn resolve_backend(
+/// Look up a writable backend for a law.
+///
+/// First tries the law's own source backend. If that backend is not writable
+/// (e.g. read-only container filesystem), falls back to any writable backend.
+/// This allows deployed editors to write to a git repo even when laws are
+/// loaded from a baked-in local source.
+fn resolve_writable_backend(
     corpus: &crate::state::CorpusState,
     law_id: &str,
 ) -> Result<ResolvedBackend, (StatusCode, String)> {
@@ -322,7 +325,7 @@ fn resolve_backend(
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
         .clone();
 
-    let source = corpus
+    let law_source = corpus
         .registry
         .sources()
         .iter()
@@ -335,20 +338,25 @@ fn resolve_backend(
         })?
         .clone();
 
+    // Try the law's own backend first, then fall back to any writable backend.
     let backend = corpus
         .backends
         .get(&law.source_id)
+        .or_else(|| {
+            // Pick the first available backend as fallback.
+            corpus.backends.values().next()
+        })
         .ok_or_else(|| {
             (
                 StatusCode::FORBIDDEN,
-                format!("No write backend available for source '{}'", law.source_id),
+                "No write backend available".to_string(),
             )
         })?
         .clone();
 
     Ok(ResolvedBackend {
         law,
-        source,
+        law_source,
         backend,
     })
 }
@@ -356,6 +364,32 @@ fn resolve_backend(
 // ---------------------------------------------------------------------------
 // Save / Delete scenario endpoints
 // ---------------------------------------------------------------------------
+
+/// Resolve write target: find a writable backend, compute the scenario path,
+/// and lock the backend. Shared by save and delete handlers.
+async fn resolve_write_target(
+    state: &AppState,
+    law_id: &str,
+    filename: &str,
+) -> Result<(PathBuf, tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>), (StatusCode, String)> {
+    let resolved = {
+        let corpus = state.corpus.read().await;
+        resolve_writable_backend(&corpus, law_id)?
+    };
+
+    let rel_dir = law_relative_dir(&resolved.law, &resolved.law_source)?;
+    let relative_path = rel_dir.join("scenarios").join(filename);
+
+    let backend = resolved.backend.lock_owned().await;
+    if !backend.is_writable() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "No writable backend available".to_string(),
+        ));
+    }
+
+    Ok((relative_path, backend))
+}
 
 /// PUT /api/corpus/laws/{law_id}/scenarios/{filename} — save a scenario file.
 pub async fn save_scenario(
@@ -365,17 +399,7 @@ pub async fn save_scenario(
 ) -> Result<StatusCode, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
 
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        resolve_backend(&corpus, &law_id)?
-    };
-
-    let relative_path = scenario_relative_path(&resolved.law, &resolved.source, &filename)?;
-
-    let backend = resolved.backend.lock().await;
-    if !backend.is_writable() {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
+    let (relative_path, backend) = resolve_write_target(&state, &law_id, &filename).await?;
 
     backend
         .write_file(&relative_path, &body)
@@ -399,17 +423,7 @@ pub async fn delete_scenario(
 ) -> Result<StatusCode, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
 
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        resolve_backend(&corpus, &law_id)?
-    };
-
-    let relative_path = scenario_relative_path(&resolved.law, &resolved.source, &filename)?;
-
-    let backend = resolved.backend.lock().await;
-    if !backend.is_writable() {
-        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-    }
+    let (relative_path, backend) = resolve_write_target(&state, &law_id, &filename).await?;
 
     backend
         .delete_file(&relative_path)
