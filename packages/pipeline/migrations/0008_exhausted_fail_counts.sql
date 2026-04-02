@@ -1,2 +1,0 @@
-ALTER TABLE law_entries ADD COLUMN harvest_fail_count INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE law_entries ADD COLUMN enrich_fail_count INTEGER NOT NULL DEFAULT 0;
