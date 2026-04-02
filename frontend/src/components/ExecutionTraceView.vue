@@ -27,7 +27,7 @@ const hasContent = computed(() =>
     <div class="etv-scroll">
       <!-- Empty state -->
       <div v-if="!hasContent" class="etv-empty">
-        <div class="etv-empty-text">Klik op "Uitvoeren" om de wet uit te voeren en de trace te bekijken.</div>
+        <div class="etv-empty-text">Klik op "Details" bij een scenario om de trace te bekijken.</div>
       </div>
 
       <!-- Error state -->

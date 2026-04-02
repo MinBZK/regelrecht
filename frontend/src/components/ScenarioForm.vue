@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
-import { formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 
 const props = defineProps({
@@ -15,9 +15,13 @@ const props = defineProps({
   ready: { type: Boolean, default: false },
   /** Law ID for execution */
   lawId: { type: String, required: true },
+  /** Article mapping: { outputToArticle, inputToArticle, paramToArticle } */
+  articleMap: { type: Object, default: null },
+  /** Whether all dependencies have been loaded */
+  depsLoaded: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['executed']);
+const emit = defineEmits(['executed', 'show-details']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -41,23 +45,6 @@ function initDataSources() {
 }
 
 const dataSources = ref(initDataSources());
-
-// Re-init when scenario/setup changes
-watch([() => props.setup, () => props.scenario], () => {
-  calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
-  parameterValues.value = Object.fromEntries(
-    (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
-  );
-  dataSources.value = initDataSources();
-  expectations.value = Object.fromEntries(
-    (props.scenario.assertions || [])
-      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-      .map((a) => [a.outputName, String(a.value)]),
-  );
-  selectedOutputs.value = initOutputs();
-  result.value = null;
-  error.value = null;
-}, { deep: true });
 
 // Expectations from scenario assertions
 const expectations = ref(
@@ -83,6 +70,37 @@ const selectedOutputs = ref(initOutputs());
 const result = ref(null);
 const running = ref(false);
 const error = ref(null);
+const hasAutoExecuted = ref(false);
+
+// Re-init when scenario/setup changes
+watch([() => props.setup, () => props.scenario], () => {
+  calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
+  parameterValues.value = Object.fromEntries(
+    (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
+  );
+  dataSources.value = initDataSources();
+  expectations.value = Object.fromEntries(
+    (props.scenario.assertions || [])
+      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
+      .map((a) => [a.outputName, String(a.value)]),
+  );
+  selectedOutputs.value = initOutputs();
+  result.value = null;
+  error.value = null;
+  hasAutoExecuted.value = false;
+}, { deep: true });
+
+// --- Auto-execute when dependencies are loaded ---
+watch(
+  [() => props.ready, () => props.depsLoaded, () => props.engine],
+  ([isReady, depsReady, engine]) => {
+    if (isReady && depsReady && engine && !hasAutoExecuted.value && props.scenario.execution?.outputName) {
+      hasAutoExecuted.value = true;
+      setTimeout(() => execute(), 0);
+    }
+  },
+  { immediate: true },
+);
 
 function execute() {
   if (!props.engine || !props.ready) return;
@@ -132,15 +150,16 @@ function execute() {
       result: execResult,
       traceText: execResult.trace_text || null,
       error: null,
+      expectations: expectations.value,
     });
   } catch (e) {
     if (e && typeof e === 'object' && e.error) {
       error.value = e.error;
-      emit('executed', { result: null, traceText: e.trace_text || null, error: e.error });
+      emit('executed', { result: null, traceText: e.trace_text || null, error: e.error, expectations: expectations.value });
     } else {
       const msg = typeof e === 'string' ? e : (e.message || String(e));
       error.value = msg;
-      emit('executed', { result: null, traceText: null, error: msg });
+      emit('executed', { result: null, traceText: null, error: msg, expectations: expectations.value });
     }
   } finally {
     running.value = false;
@@ -157,10 +176,45 @@ function updateDataSourceRows(index, rows) {
 function matchStatus(outputName, actualValue) {
   return _matchStatus(outputName, actualValue, expectations.value);
 }
+
+const hasExpectations = ref(false);
+watch(expectations, (exp) => {
+  hasExpectations.value = Object.keys(exp).length > 0;
+}, { immediate: true });
 </script>
 
 <template>
   <div class="sf-form">
+    <!-- Expected outputs at top -->
+    <div v-if="hasExpectations" class="sf-expectations">
+      <div
+        v-for="(exp, name) in expectations"
+        :key="name"
+        class="sf-expectation"
+        :class="result ? `sf-expectation--${matchStatus(name, result.outputs?.[name])}` : (error ? 'sf-expectation--failed' : '')"
+      >
+        <div class="sf-expectation-header">
+          <span class="sf-expectation-name">{{ name }}</span>
+          <span v-if="articleMap?.outputToArticle?.get(name)" class="sf-article-tag">
+            Art. {{ articleMap.outputToArticle.get(name) }}
+          </span>
+        </div>
+        <div class="sf-expectation-values">
+          <span class="sf-expectation-expected">verwacht: {{ formatValue(exp) }}</span>
+          <template v-if="result && result.outputs">
+            <span class="sf-expectation-arrow">&rarr;</span>
+            <span class="sf-expectation-actual">{{ formatOutputValue(result.outputs[name], name) }}</span>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div v-if="error && !running" class="sf-error">{{ error }}</div>
+
+    <!-- Loading indicator -->
+    <div v-if="running" class="sf-running">Uitvoeren...</div>
+
     <!-- Calculation date -->
     <div class="sf-row">
       <label class="sf-label">Datum</label>
@@ -169,7 +223,12 @@ function matchStatus(outputName, actualValue) {
 
     <!-- Parameters -->
     <div v-for="(value, name) in parameterValues" :key="name" class="sf-row">
-      <label class="sf-label">{{ name }}</label>
+      <label class="sf-label">
+        {{ name }}
+        <span v-if="articleMap?.paramToArticle?.get(name)" class="sf-article-tag">
+          Art. {{ articleMap.paramToArticle.get(name) }}
+        </span>
+      </label>
       <input
         class="sf-input"
         :value="value"
@@ -189,38 +248,16 @@ function matchStatus(outputName, actualValue) {
       @update:model-value="updateDataSourceRows(i, $event)"
     />
 
-    <!-- Execute + Results -->
-    <div class="sf-execute-row">
+    <!-- Details button -->
+    <div class="sf-actions-row">
       <button
-        class="sf-execute-btn"
-        @click="execute"
-        :disabled="!ready || running"
+        class="sf-details-btn"
+        @click="emit('show-details')"
+        :disabled="!result && !error"
         type="button"
       >
-        {{ running ? 'Bezig...' : 'Uitvoeren \u25B6' }}
+        Details &#x25B6;
       </button>
-
-      <!-- Inline results -->
-      <template v-if="result && !running">
-        <div
-          v-for="(value, name) in result.outputs"
-          :key="name"
-          class="sf-result"
-          :class="`sf-result--${matchStatus(name, value)}`"
-        >
-          <span class="sf-result-icon">
-            <template v-if="matchStatus(name, value) === 'passed'">&#x2713;</template>
-            <template v-else-if="matchStatus(name, value) === 'failed'">&#x2717;</template>
-            <template v-else>&#x25CF;</template>
-          </span>
-          <span class="sf-result-name">{{ name }}:</span>
-          <span class="sf-result-value">{{ formatOutputValue(value, name) }}</span>
-          <span v-if="matchStatus(name, value) === 'passed'" class="sf-badge sf-badge--pass">GESLAAGD</span>
-          <span v-if="matchStatus(name, value) === 'failed'" class="sf-badge sf-badge--fail">MISLUKT</span>
-        </div>
-      </template>
-
-      <div v-if="error && !running" class="sf-error">{{ error }}</div>
     </div>
   </div>
 </template>
@@ -228,6 +265,72 @@ function matchStatus(outputName, actualValue) {
 <style scoped>
 .sf-form {
   font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+}
+
+/* Expected outputs */
+.sf-expectations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.sf-expectation {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--semantics-dividers-color, #ccc);
+  background: var(--semantics-surfaces-color-secondary, #f5f5f5);
+  font-size: 12px;
+}
+
+.sf-expectation--passed {
+  background: #e8f5e9;
+  border-left-color: #2e7d32;
+}
+
+.sf-expectation--failed {
+  background: #ffebee;
+  border-left-color: #c62828;
+}
+
+.sf-expectation-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.sf-expectation-name {
+  font-weight: 600;
+  color: var(--semantics-text-color-primary, #1C2029);
+}
+
+.sf-expectation-values {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--semantics-text-color-secondary, #555);
+}
+
+.sf-expectation-arrow {
+  color: #999;
+}
+
+.sf-expectation-actual {
+  font-weight: 600;
+  color: var(--semantics-text-color-primary, #1C2029);
+}
+
+/* Article tag */
+.sf-article-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #666;
+  background: #eee;
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
 .sf-row {
@@ -242,6 +345,9 @@ function matchStatus(outputName, actualValue) {
   font-weight: 600;
   min-width: 50px;
   color: var(--semantics-text-color-secondary, #666);
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .sf-date {
@@ -266,19 +372,19 @@ function matchStatus(outputName, actualValue) {
   border-color: #154273;
 }
 
-.sf-execute-row {
+/* Actions row */
+.sf-actions-row {
   padding: 8px 0;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
 
-.sf-execute-btn {
+.sf-details-btn {
   padding: 5px 14px;
-  background: #154273;
-  color: white;
-  border: none;
+  background: var(--semantics-surfaces-color-secondary, #f0f0f0);
+  color: var(--semantics-text-color-primary, #1C2029);
+  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   border-radius: 5px;
   font-size: 12px;
   font-weight: 600;
@@ -286,52 +392,26 @@ function matchStatus(outputName, actualValue) {
   font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
 }
 
-.sf-execute-btn:disabled {
-  opacity: 0.5;
+.sf-details-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-.sf-execute-btn:hover:not(:disabled) {
-  background: #1a5490;
+.sf-details-btn:hover:not(:disabled) {
+  background: #e0e0e0;
 }
 
-.sf-result {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.sf-running {
   font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--semantics-text-color-secondary, #666);
+  font-style: italic;
+  padding: 4px 0;
 }
-
-.sf-result-icon {
-  font-weight: bold;
-}
-
-.sf-result--passed .sf-result-icon { color: #060; }
-.sf-result--failed .sf-result-icon { color: #c00; }
-.sf-result--neutral .sf-result-icon { color: #666; }
-
-.sf-result-name {
-  font-weight: 600;
-}
-
-.sf-result-value {
-  color: var(--semantics-text-color-secondary, #555);
-}
-
-.sf-badge {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.sf-badge--pass { background: #efe; color: #060; }
-.sf-badge--fail { background: #fee; color: #c00; }
 
 .sf-error {
   font-size: 12px;
   color: #c00;
   word-break: break-word;
+  padding: 4px 0;
 }
 </style>
