@@ -290,7 +290,14 @@ impl RepoBackend for GitBackend {
             return Ok(());
         }
 
-        self.client.commit_and_push(&paths, &ctx.message).await
+        match self.client.commit_and_push(&paths, &ctx.message).await {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                // Restore dirty files so the next persist attempt can retry.
+                self.dirty_files.lock().await.extend(paths);
+                Err(e)
+            }
+        }
     }
 
     async fn ensure_ready(&mut self) -> Result<()> {
