@@ -50,6 +50,8 @@ jobs:
             editor-api:
               - packages/editor-api/**
               - packages/corpus/**
+              - packages/pipeline/**
+              - packages/harvester/**
               - Justfile
               - .github/workflows/ci.yml
 
