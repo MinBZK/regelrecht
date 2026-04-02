@@ -110,6 +110,9 @@ watch(
   { immediate: true },
 );
 
+// --- Template refs for ScenarioForm instances ---
+const scenarioRefs = ref([]);
+
 // --- Per-scenario result tracking ---
 const scenarioResults = ref(new Map());
 
@@ -128,15 +131,18 @@ function scenarioStatus(index) {
   const scenario = formState.value?.scenarios[index];
   if (!scenario) return null;
 
-  for (const a of scenario.assertions || []) {
-    if (a.outputName && a.value != null) {
-      const status = matchStatus(
-        a.outputName,
-        data.result.outputs?.[a.outputName],
-        { [a.outputName]: String(a.value) },
-      );
-      if (status === 'failed') return 'failed';
-    }
+  const checkable = (scenario.assertions || []).filter(
+    (a) => a.outputName && a.value != null,
+  );
+  if (checkable.length === 0) return null;
+
+  for (const a of checkable) {
+    const status = matchStatus(
+      a.outputName,
+      data.result.outputs?.[a.outputName],
+      { [a.outputName]: String(a.value) },
+    );
+    if (status === 'failed') return 'failed';
   }
   return 'passed';
 }
@@ -146,9 +152,37 @@ watch(formState, () => {
   scenarioResults.value = new Map();
 });
 
+// --- Auto-execute all scenarios sequentially when deps are ready ---
+let autoExecuteVersion = 0;
+
+watch(
+  [depsReady, formState],
+  async ([ready, state]) => {
+    if (!ready || !state || !state.scenarios?.length) return;
+    const version = ++autoExecuteVersion;
+
+    // Wait one tick so ScenarioForm refs are mounted
+    await new Promise((r) => setTimeout(r, 0));
+    if (version !== autoExecuteVersion) return;
+
+    for (let i = 0; i < state.scenarios.length; i++) {
+      if (version !== autoExecuteVersion) return;
+      const formRef = scenarioRefs.value[i];
+      if (formRef?.execute) {
+        formRef.execute();
+        // Collect result after execution
+        const data = formRef.getExecutionData?.();
+        if (data) onScenarioResult(i, data);
+      }
+    }
+  },
+);
+
 // --- Details handler: emit to right panel ---
 function onShowDetails(index) {
-  const data = scenarioResults.value.get(index);
+  // Prefer fresh data from the form ref, fall back to cached results
+  const formRef = scenarioRefs.value[index];
+  const data = formRef?.getExecutionData?.() || scenarioResults.value.get(index);
   if (data) {
     emit('executed', {
       result: data.result,
@@ -220,14 +254,13 @@ function onScenarioFileSelect(event) {
           <div class="sb-accordion-body">
             <ScenarioForm
               v-if="scenarioSetups[i]"
+              :ref="(el) => { scenarioRefs[i] = el; }"
               :scenario="scenario"
               :setup="scenarioSetups[i]"
               :engine="engine"
               :ready="ready"
               :law-id="lawId"
               :article-map="articleMap"
-              :deps-loaded="depsReady"
-              @executed="(d) => onScenarioResult(i, d)"
               @show-details="() => onShowDetails(i)"
             />
           </div>

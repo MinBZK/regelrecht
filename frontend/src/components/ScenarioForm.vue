@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
 import { formatValue, formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
@@ -17,11 +17,9 @@ const props = defineProps({
   lawId: { type: String, required: true },
   /** Article mapping: { outputToArticle, inputToArticle, paramToArticle } */
   articleMap: { type: Object, default: null },
-  /** Whether all dependencies have been loaded */
-  depsLoaded: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['executed', 'show-details']);
+const emit = defineEmits(['show-details']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -70,7 +68,6 @@ const selectedOutputs = ref(initOutputs());
 const result = ref(null);
 const running = ref(false);
 const error = ref(null);
-const hasAutoExecuted = ref(false);
 
 // Re-init when scenario/setup changes
 watch([() => props.setup, () => props.scenario], () => {
@@ -87,20 +84,7 @@ watch([() => props.setup, () => props.scenario], () => {
   selectedOutputs.value = initOutputs();
   result.value = null;
   error.value = null;
-  hasAutoExecuted.value = false;
 }, { deep: true });
-
-// --- Auto-execute when dependencies are loaded ---
-watch(
-  [() => props.ready, () => props.depsLoaded, () => props.engine],
-  ([isReady, depsReady, engine]) => {
-    if (isReady && depsReady && engine && !hasAutoExecuted.value && props.scenario.execution?.outputName) {
-      hasAutoExecuted.value = true;
-      setTimeout(() => execute(), 0);
-    }
-  },
-  { immediate: true },
-);
 
 function execute() {
   if (!props.engine || !props.ready) return;
@@ -146,25 +130,29 @@ function execute() {
     );
 
     result.value = execResult;
-    emit('executed', {
-      result: execResult,
-      traceText: execResult.trace_text || null,
-      error: null,
-      expectations: expectations.value,
-    });
   } catch (e) {
     if (e && typeof e === 'object' && e.error) {
       error.value = e.error;
-      emit('executed', { result: null, traceText: e.trace_text || null, error: e.error, expectations: expectations.value });
     } else {
       const msg = typeof e === 'string' ? e : (e.message || String(e));
       error.value = msg;
-      emit('executed', { result: null, traceText: null, error: msg, expectations: expectations.value });
     }
   } finally {
     running.value = false;
   }
 }
+
+/** Returns the current execution data for use by parent components */
+function getExecutionData() {
+  return {
+    result: result.value,
+    traceText: result.value?.trace_text || null,
+    error: error.value,
+    expectations: expectations.value,
+  };
+}
+
+defineExpose({ execute, getExecutionData });
 
 function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];
@@ -177,10 +165,7 @@ function matchStatus(outputName, actualValue) {
   return _matchStatus(outputName, actualValue, expectations.value);
 }
 
-const hasExpectations = ref(false);
-watch(expectations, (exp) => {
-  hasExpectations.value = Object.keys(exp).length > 0;
-}, { immediate: true });
+const hasExpectations = computed(() => Object.keys(expectations.value).length > 0);
 </script>
 
 <template>

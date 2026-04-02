@@ -13,9 +13,15 @@ export function buildArticleMap(articles) {
     const exec = article.machine_readable?.execution;
     if (!exec) continue;
     const num = String(article.number);
-    for (const o of exec.output || []) outputToArticle.set(o.name, num);
-    for (const i of exec.input || []) inputToArticle.set(i.name, num);
-    for (const p of exec.parameters || []) paramToArticle.set(p.name, num);
+    if (Array.isArray(exec.output)) {
+      for (const o of exec.output) outputToArticle.set(o.name, num);
+    }
+    if (Array.isArray(exec.input)) {
+      for (const i of exec.input) inputToArticle.set(i.name, num);
+    }
+    if (Array.isArray(exec.parameters)) {
+      for (const p of exec.parameters) paramToArticle.set(p.name, num);
+    }
   }
 
   return { outputToArticle, inputToArticle, paramToArticle };
