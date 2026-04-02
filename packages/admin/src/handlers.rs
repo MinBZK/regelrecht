@@ -881,10 +881,7 @@ pub async fn reset_exhausted(
     let law = match regelrecht_pipeline::law_status::get_law(pool, &law_id).await {
         Ok(law) => law,
         Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                format!("law not found: {law_id}"),
-            ));
+            return Err((StatusCode::NOT_FOUND, format!("law not found: {law_id}")));
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to get law");
