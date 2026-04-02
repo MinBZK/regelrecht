@@ -128,7 +128,8 @@ impl WorkerConfig {
         let exhausted_threshold: i32 = std::env::var("EXHAUSTED_THRESHOLD")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(10);
+            .unwrap_or(10)
+            .max(1);
 
         Ok(Self {
             database_url,

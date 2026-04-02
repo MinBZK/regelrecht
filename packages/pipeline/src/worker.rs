@@ -648,6 +648,24 @@ async fn process_next_enrich_job(
                             LawStatusValue::EnrichFailed,
                         )
                         .await;
+
+                        // Check exhausted threshold
+                        match law_status::increment_fail_count(pool, &job.law_id, JobType::Enrich)
+                            .await
+                        {
+                            Ok(count) if count >= exhausted_threshold => {
+                                if let Err(e) =
+                                    law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
+                                        .await
+                                {
+                                    tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as enrich_exhausted");
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment enrich fail count");
+                            }
+                            _ => {}
+                        }
                     } else {
                         let _ = law_status::update_status_if(
                             pool,
@@ -718,6 +736,24 @@ async fn process_next_enrich_job(
                                 LawStatusValue::EnrichFailed,
                             )
                             .await;
+
+                            // Check exhausted threshold
+                            match law_status::increment_fail_count(pool, &job.law_id, JobType::Enrich)
+                                .await
+                            {
+                                Ok(count) if count >= exhausted_threshold => {
+                                    if let Err(e) =
+                                        law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
+                                            .await
+                                    {
+                                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as enrich_exhausted");
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment enrich fail count");
+                                }
+                                _ => {}
+                            }
                         }
                         Ok(_) => {
                             let _ = law_status::update_status_if(
