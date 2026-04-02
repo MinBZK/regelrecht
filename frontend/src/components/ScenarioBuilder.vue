@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
 import { parseFeature } from '../gherkin/parser.js';
@@ -163,7 +163,7 @@ watch(
     const version = ++autoExecuteVersion;
 
     // Wait one tick so ScenarioForm refs are mounted
-    await new Promise((r) => setTimeout(r, 0));
+    await nextTick();
     if (version !== autoExecuteVersion) return;
 
     for (let i = 0; i < state.scenarios.length; i++) {
