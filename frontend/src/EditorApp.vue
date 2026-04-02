@@ -44,11 +44,13 @@ watch(
 const lastTraceText = ref(null);
 const lastResult = ref(null);
 const lastError = ref(null);
+const lastExpectations = ref({});
 
-function handleScenarioExecuted({ result, traceText, error }) {
+function handleScenarioExecuted({ result, traceText, error, expectations }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
   lastError.value = error || null;
+  lastExpectations.value = expectations || {};
 }
 
 // --- Editor state ---
@@ -192,9 +194,9 @@ function selectArticle(number) {
           <!-- Middle: Form or YAML -->
           <rr-split-view-pane slot="pane-2">
             <rr-page sticky-header>
-              <rr-top-title-bar slot="header" title="Formulier">
+              <rr-top-title-bar slot="header" title="Scenario's">
                 <rr-segmented-control slot="toolbar" size="md" :value="middlePaneView" @change="onMiddlePaneChange">
-                  <rr-segmented-control-item value="form">Formulier</rr-segmented-control-item>
+                  <rr-segmented-control-item value="form">Scenario's</rr-segmented-control-item>
                   <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
                 </rr-segmented-control>
                 <span v-if="middlePaneView === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
@@ -214,6 +216,7 @@ function selectArticle(number) {
                   :law-yaml="rawYaml"
                   :engine="getEngine()"
                   :ready="engineReady"
+                  :articles="articles"
                   @executed="handleScenarioExecuted"
                 />
               </div>
@@ -243,6 +246,7 @@ function selectArticle(number) {
                 :result="lastResult"
                 :trace-text="lastTraceText"
                 :error="lastError"
+                :expectations="lastExpectations"
               />
             </rr-page>
           </rr-split-view-pane>

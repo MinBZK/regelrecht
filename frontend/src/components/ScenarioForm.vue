@@ -1,7 +1,7 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
-import { formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 
 const props = defineProps({
@@ -15,9 +15,11 @@ const props = defineProps({
   ready: { type: Boolean, default: false },
   /** Law ID for execution */
   lawId: { type: String, required: true },
+  /** Article mapping: { outputToArticle, inputToArticle, paramToArticle } */
+  articleMap: { type: Object, default: null },
 });
 
-const emit = defineEmits(['executed']);
+const emit = defineEmits(['show-details']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -41,23 +43,6 @@ function initDataSources() {
 }
 
 const dataSources = ref(initDataSources());
-
-// Re-init when scenario/setup changes
-watch([() => props.setup, () => props.scenario], () => {
-  calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
-  parameterValues.value = Object.fromEntries(
-    (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
-  );
-  dataSources.value = initDataSources();
-  expectations.value = Object.fromEntries(
-    (props.scenario.assertions || [])
-      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
-      .map((a) => [a.outputName, String(a.value)]),
-  );
-  selectedOutputs.value = initOutputs();
-  result.value = null;
-  error.value = null;
-}, { deep: true });
 
 // Expectations from scenario assertions
 const expectations = ref(
@@ -83,6 +68,25 @@ const selectedOutputs = ref(initOutputs());
 const result = ref(null);
 const running = ref(false);
 const error = ref(null);
+const errorTraceText = ref(null);
+
+// Re-init when scenario/setup changes
+watch([() => props.setup, () => props.scenario], () => {
+  calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
+  parameterValues.value = Object.fromEntries(
+    (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
+  );
+  dataSources.value = initDataSources();
+  expectations.value = Object.fromEntries(
+    (props.scenario.assertions || [])
+      .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
+      .map((a) => [a.outputName, String(a.value)]),
+  );
+  selectedOutputs.value = initOutputs();
+  result.value = null;
+  error.value = null;
+  errorTraceText.value = null;
+}, { deep: true });
 
 function execute() {
   if (!props.engine || !props.ready) return;
@@ -93,6 +97,7 @@ function execute() {
   running.value = true;
   result.value = null;
   error.value = null;
+  errorTraceText.value = null;
 
   try {
     const engine = props.engine;
@@ -128,24 +133,30 @@ function execute() {
     );
 
     result.value = execResult;
-    emit('executed', {
-      result: execResult,
-      traceText: execResult.trace_text || null,
-      error: null,
-    });
   } catch (e) {
     if (e && typeof e === 'object' && e.error) {
       error.value = e.error;
-      emit('executed', { result: null, traceText: e.trace_text || null, error: e.error });
+      errorTraceText.value = e.trace_text || null;
     } else {
       const msg = typeof e === 'string' ? e : (e.message || String(e));
       error.value = msg;
-      emit('executed', { result: null, traceText: null, error: msg });
     }
   } finally {
     running.value = false;
   }
 }
+
+/** Returns the current execution data for use by parent components */
+function getExecutionData() {
+  return {
+    result: result.value,
+    traceText: result.value?.trace_text || errorTraceText.value || null,
+    error: error.value,
+    expectations: expectations.value,
+  };
+}
+
+defineExpose({ execute, getExecutionData });
 
 function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];
@@ -157,25 +168,66 @@ function updateDataSourceRows(index, rows) {
 function matchStatus(outputName, actualValue) {
   return _matchStatus(outputName, actualValue, expectations.value);
 }
+
+const hasExpectations = computed(() => Object.keys(expectations.value).length > 0);
 </script>
 
 <template>
   <div class="sf-form">
-    <!-- Calculation date -->
-    <div class="sf-row">
-      <label class="sf-label">Datum</label>
-      <input type="date" class="sf-date" v-model="calculationDate" />
-    </div>
+    <!-- Expected outputs at top -->
+    <rr-list v-if="hasExpectations" variant="simple">
+      <rr-list-item
+        v-for="(exp, name) in expectations"
+        :key="name"
+        size="sm"
+        class="sf-expectation"
+        :class="result ? `sf-expectation--${matchStatus(name, result.outputs?.[name])}` : (error ? 'sf-expectation--failed' : '')"
+      >
+        <rr-text-cell size="sm">
+          {{ name }}
+          <span v-if="articleMap?.outputToArticle?.get(name)" class="sf-article-tag">
+            Art. {{ articleMap.outputToArticle.get(name) }}
+          </span>
+        </rr-text-cell>
+        <rr-text-cell size="sm" class="sf-expectation-value">
+          verwacht: {{ formatValue(normalizeForCompare(exp)) }}
+        </rr-text-cell>
+        <rr-text-cell v-if="result && result.outputs" size="sm" class="sf-expectation-actual">
+          &rarr; {{ formatOutputValue(result.outputs[name], name) }}
+        </rr-text-cell>
+      </rr-list-item>
+    </rr-list>
 
-    <!-- Parameters -->
-    <div v-for="(value, name) in parameterValues" :key="name" class="sf-row">
-      <label class="sf-label">{{ name }}</label>
-      <input
-        class="sf-input"
-        :value="value"
-        @input="parameterValues = { ...parameterValues, [name]: $event.target.value }"
-      />
-    </div>
+    <!-- Error -->
+    <div v-if="error && !running" class="sf-error">{{ error }}</div>
+
+    <!-- Loading indicator -->
+    <div v-if="running" class="sf-running">Uitvoeren...</div>
+
+    <!-- Input: date + parameters -->
+    <rr-list variant="simple" class="sf-input-list">
+      <rr-list-item size="sm">
+        <rr-text-cell size="sm">Datum</rr-text-cell>
+        <rr-cell>
+          <input type="date" class="sf-date" v-model="calculationDate" />
+        </rr-cell>
+      </rr-list-item>
+      <rr-list-item v-for="(value, name) in parameterValues" :key="name" size="sm">
+        <rr-text-cell size="sm">
+          {{ name }}
+          <span v-if="articleMap?.paramToArticle?.get(name)" class="sf-article-tag">
+            Art. {{ articleMap.paramToArticle.get(name) }}
+          </span>
+        </rr-text-cell>
+        <rr-cell>
+          <input
+            class="sf-input"
+            :value="value"
+            @input="parameterValues = { ...parameterValues, [name]: $event.target.value }"
+          />
+        </rr-cell>
+      </rr-list-item>
+    </rr-list>
 
     <!-- Data sources -->
     <DataSourceTable
@@ -189,38 +241,16 @@ function matchStatus(outputName, actualValue) {
       @update:model-value="updateDataSourceRows(i, $event)"
     />
 
-    <!-- Execute + Results -->
-    <div class="sf-execute-row">
-      <button
-        class="sf-execute-btn"
-        @click="execute"
-        :disabled="!ready || running"
-        type="button"
+    <!-- Details button -->
+    <div class="sf-actions-row">
+      <rr-button
+        variant="neutral-tinted"
+        size="sm"
+        :disabled="!result && !error || undefined"
+        @click="emit('show-details')"
       >
-        {{ running ? 'Bezig...' : 'Uitvoeren \u25B6' }}
-      </button>
-
-      <!-- Inline results -->
-      <template v-if="result && !running">
-        <div
-          v-for="(value, name) in result.outputs"
-          :key="name"
-          class="sf-result"
-          :class="`sf-result--${matchStatus(name, value)}`"
-        >
-          <span class="sf-result-icon">
-            <template v-if="matchStatus(name, value) === 'passed'">&#x2713;</template>
-            <template v-else-if="matchStatus(name, value) === 'failed'">&#x2717;</template>
-            <template v-else>&#x25CF;</template>
-          </span>
-          <span class="sf-result-name">{{ name }}:</span>
-          <span class="sf-result-value">{{ formatOutputValue(value, name) }}</span>
-          <span v-if="matchStatus(name, value) === 'passed'" class="sf-badge sf-badge--pass">GESLAAGD</span>
-          <span v-if="matchStatus(name, value) === 'failed'" class="sf-badge sf-badge--fail">MISLUKT</span>
-        </div>
-      </template>
-
-      <div v-if="error && !running" class="sf-error">{{ error }}</div>
+        Details &#x25B6;
+      </rr-button>
     </div>
   </div>
 </template>
@@ -230,18 +260,50 @@ function matchStatus(outputName, actualValue) {
   font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
 }
 
-.sf-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+/* Expected outputs */
+.sf-expectation {
+  border-left: 3px solid transparent;
 }
 
-.sf-label {
-  font-size: 12px;
+.sf-expectation--passed {
+  border-left-color: #2e7d32;
+}
+
+.sf-expectation--failed {
+  border-left-color: #c62828;
+}
+
+.sf-expectation-value {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--semantics-text-color-secondary, #555);
+}
+
+.sf-expectation-actual {
+  font-family: 'SF Mono', 'Fira Code', monospace;
   font-weight: 600;
-  min-width: 50px;
-  color: var(--semantics-text-color-secondary, #666);
+  color: var(--semantics-text-color-primary, #1C2029);
+}
+
+/* Article tag */
+.sf-article-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #666;
+  background: #eee;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Input list */
+.sf-input-list rr-text-cell {
+  width: 80px;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.sf-input-list rr-cell {
+  flex: 1;
+  min-width: 0;
 }
 
 .sf-date {
@@ -253,7 +315,7 @@ function matchStatus(outputName, actualValue) {
 }
 
 .sf-input {
-  flex: 1;
+  width: 100%;
   padding: 4px 6px;
   border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   border-radius: 4px;
@@ -266,72 +328,22 @@ function matchStatus(outputName, actualValue) {
   border-color: #154273;
 }
 
-.sf-execute-row {
+/* Actions row */
+.sf-actions-row {
   padding: 8px 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
 }
 
-.sf-execute-btn {
-  padding: 5px 14px;
-  background: #154273;
-  color: white;
-  border: none;
-  border-radius: 5px;
+.sf-running {
   font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  color: var(--semantics-text-color-secondary, #666);
+  font-style: italic;
+  padding: 4px 0;
 }
-
-.sf-execute-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.sf-execute-btn:hover:not(:disabled) {
-  background: #1a5490;
-}
-
-.sf-result {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
-.sf-result-icon {
-  font-weight: bold;
-}
-
-.sf-result--passed .sf-result-icon { color: #060; }
-.sf-result--failed .sf-result-icon { color: #c00; }
-.sf-result--neutral .sf-result-icon { color: #666; }
-
-.sf-result-name {
-  font-weight: 600;
-}
-
-.sf-result-value {
-  color: var(--semantics-text-color-secondary, #555);
-}
-
-.sf-badge {
-  font-size: 9px;
-  font-weight: 700;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.sf-badge--pass { background: #efe; color: #060; }
-.sf-badge--fail { background: #fee; color: #c00; }
 
 .sf-error {
   font-size: 12px;
   color: #c00;
   word-break: break-word;
+  padding: 4px 0;
 }
 </style>

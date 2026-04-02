@@ -1,9 +1,11 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup } from '../gherkin/formMapper.js';
+import { matchStatus } from '../utils/outputFormat.js';
+import { buildArticleMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 
 const props = defineProps({
@@ -11,9 +13,14 @@ const props = defineProps({
   lawYaml: { type: String, default: null },
   engine: { type: Object, default: null },
   ready: { type: Boolean, default: false },
+  /** Articles array from useLaw() for article mapping */
+  articles: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits(['executed']);
+
+// --- Article mapping ---
+const articleMap = computed(() => buildArticleMap(props.articles));
 
 // --- Dependencies ---
 const {
@@ -61,6 +68,9 @@ async function fetchLawYaml(lawId) {
   return text;
 }
 
+// --- Dependencies ready tracking ---
+const depsReady = ref(false);
+
 // --- Load dependencies when law YAML changes ---
 let watchVersion = 0;
 
@@ -69,6 +79,8 @@ watch(
   async ([lawYaml, isReady]) => {
     if (!lawYaml || !isReady || !props.engine) return;
     const version = ++watchVersion;
+    depsReady.value = false;
+
     await loadAllDependencies(lawYaml, props.engine, fetchLawYaml);
     if (version !== watchVersion) return;
 
@@ -90,9 +102,97 @@ watch(
         }
       }
     }
+
+    if (version === watchVersion) {
+      depsReady.value = true;
+    }
   },
   { immediate: true },
 );
+
+// --- Template refs for ScenarioForm instances ---
+const scenarioRefs = ref([]);
+
+// --- Per-scenario result tracking ---
+const scenarioResults = ref(new Map());
+
+function onScenarioResult(index, data) {
+  const updated = new Map(scenarioResults.value);
+  updated.set(index, data);
+  scenarioResults.value = updated;
+}
+
+function scenarioStatus(index) {
+  const data = scenarioResults.value.get(index);
+  if (!data) return null;
+  if (data.error) return 'failed';
+  if (!data.result) return null;
+
+  const scenario = formState.value?.scenarios[index];
+  if (!scenario) return null;
+
+  const checkable = (scenario.assertions || []).filter(
+    (a) => a.outputName && a.value != null,
+  );
+  if (checkable.length === 0) return null;
+
+  for (const a of checkable) {
+    const status = matchStatus(
+      a.outputName,
+      data.result.outputs?.[a.outputName],
+      { [a.outputName]: String(a.value) },
+    );
+    if (status === 'failed') return 'failed';
+  }
+  return 'passed';
+}
+
+// Reset results and refs when formState changes (new scenario file loaded)
+watch(formState, () => {
+  scenarioResults.value = new Map();
+  scenarioRefs.value = [];
+});
+
+// --- Auto-execute all scenarios sequentially when deps are ready ---
+let autoExecuteVersion = 0;
+
+watch(
+  [depsReady, formState],
+  async ([ready, state]) => {
+    if (!ready || !state || !state.scenarios?.length) return;
+    const version = ++autoExecuteVersion;
+
+    // Wait one tick so ScenarioForm refs are mounted
+    await nextTick();
+    if (version !== autoExecuteVersion) return;
+
+    for (let i = 0; i < state.scenarios.length; i++) {
+      if (version !== autoExecuteVersion) return;
+      const formRef = scenarioRefs.value[i];
+      if (formRef?.execute) {
+        formRef.execute();
+        // Collect result after execution
+        const data = formRef.getExecutionData?.();
+        if (data) onScenarioResult(i, data);
+      }
+    }
+  },
+);
+
+// --- Details handler: emit to right panel ---
+function onShowDetails(index) {
+  // Prefer fresh data from the form ref, fall back to cached results
+  const formRef = scenarioRefs.value[index];
+  const data = formRef?.getExecutionData?.() || scenarioResults.value.get(index);
+  if (data) {
+    emit('executed', {
+      result: data.result,
+      traceText: data.traceText,
+      error: data.error,
+      expectations: data.expectations || {},
+    });
+  }
+}
 
 // Memoized setup per scenario (avoids new object on every render)
 const scenarioSetups = computed(() => {
@@ -103,10 +203,6 @@ const scenarioSetups = computed(() => {
 function onScenarioFileSelect(event) {
   const filename = event.target.value;
   if (filename) selectScenarioFile(filename);
-}
-
-function onScenarioExecuted(data) {
-  emit('executed', data);
 }
 </script>
 
@@ -139,24 +235,34 @@ function onScenarioExecuted(data) {
 
       <!-- Scenario accordion -->
       <template v-if="formState">
+        <rr-spacer size="8"></rr-spacer>
         <details
           v-for="(scenario, i) in formState.scenarios"
           :key="i"
           class="sb-accordion"
-          :open="i === 0 || undefined"
         >
-          <summary class="sb-accordion-header">
+          <summary
+            class="sb-accordion-header"
+            :class="{
+              'sb-header--pass': scenarioStatus(i) === 'passed',
+              'sb-header--fail': scenarioStatus(i) === 'failed',
+            }"
+          >
             <span class="sb-accordion-title">{{ scenario.name }}</span>
+            <span v-if="scenarioStatus(i) === 'passed'" class="sb-badge sb-badge--pass">&#x2713;</span>
+            <span v-else-if="scenarioStatus(i) === 'failed'" class="sb-badge sb-badge--fail">&#x2717;</span>
           </summary>
           <div class="sb-accordion-body">
             <ScenarioForm
               v-if="scenarioSetups[i]"
+              :ref="(el) => { scenarioRefs[i] = el; }"
               :scenario="scenario"
               :setup="scenarioSetups[i]"
               :engine="engine"
               :ready="ready"
               :law-id="lawId"
-              @executed="onScenarioExecuted"
+              :article-map="articleMap"
+              @show-details="() => onShowDetails(i)"
             />
           </div>
         </details>
@@ -251,8 +357,46 @@ function onScenarioExecuted(data) {
   color: var(--semantics-text-color-secondary, #999);
 }
 
+.sb-header--pass {
+  background: #e8f5e9;
+}
+
+.sb-header--pass:hover {
+  background: #c8e6c9;
+}
+
+.sb-header--fail {
+  background: #ffebee;
+}
+
+.sb-header--fail:hover {
+  background: #ffcdd2;
+}
+
 .sb-accordion-title {
   flex: 1;
+}
+
+.sb-badge {
+  font-size: 12px;
+  font-weight: 700;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sb-badge--pass {
+  background: #2e7d32;
+  color: white;
+}
+
+.sb-badge--fail {
+  background: #c62828;
+  color: white;
 }
 
 .sb-accordion-body {
