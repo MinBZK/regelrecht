@@ -180,7 +180,8 @@ async fn process_next_job(
             law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Harvested).await?;
             tx.commit().await?;
 
-            if let Err(e) = law_status::reset_fail_count(pool, &job.law_id, JobType::Harvest).await {
+            if let Err(e) = law_status::reset_fail_count(pool, &job.law_id, JobType::Harvest).await
+            {
                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset harvest fail count after success");
             }
 
@@ -740,8 +741,12 @@ async fn process_next_enrich_job(
                             .await;
 
                             // Check exhausted threshold
-                            match law_status::increment_fail_count(pool, &job.law_id, JobType::Enrich)
-                                .await
+                            match law_status::increment_fail_count(
+                                pool,
+                                &job.law_id,
+                                JobType::Enrich,
+                            )
+                            .await
                             {
                                 Ok(count) if count >= exhausted_threshold => {
                                     if let Err(e) =
@@ -772,7 +777,9 @@ async fn process_next_enrich_job(
                     }
                 }
                 Ok(()) => {
-                    if let Err(e) = law_status::reset_fail_count(pool, &job.law_id, JobType::Enrich).await {
+                    if let Err(e) =
+                        law_status::reset_fail_count(pool, &job.law_id, JobType::Enrich).await
+                    {
                         tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset enrich fail count after success");
                     }
 
