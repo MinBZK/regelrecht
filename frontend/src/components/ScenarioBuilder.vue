@@ -147,9 +147,10 @@ function scenarioStatus(index) {
   return 'passed';
 }
 
-// Reset results when formState changes (new scenario file loaded)
+// Reset results and refs when formState changes (new scenario file loaded)
 watch(formState, () => {
   scenarioResults.value = new Map();
+  scenarioRefs.value = [];
 });
 
 // --- Auto-execute all scenarios sequentially when deps are ready ---

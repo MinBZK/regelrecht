@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
-import { formatValue, formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 
 const props = defineProps({
@@ -185,7 +185,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
           </span>
         </div>
         <div class="sf-expectation-values">
-          <span class="sf-expectation-expected">verwacht: {{ formatValue(exp) }}</span>
+          <span class="sf-expectation-expected">verwacht: {{ formatValue(normalizeForCompare(exp)) }}</span>
           <template v-if="result && result.outputs">
             <span class="sf-expectation-arrow">&rarr;</span>
             <span class="sf-expectation-actual">{{ formatOutputValue(result.outputs[name], name) }}</span>
