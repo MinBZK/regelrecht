@@ -311,6 +311,13 @@ async fn init_backends(
                     );
                     continue;
                 }
+                if !backend.is_writable() {
+                    tracing::info!(
+                        source_id = %source.id,
+                        "backend is read-only, skipping"
+                    );
+                    continue;
+                }
                 tracing::info!(source_id = %source.id, "write backend ready");
                 backends.insert(source.id.clone(), Arc::new(Mutex::new(backend)));
             }

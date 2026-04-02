@@ -122,10 +122,11 @@ impl RepoBackend for LocalBackend {
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let path = entry.path();
-            if !path.is_file() {
+            let ft = entry.file_type().await?;
+            if !ft.is_file() {
                 continue;
             }
+            let path = entry.path();
             if let Some(ext) = extension {
                 if path.extension().is_none_or(|e| e != ext) {
                     continue;
@@ -260,10 +261,11 @@ impl RepoBackend for GitBackend {
         };
 
         while let Some(entry) = read_dir.next_entry().await? {
-            let path = entry.path();
-            if !path.is_file() {
+            let ft = entry.file_type().await?;
+            if !ft.is_file() {
                 continue;
             }
+            let path = entry.path();
             if let Some(ext) = extension {
                 if path.extension().is_none_or(|e| e != ext) {
                     continue;
