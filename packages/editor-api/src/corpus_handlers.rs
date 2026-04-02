@@ -1,8 +1,15 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use tokio::sync::Mutex;
+
+use regelrecht_corpus::backend::{RepoBackend, WriteContext};
+use regelrecht_corpus::source_map::LoadedLaw;
+use regelrecht_corpus::SourceType;
 
 use crate::state::AppState;
 
@@ -245,4 +252,176 @@ pub async fn get_scenario(
         )],
         content,
     ))
+}
+
+// ---------------------------------------------------------------------------
+// Scenario write helpers
+// ---------------------------------------------------------------------------
+
+/// Validate a scenario filename (no path traversal, must end with `.feature`).
+fn validate_scenario_filename(filename: &str) -> Result<(), (StatusCode, String)> {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err((StatusCode::BAD_REQUEST, "Invalid filename".to_string()));
+    }
+    if !filename.ends_with(".feature") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Only .feature files are supported".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Compute the backend-relative path for a scenario file.
+///
+/// Given a law's file_path and its source configuration, returns the path
+/// relative to the backend's root that points to `scenarios/{filename}`.
+fn scenario_relative_path(
+    law: &LoadedLaw,
+    source: &regelrecht_corpus::Source,
+    filename: &str,
+) -> Result<PathBuf, (StatusCode, String)> {
+    let file_path = std::path::Path::new(&law.file_path);
+    let law_dir = file_path.parent().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Cannot determine law directory".to_string(),
+        )
+    })?;
+
+    // Determine the source root to strip from the law's file_path.
+    let source_root: PathBuf = match &source.source_type {
+        SourceType::Local { local } => local.path.clone(),
+        SourceType::GitHub { github } => {
+            // For GitHub-fetched laws, file_path is repo-relative (e.g.
+            // "regulation/nl/wet/law_id/2025.yaml"). The backend's subpath
+            // already accounts for github.path, so strip it here.
+            github.path.as_ref().map(PathBuf::from).unwrap_or_default()
+        }
+    };
+
+    let relative_law_dir = law_dir.strip_prefix(&source_root).unwrap_or(law_dir);
+    Ok(relative_law_dir.join("scenarios").join(filename))
+}
+
+/// Resolved backend information for a law.
+struct ResolvedBackend {
+    law: LoadedLaw,
+    source: regelrecht_corpus::Source,
+    backend: Arc<Mutex<Box<dyn RepoBackend>>>,
+}
+
+/// Look up the backend and source for a law.
+fn resolve_backend(
+    corpus: &crate::state::CorpusState,
+    law_id: &str,
+) -> Result<ResolvedBackend, (StatusCode, String)> {
+    let law = corpus
+        .source_map
+        .get_law(law_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
+        .clone();
+
+    let source = corpus
+        .registry
+        .sources()
+        .iter()
+        .find(|s| s.id == law.source_id)
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Source '{}' not found in registry", law.source_id),
+            )
+        })?
+        .clone();
+
+    let backend = corpus
+        .backends
+        .get(&law.source_id)
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                format!("No write backend available for source '{}'", law.source_id),
+            )
+        })?
+        .clone();
+
+    Ok(ResolvedBackend {
+        law,
+        source,
+        backend,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Save / Delete scenario endpoints
+// ---------------------------------------------------------------------------
+
+/// PUT /api/corpus/laws/{law_id}/scenarios/{filename} — save a scenario file.
+pub async fn save_scenario(
+    State(state): State<AppState>,
+    Path((law_id, filename)): Path<(String, String)>,
+    body: String,
+) -> Result<StatusCode, (StatusCode, String)> {
+    validate_scenario_filename(&filename)?;
+
+    let resolved = {
+        let corpus = state.corpus.read().await;
+        resolve_backend(&corpus, &law_id)?
+    };
+
+    let relative_path = scenario_relative_path(&resolved.law, &resolved.source, &filename)?;
+
+    let backend = resolved.backend.lock().await;
+    if !backend.is_writable() {
+        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
+    }
+
+    backend
+        .write_file(&relative_path, &body)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    backend
+        .persist(&WriteContext {
+            message: format!("Update scenario {} for {}", filename, law_id),
+        })
+        .await
+        .map_err(|e| (StatusCode::CONFLICT, format!("Failed to persist: {e}")))?;
+
+    Ok(StatusCode::OK)
+}
+
+/// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
+pub async fn delete_scenario(
+    State(state): State<AppState>,
+    Path((law_id, filename)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    validate_scenario_filename(&filename)?;
+
+    let resolved = {
+        let corpus = state.corpus.read().await;
+        resolve_backend(&corpus, &law_id)?
+    };
+
+    let relative_path = scenario_relative_path(&resolved.law, &resolved.source, &filename)?;
+
+    let backend = resolved.backend.lock().await;
+    if !backend.is_writable() {
+        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
+    }
+
+    backend
+        .delete_file(&relative_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    backend
+        .persist(&WriteContext {
+            message: format!("Delete scenario {} for {}", filename, law_id),
+        })
+        .await
+        .map_err(|e| (StatusCode::CONFLICT, format!("Failed to persist: {e}")))?;
+
+    Ok(StatusCode::OK)
 }

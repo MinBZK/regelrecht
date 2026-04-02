@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use axum::middleware as axum_middleware;
 use axum::routing::get;
 use axum::Router;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tower_sessions::ExpiredDeletion;
@@ -88,7 +88,9 @@ async fn main() {
         )
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
-            get(corpus_handlers::get_scenario),
+            get(corpus_handlers::get_scenario)
+                .put(corpus_handlers::save_scenario)
+                .delete(corpus_handlers::delete_scenario),
         );
 
     // Protected API routes — require authentication when OIDC is enabled.
@@ -272,10 +274,57 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
         }
     };
 
+    let backends = init_backends(&registry, auth_file).await;
+
     CorpusState {
         registry,
         source_map,
+        backends,
     }
+}
+
+/// Create and initialize write backends for each registered source.
+async fn init_backends(
+    registry: &regelrecht_corpus::CorpusRegistry,
+    auth_file: Option<&std::path::Path>,
+) -> HashMap<String, Arc<Mutex<Box<dyn regelrecht_corpus::backend::RepoBackend>>>> {
+    let mut backends = HashMap::new();
+
+    for source in registry.sources() {
+        let token = regelrecht_corpus::auth::resolve_token_for_source(
+            &source.id,
+            source.auth_ref.as_deref(),
+            auth_file,
+        )
+        .unwrap_or_else(|e| {
+            tracing::warn!(source_id = %source.id, error = %e, "failed to resolve auth token");
+            None
+        });
+
+        match regelrecht_corpus::backend::create_backend(source, token.as_deref()) {
+            Ok(mut backend) => {
+                if let Err(e) = backend.ensure_ready().await {
+                    tracing::warn!(
+                        source_id = %source.id,
+                        error = %e,
+                        "backend init failed, writes disabled for this source"
+                    );
+                    continue;
+                }
+                tracing::info!(source_id = %source.id, "write backend ready");
+                backends.insert(source.id.clone(), Arc::new(Mutex::new(backend)));
+            }
+            Err(e) => {
+                tracing::warn!(
+                    source_id = %source.id,
+                    error = %e,
+                    "failed to create backend"
+                );
+            }
+        }
+    }
+
+    backends
 }
 
 /// Read favorites.json from the static directory.

@@ -1,5 +1,5 @@
 /**
- * useScenarios — fetch and manage scenario files for a law.
+ * useScenarios — fetch, manage, and save scenario files for a law.
  */
 import { ref, watch } from 'vue';
 
@@ -8,7 +8,9 @@ export function useScenarios(lawId) {
   const selectedScenario = ref(null);
   const featureText = ref('');
   const loading = ref(false);
+  const saving = ref(false);
   const error = ref(null);
+  const saveError = ref(null);
 
   async function fetchScenarios() {
     if (!lawId.value) return;
@@ -54,6 +56,41 @@ export function useScenarios(lawId) {
     }
   }
 
+  /**
+   * Save scenario content to the backend via PUT.
+   *
+   * @param {string} filename - Scenario filename (e.g. "eligibility.feature")
+   * @param {string} content - Gherkin feature text
+   */
+  async function saveScenario(filename, content) {
+    if (!lawId.value) return;
+
+    saving.value = true;
+    saveError.value = null;
+
+    try {
+      const res = await fetch(
+        `/api/corpus/laws/${encodeURIComponent(lawId.value)}/scenarios/${encodeURIComponent(filename)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          body: content,
+        },
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Save failed: ${res.status}`);
+      }
+      // Update local state with saved content
+      featureText.value = content;
+    } catch (e) {
+      saveError.value = e;
+      throw e;
+    } finally {
+      saving.value = false;
+    }
+  }
+
   // Re-fetch when lawId changes
   watch(lawId, () => {
     selectedScenario.value = null;
@@ -66,8 +103,11 @@ export function useScenarios(lawId) {
     selectedScenario,
     featureText,
     loading,
+    saving,
     error,
+    saveError,
     selectScenario,
     fetchScenarios,
+    saveScenario,
   };
 }

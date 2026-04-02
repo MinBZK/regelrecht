@@ -11,6 +11,7 @@ keywords = ["law", "legal", "corpus", "dutch", "regelrecht"]
 categories = ["development-tools"]
 
 [dependencies]
+async-trait = "0.1"
 tokio = { version = "1", features = ["process", "fs"] }
 tracing = "0.1"
 thiserror = "2.0"

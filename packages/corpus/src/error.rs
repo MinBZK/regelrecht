@@ -13,6 +13,9 @@ pub enum CorpusError {
 
     #[error("YAML parse error: {0}")]
     Yaml(#[from] serde_yaml_ng::Error),
+
+    #[error("write not supported: {0}")]
+    ReadOnly(String),
 }
 
 pub type Result<T> = std::result::Result<T, CorpusError>;

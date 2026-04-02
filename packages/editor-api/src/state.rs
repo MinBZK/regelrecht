@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use regelrecht_auth::{ConfiguredClient, OidcAppState, OidcConfig};
+use regelrecht_corpus::backend::RepoBackend;
 use regelrecht_corpus::SourceMap;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::config::AppConfig;
 
@@ -41,6 +43,8 @@ impl OidcAppState for AppState {
 pub struct CorpusState {
     pub registry: regelrecht_corpus::CorpusRegistry,
     pub source_map: SourceMap,
+    /// Write backends keyed by source ID.
+    pub backends: HashMap<String, Arc<Mutex<Box<dyn RepoBackend>>>>,
 }
 
 impl CorpusState {
