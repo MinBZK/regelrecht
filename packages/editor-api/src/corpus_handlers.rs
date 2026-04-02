@@ -9,7 +9,6 @@ use tokio::sync::Mutex;
 
 use regelrecht_corpus::backend::{RepoBackend, WriteContext};
 use regelrecht_corpus::source_map::LoadedLaw;
-use regelrecht_corpus::SourceType;
 
 use crate::state::AppState;
 
@@ -272,15 +271,16 @@ fn validate_scenario_filename(filename: &str) -> Result<(), (StatusCode, String)
     Ok(())
 }
 
-/// Extract the law-relative directory from a law's file_path and its source.
+/// Extract the law-relative directory from a law's file_path.
 ///
-/// Returns the structural path like `wet/law_id/` that is the same regardless
-/// of which backend is used. This is the law directory relative to the source
-/// root.
-fn law_relative_dir(
-    law: &LoadedLaw,
-    source: &regelrecht_corpus::Source,
-) -> Result<PathBuf, (StatusCode, String)> {
+/// Returns the structural path like `wet/law_id/` — the path from the
+/// regulation root to the law directory. This is source-agnostic and works
+/// with any backend.
+///
+/// The law's file_path is either absolute (local sources) or repo-relative
+/// (GitHub-fetched). In both cases the structural part is the last two path
+/// components: `{regulatory_layer}/{law_id}/`.
+fn law_relative_dir(law: &LoadedLaw) -> Result<PathBuf, (StatusCode, String)> {
     let file_path = std::path::Path::new(&law.file_path);
     let law_dir = file_path.parent().ok_or_else(|| {
         (
@@ -289,23 +289,25 @@ fn law_relative_dir(
         )
     })?;
 
-    // Determine the source root to strip from the law's file_path.
-    let source_root: PathBuf = match &source.source_type {
-        SourceType::Local { local } => local.path.clone(),
-        SourceType::GitHub { github } => {
-            github.path.as_ref().map(PathBuf::from).unwrap_or_default()
-        }
-    };
-
-    let relative = law_dir.strip_prefix(&source_root).unwrap_or(law_dir);
-    Ok(relative.to_path_buf())
+    // Extract the last two components: regulatory_layer/law_id
+    // e.g. from "/abs/path/corpus/regulation/nl/wet/my_law/2025.yaml"
+    //   → parent = ".../wet/my_law"
+    //   → last two components = "wet/my_law"
+    let components: Vec<_> = law_dir.components().rev().take(2).collect();
+    if components.len() == 2 {
+        let mut rel = PathBuf::new();
+        rel.push(components[1].as_os_str());
+        rel.push(components[0].as_os_str());
+        Ok(rel)
+    } else {
+        // Fallback: use the full law_dir filename as-is
+        Ok(law_dir.file_name().map(PathBuf::from).unwrap_or_default())
+    }
 }
 
 /// Resolved backend information for a law.
 struct ResolvedBackend {
     law: LoadedLaw,
-    /// Source the law was loaded from (used for path computation).
-    law_source: regelrecht_corpus::Source,
     backend: Arc<Mutex<Box<dyn RepoBackend>>>,
 }
 
@@ -325,26 +327,18 @@ fn resolve_writable_backend(
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
         .clone();
 
-    let law_source = corpus
-        .registry
-        .sources()
-        .iter()
-        .find(|s| s.id == law.source_id)
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Source '{}' not found in registry", law.source_id),
-            )
-        })?
-        .clone();
-
-    // Try the law's own backend first, then fall back to any writable backend.
+    // Try the law's own backend first, then fall back to any other backend.
+    // The fallback picks the backend with the lowest source ID (alphabetical)
+    // for deterministic behaviour across restarts.
     let backend = corpus
         .backends
         .get(&law.source_id)
         .or_else(|| {
-            // Pick the first available backend as fallback.
-            corpus.backends.values().next()
+            corpus
+                .backends
+                .iter()
+                .min_by_key(|(k, _)| (*k).clone())
+                .map(|(_, v)| v)
         })
         .ok_or_else(|| {
             (
@@ -354,11 +348,7 @@ fn resolve_writable_backend(
         })?
         .clone();
 
-    Ok(ResolvedBackend {
-        law,
-        law_source,
-        backend,
-    })
+    Ok(ResolvedBackend { law, backend })
 }
 
 // ---------------------------------------------------------------------------
@@ -377,7 +367,7 @@ async fn resolve_write_target(
         resolve_writable_backend(&corpus, law_id)?
     };
 
-    let rel_dir = law_relative_dir(&resolved.law, &resolved.law_source)?;
+    let rel_dir = law_relative_dir(&resolved.law)?;
     let relative_path = rel_dir.join("scenarios").join(filename);
 
     let backend = resolved.backend.lock_owned().await;
