@@ -269,12 +269,12 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 }
 
 .sf-expectation--passed {
-  background: #e8f5e9;
+  background: transparent;
   border-left-color: #2e7d32;
 }
 
 .sf-expectation--failed {
-  background: #ffebee;
+  background: transparent;
   border-left-color: #c62828;
 }
 

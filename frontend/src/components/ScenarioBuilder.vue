@@ -239,15 +239,13 @@ function onScenarioFileSelect(event) {
           v-for="(scenario, i) in formState.scenarios"
           :key="i"
           class="sb-accordion"
+          :class="{
+            'sb-accordion--pass': scenarioStatus(i) === 'passed',
+            'sb-accordion--fail': scenarioStatus(i) === 'failed',
+          }"
           :open="i === 0 || undefined"
         >
-          <summary
-            class="sb-accordion-header"
-            :class="{
-              'sb-header--pass': scenarioStatus(i) === 'passed',
-              'sb-header--fail': scenarioStatus(i) === 'failed',
-            }"
-          >
+          <summary class="sb-accordion-header">
             <span class="sb-accordion-title">{{ scenario.name }}</span>
             <span v-if="scenarioStatus(i) === 'passed'" class="sb-badge sb-badge--pass">&#x2713;</span>
             <span v-else-if="scenarioStatus(i) === 'failed'" class="sb-badge sb-badge--fail">&#x2717;</span>
@@ -357,19 +355,19 @@ function onScenarioFileSelect(event) {
   color: var(--semantics-text-color-secondary, #999);
 }
 
-.sb-header--pass {
+.sb-accordion--pass {
   background: #e8f5e9;
 }
 
-.sb-header--pass:hover {
+.sb-accordion--pass > .sb-accordion-header:hover {
   background: #c8e6c9;
 }
 
-.sb-header--fail {
+.sb-accordion--fail {
   background: #ffebee;
 }
 
-.sb-header--fail:hover {
+.sb-accordion--fail > .sb-accordion-header:hover {
   background: #ffcdd2;
 }
 
