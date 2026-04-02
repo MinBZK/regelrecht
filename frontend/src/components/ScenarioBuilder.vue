@@ -235,11 +235,11 @@ function onScenarioFileSelect(event) {
 
       <!-- Scenario accordion -->
       <template v-if="formState">
+        <rr-spacer size="8"></rr-spacer>
         <details
           v-for="(scenario, i) in formState.scenarios"
           :key="i"
           class="sb-accordion"
-          :open="i === 0 || undefined"
         >
           <summary
             class="sb-accordion-header"

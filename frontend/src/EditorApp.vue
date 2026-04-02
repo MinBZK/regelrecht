@@ -194,9 +194,9 @@ function selectArticle(number) {
           <!-- Middle: Form or YAML -->
           <rr-split-view-pane slot="pane-2">
             <rr-page sticky-header>
-              <rr-top-title-bar slot="header" title="Formulier">
+              <rr-top-title-bar slot="header" title="Scenario's">
                 <rr-segmented-control slot="toolbar" size="md" :value="middlePaneView" @change="onMiddlePaneChange">
-                  <rr-segmented-control-item value="form">Formulier</rr-segmented-control-item>
+                  <rr-segmented-control-item value="form">Scenario's</rr-segmented-control-item>
                   <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
                 </rr-segmented-control>
                 <span v-if="middlePaneView === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
