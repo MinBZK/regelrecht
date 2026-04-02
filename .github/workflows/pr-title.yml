@@ -1,7 +1,7 @@
 name: PR Title Lint
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, edited, synchronize]
 
 permissions:
@@ -43,7 +43,7 @@ jobs:
             schema
             deps
           requireScope: false
-          subjectPattern: ^[a-z].+$
+          subjectPattern: ^[a-z].*$
           subjectPatternError: |
             The subject "{subject}" found in the pull request title "{title}"
             must start with a lowercase letter.
