@@ -180,7 +180,9 @@ async fn process_next_job(
             law_status::update_status(&mut *tx, &job.law_id, LawStatusValue::Harvested).await?;
             tx.commit().await?;
 
-            let _ = law_status::reset_fail_count(pool, &job.law_id, JobType::Harvest).await;
+            if let Err(e) = law_status::reset_fail_count(pool, &job.law_id, JobType::Harvest).await {
+                tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset harvest fail count after success");
+            }
 
             if let Ok(entry) = law_status::get_law(pool, &job.law_id).await {
                 if entry.law_name.is_none() {
@@ -770,7 +772,9 @@ async fn process_next_enrich_job(
                     }
                 }
                 Ok(()) => {
-                    let _ = law_status::reset_fail_count(pool, &job.law_id, JobType::Enrich).await;
+                    if let Err(e) = law_status::reset_fail_count(pool, &job.law_id, JobType::Enrich).await {
+                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset enrich fail count after success");
+                    }
 
                     // Set coverage score outside the transaction (non-critical).
                     // With dual providers, whichever finishes last writes the score.
