@@ -526,14 +526,24 @@ pub async fn create_harvest_job(
         ));
     }
 
-    // Check if law is exhausted for harvest
-    if let Ok(law) = regelrecht_pipeline::law_status::get_law(&mut *tx, &bwb_id).await {
-        if law.status == regelrecht_pipeline::LawStatusValue::HarvestExhausted {
+    // Check if law is exhausted for harvest.
+    // RowNotFound is fine (new law, can't be exhausted); other errors should propagate.
+    match regelrecht_pipeline::law_status::get_law(&mut *tx, &bwb_id).await {
+        Ok(law) if law.status == regelrecht_pipeline::LawStatusValue::HarvestExhausted => {
             return Err((
                 StatusCode::CONFLICT,
                 format!("{bwb_id} is harvest_exhausted — reset via /api/law_entries/{bwb_id}/reset-exhausted first"),
             ));
         }
+        Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {}
+        Err(e) => {
+            tracing::error!(error = %e, "failed to check exhausted status");
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to check exhausted status".to_string(),
+            ));
+        }
+        Ok(_) => {}
     }
 
     sqlx::query(
@@ -658,14 +668,23 @@ pub async fn create_enrich_jobs(
             )
         })?;
 
-    // Check if law is exhausted for enrich
-    if let Ok(law) = regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
-        if law.status == regelrecht_pipeline::LawStatusValue::EnrichExhausted {
+    // Check if law is exhausted for enrich.
+    match regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
+        Ok(law) if law.status == regelrecht_pipeline::LawStatusValue::EnrichExhausted => {
             return Err((
                 StatusCode::CONFLICT,
                 format!("{law_id} is enrich_exhausted — reset via /api/law_entries/{law_id}/reset-exhausted first"),
             ));
         }
+        Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {}
+        Err(e) => {
+            tracing::error!(error = %e, "failed to check exhausted status");
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to check exhausted status".to_string(),
+            ));
+        }
+        Ok(_) => {}
     }
 
     // Look up the law to find its yaml_path from the most recent completed harvest job.
@@ -859,12 +878,22 @@ pub async fn reset_exhausted(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let pool = &state.pool;
 
-    let law = regelrecht_pipeline::law_status::get_law(pool, &law_id)
-        .await
-        .map_err(|e| {
+    let law = match regelrecht_pipeline::law_status::get_law(pool, &law_id).await {
+        Ok(law) => law,
+        Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("law not found: {law_id}"),
+            ));
+        }
+        Err(e) => {
             tracing::error!(error = %e, "failed to get law");
-            (StatusCode::NOT_FOUND, format!("law not found: {law_id}"))
-        })?;
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal server error".to_string(),
+            ));
+        }
+    };
 
     let job_type = match law.status {
         regelrecht_pipeline::LawStatusValue::HarvestExhausted => {
