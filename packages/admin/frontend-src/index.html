@@ -29,23 +29,21 @@
             </rr-tab-bar>
           </rr-toolbar-item>
         </rr-toolbar-start-area>
-        <rr-toolbar-center-area>
-          <rr-toolbar-item id="filters">
-            <!-- Rendered by app.js -->
-          </rr-toolbar-item>
-          <rr-toolbar-item id="harvest-form-container">
-            <div id="harvest-form" class="harvest-form">
-              <rr-text-field id="harvest-bwb-id" size="md" placeholder="BWB ID (e.g. BWBR0018451)"></rr-text-field>
-              <rr-button id="harvest-btn" variant="accent-filled" size="md">Harvest</rr-button>
-            </div>
-          </rr-toolbar-item>
-        </rr-toolbar-center-area>
         <rr-toolbar-end-area>
+          <rr-toolbar-item id="view-toggle-container">
+            <!-- Rendered by app.js (grouped/flat toggle for jobs tab) -->
+          </rr-toolbar-item>
           <rr-toolbar-item id="pagination-container">
             <!-- Rendered by app.js -->
           </rr-toolbar-item>
         </rr-toolbar-end-area>
       </rr-toolbar>
+    </div>
+
+    <div id="job-creation" class="job-creation" hidden>
+      <span class="job-creation__label">New harvest job</span>
+      <rr-text-field id="harvest-bwb-id" size="md" placeholder="BWB ID (e.g. BWBR0018451)"></rr-text-field>
+      <rr-button id="harvest-btn" variant="accent-filled" size="md">Harvest</rr-button>
     </div>
 
     <rr-simple-section>
