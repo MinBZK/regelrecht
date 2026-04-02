@@ -48,6 +48,14 @@ pub async fn update_feature_flag(
     Path(key): Path<String>,
     Json(body): Json<UpdateFlag>,
 ) -> impl IntoResponse {
+    if !defaults().contains_key(&key) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("unknown flag key '{}'", key)})),
+        )
+            .into_response();
+    }
+
     let Some(pool) = &state.pool else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,

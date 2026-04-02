@@ -9,6 +9,14 @@ const emit = defineEmits(['close']);
 
 const { flags, toggle } = useFeatureFlags();
 
+const panelFlags = [
+  ['panel.article_text', 'Wettekst'],
+  ['panel.scenario_form', 'Scenario formulier'],
+  ['panel.yaml_editor', 'YAML editor'],
+  ['panel.execution_trace', 'Resultaat'],
+  ['panel.machine_readable', 'Machine readable'],
+];
+
 const sheetEl = ref(null);
 
 watch(() => props.open, (val) => {
@@ -54,16 +62,6 @@ watch(() => props.open, (val) => {
     </div>
   </rr-sheet>
 </template>
-
-<script>
-const panelFlags = [
-  ['panel.article_text', 'Wettekst'],
-  ['panel.scenario_form', 'Scenario formulier'],
-  ['panel.yaml_editor', 'YAML editor'],
-  ['panel.execution_trace', 'Resultaat'],
-  ['panel.machine_readable', 'Machine readable'],
-];
-</script>
 
 <style scoped>
 .settings-content {
