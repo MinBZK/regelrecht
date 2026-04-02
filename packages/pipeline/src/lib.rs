@@ -4,6 +4,7 @@ pub mod config;
 pub mod db;
 pub mod enrich;
 pub mod error;
+pub mod feature_flags;
 pub mod harvest;
 pub mod job_queue;
 pub mod law_status;
@@ -20,4 +21,4 @@ pub use enrich::{
 };
 pub use error::PipelineError;
 pub use harvest::{HarvestPayload, HarvestResult, MAX_HARVEST_DEPTH};
-pub use models::{Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};
+pub use models::{FeatureFlag, Job, JobStatus, JobType, LawEntry, LawStatusValue, Priority};

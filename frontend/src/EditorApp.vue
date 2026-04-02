@@ -5,14 +5,36 @@ import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
+import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
+import FeatureFlagSettings from './components/FeatureFlagSettings.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
+const { isEnabled } = useFeatureFlags();
+
+const settingsOpen = ref(false);
+
+const showMiddlePane = computed(() => isEnabled('panel.scenario_form') || isEnabled('panel.yaml_editor'));
+const showFormOption = computed(() => isEnabled('panel.scenario_form'));
+const showYamlOption = computed(() => isEnabled('panel.yaml_editor'));
+
+// Compute visible pane count and slot assignments for split view
+const visiblePanes = computed(() => {
+  const panes = [];
+  if (isEnabled('panel.article_text')) panes.push('text');
+  if (showMiddlePane.value) panes.push('middle');
+  if (isEnabled('panel.execution_trace')) panes.push('trace');
+  return panes.length > 0 ? panes : ['text', 'middle', 'trace'];
+});
+const paneSlot = (name) => {
+  const idx = visiblePanes.value.indexOf(name);
+  return idx >= 0 ? `pane-${idx + 1}` : undefined;
+};
 
 // Redirect to login when OIDC is configured but user is not authenticated.
 // { immediate: true } is needed because in SPA navigation the auth state may
@@ -154,6 +176,12 @@ Promise.all(uniqueLawIds.map(async (id) => {
     lawNames.value = { ...lawNames.value, [id]: entry.lawName };
   } catch { /* ignore */ }
 }));
+
+// Keep middlePaneView in sync with enabled options
+watch([showFormOption, showYamlOption], ([form, yaml]) => {
+  if (!form && middlePaneView.value === 'form' && yaml) middlePaneView.value = 'yaml';
+  if (!yaml && middlePaneView.value === 'yaml' && form) middlePaneView.value = 'form';
+}, { immediate: true });
 
 function onMiddlePaneChange(event) {
   const value = event.target?.value ?? event.detail?.[0];
@@ -607,6 +635,8 @@ function handleActionSave() {
                   <ndd-menu-divider></ndd-menu-divider>
                   <ndd-menu-item text="Nieuw project"></ndd-menu-item>
                 </ndd-menu>
+                <ndd-icon-button size="md" icon="gear" title="Instellingen" @click="settingsOpen = true">
+                </ndd-icon-button>
                 <ndd-button-bar-divider></ndd-button-bar-divider>
                 <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
                 </ndd-icon-button>
@@ -661,10 +691,10 @@ function handleActionSave() {
           </ndd-simple-section>
         </ndd-page>
 
-        <!-- 3-column equal layout: Text | Form | Result -->
-        <ndd-side-by-side-split-view v-else panes="3">
+        <!-- Dynamic column layout based on feature flags -->
+        <ndd-side-by-side-split-view v-else :panes="String(visiblePanes.length)">
           <!-- Left: Article Text -->
-          <ndd-split-view-pane slot="pane-1" background="tinted">
+          <ndd-split-view-pane v-if="isEnabled('panel.article_text')" :slot="paneSlot('text')" background="tinted">
             <ndd-page sticky-header>
               <ndd-top-title-bar slot="header" text="Tekst"></ndd-top-title-bar>
               <ArticleText :article="selectedArticle" />
@@ -672,10 +702,10 @@ function handleActionSave() {
           </ndd-split-view-pane>
 
           <!-- Middle: Form or YAML -->
-          <ndd-split-view-pane slot="pane-2">
+          <ndd-split-view-pane v-if="showMiddlePane" :slot="paneSlot('middle')">
             <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" :text="middlePaneTitle">
-                <ndd-segmented-control slot="toolbar" size="md" data-testid="middle-pane-toggle" :value="middlePaneView" @change="onMiddlePaneChange">
+              <ndd-top-title-bar slot="header" :text="showFormOption ? middlePaneTitle : 'YAML'">
+                <ndd-segmented-control v-if="showFormOption && showYamlOption" slot="toolbar" size="md" data-testid="middle-pane-toggle" :value="middlePaneView" @change="onMiddlePaneChange">
                   <ndd-segmented-control-item value="form" text="Scenario's"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
                 </ndd-segmented-control>
@@ -683,13 +713,13 @@ function handleActionSave() {
               </ndd-top-title-bar>
 
               <!-- Form view: engine error -->
-              <ndd-simple-section v-if="middlePaneView === 'form' && engineInitError" align="center">
+              <ndd-simple-section v-if="showFormOption && middlePaneView === 'form' && engineInitError" align="center">
                 <ndd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></ndd-inline-dialog>
               </ndd-simple-section>
 
               <!-- Form view: scenario builder -->
               <ScenarioBuilder
-                v-else-if="middlePaneView === 'form'"
+                v-else-if="showFormOption && middlePaneView === 'form'"
                 :law-id="lawId"
                 :law-yaml="currentLawYaml"
                 :engine="getEngine()"
@@ -698,10 +728,8 @@ function handleActionSave() {
                 @executed="handleScenarioExecuted"
               />
 
-              <!-- YAML view: bypass ndd-simple-section so the textarea can
-                   stretch to fill the pane body. The wrap is a flex column
-                   that anchors the parse-error footer at the bottom. -->
-              <div v-if="middlePaneView === 'yaml'" class="editor-yaml-wrap">
+              <!-- YAML view -->
+              <div v-if="showYamlOption && middlePaneView === 'yaml'" class="editor-yaml-wrap">
                 <textarea
                   :value="yamlSource"
                   @input="onYamlInput"
@@ -717,7 +745,7 @@ function handleActionSave() {
           </ndd-split-view-pane>
 
           <!-- Right: Execution Result or Machine Readable -->
-          <ndd-split-view-pane slot="pane-3">
+          <ndd-split-view-pane v-if="isEnabled('panel.execution_trace')" :slot="paneSlot('trace')">
             <ndd-page sticky-header>
               <ndd-top-title-bar slot="header" :text="rightPaneTitle">
                 <ndd-segmented-control slot="toolbar" size="md" data-testid="right-pane-toggle" :value="rightPaneView" @change="onRightPaneChange">
@@ -760,6 +788,7 @@ function handleActionSave() {
 
   <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" :article="editedArticle" @save="handleSave" @close="activeEditItem = null" />
+  <FeatureFlagSettings :open="settingsOpen" @close="settingsOpen = false" />
 </template>
 
 <style>

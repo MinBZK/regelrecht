@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
-use axum::routing::get;
+use axum::routing::{get, put};
 use axum::Router;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::services::{ServeDir, ServeFile};
@@ -20,6 +20,7 @@ use tracing_subscriber::EnvFilter;
 mod config;
 mod corpus_handlers;
 mod favorites;
+mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
@@ -106,6 +107,11 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
+        )
+        .route("/api/feature-flags", get(feature_flags::list_feature_flags))
+        .route(
+            "/api/feature-flags/{key}",
+            put(feature_flags::update_feature_flag),
         )
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
