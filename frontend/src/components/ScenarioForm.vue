@@ -68,6 +68,7 @@ const selectedOutputs = ref(initOutputs());
 const result = ref(null);
 const running = ref(false);
 const error = ref(null);
+const errorTraceText = ref(null);
 
 // Re-init when scenario/setup changes
 watch([() => props.setup, () => props.scenario], () => {
@@ -84,6 +85,7 @@ watch([() => props.setup, () => props.scenario], () => {
   selectedOutputs.value = initOutputs();
   result.value = null;
   error.value = null;
+  errorTraceText.value = null;
 }, { deep: true });
 
 function execute() {
@@ -95,6 +97,7 @@ function execute() {
   running.value = true;
   result.value = null;
   error.value = null;
+  errorTraceText.value = null;
 
   try {
     const engine = props.engine;
@@ -133,6 +136,7 @@ function execute() {
   } catch (e) {
     if (e && typeof e === 'object' && e.error) {
       error.value = e.error;
+      errorTraceText.value = e.trace_text || null;
     } else {
       const msg = typeof e === 'string' ? e : (e.message || String(e));
       error.value = msg;
@@ -146,7 +150,7 @@ function execute() {
 function getExecutionData() {
   return {
     result: result.value,
-    traceText: result.value?.trace_text || null,
+    traceText: result.value?.trace_text || errorTraceText.value || null,
     error: error.value,
     expectations: expectations.value,
   };
