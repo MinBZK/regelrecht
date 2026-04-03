@@ -22,7 +22,7 @@ const sheetEl = ref(null);
 watch(() => props.open, (val) => {
   if (!sheetEl.value) return;
   if (val) {
-    sheetEl.value.showSheet();
+    sheetEl.value.show();
   } else {
     sheetEl.value.close();
   }
