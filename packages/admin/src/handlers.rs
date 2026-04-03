@@ -930,20 +930,15 @@ pub async fn reset_exhausted(
 
     // Use update_status_if to only update when status is still exhausted,
     // preventing regression if the law was reset concurrently.
-    regelrecht_pipeline::law_status::update_status_if(
-        &mut *tx,
-        &law_id,
-        law.status,
-        new_status,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "failed to update status");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to update status".to_string(),
-        )
-    })?;
+    regelrecht_pipeline::law_status::update_status_if(&mut *tx, &law_id, law.status, new_status)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to update status");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed to update status".to_string(),
+            )
+        })?;
 
     tx.commit().await.map_err(|e| {
         tracing::error!(error = %e, "failed to commit transaction");
