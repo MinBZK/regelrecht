@@ -77,7 +77,7 @@ To answer "does person X qualify for healthcare allowance?", the engine:
 
 Same inputs always produce the same result. The engine runs as native code on servers and as WebAssembly in browsers, with identical behavior.
 
-One thing that is unusual: the engine has zero built-in domain knowledge. No hardcoded holidays, no built-in tax rates, no special cases. Everything comes from the law files. This makes the engine simple, but it means every law must be self-contained (or reference other laws for the values it needs).
+The engine has zero built-in domain knowledge. No hardcoded holidays, no built-in tax rates, no special cases. Everything comes from the law files. This makes the engine simple, but it means every law must be self-contained (or reference other laws for the values it needs).
 
 ## Core concepts
 

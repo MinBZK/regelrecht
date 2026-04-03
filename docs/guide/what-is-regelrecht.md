@@ -1,6 +1,6 @@
 # What is RegelRecht?
 
-RegelRecht is an open-source platform for making Dutch legislation machine-readable and executable. It enables lawmakers, government agencies, and citizens to work with law as structured, testable code.
+RegelRecht is an open-source platform for making Dutch legislation machine-readable and executable. Lawmakers draft in it, government agencies run it, and citizens can inspect how decisions about them are made.
 
 ## The Problem
 
@@ -56,11 +56,11 @@ Individual decisions (*beschikkingen*) are not instant computations - they are a
 
 | Principle | What It Means |
 |-----------|--------------|
-| **Zero domain knowledge** | The engine has no knowledge of Easter, King's Day, or public holidays. All domain knowledge comes from the law YAML. |
-| **Identical execution** | The engine produces the same result whether it runs in the browser, on a backend, or in the editor. |
-| **Version control as governance** | Git history captures legislative evolution. Branches = proposals. Merges = publication. |
-| **Traceability** | Every computed value traces back to a specific article and paragraph. |
-| **Open by default** | All law, all tooling, all decisions - publicly auditable. |
+| **Zero domain knowledge** | No hardcoded holidays, tax rates, or special cases. Everything comes from law YAML. |
+| **Identical execution** | Browser, backend, editor — same inputs, same result. |
+| **Version control as governance** | Git history captures legislative evolution. Branches are proposals, merges are publication. |
+| **Traceability** | Every computed value points back to a specific article and paragraph. |
+| **Open by default** | Law, tooling, decisions — all publicly auditable. |
 
 ## Next Steps
 

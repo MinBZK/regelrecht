@@ -67,9 +67,9 @@ When a decision depends on values from other organisations (via [Multi-Org Execu
 
 When reproducing the decision, the engine uses these **sealed accepted values** rather than re-calling the other organisation. The other organisation may now be running a different engine version. A *beschikking* stands once issued — the accepted value at the time is a legal fact.
 
-## Why this matters
+## What this enables
 
-A flagged, reproducible decision is fundamentally different from an opaque one. Citizens can request their trace. Auditors can verify the computation. Courts can reconstruct the reasoning. And when a bug is found, every affected decision can be identified by querying receipts for the engine version and regulation hash.
+A reproducible decision with a sealed receipt is a different animal from an opaque one. A citizen requests their trace and sees which rules applied. An auditor re-runs the computation and gets the same number. A court reconstructs the reasoning step by step. And when a bug surfaces, every affected decision can be found by querying receipts for the engine version and regulation hash.
 
 ## Further reading
 
