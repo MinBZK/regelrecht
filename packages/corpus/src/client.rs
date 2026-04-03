@@ -345,10 +345,8 @@ impl CorpusClient {
         // index operations to a single thread (index.threads) to prevent
         // "unable to create threaded lstat: Resource temporarily unavailable"
         // errors in resource-constrained containers with low PID/thread limits.
-        let git_configs: &[(&str, &str)] = &[
-            ("core.preloadIndex", "false"),
-            ("index.threads", "1"),
-        ];
+        let git_configs: &[(&str, &str)] =
+            &[("core.preloadIndex", "false"), ("index.threads", "1")];
         env.push(("GIT_CONFIG_COUNT".into(), git_configs.len().to_string()));
         for (i, (key, value)) in git_configs.iter().enumerate() {
             env.push((format!("GIT_CONFIG_KEY_{i}"), (*key).into()));
