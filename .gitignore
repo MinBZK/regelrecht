@@ -37,6 +37,9 @@ __pycache__/
 # Mutation testing
 mutants.out/
 
+# BDD trace output
+trace_output/
+
 # Dev stack
 .dev-pids
 
