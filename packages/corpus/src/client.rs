@@ -339,21 +339,21 @@ impl CorpusClient {
                 self.config.git_author_email.clone(),
             ),
             ("GIT_TERMINAL_PROMPT".into(), "0".into()),
-            // Disable threaded index preloading and optional locks to prevent
-            // "unable to create threaded lstat: Resource temporarily unavailable"
-            // errors in resource-constrained containers with low PID/thread limits.
-            ("GIT_CONFIG_COUNT".into(), "2".into()),
-            (
-                "GIT_CONFIG_KEY_0".into(),
-                "core.preloadIndex".into(),
-            ),
-            ("GIT_CONFIG_VALUE_0".into(), "false".into()),
-            (
-                "GIT_CONFIG_KEY_1".into(),
-                "index.threads".into(),
-            ),
-            ("GIT_CONFIG_VALUE_1".into(), "1".into()),
         ];
+
+        // Disable threaded index preloading (core.preloadIndex) and limit
+        // index operations to a single thread (index.threads) to prevent
+        // "unable to create threaded lstat: Resource temporarily unavailable"
+        // errors in resource-constrained containers with low PID/thread limits.
+        let git_configs: &[(&str, &str)] = &[
+            ("core.preloadIndex", "false"),
+            ("index.threads", "1"),
+        ];
+        env.push(("GIT_CONFIG_COUNT".into(), git_configs.len().to_string()));
+        for (i, (key, value)) in git_configs.iter().enumerate() {
+            env.push((format!("GIT_CONFIG_KEY_{i}"), (*key).into()));
+            env.push((format!("GIT_CONFIG_VALUE_{i}"), (*value).into()));
+        }
 
         if let (Some(askpass), Some(token)) = (&self.askpass_path, self.config.git_token()) {
             env.push(("GIT_ASKPASS".into(), askpass.to_string_lossy().into()));
