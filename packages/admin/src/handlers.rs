@@ -878,7 +878,16 @@ pub async fn reset_exhausted(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let pool = &state.pool;
 
-    let law = match regelrecht_pipeline::law_status::get_law(pool, &law_id).await {
+    let mut tx = pool.begin().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to begin transaction");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal server error".to_string(),
+        )
+    })?;
+
+    // Read status inside the transaction to prevent TOCTOU race.
+    let law = match regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
         Ok(law) => law,
         Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {
             return Err((StatusCode::NOT_FOUND, format!("law not found: {law_id}")));
@@ -892,13 +901,15 @@ pub async fn reset_exhausted(
         }
     };
 
-    let job_type = match law.status {
-        regelrecht_pipeline::LawStatusValue::HarvestExhausted => {
-            regelrecht_pipeline::JobType::Harvest
-        }
-        regelrecht_pipeline::LawStatusValue::EnrichExhausted => {
-            regelrecht_pipeline::JobType::Enrich
-        }
+    let (job_type, new_status) = match law.status {
+        regelrecht_pipeline::LawStatusValue::HarvestExhausted => (
+            regelrecht_pipeline::JobType::Harvest,
+            regelrecht_pipeline::LawStatusValue::HarvestFailed,
+        ),
+        regelrecht_pipeline::LawStatusValue::EnrichExhausted => (
+            regelrecht_pipeline::JobType::Enrich,
+            regelrecht_pipeline::LawStatusValue::EnrichFailed,
+        ),
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -906,19 +917,6 @@ pub async fn reset_exhausted(
             ))
         }
     };
-
-    let new_status = match job_type {
-        regelrecht_pipeline::JobType::Harvest => regelrecht_pipeline::LawStatusValue::HarvestFailed,
-        regelrecht_pipeline::JobType::Enrich => regelrecht_pipeline::LawStatusValue::EnrichFailed,
-    };
-
-    let mut tx = pool.begin().await.map_err(|e| {
-        tracing::error!(error = %e, "failed to begin transaction");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
-    })?;
 
     regelrecht_pipeline::law_status::reset_fail_count(&mut *tx, &law_id, job_type)
         .await
@@ -930,15 +928,22 @@ pub async fn reset_exhausted(
             )
         })?;
 
-    regelrecht_pipeline::law_status::update_status(&mut *tx, &law_id, new_status)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to update status");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to update status".to_string(),
-            )
-        })?;
+    // Use update_status_if to only update when status is still exhausted,
+    // preventing regression if the law was reset concurrently.
+    regelrecht_pipeline::law_status::update_status_if(
+        &mut *tx,
+        &law_id,
+        law.status,
+        new_status,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to update status");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to update status".to_string(),
+        )
+    })?;
 
     tx.commit().await.map_err(|e| {
         tracing::error!(error = %e, "failed to commit transaction");
