@@ -695,17 +695,25 @@ fn execute_and<R: ValueResolver>(
 ) -> Result<Value> {
     let tracing = resolver.has_trace();
     let mut results: Option<Vec<Value>> = if tracing { Some(Vec::new()) } else { None };
+    let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        if val.is_untranslatable() {
-            return Ok(val);
-        }
-        if !val.to_bool() {
+        // Definitive false wins over taint (AND commutativity)
+        if !val.to_bool() && !val.is_untranslatable() {
             return Ok(Value::Bool(false));
+        }
+        if val.is_untranslatable() && taint.is_none() {
+            taint = Some(val);
+            continue;
         }
         if let Some(ref mut r) = results {
             r.push(val);
         }
+    }
+
+    // If any operand was tainted but none was definitively false, propagate
+    if let Some(t) = taint {
+        return Ok(t);
     }
 
     if let Some(results) = results {
@@ -722,14 +730,21 @@ fn execute_or<R: ValueResolver>(
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
+    let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        if val.is_untranslatable() {
-            return Ok(val);
-        }
+        // Definitive true wins over taint (OR commutativity)
         if val.to_bool() {
             return Ok(Value::Bool(true));
         }
+        if val.is_untranslatable() && taint.is_none() {
+            taint = Some(val);
+        }
+    }
+
+    // If any operand was tainted but none was definitively true, propagate
+    if let Some(t) = taint {
+        return Ok(t);
     }
 
     Ok(Value::Bool(false))

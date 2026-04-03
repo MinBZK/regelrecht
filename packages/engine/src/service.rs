@@ -1410,8 +1410,19 @@ impl LawExecutionService {
 
         // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
         if !taints.is_empty() {
-            // Use the first taint as the origin (articles typically have one untranslatable)
-            let (taint_article, taint_construct) = &taints[0];
+            if taints.len() > 1 {
+                tracing::warn!(
+                    article = %taints[0].0,
+                    count = taints.len(),
+                    "Article has multiple untranslatable constructs; combining into single taint"
+                );
+            }
+            let taint_article = taints[0].0.clone();
+            let taint_construct = taints
+                .iter()
+                .map(|(_, c)| c.as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
             for value in result.outputs.values_mut() {
                 *value = Value::Untranslatable {
                     article: taint_article.clone(),

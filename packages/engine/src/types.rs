@@ -92,7 +92,9 @@ impl<'de> Visitor<'de> for ValueVisitor {
     }
 
     fn visit_u64<E: de::Error>(self, v: u64) -> std::result::Result<Value, E> {
-        Ok(Value::Int(v as i64))
+        i64::try_from(v)
+            .map(Value::Int)
+            .map_err(|_| E::custom(format!("u64 value {v} overflows i64")))
     }
 
     fn visit_f64<E: de::Error>(self, v: f64) -> std::result::Result<Value, E> {
@@ -137,11 +139,11 @@ impl<'de> Visitor<'de> for ValueVisitor {
         if obj.get(UNTRANSLATABLE_KEY) == Some(&Value::Bool(true)) {
             let article = match obj.get("article") {
                 Some(Value::String(s)) => s.clone(),
-                _ => String::new(),
+                _ => return Err(de::Error::missing_field("article")),
             };
             let construct = match obj.get("construct") {
                 Some(Value::String(s)) => s.clone(),
-                _ => String::new(),
+                _ => return Err(de::Error::missing_field("construct")),
             };
             return Ok(Value::Untranslatable { article, construct });
         }
