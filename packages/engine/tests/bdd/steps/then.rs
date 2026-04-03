@@ -147,6 +147,34 @@ fn assert_output_value(world: &mut RegelrechtWorld, output_name: String, expecte
     }
 }
 
+// Multi-output privacy assertion
+
+#[then(regex = r#"^the result contains exactly the outputs "([^"]+)"$"#)]
+fn assert_exact_outputs(world: &mut RegelrechtWorld, expected_outputs: String) {
+    assert!(
+        world.is_success(),
+        "Expected successful execution, got error: {:?}",
+        world.error_message()
+    );
+
+    let expected: std::collections::BTreeSet<&str> =
+        expected_outputs.split(',').map(|s| s.trim()).collect();
+    let actual: std::collections::BTreeSet<&str> = world
+        .result
+        .as_ref()
+        .unwrap()
+        .outputs
+        .keys()
+        .map(|s| s.as_str())
+        .collect();
+
+    assert_eq!(
+        actual, expected,
+        "Expected exactly outputs {:?}, got {:?}",
+        expected, actual
+    );
+}
+
 // Untranslatable assertion steps (RFC-012)
 
 #[then(regex = r#"^the output "([^"]+)" is tainted as untranslatable$"#)]

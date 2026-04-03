@@ -189,6 +189,11 @@ impl Drop for TraceGuard {
 
 /// Build a cache key from law_id, output_name, and parameters.
 ///
+/// The cache key includes output_name because different outputs within the same
+/// law may be produced by different articles. The multi-output API (`evaluate_law`)
+/// avoids redundant evaluations by grouping outputs by article before calling
+/// the internal single-output method.
+///
 /// Uses hashing instead of String building to avoid allocations.
 /// BTreeMap guarantees sorted key order for deterministic hashing.
 /// Note: `DefaultHasher` is randomly seeded per process, so keys are only
@@ -431,6 +436,17 @@ impl LawExecutionService {
         parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> crate::receipt::ExecutionReceipt {
+        self.build_receipt_with_outputs(result, parameters, calculation_date, &[])
+    }
+
+    /// Build an Execution Receipt with explicit requested output tracking.
+    pub fn build_receipt_with_outputs(
+        &self,
+        result: &ArticleResult,
+        parameters: &BTreeMap<String, Value>,
+        calculation_date: &str,
+        requested_outputs: &[String],
+    ) -> crate::receipt::ExecutionReceipt {
         use crate::receipt::*;
 
         let loaded_regulations: Vec<LoadedRegulation> = self
@@ -486,6 +502,7 @@ impl LawExecutionService {
                 reference_date: None,
             },
             results: ReceiptResults {
+                requested_outputs: requested_outputs.to_vec(),
                 outputs: result.outputs.clone(),
                 trace: result.trace.clone(),
             },
@@ -494,73 +511,77 @@ impl LawExecutionService {
         }
     }
 
-    /// Execute a law output by name.
+    // =========================================================================
+    // Multi-output evaluation API
+    // =========================================================================
+
+    /// Evaluate multiple specific outputs from a law.
     ///
-    /// This is the main entry point for law execution. It finds the article
-    /// that produces the requested output and executes it, automatically
-    /// resolving any cross-law references.
+    /// This is the preferred entry point for law execution. Callers must
+    /// explicitly list which outputs they need (privacy-by-design: no
+    /// "return all" mode). If multiple outputs come from the same article,
+    /// the article is executed only once.
     ///
     /// # Arguments
-    /// * `law_id` - The law identifier (e.g., "zorgtoeslagwet")
-    /// * `output_name` - The output to calculate
+    /// * `law_id` - The law identifier (e.g., "wet_op_de_zorgtoeslag")
+    /// * `output_names` - The outputs to calculate (must be non-empty)
     /// * `parameters` - Input parameters
     /// * `calculation_date` - Date for calculations (YYYY-MM-DD)
     ///
     /// # Returns
-    /// The execution result with outputs and metadata.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
-    pub fn evaluate_law_output(
+    /// The execution result filtered to only the requested outputs.
+    pub fn evaluate_law(
         &self,
         law_id: &str,
-        output_name: &str,
+        output_names: &[&str],
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
         let mut res_ctx = ResolutionContext::new(calculation_date);
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
+        let mut result =
+            self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)?;
+        // Privacy-by-design: only return requested outputs
+        result
+            .outputs
+            .retain(|k, _| output_names.contains(&k.as_str()));
+        Ok(result)
     }
 
-    /// Execute a law output with tracing enabled.
-    ///
-    /// Same as `evaluate_law_output` but also returns an execution trace
-    /// in the `ArticleResult.trace` field.
-    pub fn evaluate_law_output_with_trace(
+    /// Evaluate multiple outputs with tracing enabled.
+    pub fn evaluate_law_with_trace(
         &self,
         law_id: &str,
-        output_name: &str,
+        output_names: &[&str],
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
-        self.evaluate_law_output_with_trace_builder(
+        self.evaluate_law_with_trace_builder(
             law_id,
-            output_name,
+            output_names,
             parameters,
             calculation_date,
             TraceBuilder::new(),
         )
     }
 
-    /// Execute a law output with a caller-provided trace builder.
-    ///
-    /// Use `TraceBuilder::new()` for timed traces or
-    /// `TraceBuilder::new_untimed()` to avoid `Instant::now()` overhead
-    /// (useful in WASM where timing calls go through JS FFI).
-    pub fn evaluate_law_output_with_trace_builder(
+    /// Evaluate multiple outputs with a caller-provided trace builder.
+    pub fn evaluate_law_with_trace_builder(
         &self,
         law_id: &str,
-        output_name: &str,
+        output_names: &[&str],
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         trace_builder: TraceBuilder,
     ) -> Result<ArticleResult> {
+        let outputs_label = output_names.join(", ");
         let trace = Rc::new(RefCell::new(trace_builder));
 
         // Push the top-level article node
         {
             let mut tb = trace.borrow_mut();
             tb.push(
-                format!("{} ({})", law_id, output_name),
+                format!("{} ({})", law_id, outputs_label),
                 PathNodeType::Article,
             );
             let mut sorted_params: Vec<_> = parameters
@@ -573,44 +594,98 @@ impl LawExecutionService {
                 law_id,
                 calculation_date,
                 sorted_params.join(", "),
-                output_name,
+                outputs_label,
             ));
         }
 
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
         res_ctx.contextual_law_id = Some(law_id.to_string());
+
+        // Execute: group outputs by article, evaluate each once, merge
         let result =
-            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx);
+            self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx);
 
         // Drop res_ctx so it releases its Rc clone
         drop(res_ctx);
 
         match result {
             Ok(mut result) => {
-                // Set the result on the top-level article node and pop it
+                // Privacy-by-design: filter to requested outputs
+                result
+                    .outputs
+                    .retain(|k, _| output_names.contains(&k.as_str()));
+
+                // Set the result on the top-level article node
                 let mut tb = trace.borrow_mut();
-                if let Some(value) = result.outputs.get(output_name) {
-                    tb.set_result(value.clone());
+                if output_names.len() == 1 {
+                    if let Some(value) = result.outputs.get(output_names[0]) {
+                        tb.set_result(value.clone());
+                    }
+                } else {
+                    // Multiple outputs: set result as object
+                    let obj: BTreeMap<String, Value> = result.outputs.clone();
+                    tb.set_result(Value::Object(obj));
                 }
-                // Pop returns the completed top-level node
                 result.trace = tb.pop();
                 Ok(result)
             }
             Err(e) => {
-                // Pop the top-level node so the partial trace is not lost
                 let mut tb = trace.borrow_mut();
                 tb.set_message(format!("Execution failed: {}", e));
                 let partial_trace = tb.pop();
-
-                // Return an error result that still carries the partial trace.
-                // Since Result<ArticleResult> can't carry both, we embed the
-                // trace in the error via EngineError::TracedError.
                 Err(EngineError::TracedError {
                     source: Box::new(e),
                     trace: partial_trace.map(Box::new),
                 })
             }
         }
+    }
+
+    // =========================================================================
+    // Single-output convenience wrappers (delegate to multi-output API)
+    // =========================================================================
+
+    /// Execute a law for a single output by name.
+    ///
+    /// Convenience wrapper around [`evaluate_law`](Self::evaluate_law).
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
+    pub fn evaluate_law_output(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<ArticleResult> {
+        self.evaluate_law(law_id, &[output_name], parameters, calculation_date)
+    }
+
+    /// Execute a single law output with tracing enabled.
+    pub fn evaluate_law_output_with_trace(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<ArticleResult> {
+        self.evaluate_law_with_trace(law_id, &[output_name], parameters, calculation_date)
+    }
+
+    /// Execute a single law output with a caller-provided trace builder.
+    pub fn evaluate_law_output_with_trace_builder(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+        trace_builder: TraceBuilder,
+    ) -> Result<ArticleResult> {
+        self.evaluate_law_with_trace_builder(
+            law_id,
+            &[output_name],
+            parameters,
+            calculation_date,
+            trace_builder,
+        )
     }
 
     /// Execute a law output using an existing shared trace builder.
@@ -896,7 +971,72 @@ impl LawExecutionService {
         Ok(ExecutionOutcome::Complete(final_result))
     }
 
-    /// Internal method with cycle tracking.
+    /// Internal method for multi-output evaluation.
+    ///
+    /// Groups requested outputs by producing article, executes each article
+    /// once, and merges results. Does NOT filter outputs — callers must
+    /// filter the result to enforce privacy-by-design.
+    fn evaluate_law_multi_internal(
+        &self,
+        law_id: &str,
+        output_names: &[&str],
+        parameters: BTreeMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<ArticleResult> {
+        // Validate that the law exists
+        let _law = self
+            .resolver
+            .get_law_for_date(law_id, res_ctx.reference_date())
+            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+
+        // Group outputs by their producing article number to avoid redundant evaluations
+        let mut article_to_outputs: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+        for &output_name in output_names {
+            let article = self
+                .resolver
+                .get_article_by_output(law_id, output_name, res_ctx.reference_date())
+                .ok_or_else(|| EngineError::OutputNotFound {
+                    law_id: law_id.to_string(),
+                    output: output_name.to_string(),
+                })?;
+            article_to_outputs
+                .entry(article.number.clone())
+                .or_default()
+                .push(output_name);
+        }
+
+        // Execute each unique article once and merge results
+        let mut merged_result: Option<ArticleResult> = None;
+
+        for outputs in article_to_outputs.values() {
+            // Use the first output name for the internal call (output_name is used
+            // for article lookup and tracing, but all outputs are computed regardless)
+            let primary_output = outputs[0];
+            let result = self.evaluate_law_output_internal(
+                law_id,
+                primary_output,
+                parameters.clone(),
+                res_ctx,
+            )?;
+
+            match &mut merged_result {
+                None => {
+                    merged_result = Some(result);
+                }
+                Some(merged) => {
+                    // Merge outputs and resolved_inputs from additional articles
+                    merged.outputs.extend(result.outputs);
+                    merged.resolved_inputs.extend(result.resolved_inputs);
+                }
+            }
+        }
+
+        merged_result.ok_or_else(|| {
+            EngineError::InvalidOperation("output_names must not be empty".to_string())
+        })
+    }
+
+    /// Internal method with cycle tracking (single-output).
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth)))]
     fn evaluate_law_output_internal(
         &self,

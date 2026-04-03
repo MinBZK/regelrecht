@@ -120,19 +120,24 @@ impl RegelrechtWorld {
     /// uses `evaluate_law_output_with_trace` and writes a box-drawing trace file
     /// per scenario to the `trace_output/` directory.
     pub fn execute_law(&mut self, law_id: &str, output_name: &str) {
+        self.execute_law_multi(law_id, &[output_name]);
+    }
+
+    /// Execute a law for multiple specific outputs
+    pub fn execute_law_multi(&mut self, law_id: &str, output_names: &[&str]) {
         let trace = Self::trace_enabled();
 
         let outcome = if trace {
-            self.service.evaluate_law_output_with_trace(
+            self.service.evaluate_law_with_trace(
                 law_id,
-                output_name,
+                output_names,
                 self.parameters.clone(),
                 &self.calculation_date,
             )
         } else {
-            self.service.evaluate_law_output(
+            self.service.evaluate_law(
                 law_id,
-                output_name,
+                output_names,
                 self.parameters.clone(),
                 &self.calculation_date,
             )
@@ -141,7 +146,9 @@ impl RegelrechtWorld {
         match outcome {
             Ok(result) => {
                 if trace {
-                    self.write_trace(&result, law_id, output_name);
+                    // Use first output name for trace filename
+                    let output_label = output_names.first().copied().unwrap_or("multi");
+                    self.write_trace(&result, law_id, output_label);
                 }
                 self.result = Some(result);
                 self.error = None;

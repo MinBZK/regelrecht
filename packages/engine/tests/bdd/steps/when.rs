@@ -61,6 +61,16 @@ fn execute_vreemdelingenwet_beschikking(world: &mut RegelrechtWorld) {
 }
 
 // =============================================================================
+// Multi-output steps
+// =============================================================================
+
+#[when(regex = r#"^the law "([^"]+)" is executed for outputs "([^"]+)"$"#)]
+fn execute_law_for_outputs(world: &mut RegelrechtWorld, law_id: String, outputs: String) {
+    let output_names: Vec<&str> = outputs.split(',').map(|s| s.trim()).collect();
+    world.execute_law_multi(&law_id, &output_names);
+}
+
+// =============================================================================
 // Zorgtoeslag steps
 // =============================================================================
 

@@ -102,6 +102,8 @@ pub struct ReceiptExecution {
 /// Execution outputs and optional trace.
 #[derive(Debug, Clone, Serialize)]
 pub struct ReceiptResults {
+    /// Which outputs were explicitly requested (privacy-by-design audit trail).
+    pub requested_outputs: Vec<String>,
     pub outputs: BTreeMap<String, Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace: Option<PathNode>,

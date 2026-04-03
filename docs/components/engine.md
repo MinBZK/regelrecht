@@ -64,6 +64,64 @@ When the engine resolves a `$variable`, it checks these sources in order:
 5. **Definitions** - article-level constants
 6. **Parameters** - direct input parameters
 
+## Multi-Output Evaluation
+
+Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `hoogte_zorgtoeslag`). You can request several of them in one call.
+
+### Privacy by Design
+
+Callers must explicitly list the outputs they need. There's no "return all" mode. The engine only returns what you asked for (minimal data use).
+
+### Rust API
+
+```rust
+// Request multiple outputs
+let result = service.evaluate_law(
+    "zorgtoeslagwet",
+    &["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
+    params,
+    "2025-01-01",
+)?;
+// result.outputs contains only the two requested outputs
+
+// Single-output convenience (equivalent to evaluate_law with one output)
+let result = service.evaluate_law_output(
+    "zorgtoeslagwet", "hoogte_zorgtoeslag", params, "2025-01-01",
+)?;
+```
+
+If the requested outputs live in the same article, it runs once. Outputs from different articles trigger one execution per article, then merge.
+
+### WASM API
+
+```javascript
+// Multiple outputs
+const result = engine.executeMultiple(
+    'zorgtoeslagwet',
+    ['heeft_recht_op_zorgtoeslag', 'hoogte_zorgtoeslag'],
+    { bsn: '999993653' },
+    '2025-01-01'
+);
+
+// Single output (unchanged)
+const result = engine.execute(
+    'zorgtoeslagwet', 'hoogte_zorgtoeslag', params, '2025-01-01'
+);
+```
+
+### CLI
+
+```json
+{
+  "law_yaml": "...",
+  "output_names": ["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
+  "params": { "bsn": "999993653" },
+  "date": "2025-01-01"
+}
+```
+
+The `output_name` (singular) field is still accepted for backwards compatibility.
+
 ## Operations
 
 The engine supports 21 operations for expressing legal logic:
@@ -114,8 +172,11 @@ See [RFC-003](/rfcs/rfc-003) for the full pattern.
 Every execution can produce a full trace tree showing how each value was computed:
 
 ```rust
-let result = service.evaluate_law_output_with_trace(
-    "zorgtoeslagwet", "hoogte_zorgtoeslag", params, "2025-01-01"
+let result = service.evaluate_law_with_trace(
+    "zorgtoeslagwet",
+    &["hoogte_zorgtoeslag"],
+    params,
+    "2025-01-01",
 )?;
 
 if let Some(trace) = result.trace {
@@ -166,6 +227,11 @@ const engine = new WasmEngine();
 ```typescript
 engine.loadLaw(yaml: string): string
 engine.execute(lawId, outputName, parameters, calculationDate): ExecuteResult
+engine.executeWithTrace(lawId, outputName, parameters, calculationDate): ExecuteResultWithTrace
+engine.executeMultiple(lawId, outputNames: string[], parameters, calculationDate): ExecuteResult
+engine.executeMultipleWithTrace(lawId, outputNames: string[], parameters, calculationDate): ExecuteResultWithTrace
+engine.registerDataSource(name, keyField, records): void
+engine.clearDataSources(): void
 engine.listLaws(): string[]
 engine.getLawInfo(lawId): LawInfo
 engine.hasLaw(lawId): boolean
@@ -173,10 +239,6 @@ engine.unloadLaw(lawId): boolean
 engine.lawCount(): number
 engine.version(): string
 ```
-
-::: warning WASM Limitations
-Cross-law references and open term resolution are not available in the WASM build. Pre-resolve dependencies in JavaScript and pass results as parameters.
-:::
 
 ## Security Limits
 
