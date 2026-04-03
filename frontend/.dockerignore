@@ -5,6 +5,3 @@ dist
 *.md
 .vscode
 .idea
-# Ensure Rust packages are available in the Docker build context
-# (BuildKit uses this file when the Dockerfile is in frontend/)
-!packages
