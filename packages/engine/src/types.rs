@@ -588,6 +588,48 @@ impl Operation {
         Operation::NotIn,
     ];
 
+    /// Number of variants in the enum. The exhaustive match ensures this
+    /// stays in sync — adding a variant without updating this function
+    /// causes a compile error.
+    pub const fn variant_count() -> usize {
+        // This match is exhaustive: the compiler will error if a new
+        // variant is added to Operation without adding an arm here.
+        // Update the count AND add the variant to SCHEMA_OPERATIONS
+        // or COMPAT_ALIASES.
+        #[allow(clippy::match_same_arms)]
+        const fn _check_exhaustive(op: Operation) -> usize {
+            match op {
+                Operation::Equals
+                | Operation::GreaterThan
+                | Operation::LessThan
+                | Operation::GreaterThanOrEqual
+                | Operation::LessThanOrEqual
+                | Operation::Add
+                | Operation::Subtract
+                | Operation::Multiply
+                | Operation::Divide
+                | Operation::Max
+                | Operation::Min
+                | Operation::And
+                | Operation::Or
+                | Operation::Not
+                | Operation::If
+                | Operation::In
+                | Operation::List
+                | Operation::Age
+                | Operation::DateAdd
+                | Operation::Date
+                | Operation::DayOfWeek
+                | Operation::NotEquals
+                | Operation::IsNull
+                | Operation::NotNull
+                | Operation::NotIn => 25,
+            }
+        }
+        // Call it once to ensure the match compiles (dead code otherwise).
+        _check_exhaustive(Operation::Equals)
+    }
+
     /// Check if this is a comparison operation
     pub fn is_comparison(&self) -> bool {
         matches!(
@@ -898,6 +940,21 @@ mod tests {
 
     #[test]
     fn operation_lists_are_exhaustive() {
+        // variant_count() uses an exhaustive match — adding a new Operation
+        // variant without updating the match causes a compile error there.
+        // This test then catches the case where the match is updated but
+        // the variant is not added to SCHEMA_OPERATIONS or COMPAT_ALIASES.
+        let classified = Operation::SCHEMA_OPERATIONS.len() + Operation::COMPAT_ALIASES.len();
+        assert_eq!(
+            classified,
+            Operation::variant_count(),
+            "SCHEMA_OPERATIONS ({}) + COMPAT_ALIASES ({}) = {classified}, \
+             but variant_count() = {}. Add the new variant to one of the lists.",
+            Operation::SCHEMA_OPERATIONS.len(),
+            Operation::COMPAT_ALIASES.len(),
+            Operation::variant_count()
+        );
+
         // Verify no duplicates within or across lists.
         let mut all_names: std::collections::HashSet<&str> = std::collections::HashSet::new();
         for op in Operation::SCHEMA_OPERATIONS
@@ -910,14 +967,5 @@ mod tests {
                 op.name()
             );
         }
-        // If you added a new Operation variant and this fails, add it to
-        // SCHEMA_OPERATIONS (if it's a real schema op) or COMPAT_ALIASES
-        // (if it's a backward-compat alias).
-        let total = Operation::SCHEMA_OPERATIONS.len() + Operation::COMPAT_ALIASES.len();
-        assert_eq!(
-            total, 25,
-            "Operation variant count changed ({total} != 25). \
-             Add the new variant to SCHEMA_OPERATIONS or COMPAT_ALIASES in types.rs."
-        );
     }
 }
