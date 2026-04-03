@@ -50,7 +50,7 @@ test:
 bdd:
     cd packages/engine && {{ci_flags}} cargo test --test bdd -- --nocapture
 
-# Run BDD tests with execution trace output (writes JSON receipts to trace_output/)
+# Run BDD tests with execution trace output (writes box-drawing traces to trace_output/)
 bdd-trace:
     rm -rf trace_output
     cd packages/engine && {{ci_flags}} TRACE=1 cargo test --test bdd -- --nocapture

@@ -117,8 +117,8 @@ impl RegelrechtWorld {
     /// Execute a law and store the result or error.
     ///
     /// When the `TRACE` environment variable is set (e.g. `TRACE=1`), execution
-    /// uses `evaluate_law_output_with_trace` and writes a JSON receipt file per
-    /// scenario to the `trace_output/` directory under the engine package.
+    /// uses `evaluate_law_output_with_trace` and writes a box-drawing trace file
+    /// per scenario to the `trace_output/` directory.
     pub fn execute_law(&mut self, law_id: &str, output_name: &str) {
         let trace = Self::trace_enabled();
 
@@ -164,9 +164,11 @@ impl RegelrechtWorld {
         std::fs::create_dir_all(&dir).expect("Failed to create trace output directory");
 
         let seq = SCENARIO_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let safe_law_id = law_id.replace('/', "_");
+        let safe_output = output_name.replace('/', "_");
         let filename = format!(
             "{:03}_{}_{}_{}.txt",
-            seq, law_id, output_name, self.calculation_date
+            seq, safe_law_id, safe_output, self.calculation_date
         );
         let path = dir.join(&filename);
 
@@ -191,7 +193,7 @@ impl RegelrechtWorld {
     }
 }
 
-/// Directory where trace JSON files are written.
+/// Directory where trace files are written.
 fn trace_output_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
