@@ -153,24 +153,24 @@ impl RegelrechtWorld {
         }
     }
 
-    /// Write a JSON execution receipt for a successful traced execution.
+    /// Write the box-drawing trace for a successful traced execution.
     fn write_trace(&self, result: &ArticleResult, law_id: &str, output_name: &str) {
-        let receipt = self
-            .service
-            .build_receipt(result, &self.parameters, &self.calculation_date);
+        let trace = match &result.trace {
+            Some(t) => t,
+            None => return,
+        };
 
         let dir = trace_output_dir();
         std::fs::create_dir_all(&dir).expect("Failed to create trace output directory");
 
         let seq = SCENARIO_COUNTER.fetch_add(1, Ordering::SeqCst);
         let filename = format!(
-            "{:03}_{}_{}_{}.json",
+            "{:03}_{}_{}_{}.txt",
             seq, law_id, output_name, self.calculation_date
         );
         let path = dir.join(&filename);
 
-        let json = serde_json::to_string_pretty(&receipt).expect("Failed to serialize receipt");
-        std::fs::write(&path, json).expect("Failed to write trace file");
+        std::fs::write(&path, trace.render_box_drawing()).expect("Failed to write trace file");
 
         eprintln!("  trace → {}", path.display());
     }
