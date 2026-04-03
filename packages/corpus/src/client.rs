@@ -317,8 +317,9 @@ impl CorpusClient {
         }
     }
 
-    /// Environment variables for git commands (author/committer identity
-    /// and optional GIT_ASKPASS for token-based authentication).
+    /// Environment variables for git commands (author/committer identity,
+    /// optional GIT_ASKPASS for token-based authentication, and resource
+    /// limits for container environments).
     fn git_env(&self) -> Vec<(String, String)> {
         let mut env = vec![
             (
@@ -338,6 +339,20 @@ impl CorpusClient {
                 self.config.git_author_email.clone(),
             ),
             ("GIT_TERMINAL_PROMPT".into(), "0".into()),
+            // Disable threaded index preloading and optional locks to prevent
+            // "unable to create threaded lstat: Resource temporarily unavailable"
+            // errors in resource-constrained containers with low PID/thread limits.
+            ("GIT_CONFIG_COUNT".into(), "2".into()),
+            (
+                "GIT_CONFIG_KEY_0".into(),
+                "core.preloadIndex".into(),
+            ),
+            ("GIT_CONFIG_VALUE_0".into(), "false".into()),
+            (
+                "GIT_CONFIG_KEY_1".into(),
+                "index.threads".into(),
+            ),
+            ("GIT_CONFIG_VALUE_1".into(), "1".into()),
         ];
 
         if let (Some(askpass), Some(token)) = (&self.askpass_path, self.config.git_token()) {
