@@ -54,12 +54,13 @@ use std::rc::Rc;
 /// during cross-law reference resolution. This reduces the number of
 /// parameters passed between internal resolution functions.
 ///
-/// Cache entry: (law_id, output_name, outputs, parameters).
+/// Cache entry: (law_id, output_name, outputs, output_provenance, parameters).
 /// Stores identity fields for runtime collision detection alongside cached outputs.
 type CacheEntry = (
     String,
     String,
     BTreeMap<String, Value>,
+    BTreeMap<String, OutputProvenance>,
     BTreeMap<String, Value>,
 );
 
@@ -1058,6 +1059,10 @@ impl LawExecutionService {
                         | Some(OutputProvenance::Override { .. })
                 )
         });
+        // Trim provenance to match: don't expose provenance for filtered-out outputs
+        result
+            .output_provenance
+            .retain(|k, _| result.outputs.contains_key(k));
 
         Ok(result)
     }
@@ -1073,7 +1078,7 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
-        if let Some((cached_law, cached_output, cached_outputs, cached_params)) =
+        if let Some((cached_law, cached_output, cached_outputs, cached_provenance, cached_params)) =
             res_ctx.cache.get(&key)
         {
             // Runtime collision check: hash keys are u64 so collisions are
@@ -1098,7 +1103,7 @@ impl LawExecutionService {
                 }
                 return Ok(ArticleResult {
                     outputs: cached_outputs.clone(),
-                    output_provenance: BTreeMap::new(),
+                    output_provenance: cached_provenance.clone(),
                     resolved_inputs: BTreeMap::new(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
@@ -1185,6 +1190,7 @@ impl LawExecutionService {
                 law_id.to_string(),
                 output_name.to_string(),
                 result.outputs.clone(),
+                result.output_provenance.clone(),
                 params_for_cache,
             ),
         );
