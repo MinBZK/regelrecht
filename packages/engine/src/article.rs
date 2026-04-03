@@ -737,26 +737,36 @@ pub struct ArticleBasedLaw {
 
 impl ArticleBasedLaw {
     /// Extract schema version (e.g., "v0.5.0") from the `$schema` URL.
+    ///
+    /// Looks for a `/vN.N.N` pattern (semver with v prefix) in the URL,
+    /// skipping false matches like `/vendor/` or `/riva/`.
     pub fn schema_version(&self) -> Option<&str> {
         let url = self.schema.as_deref()?;
-        // Match vX.Y.Z pattern in the URL
-        let start = url.find("/v")?;
-        let version_start = start + 1; // skip the "/"
-        let rest = &url[version_start..];
-        let end = rest.find('/').unwrap_or(rest.len());
-        let version = &rest[..end];
-        // Verify it looks like a version
-        if version.starts_with('v')
-            && version[1..].contains('.')
-            && version[1..]
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_digit())
-        {
-            Some(version)
-        } else {
-            None
+        let mut search_from = 0;
+        loop {
+            let pos = url[search_from..].find("/v")?;
+            let abs_pos = search_from + pos;
+            let version_start = abs_pos + 1;
+            let rest = &url[version_start..];
+            let end = rest.find('/').unwrap_or(rest.len());
+            let candidate = &rest[..end];
+            if candidate.starts_with('v') && Self::is_semver(&candidate[1..]) {
+                return Some(candidate);
+            }
+            search_from = abs_pos + 2;
+            if search_from >= url.len() {
+                return None;
+            }
         }
+    }
+
+    /// Check if a string looks like a semver version (N.N.N).
+    fn is_semver(s: &str) -> bool {
+        let parts: Vec<&str> = s.split('.').collect();
+        parts.len() >= 2
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
     }
 
     /// Load a law from a YAML file.
