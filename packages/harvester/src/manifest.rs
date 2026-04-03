@@ -98,7 +98,8 @@ fn parse_manifest(xml: &str, bwb_id: &str) -> Result<BwbManifest> {
 
         let deleted = expr
             .descendants()
-            .find(|n| n.has_tag_name("item"))
+            .find(|n| n.has_tag_name("manifestation") && n.attribute("label") == Some("xml"))
+            .and_then(|m| m.descendants().find(|n| n.has_tag_name("item")))
             .and_then(|n| n.attribute("_deleted"))
             .is_some_and(|v| v == "true");
 
@@ -419,6 +420,35 @@ mod tests {
 
         let manifest = parse_manifest(xml, "BWBR0029244").unwrap();
         assert!(!manifest.expressions[0].deleted);
+    }
+
+    #[test]
+    fn test_resolve_no_date_with_deleted_expressions() {
+        // When requesting the latest consolidation (None date), the result comes from
+        // `_latestItem` regardless of whether some expressions are deleted.
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<repository>
+  <work _latestItem="2026-01-01_0/xml/BWBR0029244_2026-01-01_0.xml">
+    <expression label="2019-01-01_0">
+      <metadata>
+        <datum_inwerkingtreding>2019-01-01</datum_inwerkingtreding>
+        <einddatum>9999-12-31</einddatum>
+      </metadata>
+      <manifestation label="xml"><item label="BWBR0029244_2019-01-01_0.xml" _deleted="true" /></manifestation>
+    </expression>
+    <expression label="2026-01-01_0">
+      <metadata>
+        <datum_inwerkingtreding>2026-01-01</datum_inwerkingtreding>
+        <einddatum>2026-02-20</einddatum>
+      </metadata>
+      <manifestation label="xml"><item label="BWBR0029244_2026-01-01_0.xml" _deleted="false" /></manifestation>
+    </expression>
+  </work>
+</repository>"#;
+
+        let manifest = parse_manifest(xml, "BWBR0029244").unwrap();
+        let result = resolve_consolidation_date(&manifest, None).unwrap();
+        assert_eq!(result, "2026-01-01");
     }
 
     #[test]
