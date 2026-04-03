@@ -56,6 +56,15 @@ pub const MAX_CROSS_LAW_DEPTH: usize = 20;
 /// 100 levels is sufficient for complex calculations while preventing abuse.
 pub const MAX_OPERATION_DEPTH: usize = 100;
 
+/// Schema versions supported by this engine version (RFC-013).
+///
+/// A regulation referencing a schema version outside this list will be
+/// rejected at load time. This list must match the `supported-schemas`
+/// metadata in Cargo.toml.
+pub const SUPPORTED_SCHEMAS: &[&str] = &[
+    "v0.2.0", "v0.3.0", "v0.3.1", "v0.3.2", "v0.4.0", "v0.5.0", "v0.5.1",
+];
+
 /// Maximum recursion depth for dot notation property access.
 ///
 /// Prevents stack overflow on malicious input like "a.a.a.a.a...".

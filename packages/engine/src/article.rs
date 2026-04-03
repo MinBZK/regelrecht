@@ -867,6 +867,18 @@ impl ArticleBasedLaw {
         // Validate array sizes after parsing
         law.validate_array_sizes()?;
 
+        // Validate schema version is supported (RFC-013)
+        if let Some(version) = law.schema_version() {
+            if !config::SUPPORTED_SCHEMAS.contains(&version) {
+                return Err(EngineError::LoadError(format!(
+                    "Unsupported schema version '{}' in law '{}'. Supported: {:?}",
+                    version,
+                    law.id,
+                    config::SUPPORTED_SCHEMAS
+                )));
+            }
+        }
+
         // Compute SHA-256 content hash for provenance (RFC-013)
         use sha2::Digest;
         let hash = sha2::Sha256::digest(content.as_bytes());

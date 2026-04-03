@@ -18,7 +18,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: AND\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 10\n              - operation: GREATER_THAN\n                subject: 20\n                value: 15\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.5.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: AND\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 10\n              - operation: GREATER_THAN\n                subject: 20\n                value: 15\n\n",
       "law_id": "test_logical",
       "output_name": "result"
     },
@@ -36,7 +36,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: AND\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 10\n              - operation: GREATER_THAN\n                subject: 10\n                value: 15\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.5.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: AND\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 10\n              - operation: GREATER_THAN\n                subject: 10\n                value: 15\n\n",
       "law_id": "test_logical",
       "output_name": "result"
     },
@@ -54,7 +54,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: OR\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 20\n              - operation: GREATER_THAN\n                subject: 20\n                value: 15\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.5.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: OR\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 20\n              - operation: GREATER_THAN\n                subject: 20\n                value: 15\n\n",
       "law_id": "test_logical",
       "output_name": "result"
     },
@@ -72,7 +72,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: OR\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 20\n              - operation: GREATER_THAN\n                subject: 10\n                value: 15\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.5.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: OR\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 20\n              - operation: GREATER_THAN\n                subject: 10\n                value: 15\n\n",
       "law_id": "test_logical",
       "output_name": "result"
     },
@@ -90,7 +90,7 @@
         },
         "resolved_inputs": {}
       },
-      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: AND\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 20\n              - operation: GREATER_THAN\n                subject: 10\n                value: 15\n\n",
+      "law_yaml": "\n$schema: https://example.com/schema/v0.5.0/schema.json\n$id: test_logical\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            operation: AND\n            conditions:\n              - operation: EQUALS\n                subject: 10\n                value: 20\n              - operation: GREATER_THAN\n                subject: 10\n                value: 15\n\n",
       "law_id": "test_logical",
       "output_name": "result"
     }
