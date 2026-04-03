@@ -8,6 +8,11 @@ use cucumber::World;
 use regelrecht_engine::{ArticleResult, EngineError, LawExecutionService, Value};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Global scenario counter for unique trace file names.
+static SCENARIO_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 use crate::helpers::regulation_loader::load_all_regulations;
 
@@ -104,15 +109,40 @@ impl RegelrechtWorld {
         self.external_data = ExternalData::default();
     }
 
-    /// Execute a law and store the result or error
+    /// Returns true if trace output is enabled via the `TRACE` env var.
+    fn trace_enabled() -> bool {
+        std::env::var("TRACE").is_ok_and(|v| !v.is_empty() && v != "0")
+    }
+
+    /// Execute a law and store the result or error.
+    ///
+    /// When the `TRACE` environment variable is set (e.g. `TRACE=1`), execution
+    /// uses `evaluate_law_output_with_trace` and writes a box-drawing trace file
+    /// per scenario to the `trace_output/` directory.
     pub fn execute_law(&mut self, law_id: &str, output_name: &str) {
-        match self.service.evaluate_law_output(
-            law_id,
-            output_name,
-            self.parameters.clone(),
-            &self.calculation_date,
-        ) {
+        let trace = Self::trace_enabled();
+
+        let outcome = if trace {
+            self.service.evaluate_law_output_with_trace(
+                law_id,
+                output_name,
+                self.parameters.clone(),
+                &self.calculation_date,
+            )
+        } else {
+            self.service.evaluate_law_output(
+                law_id,
+                output_name,
+                self.parameters.clone(),
+                &self.calculation_date,
+            )
+        };
+
+        match outcome {
             Ok(result) => {
+                if trace {
+                    self.write_trace(&result, law_id, output_name);
+                }
                 self.result = Some(result);
                 self.error = None;
             }
@@ -121,6 +151,30 @@ impl RegelrechtWorld {
                 self.error = Some(e);
             }
         }
+    }
+
+    /// Write the box-drawing trace for a successful traced execution.
+    fn write_trace(&self, result: &ArticleResult, law_id: &str, output_name: &str) {
+        let trace = match &result.trace {
+            Some(t) => t,
+            None => return,
+        };
+
+        let dir = trace_output_dir();
+        std::fs::create_dir_all(&dir).expect("Failed to create trace output directory");
+
+        let seq = SCENARIO_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let safe_law_id = law_id.replace('/', "_");
+        let safe_output = output_name.replace('/', "_");
+        let filename = format!(
+            "{:03}_{}_{}_{}.txt",
+            seq, safe_law_id, safe_output, self.calculation_date
+        );
+        let path = dir.join(&filename);
+
+        std::fs::write(&path, trace.render_box_drawing()).expect("Failed to write trace file");
+
+        eprintln!("  trace → {}", path.display());
     }
 
     /// Get an output value from the last result
@@ -137,6 +191,14 @@ impl RegelrechtWorld {
     pub fn error_message(&self) -> Option<String> {
         self.error.as_ref().map(|e| e.to_string())
     }
+}
+
+/// Directory where trace files are written.
+fn trace_output_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("trace_output")
 }
 
 #[cfg(test)]
