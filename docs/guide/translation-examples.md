@@ -24,7 +24,7 @@ Amsterdam says two things:
 1. Trees in the centrum: 1 meter (reduced from 2).
 2. Hedges everywhere in Amsterdam: 0.5 meters (same as the BW default).
 
-Crucially, Amsterdam is **silent** about trees outside the centrum. For those, the BW default applies.
+Amsterdam is **silent** about trees outside the centrum. For those, the BW default applies.
 
 ### The legal outcome
 

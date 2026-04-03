@@ -52,7 +52,7 @@ In `propagate` mode, `UNTRANSLATABLE` behaves like `NaN` in floating point: any 
 
 ## Driving the engine roadmap
 
-Untranslatables tell us which operations to add next, based on real legal texts rather than speculation. When enough laws need rounding, we add ROUND. When enough laws need table lookups, we add TABLE. The corpus itself drives the engine's evolution.
+Untranslatables tell us which operations to add next. When enough laws need rounding, we add ROUND. When enough laws need table lookups, we add TABLE. The corpus drives the engine roadmap.
 
 ## Further reading
 

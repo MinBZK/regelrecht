@@ -71,7 +71,7 @@ export default withMermaid(
             text: 'Methodology',
             items: [
               { text: 'Validation Methodology', link: '/concepts/methodology' },
-              { text: 'Validatiemethode', link: '/concepts/validatiemethode' },
+              { text: 'Validation Methodology (full)', link: '/concepts/validation-methodology' },
             ],
           },
         ],
