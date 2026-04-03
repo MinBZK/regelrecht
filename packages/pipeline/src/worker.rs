@@ -543,14 +543,13 @@ async fn process_next_enrich_job(
         "processing enrich job"
     );
 
-    // Atomically transition to Enriching only if not already Enriched.
-    // Uses a conditional UPDATE to avoid the TOCTOU race of get-then-update.
-    if let Err(e) = law_status::update_status_unless(
-        pool,
-        &job.law_id,
-        LawStatusValue::Enriched,
-        LawStatusValue::Enriching,
+    // Atomically transition to Enriching only if not already Enriched or EnrichExhausted.
+    if let Err(e) = sqlx::query(
+        "UPDATE law_entries SET status = 'enriching'::law_status, updated_at = now() \
+         WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
     )
+    .bind(&job.law_id)
+    .execute(pool)
     .await
     {
         tracing::warn!(error = %e, law_id = %job.law_id, "failed to set status to enriching");
@@ -647,12 +646,13 @@ async fn process_next_enrich_job(
             match job_queue::fail_job(pool, job.id, Some(error_json)).await {
                 Ok(failed_job) => {
                     if failed_job.status == crate::models::JobStatus::Failed {
-                        let _ = law_status::update_status_unless(
-                            pool,
-                            &job.law_id,
-                            LawStatusValue::Enriched,
-                            LawStatusValue::EnrichFailed,
+                        // Set EnrichFailed only if not already Enriched or EnrichExhausted.
+                        let _ = sqlx::query(
+                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
                         )
+                        .bind(&job.law_id)
+                        .execute(pool)
                         .await;
 
                         // Check exhausted threshold
@@ -735,12 +735,13 @@ async fn process_next_enrich_job(
                     let error_json = serde_json::json!({ "error": e.to_string() });
                     match job_queue::fail_job(pool, job.id, Some(error_json)).await {
                         Ok(failed_job) if failed_job.status == crate::models::JobStatus::Failed => {
-                            let _ = law_status::update_status_unless(
-                                pool,
-                                &job.law_id,
-                                LawStatusValue::Enriched,
-                                LawStatusValue::EnrichFailed,
+                            // Set EnrichFailed only if not already Enriched or EnrichExhausted.
+                            let _ = sqlx::query(
+                                "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+                                 WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
                             )
+                            .bind(&job.law_id)
+                            .execute(pool)
                             .await;
 
                             // Check exhausted threshold
@@ -818,13 +819,13 @@ async fn process_next_enrich_job(
             match job_queue::fail_job(pool, job.id, Some(error_json)).await {
                 Ok(failed_job) => {
                     if failed_job.status == crate::models::JobStatus::Failed {
-                        // Atomically set EnrichFailed only if not already Enriched.
-                        if let Err(status_err) = law_status::update_status_unless(
-                            pool,
-                            &job.law_id,
-                            LawStatusValue::Enriched,
-                            LawStatusValue::EnrichFailed,
+                        // Set EnrichFailed only if not already Enriched or EnrichExhausted.
+                        if let Err(status_err) = sqlx::query(
+                            "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
+                             WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
                         )
+                        .bind(&job.law_id)
+                        .execute(pool)
                         .await
                         {
                             tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
