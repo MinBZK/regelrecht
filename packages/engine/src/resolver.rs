@@ -525,6 +525,11 @@ impl RuleResolver {
         self.law_versions.contains_key(law_id)
     }
 
+    /// Iterate over all loaded law versions (all IDs, all versions).
+    pub fn all_law_versions(&self) -> impl Iterator<Item = &ArticleBasedLaw> {
+        self.law_versions.values().flat_map(|v| v.iter())
+    }
+
     /// Unload all versions of a law from the resolver.
     ///
     /// Removes all versions of the law and all its indexes.

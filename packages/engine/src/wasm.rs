@@ -94,6 +94,11 @@ struct WasmExecuteResult {
     law_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     law_uuid: Option<String>,
+    engine_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    regulation_hash: Option<String>,
 }
 
 /// Serializable result for executeWithTrace()
@@ -109,6 +114,11 @@ struct WasmExecuteResultWithTrace {
     trace: Option<PathNode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     trace_text: Option<String>,
+    engine_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    regulation_hash: Option<String>,
 }
 
 /// Serializable law info for get_law_info()
@@ -204,6 +214,9 @@ impl WasmEngine {
             article_number: result.article_number,
             law_id: result.law_id,
             law_uuid: result.law_uuid,
+            engine_version: result.engine_version,
+            schema_version: result.schema_version,
+            regulation_hash: result.regulation_hash,
         };
 
         wasm_result.serialize(&js_serializer()).map_err(|e| {
@@ -253,6 +266,9 @@ impl WasmEngine {
                     law_uuid: result.law_uuid,
                     trace: result.trace,
                     trace_text,
+                    engine_version: result.engine_version,
+                    schema_version: result.schema_version,
+                    regulation_hash: result.regulation_hash,
                 };
 
                 wasm_result.serialize(&js_serializer()).map_err(|e| {

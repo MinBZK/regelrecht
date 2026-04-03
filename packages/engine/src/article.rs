@@ -730,9 +730,35 @@ pub struct ArticleBasedLaw {
     /// Articles in the law
     #[serde(default)]
     pub articles: Vec<Article>,
+    /// SHA-256 hash of the YAML content (computed at load time, not serialized)
+    #[serde(skip)]
+    pub content_hash: Option<String>,
 }
 
 impl ArticleBasedLaw {
+    /// Extract schema version (e.g., "v0.5.0") from the `$schema` URL.
+    pub fn schema_version(&self) -> Option<&str> {
+        let url = self.schema.as_deref()?;
+        // Match vX.Y.Z pattern in the URL
+        let start = url.find("/v")?;
+        let version_start = start + 1; // skip the "/"
+        let rest = &url[version_start..];
+        let end = rest.find('/').unwrap_or(rest.len());
+        let version = &rest[..end];
+        // Verify it looks like a version
+        if version.starts_with('v')
+            && version[1..].contains('.')
+            && version[1..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_digit())
+        {
+            Some(version)
+        } else {
+            None
+        }
+    }
+
     /// Load a law from a YAML file.
     ///
     /// # Security
@@ -826,10 +852,15 @@ impl ArticleBasedLaw {
             )));
         }
 
-        let law: Self = serde_yaml_ng::from_str(content).map_err(EngineError::YamlError)?;
+        let mut law: Self = serde_yaml_ng::from_str(content).map_err(EngineError::YamlError)?;
 
         // Validate array sizes after parsing
         law.validate_array_sizes()?;
+
+        // Compute SHA-256 content hash for provenance (RFC-013)
+        use sha2::Digest;
+        let hash = sha2::Sha256::digest(content.as_bytes());
+        law.content_hash = Some(hex::encode(hash));
 
         tracing::debug!(law_id = %law.id, articles = law.articles.len(), "Parsed law successfully");
 

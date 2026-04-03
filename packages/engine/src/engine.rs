@@ -45,6 +45,12 @@ pub struct ArticleResult {
     pub law_uuid: Option<String>,
     /// Execution trace tree (only populated when tracing is enabled)
     pub trace: Option<PathNode>,
+    /// Engine version that produced this result (RFC-013)
+    pub engine_version: String,
+    /// Schema version of the regulation (RFC-013)
+    pub schema_version: Option<String>,
+    /// SHA-256 hash of the regulation YAML content (RFC-013)
+    pub regulation_hash: Option<String>,
 }
 
 /// Executes a single article's machine_readable.execution section.
@@ -215,6 +221,9 @@ impl<'a> ArticleEngine<'a> {
             law_id: self.law.id.clone(),
             law_uuid: self.law.uuid.clone(),
             trace: None, // Trace is extracted by the caller (service layer)
+            engine_version: crate::VERSION.to_string(),
+            schema_version: self.law.schema_version().map(String::from),
+            regulation_hash: self.law.content_hash.clone(),
         };
 
         tracing::debug!(
