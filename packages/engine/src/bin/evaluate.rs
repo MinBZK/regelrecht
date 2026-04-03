@@ -1,32 +1,38 @@
 //! CLI binary for evaluating a law YAML via stdin.
 //!
 //! Usage:
-//!   echo '{"law_yaml": "...", "output_name": "...", "params": {...}, "date": "2025-01-01"}' \
+//!   echo '{"law_yaml": "...", "output_names": ["a", "b"], "params": {...}, "date": "2025-01-01"}' \
 //!     | cargo run --bin evaluate
 //!
 //! Input (JSON on stdin):
 //!   - law_yaml: String — the full YAML content of the law
-//!   - output_name: String — the output to evaluate (e.g. "heeft_recht_op_zorgtoeslag")
+//!   - output_names: Optional<Vec<String>> — outputs to evaluate (preferred)
+//!   - output_name: Optional<String> — single output to evaluate (backwards compat)
 //!   - params: Object — key-value parameters to pass to the engine
 //!   - date: String — evaluation date (YYYY-MM-DD)
 //!   - extra_laws: Optional<Vec<String>> — additional YAML laws for cross-law resolution
 //!
 //! Output (JSON on stdout):
-//!   - outputs: Object — computed output values
+//!   - outputs: Object — computed output values (only requested outputs)
 //!   - resolved_inputs: Object — resolved input values from cross-law references
 //!   - article_number: String — the article that was executed
 //!   - law_id: String — the law ID that was evaluated
 //!   - law_uuid: Optional<String> — the law UUID if available
 //!   - error: Optional<String> — error message if evaluation failed
 
-use regelrecht_engine::{LawExecutionService, UntranslatableMode, Value};
+use regelrecht_engine::{LawExecutionService, OutputProvenance, UntranslatableMode, Value};
 use std::collections::BTreeMap;
 use std::io::Read;
 
 #[derive(serde::Deserialize)]
 struct EvaluateRequest {
     law_yaml: String,
-    output_name: String,
+    /// Multiple outputs to evaluate (preferred).
+    #[serde(default)]
+    output_names: Option<Vec<String>>,
+    /// Single output to evaluate (backwards compat; ignored if output_names is set).
+    #[serde(default)]
+    output_name: Option<String>,
     params: BTreeMap<String, serde_json::Value>,
     date: String,
     #[serde(default)]
@@ -55,6 +61,9 @@ struct EvaluateResponse {
     /// SHA-256 hash of the regulation YAML content (RFC-013)
     #[serde(skip_serializing_if = "Option::is_none")]
     regulation_hash: Option<String>,
+    /// Per-output provenance (Direct/Reactive/Override)
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    output_provenance: BTreeMap<String, OutputProvenance>,
 }
 
 fn error_response(msg: String) -> EvaluateResponse {
@@ -68,6 +77,7 @@ fn error_response(msg: String) -> EvaluateResponse {
         engine_version: regelrecht_engine::VERSION.to_string(),
         schema_version: None,
         regulation_hash: None,
+        output_provenance: BTreeMap::new(),
     }
 }
 
@@ -159,12 +169,34 @@ fn main() {
         .map(|(k, v)| (k.clone(), Value::from(v)))
         .collect();
 
+    // Resolve output names: output_names > output_name > error
+    let output_names: Vec<String> = if let Some(names) = request.output_names {
+        if names.is_empty() {
+            let resp = error_response("output_names must not be empty".to_string());
+            println!("{}", serde_json::to_string(&resp).unwrap_or_default());
+            std::process::exit(1);
+        }
+        names
+    } else if let Some(name) = request.output_name {
+        vec![name]
+    } else {
+        let resp =
+            error_response("Either 'output_names' or 'output_name' must be specified".to_string());
+        println!("{}", serde_json::to_string(&resp).unwrap_or_default());
+        std::process::exit(1);
+    };
+    let output_refs: Vec<&str> = output_names.iter().map(|s| s.as_str()).collect();
+
     // Evaluate
-    match service.evaluate_law_output(&law_id, &request.output_name, params.clone(), &request.date)
-    {
+    match service.evaluate_law(&law_id, &output_refs, params.clone(), &request.date) {
         Ok(result) => {
             if emit_receipt {
-                let receipt = service.build_receipt(&result, &params, &request.date);
+                let receipt = service.build_receipt_with_outputs(
+                    &result,
+                    &params,
+                    &request.date,
+                    &output_names,
+                );
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&receipt).unwrap_or_default()
@@ -190,6 +222,7 @@ fn main() {
                     engine_version: result.engine_version,
                     schema_version: result.schema_version,
                     regulation_hash: result.regulation_hash,
+                    output_provenance: result.output_provenance,
                 };
                 println!("{}", serde_json::to_string(&resp).unwrap_or_default());
             }

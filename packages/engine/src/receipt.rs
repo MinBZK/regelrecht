@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::engine::OutputProvenance;
 use crate::trace::PathNode;
 use crate::types::Value;
 
@@ -102,7 +103,14 @@ pub struct ReceiptExecution {
 /// Execution outputs and optional trace.
 #[derive(Debug, Clone, Serialize)]
 pub struct ReceiptResults {
+    /// Which outputs were explicitly requested (privacy-by-design audit trail).
+    /// Omitted from JSON when empty (legacy callers that don't specify outputs).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requested_outputs: Vec<String>,
     pub outputs: BTreeMap<String, Value>,
+    /// Per-output provenance: which mechanism produced each output.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub output_provenance: BTreeMap<String, OutputProvenance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace: Option<PathNode>,
 }

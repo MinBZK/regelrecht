@@ -29,7 +29,7 @@ use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, MachineRead
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
-use crate::engine::{ArticleEngine, ArticleResult};
+use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
@@ -54,12 +54,13 @@ use std::rc::Rc;
 /// during cross-law reference resolution. This reduces the number of
 /// parameters passed between internal resolution functions.
 ///
-/// Cache entry: (law_id, output_name, outputs, parameters).
+/// Cache entry: (law_id, output_name, outputs, output_provenance, parameters).
 /// Stores identity fields for runtime collision detection alongside cached outputs.
 type CacheEntry = (
     String,
     String,
     BTreeMap<String, Value>,
+    BTreeMap<String, OutputProvenance>,
     BTreeMap<String, Value>,
 );
 
@@ -188,6 +189,11 @@ impl Drop for TraceGuard {
 }
 
 /// Build a cache key from law_id, output_name, and parameters.
+///
+/// The cache key includes output_name because different outputs within the same
+/// law may be produced by different articles. The multi-output API (`evaluate_law`)
+/// avoids redundant evaluations by grouping outputs by article before calling
+/// the internal single-output method.
 ///
 /// Uses hashing instead of String building to avoid allocations.
 /// BTreeMap guarantees sorted key order for deterministic hashing.
@@ -326,7 +332,7 @@ pub struct StageState {
 #[derive(Debug)]
 pub enum ExecutionOutcome {
     /// All stages completed — final result
-    Complete(ArticleResult),
+    Complete(Box<ArticleResult>),
     /// Execution yielded — waiting for external input to advance
     Yielded {
         /// Updated decision state
@@ -431,6 +437,17 @@ impl LawExecutionService {
         parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> crate::receipt::ExecutionReceipt {
+        self.build_receipt_with_outputs(result, parameters, calculation_date, &[])
+    }
+
+    /// Build an Execution Receipt with explicit requested output tracking.
+    pub fn build_receipt_with_outputs(
+        &self,
+        result: &ArticleResult,
+        parameters: &BTreeMap<String, Value>,
+        calculation_date: &str,
+        requested_outputs: &[String],
+    ) -> crate::receipt::ExecutionReceipt {
         use crate::receipt::*;
 
         let loaded_regulations: Vec<LoadedRegulation> = self
@@ -486,7 +503,9 @@ impl LawExecutionService {
                 reference_date: None,
             },
             results: ReceiptResults {
+                requested_outputs: requested_outputs.to_vec(),
                 outputs: result.outputs.clone(),
+                output_provenance: result.output_provenance.clone(),
                 trace: result.trace.clone(),
             },
             accepted_values: Vec::new(),
@@ -494,73 +513,82 @@ impl LawExecutionService {
         }
     }
 
-    /// Execute a law output by name.
+    // =========================================================================
+    // Multi-output evaluation API
+    // =========================================================================
+
+    /// Evaluate multiple specific outputs from a law.
     ///
-    /// This is the main entry point for law execution. It finds the article
-    /// that produces the requested output and executes it, automatically
-    /// resolving any cross-law references.
+    /// This is the preferred entry point for law execution. Callers must
+    /// explicitly list which outputs they need (privacy-by-design: no
+    /// "return all" mode). If multiple outputs come from the same article,
+    /// the article is executed only once.
     ///
     /// # Arguments
-    /// * `law_id` - The law identifier (e.g., "zorgtoeslagwet")
-    /// * `output_name` - The output to calculate
+    /// * `law_id` - The law identifier (e.g., "wet_op_de_zorgtoeslag")
+    /// * `output_names` - The outputs to calculate (must be non-empty)
     /// * `parameters` - Input parameters
     /// * `calculation_date` - Date for calculations (YYYY-MM-DD)
     ///
     /// # Returns
-    /// The execution result with outputs and metadata.
-    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
-    pub fn evaluate_law_output(
+    /// The execution result filtered to only the requested outputs.
+    pub fn evaluate_law(
         &self,
         law_id: &str,
-        output_name: &str,
+        output_names: &[&str],
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
+        if output_names.is_empty() {
+            return Err(EngineError::InvalidOperation(
+                "output_names must not be empty".to_string(),
+            ));
+        }
         let mut res_ctx = ResolutionContext::new(calculation_date);
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx)
+        self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)
     }
 
-    /// Execute a law output with tracing enabled.
-    ///
-    /// Same as `evaluate_law_output` but also returns an execution trace
-    /// in the `ArticleResult.trace` field.
-    pub fn evaluate_law_output_with_trace(
+    /// Evaluate multiple outputs with tracing enabled.
+    pub fn evaluate_law_with_trace(
         &self,
         law_id: &str,
-        output_name: &str,
+        output_names: &[&str],
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
-        self.evaluate_law_output_with_trace_builder(
+        self.evaluate_law_with_trace_builder(
             law_id,
-            output_name,
+            output_names,
             parameters,
             calculation_date,
             TraceBuilder::new(),
         )
     }
 
-    /// Execute a law output with a caller-provided trace builder.
-    ///
-    /// Use `TraceBuilder::new()` for timed traces or
-    /// `TraceBuilder::new_untimed()` to avoid `Instant::now()` overhead
-    /// (useful in WASM where timing calls go through JS FFI).
-    pub fn evaluate_law_output_with_trace_builder(
+    /// Evaluate multiple outputs with a caller-provided trace builder.
+    pub fn evaluate_law_with_trace_builder(
         &self,
         law_id: &str,
-        output_name: &str,
+        output_names: &[&str],
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         trace_builder: TraceBuilder,
     ) -> Result<ArticleResult> {
+        if output_names.is_empty() {
+            return Err(EngineError::InvalidOperation(
+                "output_names must not be empty".to_string(),
+            ));
+        }
+
+        let outputs_label = output_names.join(", ");
         let trace = Rc::new(RefCell::new(trace_builder));
 
         // Push the top-level article node
         {
             let mut tb = trace.borrow_mut();
             tb.push(
-                format!("{} ({})", law_id, output_name),
+                format!("{} ({})", law_id, outputs_label),
                 PathNodeType::Article,
             );
             let mut sorted_params: Vec<_> = parameters
@@ -573,44 +601,94 @@ impl LawExecutionService {
                 law_id,
                 calculation_date,
                 sorted_params.join(", "),
-                output_name,
+                outputs_label,
             ));
         }
 
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
         res_ctx.contextual_law_id = Some(law_id.to_string());
+
+        // Execute: group outputs by article, evaluate each once, merge + filter
         let result =
-            self.evaluate_law_output_internal(law_id, output_name, parameters, &mut res_ctx);
+            self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx);
 
         // Drop res_ctx so it releases its Rc clone
         drop(res_ctx);
 
         match result {
             Ok(mut result) => {
-                // Set the result on the top-level article node and pop it
+                // Set the result on the top-level article node
                 let mut tb = trace.borrow_mut();
-                if let Some(value) = result.outputs.get(output_name) {
-                    tb.set_result(value.clone());
+                if output_names.len() == 1 {
+                    if let Some(value) = result.outputs.get(output_names[0]) {
+                        tb.set_result(value.clone());
+                    }
+                } else {
+                    // Multiple outputs: set result as object
+                    let obj: BTreeMap<String, Value> = result.outputs.clone();
+                    tb.set_result(Value::Object(obj));
                 }
-                // Pop returns the completed top-level node
                 result.trace = tb.pop();
                 Ok(result)
             }
             Err(e) => {
-                // Pop the top-level node so the partial trace is not lost
                 let mut tb = trace.borrow_mut();
                 tb.set_message(format!("Execution failed: {}", e));
                 let partial_trace = tb.pop();
-
-                // Return an error result that still carries the partial trace.
-                // Since Result<ArticleResult> can't carry both, we embed the
-                // trace in the error via EngineError::TracedError.
                 Err(EngineError::TracedError {
                     source: Box::new(e),
                     trace: partial_trace.map(Box::new),
                 })
             }
         }
+    }
+
+    // =========================================================================
+    // Single-output convenience wrappers (delegate to multi-output API)
+    // =========================================================================
+
+    /// Execute a law for a single output by name.
+    ///
+    /// Convenience wrapper around [`evaluate_law`](Self::evaluate_law).
+    /// Returns the requested output plus any causally-entailed outputs (hooks, overrides).
+    #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
+    pub fn evaluate_law_output(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<ArticleResult> {
+        self.evaluate_law(law_id, &[output_name], parameters, calculation_date)
+    }
+
+    /// Execute a single law output with tracing enabled.
+    pub fn evaluate_law_output_with_trace(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+    ) -> Result<ArticleResult> {
+        self.evaluate_law_with_trace(law_id, &[output_name], parameters, calculation_date)
+    }
+
+    /// Execute a single law output with a caller-provided trace builder.
+    pub fn evaluate_law_output_with_trace_builder(
+        &self,
+        law_id: &str,
+        output_name: &str,
+        parameters: BTreeMap<String, Value>,
+        calculation_date: &str,
+        trace_builder: TraceBuilder,
+    ) -> Result<ArticleResult> {
+        self.evaluate_law_with_trace_builder(
+            law_id,
+            &[output_name],
+            parameters,
+            calculation_date,
+            trace_builder,
+        )
     }
 
     /// Execute a law output using an existing shared trace builder.
@@ -765,7 +843,7 @@ impl LawExecutionService {
             } else {
                 self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?
             };
-            return Ok(ExecutionOutcome::Complete(result));
+            return Ok(ExecutionOutcome::Complete(Box::new(result)));
         };
 
         // Determine current stage
@@ -893,10 +971,93 @@ impl LawExecutionService {
         // All stages complete
         let mut final_result = result;
         final_result.outputs = stage_state.accumulated_outputs;
-        Ok(ExecutionOutcome::Complete(final_result))
+        Ok(ExecutionOutcome::Complete(Box::new(final_result)))
     }
 
-    /// Internal method with cycle tracking.
+    /// Internal method for multi-output evaluation.
+    ///
+    /// Groups requested outputs by producing article, executes each article
+    /// once, merges results, and filters to only the requested outputs
+    /// (privacy-by-design).
+    fn evaluate_law_multi_internal(
+        &self,
+        law_id: &str,
+        output_names: &[&str],
+        parameters: BTreeMap<String, Value>,
+        res_ctx: &mut ResolutionContext<'_>,
+    ) -> Result<ArticleResult> {
+        // Validate that the law exists
+        let _law = self
+            .resolver
+            .get_law_for_date(law_id, res_ctx.reference_date())
+            .ok_or_else(|| EngineError::LawNotFound(law_id.to_string()))?;
+
+        // Group outputs by their producing article number to avoid redundant evaluations
+        let mut article_to_outputs: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+        for &output_name in output_names {
+            let article = self
+                .resolver
+                .get_article_by_output(law_id, output_name, res_ctx.reference_date())
+                .ok_or_else(|| EngineError::OutputNotFound {
+                    law_id: law_id.to_string(),
+                    output: output_name.to_string(),
+                })?;
+            article_to_outputs
+                .entry(article.number.clone())
+                .or_default()
+                .push(output_name);
+        }
+
+        // Collect the article numbers for the merged result
+        let article_numbers: Vec<&str> = article_to_outputs.keys().map(|s| s.as_str()).collect();
+
+        // Execute each unique article once and merge results
+        let mut merged_result: Option<ArticleResult> = None;
+
+        for outputs in article_to_outputs.values() {
+            // Use the first output name for the internal call (output_name is used
+            // for article lookup and tracing, but all outputs are computed regardless)
+            let primary_output = outputs[0];
+            let result = self.evaluate_law_output_internal(
+                law_id,
+                primary_output,
+                parameters.clone(),
+                res_ctx,
+            )?;
+
+            match &mut merged_result {
+                None => {
+                    merged_result = Some(result);
+                }
+                Some(merged) => {
+                    // Merge outputs, provenance, and resolved_inputs from additional articles
+                    merged.outputs.extend(result.outputs);
+                    merged.output_provenance.extend(result.output_provenance);
+                    merged.resolved_inputs.extend(result.resolved_inputs);
+                }
+            }
+        }
+
+        let mut result = merged_result.ok_or_else(|| {
+            EngineError::InvalidOperation("output_names must not be empty".to_string())
+        })?;
+
+        // When outputs came from multiple articles, set article_number to the
+        // comma-separated list so callers don't see a misleading single number.
+        if article_numbers.len() > 1 {
+            result.article_number = article_numbers.join(", ");
+        }
+
+        // No output filtering: the engine only executes articles that produce
+        // the requested outputs. All outputs from those articles are returned,
+        // including co-products (multiple outputs from the same article) and
+        // causally-entailed outputs (hooks, overrides). A beschikking is legally
+        // indivisible per AWB 1:3 — its consequences cannot be stripped.
+
+        Ok(result)
+    }
+
+    /// Internal method with cycle tracking (single-output).
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters, res_ctx), fields(law_id = %law_id, output = %output_name, depth = res_ctx.depth)))]
     fn evaluate_law_output_internal(
         &self,
@@ -907,7 +1068,7 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
-        if let Some((cached_law, cached_output, cached_outputs, cached_params)) =
+        if let Some((cached_law, cached_output, cached_outputs, cached_provenance, cached_params)) =
             res_ctx.cache.get(&key)
         {
             // Runtime collision check: hash keys are u64 so collisions are
@@ -932,6 +1093,7 @@ impl LawExecutionService {
                 }
                 return Ok(ArticleResult {
                     outputs: cached_outputs.clone(),
+                    output_provenance: cached_provenance.clone(),
                     resolved_inputs: BTreeMap::new(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
@@ -1018,6 +1180,7 @@ impl LawExecutionService {
                 law_id.to_string(),
                 output_name.to_string(),
                 result.outputs.clone(),
+                result.output_provenance.clone(),
                 params_for_cache,
             ),
         );
@@ -1047,20 +1210,22 @@ impl LawExecutionService {
         stage: &str,
         parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<BTreeMap<String, Value>> {
+    ) -> Result<(BTreeMap<String, Value>, BTreeMap<String, OutputProvenance>)> {
         let mut hook_outputs: BTreeMap<String, Value> = BTreeMap::new();
+        let mut hook_provenance: BTreeMap<String, OutputProvenance> = BTreeMap::new();
         // Track which law produced each output for priority resolution
         let mut output_sources: BTreeMap<String, &ArticleBasedLaw> = BTreeMap::new();
+        let hook_point_str = format!("{:?}", hook_point).to_lowercase();
 
         // Only fire hooks if the article declares what it produces
         let produces = match article.get_produces() {
             Some(p) => p,
-            None => return Ok(hook_outputs),
+            None => return Ok((hook_outputs, hook_provenance)),
         };
 
         let legal_character = match &produces.legal_character {
             Some(lc) => lc.as_str(),
-            None => return Ok(hook_outputs),
+            None => return Ok((hook_outputs, hook_provenance)),
         };
 
         let decision_type = produces.decision_type.as_deref();
@@ -1071,7 +1236,7 @@ impl LawExecutionService {
                 .find_hooks(hook_point, legal_character, decision_type, stage);
 
         if matching_hooks.is_empty() {
-            return Ok(hook_outputs);
+            return Ok((hook_outputs, hook_provenance));
         }
 
         tracing::debug!(
@@ -1139,12 +1304,18 @@ impl LawExecutionService {
             let result = hook_result?;
 
             for (name, value) in result.outputs {
+                let prov = OutputProvenance::Reactive {
+                    law_id: hook_law.id.clone(),
+                    article: hook_article.number.to_string(),
+                    hook_point: hook_point_str.clone(),
+                };
                 if let Some(existing_law) = output_sources.get(&name) {
                     // Conflict: two hooks produce same output.
                     // Resolve via lex superior / lex posterior.
                     match priority::compare_law_priority(hook_law, existing_law)? {
                         std::cmp::Ordering::Greater => {
                             hook_outputs.insert(name.clone(), value);
+                            hook_provenance.insert(name.clone(), prov);
                             output_sources.insert(name, hook_law);
                         }
                         std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
@@ -1153,12 +1324,13 @@ impl LawExecutionService {
                     }
                 } else {
                     output_sources.insert(name.clone(), hook_law);
+                    hook_provenance.insert(name.clone(), prov);
                     hook_outputs.insert(name, value);
                 }
             }
         }
 
-        Ok(hook_outputs)
+        Ok((hook_outputs, hook_provenance))
     }
 
     /// Handle untranslatable constructs based on the configured mode (RFC-012).
@@ -1340,6 +1512,13 @@ impl LawExecutionService {
                     "Override applied"
                 );
                 result.outputs.insert(output_name.clone(), value.clone());
+                result.output_provenance.insert(
+                    output_name.clone(),
+                    OutputProvenance::Override {
+                        law_id: ovr_law_id.to_string(),
+                        article: ovr_article_number.to_string(),
+                    },
+                );
                 res_ctx.trace_set_result(value.clone());
             }
         }
@@ -1409,7 +1588,7 @@ impl LawExecutionService {
         }
 
         // Fire pre_actions hooks (between open term resolution and action execution).
-        let pre_hook_outputs = self.fire_hooks(
+        let (pre_hook_outputs, pre_hook_provenance) = self.fire_hooks(
             HookPoint::PreActions,
             article,
             law,
@@ -1443,7 +1622,7 @@ impl LawExecutionService {
         for (name, value) in &result.outputs {
             post_params.insert(name.clone(), value.clone());
         }
-        let post_hook_outputs = self.fire_hooks(
+        let (post_hook_outputs, post_hook_provenance) = self.fire_hooks(
             HookPoint::PostActions,
             article,
             law,
@@ -1452,11 +1631,26 @@ impl LawExecutionService {
             res_ctx,
         )?;
         for (name, value) in post_hook_outputs {
-            result.outputs.entry(name).or_insert(value);
+            if let std::collections::btree_map::Entry::Vacant(e) =
+                result.outputs.entry(name.clone())
+            {
+                e.insert(value);
+                // Tag as reactive (only if not already a direct output)
+                if let Some(prov) = post_hook_provenance.get(&name) {
+                    result.output_provenance.insert(name, prov.clone());
+                }
+            }
         }
         // Merge pre-hook outputs into result too (they are part of the execution)
         for (name, value) in pre_hook_outputs {
-            result.outputs.entry(name).or_insert(value);
+            if let std::collections::btree_map::Entry::Vacant(e) =
+                result.outputs.entry(name.clone())
+            {
+                e.insert(value);
+                if let Some(prov) = pre_hook_provenance.get(&name) {
+                    result.output_provenance.insert(name, prov.clone());
+                }
+            }
         }
 
         // Apply lex specialis overrides

@@ -64,6 +64,77 @@ When the engine resolves a `$variable`, it checks these sources in order:
 5. **Definitions** - article-level constants
 6. **Parameters** - direct input parameters
 
+## Multi-Output Evaluation
+
+Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `hoogte_zorgtoeslag`). You can request several of them in one call.
+
+### Privacy by Design
+
+Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible — AWB consequences like motivering and bezwaartermijn cannot be stripped).
+
+### Rust API
+
+```rust
+// Request multiple outputs
+let result = service.evaluate_law(
+    "zorgtoeslagwet",
+    &["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
+    params,
+    "2025-01-01",
+)?;
+// result.outputs contains the requested outputs + hook/override outputs
+// result.output_provenance tags each output as Direct, Reactive, or Override
+
+// Single-output convenience (equivalent to evaluate_law with one output)
+let result = service.evaluate_law_output(
+    "zorgtoeslagwet", "hoogte_zorgtoeslag", params, "2025-01-01",
+)?;
+```
+
+If the requested outputs live in the same article, it runs once. Outputs from different articles trigger one execution per article, then merge.
+
+### Output Provenance
+
+Each output is tagged with how it was produced:
+
+| Provenance | Meaning |
+|------------|---------|
+| `Direct` | Produced by the article's own actions |
+| `Reactive` | Produced by a hook (e.g., AWB firing on BESCHIKKING) |
+| `Override` | Produced by a lex specialis override (RFC-007) |
+
+The `output_provenance` field appears in `ArticleResult`, WASM results, CLI output, and the Execution Receipt. It's omitted when empty (e.g., simple articles with no hooks).
+
+### WASM API
+
+```javascript
+// Multiple outputs
+const result = engine.executeMultiple(
+    'zorgtoeslagwet',
+    ['heeft_recht_op_zorgtoeslag', 'hoogte_zorgtoeslag'],
+    { bsn: '999993653' },
+    '2025-01-01'
+);
+
+// Single output (unchanged)
+const result = engine.execute(
+    'zorgtoeslagwet', 'hoogte_zorgtoeslag', params, '2025-01-01'
+);
+```
+
+### CLI
+
+```json
+{
+  "law_yaml": "...",
+  "output_names": ["heeft_recht_op_zorgtoeslag", "hoogte_zorgtoeslag"],
+  "params": { "bsn": "999993653" },
+  "date": "2025-01-01"
+}
+```
+
+The `output_name` (singular) field is still accepted for backwards compatibility.
+
 ## Operations
 
 The engine supports 21 operations for expressing legal logic:
@@ -114,8 +185,11 @@ See [RFC-003](/rfcs/rfc-003) for the full pattern.
 Every execution can produce a full trace tree showing how each value was computed:
 
 ```rust
-let result = service.evaluate_law_output_with_trace(
-    "zorgtoeslagwet", "hoogte_zorgtoeslag", params, "2025-01-01"
+let result = service.evaluate_law_with_trace(
+    "zorgtoeslagwet",
+    &["hoogte_zorgtoeslag"],
+    params,
+    "2025-01-01",
 )?;
 
 if let Some(trace) = result.trace {
@@ -166,6 +240,11 @@ const engine = new WasmEngine();
 ```typescript
 engine.loadLaw(yaml: string): string
 engine.execute(lawId, outputName, parameters, calculationDate): ExecuteResult
+engine.executeWithTrace(lawId, outputName, parameters, calculationDate): ExecuteResultWithTrace
+engine.executeMultiple(lawId, outputNames: string[], parameters, calculationDate): ExecuteResult
+engine.executeMultipleWithTrace(lawId, outputNames: string[], parameters, calculationDate): ExecuteResultWithTrace
+engine.registerDataSource(name, keyField, records): void
+engine.clearDataSources(): void
 engine.listLaws(): string[]
 engine.getLawInfo(lawId): LawInfo
 engine.hasLaw(lawId): boolean
@@ -175,7 +254,7 @@ engine.version(): string
 ```
 
 ::: warning WASM Limitations
-Cross-law references and open term resolution are not available in the WASM build. Pre-resolve dependencies in JavaScript and pass results as parameters.
+Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.
 :::
 
 ## Security Limits

@@ -59,6 +59,7 @@ use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
 use crate::config;
+use crate::engine::OutputProvenance;
 use crate::error::EngineError;
 use crate::service::LawExecutionService;
 use crate::trace::{PathNode, TraceBuilder};
@@ -89,6 +90,8 @@ fn engine_error_to_wasm(err: EngineError) -> JsValue {
 #[derive(Serialize)]
 struct WasmExecuteResult {
     outputs: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    output_provenance: BTreeMap<String, OutputProvenance>,
     resolved_inputs: BTreeMap<String, Value>,
     article_number: String,
     law_id: String,
@@ -107,6 +110,8 @@ struct WasmExecuteResult {
 #[derive(Serialize)]
 struct WasmExecuteResultWithTrace {
     outputs: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    output_provenance: BTreeMap<String, OutputProvenance>,
     resolved_inputs: BTreeMap<String, Value>,
     article_number: String,
     law_id: String,
@@ -214,6 +219,7 @@ impl WasmEngine {
 
         let wasm_result = WasmExecuteResult {
             outputs: result.outputs,
+            output_provenance: result.output_provenance,
             resolved_inputs: result.resolved_inputs,
             article_number: result.article_number,
             law_id: result.law_id,
@@ -265,6 +271,7 @@ impl WasmEngine {
                 let trace_text = result.trace.as_ref().map(|t| t.render_box_drawing());
                 let wasm_result = WasmExecuteResultWithTrace {
                     outputs: result.outputs,
+                    output_provenance: result.output_provenance,
                     resolved_inputs: result.resolved_inputs,
                     article_number: result.article_number,
                     law_id: result.law_id,
@@ -287,6 +294,130 @@ impl WasmEngine {
             Err(EngineError::TracedError { source, trace }) => {
                 // Return partial trace alongside the error by encoding both
                 // into a structured error object
+                let trace_node = trace.map(|t| *t);
+                let trace_text = trace_node.as_ref().map(|t| t.render_box_drawing());
+
+                #[derive(Serialize)]
+                struct TracedErrorResult {
+                    error: String,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    trace: Option<PathNode>,
+                    #[serde(skip_serializing_if = "Option::is_none")]
+                    trace_text: Option<String>,
+                }
+
+                let err_result = TracedErrorResult {
+                    error: source.to_string(),
+                    trace: trace_node,
+                    trace_text,
+                };
+
+                match err_result.serialize(&js_serializer()) {
+                    Ok(js_val) => Err(js_val),
+                    Err(_) => Err(wasm_error(&source.to_string())),
+                }
+            }
+            Err(other) => Err(engine_error_to_wasm(other)),
+        }
+    }
+
+    /// Execute multiple specific outputs from a law (privacy-by-design).
+    ///
+    /// Callers must explicitly list which outputs they need. The engine evaluates
+    /// each producing article once and returns only the requested outputs.
+    ///
+    /// # Arguments
+    /// * `law_id` - ID of the loaded law
+    /// * `output_names` - JavaScript array of output name strings
+    /// * `parameters` - JavaScript object with input parameters
+    /// * `calculation_date` - Date string (YYYY-MM-DD)
+    #[wasm_bindgen(js_name = executeMultiple)]
+    pub fn execute_multiple(
+        &self,
+        law_id: &str,
+        output_names: JsValue,
+        parameters: JsValue,
+        calculation_date: &str,
+    ) -> Result<JsValue, JsValue> {
+        let names: Vec<String> = serde_wasm_bindgen::from_value(output_names)
+            .map_err(|e| wasm_error(&format!("Failed to parse output_names: {}", e)))?;
+        let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
+            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+
+        let result = self
+            .service
+            .evaluate_law(law_id, &name_refs, params, calculation_date)
+            .map_err(engine_error_to_wasm)?;
+
+        let wasm_result = WasmExecuteResult {
+            outputs: result.outputs,
+            output_provenance: result.output_provenance,
+            resolved_inputs: result.resolved_inputs,
+            article_number: result.article_number,
+            law_id: result.law_id,
+            law_uuid: result.law_uuid,
+            engine_version: result.engine_version,
+            schema_version: result.schema_version,
+            regulation_hash: result.regulation_hash,
+            regulation_valid_from: result.regulation_valid_from,
+        };
+
+        wasm_result.serialize(&js_serializer()).map_err(|e| {
+            wasm_error(&format!(
+                "Failed to serialize result for law '{}': {}",
+                law_id, e
+            ))
+        })
+    }
+
+    /// Execute multiple specific outputs with tracing enabled.
+    #[wasm_bindgen(js_name = executeMultipleWithTrace)]
+    pub fn execute_multiple_with_trace(
+        &self,
+        law_id: &str,
+        output_names: JsValue,
+        parameters: JsValue,
+        calculation_date: &str,
+    ) -> Result<JsValue, JsValue> {
+        let names: Vec<String> = serde_wasm_bindgen::from_value(output_names)
+            .map_err(|e| wasm_error(&format!("Failed to parse output_names: {}", e)))?;
+        let name_refs: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+        let params: BTreeMap<String, Value> = serde_wasm_bindgen::from_value(parameters)
+            .map_err(|e| wasm_error(&format!("Failed to parse parameters: {}", e)))?;
+
+        match self.service.evaluate_law_with_trace_builder(
+            law_id,
+            &name_refs,
+            params,
+            calculation_date,
+            TraceBuilder::new_untimed(),
+        ) {
+            Ok(result) => {
+                let trace_text = result.trace.as_ref().map(|t| t.render_box_drawing());
+                let wasm_result = WasmExecuteResultWithTrace {
+                    outputs: result.outputs,
+                    output_provenance: result.output_provenance,
+                    resolved_inputs: result.resolved_inputs,
+                    article_number: result.article_number,
+                    law_id: result.law_id,
+                    law_uuid: result.law_uuid,
+                    trace: result.trace,
+                    trace_text,
+                    engine_version: result.engine_version,
+                    schema_version: result.schema_version,
+                    regulation_hash: result.regulation_hash,
+                    regulation_valid_from: result.regulation_valid_from,
+                };
+
+                wasm_result.serialize(&js_serializer()).map_err(|e| {
+                    wasm_error(&format!(
+                        "Failed to serialize traced result for law '{}': {}",
+                        law_id, e
+                    ))
+                })
+            }
+            Err(EngineError::TracedError { source, trace }) => {
                 let trace_node = trace.map(|t| *t);
                 let trace_text = trace_node.as_ref().map(|t| t.render_box_drawing());
 
@@ -660,6 +791,74 @@ articles:
         // Clear and verify
         engine.clear_data_sources();
         assert_eq!(engine.service.data_source_count(), 0);
+    }
+
+    #[test]
+    fn test_wasm_engine_execute_multiple() {
+        let mut engine = WasmEngine::new();
+
+        // Law with two outputs in the same article
+        let law = r#"
+$id: multi_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Produces two outputs
+    machine_readable:
+      execution:
+        parameters:
+          - name: amount
+            type: number
+            required: true
+        output:
+          - name: doubled
+            type: number
+          - name: tripled
+            type: number
+        actions:
+          - output: doubled
+            operation: MULTIPLY
+            values:
+              - $amount
+              - 2
+          - output: tripled
+            operation: MULTIPLY
+            values:
+              - $amount
+              - 3
+"#;
+        load_law(&mut engine, law);
+
+        let mut params = BTreeMap::new();
+        params.insert("amount".to_string(), Value::Int(10));
+
+        // Request both outputs
+        let result = engine
+            .service
+            .evaluate_law(
+                "multi_law",
+                &["doubled", "tripled"],
+                params.clone(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        assert_eq!(result.outputs.get("doubled"), Some(&Value::Int(20)));
+        assert_eq!(result.outputs.get("tripled"), Some(&Value::Int(30)));
+        // Privacy check: only requested outputs are returned
+        assert_eq!(result.outputs.len(), 2);
+
+        // Request only one output — but both are from the same article,
+        // so both are returned (no filtering of co-products)
+        let result = engine
+            .service
+            .evaluate_law("multi_law", &["doubled"], params, "2025-01-01")
+            .unwrap();
+
+        assert_eq!(result.outputs.get("doubled"), Some(&Value::Int(20)));
+        assert_eq!(result.outputs.get("tripled"), Some(&Value::Int(30)));
+        assert_eq!(result.outputs.len(), 2);
     }
 
     #[test]

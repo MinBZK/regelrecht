@@ -30,11 +30,29 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+/// Provenance of an output value: how it was produced during execution.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "type")]
+pub enum OutputProvenance {
+    /// Produced by the article's own actions.
+    Direct { law_id: String, article: String },
+    /// Produced by a hook firing on a lifecycle event (e.g., AWB on BESCHIKKING).
+    Reactive {
+        law_id: String,
+        article: String,
+        hook_point: String,
+    },
+    /// Produced by a lex specialis override (RFC-007).
+    Override { law_id: String, article: String },
+}
+
 /// Result of article execution
 #[derive(Debug, Clone)]
 pub struct ArticleResult {
     /// Calculated output values
     pub outputs: BTreeMap<String, Value>,
+    /// Per-output provenance: which law/article/mechanism produced each output.
+    pub output_provenance: BTreeMap<String, OutputProvenance>,
     /// Resolved input values (from cross-law references)
     pub resolved_inputs: BTreeMap<String, Value>,
     /// Article number that was executed
@@ -216,8 +234,24 @@ impl<'a> ArticleEngine<'a> {
         self.execute_actions_traced(&mut context, requested_output)?;
 
         // Build result
+        // Tag all outputs as Direct (hooks/overrides are tagged by the service layer)
+        let output_provenance: BTreeMap<String, OutputProvenance> = context
+            .outputs()
+            .keys()
+            .map(|name| {
+                (
+                    name.clone(),
+                    OutputProvenance::Direct {
+                        law_id: self.law.id.clone(),
+                        article: self.article.number.clone(),
+                    },
+                )
+            })
+            .collect();
+
         let result = ArticleResult {
             outputs: context.outputs().clone(),
+            output_provenance,
             resolved_inputs: context.resolved_inputs().clone(),
             article_number: self.article.number.clone(),
             law_id: self.law.id.clone(),
