@@ -550,6 +550,79 @@ pub enum Operation {
 }
 
 impl Operation {
+    /// All operations that are part of the schema specification.
+    /// Compat aliases (NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN) are excluded.
+    ///
+    /// When adding a new operation: add it here AND to a conformance level
+    /// in `conformance/<version>/manifest.json`. CI will fail otherwise.
+    pub const SCHEMA_OPERATIONS: &[Operation] = &[
+        Operation::Equals,
+        Operation::GreaterThan,
+        Operation::LessThan,
+        Operation::GreaterThanOrEqual,
+        Operation::LessThanOrEqual,
+        Operation::Add,
+        Operation::Subtract,
+        Operation::Multiply,
+        Operation::Divide,
+        Operation::Max,
+        Operation::Min,
+        Operation::And,
+        Operation::Or,
+        Operation::Not,
+        Operation::If,
+        Operation::In,
+        Operation::List,
+        Operation::Age,
+        Operation::DateAdd,
+        Operation::Date,
+        Operation::DayOfWeek,
+    ];
+
+    /// Compat aliases accepted by the engine but not in the schema.
+    /// These exist for backward compatibility with older YAML files.
+    pub const COMPAT_ALIASES: &[Operation] = &[
+        Operation::NotEquals,
+        Operation::IsNull,
+        Operation::NotNull,
+        Operation::NotIn,
+    ];
+
+    /// All variants of the enum. This is a manually maintained list;
+    /// forgetting to add a new variant here compiles fine, but the
+    /// `operation_lists_are_exhaustive` test catches it by cross-checking
+    /// this list against SCHEMA_OPERATIONS + COMPAT_ALIASES.
+    ///
+    /// When adding a new operation: add it here AND to SCHEMA_OPERATIONS
+    /// or COMPAT_ALIASES.
+    pub const ALL_VARIANTS: &[Operation] = &[
+        Operation::Equals,
+        Operation::GreaterThan,
+        Operation::LessThan,
+        Operation::GreaterThanOrEqual,
+        Operation::LessThanOrEqual,
+        Operation::Add,
+        Operation::Subtract,
+        Operation::Multiply,
+        Operation::Divide,
+        Operation::Max,
+        Operation::Min,
+        Operation::And,
+        Operation::Or,
+        Operation::Not,
+        Operation::If,
+        Operation::In,
+        Operation::List,
+        Operation::Age,
+        Operation::DateAdd,
+        Operation::Date,
+        Operation::DayOfWeek,
+        Operation::NotEquals,
+        Operation::IsNull,
+        Operation::NotNull,
+        Operation::NotIn,
+    ];
+
     /// Check if this is a comparison operation
     pub fn is_comparison(&self) -> bool {
         matches!(
@@ -856,5 +929,40 @@ mod tests {
             let parsed: Value = serde_json::from_str(&json).unwrap();
             assert_eq!(value, parsed);
         }
+    }
+
+    #[test]
+    fn operation_lists_are_exhaustive() {
+        // ALL_VARIANTS must contain every variant. We verify this by
+        // checking that ALL_VARIANTS and SCHEMA_OPERATIONS + COMPAT_ALIASES
+        // contain the exact same set of operations (by name).
+        let all_names: std::collections::HashSet<&str> =
+            Operation::ALL_VARIANTS.iter().map(|op| op.name()).collect();
+        assert_eq!(
+            all_names.len(),
+            Operation::ALL_VARIANTS.len(),
+            "ALL_VARIANTS contains duplicates"
+        );
+
+        let classified_names: std::collections::HashSet<&str> = Operation::SCHEMA_OPERATIONS
+            .iter()
+            .chain(Operation::COMPAT_ALIASES.iter())
+            .map(|op| op.name())
+            .collect();
+        assert_eq!(
+            classified_names.len(),
+            Operation::SCHEMA_OPERATIONS.len() + Operation::COMPAT_ALIASES.len(),
+            "SCHEMA_OPERATIONS and COMPAT_ALIASES overlap"
+        );
+
+        assert_eq!(
+            all_names,
+            classified_names,
+            "ALL_VARIANTS and SCHEMA_OPERATIONS + COMPAT_ALIASES differ.\n\
+             In ALL_VARIANTS but not classified: {:?}\n\
+             Classified but not in ALL_VARIANTS: {:?}",
+            all_names.difference(&classified_names).collect::<Vec<_>>(),
+            classified_names.difference(&all_names).collect::<Vec<_>>()
+        );
     }
 }
