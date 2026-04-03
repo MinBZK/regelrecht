@@ -10,8 +10,8 @@
 // ---------------------------------------------------------------------------
 
 const LAW_STATUSES = [
-  'unknown', 'queued', 'harvesting', 'harvested', 'harvest_failed',
-  'enriching', 'enriched', 'enrich_failed',
+  'unknown', 'queued', 'harvesting', 'harvested', 'harvest_failed', 'harvest_exhausted',
+  'enriching', 'enriched', 'enrich_failed', 'enrich_exhausted',
 ];
 
 const JOB_STATUSES = ['pending', 'processing', 'completed', 'failed'];
@@ -71,6 +71,8 @@ const STATUS_BADGE_MAP = {
   failed: 'red',
   harvest_failed: 'red',
   enrich_failed: 'red',
+  harvest_exhausted: 'red',
+  enrich_exhausted: 'red',
   // Yellow
   processing: 'yellow',
   harvesting: 'yellow',
