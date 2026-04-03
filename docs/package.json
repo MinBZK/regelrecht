@@ -12,7 +12,8 @@
     "@minbzk/storybook": "^0.8.12"
   },
   "overrides": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "lodash-es": "^4.18.1"
   },
   "devDependencies": {
     "mermaid": "^11.4.1",
