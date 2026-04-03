@@ -313,7 +313,7 @@ where
     };
     // Only exhaust if status is still the corresponding failed state,
     // preventing a race with admin reset.
-    sqlx::query(
+    let result = sqlx::query(
         "UPDATE law_entries SET status = $2, updated_at = now() WHERE law_id = $1 AND status = $3",
     )
     .bind(law_id)
@@ -322,6 +322,10 @@ where
     .execute(executor)
     .await?;
 
-    tracing::warn!(law_id = %law_id, job_type = ?job_type, "law marked as exhausted");
+    if result.rows_affected() > 0 {
+        tracing::warn!(law_id = %law_id, job_type = ?job_type, "law marked as exhausted");
+    } else {
+        tracing::debug!(law_id = %law_id, job_type = ?job_type, "exhaust_law skipped: status was not in expected failed state");
+    }
     Ok(())
 }
