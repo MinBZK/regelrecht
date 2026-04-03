@@ -17,12 +17,27 @@ Feature: Untranslatables — RFC-012
     When the untranslatable test law is executed for output "som_deeltoeslagen"
     Then the execution succeeds
 
-  # === Propagate mode (not yet implemented) ===
+  # === Propagate mode ===
 
-  Scenario: Propagate mode is not yet implemented
+  Scenario: Propagate mode taints outputs from articles with untranslatables
     Given the untranslatable mode is "propagate"
+    And a citizen with the following data:
+      | bedrag | 1234 |
     When the untranslatable test law is executed for output "afgerond_bedrag"
-    Then the execution fails with "propagate mode is not yet implemented"
+    Then the execution succeeds
+    And the output "afgerond_bedrag" is tainted as untranslatable
+
+  Scenario: Propagate mode allows clean articles to execute normally
+    Given the untranslatable mode is "propagate"
+    When the untranslatable test law is executed for output "basistoeslag"
+    Then the execution succeeds
+    And the output "basistoeslag" is "1000"
+
+  Scenario: Propagate mode taints downstream outputs via cross-ref
+    Given the untranslatable mode is "propagate"
+    When the untranslatable test law is executed for output "som_deeltoeslagen"
+    Then the execution succeeds
+    And the output "som_deeltoeslagen" is tainted as untranslatable
 
   # === Warn mode ===
 

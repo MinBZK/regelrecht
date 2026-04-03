@@ -655,5 +655,8 @@ fn format_value(value: &Value) -> String {
                 .collect();
             format!("{{{}}}", items.join(", "))
         }
+        Value::Untranslatable { article, construct } => {
+            format!("UNTRANSLATABLE(art. {article}: {construct})")
+        }
     }
 }

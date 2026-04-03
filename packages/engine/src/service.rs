@@ -232,6 +232,10 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
                 hash_value(v, hasher);
             }
         }
+        Value::Untranslatable { article, construct } => {
+            article.hash(hasher);
+            construct.hash(hasher);
+        }
     }
 }
 
@@ -1087,13 +1091,18 @@ impl LawExecutionService {
     /// - `Propagate`: always log to trace (taint propagation happens at output level)
     /// - `Warn`: log warning to trace, continue
     /// - `Ignore`: only error on unaccepted entries, otherwise silent
+    ///
+    /// Returns a list of (article, construct) pairs that should taint outputs
+    /// in propagate mode. Empty vec means no tainting.
     fn handle_untranslatables(
         &self,
         law_id: &str,
         article_number: &str,
         untranslatables: &[crate::article::UntranslatableEntry],
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<()> {
+    ) -> Result<Vec<(String, String)>> {
+        let mut taints = Vec::new();
+
         for entry in untranslatables {
             // Always record in trace regardless of mode
             let msg = format!("Untranslatable: {} — {}", entry.construct, entry.reason);
@@ -1123,12 +1132,13 @@ impl LawExecutionService {
                     );
                 }
                 UntranslatableMode::Propagate => {
-                    // Taint propagation (NaN-like UNTRANSLATABLE value) is not yet
-                    // implemented. Fail explicitly rather than silently behaving like warn.
-                    return Err(EngineError::InvalidOperation(
-                        "propagate mode is not yet implemented — use error, warn, or ignore"
-                            .to_string(),
-                    ));
+                    tracing::info!(
+                        law_id,
+                        article = article_number,
+                        construct = %entry.construct,
+                        "Untranslatable construct — tainting outputs (propagate mode)"
+                    );
+                    taints.push((article_number.to_string(), entry.construct.clone()));
                 }
                 UntranslatableMode::Warn => {
                     tracing::warn!(
@@ -1150,7 +1160,7 @@ impl LawExecutionService {
                 }
             }
         }
-        Ok(())
+        Ok(taints)
     }
 
     /// Apply lex specialis overrides to an article's outputs.
@@ -1273,15 +1283,19 @@ impl LawExecutionService {
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<ArticleResult> {
         // RFC-012: Check for untranslatable constructs before execution
-        if let Some(untranslatables) = article
+        let taints = if let Some(untranslatables) = article
             .machine_readable
             .as_ref()
             .and_then(|mr| mr.untranslatables.as_ref())
         {
             if !untranslatables.is_empty() {
-                self.handle_untranslatables(&law.id, &article.number, untranslatables, res_ctx)?;
+                self.handle_untranslatables(&law.id, &article.number, untranslatables, res_ctx)?
+            } else {
+                Vec::new()
             }
-        }
+        } else {
+            Vec::new()
+        };
 
         // Create execution context
         let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
@@ -1391,6 +1405,18 @@ impl LawExecutionService {
                         }
                     }
                 }
+            }
+        }
+
+        // RFC-012 Propagate mode: taint all outputs from articles with untranslatables
+        if !taints.is_empty() {
+            // Use the first taint as the origin (articles typically have one untranslatable)
+            let (taint_article, taint_construct) = &taints[0];
+            for value in result.outputs.values_mut() {
+                *value = Value::Untranslatable {
+                    article: taint_article.clone(),
+                    construct: taint_construct.clone(),
+                };
             }
         }
 

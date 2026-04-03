@@ -688,6 +688,9 @@ fn format_value_compact(value: &Value) -> String {
         Value::Object(obj) => {
             format!("{{...{} keys}}", obj.len())
         }
+        Value::Untranslatable { article, .. } => {
+            format!("UNTRANSLATABLE(art. {})", article)
+        }
     }
 }
 
@@ -725,6 +728,9 @@ fn format_value_display(value: &Value) -> String {
                 .map(|k| format!("'{}': {}", k, format_value_display(&obj[k.as_str()])))
                 .collect();
             format!("{{{}}}", items.join(", "))
+        }
+        Value::Untranslatable { article, construct } => {
+            format!("UNTRANSLATABLE(art. {}: {})", article, construct)
         }
     }
 }
