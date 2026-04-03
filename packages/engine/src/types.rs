@@ -766,8 +766,8 @@ pub enum PathNodeType {
     Action,
     /// Requirement check
     Requirement,
-    /// Cross-law URI call
-    UriCall,
+    /// Cross-law reference resolution (source.regulation lookup)
+    CrossLawReference,
     /// Article-level execution
     Article,
     /// Cached cross-law result (memoized)

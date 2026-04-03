@@ -162,7 +162,7 @@ impl PathNode {
             PathNodeType::Operation => "operation",
             PathNodeType::Action => "action",
             PathNodeType::Requirement => "requirement",
-            PathNodeType::UriCall => "uri_call",
+            PathNodeType::CrossLawReference => "cross_law_reference",
             PathNodeType::Article => "article",
             PathNodeType::Cached => "cached",
             PathNodeType::OpenTermResolution => "open_term",
@@ -523,15 +523,15 @@ impl PathNode {
                 }
             }
 
-            PathNodeType::UriCall => {
+            PathNodeType::CrossLawReference => {
                 if let Some(ref msg) = self.message {
                     lines.push(format!("{}{}{}", prefix, connector, msg));
                 } else {
                     lines.push(format!("{}{}Reference: {}", prefix, connector, self.name));
                 }
 
-                // UriCall children use double connectors; scope continuation
-                // matches whether this UriCall is itself in a double or single parent.
+                // CrossLawReference children use double connectors; scope continuation
+                // matches whether this CrossLawReference is itself in a double or single parent.
                 self.render_double_children(
                     lines,
                     child_base,
@@ -636,7 +636,7 @@ impl PathNode {
             PathNodeType::Operation => "op",
             PathNodeType::Action => "act",
             PathNodeType::Requirement => "req",
-            PathNodeType::UriCall => "uri",
+            PathNodeType::CrossLawReference => "xlaw",
             PathNodeType::Article => "art",
             PathNodeType::Cached => "cache",
             PathNodeType::OpenTermResolution => "ot",
@@ -1300,17 +1300,17 @@ mod tests {
     }
 
     #[test]
-    fn test_box_drawing_uri_call_double_lines() {
+    fn test_box_drawing_cross_law_reference_double_lines() {
         let child = PathNode::new(PathNodeType::Resolve, "param").with_result(Value::Int(1));
-        let uri_node = PathNode::new(PathNodeType::UriCall, "other_law#output")
+        let uri_node = PathNode::new(PathNodeType::CrossLawReference, "other_law#output")
             .with_message("Reference: other_law#output")
             .with_child(child);
 
         let rendered = uri_node.render_box_drawing();
-        // UriCall children should use double-line connectors
+        // CrossLawReference children should use double-line connectors
         assert!(
             rendered.contains("╙──") || rendered.contains("╟──"),
-            "UriCall children should use double-line connectors in:\n{}",
+            "CrossLawReference children should use double-line connectors in:\n{}",
             rendered
         );
     }
@@ -1342,11 +1342,11 @@ mod tests {
 
     #[test]
     fn test_box_drawing_continuation_not_interrupted() {
-        // Two children under a UriCall inside an Article: the continuation
+        // Two children under a CrossLawReference inside an Article: the continuation
         // between children should use ║ (double-scope parent).
         let child1 = PathNode::new(PathNodeType::Resolve, "first").with_result(Value::Int(1));
         let child2 = PathNode::new(PathNodeType::Resolve, "second").with_result(Value::Int(2));
-        let uri_node = PathNode::new(PathNodeType::UriCall, "law#out")
+        let uri_node = PathNode::new(PathNodeType::CrossLawReference, "law#out")
             .with_message("Reference: law#out")
             .with_child(child1)
             .with_child(child2);
@@ -1358,11 +1358,11 @@ mod tests {
         let rendered = article.render_box_drawing();
         let lines: Vec<&str> = rendered.lines().collect();
         // Between the two children, the ║ continuation should be present
-        // (UriCall is inside Article's double-scope)
+        // (CrossLawReference is inside Article's double-scope)
         let has_double_continuation = lines.iter().any(|l| l.contains("║   ║"));
         assert!(
             has_double_continuation,
-            "UriCall inside Article should show ║ continuation in:\n{}",
+            "CrossLawReference inside Article should show ║ continuation in:\n{}",
             rendered
         );
     }

@@ -301,7 +301,7 @@ fn type_label(t: &PathNodeType) -> &'static str {
         PathNodeType::Operation => "op",
         PathNodeType::Action => "action",
         PathNodeType::Requirement => "req",
-        PathNodeType::UriCall => "uri",
+        PathNodeType::CrossLawReference => "xlaw",
         PathNodeType::Article => "article",
         PathNodeType::Cached => "cached",
         PathNodeType::OpenTermResolution => "open_term",
