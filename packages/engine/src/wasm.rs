@@ -849,15 +849,16 @@ articles:
         // Privacy check: only requested outputs are returned
         assert_eq!(result.outputs.len(), 2);
 
-        // Request only one output
+        // Request only one output — but both are from the same article,
+        // so both are returned (no filtering of co-products)
         let result = engine
             .service
             .evaluate_law("multi_law", &["doubled"], params, "2025-01-01")
             .unwrap();
 
         assert_eq!(result.outputs.get("doubled"), Some(&Value::Int(20)));
-        assert_eq!(result.outputs.len(), 1);
-        assert!(result.outputs.get("tripled").is_none());
+        assert_eq!(result.outputs.get("tripled"), Some(&Value::Int(30)));
+        assert_eq!(result.outputs.len(), 2);
     }
 
     #[test]

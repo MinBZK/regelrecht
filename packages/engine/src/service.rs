@@ -1048,21 +1048,11 @@ impl LawExecutionService {
             result.article_number = article_numbers.join(", ");
         }
 
-        // Privacy-by-design: return requested outputs + causally-entailed outputs
-        // (hooks and overrides). A beschikking is legally indivisible — its AWB
-        // consequences (motivering, bezwaartermijn) cannot be stripped.
-        result.outputs.retain(|k, _| {
-            output_names.contains(&k.as_str())
-                || matches!(
-                    result.output_provenance.get(k),
-                    Some(OutputProvenance::Reactive { .. })
-                        | Some(OutputProvenance::Override { .. })
-                )
-        });
-        // Trim provenance to match: don't expose provenance for filtered-out outputs
-        result
-            .output_provenance
-            .retain(|k, _| result.outputs.contains_key(k));
+        // No output filtering: the engine only executes articles that produce
+        // the requested outputs. All outputs from those articles are returned,
+        // including co-products (multiple outputs from the same article) and
+        // causally-entailed outputs (hooks, overrides). A beschikking is legally
+        // indivisible per AWB 1:3 — its consequences cannot be stripped.
 
         Ok(result)
     }
