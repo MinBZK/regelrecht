@@ -645,6 +645,17 @@ function renderRowActions(row) {
     container.appendChild(enrichBtn);
   }
 
+  // Reset: available for exhausted laws
+  if (row.status === 'harvest_exhausted' || row.status === 'enrich_exhausted') {
+    const resetBtn = document.createElement('rr-button');
+    resetBtn.setAttribute('variant', 'accent-outlined');
+    resetBtn.setAttribute('size', 'sm');
+    resetBtn.textContent = 'Reset';
+    resetBtn.title = `Reset exhausted status for ${row.law_id}`;
+    resetBtn.addEventListener('click', () => onResetExhaustedClick(row.law_id, resetBtn));
+    container.appendChild(resetBtn);
+  }
+
   return container;
 }
 
@@ -929,7 +940,8 @@ async function onRowHarvestClick(lawId, btn) {
       return;
     }
     if (response.status === 409) {
-      alert('A harvest job for this law is already pending or processing.');
+      const text = await response.text().catch(() => '');
+      alert(text || 'A harvest job for this law is already pending or processing.');
       return;
     }
     if (!response.ok) {
@@ -962,7 +974,8 @@ async function onEnrichClick(lawId, btn) {
       return;
     }
     if (response.status === 409) {
-      alert('Enrich jobs for this law are already pending or processing.');
+      const text = await response.text().catch(() => '');
+      alert(text || 'Enrich jobs for this law are already pending or processing.');
       return;
     }
     if (!response.ok) {
@@ -977,6 +990,32 @@ async function onEnrichClick(lawId, btn) {
   } finally {
     btn.removeAttribute('disabled');
     btn.textContent = 'Enrich';
+  }
+}
+
+async function onResetExhaustedClick(lawId, btn) {
+  btn.setAttribute('disabled', '');
+  btn.textContent = 'Resetting\u2026';
+
+  try {
+    const response = await fetch(`api/law_entries/${encodeURIComponent(lawId)}/reset-exhausted`, {
+      method: 'POST',
+    });
+    if (response.status === 401) {
+      window.location.href = '/auth/login';
+      return;
+    }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    btn.textContent = 'Reset \u2713';
+    setTimeout(() => { btn.textContent = 'Reset'; }, 2000);
+    loadData();
+  } catch (err) {
+    alert('Reset failed: ' + err.message);
+  } finally {
+    btn.removeAttribute('disabled');
   }
 }
 
