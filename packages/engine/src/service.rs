@@ -422,6 +422,78 @@ impl LawExecutionService {
             .map(|(id, name)| (id.as_str(), name.as_str()))
     }
 
+    /// Build an Execution Receipt (RFC-013) from an ArticleResult.
+    ///
+    /// Wraps the result with provenance, engine config, and scope metadata.
+    pub fn build_receipt(
+        &self,
+        result: &ArticleResult,
+        parameters: &BTreeMap<String, Value>,
+        calculation_date: &str,
+    ) -> crate::receipt::ExecutionReceipt {
+        use crate::receipt::*;
+
+        let loaded_regulations: Vec<LoadedRegulation> = self
+            .resolver
+            .all_law_versions()
+            .map(|law| LoadedRegulation {
+                id: law.id.clone(),
+                valid_from: law.valid_from.clone(),
+                hash: law.content_hash.clone(),
+            })
+            .collect();
+
+        let sources: Vec<ReceiptSource> = self
+            .source_info
+            .values()
+            .map(|(id, name)| ReceiptSource {
+                id: id.clone(),
+                name: Some(name.clone()),
+            })
+            .collect();
+
+        ExecutionReceipt {
+            provenance: ReceiptProvenance {
+                engine: "regelrecht".to_string(),
+                engine_version: result.engine_version.clone(),
+                schema_version: result.schema_version.clone(),
+                regulation_id: result.law_id.clone(),
+                regulation_valid_from: result.regulation_valid_from.clone(),
+                regulation_hash: result.regulation_hash.clone(),
+            },
+            engine_config: EngineConfig {
+                // Hardcoded until RFC-009 engine identity and modes are implemented.
+                // Solo simulation is the only mode the engine currently supports.
+                connectivity: "solo".to_string(),
+                legal_status: "simulation".to_string(),
+                untranslatable_mode: match self.untranslatable_mode {
+                    UntranslatableMode::Error => "error",
+                    UntranslatableMode::Propagate => "propagate",
+                    UntranslatableMode::Warn => "warn",
+                    UntranslatableMode::Ignore => "ignore",
+                }
+                .to_string(),
+                identity: None,
+            },
+            scope: ReceiptScope {
+                sources,
+                loaded_regulations,
+                scopes: Vec::new(),
+            },
+            execution: ReceiptExecution {
+                calculation_date: calculation_date.to_string(),
+                parameters: parameters.clone(),
+                reference_date: None,
+            },
+            results: ReceiptResults {
+                outputs: result.outputs.clone(),
+                trace: result.trace.clone(),
+            },
+            accepted_values: Vec::new(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
     /// Execute a law output by name.
     ///
     /// This is the main entry point for law execution. It finds the article
@@ -865,6 +937,10 @@ impl LawExecutionService {
                     law_id: law_id.to_string(),
                     law_uuid: None,
                     trace: None,
+                    engine_version: crate::VERSION.to_string(),
+                    schema_version: None,
+                    regulation_hash: None,
+                    regulation_valid_from: None,
                 });
             }
         }

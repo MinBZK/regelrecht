@@ -31,7 +31,7 @@ corpus/regulation/nl/
 ### Header Metadata
 
 ```yaml
-$schema: https://raw.githubusercontent.com/.../schema/v0.4.0/schema.json
+$schema: https://raw.githubusercontent.com/.../refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json
 $id: zorgtoeslagwet
 regulatory_layer: WET
 publication_date: '2025-01-01'

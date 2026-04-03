@@ -41,6 +41,8 @@ just validate corpus/regulation/nl/wet/your_law/2025-01-01.yaml
 just validate
 ```
 
+The validator rejects files with an unknown or missing `$schema` version. Make sure the `$schema` URL uses a tag-based ref (`refs/tags/schema-vX.Y.Z`) and points to a released schema version.
+
 Fix any schema errors before proceeding.
 
 ## Step 5: Write BDD test scenarios

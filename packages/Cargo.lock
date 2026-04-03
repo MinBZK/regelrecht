@@ -3653,11 +3653,12 @@ dependencies = [
 
 [[package]]
 name = "regelrecht-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "criterion",
  "cucumber",
+ "hex",
  "jsonschema",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -3667,6 +3668,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "serde_yaml_ng",
+ "sha2",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

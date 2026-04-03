@@ -730,9 +730,45 @@ pub struct ArticleBasedLaw {
     /// Articles in the law
     #[serde(default)]
     pub articles: Vec<Article>,
+    /// SHA-256 hash of the YAML content (computed at load time, not serialized)
+    #[serde(skip)]
+    pub content_hash: Option<String>,
 }
 
 impl ArticleBasedLaw {
+    /// Extract schema version (e.g., "v0.5.0") from the `$schema` URL.
+    ///
+    /// Looks for a `/vN.N.N` pattern (semver with v prefix) in the URL,
+    /// skipping false matches like `/vendor/` or `/riva/`.
+    pub fn schema_version(&self) -> Option<&str> {
+        let url = self.schema.as_deref()?;
+        let mut search_from = 0;
+        loop {
+            let pos = url[search_from..].find("/v")?;
+            let abs_pos = search_from + pos;
+            let version_start = abs_pos + 1;
+            let rest = &url[version_start..];
+            let end = rest.find('/').unwrap_or(rest.len());
+            let candidate = &rest[..end];
+            if candidate.starts_with('v') && Self::is_semver(&candidate[1..]) {
+                return Some(candidate);
+            }
+            search_from = abs_pos + 2;
+            if search_from >= url.len() {
+                return None;
+            }
+        }
+    }
+
+    /// Check if a string looks like a semver version (N.N.N).
+    fn is_semver(s: &str) -> bool {
+        let parts: Vec<&str> = s.split('.').collect();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    }
+
     /// Load a law from a YAML file.
     ///
     /// # Security
@@ -826,10 +862,15 @@ impl ArticleBasedLaw {
             )));
         }
 
-        let law: Self = serde_yaml_ng::from_str(content).map_err(EngineError::YamlError)?;
+        let mut law: Self = serde_yaml_ng::from_str(content).map_err(EngineError::YamlError)?;
 
         // Validate array sizes after parsing
         law.validate_array_sizes()?;
+
+        // Compute SHA-256 content hash for provenance (RFC-013)
+        use sha2::Digest;
+        let hash = sha2::Sha256::digest(content.as_bytes());
+        law.content_hash = Some(format!("sha256:{}", hex::encode(hash)));
 
         tracing::debug!(law_id = %law.id, articles = law.articles.len(), "Parsed law successfully");
 

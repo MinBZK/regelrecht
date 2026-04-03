@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [Rust](https://rustup.rs/) (stable toolchain)
+- [Rust](https://rustup.rs/) (the exact version is pinned in `rust-toolchain.toml`; rustup picks it up automatically)
 - [just](https://github.com/casey/just) command runner
 - [Node.js](https://nodejs.org/) (for frontend development)
 - [Docker](https://www.docker.com/) (for pipeline integration tests and full stack)

@@ -137,10 +137,14 @@ fn main() {
                 }
             }
             None => {
-                eprintln!(
-                    "OK: {} (no $schema field, serde-only validation)",
-                    path.display()
-                );
+                // Check if $schema field exists but version is unrecognized
+                if value.get("$schema").is_some() {
+                    eprintln!("FAIL: {}: unrecognized $schema version", path.display());
+                    failed = true;
+                } else {
+                    eprintln!("FAIL: {}: missing $schema field", path.display());
+                    failed = true;
+                }
             }
         }
     }

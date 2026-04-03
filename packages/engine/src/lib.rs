@@ -34,6 +34,7 @@ pub mod engine;
 pub mod error;
 pub mod operations;
 pub mod priority;
+pub mod receipt;
 pub mod resolver;
 pub mod service;
 pub mod trace;
@@ -65,6 +66,7 @@ pub use data_source::{DataSource, DataSourceMatch, DataSourceRegistry, DictDataS
 pub use engine::{ArticleEngine, ArticleResult};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
+pub use receipt::ExecutionReceipt;
 pub use resolver::RuleResolver;
 pub use service::{ExecutionOutcome, LawExecutionService, LawInfo, ServiceProvider, StageState};
 pub use trace::{PathNode, TraceBuilder};
@@ -82,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_version() {
-        assert_eq!(VERSION, "0.1.0");
+        assert_eq!(VERSION, "0.2.0");
     }
 
     #[test]

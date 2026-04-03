@@ -110,6 +110,116 @@ jobs:
         if: needs.changes.outputs.ci != 'true'
         run: echo "No schema changes, skipping"
 
+  provenance-checks:
+    name: Provenance checks (RFC-013)
+    needs: changes
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.ci == 'true'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        if: needs.changes.outputs.ci == 'true'
+        with:
+          fetch-depth: 0
+
+      - name: Check schema versions registered in validate.rs
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          # Every schema/vX.Y.Z/ directory must appear in validate.rs
+          VALIDATE_RS="packages/engine/src/bin/validate.rs"
+          MISSING=""
+          for dir in schema/v*/; do
+            version=$(basename "$dir")
+            if ! grep -q "\"$version\"" "$VALIDATE_RS"; then
+              MISSING="$MISSING  $version\n"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            echo "ERROR: Schema versions not registered in validate.rs:"
+            printf "$MISSING"
+            exit 1
+          fi
+          echo "All schema versions registered in validate.rs"
+
+      - name: Check corpus schema references
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          # Every $schema URL in corpus YAML must reference a known schema version
+          KNOWN_VERSIONS=$(ls -d schema/v*/ | xargs -n1 basename)
+          FAILED=false
+          for file in $(find corpus/regulation -name "*.yaml"); do
+            SCHEMA_URL=$(grep '^\$schema:' "$file" | head -1 | sed 's/\$schema: *//')
+            # Handle multi-line $schema with >-
+            if [ -z "$SCHEMA_URL" ] || [ "$SCHEMA_URL" = ">-" ]; then
+              SCHEMA_URL=$(sed -n '2p' "$file" | sed 's/^ *//' | grep 'schema.json' || true)
+              if [ -z "$SCHEMA_URL" ]; then
+                SCHEMA_URL=$(sed -n '3p' "$file" | sed 's/^ *//' | grep 'schema.json' || true)
+              fi
+            fi
+            if [ -z "$SCHEMA_URL" ]; then
+              echo "WARN: $file has no \$schema URL"
+              continue
+            fi
+            FOUND=false
+            for ver in $KNOWN_VERSIONS; do
+              if echo "$SCHEMA_URL" | grep -q "$ver"; then
+                FOUND=true
+                break
+              fi
+            done
+            if [ "$FOUND" = "false" ]; then
+              echo "ERROR: $file references unknown schema version: $SCHEMA_URL"
+              FAILED=true
+            fi
+          done
+          if [ "$FAILED" = "true" ]; then
+            exit 1
+          fi
+          echo "All corpus schema references valid"
+
+      - name: Check schema/latest symlink
+        if: needs.changes.outputs.ci == 'true'
+        run: |
+          TARGET=$(readlink schema/latest)
+          HIGHEST=$(ls -d schema/v*/ | xargs -n1 basename | sort -V | tail -1)
+          if [ "$TARGET" != "$HIGHEST" ]; then
+            echo "ERROR: schema/latest points to $TARGET but highest version is $HIGHEST"
+            exit 1
+          fi
+          echo "schema/latest correctly points to $HIGHEST"
+
+      - name: Check engine version bump on source changes
+        if: needs.changes.outputs.ci == 'true' && github.event_name == 'pull_request'
+        run: |
+          git fetch origin main
+          # Check if engine source files changed (excluding binaries and tests)
+          ENGINE_CHANGES=$(git diff --name-only origin/main...HEAD -- \
+            'packages/engine/src/*.rs' \
+            'packages/engine/src/**/*.rs' \
+            ':!packages/engine/src/bin/*' \
+            ':!packages/engine/src/wasm.rs' || true)
+          if [ -z "$ENGINE_CHANGES" ]; then
+            echo "No engine source changes, skipping version check"
+            exit 0
+          fi
+          # Compare engine version between main and this branch
+          MAIN_VERSION=$(git show origin/main:packages/engine/Cargo.toml 2>/dev/null \
+            | grep '^version' | head -1 | sed 's/.*"\(.*\)"/\1/')
+          PR_VERSION=$(grep '^version' packages/engine/Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          if [ "$MAIN_VERSION" = "$PR_VERSION" ]; then
+            echo "WARNING: Engine source files changed but version is still $PR_VERSION"
+            echo "Changed files:"
+            echo "$ENGINE_CHANGES"
+            echo ""
+            echo "Consider bumping the engine version in packages/engine/Cargo.toml"
+            # Warning only, not a hard failure (yet)
+          else
+            echo "Engine version bumped: $MAIN_VERSION -> $PR_VERSION"
+          fi
+
+      - name: Skip (no relevant changes)
+        if: needs.changes.outputs.ci != 'true'
+        run: echo "No relevant changes, skipping provenance checks"
+
   pre-commit:
     name: Pre-commit
     needs: changes

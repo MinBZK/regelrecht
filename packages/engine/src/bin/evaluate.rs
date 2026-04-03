@@ -47,6 +47,14 @@ struct EvaluateResponse {
     law_uuid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// Engine version that produced this result (RFC-013)
+    engine_version: String,
+    /// Schema version of the evaluated regulation (RFC-013)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    schema_version: Option<String>,
+    /// SHA-256 hash of the regulation YAML content (RFC-013)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    regulation_hash: Option<String>,
 }
 
 fn error_response(msg: String) -> EvaluateResponse {
@@ -57,6 +65,9 @@ fn error_response(msg: String) -> EvaluateResponse {
         law_id: None,
         law_uuid: None,
         error: Some(msg),
+        engine_version: regelrecht_engine::VERSION.to_string(),
+        schema_version: None,
+        regulation_hash: None,
     }
 }
 
@@ -103,9 +114,11 @@ fn main() {
 
     let mut service = LawExecutionService::new();
 
-    // Parse --untranslatable=MODE from CLI args (RFC-012)
+    // Parse CLI flags
+    let mut emit_receipt = false;
     for arg in std::env::args().skip(1) {
         if let Some(mode_str) = arg.strip_prefix("--untranslatable=") {
+            // RFC-012: untranslatable handling mode
             match mode_str.parse::<UntranslatableMode>() {
                 Ok(mode) => service.set_untranslatable_mode(mode),
                 Err(e) => {
@@ -114,6 +127,9 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+        } else if arg == "--receipt" {
+            // RFC-013: emit Execution Receipt envelope
+            emit_receipt = true;
         }
     }
 
@@ -144,27 +160,39 @@ fn main() {
         .collect();
 
     // Evaluate
-    match service.evaluate_law_output(&law_id, &request.output_name, params, &request.date) {
+    match service.evaluate_law_output(&law_id, &request.output_name, params.clone(), &request.date)
+    {
         Ok(result) => {
-            let outputs: BTreeMap<String, serde_json::Value> = result
-                .outputs
-                .iter()
-                .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
-                .collect();
-            let resolved_inputs: BTreeMap<String, serde_json::Value> = result
-                .resolved_inputs
-                .iter()
-                .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
-                .collect();
-            let resp = EvaluateResponse {
-                outputs: Some(outputs),
-                resolved_inputs: Some(resolved_inputs),
-                article_number: Some(result.article_number),
-                law_id: Some(result.law_id),
-                law_uuid: result.law_uuid,
-                error: None,
-            };
-            println!("{}", serde_json::to_string(&resp).unwrap_or_default());
+            if emit_receipt {
+                let receipt = service.build_receipt(&result, &params, &request.date);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&receipt).unwrap_or_default()
+                );
+            } else {
+                let outputs: BTreeMap<String, serde_json::Value> = result
+                    .outputs
+                    .iter()
+                    .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
+                    .collect();
+                let resolved_inputs: BTreeMap<String, serde_json::Value> = result
+                    .resolved_inputs
+                    .iter()
+                    .map(|(k, v)| (k.clone(), serde_json::Value::from(v)))
+                    .collect();
+                let resp = EvaluateResponse {
+                    outputs: Some(outputs),
+                    resolved_inputs: Some(resolved_inputs),
+                    article_number: Some(result.article_number),
+                    law_id: Some(result.law_id),
+                    law_uuid: result.law_uuid,
+                    error: None,
+                    engine_version: result.engine_version,
+                    schema_version: result.schema_version,
+                    regulation_hash: result.regulation_hash,
+                };
+                println!("{}", serde_json::to_string(&resp).unwrap_or_default());
+            }
         }
         Err(e) => {
             let resp = error_response(format!("{e}"));

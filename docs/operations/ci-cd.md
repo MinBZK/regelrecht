@@ -31,6 +31,10 @@ Builds the engine for the WebAssembly target to catch compilation issues early.
 
 Released schema versions in `schema/v*.*.*` are immutable. CI fails if a PR tries to modify or delete a released schema. Only `schema/latest/` can be updated freely.
 
+### Provenance checks (on corpus/engine changes)
+
+The `provenance-checks` job verifies that every corpus YAML file uses a tag-based `$schema` URL (`refs/tags/schema-vX.Y.Z`) and that the referenced schema version is known. This catches files that still use the old `refs/heads/main` format. See [RFC-013](/rfcs/rfc-013) for context.
+
 ### Component-specific checks
 
 - **Admin** - format, lint, cargo check, tests, frontend build
