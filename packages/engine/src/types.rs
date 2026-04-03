@@ -588,47 +588,40 @@ impl Operation {
         Operation::NotIn,
     ];
 
-    /// Number of variants in the enum. The exhaustive match ensures this
-    /// stays in sync — adding a variant without updating this function
-    /// causes a compile error.
-    pub const fn variant_count() -> usize {
-        // This match is exhaustive: the compiler will error if a new
-        // variant is added to Operation without adding an arm here.
-        // Update the count AND add the variant to SCHEMA_OPERATIONS
-        // or COMPAT_ALIASES.
-        #[allow(clippy::match_same_arms)]
-        const fn _check_exhaustive(op: Operation) -> usize {
-            match op {
-                Operation::Equals
-                | Operation::GreaterThan
-                | Operation::LessThan
-                | Operation::GreaterThanOrEqual
-                | Operation::LessThanOrEqual
-                | Operation::Add
-                | Operation::Subtract
-                | Operation::Multiply
-                | Operation::Divide
-                | Operation::Max
-                | Operation::Min
-                | Operation::And
-                | Operation::Or
-                | Operation::Not
-                | Operation::If
-                | Operation::In
-                | Operation::List
-                | Operation::Age
-                | Operation::DateAdd
-                | Operation::Date
-                | Operation::DayOfWeek
-                | Operation::NotEquals
-                | Operation::IsNull
-                | Operation::NotNull
-                | Operation::NotIn => 25,
-            }
-        }
-        // Call it once to ensure the match compiles (dead code otherwise).
-        _check_exhaustive(Operation::Equals)
-    }
+    /// All variants of the enum. The exhaustive match in `name()` already
+    /// guarantees compile-time coverage. This array is the single source
+    /// of truth for variant enumeration — its length is the count.
+    ///
+    /// When adding a new operation: add it here AND to SCHEMA_OPERATIONS
+    /// or COMPAT_ALIASES. The `operation_lists_are_exhaustive` test will
+    /// fail if the lengths don't match.
+    pub const ALL_VARIANTS: &[Operation] = &[
+        Operation::Equals,
+        Operation::GreaterThan,
+        Operation::LessThan,
+        Operation::GreaterThanOrEqual,
+        Operation::LessThanOrEqual,
+        Operation::Add,
+        Operation::Subtract,
+        Operation::Multiply,
+        Operation::Divide,
+        Operation::Max,
+        Operation::Min,
+        Operation::And,
+        Operation::Or,
+        Operation::Not,
+        Operation::If,
+        Operation::In,
+        Operation::List,
+        Operation::Age,
+        Operation::DateAdd,
+        Operation::Date,
+        Operation::DayOfWeek,
+        Operation::NotEquals,
+        Operation::IsNull,
+        Operation::NotNull,
+        Operation::NotIn,
+    ];
 
     /// Check if this is a comparison operation
     pub fn is_comparison(&self) -> bool {
@@ -940,32 +933,36 @@ mod tests {
 
     #[test]
     fn operation_lists_are_exhaustive() {
-        // variant_count() uses an exhaustive match — adding a new Operation
-        // variant without updating the match causes a compile error there.
-        // This test then catches the case where the match is updated but
-        // the variant is not added to SCHEMA_OPERATIONS or COMPAT_ALIASES.
-        let classified = Operation::SCHEMA_OPERATIONS.len() + Operation::COMPAT_ALIASES.len();
+        // ALL_VARIANTS must contain every variant. We verify this by
+        // checking that ALL_VARIANTS and SCHEMA_OPERATIONS + COMPAT_ALIASES
+        // contain the exact same set of operations (by name).
+        let all_names: std::collections::HashSet<&str> =
+            Operation::ALL_VARIANTS.iter().map(|op| op.name()).collect();
         assert_eq!(
-            classified,
-            Operation::variant_count(),
-            "SCHEMA_OPERATIONS ({}) + COMPAT_ALIASES ({}) = {classified}, \
-             but variant_count() = {}. Add the new variant to one of the lists.",
-            Operation::SCHEMA_OPERATIONS.len(),
-            Operation::COMPAT_ALIASES.len(),
-            Operation::variant_count()
+            all_names.len(),
+            Operation::ALL_VARIANTS.len(),
+            "ALL_VARIANTS contains duplicates"
         );
 
-        // Verify no duplicates within or across lists.
-        let mut all_names: std::collections::HashSet<&str> = std::collections::HashSet::new();
-        for op in Operation::SCHEMA_OPERATIONS
+        let classified_names: std::collections::HashSet<&str> = Operation::SCHEMA_OPERATIONS
             .iter()
             .chain(Operation::COMPAT_ALIASES.iter())
-        {
-            assert!(
-                all_names.insert(op.name()),
-                "duplicate operation: {}",
-                op.name()
-            );
-        }
+            .map(|op| op.name())
+            .collect();
+        assert_eq!(
+            classified_names.len(),
+            Operation::SCHEMA_OPERATIONS.len() + Operation::COMPAT_ALIASES.len(),
+            "SCHEMA_OPERATIONS and COMPAT_ALIASES overlap"
+        );
+
+        assert_eq!(
+            all_names,
+            classified_names,
+            "ALL_VARIANTS and SCHEMA_OPERATIONS + COMPAT_ALIASES differ.\n\
+             In ALL_VARIANTS but not classified: {:?}\n\
+             Classified but not in ALL_VARIANTS: {:?}",
+            all_names.difference(&classified_names).collect::<Vec<_>>(),
+            classified_names.difference(&all_names).collect::<Vec<_>>()
+        );
     }
 }
