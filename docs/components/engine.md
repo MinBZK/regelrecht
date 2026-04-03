@@ -191,6 +191,14 @@ The engine enforces compile-time security limits to prevent DoS:
 | `MAX_CROSS_LAW_DEPTH` | 20 | Cross-law reference nesting |
 | `MAX_OPERATION_DEPTH` | 100 | Operation nesting |
 
+## Execution Receipt
+
+The engine can produce an Execution Receipt: a JSON document that captures everything needed to reproduce a specific execution result. The receipt includes `engine_version`, `schema_version`, and `regulation_hash` alongside the regular `ArticleResult` fields. This allows independent verification of past decisions.
+
+Use `LawExecutionService.build_receipt()` to construct a receipt programmatically, or pass `--receipt` to the CLI (see below).
+
+See [RFC-013](/rfcs/rfc-013) for the design rationale.
+
 ## CLI Tools
 
 ```bash
@@ -200,6 +208,13 @@ cargo run --bin evaluate -- \
     heeft_recht_op_zorgtoeslag \
     --param bsn 999993653 \
     --param vermogen 50000
+
+# Execute and output a full Execution Receipt as JSON
+cargo run --bin evaluate -- \
+    corpus/regulation/nl/wet/zorgtoeslagwet/2025-01-01.yaml \
+    heeft_recht_op_zorgtoeslag \
+    --param bsn 999993653 \
+    --receipt
 
 # Validate a YAML file against schema
 cargo run --bin validate --features validate -- \
@@ -222,3 +237,4 @@ Key benchmarks: URI parsing, variable resolution, operations, article evaluation
 - [RFC-003: Inversion of Control](/rfcs/rfc-003) - open terms and delegation
 - [RFC-004: Uniform Operations](/rfcs/rfc-004) - operation syntax
 - [RFC-007: Cross-Law Execution](/rfcs/rfc-007) - hooks, overrides, and temporal computation
+- [RFC-013: Execution Provenance](/rfcs/rfc-013) - reproducible execution and receipts

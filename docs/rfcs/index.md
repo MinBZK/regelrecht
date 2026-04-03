@@ -17,6 +17,8 @@ Design decisions in RegelRecht are documented through RFCs. Each RFC captures th
 | [RFC-008](./rfc-008) | Bestuursrecht / AWB Procedures | Accepted |
 | [RFC-009](./rfc-009) | Multi-Organisation Execution | Proposed |
 | [RFC-010](./rfc-010) | Federated Corpus | Accepted |
+| [RFC-012](./rfc-012) | Untranslatables | Proposed |
+| [RFC-013](./rfc-013) | Execution Provenance | Draft |
 
 ## Writing an RFC
 
