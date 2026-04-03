@@ -537,15 +537,14 @@ impl LawExecutionService {
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
     ) -> Result<ArticleResult> {
+        if output_names.is_empty() {
+            return Err(EngineError::InvalidOperation(
+                "output_names must not be empty".to_string(),
+            ));
+        }
         let mut res_ctx = ResolutionContext::new(calculation_date);
         res_ctx.contextual_law_id = Some(law_id.to_string());
-        let mut result =
-            self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)?;
-        // Privacy-by-design: only return requested outputs
-        result
-            .outputs
-            .retain(|k, _| output_names.contains(&k.as_str()));
-        Ok(result)
+        self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx)
     }
 
     /// Evaluate multiple outputs with tracing enabled.
@@ -574,6 +573,12 @@ impl LawExecutionService {
         calculation_date: &str,
         trace_builder: TraceBuilder,
     ) -> Result<ArticleResult> {
+        if output_names.is_empty() {
+            return Err(EngineError::InvalidOperation(
+                "output_names must not be empty".to_string(),
+            ));
+        }
+
         let outputs_label = output_names.join(", ");
         let trace = Rc::new(RefCell::new(trace_builder));
 
@@ -601,7 +606,7 @@ impl LawExecutionService {
         let mut res_ctx = ResolutionContext::with_trace(calculation_date, Rc::clone(&trace));
         res_ctx.contextual_law_id = Some(law_id.to_string());
 
-        // Execute: group outputs by article, evaluate each once, merge
+        // Execute: group outputs by article, evaluate each once, merge + filter
         let result =
             self.evaluate_law_multi_internal(law_id, output_names, parameters, &mut res_ctx);
 
@@ -610,11 +615,6 @@ impl LawExecutionService {
 
         match result {
             Ok(mut result) => {
-                // Privacy-by-design: filter to requested outputs
-                result
-                    .outputs
-                    .retain(|k, _| output_names.contains(&k.as_str()));
-
                 // Set the result on the top-level article node
                 let mut tb = trace.borrow_mut();
                 if output_names.len() == 1 {
@@ -974,8 +974,8 @@ impl LawExecutionService {
     /// Internal method for multi-output evaluation.
     ///
     /// Groups requested outputs by producing article, executes each article
-    /// once, and merges results. Does NOT filter outputs — callers must
-    /// filter the result to enforce privacy-by-design.
+    /// once, merges results, and filters to only the requested outputs
+    /// (privacy-by-design).
     fn evaluate_law_multi_internal(
         &self,
         law_id: &str,
@@ -1005,6 +1005,9 @@ impl LawExecutionService {
                 .push(output_name);
         }
 
+        // Collect the article numbers for the merged result
+        let article_numbers: Vec<&str> = article_to_outputs.keys().map(|s| s.as_str()).collect();
+
         // Execute each unique article once and merge results
         let mut merged_result: Option<ArticleResult> = None;
 
@@ -1031,9 +1034,22 @@ impl LawExecutionService {
             }
         }
 
-        merged_result.ok_or_else(|| {
+        let mut result = merged_result.ok_or_else(|| {
             EngineError::InvalidOperation("output_names must not be empty".to_string())
-        })
+        })?;
+
+        // When outputs came from multiple articles, set article_number to the
+        // comma-separated list so callers don't see a misleading single number.
+        if article_numbers.len() > 1 {
+            result.article_number = article_numbers.join(", ");
+        }
+
+        // Privacy-by-design: only return the outputs that were explicitly requested
+        result
+            .outputs
+            .retain(|k, _| output_names.contains(&k.as_str()));
+
+        Ok(result)
     }
 
     /// Internal method with cycle tracking (single-output).
