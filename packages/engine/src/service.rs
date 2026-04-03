@@ -960,8 +960,10 @@ impl LawExecutionService {
                 depth = res_ctx.depth,
                 "Cross-law resolution depth exceeded"
             );
-            let _guard =
-                res_ctx.trace_guard(format!("{}#{}", law_id, output_name), PathNodeType::UriCall);
+            let _guard = res_ctx.trace_guard(
+                format!("{}#{}", law_id, output_name),
+                PathNodeType::CrossLawReference,
+            );
             res_ctx.trace_set_message(format!(
                 "Cross-law resolution depth exceeded {} levels ({}:{})",
                 config::MAX_CROSS_LAW_DEPTH,
@@ -1914,8 +1916,10 @@ impl LawExecutionService {
         }
 
         // Trace cross-law call (guard auto-pops on all exit paths)
-        let _guard =
-            res_ctx.trace_guard(format!("{}#{}", regulation, output), PathNodeType::UriCall);
+        let _guard = res_ctx.trace_guard(
+            format!("{}#{}", regulation, output),
+            PathNodeType::CrossLawReference,
+        );
 
         // Build parameters for the target article
         let target_params = match self.build_target_parameters(source_parameters, context) {
