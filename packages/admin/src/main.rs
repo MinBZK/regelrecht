@@ -148,6 +148,10 @@ async fn main() {
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
         .route("/api/enrich-jobs", post(handlers::create_enrich_jobs))
         .route("/api/jobs", delete(handlers::delete_all_jobs))
+        .route(
+            "/api/law_entries/{law_id}/reset-exhausted",
+            post(handlers::reset_exhausted),
+        )
         .route("/api/sources", get(corpus_handlers::list_sources))
         .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
         .route(
