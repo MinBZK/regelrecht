@@ -301,15 +301,26 @@ pub async fn exhaust_law<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let status = match job_type {
-        crate::models::JobType::Harvest => LawStatusValue::HarvestExhausted,
-        crate::models::JobType::Enrich => LawStatusValue::EnrichExhausted,
+    let (expected, new_status) = match job_type {
+        crate::models::JobType::Harvest => (
+            LawStatusValue::HarvestFailed,
+            LawStatusValue::HarvestExhausted,
+        ),
+        crate::models::JobType::Enrich => (
+            LawStatusValue::EnrichFailed,
+            LawStatusValue::EnrichExhausted,
+        ),
     };
-    sqlx::query("UPDATE law_entries SET status = $2, updated_at = now() WHERE law_id = $1")
-        .bind(law_id)
-        .bind(status)
-        .execute(executor)
-        .await?;
+    // Only exhaust if status is still the corresponding failed state,
+    // preventing a race with admin reset.
+    sqlx::query(
+        "UPDATE law_entries SET status = $2, updated_at = now() WHERE law_id = $1 AND status = $3",
+    )
+    .bind(law_id)
+    .bind(new_status)
+    .bind(expected)
+    .execute(executor)
+    .await?;
 
     tracing::warn!(law_id = %law_id, job_type = ?job_type, "law marked as exhausted");
     Ok(())

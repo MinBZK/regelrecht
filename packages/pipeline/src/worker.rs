@@ -201,7 +201,10 @@ async fn process_next_job(
             // Skip auto-enrich if law is exhausted for enrich
             let enrich_exhausted = match law_status::get_law(pool, &job.law_id).await {
                 Ok(law) => law.status == LawStatusValue::EnrichExhausted,
-                Err(_) => false,
+                Err(e) => {
+                    tracing::warn!(error = %e, law_id = %job.law_id, "failed to check enrich exhausted status, proceeding with enrich");
+                    false
+                }
             };
             if enrich_exhausted {
                 tracing::info!(law_id = %job.law_id, "skipping auto-enrich: law is enrich_exhausted");
