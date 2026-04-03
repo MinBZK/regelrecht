@@ -40,7 +40,7 @@ watch(() => props.open, (val) => {
         </rr-toolbar-start-area>
         <rr-toolbar-end-area>
           <rr-toolbar-item>
-            <rr-icon-button variant="neutral-plain" size="m" icon="xmark" @click="emit('close')"></rr-icon-button>
+            <rr-icon-button variant="neutral-plain" size="m" icon="dismiss" @click="emit('close')"></rr-icon-button>
           </rr-toolbar-item>
         </rr-toolbar-end-area>
       </rr-toolbar>
