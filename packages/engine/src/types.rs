@@ -550,6 +550,44 @@ pub enum Operation {
 }
 
 impl Operation {
+    /// All operations that are part of the schema specification.
+    /// Compat aliases (NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN) are excluded.
+    ///
+    /// When adding a new operation: add it here AND to a conformance level
+    /// in `conformance/<version>/manifest.json`. CI will fail otherwise.
+    pub const SCHEMA_OPERATIONS: &[Operation] = &[
+        Operation::Equals,
+        Operation::GreaterThan,
+        Operation::LessThan,
+        Operation::GreaterThanOrEqual,
+        Operation::LessThanOrEqual,
+        Operation::Add,
+        Operation::Subtract,
+        Operation::Multiply,
+        Operation::Divide,
+        Operation::Max,
+        Operation::Min,
+        Operation::And,
+        Operation::Or,
+        Operation::Not,
+        Operation::If,
+        Operation::In,
+        Operation::List,
+        Operation::Age,
+        Operation::DateAdd,
+        Operation::Date,
+        Operation::DayOfWeek,
+    ];
+
+    /// Compat aliases accepted by the engine but not in the schema.
+    /// These exist for backward compatibility with older YAML files.
+    pub const COMPAT_ALIASES: &[Operation] = &[
+        Operation::NotEquals,
+        Operation::IsNull,
+        Operation::NotNull,
+        Operation::NotIn,
+    ];
+
     /// Check if this is a comparison operation
     pub fn is_comparison(&self) -> bool {
         matches!(
@@ -856,5 +894,30 @@ mod tests {
             let parsed: Value = serde_json::from_str(&json).unwrap();
             assert_eq!(value, parsed);
         }
+    }
+
+    #[test]
+    fn operation_lists_are_exhaustive() {
+        // Verify no duplicates within or across lists.
+        let mut all_names: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for op in Operation::SCHEMA_OPERATIONS
+            .iter()
+            .chain(Operation::COMPAT_ALIASES.iter())
+        {
+            assert!(
+                all_names.insert(op.name()),
+                "duplicate operation: {}",
+                op.name()
+            );
+        }
+        // If you added a new Operation variant and this fails, add it to
+        // SCHEMA_OPERATIONS (if it's a real schema op) or COMPAT_ALIASES
+        // (if it's a backward-compat alias).
+        let total = Operation::SCHEMA_OPERATIONS.len() + Operation::COMPAT_ALIASES.len();
+        assert_eq!(
+            total, 25,
+            "Operation variant count changed ({total} != 25). \
+             Add the new variant to SCHEMA_OPERATIONS or COMPAT_ALIASES in types.rs."
+        );
     }
 }
