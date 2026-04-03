@@ -343,5 +343,6 @@ fn format_value_compact(value: &Value) -> String {
         }
         Value::Array(arr) => format!("[{} items]", arr.len()),
         Value::Object(obj) => format!("{{{} keys}}", obj.len()),
+        Value::Untranslatable { article, .. } => format!("UNTRANSLATABLE(art. {})", article),
     }
 }

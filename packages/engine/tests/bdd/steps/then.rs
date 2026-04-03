@@ -147,6 +147,40 @@ fn assert_output_value(world: &mut RegelrechtWorld, output_name: String, expecte
     }
 }
 
+// Untranslatable assertion steps (RFC-012)
+
+#[then(regex = r#"^the output "([^"]+)" is tainted as untranslatable$"#)]
+fn assert_output_untranslatable(world: &mut RegelrechtWorld, output_name: String) {
+    assert!(
+        world.is_success(),
+        "Expected successful execution, got error: {:?}",
+        world.error_message()
+    );
+
+    let actual = world.get_output(&output_name);
+    match actual {
+        Some(value) => {
+            assert!(
+                value.is_untranslatable(),
+                "Expected output '{}' to be UNTRANSLATABLE, got {:?}",
+                output_name,
+                value
+            );
+        }
+        None => {
+            let available: Vec<&String> = world
+                .result
+                .as_ref()
+                .map(|r| r.outputs.keys().collect())
+                .unwrap_or_default();
+            panic!(
+                "Output '{}' not found. Available outputs: {:?}",
+                output_name, available
+            );
+        }
+    }
+}
+
 // Error steps (bijstand and general)
 
 #[then(regex = r#"^the execution fails with "([^"]+)"$"#)]

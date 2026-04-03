@@ -23,6 +23,22 @@ use chrono::{Datelike, NaiveDate};
 /// Maximum nesting depth for operations to prevent stack overflow
 const MAX_OPERATION_DEPTH: usize = 100;
 
+/// If any value in the slice is Untranslatable, return it (NaN-like propagation).
+fn find_untranslatable(values: &[Value]) -> Option<Value> {
+    values.iter().find(|v| v.is_untranslatable()).cloned()
+}
+
+/// If either of two values is Untranslatable, return it.
+fn propagate_binary(a: &Value, b: &Value) -> Option<Value> {
+    if a.is_untranslatable() {
+        Some(a.clone())
+    } else if b.is_untranslatable() {
+        Some(b.clone())
+    } else {
+        None
+    }
+}
+
 /// Maximum integer value that can be exactly represented in f64.
 /// Beyond this, precision is lost when converting i64 to f64.
 /// This is 2^53 = 9007199254740992.
@@ -195,6 +211,7 @@ fn format_value_for_trace(value: &Value) -> String {
             format!("[{}]", items.join(", "))
         }
         Value::Object(_) => "{...}".to_string(),
+        Value::Untranslatable { article, .. } => format!("UNTRANSLATABLE(art. {})", article),
     }
 }
 
@@ -325,6 +342,9 @@ fn execute_operation_internal<R: ValueResolver>(
 /// to avoid silent precision loss.
 pub(crate) fn values_equal(a: &Value, b: &Value) -> bool {
     match (a, b) {
+        // Untranslatable: two untranslatables are equal, mixed is never equal
+        (Value::Untranslatable { .. }, Value::Untranslatable { .. }) => true,
+        (Value::Untranslatable { .. }, _) | (_, Value::Untranslatable { .. }) => false,
         // Float-Float comparison: handle NaN specially
         (Value::Float(f1), Value::Float(f2)) => {
             if f1.is_nan() && f2.is_nan() {
@@ -360,6 +380,10 @@ fn execute_equality<R: ValueResolver>(
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
 
+    if let Some(tainted) = propagate_binary(&subject_val, &value_val) {
+        return Ok(tainted);
+    }
+
     let equal = values_equal(&subject_val, &value_val);
     Ok(Value::Bool(if negate { !equal } else { equal }))
 }
@@ -379,6 +403,10 @@ where
 {
     let subject_val = evaluate_value(subject, resolver, depth)?;
     let value_val = evaluate_value(value, resolver, depth)?;
+
+    if let Some(tainted) = propagate_binary(&subject_val, &value_val) {
+        return Ok(tainted);
+    }
 
     let subject_num = to_number(&subject_val)?;
     let value_num = to_number(&value_val)?;
@@ -407,6 +435,10 @@ fn execute_add<R: ValueResolver>(
         return Err(EngineError::InvalidOperation(
             "ADD requires at least one value".to_string(),
         ));
+    }
+
+    if let Some(tainted) = find_untranslatable(&evaluated) {
+        return Ok(tainted);
     }
 
     // Determine type from first value
@@ -484,6 +516,10 @@ fn execute_subtract<R: ValueResolver>(
 
     let evaluated = evaluate_values(values, resolver, depth)?;
 
+    if let Some(tainted) = find_untranslatable(&evaluated) {
+        return Ok(tainted);
+    }
+
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
         unreachable!("values checked non-empty above")
@@ -522,6 +558,10 @@ fn execute_multiply<R: ValueResolver>(
 
     let evaluated = evaluate_values(values, resolver, depth)?;
 
+    if let Some(tainted) = find_untranslatable(&evaluated) {
+        return Ok(tainted);
+    }
+
     let mut result = 1.0;
     let mut has_float = false;
 
@@ -559,6 +599,10 @@ fn execute_divide<R: ValueResolver>(
     }
 
     let evaluated = evaluate_values(values, resolver, depth)?;
+
+    if let Some(tainted) = find_untranslatable(&evaluated) {
+        return Ok(tainted);
+    }
 
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
@@ -612,6 +656,10 @@ where
 
     let evaluated = evaluate_values(values, resolver, depth)?;
 
+    if let Some(tainted) = find_untranslatable(&evaluated) {
+        return Ok(tainted);
+    }
+
     let mut has_float = false;
     let nums: Vec<f64> = evaluated
         .iter()
@@ -647,14 +695,25 @@ fn execute_and<R: ValueResolver>(
 ) -> Result<Value> {
     let tracing = resolver.has_trace();
     let mut results: Option<Vec<Value>> = if tracing { Some(Vec::new()) } else { None };
+    let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        if !val.to_bool() {
+        // Definitive false wins over taint (AND commutativity)
+        if !val.to_bool() && !val.is_untranslatable() {
             return Ok(Value::Bool(false));
+        }
+        if val.is_untranslatable() && taint.is_none() {
+            taint = Some(val);
+            continue;
         }
         if let Some(ref mut r) = results {
             r.push(val);
         }
+    }
+
+    // If any operand was tainted but none was definitively false, propagate
+    if let Some(t) = taint {
+        return Ok(t);
     }
 
     if let Some(results) = results {
@@ -671,11 +730,21 @@ fn execute_or<R: ValueResolver>(
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
+    let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
+        // Definitive true wins over taint (OR commutativity)
         if val.to_bool() {
             return Ok(Value::Bool(true));
         }
+        if val.is_untranslatable() && taint.is_none() {
+            taint = Some(val);
+        }
+    }
+
+    // If any operand was tainted but none was definitively true, propagate
+    if let Some(t) = taint {
+        return Ok(t);
     }
 
     Ok(Value::Bool(false))
@@ -686,6 +755,9 @@ fn execute_or<R: ValueResolver>(
 /// Takes a single `value` field (which should be a boolean-returning operation).
 fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize) -> Result<Value> {
     let val = evaluate_value(value, resolver, depth)?;
+    if val.is_untranslatable() {
+        return Ok(val);
+    }
     Ok(Value::Bool(!val.to_bool()))
 }
 
@@ -715,6 +787,10 @@ fn execute_if<R: ValueResolver>(
                 format_value_for_trace(&condition_result)
             ));
             resolver.trace_pop();
+        }
+
+        if condition_result.is_untranslatable() {
+            return Ok(condition_result);
         }
 
         if condition_result.to_bool() {
@@ -767,6 +843,9 @@ fn execute_null_check<R: ValueResolver>(
     negate: bool,
 ) -> Result<Value> {
     let subject_val = evaluate_value(subject, resolver, depth)?;
+    if subject_val.is_untranslatable() {
+        return Ok(subject_val);
+    }
     let is_null = subject_val.is_null();
     Ok(Value::Bool(if negate { !is_null } else { is_null }))
 }
@@ -791,6 +870,9 @@ fn execute_membership<R: ValueResolver>(
     negate: bool,
 ) -> Result<Value> {
     let subject_val = evaluate_value(subject, resolver, depth)?;
+    if subject_val.is_untranslatable() {
+        return Ok(subject_val);
+    }
 
     let check_values = if let Some(values) = values {
         evaluate_values(values, resolver, depth)?
@@ -845,6 +927,10 @@ fn execute_age<R: ValueResolver>(
     let dob_val = evaluate_value(date_of_birth, resolver, depth)?;
     let ref_val = evaluate_value(reference_date, resolver, depth)?;
 
+    if let Some(tainted) = propagate_binary(&dob_val, &ref_val) {
+        return Ok(tainted);
+    }
+
     let dob_date = parse_date(&dob_val)?;
     let ref_date_parsed = parse_date(&ref_val)?;
 
@@ -873,6 +959,9 @@ fn execute_date_add<R: ValueResolver>(
     depth: usize,
 ) -> Result<Value> {
     let date_val = evaluate_value(date, resolver, depth)?;
+    if date_val.is_untranslatable() {
+        return Ok(date_val);
+    }
     let mut result_date = parse_date(&date_val)?;
 
     // Years: add to year component, clamp day to last day of target month
@@ -982,6 +1071,12 @@ fn execute_date_construct<R: ValueResolver>(
     let month_val = evaluate_value(month, resolver, depth)?;
     let day_val = evaluate_value(day, resolver, depth)?;
 
+    if let Some(tainted) =
+        find_untranslatable(&[year_val.clone(), month_val.clone(), day_val.clone()])
+    {
+        return Ok(tainted);
+    }
+
     let y_i64 = year_val
         .as_int()
         .ok_or_else(|| EngineError::InvalidOperation("DATE 'year' must be a number".to_string()))?;
@@ -1014,11 +1109,15 @@ fn execute_date_construct<R: ValueResolver>(
 /// # Arguments
 /// - `date`: Date to get weekday for (ISO 8601 YYYY-MM-DD)
 fn execute_day_of_week<R: ValueResolver>(
-    date: &ActionValue,
+    date_value: &ActionValue,
     resolver: &R,
     depth: usize,
 ) -> Result<Value> {
-    let parsed = parse_date(&evaluate_value(date, resolver, depth)?)?;
+    let val = evaluate_value(date_value, resolver, depth)?;
+    if val.is_untranslatable() {
+        return Ok(val);
+    }
+    let parsed = parse_date(&val)?;
     Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
 }
 
@@ -1203,6 +1302,9 @@ fn to_number(val: &Value) -> Result<f64> {
             Ok(*i as f64)
         }
         Value::Float(f) => Ok(*f),
+        // Untranslatable should be caught by the caller before reaching to_number,
+        // but handle it gracefully.
+        Value::Untranslatable { .. } => Err(type_error("number", val)),
         _ => Err(type_error("number", val)),
     }
 }

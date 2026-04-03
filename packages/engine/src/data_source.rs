@@ -409,6 +409,7 @@ fn value_to_key(value: &Value) -> String {
         Value::Bool(b) => b.to_string(),
         Value::Null => "null".to_string(),
         Value::Array(_) | Value::Object(_) => "complex".to_string(),
+        Value::Untranslatable { .. } => "untranslatable".to_string(),
     }
 }
 
