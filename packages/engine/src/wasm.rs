@@ -99,6 +99,8 @@ struct WasmExecuteResult {
     schema_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     regulation_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    regulation_valid_from: Option<String>,
 }
 
 /// Serializable result for executeWithTrace()
@@ -119,6 +121,8 @@ struct WasmExecuteResultWithTrace {
     schema_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     regulation_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    regulation_valid_from: Option<String>,
 }
 
 /// Serializable law info for get_law_info()
@@ -217,6 +221,7 @@ impl WasmEngine {
             engine_version: result.engine_version,
             schema_version: result.schema_version,
             regulation_hash: result.regulation_hash,
+            regulation_valid_from: result.regulation_valid_from,
         };
 
         wasm_result.serialize(&js_serializer()).map_err(|e| {
@@ -269,6 +274,7 @@ impl WasmEngine {
                     engine_version: result.engine_version,
                     schema_version: result.schema_version,
                     regulation_hash: result.regulation_hash,
+                    regulation_valid_from: result.regulation_valid_from,
                 };
 
                 wasm_result.serialize(&js_serializer()).map_err(|e| {

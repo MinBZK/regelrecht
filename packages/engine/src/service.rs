@@ -466,7 +466,13 @@ impl LawExecutionService {
                 // Solo simulation is the only mode the engine currently supports.
                 connectivity: "solo".to_string(),
                 legal_status: "simulation".to_string(),
-                untranslatable_mode: format!("{:?}", self.untranslatable_mode).to_lowercase(),
+                untranslatable_mode: match self.untranslatable_mode {
+                    UntranslatableMode::Error => "error",
+                    UntranslatableMode::Propagate => "propagate",
+                    UntranslatableMode::Warn => "warn",
+                    UntranslatableMode::Ignore => "ignore",
+                }
+                .to_string(),
                 identity: None,
             },
             scope: ReceiptScope {

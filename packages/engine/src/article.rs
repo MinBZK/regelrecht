@@ -870,7 +870,7 @@ impl ArticleBasedLaw {
         // Compute SHA-256 content hash for provenance (RFC-013)
         use sha2::Digest;
         let hash = sha2::Sha256::digest(content.as_bytes());
-        law.content_hash = Some(hex::encode(hash));
+        law.content_hash = Some(format!("sha256:{}", hex::encode(hash)));
 
         tracing::debug!(law_id = %law.id, articles = law.articles.len(), "Parsed law successfully");
 
