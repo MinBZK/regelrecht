@@ -458,13 +458,12 @@ impl LawExecutionService {
                 engine_version: result.engine_version.clone(),
                 schema_version: result.schema_version.clone(),
                 regulation_id: result.law_id.clone(),
-                regulation_valid_from: self
-                    .resolver
-                    .get_law(&result.law_id)
-                    .and_then(|l| l.valid_from.clone()),
+                regulation_valid_from: result.regulation_valid_from.clone(),
                 regulation_hash: result.regulation_hash.clone(),
             },
             engine_config: EngineConfig {
+                // Hardcoded until RFC-009 engine identity and modes are implemented.
+                // Solo simulation is the only mode the engine currently supports.
                 connectivity: "solo".to_string(),
                 legal_status: "simulation".to_string(),
                 untranslatable_mode: format!("{:?}", self.untranslatable_mode).to_lowercase(),
@@ -935,6 +934,7 @@ impl LawExecutionService {
                     engine_version: crate::VERSION.to_string(),
                     schema_version: None,
                     regulation_hash: None,
+                    regulation_valid_from: None,
                 });
             }
         }

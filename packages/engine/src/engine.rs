@@ -51,6 +51,8 @@ pub struct ArticleResult {
     pub schema_version: Option<String>,
     /// SHA-256 hash of the regulation YAML content (RFC-013)
     pub regulation_hash: Option<String>,
+    /// valid_from date of the regulation version that was evaluated (RFC-013)
+    pub regulation_valid_from: Option<String>,
 }
 
 /// Executes a single article's machine_readable.execution section.
@@ -224,6 +226,7 @@ impl<'a> ArticleEngine<'a> {
             engine_version: crate::VERSION.to_string(),
             schema_version: self.law.schema_version().map(String::from),
             regulation_hash: self.law.content_hash.clone(),
+            regulation_valid_from: self.law.valid_from.clone(),
         };
 
         tracing::debug!(

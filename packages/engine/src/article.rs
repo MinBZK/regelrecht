@@ -763,7 +763,7 @@ impl ArticleBasedLaw {
     /// Check if a string looks like a semver version (N.N.N).
     fn is_semver(s: &str) -> bool {
         let parts: Vec<&str> = s.split('.').collect();
-        parts.len() >= 2
+        parts.len() == 3
             && parts
                 .iter()
                 .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))

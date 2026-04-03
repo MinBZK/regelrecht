@@ -114,7 +114,7 @@ jobs:
     name: Provenance checks (RFC-013)
     needs: changes
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: needs.changes.outputs.ci == 'true'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         if: needs.changes.outputs.ci == 'true'
@@ -188,7 +188,7 @@ jobs:
           echo "schema/latest correctly points to $HIGHEST"
 
       - name: Check engine version bump on source changes
-        if: needs.changes.outputs.ci == 'true'
+        if: needs.changes.outputs.ci == 'true' && github.event_name == 'pull_request'
         run: |
           git fetch origin main
           # Check if engine source files changed (excluding binaries and tests)
