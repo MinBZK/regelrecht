@@ -588,13 +588,13 @@ impl Operation {
         Operation::NotIn,
     ];
 
-    /// All variants of the enum. The exhaustive match in `name()` already
-    /// guarantees compile-time coverage. This array is the single source
-    /// of truth for variant enumeration — its length is the count.
+    /// All variants of the enum. This is a manually maintained list;
+    /// forgetting to add a new variant here compiles fine, but the
+    /// `operation_lists_are_exhaustive` test catches it by cross-checking
+    /// this list against SCHEMA_OPERATIONS + COMPAT_ALIASES.
     ///
     /// When adding a new operation: add it here AND to SCHEMA_OPERATIONS
-    /// or COMPAT_ALIASES. The `operation_lists_are_exhaustive` test will
-    /// fail if the lengths don't match.
+    /// or COMPAT_ALIASES.
     pub const ALL_VARIANTS: &[Operation] = &[
         Operation::Equals,
         Operation::GreaterThan,

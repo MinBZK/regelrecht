@@ -39,7 +39,7 @@ fn every_schema_operation_has_a_conformance_level() {
     assert!(
         missing.is_empty(),
         "Operations missing from conformance manifest: {:?}. \
-         Add them to the appropriate level in conformance/v0.5.0/manifest.json.",
+         Add them to the appropriate level in the conformance manifest.",
         missing
     );
 }
