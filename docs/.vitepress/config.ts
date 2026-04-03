@@ -63,6 +63,8 @@ export default withMermaid(
               { text: 'Hooks and Reactive Execution', link: '/concepts/hooks-and-reactive-execution' },
               { text: 'Multi-Org Execution', link: '/concepts/multi-org-execution' },
               { text: 'Federated Corpus', link: '/concepts/federated-corpus' },
+              { text: 'Untranslatables', link: '/concepts/untranslatables' },
+              { text: 'Execution Provenance', link: '/concepts/execution-provenance' },
             ],
           },
           {
@@ -144,6 +146,8 @@ export default withMermaid(
               { text: 'RFC-009: Multi-Org Execution', link: '/rfcs/rfc-009' },
               { text: 'RFC-010: Federated Corpus', link: '/rfcs/rfc-010' },
               { text: 'RFC-012: Untranslatables', link: '/rfcs/rfc-012' },
+              { text: 'RFC-013: Execution Provenance', link: '/rfcs/rfc-013' },
+              { text: 'RFC-014: Engine Conformance', link: '/rfcs/rfc-014' },
             ],
           },
         ],

@@ -109,7 +109,19 @@ See [Inversion of Control](./inversion-of-control).
 
 ### Laws that fire automatically
 
-The General Administrative Law Act (AWB) applies to every government decision without being called explicitly. When any law produces a *beschikking*, AWB rules about objection periods and reasoning requirements kick in through hooks. Neither law knows about the other. This gets interesting when a specific law overrides an AWB default (like the Vreemdelingenwet shortening the objection period from 6 to 4 weeks). See [Hooks and Reactive Execution](./hooks-and-reactive-execution).
+The General Administrative Law Act (AWB) applies to every government decision without being called explicitly. When any law produces a *beschikking*, AWB rules about objection periods and reasoning requirements kick in through hooks. Neither law knows about the other. See [Hooks and Reactive Execution](./hooks-and-reactive-execution).
+
+### Overrides (lex specialis)
+
+Sometimes a specific law overrides a general rule. The Aliens Act (*Vreemdelingenwet*) article 69 says: *"in afwijking van artikel 6:7 Awb bedraagt de termijn vier weken"* — departing from the AWB's standard 6-week objection period. This is modeled with `overrides`: the specific law unilaterally replaces a value from the general law. The AWB does not know it is being overridden. This only applies when the overriding law is part of the execution chain. See [Hooks and Reactive Execution](./hooks-and-reactive-execution#overrides-lex-specialis).
+
+### Untranslatables
+
+The engine's operation set is deliberately small. When a legal construct cannot be faithfully expressed — rounding rules, complex table lookups, discretionary assessments — it is flagged as an **untranslatable** rather than approximated. The engine can error, warn, or propagate taint through downstream outputs, depending on the mode. This prevents silent divergence between law text and machine-readable interpretation. See [Untranslatables](./untranslatables).
+
+### Execution provenance
+
+Every execution produces a receipt: a sealed envelope containing the engine version, schema version, all loaded regulations (with content hashes), input parameters, outputs, and trace. This makes every decision reproducible and auditable, satisfying legal requirements from the Awb, AERIUS rulings, and EU AI Act. For cross-organisation decisions, the receipt also captures the provenance of accepted values from other authorities. See [Execution Provenance](./execution-provenance).
 
 ### Organizational boundaries and federated corpus
 
