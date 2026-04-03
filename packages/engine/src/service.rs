@@ -29,7 +29,7 @@ use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, MachineRead
 use crate::config;
 use crate::context::RuleContext;
 use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
-use crate::engine::{ArticleEngine, ArticleResult};
+use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
 use crate::priority;
@@ -331,7 +331,7 @@ pub struct StageState {
 #[derive(Debug)]
 pub enum ExecutionOutcome {
     /// All stages completed — final result
-    Complete(ArticleResult),
+    Complete(Box<ArticleResult>),
     /// Execution yielded — waiting for external input to advance
     Yielded {
         /// Updated decision state
@@ -504,6 +504,7 @@ impl LawExecutionService {
             results: ReceiptResults {
                 requested_outputs: requested_outputs.to_vec(),
                 outputs: result.outputs.clone(),
+                output_provenance: result.output_provenance.clone(),
                 trace: result.trace.clone(),
             },
             accepted_values: Vec::new(),
@@ -648,6 +649,7 @@ impl LawExecutionService {
     /// Execute a law for a single output by name.
     ///
     /// Convenience wrapper around [`evaluate_law`](Self::evaluate_law).
+    /// Returns the requested output plus any causally-entailed outputs (hooks, overrides).
     #[cfg_attr(feature = "otel", tracing::instrument(skip(self, parameters), fields(law_id = %law_id, output = %output_name)))]
     pub fn evaluate_law_output(
         &self,
@@ -840,7 +842,7 @@ impl LawExecutionService {
             } else {
                 self.evaluate_law_output(law_id, output_name, parameters, calculation_date)?
             };
-            return Ok(ExecutionOutcome::Complete(result));
+            return Ok(ExecutionOutcome::Complete(Box::new(result)));
         };
 
         // Determine current stage
@@ -968,7 +970,7 @@ impl LawExecutionService {
         // All stages complete
         let mut final_result = result;
         final_result.outputs = stage_state.accumulated_outputs;
-        Ok(ExecutionOutcome::Complete(final_result))
+        Ok(ExecutionOutcome::Complete(Box::new(final_result)))
     }
 
     /// Internal method for multi-output evaluation.
@@ -1027,8 +1029,9 @@ impl LawExecutionService {
                     merged_result = Some(result);
                 }
                 Some(merged) => {
-                    // Merge outputs and resolved_inputs from additional articles
+                    // Merge outputs, provenance, and resolved_inputs from additional articles
                     merged.outputs.extend(result.outputs);
+                    merged.output_provenance.extend(result.output_provenance);
                     merged.resolved_inputs.extend(result.resolved_inputs);
                 }
             }
@@ -1044,10 +1047,17 @@ impl LawExecutionService {
             result.article_number = article_numbers.join(", ");
         }
 
-        // Privacy-by-design: only return the outputs that were explicitly requested
-        result
-            .outputs
-            .retain(|k, _| output_names.contains(&k.as_str()));
+        // Privacy-by-design: return requested outputs + causally-entailed outputs
+        // (hooks and overrides). A beschikking is legally indivisible — its AWB
+        // consequences (motivering, bezwaartermijn) cannot be stripped.
+        result.outputs.retain(|k, _| {
+            output_names.contains(&k.as_str())
+                || matches!(
+                    result.output_provenance.get(k),
+                    Some(OutputProvenance::Reactive { .. })
+                        | Some(OutputProvenance::Override { .. })
+                )
+        });
 
         Ok(result)
     }
@@ -1088,6 +1098,7 @@ impl LawExecutionService {
                 }
                 return Ok(ArticleResult {
                     outputs: cached_outputs.clone(),
+                    output_provenance: BTreeMap::new(),
                     resolved_inputs: BTreeMap::new(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
@@ -1203,20 +1214,22 @@ impl LawExecutionService {
         stage: &str,
         parameters: &BTreeMap<String, Value>,
         res_ctx: &mut ResolutionContext<'_>,
-    ) -> Result<BTreeMap<String, Value>> {
+    ) -> Result<(BTreeMap<String, Value>, BTreeMap<String, OutputProvenance>)> {
         let mut hook_outputs: BTreeMap<String, Value> = BTreeMap::new();
+        let mut hook_provenance: BTreeMap<String, OutputProvenance> = BTreeMap::new();
         // Track which law produced each output for priority resolution
         let mut output_sources: BTreeMap<String, &ArticleBasedLaw> = BTreeMap::new();
+        let hook_point_str = format!("{:?}", hook_point).to_lowercase();
 
         // Only fire hooks if the article declares what it produces
         let produces = match article.get_produces() {
             Some(p) => p,
-            None => return Ok(hook_outputs),
+            None => return Ok((hook_outputs, hook_provenance)),
         };
 
         let legal_character = match &produces.legal_character {
             Some(lc) => lc.as_str(),
-            None => return Ok(hook_outputs),
+            None => return Ok((hook_outputs, hook_provenance)),
         };
 
         let decision_type = produces.decision_type.as_deref();
@@ -1227,7 +1240,7 @@ impl LawExecutionService {
                 .find_hooks(hook_point, legal_character, decision_type, stage);
 
         if matching_hooks.is_empty() {
-            return Ok(hook_outputs);
+            return Ok((hook_outputs, hook_provenance));
         }
 
         tracing::debug!(
@@ -1295,12 +1308,18 @@ impl LawExecutionService {
             let result = hook_result?;
 
             for (name, value) in result.outputs {
+                let prov = OutputProvenance::Reactive {
+                    law_id: hook_law.id.clone(),
+                    article: hook_article.number.to_string(),
+                    hook_point: hook_point_str.clone(),
+                };
                 if let Some(existing_law) = output_sources.get(&name) {
                     // Conflict: two hooks produce same output.
                     // Resolve via lex superior / lex posterior.
                     match priority::compare_law_priority(hook_law, existing_law)? {
                         std::cmp::Ordering::Greater => {
                             hook_outputs.insert(name.clone(), value);
+                            hook_provenance.insert(name.clone(), prov);
                             output_sources.insert(name, hook_law);
                         }
                         std::cmp::Ordering::Less | std::cmp::Ordering::Equal => {
@@ -1309,12 +1328,13 @@ impl LawExecutionService {
                     }
                 } else {
                     output_sources.insert(name.clone(), hook_law);
+                    hook_provenance.insert(name.clone(), prov);
                     hook_outputs.insert(name, value);
                 }
             }
         }
 
-        Ok(hook_outputs)
+        Ok((hook_outputs, hook_provenance))
     }
 
     /// Handle untranslatable constructs based on the configured mode (RFC-012).
@@ -1496,6 +1516,13 @@ impl LawExecutionService {
                     "Override applied"
                 );
                 result.outputs.insert(output_name.clone(), value.clone());
+                result.output_provenance.insert(
+                    output_name.clone(),
+                    OutputProvenance::Override {
+                        law_id: ovr_law_id.to_string(),
+                        article: ovr_article_number.to_string(),
+                    },
+                );
                 res_ctx.trace_set_result(value.clone());
             }
         }
@@ -1565,7 +1592,7 @@ impl LawExecutionService {
         }
 
         // Fire pre_actions hooks (between open term resolution and action execution).
-        let pre_hook_outputs = self.fire_hooks(
+        let (pre_hook_outputs, pre_hook_provenance) = self.fire_hooks(
             HookPoint::PreActions,
             article,
             law,
@@ -1599,7 +1626,7 @@ impl LawExecutionService {
         for (name, value) in &result.outputs {
             post_params.insert(name.clone(), value.clone());
         }
-        let post_hook_outputs = self.fire_hooks(
+        let (post_hook_outputs, post_hook_provenance) = self.fire_hooks(
             HookPoint::PostActions,
             article,
             law,
@@ -1608,11 +1635,26 @@ impl LawExecutionService {
             res_ctx,
         )?;
         for (name, value) in post_hook_outputs {
-            result.outputs.entry(name).or_insert(value);
+            if let std::collections::btree_map::Entry::Vacant(e) =
+                result.outputs.entry(name.clone())
+            {
+                e.insert(value);
+                // Tag as reactive (only if not already a direct output)
+                if let Some(prov) = post_hook_provenance.get(&name) {
+                    result.output_provenance.insert(name, prov.clone());
+                }
+            }
         }
         // Merge pre-hook outputs into result too (they are part of the execution)
         for (name, value) in pre_hook_outputs {
-            result.outputs.entry(name).or_insert(value);
+            if let std::collections::btree_map::Entry::Vacant(e) =
+                result.outputs.entry(name.clone())
+            {
+                e.insert(value);
+                if let Some(prov) = pre_hook_provenance.get(&name) {
+                    result.output_provenance.insert(name, prov.clone());
+                }
+            }
         }
 
         // Apply lex specialis overrides

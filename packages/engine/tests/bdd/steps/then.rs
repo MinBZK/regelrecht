@@ -3,7 +3,7 @@
 //! Steps that verify outcomes and assertions.
 
 use cucumber::then;
-use regelrecht_engine::Value;
+use regelrecht_engine::{OutputProvenance, Value};
 
 use crate::world::RegelrechtWorld;
 
@@ -172,6 +172,47 @@ fn assert_exact_outputs(world: &mut RegelrechtWorld, expected_outputs: String) {
         actual, expected,
         "Expected exactly outputs {:?}, got {:?}",
         expected, actual
+    );
+}
+
+// Output provenance assertions
+
+#[then(regex = r#"^the output "([^"]+)" has direct provenance$"#)]
+fn assert_output_direct(world: &mut RegelrechtWorld, output_name: String) {
+    assert!(world.is_success(), "Expected successful execution");
+    let result = world.result.as_ref().unwrap();
+    let prov = result.output_provenance.get(&output_name);
+    assert!(
+        matches!(prov, Some(OutputProvenance::Direct { .. })),
+        "Expected '{}' to have Direct provenance, got {:?}",
+        output_name,
+        prov
+    );
+}
+
+#[then(regex = r#"^the output "([^"]+)" has reactive provenance$"#)]
+fn assert_output_reactive(world: &mut RegelrechtWorld, output_name: String) {
+    assert!(world.is_success(), "Expected successful execution");
+    let result = world.result.as_ref().unwrap();
+    let prov = result.output_provenance.get(&output_name);
+    assert!(
+        matches!(prov, Some(OutputProvenance::Reactive { .. })),
+        "Expected '{}' to have Reactive provenance, got {:?}",
+        output_name,
+        prov
+    );
+}
+
+#[then(regex = r#"^the output "([^"]+)" has override provenance$"#)]
+fn assert_output_override(world: &mut RegelrechtWorld, output_name: String) {
+    assert!(world.is_success(), "Expected successful execution");
+    let result = world.result.as_ref().unwrap();
+    let prov = result.output_provenance.get(&output_name);
+    assert!(
+        matches!(prov, Some(OutputProvenance::Override { .. })),
+        "Expected '{}' to have Override provenance, got {:?}",
+        output_name,
+        prov
     );
 }
 

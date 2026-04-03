@@ -114,16 +114,12 @@ impl RegelrechtWorld {
         std::env::var("TRACE").is_ok_and(|v| !v.is_empty() && v != "0")
     }
 
-    /// Execute a law and store the result or error.
-    ///
-    /// When the `TRACE` environment variable is set (e.g. `TRACE=1`), execution
-    /// uses `evaluate_law_output_with_trace` and writes a box-drawing trace file
-    /// per scenario to the `trace_output/` directory.
+    /// Execute a law for a single output. Delegates to `execute_law_multi`.
     pub fn execute_law(&mut self, law_id: &str, output_name: &str) {
         self.execute_law_multi(law_id, &[output_name]);
     }
 
-    /// Execute a law for multiple specific outputs
+    /// Execute a law for multiple specific outputs.
     pub fn execute_law_multi(&mut self, law_id: &str, output_names: &[&str]) {
         let trace = Self::trace_enabled();
 
@@ -146,7 +142,6 @@ impl RegelrechtWorld {
         match outcome {
             Ok(result) => {
                 if trace {
-                    // Use first output name for trace filename
                     let output_label = output_names.first().copied().unwrap_or("multi");
                     self.write_trace(&result, law_id, output_label);
                 }

@@ -70,7 +70,7 @@ Articles can define multiple outputs (e.g., `heeft_recht_op_zorgtoeslag` and `ho
 
 ### Privacy by Design
 
-Callers must explicitly list the outputs they need. There's no "return all" mode. The engine only returns what you asked for (minimal data use).
+Callers must explicitly list the outputs they need. There's no "return all" mode. The engine returns requested outputs plus any causally-entailed outputs from hooks and overrides (a beschikking is legally indivisible — AWB consequences like motivering and bezwaartermijn cannot be stripped).
 
 ### Rust API
 
@@ -82,7 +82,8 @@ let result = service.evaluate_law(
     params,
     "2025-01-01",
 )?;
-// result.outputs contains only the two requested outputs
+// result.outputs contains the requested outputs + hook/override outputs
+// result.output_provenance tags each output as Direct, Reactive, or Override
 
 // Single-output convenience (equivalent to evaluate_law with one output)
 let result = service.evaluate_law_output(
@@ -91,6 +92,18 @@ let result = service.evaluate_law_output(
 ```
 
 If the requested outputs live in the same article, it runs once. Outputs from different articles trigger one execution per article, then merge.
+
+### Output Provenance
+
+Each output is tagged with how it was produced:
+
+| Provenance | Meaning |
+|------------|---------|
+| `Direct` | Produced by the article's own actions |
+| `Reactive` | Produced by a hook (e.g., AWB firing on BESCHIKKING) |
+| `Override` | Produced by a lex specialis override (RFC-007) |
+
+The `output_provenance` field appears in `ArticleResult`, WASM results, CLI output, and the Execution Receipt. It's omitted when empty (e.g., simple articles with no hooks).
 
 ### WASM API
 
@@ -239,6 +252,10 @@ engine.unloadLaw(lawId): boolean
 engine.lawCount(): number
 engine.version(): string
 ```
+
+::: warning WASM Limitations
+Open term resolution (`open_terms` / `implements` IoC pattern) is not yet available in the WASM build. Cross-law references work when all referenced laws are pre-loaded via `loadLaw()`.
+:::
 
 ## Security Limits
 

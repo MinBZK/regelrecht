@@ -59,6 +59,7 @@ use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
 use crate::config;
+use crate::engine::OutputProvenance;
 use crate::error::EngineError;
 use crate::service::LawExecutionService;
 use crate::trace::{PathNode, TraceBuilder};
@@ -89,6 +90,8 @@ fn engine_error_to_wasm(err: EngineError) -> JsValue {
 #[derive(Serialize)]
 struct WasmExecuteResult {
     outputs: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    output_provenance: BTreeMap<String, OutputProvenance>,
     resolved_inputs: BTreeMap<String, Value>,
     article_number: String,
     law_id: String,
@@ -107,6 +110,8 @@ struct WasmExecuteResult {
 #[derive(Serialize)]
 struct WasmExecuteResultWithTrace {
     outputs: BTreeMap<String, Value>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    output_provenance: BTreeMap<String, OutputProvenance>,
     resolved_inputs: BTreeMap<String, Value>,
     article_number: String,
     law_id: String,
@@ -214,6 +219,7 @@ impl WasmEngine {
 
         let wasm_result = WasmExecuteResult {
             outputs: result.outputs,
+            output_provenance: result.output_provenance,
             resolved_inputs: result.resolved_inputs,
             article_number: result.article_number,
             law_id: result.law_id,
@@ -265,6 +271,7 @@ impl WasmEngine {
                 let trace_text = result.trace.as_ref().map(|t| t.render_box_drawing());
                 let wasm_result = WasmExecuteResultWithTrace {
                     outputs: result.outputs,
+                    output_provenance: result.output_provenance,
                     resolved_inputs: result.resolved_inputs,
                     article_number: result.article_number,
                     law_id: result.law_id,
@@ -345,6 +352,7 @@ impl WasmEngine {
 
         let wasm_result = WasmExecuteResult {
             outputs: result.outputs,
+            output_provenance: result.output_provenance,
             resolved_inputs: result.resolved_inputs,
             article_number: result.article_number,
             law_id: result.law_id,
@@ -389,6 +397,7 @@ impl WasmEngine {
                 let trace_text = result.trace.as_ref().map(|t| t.render_box_drawing());
                 let wasm_result = WasmExecuteResultWithTrace {
                     outputs: result.outputs,
+                    output_provenance: result.output_provenance,
                     resolved_inputs: result.resolved_inputs,
                     article_number: result.article_number,
                     law_id: result.law_id,

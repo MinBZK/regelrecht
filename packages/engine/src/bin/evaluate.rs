@@ -20,7 +20,7 @@
 //!   - law_uuid: Optional<String> — the law UUID if available
 //!   - error: Optional<String> — error message if evaluation failed
 
-use regelrecht_engine::{LawExecutionService, UntranslatableMode, Value};
+use regelrecht_engine::{LawExecutionService, OutputProvenance, UntranslatableMode, Value};
 use std::collections::BTreeMap;
 use std::io::Read;
 
@@ -61,6 +61,9 @@ struct EvaluateResponse {
     /// SHA-256 hash of the regulation YAML content (RFC-013)
     #[serde(skip_serializing_if = "Option::is_none")]
     regulation_hash: Option<String>,
+    /// Per-output provenance (Direct/Reactive/Override)
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    output_provenance: BTreeMap<String, OutputProvenance>,
 }
 
 fn error_response(msg: String) -> EvaluateResponse {
@@ -74,6 +77,7 @@ fn error_response(msg: String) -> EvaluateResponse {
         engine_version: regelrecht_engine::VERSION.to_string(),
         schema_version: None,
         regulation_hash: None,
+        output_provenance: BTreeMap::new(),
     }
 }
 
@@ -218,6 +222,7 @@ fn main() {
                     engine_version: result.engine_version,
                     schema_version: result.schema_version,
                     regulation_hash: result.regulation_hash,
+                    output_provenance: result.output_provenance,
                 };
                 println!("{}", serde_json::to_string(&resp).unwrap_or_default());
             }
