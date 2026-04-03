@@ -44,7 +44,7 @@ When the engine encounters articles with untranslatables, behavior depends on th
 | `error` (default) | Hard error on unaccepted untranslatables | CI, production |
 | `propagate` | Execute partial logic, taint outputs with `UNTRANSLATABLE` | Audit, analysis |
 | `warn` | Execute partial logic, log warning in trace | Development |
-| `ignore` | Execute partial logic silently (only for `accepted: true`) | Human-verified gaps |
+| `ignore` | Execute partial logic silently for `accepted: true` entries; unaccepted entries still error | Human-verified gaps |
 
 The default is fail-fast. Tolerating gaps requires explicit opt-in.
 
