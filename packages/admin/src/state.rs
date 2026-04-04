@@ -15,6 +15,8 @@ pub struct AppState {
     pub end_session_url: Option<String>,
     pub config: Arc<AppConfig>,
     pub metrics_cache: Arc<MetricsCache>,
+    /// Shared HTTP client for outgoing requests (connection pool reuse).
+    pub http_client: reqwest::Client,
     /// Loaded corpus sources with provenance metadata.
     pub corpus: Arc<RwLock<CorpusState>>,
 }

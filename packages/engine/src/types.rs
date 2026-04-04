@@ -218,7 +218,7 @@ impl Value {
     }
 
     /// Try to get value as array reference
-    pub fn as_array(&self) -> Option<&Vec<Value>> {
+    pub fn as_array(&self) -> Option<&[Value]> {
         match self {
             Value::Array(a) => Some(a),
             _ => None,
@@ -707,7 +707,8 @@ impl Operation {
 ///
 /// Controls runtime behavior when an article declares legal constructs that
 /// cannot be faithfully expressed with the current engine operation set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum UntranslatableMode {
     /// Hard error on any unaccepted untranslatable. Accepted ones execute partial logic.
     #[default]
@@ -736,6 +737,22 @@ impl std::str::FromStr for UntranslatableMode {
             )),
         }
     }
+}
+
+/// Engine connectivity mode — whether this engine resolves cross-law references.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Connectivity {
+    /// Engine runs standalone, no cross-law resolution.
+    Solo,
+}
+
+/// Legal status of execution results.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LegalStatus {
+    /// Results are for simulation/testing purposes only.
+    Simulation,
 }
 
 /// Re-export the canonical regulatory layer types from the shared crate.

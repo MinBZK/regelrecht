@@ -125,12 +125,25 @@ async fn main() {
     // Initialize corpus registry
     let corpus_state = init_corpus();
 
+    let http_client = match reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to build HTTP client");
+            std::process::exit(1);
+        }
+    };
+
     let app_state = AppState {
         pool,
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
         metrics_cache: Arc::new(metrics::new_cache()),
+        http_client,
         corpus: Arc::new(tokio::sync::RwLock::new(corpus_state)),
     };
 
