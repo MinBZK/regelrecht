@@ -35,7 +35,10 @@ use crate::operations::ValueResolver;
 use crate::priority;
 use crate::resolver::RuleResolver;
 use crate::trace::TraceBuilder;
-use crate::types::{PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode, Value};
+use crate::types::{
+    Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
+    Value,
+};
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -479,17 +482,9 @@ impl LawExecutionService {
                 regulation_hash: result.regulation_hash.clone(),
             },
             engine_config: EngineConfig {
-                // Hardcoded until RFC-009 engine identity and modes are implemented.
-                // Solo simulation is the only mode the engine currently supports.
-                connectivity: "solo".to_string(),
-                legal_status: "simulation".to_string(),
-                untranslatable_mode: match self.untranslatable_mode {
-                    UntranslatableMode::Error => "error",
-                    UntranslatableMode::Propagate => "propagate",
-                    UntranslatableMode::Warn => "warn",
-                    UntranslatableMode::Ignore => "ignore",
-                }
-                .to_string(),
+                connectivity: Connectivity::Solo,
+                legal_status: LegalStatus::Simulation,
+                untranslatable_mode: self.untranslatable_mode,
                 identity: None,
             },
             scope: ReceiptScope {
@@ -1215,7 +1210,7 @@ impl LawExecutionService {
         let mut hook_provenance: BTreeMap<String, OutputProvenance> = BTreeMap::new();
         // Track which law produced each output for priority resolution
         let mut output_sources: BTreeMap<String, &ArticleBasedLaw> = BTreeMap::new();
-        let hook_point_str = format!("{:?}", hook_point).to_lowercase();
+        let hook_point_str = hook_point.as_str();
 
         // Only fire hooks if the article declares what it produces
         let produces = match article.get_produces() {
@@ -1307,7 +1302,7 @@ impl LawExecutionService {
                 let prov = OutputProvenance::Reactive {
                     law_id: hook_law.id.clone(),
                     article: hook_article.number.to_string(),
-                    hook_point: hook_point_str.clone(),
+                    hook_point: hook_point_str.to_string(),
                 };
                 if let Some(existing_law) = output_sources.get(&name) {
                     // Conflict: two hooks produce same output.

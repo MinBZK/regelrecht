@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::engine::OutputProvenance;
 use crate::trace::PathNode;
-use crate::types::Value;
+use crate::types::{Connectivity, LegalStatus, UntranslatableMode, Value};
 
 /// Top-level execution receipt (RFC-013).
 #[derive(Debug, Clone, Serialize)]
@@ -39,9 +39,9 @@ pub struct ReceiptProvenance {
 /// Engine startup configuration that affects execution behavior.
 #[derive(Debug, Clone, Serialize)]
 pub struct EngineConfig {
-    pub connectivity: String,
-    pub legal_status: String,
-    pub untranslatable_mode: String,
+    pub connectivity: Connectivity,
+    pub legal_status: LegalStatus,
+    pub untranslatable_mode: UntranslatableMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub identity: Option<EngineIdentity>,
 }

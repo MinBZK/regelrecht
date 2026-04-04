@@ -169,7 +169,13 @@ async fn process_next_job(
                 "harvest completed successfully"
             );
 
-            let result_json = serde_json::to_value(&result).ok();
+            let result_json = match serde_json::to_value(&result) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    tracing::warn!(error = %e, job_id = %job.id, "failed to serialize harvest result");
+                    None
+                }
+            };
 
             // Use a transaction so job completion and law status update are atomic.
             // Both operations must succeed — if either fails, the transaction is
@@ -187,7 +193,11 @@ async fn process_next_job(
 
             if let Ok(entry) = law_status::get_law(pool, &job.law_id).await {
                 if entry.law_name.is_none() {
-                    let _ = law_status::upsert_law(pool, &job.law_id, Some(&result.law_name)).await;
+                    if let Err(e) =
+                        law_status::upsert_law(pool, &job.law_id, Some(&result.law_name)).await
+                    {
+                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to upsert law name");
+                    }
                 }
             }
 
@@ -465,8 +475,8 @@ pub async fn run_enrich_worker(config: WorkerConfig) -> Result<()> {
         .await
         {
             Ok(true) => {
-                // Reset to zero to drain the queue quickly when jobs are available.
-                current_interval = Duration::ZERO;
+                // Use poll_interval (not zero) to avoid tight-looping reap_orphaned_jobs.
+                current_interval = config.poll_interval;
             }
             Ok(false) => {
                 current_interval = (current_interval * 2)
@@ -647,13 +657,16 @@ async fn process_next_enrich_job(
                 Ok(failed_job) => {
                     if failed_job.status == crate::models::JobStatus::Failed {
                         // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                        let _ = sqlx::query(
+                        if let Err(e) = sqlx::query(
                             "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
                              WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
                         )
                         .bind(&job.law_id)
                         .execute(pool)
-                        .await;
+                        .await
+                        {
+                            tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
+                        }
 
                         // Check exhausted threshold
                         match law_status::increment_fail_count(pool, &job.law_id, JobType::Enrich)
@@ -672,14 +685,15 @@ async fn process_next_enrich_job(
                             }
                             _ => {}
                         }
-                    } else {
-                        let _ = law_status::update_status_if(
-                            pool,
-                            &job.law_id,
-                            LawStatusValue::Enriching,
-                            LawStatusValue::Harvested,
-                        )
-                        .await;
+                    } else if let Err(e) = law_status::update_status_if(
+                        pool,
+                        &job.law_id,
+                        LawStatusValue::Enriching,
+                        LawStatusValue::Harvested,
+                    )
+                    .await
+                    {
+                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset law status to harvested");
                     }
                 }
                 Err(fail_err) => {
@@ -715,7 +729,13 @@ async fn process_next_enrich_job(
                         .map_err(|e| PipelineError::Enrich(format!("corpus push failed: {e}")))?;
                 }
 
-                let result_json = serde_json::to_value(&result).ok();
+                let result_json = match serde_json::to_value(&result) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        tracing::warn!(error = %e, job_id = %job.id, "failed to serialize enrich result");
+                        None
+                    }
+                };
 
                 let mut tx = pool.begin().await?;
                 job_queue::complete_job(&mut *tx, job.id, result_json).await?;
@@ -736,13 +756,16 @@ async fn process_next_enrich_job(
                     match job_queue::fail_job(pool, job.id, Some(error_json)).await {
                         Ok(failed_job) if failed_job.status == crate::models::JobStatus::Failed => {
                             // Set EnrichFailed only if not already Enriched or EnrichExhausted.
-                            let _ = sqlx::query(
+                            if let Err(e) = sqlx::query(
                                 "UPDATE law_entries SET status = 'enrich_failed'::law_status, updated_at = now() \
                                  WHERE law_id = $1 AND status NOT IN ('enriched', 'enrich_exhausted')",
                             )
                             .bind(&job.law_id)
                             .execute(pool)
-                            .await;
+                            .await
+                            {
+                                tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
+                            }
 
                             // Check exhausted threshold
                             match law_status::increment_fail_count(
@@ -767,13 +790,16 @@ async fn process_next_enrich_job(
                             }
                         }
                         Ok(_) => {
-                            let _ = law_status::update_status_if(
+                            if let Err(e) = law_status::update_status_if(
                                 pool,
                                 &job.law_id,
                                 LawStatusValue::Enriching,
                                 LawStatusValue::Harvested,
                             )
-                            .await;
+                            .await
+                            {
+                                tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset law status to harvested");
+                            }
                         }
                         Err(fail_err) => {
                             tracing::error!(job_id = %job.id, error = %fail_err, "failed to mark job as failed");

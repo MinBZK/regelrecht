@@ -11,7 +11,7 @@ use prometheus_client::registry::Registry;
 use regelrecht_pipeline::models::{JobStatus, LawStatusValue};
 use sqlx::PgPool;
 use strum::IntoEnumIterator;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 
 use crate::state::AppState;
 
@@ -61,11 +61,11 @@ pub struct CachedMetrics {
 }
 
 /// Global metrics cache, initialised once in [`AppState`].
-pub type MetricsCache = RwLock<Option<CachedMetrics>>;
+pub type MetricsCache = Mutex<Option<CachedMetrics>>;
 
 /// Create a new (empty) metrics cache.
 pub fn new_cache() -> MetricsCache {
-    RwLock::new(None)
+    Mutex::new(None)
 }
 
 /// Fetch all metrics from the database in as few queries as possible.
@@ -270,19 +270,18 @@ pub fn encode_metrics(snapshot: &MetricsSnapshot) -> Result<String, std::fmt::Er
 pub async fn metrics_handler(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Fast path: return cached response if still fresh.
-    {
-        let cache = state.metrics_cache.read().await;
-        if let Some(ref cached) = *cache {
-            if cached.generated_at.elapsed() < CACHE_TTL {
-                return Ok((
-                    [(
-                        header::CONTENT_TYPE,
-                        "application/openmetrics-text; version=1.0.0; charset=utf-8",
-                    )],
-                    cached.body.clone(),
-                ));
-            }
+    let content_type = [(
+        header::CONTENT_TYPE,
+        "application/openmetrics-text; version=1.0.0; charset=utf-8",
+    )];
+
+    // Single-flight: hold the mutex for the entire check-fetch-update cycle
+    // so concurrent scrapers don't redundantly hit the database.
+    let mut cache = state.metrics_cache.lock().await;
+
+    if let Some(ref cached) = *cache {
+        if cached.generated_at.elapsed() < CACHE_TTL {
+            return Ok((content_type, cached.body.clone()));
         }
     }
 
@@ -296,22 +295,12 @@ pub async fn metrics_handler(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    // Update cache.
-    {
-        let mut cache = state.metrics_cache.write().await;
-        *cache = Some(CachedMetrics {
-            body: body.clone(),
-            generated_at: Instant::now(),
-        });
-    }
+    *cache = Some(CachedMetrics {
+        body: body.clone(),
+        generated_at: Instant::now(),
+    });
 
-    Ok((
-        [(
-            header::CONTENT_TYPE,
-            "application/openmetrics-text; version=1.0.0; charset=utf-8",
-        )],
-        body,
-    ))
+    Ok((content_type, body))
 }
 
 #[cfg(test)]

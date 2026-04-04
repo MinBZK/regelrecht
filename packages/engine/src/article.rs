@@ -431,6 +431,16 @@ pub enum HookPoint {
     PostActions,
 }
 
+impl HookPoint {
+    /// Returns the hook point as a lowercase static string.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HookPoint::PreActions => "pre_actions",
+            HookPoint::PostActions => "post_actions",
+        }
+    }
+}
+
 /// Filter that determines when a hook fires
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookFilter {
@@ -762,11 +772,10 @@ impl ArticleBasedLaw {
 
     /// Check if a string looks like a semver version (N.N.N).
     fn is_semver(s: &str) -> bool {
-        let parts: Vec<&str> = s.split('.').collect();
-        parts.len() == 3
-            && parts
-                .iter()
-                .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+        let mut parts = s.split('.');
+        let valid = |p: &str| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit());
+        matches!((parts.next(), parts.next(), parts.next(), parts.next()),
+            (Some(a), Some(b), Some(c), None) if valid(a) && valid(b) && valid(c))
     }
 
     /// Load a law from a YAML file.

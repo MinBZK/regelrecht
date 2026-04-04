@@ -27,7 +27,7 @@ use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::rc::Rc;
 
 /// Provenance of an output value: how it was produced during execution.
@@ -129,7 +129,7 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
     ) -> Result<ArticleResult> {
         // Initialize visited set with current article to detect circular references
-        let visited = vec![self.article.number.clone()];
+        let visited = HashSet::from([self.article.number.clone()]);
 
         self.evaluate_internal(parameters, calculation_date, requested_output, visited, 0)
     }
@@ -144,7 +144,7 @@ impl<'a> ArticleEngine<'a> {
         requested_output: Option<&str>,
         trace: Rc<RefCell<TraceBuilder>>,
     ) -> Result<ArticleResult> {
-        let visited = vec![self.article.number.clone()];
+        let visited = HashSet::from([self.article.number.clone()]);
 
         self.evaluate_internal_traced(
             parameters,
@@ -169,7 +169,7 @@ impl<'a> ArticleEngine<'a> {
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
-        visited: Vec<String>,
+        visited: HashSet<String>,
         depth: usize,
     ) -> Result<ArticleResult> {
         self.evaluate_internal_traced(
@@ -188,7 +188,7 @@ impl<'a> ArticleEngine<'a> {
         parameters: BTreeMap<String, Value>,
         calculation_date: &str,
         requested_output: Option<&str>,
-        visited: Vec<String>,
+        visited: HashSet<String>,
         depth: usize,
         trace: Option<Rc<RefCell<TraceBuilder>>>,
     ) -> Result<ArticleResult> {
@@ -290,7 +290,7 @@ impl<'a> ArticleEngine<'a> {
         context: &mut RuleContext,
         parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
-        visited: &[String],
+        visited: &HashSet<String>,
         depth: usize,
     ) -> Result<()> {
         let inputs = self.article.get_inputs();
@@ -361,7 +361,7 @@ impl<'a> ArticleEngine<'a> {
         output_name: &str,
         parameters: &BTreeMap<String, Value>,
         calculation_date: &str,
-        visited: &[String],
+        visited: &HashSet<String>,
         depth: usize,
     ) -> Result<Value> {
         // Find the article that produces this output
@@ -384,8 +384,8 @@ impl<'a> ArticleEngine<'a> {
         }
 
         // Add the target article to visited set for the recursive call
-        let mut new_visited = visited.to_vec();
-        new_visited.push(article.number.clone());
+        let mut new_visited = visited.clone();
+        new_visited.insert(article.number.clone());
 
         // Execute the referenced article with updated visited set
         let engine = ArticleEngine::new(article, self.law);
@@ -495,140 +495,118 @@ impl<'a> ArticleEngine<'a> {
     ) -> Result<ActionOperation> {
         use crate::types::Operation;
 
+        let require_subject = |op: &Operation| {
+            action.subject.clone().ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "{} requires 'subject' at action level",
+                    op.name()
+                ))
+            })
+        };
+        let require_value = |op: &Operation| {
+            action.value.clone().ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "{} requires 'value' at action level",
+                    op.name()
+                ))
+            })
+        };
+        let require_values = |op: &Operation| {
+            action.values.clone().ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "{} requires 'values' at action level",
+                    op.name()
+                ))
+            })
+        };
+        let require_conditions = |op: &Operation| {
+            action.conditions.clone().ok_or_else(|| {
+                EngineError::InvalidOperation(format!(
+                    "{} requires 'conditions' at action level",
+                    op.name()
+                ))
+            })
+        };
+
         match operation {
             // Comparison operations (subject + value)
-            Operation::Equals
-            | Operation::NotEquals
-            | Operation::GreaterThan
-            | Operation::LessThan
-            | Operation::GreaterThanOrEqual
-            | Operation::LessThanOrEqual => {
-                let subject = action.subject.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(format!(
-                        "{} requires 'subject' at action level",
-                        operation.name()
-                    ))
-                })?;
-                let value = action.value.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(format!(
-                        "{} requires 'value' at action level",
-                        operation.name()
-                    ))
-                })?;
-                Ok(match operation {
-                    Operation::Equals => ActionOperation::Equals { subject, value },
-                    Operation::NotEquals => ActionOperation::NotEquals { subject, value },
-                    Operation::GreaterThan => ActionOperation::GreaterThan { subject, value },
-                    Operation::LessThan => ActionOperation::LessThan { subject, value },
-                    Operation::GreaterThanOrEqual => {
-                        ActionOperation::GreaterThanOrEqual { subject, value }
-                    }
-                    Operation::LessThanOrEqual => {
-                        ActionOperation::LessThanOrEqual { subject, value }
-                    }
-                    _ => unreachable!(),
-                })
-            }
+            Operation::Equals => Ok(ActionOperation::Equals {
+                subject: require_subject(operation)?,
+                value: require_value(operation)?,
+            }),
+            Operation::NotEquals => Ok(ActionOperation::NotEquals {
+                subject: require_subject(operation)?,
+                value: require_value(operation)?,
+            }),
+            Operation::GreaterThan => Ok(ActionOperation::GreaterThan {
+                subject: require_subject(operation)?,
+                value: require_value(operation)?,
+            }),
+            Operation::LessThan => Ok(ActionOperation::LessThan {
+                subject: require_subject(operation)?,
+                value: require_value(operation)?,
+            }),
+            Operation::GreaterThanOrEqual => Ok(ActionOperation::GreaterThanOrEqual {
+                subject: require_subject(operation)?,
+                value: require_value(operation)?,
+            }),
+            Operation::LessThanOrEqual => Ok(ActionOperation::LessThanOrEqual {
+                subject: require_subject(operation)?,
+                value: require_value(operation)?,
+            }),
 
             // Arithmetic operations (values)
-            Operation::Add | Operation::Subtract | Operation::Multiply | Operation::Divide => {
-                let values = action.values.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(format!(
-                        "{} requires 'values' at action level",
-                        operation.name()
-                    ))
-                })?;
-                Ok(match operation {
-                    Operation::Add => ActionOperation::Add { values },
-                    Operation::Subtract => ActionOperation::Subtract { values },
-                    Operation::Multiply => ActionOperation::Multiply { values },
-                    Operation::Divide => ActionOperation::Divide { values },
-                    _ => unreachable!(),
-                })
-            }
+            Operation::Add => Ok(ActionOperation::Add {
+                values: require_values(operation)?,
+            }),
+            Operation::Subtract => Ok(ActionOperation::Subtract {
+                values: require_values(operation)?,
+            }),
+            Operation::Multiply => Ok(ActionOperation::Multiply {
+                values: require_values(operation)?,
+            }),
+            Operation::Divide => Ok(ActionOperation::Divide {
+                values: require_values(operation)?,
+            }),
 
             // Aggregate operations (values)
-            Operation::Max | Operation::Min => {
-                let values = action.values.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(format!(
-                        "{} requires 'values' at action level",
-                        operation.name()
-                    ))
-                })?;
-                Ok(match operation {
-                    Operation::Max => ActionOperation::Max { values },
-                    Operation::Min => ActionOperation::Min { values },
-                    _ => unreachable!(),
-                })
-            }
+            Operation::Max => Ok(ActionOperation::Max {
+                values: require_values(operation)?,
+            }),
+            Operation::Min => Ok(ActionOperation::Min {
+                values: require_values(operation)?,
+            }),
 
             // Logical operations
-            Operation::And | Operation::Or => {
-                let conditions = action.conditions.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(format!(
-                        "{} requires 'conditions' at action level",
-                        operation.name()
-                    ))
-                })?;
-                Ok(match operation {
-                    Operation::And => ActionOperation::And { conditions },
-                    Operation::Or => ActionOperation::Or { conditions },
-                    _ => unreachable!(),
-                })
-            }
-
-            Operation::Not => {
-                let value = action.value.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(
-                        "NOT requires 'value' at action level".to_string(),
-                    )
-                })?;
-                Ok(ActionOperation::Not { value })
-            }
+            Operation::And => Ok(ActionOperation::And {
+                conditions: require_conditions(operation)?,
+            }),
+            Operation::Or => Ok(ActionOperation::Or {
+                conditions: require_conditions(operation)?,
+            }),
+            Operation::Not => Ok(ActionOperation::Not {
+                value: require_value(operation)?,
+            }),
 
             // Null check operations (subject only)
-            Operation::IsNull => {
-                let subject = action.subject.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(
-                        "IS_NULL requires 'subject' at action level".to_string(),
-                    )
-                })?;
-                Ok(ActionOperation::IsNull { subject })
-            }
-            Operation::NotNull => {
-                let subject = action.subject.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(
-                        "NOT_NULL requires 'subject' at action level".to_string(),
-                    )
-                })?;
-                Ok(ActionOperation::NotNull { subject })
-            }
+            Operation::IsNull => Ok(ActionOperation::IsNull {
+                subject: require_subject(operation)?,
+            }),
+            Operation::NotNull => Ok(ActionOperation::NotNull {
+                subject: require_subject(operation)?,
+            }),
 
             // Collection: IN/NOT_IN (subject + value/values)
-            Operation::In => {
-                let subject = action.subject.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(
-                        "IN requires 'subject' at action level".to_string(),
-                    )
-                })?;
-                Ok(ActionOperation::In {
-                    subject,
-                    value: action.value.clone(),
-                    values: action.values.clone(),
-                })
-            }
-            Operation::NotIn => {
-                let subject = action.subject.clone().ok_or_else(|| {
-                    EngineError::InvalidOperation(
-                        "NOT_IN requires 'subject' at action level".to_string(),
-                    )
-                })?;
-                Ok(ActionOperation::NotIn {
-                    subject,
-                    value: action.value.clone(),
-                    values: action.values.clone(),
-                })
-            }
+            Operation::In => Ok(ActionOperation::In {
+                subject: require_subject(operation)?,
+                value: action.value.clone(),
+                values: action.values.clone(),
+            }),
+            Operation::NotIn => Ok(ActionOperation::NotIn {
+                subject: require_subject(operation)?,
+                value: action.value.clone(),
+                values: action.values.clone(),
+            }),
 
             // Operations not supported at action level
             Operation::If

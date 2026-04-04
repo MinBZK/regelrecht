@@ -189,17 +189,11 @@ pub async fn callback(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::BAD_REQUEST)?;
 
-    let http_client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
     let token_response = client
         .exchange_code(AuthorizationCode::new(code))
         .set_redirect_uri(Cow::Owned(redirect_url))
         .set_pkce_verifier(PkceCodeVerifier::new(stored_pkce))
-        .request_async(&http_client)
+        .request_async(&app_state.http_client)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "token exchange failed");
@@ -269,9 +263,15 @@ pub async fn callback(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let _ = session.remove::<String>(SESSION_KEY_CSRF).await;
-    let _ = session.remove::<String>(SESSION_KEY_NONCE).await;
-    let _ = session.remove::<String>(SESSION_KEY_PKCE_VERIFIER).await;
+    if let Err(e) = session.remove::<String>(SESSION_KEY_CSRF).await {
+        tracing::warn!(error = %e, "failed to remove CSRF from session");
+    }
+    if let Err(e) = session.remove::<String>(SESSION_KEY_NONCE).await {
+        tracing::warn!(error = %e, "failed to remove nonce from session");
+    }
+    if let Err(e) = session.remove::<String>(SESSION_KEY_PKCE_VERIFIER).await {
+        tracing::warn!(error = %e, "failed to remove PKCE verifier from session");
+    }
 
     session
         .insert(SESSION_KEY_AUTHENTICATED, true)

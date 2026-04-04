@@ -171,8 +171,8 @@ pub async fn list_scenarios(
     }
 
     let mut entries = Vec::new();
-    if let Ok(read_dir) = std::fs::read_dir(&scenarios_dir) {
-        for entry in read_dir.flatten() {
+    if let Ok(mut read_dir) = tokio::fs::read_dir(&scenarios_dir).await {
+        while let Ok(Some(entry)) = read_dir.next_entry().await {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "feature") {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -224,7 +224,7 @@ pub async fn get_scenario(
         scenarios_dir.join(&filename)
     };
 
-    let content = std::fs::read_to_string(&file_path).map_err(|_| {
+    let content = tokio::fs::read_to_string(&file_path).await.map_err(|_| {
         (
             StatusCode::NOT_FOUND,
             format!("Scenario '{}' not found", filename),
