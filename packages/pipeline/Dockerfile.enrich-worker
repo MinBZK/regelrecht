@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Stage 1: Chef base
-FROM rust:1.94-alpine AS chef
+FROM rust:1.94-alpine@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
@@ -33,7 +33,7 @@ RUN find packages -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-enrich-worker
 
 # Stage 4: Runtime
-FROM alpine:3.23
+FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
 RUN apk add --no-cache ca-certificates git nodejs npm && \
     addgroup -S app && adduser -S app -G app
 
@@ -45,10 +45,10 @@ RUN npm install -g --ignore-scripts opencode-ai@1.2.25 @anthropic-ai/claude-code
 COPY packages/pipeline/opencode.json /etc/opencode/opencode.json
 
 # Install opencode provider plugin in a shared location
-RUN mkdir -p /opt/opencode-plugins && \
-    cd /opt/opencode-plugins && \
-    npm init -y && \
-    npm install --ignore-scripts @ai-sdk/openai-compatible@2.0.35 && \
+COPY packages/pipeline/opencode-plugins-package.json /opt/opencode-plugins/package.json
+COPY packages/pipeline/opencode-plugins-package-lock.json /opt/opencode-plugins/package-lock.json
+RUN cd /opt/opencode-plugins && \
+    npm ci --ignore-scripts && \
     npm cache clean --force
 
 COPY --from=builder /build/target/release/regelrecht-enrich-worker /usr/local/bin/

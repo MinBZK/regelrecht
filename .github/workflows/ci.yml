@@ -242,17 +242,21 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry (shared)
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-precommit-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-precommit-
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: packages/target
+          key: ${{ runner.os }}-cargo-target-precommit-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-target-precommit-
 
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
 
@@ -273,18 +277,23 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-test-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-test-
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: packages/target
+          key: ${{ runner.os }}-cargo-target-test-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-target-test-
 
       - name: Run all tests
         if: needs.changes.outputs.ci == 'true'
@@ -309,18 +318,23 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-wasm-
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: packages/target
+          key: ${{ runner.os }}-cargo-target-wasm-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-target-wasm-
 
       - name: Build for WASM
         if: needs.changes.outputs.ci == 'true'
@@ -344,25 +358,30 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry (shared)
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cargo/bin/cargo-deny
-          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-audit-
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
 
       - name: Install cargo-deny
-        run: command -v cargo-deny || cargo install cargo-deny --locked
+        run: |
+          CARGO_DENY_VERSION="0.19.0"
+          curl -sSL "https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+            | tar -xz --strip-components=1 -C /usr/local/bin "cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl/cargo-deny"
 
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
         with:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            packages/admin/frontend-src/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -400,18 +419,23 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry (shared)
         if: needs.changes.outputs.admin == 'true'
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-admin-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-admin-
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        if: needs.changes.outputs.admin == 'true'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: packages/target
+          key: ${{ runner.os }}-cargo-target-admin-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-target-admin-
 
       - name: Install just
         if: needs.changes.outputs.admin == 'true'
@@ -439,6 +463,8 @@ jobs:
         with:
           node-version: '22'
           registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: packages/admin/frontend-src/package-lock.json
 
       - name: Install admin frontend dependencies
         if: needs.changes.outputs.admin == 'true'
@@ -471,18 +497,23 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry (shared)
         if: needs.changes.outputs.editor-api == 'true'
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            packages/target
-          key: ${{ runner.os }}-cargo-editor-api-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-editor-api-
-            ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo target
+        if: needs.changes.outputs.editor-api == 'true'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: packages/target
+          key: ${{ runner.os }}-cargo-target-editor-api-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-target-editor-api-
 
       - name: Install just
         if: needs.changes.outputs.editor-api == 'true'

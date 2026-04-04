@@ -152,7 +152,7 @@ async fn main() {
         .with_expiry(Expiry::OnInactivity(time::Duration::hours(8)))
         .with_same_site(SameSite::Lax)
         .with_http_only(true)
-        .with_secure(app_state.config.is_auth_enabled());
+        .with_secure(true);
 
     let api_routes = Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
@@ -173,6 +173,7 @@ async fn main() {
             post(corpus_handlers::sync_source),
         )
         .route("/api/info", get(handlers::platform_info))
+        .route("/metrics", get(metrics::metrics_handler))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_auth,
@@ -186,7 +187,6 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
-        .route("/metrics", get(metrics::metrics_handler))
         .merge(auth_routes)
         .merge(api_routes)
         .with_state(app_state)
