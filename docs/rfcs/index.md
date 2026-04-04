@@ -20,6 +20,7 @@ Design decisions in RegelRecht are documented through RFCs. Each RFC captures th
 | [RFC-012](./rfc-012) | Untranslatables | Proposed |
 | [RFC-013](./rfc-013) | Execution Provenance | Draft |
 | [RFC-014](./rfc-014) | Engine Conformance | Draft |
+| [RFC-015](./rfc-015) | Engine Policy | Proposed |
 
 ## Writing an RFC
 
