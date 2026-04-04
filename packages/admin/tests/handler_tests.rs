@@ -31,6 +31,7 @@ fn test_app(pool: sqlx::PgPool) -> Router {
             base_url: None,
         }),
         metrics_cache: Arc::new(metrics::new_cache()),
+        http_client: reqwest::Client::new(),
         corpus: Arc::new(tokio::sync::RwLock::new(
             regelrecht_admin::state::CorpusState::empty(),
         )),

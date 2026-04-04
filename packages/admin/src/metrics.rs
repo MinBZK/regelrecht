@@ -468,8 +468,8 @@ mod tests {
     #[test]
     fn cache_is_initially_empty() {
         let cache = new_cache();
-        // RwLock::try_read is sync-safe in tests.
-        let guard = cache.try_read().expect("should be readable");
+        // Mutex::try_lock is sync-safe in tests.
+        let guard = cache.try_lock().expect("should be lockable");
         assert!(guard.is_none(), "cache should start empty");
     }
 
