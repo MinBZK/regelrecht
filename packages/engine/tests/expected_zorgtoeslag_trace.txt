@@ -61,7 +61,7 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   ├──Resolving from RESOLVED_INPUT: 211200
 ║   ║   ├──Delegation: Open term 'standaardpremie' implemented by regeling_standaardpremie article 1: 211200
 ║   ║   │   ╟──Computing standaardpremie
-║   ║   │   │   └──Result: standaardpremie = 211200
+║   ║   │   ║   └──Result: standaardpremie = 211200
 ║   ║   │   ╙──Computing berekeningsjaar
 ║   ║   │       └──Result: berekeningsjaar = 2025
 ║   ║   └──Computing standaardpremie
@@ -146,6 +146,6 @@ zorgtoeslagwet (2025-01-01 {bsn: 999993653} hoogte_zorgtoeslag)
 ║   ║   │       └──Resolving from OUTPUT: $HOOGTE_ZORGTOESLAG = 209691.78888
 ║   ║   └──Result: heeft_recht_op_zorgtoeslag = True
 ║   ╙──HOOK: Hook PostActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:6:7
-║   ║   ╙──Computing bezwaartermijn_weken
+║       ╙──Computing bezwaartermijn_weken
 ║           └──Result: bezwaartermijn_weken = 6
 ╙──Result: hoogte_zorgtoeslag = 209692
