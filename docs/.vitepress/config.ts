@@ -68,6 +68,12 @@ export default withMermaid(
             ],
           },
           {
+            text: 'Research',
+            items: [
+              { text: 'Branches of Law', link: '/concepts/branches-of-law' },
+            ],
+          },
+          {
             text: 'Methodology',
             items: [
               { text: 'Validation Methodology', link: '/concepts/methodology' },
