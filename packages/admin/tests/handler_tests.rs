@@ -26,7 +26,10 @@ fn test_app(pool: sqlx::PgPool) -> Router {
         pool,
         oidc_client: None,
         end_session_url: None,
-        config: Arc::new(AppConfig { oidc: None }),
+        config: Arc::new(AppConfig {
+            oidc: None,
+            base_url: None,
+        }),
         metrics_cache: Arc::new(metrics::new_cache()),
         corpus: Arc::new(tokio::sync::RwLock::new(
             regelrecht_admin::state::CorpusState::empty(),

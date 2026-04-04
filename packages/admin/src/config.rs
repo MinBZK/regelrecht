@@ -16,8 +16,13 @@
 //! *Required together — if `OIDC_CLIENT_ID` is set, `OIDC_CLIENT_SECRET` must also be set,
 //! and either `OIDC_DISCOVERY_URL` or both `KEYCLOAK_BASE_URL` + `KEYCLOAK_REALM`.
 //!
-//! The base URL for OIDC redirects is derived from request headers (`x-forwarded-host`,
-//! `x-forwarded-proto`) at runtime. Keycloak validates redirect URIs server-side.
+//! ## Base URL
+//!
+//! | Variable   | Required | Description                                                     |
+//! |------------|----------|-----------------------------------------------------------------|
+//! | `BASE_URL` | no       | Static base URL (e.g. `https://admin.example.com`). When set,   |
+//! |            |          | used for all OIDC redirect/logout URLs instead of request        |
+//! |            |          | headers. Prevents open-redirect via `X-Forwarded-Host`.          |
 
 use std::env;
 
@@ -43,6 +48,7 @@ impl std::fmt::Debug for OidcConfig {
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub oidc: Option<OidcConfig>,
+    pub base_url: Option<String>,
 }
 
 impl AppConfig {
@@ -68,7 +74,22 @@ impl AppConfig {
             tracing::warn!("OIDC authentication is DISABLED — admin panel is unprotected");
         }
 
-        Ok(Self { oidc })
+        let base_url = env::var("BASE_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                let trimmed = s.trim_end_matches('/').to_string();
+                tracing::info!("BASE_URL configured: {trimmed}");
+                trimmed
+            });
+        if base_url.is_none() && oidc.is_some() {
+            tracing::warn!(
+                "BASE_URL is not set — OIDC redirect URLs will be derived from request headers. \
+                 Set BASE_URL to prevent open-redirect attacks."
+            );
+        }
+
+        Ok(Self { oidc, base_url })
     }
 
     fn parse_oidc_config(client_id: String) -> Result<OidcConfig, String> {

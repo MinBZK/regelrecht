@@ -70,7 +70,7 @@ jobs:
     with:
       image-name: minbzk/regelrecht-editor
       dockerfile: frontend/Dockerfile
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-admin:
     needs: changes
@@ -83,7 +83,7 @@ jobs:
       image-name: minbzk/regelrecht-admin
       dockerfile: packages/admin/Dockerfile
       cache-scope: admin
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-harvester-worker:
     needs: changes
@@ -101,7 +101,7 @@ jobs:
       image-name: minbzk/regelrecht-harvester-worker
       dockerfile: packages/pipeline/Dockerfile.harvester-worker
       cache-scope: harvester-worker
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-enrich-worker:
     needs: changes
@@ -120,7 +120,7 @@ jobs:
       image-name: minbzk/regelrecht-enrich-worker
       dockerfile: packages/pipeline/Dockerfile.enrich-worker
       cache-scope: enrich-worker
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-grafana:
     needs: changes
@@ -136,7 +136,7 @@ jobs:
       dockerfile: packages/grafana/Dockerfile
       context: ./packages/grafana
       cache-scope: grafana
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-lawmaking:
     needs: changes
@@ -154,7 +154,7 @@ jobs:
       image-name: minbzk/regelrecht-lawmaking
       dockerfile: frontend-lawmaking/Dockerfile
       cache-scope: lawmaking
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-landing:
     needs: changes
@@ -172,7 +172,7 @@ jobs:
       image-name: minbzk/regelrecht-landing
       dockerfile: landing/Dockerfile
       cache-scope: landing
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-docs:
     needs: changes
@@ -190,7 +190,7 @@ jobs:
       image-name: minbzk/regelrecht-docs
       dockerfile: docs/Dockerfile
       cache-scope: docs
-    secrets: inherit
+    # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   # -- Deploy preview --
   deploy-preview:
@@ -213,7 +213,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Preview)
         if: needs.build-admin.result != 'failure'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -229,7 +229,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Preview)
         if: needs.build-harvester-worker.result != 'failure'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -247,7 +247,7 @@ jobs:
         if: >-
           (needs.changes.outputs.enrich-worker == 'true' || contains(github.event.pull_request.labels.*.name, 'deploy:enrich-worker')) &&
           needs.build-enrich-worker.result != 'failure'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -263,7 +263,7 @@ jobs:
 
       - name: Deploy editor to ZAD (Preview)
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -279,7 +279,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Preview)
         if: needs.changes.outputs.lawmaking == 'true' && needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -295,7 +295,7 @@ jobs:
 
       - name: Deploy landing to ZAD (Preview)
         if: needs.changes.outputs.landing == 'true' && needs.build-landing.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -311,7 +311,7 @@ jobs:
 
       - name: Deploy docs to ZAD (Preview)
         if: needs.changes.outputs.docs == 'true' && needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -346,7 +346,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Production)
         if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -357,7 +357,7 @@ jobs:
       - name: Deploy editor to ZAD (Production)
         if: needs.build.result == 'success'
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -367,7 +367,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Production)
         if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -377,7 +377,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Production)
         if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -387,7 +387,7 @@ jobs:
 
       - name: Deploy grafana to ZAD (Production)
         if: needs.build-grafana.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -397,7 +397,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Production)
         if: needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -407,7 +407,7 @@ jobs:
 
       - name: Deploy landing to ZAD (Production)
         if: needs.build-landing.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -417,7 +417,7 @@ jobs:
 
       - name: Deploy docs to ZAD (Production)
         if: needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@v3
+        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -436,7 +436,7 @@ jobs:
 
     steps:
       - name: Cleanup ZAD deployment and container images
-        uses: RijksICTGilde/zad-actions/cleanup@v3
+        uses: RijksICTGilde/zad-actions/cleanup@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
