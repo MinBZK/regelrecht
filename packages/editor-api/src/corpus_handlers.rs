@@ -172,14 +172,20 @@ pub async fn list_scenarios(
 
     let mut entries = Vec::new();
     if let Ok(mut read_dir) = tokio::fs::read_dir(&scenarios_dir).await {
-        while let Ok(Some(entry)) = read_dir.next_entry().await {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "feature") {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    entries.push(ScenarioEntry {
-                        filename: name.to_string(),
-                    });
+        loop {
+            match read_dir.next_entry().await {
+                Ok(Some(entry)) => {
+                    let path = entry.path();
+                    if path.extension().is_some_and(|ext| ext == "feature") {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            entries.push(ScenarioEntry {
+                                filename: name.to_string(),
+                            });
+                        }
+                    }
                 }
+                Ok(None) => break,
+                Err(_) => continue,
             }
         }
     }
