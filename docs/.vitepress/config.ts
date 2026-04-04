@@ -148,6 +148,7 @@ export default withMermaid(
               { text: 'RFC-012: Untranslatables', link: '/rfcs/rfc-012' },
               { text: 'RFC-013: Execution Provenance', link: '/rfcs/rfc-013' },
               { text: 'RFC-014: Engine Conformance', link: '/rfcs/rfc-014' },
+              { text: 'RFC-015: Engine Policy', link: '/rfcs/rfc-015' },
             ],
           },
         ],
