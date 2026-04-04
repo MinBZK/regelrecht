@@ -26,7 +26,14 @@ const SESSION_KEY_EMAIL: &str = "person_email";
 const SESSION_KEY_NAME: &str = "person_name";
 const SESSION_KEY_ID_TOKEN: &str = "id_token_hint";
 
-fn base_url_from_request(headers: &HeaderMap) -> String {
+fn base_url_from_config_or_request(
+    config: &crate::config::AppConfig,
+    headers: &HeaderMap,
+) -> String {
+    if let Some(ref base_url) = config.base_url {
+        return base_url.clone();
+    }
+
     let host = headers
         .get("x-forwarded-host")
         .or_else(|| headers.get("host"))
@@ -77,7 +84,7 @@ pub async fn login(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let base_url = base_url_from_request(&headers);
+    let base_url = base_url_from_config_or_request(&state.config, &headers);
     let redirect_url = RedirectUrl::new(format!("{base_url}/auth/callback")).map_err(|e| {
         tracing::error!(error = %e, "invalid redirect URL");
         StatusCode::INTERNAL_SERVER_ERROR
@@ -147,7 +154,7 @@ pub async fn callback(
         .as_ref()
         .ok_or(StatusCode::NOT_IMPLEMENTED)?;
 
-    let base_url = base_url_from_request(&headers);
+    let base_url = base_url_from_config_or_request(&app_state.config, &headers);
     let redirect_url = RedirectUrl::new(format!("{base_url}/auth/callback")).map_err(|e| {
         tracing::error!(error = %e, "invalid redirect URL");
         StatusCode::INTERNAL_SERVER_ERROR
@@ -219,16 +226,19 @@ pub async fn callback(
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?
         .required_role;
 
-    // Extract realm roles from the access token. Keycloak includes
-    // `realm_access` in the access token by default but not in the ID token.
-    //
-    // SAFETY: the access token is received directly from the token endpoint
-    // over TLS, authenticated by client_secret + PKCE. We decode the payload
-    // without cryptographic verification because the token endpoint itself is
-    // the trust anchor — this is standard for confidential OIDC clients.
-    // Do NOT pass untrusted/user-supplied JWTs to this function.
-    let access_token_secret = get_access_token_secret(&token_response);
-    let realm_roles = extract_realm_roles(access_token_secret);
+    // Extract realm roles, preferring the already-verified ID token.
+    // Keycloak includes `realm_access` in the access token by default; to use
+    // the more secure ID-token path, add a "realm roles" mapper to the client
+    // scopes in Keycloak.
+    let id_token_jwt = id_token.to_string();
+    let realm_roles = extract_realm_roles(&id_token_jwt).or_else(|| {
+        tracing::info!(
+            "realm_access not found in ID token — falling back to access token. \
+             Configure a Keycloak client mapper to include realm_access in the ID token."
+        );
+        let access_token_secret = get_access_token_secret(&token_response);
+        extract_realm_roles(access_token_secret)
+    });
     tracing::debug!(
         sub = %claims.subject().as_str(),
         roles = ?realm_roles,
@@ -253,8 +263,6 @@ pub async fn callback(
         .and_then(|n| n.get(None).map(|v| (**v).clone()))
         .or_else(|| claims.preferred_username().map(|u| (**u).clone()))
         .unwrap_or_default();
-
-    let id_token_jwt = id_token.to_string();
 
     session.cycle_id().await.map_err(|e| {
         tracing::error!(error = %e, "failed to rotate session ID");
@@ -291,7 +299,7 @@ pub async fn logout(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let base_url = base_url_from_request(&headers);
+    let base_url = base_url_from_config_or_request(&state.config, &headers);
 
     if let (Some(ref end_session_url), Some(ref oidc)) =
         (&state.end_session_url, &state.config.oidc)
@@ -367,10 +375,10 @@ fn get_access_token_secret(resp: &impl OAuth2TokenResponse) -> &str {
     resp.access_token().secret()
 }
 
-/// Decode `realm_access.roles` from a JWT payload without signature verification.
+/// Decode `realm_access.roles` from a JWT payload.
 ///
-/// SAFETY: must only be called on tokens received directly from the trusted
-/// token endpoint over TLS. Never pass user-supplied or forwarded JWTs.
+/// Called first on the signature-verified ID token, then as fallback on the
+/// access token received directly from the trusted token endpoint over TLS.
 fn extract_realm_roles(jwt: &str) -> Option<Vec<String>> {
     let payload_b64 = jwt.split('.').nth(1)?;
     let payload_bytes = URL_SAFE_NO_PAD.decode(payload_b64).ok()?;
@@ -473,47 +481,86 @@ mod tests {
         assert!(!roles.contains(&"admin".to_string()));
     }
 
-    // --- base_url_from_request ---
+    // --- base_url_from_config_or_request ---
+
+    fn config_without_base_url() -> AppConfig {
+        AppConfig {
+            oidc: None,
+            base_url: None,
+        }
+    }
 
     #[test]
     fn base_url_uses_forwarded_headers() {
+        let config = config_without_base_url();
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-host", "admin.example.com".parse().unwrap());
         headers.insert("x-forwarded-proto", "https".parse().unwrap());
-        assert_eq!(base_url_from_request(&headers), "https://admin.example.com");
+        assert_eq!(
+            base_url_from_config_or_request(&config, &headers),
+            "https://admin.example.com"
+        );
     }
 
     #[test]
     fn base_url_falls_back_to_host_header() {
+        let config = config_without_base_url();
         let mut headers = HeaderMap::new();
         headers.insert("host", "localhost:8000".parse().unwrap());
-        assert_eq!(base_url_from_request(&headers), "https://localhost:8000");
+        assert_eq!(
+            base_url_from_config_or_request(&config, &headers),
+            "https://localhost:8000"
+        );
     }
 
     #[test]
     fn base_url_forwarded_host_takes_precedence() {
+        let config = config_without_base_url();
         let mut headers = HeaderMap::new();
         headers.insert("host", "internal:8000".parse().unwrap());
         headers.insert("x-forwarded-host", "public.example.com".parse().unwrap());
         headers.insert("x-forwarded-proto", "https".parse().unwrap());
         assert_eq!(
-            base_url_from_request(&headers),
+            base_url_from_config_or_request(&config, &headers),
             "https://public.example.com"
         );
     }
 
     #[test]
     fn base_url_no_headers_defaults() {
+        let config = config_without_base_url();
         let headers = HeaderMap::new();
-        assert_eq!(base_url_from_request(&headers), "https://localhost");
+        assert_eq!(
+            base_url_from_config_or_request(&config, &headers),
+            "https://localhost"
+        );
     }
 
     #[test]
     fn base_url_http_scheme() {
+        let config = config_without_base_url();
         let mut headers = HeaderMap::new();
         headers.insert("host", "localhost:8000".parse().unwrap());
         headers.insert("x-forwarded-proto", "http".parse().unwrap());
-        assert_eq!(base_url_from_request(&headers), "http://localhost:8000");
+        assert_eq!(
+            base_url_from_config_or_request(&config, &headers),
+            "http://localhost:8000"
+        );
+    }
+
+    #[test]
+    fn base_url_config_overrides_headers() {
+        let config = AppConfig {
+            oidc: None,
+            base_url: Some("https://admin.example.com".to_string()),
+        };
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-host", "evil.example.com".parse().unwrap());
+        headers.insert("x-forwarded-proto", "https".parse().unwrap());
+        assert_eq!(
+            base_url_from_config_or_request(&config, &headers),
+            "https://admin.example.com"
+        );
     }
 
     // =========================================================================
@@ -626,6 +673,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
                 issuer_url: "https://idp.test.example/realms/test".into(),
                 required_role: "allowed-user".into(),
             }),
+            base_url: None,
         };
 
         #[allow(clippy::expect_used)]
@@ -644,7 +692,10 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
     }
 
     fn test_state_no_oidc() -> AppState {
-        let config = AppConfig { oidc: None };
+        let config = AppConfig {
+            oidc: None,
+            base_url: None,
+        };
 
         #[allow(clippy::expect_used)]
         let pool = PgPoolOptions::new()
