@@ -18,6 +18,7 @@ jobs:
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       ci: ${{ steps.filter.outputs.ci }}
       admin: ${{ steps.filter.outputs.admin }}
@@ -56,6 +57,7 @@ jobs:
     name: Protect schema versions
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -114,6 +116,7 @@ jobs:
     name: Provenance checks (RFC-013)
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     if: needs.changes.outputs.ci == 'true'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
@@ -222,29 +225,24 @@ jobs:
 
   pre-commit:
     name: Pre-commit
-    needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-        if: needs.changes.outputs.ci == 'true'
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
-        if: needs.changes.outputs.ci == 'true'
         with:
           python-version: '3.12'
 
       - name: Install just
-        if: needs.changes.outputs.ci == 'true'
         uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b  # v3
 
       - name: Install Rust toolchain
-        if: needs.changes.outputs.ci == 'true'
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
         with:
           components: rustfmt, clippy
 
       - name: Cache cargo registry
-        if: needs.changes.outputs.ci == 'true'
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
         with:
           path: |
@@ -257,16 +255,12 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
-        if: needs.changes.outputs.ci == 'true'
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.ci != 'true'
-        run: echo "No relevant changes, skipping pre-commit"
 
   test:
     name: Test
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         if: needs.changes.outputs.ci == 'true'
@@ -304,6 +298,7 @@ jobs:
     name: WASM Build
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         if: needs.changes.outputs.ci == 'true'
@@ -339,6 +334,7 @@ jobs:
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
@@ -348,8 +344,19 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
+      - name: Cache cargo registry
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-deny
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-audit-
+
       - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
+        run: command -v cargo-deny || cargo install cargo-deny --locked
 
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
@@ -379,6 +386,7 @@ jobs:
     name: Admin
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: read
@@ -452,6 +460,7 @@ jobs:
     name: Editor API
     needs: changes
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
         if: needs.changes.outputs.editor-api == 'true'

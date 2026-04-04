@@ -79,9 +79,12 @@ impl AppConfig {
             .filter(|s| !s.is_empty())
             .map(|s| {
                 let trimmed = s.trim_end_matches('/').to_string();
+                url::Url::parse(&trimmed)
+                    .map_err(|e| format!("BASE_URL is not a valid URL: {e}"))?;
                 tracing::info!("BASE_URL configured: {trimmed}");
-                trimmed
-            });
+                Ok::<String, String>(trimmed)
+            })
+            .transpose()?;
         if base_url.is_none() && oidc.is_some() {
             tracing::warn!(
                 "BASE_URL is not set — OIDC redirect URLs will be derived from request headers. \

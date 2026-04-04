@@ -171,11 +171,11 @@ async fn main() {
             "/api/sources/{source_id}/sync",
             post(corpus_handlers::sync_source),
         )
+        .route("/api/info", get(handlers::platform_info))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_auth,
-        ))
-        .route("/api/info", get(handlers::platform_info));
+        ));
 
     let auth_routes = Router::new()
         .route("/auth/login", get(auth::login))
