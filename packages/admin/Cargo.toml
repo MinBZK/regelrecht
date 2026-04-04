@@ -33,6 +33,7 @@ openidconnect = "4.0"
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+url = "2"
 urlencoding = "2"
 base64 = "0.22"
 time = "0.3"

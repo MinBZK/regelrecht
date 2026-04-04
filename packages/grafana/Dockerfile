@@ -28,7 +28,7 @@ ENV GF_AUTH_ANONYMOUS_ENABLED=false
 # ZAD injects OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_URL, OIDC_REALM.
 # These static OIDC settings apply when OIDC is enabled:
 ENV GF_AUTH_GENERIC_OAUTH_NAME=Keycloak
-ENV GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=true
+ENV GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP=false
 ENV GF_AUTH_GENERIC_OAUTH_SCOPES="openid email profile"
 # Map Keycloak roles to Grafana roles — users in 'grafana-admin' group get Admin
 ENV GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH="contains(groups[*], 'grafana-admin') && 'Admin' || 'Viewer'"

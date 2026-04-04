@@ -90,7 +90,13 @@ pub async fn list_corpus_laws(
             law_id: law.law_id.clone(),
             source_id: law.source_id.clone(),
             source_name: law.source_name.clone(),
-            file_path: law.file_path.clone(),
+            file_path: std::path::Path::new(&law.file_path)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_else(|| {
+                    tracing::warn!(path = %law.file_path, "unexpected file_path with no filename");
+                    String::new()
+                }),
         })
         .collect();
 

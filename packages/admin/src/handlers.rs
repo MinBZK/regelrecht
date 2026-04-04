@@ -461,17 +461,19 @@ pub async fn create_harvest_job(
     }
 
     if !BWB_ID_PATTERN.is_match(&bwb_id) {
+        tracing::debug!(bwb_id, "rejected invalid BWB ID");
         return Err((
             StatusCode::BAD_REQUEST,
-            format!("invalid BWB ID format: expected BWBR followed by 7 digits, got '{bwb_id}'"),
+            "invalid BWB ID format: expected BWBR followed by 7 digits".to_string(),
         ));
     }
 
     if let Some(ref date) = body.date {
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
+            tracing::debug!(date, "rejected invalid date");
             return Err((
                 StatusCode::BAD_REQUEST,
-                format!("invalid date format: expected YYYY-MM-DD, got '{date}'"),
+                "invalid date format: expected YYYY-MM-DD".to_string(),
             ));
         }
     }
@@ -913,7 +915,7 @@ pub async fn reset_exhausted(
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                format!("{law_id} is not exhausted (status: {:?})", law.status),
+                format!("law is not exhausted (status: {})", law.status),
             ))
         }
     };
