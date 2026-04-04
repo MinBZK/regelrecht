@@ -11,6 +11,7 @@ use regelrecht_pipeline::{EnrichPayload, HarvestPayload, JobType, Priority, ENRI
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use crate::error::ApiError;
 use crate::models::{Job, LawEntry, PaginatedResponse};
 use crate::state::AppState;
 
@@ -86,7 +87,7 @@ const ALLOWED_SORT_COLUMNS_LAW: &[&str] = &[
 pub async fn list_law_entries(
     State(state): State<AppState>,
     Query(params): Query<LawEntriesQuery>,
-) -> Result<Json<PaginatedResponse<LawEntry>>, (StatusCode, String)> {
+) -> Result<Json<PaginatedResponse<LawEntry>>, ApiError> {
     let pool = &state.pool;
     let limit = clamped_limit(params.limit);
     let offset = clamped_offset(params.offset);
@@ -96,7 +97,7 @@ pub async fn list_law_entries(
         ALLOWED_SORT_COLUMNS_LAW,
         "updated_at",
     )
-    .ok_or((StatusCode::BAD_REQUEST, "invalid sort column".to_string()))?;
+    .ok_or(ApiError::BadRequest("invalid sort column".to_string()))?;
 
     let order = normalized_order(params.order.as_deref());
 
@@ -108,10 +109,7 @@ pub async fn list_law_entries(
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "count query failed");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
+                ApiError::Internal("internal server error".to_string())
             })?
     } else {
         sqlx::query_scalar("SELECT COUNT(*) FROM law_entries")
@@ -119,10 +117,7 @@ pub async fn list_law_entries(
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "count query failed");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
+                ApiError::Internal("internal server error".to_string())
             })?
     };
 
@@ -155,10 +150,7 @@ pub async fn list_law_entries(
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "data query failed");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
+                ApiError::Internal("internal server error".to_string())
             })?
     } else {
         sqlx::query_as::<_, LawEntry>(&query_str)
@@ -168,10 +160,7 @@ pub async fn list_law_entries(
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "data query failed");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "internal server error".to_string(),
-                )
+                ApiError::Internal("internal server error".to_string())
             })?
     };
 
@@ -235,7 +224,7 @@ const ALLOWED_SORT_COLUMNS_JOB: &[&str] = &[
 pub async fn list_jobs(
     State(state): State<AppState>,
     Query(params): Query<JobsQuery>,
-) -> Result<Json<PaginatedResponse<Job>>, (StatusCode, String)> {
+) -> Result<Json<PaginatedResponse<Job>>, ApiError> {
     let pool = &state.pool;
     let limit = clamped_limit(params.limit);
     let offset = clamped_offset(params.offset);
@@ -245,7 +234,7 @@ pub async fn list_jobs(
         ALLOWED_SORT_COLUMNS_JOB,
         "created_at",
     )
-    .ok_or((StatusCode::BAD_REQUEST, "invalid sort column".to_string()))?;
+    .ok_or(ApiError::BadRequest("invalid sort column".to_string()))?;
 
     let order = normalized_order(params.order.as_deref());
 
@@ -290,10 +279,7 @@ pub async fn list_jobs(
 
     let total: i64 = count_query.fetch_one(pool).await.map_err(|e| {
         tracing::error!(error = %e, "count query failed");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     // Data query — sort column is validated against an allowlist above, so
@@ -322,10 +308,7 @@ pub async fn list_jobs(
 
     let data: Vec<Job> = data_query.fetch_all(pool).await.map_err(|e| {
         tracing::error!(error = %e, "data query failed");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     Ok(Json(PaginatedResponse {
@@ -339,7 +322,7 @@ pub async fn list_jobs(
 pub async fn list_jobs_summary(
     State(state): State<AppState>,
     Query(params): Query<JobsSummaryQuery>,
-) -> Result<Json<PaginatedResponse<JobSummary>>, (StatusCode, String)> {
+) -> Result<Json<PaginatedResponse<JobSummary>>, ApiError> {
     let pool = &state.pool;
     let limit = clamped_limit(params.limit);
     let offset = clamped_offset(params.offset);
@@ -349,7 +332,7 @@ pub async fn list_jobs_summary(
         ALLOWED_SORT_COLUMNS_JOB_SUMMARY,
         "latest_created_at",
     )
-    .ok_or((StatusCode::BAD_REQUEST, "invalid sort column".to_string()))?;
+    .ok_or(ApiError::BadRequest("invalid sort column".to_string()))?;
 
     let order = normalized_order(params.order.as_deref());
 
@@ -386,10 +369,7 @@ pub async fn list_jobs_summary(
 
     let total: i64 = count_query.fetch_one(pool).await.map_err(|e| {
         tracing::error!(error = %e, "count query failed");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     // Data query — sort column is validated against an allowlist above, so
@@ -421,10 +401,7 @@ pub async fn list_jobs_summary(
 
     let data: Vec<JobSummary> = data_query.fetch_all(pool).await.map_err(|e| {
         tracing::error!(error = %e, "data query failed");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     Ok(Json(PaginatedResponse {
@@ -451,19 +428,15 @@ pub struct CreateJobResponse {
 pub async fn create_harvest_job(
     State(state): State<AppState>,
     Json(body): Json<CreateJobBody>,
-) -> Result<(StatusCode, Json<CreateJobResponse>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<CreateJobResponse>), ApiError> {
     let bwb_id = body.bwb_id.trim().to_string();
     if bwb_id.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "bwb_id must not be empty".to_string(),
-        ));
+        return Err(ApiError::BadRequest("bwb_id must not be empty".to_string()));
     }
 
     if !BWB_ID_PATTERN.is_match(&bwb_id) {
         tracing::debug!(bwb_id, "rejected invalid BWB ID");
-        return Err((
-            StatusCode::BAD_REQUEST,
+        return Err(ApiError::BadRequest(
             "invalid BWB ID format: expected BWBR followed by 7 digits".to_string(),
         ));
     }
@@ -471,8 +444,7 @@ pub async fn create_harvest_job(
     if let Some(ref date) = body.date {
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
             tracing::debug!(date, "rejected invalid date");
-            return Err((
-                StatusCode::BAD_REQUEST,
+            return Err(ApiError::BadRequest(
                 "invalid date format: expected YYYY-MM-DD".to_string(),
             ));
         }
@@ -482,10 +454,7 @@ pub async fn create_harvest_job(
 
     let mut tx = pool.begin().await.map_err(|e| {
         tracing::error!(error = %e, "failed to begin transaction");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     // Acquire an advisory lock keyed on the bwb_id to serialize concurrent requests
@@ -498,10 +467,7 @@ pub async fn create_harvest_job(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, law_id = %bwb_id, "failed to acquire advisory lock");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal server error".to_string(),
-            )
+            ApiError::Internal("internal server error".to_string())
         })?;
 
     // Check for existing pending or processing harvest job to prevent duplicates.
@@ -515,33 +481,25 @@ pub async fn create_harvest_job(
     .await
     .map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, "failed to check for existing jobs");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to check for existing jobs".to_string(),
-        )
+        ApiError::Internal("failed to check for existing jobs".to_string())
     })?;
 
     if let Some((existing_id,)) = existing {
-        return Err((
-            StatusCode::CONFLICT,
-            format!("a pending or processing harvest job already exists: {existing_id}"),
-        ));
+        return Err(ApiError::Conflict(format!(
+            "a pending or processing harvest job already exists: {existing_id}"
+        )));
     }
 
     // Check if law is exhausted for harvest.
     // RowNotFound is fine (new law, can't be exhausted); other errors should propagate.
     match regelrecht_pipeline::law_status::get_law(&mut *tx, &bwb_id).await {
         Ok(law) if law.status == regelrecht_pipeline::LawStatusValue::HarvestExhausted => {
-            return Err((
-                StatusCode::CONFLICT,
-                format!("{bwb_id} is harvest_exhausted — reset via /api/law_entries/{bwb_id}/reset-exhausted first"),
-            ));
+            return Err(ApiError::Conflict(format!("{bwb_id} is harvest_exhausted — reset via /api/law_entries/{bwb_id}/reset-exhausted first")));
         }
         Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {}
         Err(e) => {
             tracing::error!(error = %e, "failed to check exhausted status");
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
+            return Err(ApiError::Internal(
                 "failed to check exhausted status".to_string(),
             ));
         }
@@ -559,10 +517,7 @@ pub async fn create_harvest_job(
     .await
     .map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, "failed to upsert law entry");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to upsert law entry".to_string(),
-        )
+        ApiError::Internal("failed to upsert law entry".to_string())
     })?;
 
     let payload = HarvestPayload {
@@ -578,35 +533,23 @@ pub async fn create_harvest_job(
         .with_priority(priority)
         .with_payload(serde_json::to_value(&payload).map_err(|e| {
             tracing::error!(error = %e, "failed to serialize payload");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to serialize payload".to_string(),
-            )
+            ApiError::Internal("failed to serialize payload".to_string())
         })?);
 
     let job = create_job(&mut *tx, req).await.map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, "failed to create harvest job");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to create harvest job".to_string(),
-        )
+        ApiError::Internal("failed to create harvest job".to_string())
     })?;
 
     // Link the harvest job to the law entry.
     set_harvest_job(&mut *tx, &bwb_id, job.id).await.map_err(|e| {
         tracing::error!(error = %e, law_id = %bwb_id, job_id = %job.id, "failed to link harvest job to law entry");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to link harvest job to law entry".to_string(),
-        )
+        ApiError::Internal("failed to link harvest job to law entry".to_string())
     })?;
 
     tx.commit().await.map_err(|e| {
         tracing::error!(error = %e, "failed to commit transaction");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     tracing::info!(job_id = %job.id, law_id = %bwb_id, "created harvest job");
@@ -638,23 +581,17 @@ pub struct CreateEnrichResponse {
 pub async fn create_enrich_jobs(
     State(state): State<AppState>,
     Json(body): Json<CreateEnrichBody>,
-) -> Result<(StatusCode, Json<CreateEnrichResponse>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<CreateEnrichResponse>), ApiError> {
     let law_id = body.law_id.trim().to_string();
     if law_id.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "law_id must not be empty".to_string(),
-        ));
+        return Err(ApiError::BadRequest("law_id must not be empty".to_string()));
     }
 
     let pool = &state.pool;
 
     let mut tx = pool.begin().await.map_err(|e| {
         tracing::error!(error = %e, "failed to begin transaction");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     // Advisory lock to serialize concurrent requests for the same law.
@@ -664,25 +601,18 @@ pub async fn create_enrich_jobs(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, law_id = %law_id, "failed to acquire advisory lock");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal server error".to_string(),
-            )
+            ApiError::Internal("internal server error".to_string())
         })?;
 
     // Check if law is exhausted for enrich.
     match regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
         Ok(law) if law.status == regelrecht_pipeline::LawStatusValue::EnrichExhausted => {
-            return Err((
-                StatusCode::CONFLICT,
-                format!("{law_id} is enrich_exhausted — reset via /api/law_entries/{law_id}/reset-exhausted first"),
-            ));
+            return Err(ApiError::Conflict(format!("{law_id} is enrich_exhausted — reset via /api/law_entries/{law_id}/reset-exhausted first")));
         }
         Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {}
         Err(e) => {
             tracing::error!(error = %e, "failed to check exhausted status");
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
+            return Err(ApiError::Internal(
                 "failed to check exhausted status".to_string(),
             ));
         }
@@ -700,10 +630,7 @@ pub async fn create_enrich_jobs(
     .await
     .map_err(|e| {
         tracing::error!(error = %e, law_id = %law_id, "failed to look up harvest result");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to look up harvest result".to_string(),
-        )
+        ApiError::Internal("failed to look up harvest result".to_string())
     })?;
 
     let yaml_path = harvest_result
@@ -711,10 +638,9 @@ pub async fn create_enrich_jobs(
         .and_then(|(result,)| result.get("file_path"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("no completed harvest found for {law_id} — harvest the law first"),
-            )
+            ApiError::BadRequest(format!(
+                "no completed harvest found for {law_id} — harvest the law first"
+            ))
         })?
         .to_string();
 
@@ -732,10 +658,7 @@ pub async fn create_enrich_jobs(
 
         let payload_json = serde_json::to_value(&enrich_payload).map_err(|e| {
             tracing::error!(error = %e, "failed to serialize enrich payload");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to serialize enrich payload".to_string(),
-            )
+            ApiError::Internal("failed to serialize enrich payload".to_string())
         })?;
 
         let enrich_req = CreateJobRequest::new(JobType::Enrich, &law_id)
@@ -757,19 +680,15 @@ pub async fn create_enrich_jobs(
             }
             Err(e) => {
                 tracing::error!(error = %e, law_id = %law_id, provider = %provider_name, "failed to create enrich job");
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("failed to create enrich job for provider {provider_name} (transaction rolled back, no jobs were created)"),
-                ));
+                return Err(ApiError::Internal(format!("failed to create enrich job for provider {provider_name} (transaction rolled back, no jobs were created)")));
             }
         }
     }
 
     if job_ids.is_empty() {
-        return Err((
-            StatusCode::CONFLICT,
-            format!("enrich jobs already pending or processing for {law_id}"),
-        ));
+        return Err(ApiError::Conflict(format!(
+            "enrich jobs already pending or processing for {law_id}"
+        )));
     }
 
     // Link the last created enrich job to the law entry.
@@ -783,19 +702,13 @@ pub async fn create_enrich_jobs(
                     law_id = %law_id,
                     "failed to link enrich job to law entry"
                 );
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "failed to link enrich job".to_string(),
-                )
+                ApiError::Internal("failed to link enrich job".to_string())
             })?;
     }
 
     tx.commit().await.map_err(|e| {
         tracing::error!(error = %e, "failed to commit transaction");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     tracing::info!(law_id = %law_id, jobs = ?job_ids, "created enrich jobs");
@@ -815,12 +728,12 @@ pub async fn create_enrich_jobs(
 pub async fn get_job(
     State(state): State<AppState>,
     axum::extract::Path(job_id): axum::extract::Path<String>,
-) -> Result<Json<Job>, (StatusCode, String)> {
+) -> Result<Json<Job>, ApiError> {
     let pool = &state.pool;
 
     let uuid: sqlx::types::Uuid = job_id
         .parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, format!("invalid job id: {job_id}")))?;
+        .map_err(|_| ApiError::BadRequest(format!("invalid job id: {job_id}")))?;
 
     let job = sqlx::query_as::<_, Job>(
         "SELECT id, job_type, law_id, status, \
@@ -833,12 +746,9 @@ pub async fn get_job(
     .await
     .map_err(|e| {
         tracing::error!(error = %e, "get_job query failed");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?
-    .ok_or_else(|| (StatusCode::NOT_FOUND, format!("job not found: {job_id}")))?;
+    .ok_or_else(|| ApiError::NotFound(format!("job not found: {job_id}")))?;
 
     Ok(Json(job))
 }
@@ -852,7 +762,7 @@ pub struct DeleteJobsResponse {
 
 pub async fn delete_all_jobs(
     State(state): State<AppState>,
-) -> Result<Json<DeleteJobsResponse>, (StatusCode, String)> {
+) -> Result<Json<DeleteJobsResponse>, ApiError> {
     let pool = &state.pool;
 
     let result = sqlx::query("DELETE FROM jobs WHERE status != 'processing'")
@@ -860,10 +770,7 @@ pub async fn delete_all_jobs(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to delete jobs");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to delete jobs".to_string(),
-            )
+            ApiError::Internal("failed to delete jobs".to_string())
         })?;
 
     let deleted = result.rows_affected() as i64;
@@ -877,29 +784,23 @@ pub async fn delete_all_jobs(
 pub async fn reset_exhausted(
     State(state): State<AppState>,
     axum::extract::Path(law_id): axum::extract::Path<String>,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, ApiError> {
     let pool = &state.pool;
 
     let mut tx = pool.begin().await.map_err(|e| {
         tracing::error!(error = %e, "failed to begin transaction");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal server error".to_string(),
-        )
+        ApiError::Internal("internal server error".to_string())
     })?;
 
     // Read status inside the transaction to prevent TOCTOU race.
     let law = match regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
         Ok(law) => law,
         Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {
-            return Err((StatusCode::NOT_FOUND, format!("law not found: {law_id}")));
+            return Err(ApiError::NotFound(format!("law not found: {law_id}")));
         }
         Err(e) => {
             tracing::error!(error = %e, "failed to get law");
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "internal server error".to_string(),
-            ));
+            return Err(ApiError::Internal("internal server error".to_string()));
         }
     };
 
@@ -913,10 +814,10 @@ pub async fn reset_exhausted(
             regelrecht_pipeline::LawStatusValue::EnrichFailed,
         ),
         _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("law is not exhausted (status: {})", law.status),
-            ))
+            return Err(ApiError::BadRequest(format!(
+                "law is not exhausted (status: {})",
+                law.status
+            )))
         }
     };
 
@@ -924,10 +825,7 @@ pub async fn reset_exhausted(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to reset fail count");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to reset fail count".to_string(),
-            )
+            ApiError::Internal("failed to reset fail count".to_string())
         })?;
 
     // Use update_status_if to only update when status is still exhausted,
@@ -936,18 +834,12 @@ pub async fn reset_exhausted(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "failed to update status");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "failed to update status".to_string(),
-            )
+            ApiError::Internal("failed to update status".to_string())
         })?;
 
     tx.commit().await.map_err(|e| {
         tracing::error!(error = %e, "failed to commit transaction");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "failed to commit transaction".to_string(),
-        )
+        ApiError::Internal("failed to commit transaction".to_string())
     })?;
 
     tracing::info!(law_id = %law_id, job_type = ?job_type, "exhausted status reset");

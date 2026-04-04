@@ -1,11 +1,12 @@
 use axum::extract::{Request, State};
 use axum::http::header;
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::HeaderValue;
 use axum::middleware::Next;
 use axum::response::Response;
 use tower_sessions::Session;
 
 use crate::auth::SESSION_KEY_AUTHENTICATED;
+use crate::error::ApiError;
 use crate::state::AppState;
 
 pub async fn security_headers(request: Request, next: Next) -> Response {
@@ -42,7 +43,7 @@ pub async fn require_auth(
     session: Session,
     request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, ApiError> {
     if !state.config.is_auth_enabled() {
         return Ok(next.run(request).await);
     }
@@ -57,7 +58,9 @@ pub async fn require_auth(
     if authenticated {
         Ok(next.run(request).await)
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err(ApiError::Unauthorized(
+            "authentication required".to_string(),
+        ))
     }
 }
 
@@ -68,6 +71,7 @@ mod tests {
     use crate::config::AppConfig;
     use crate::state::AppState;
     use axum::body::Body;
+    use axum::http::StatusCode;
     use axum::middleware as axum_middleware;
     use axum::routing::get;
     use axum::Router;
@@ -197,6 +201,10 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            response.headers().get("www-authenticate").unwrap(),
+            "Bearer"
+        );
     }
 
     #[tokio::test]

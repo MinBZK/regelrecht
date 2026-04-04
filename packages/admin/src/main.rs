@@ -20,6 +20,7 @@ use tracing_subscriber::EnvFilter;
 mod auth;
 mod config;
 mod corpus_handlers;
+mod error;
 mod handlers;
 mod metrics;
 mod middleware;
@@ -116,7 +117,7 @@ async fn main() {
     }
     tracing::info!("session store ready (PostgreSQL-backed)");
 
-    let _deletion_task = tokio::task::spawn(
+    let deletion_handle = tokio::task::spawn(
         session_store
             .clone()
             .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
@@ -206,9 +207,25 @@ async fn main() {
             std::process::exit(1);
         });
 
-    if let Err(e) = axum::serve(listener, app).await {
-        tracing::error!(error = %e, "server error");
-        std::process::exit(1);
+    let shutdown = async {
+        let _ = tokio::signal::ctrl_c().await;
+        tracing::info!("shutdown signal received, draining connections");
+    };
+
+    tokio::select! {
+        result = axum::serve(listener, app).with_graceful_shutdown(shutdown) => {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "server error");
+                std::process::exit(1);
+            }
+        }
+        result = deletion_handle => {
+            match result {
+                Ok(_) => tracing::error!("session deletion task exited unexpectedly"),
+                Err(e) => tracing::error!(error = %e, "session deletion task panicked"),
+            }
+            std::process::exit(1);
+        }
     }
 }
 
