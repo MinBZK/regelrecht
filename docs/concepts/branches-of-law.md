@@ -53,7 +53,13 @@ This doesn't raise new modeling questions. It does provide a rich set of cross-l
 
 The Kieswet is already in the corpus. Seat allocation algorithms, quorum requirements, voting procedures, electoral deadlines: all highly structured. The Gemeentewet and Provinciewet contain similar procedural rules for local government.
 
-Beyond electoral mechanics, constitutional law is dominated by principles. Fundamental rights require proportionality balancing, which is judicial interpretation. The computable parts of this branch are limited in scope but well-defined.
+Beyond electoral mechanics, constitutional law gets into principle territory — see Grondrechten below.
+
+### Grondrechten (Constitutional Rights)
+
+Fundamental rights in the Grondwet and international treaties (EVRM, EU Charter) require proportionality balancing: is a restriction of a right justified given the goal? This is judicial interpretation, not rule application. Courts weigh competing interests case by case.
+
+There are some structured edges. The Grondwet prescribes formal requirements for rights restrictions (*bij of krachtens de wet*, competence clauses). Whether a restriction meets the formal requirements is checkable. Whether it's proportional is not.
 
 ### Erfrecht (Inheritance Law)
 
