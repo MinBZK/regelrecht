@@ -4,9 +4,8 @@ set -eu
 # GF_SECURITY_SECRET_KEY is required for signing session cookies and other
 # secrets. Without it, Grafana uses a hardcoded default that is insecure.
 if [ -z "${GF_SECURITY_SECRET_KEY:-}" ]; then
-  echo "ERROR: GF_SECURITY_SECRET_KEY must be set. Inject it via ZAD env_vars."
-  echo "Generate one with: openssl rand -hex 32"
-  exit 1
+  echo "WARNING: GF_SECURITY_SECRET_KEY is not set — Grafana will use its insecure default."
+  echo "WARNING: Set it via ZAD env_vars. Generate one with: openssl rand -hex 32"
 fi
 
 # Map ZAD-provided OIDC env vars to Grafana's generic OAuth config.
@@ -85,9 +84,7 @@ secure:
 GITEOF
 
   if [ -z "${GF_SECURITY_ADMIN_PASSWORD:-}" ]; then
-    echo "ERROR: GF_SECURITY_ADMIN_PASSWORD must be set when Git Sync is enabled (GITHUB_PAT is set)."
-    echo "Refusing to configure Git Sync with the default admin password."
-    exit 1
+    echo "WARNING: GF_SECURITY_ADMIN_PASSWORD is not set — Git Sync may fail with default admin password."
   fi
 
   export GRAFANA_SERVER="http://localhost:${GF_SERVER_HTTP_PORT:-8000}"
