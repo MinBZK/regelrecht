@@ -73,7 +73,7 @@ impl AppConfig {
         } else {
             tracing::warn!(
                 "OIDC authentication is DISABLED — admin panel is unprotected. \
-                 Configure OIDC or set ALLOW_UNAUTHENTICATED=true to silence this warning."
+                 Configure OIDC environment variables to enable authentication."
             );
         }
 
