@@ -208,7 +208,15 @@ async fn main() {
         });
 
     let shutdown = async {
-        let _ = tokio::signal::ctrl_c().await;
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate()).unwrap_or_else(|e| {
+            tracing::error!(error = %e, "failed to install SIGTERM handler");
+            std::process::exit(1);
+        });
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = sigterm.recv() => {}
+        }
         tracing::info!("shutdown signal received, draining connections");
     };
 

@@ -150,7 +150,10 @@ pub async fn sync_source(
     // to avoid blocking the Tokio worker pool during directory traversal.
     let new_map = tokio::task::spawn_blocking(move || registry.load_local_sources())
         .await
-        .map_err(|e| ApiError::Internal(format!("spawn_blocking failed: {}", e)))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "spawn_blocking task failed");
+            ApiError::Internal("failed to reload sources".to_string())
+        })?
         .map_err(|e| ApiError::Internal(format!("Failed to reload sources: {}", e)))?;
 
     // Compute counts before acquiring write lock to minimize lock duration.
