@@ -316,13 +316,7 @@ async fn process_next_job(
                         .with_priority(Priority::new(30))
                         .with_payload(payload_json);
                     let dedup_date = payload.date.as_deref().unwrap_or(&result.harvest_date);
-                    match job_queue::create_harvest_job_if_not_exists(
-                        pool,
-                        req,
-                        dedup_date,
-                    )
-                    .await
-                    {
+                    match job_queue::create_harvest_job_if_not_exists(pool, req, dedup_date).await {
                         Ok(Some(_)) => created += 1,
                         Ok(None) => {} // already exists, skip
                         Err(e) => tracing::warn!(
