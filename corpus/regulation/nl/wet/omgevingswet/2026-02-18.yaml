@@ -6885,6 +6885,25 @@ articles:
         hoofdstuk: '5'
         paragraaf: 5.1.1
         afdeling: '5.1'
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: activiteit_type
+            type: string
+            required: true
+        input:
+          - name: voldoet_aan_beoordelingsregels
+            type: boolean
+            source: {}
+        output:
+          - name: omgevingsvergunning_verleend
+            type: boolean
+        actions:
+          - output: omgevingsvergunning_verleend
+            value: $voldoet_aan_beoordelingsregels
   - number: 5.18.2
     text: Daarbij kunnen regels worden gesteld over de motivering van de beslissing tot het verlenen of weigeren.
     url: https://wetten.overheid.nl/BWBR0037885/2026-02-18#Artikel5.18
@@ -7359,6 +7378,9 @@ articles:
         artikel: '3'
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: AFWIJZING
         parameters:
           - name: activiteit_type
             type: string
@@ -7459,6 +7481,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0037885/2026-02-18#Artikel5.32
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: AFWIJZING
         parameters:
           - name: bijzondere_omstandigheden
             type: boolean
@@ -7904,6 +7929,9 @@ articles:
         afdeling: '18.1'
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: AFWIJZING
         parameters:
           - name: intrekking_op_grond_van_artikel_18_10
             type: boolean
@@ -19312,6 +19340,10 @@ articles:
         afdeling: '16.2'
     machine_readable:
       # Combineert lid 1 (8/12 weken basistermijn) met lid 2 (eenmaal 6 weken verlenging)
+      overrides:
+        - law: algemene_wet_bestuursrecht
+          article: '4:13'
+          output: beslistermijn_weken
       execution:
         parameters:
           - name: datum_ontvangst_aanvraag

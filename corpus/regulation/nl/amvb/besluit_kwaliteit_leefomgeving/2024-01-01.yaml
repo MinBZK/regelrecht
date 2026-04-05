@@ -8051,6 +8051,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.7
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gebouw_of_locatie_type
             type: string
@@ -8228,6 +8230,8 @@ articles:
         afdeling: '5.1'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gebouw_of_locatie_type
             type: string
@@ -8331,6 +8335,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.11
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gebouw_of_locatie_type
             type: string
@@ -8379,6 +8385,8 @@ articles:
         artikel: '3'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: is_windturbine_activiteit
             type: boolean
@@ -8504,6 +8512,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.12
     machine_readable:
       execution:
+        produces:
+          legal_character: WAARDEBEPALING
         parameters:
           - name: warmtestraling_kw_per_m2
             type: number
@@ -8532,6 +8542,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.12
     machine_readable:
       execution:
+        produces:
+          legal_character: WAARDEBEPALING
         parameters:
           - name: warmtestraling_bleve_kw_per_m2
             type: number
@@ -8553,6 +8565,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.12
     machine_readable:
       execution:
+        produces:
+          legal_character: WAARDEBEPALING
         parameters:
           - name: overdruk_kpa
             type: number
@@ -8583,6 +8597,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.12
     machine_readable:
       execution:
+        produces:
+          legal_character: WAARDEBEPALING
         parameters:
           - name: afstand_gifwolk_km
             type: number
@@ -8791,6 +8807,8 @@ articles:
         bwb_id: BWBR0041313
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: plaatsgebonden_risico_per_jaar
             type: number
@@ -8911,6 +8929,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.18
     machine_readable:
       execution:
+        produces:
+          legal_character: WAARDEBEPALING
         parameters:
           - name: vervoert_aardgas
             type: boolean
@@ -9080,6 +9100,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.24
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: locatie_in_explosieaandachtsgebied_vuurwerk
             type: boolean
@@ -9170,6 +9192,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.25
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: warmtestraling_kw_per_m2
             type: number
@@ -9347,6 +9371,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.29
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: civiel_explosieaandachtsgebied_type
             type: string
@@ -9496,6 +9522,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.30
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gebouw_of_locatie_type
             type: string
@@ -9829,6 +9857,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.40
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: locatie_binnen_kustfundament
             type: boolean
@@ -9874,6 +9904,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.40
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: uitbreiding_percentage
             type: number
@@ -10154,6 +10186,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.49
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: locatie_in_ijsselmeergebied
             type: boolean
@@ -10183,6 +10217,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.49
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gemeente
             type: string
@@ -10312,6 +10348,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.50
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: activiteit_type
             type: string
@@ -10363,6 +10401,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel5.50
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: leidt_tot_verhoging_concentratie
             type: boolean
@@ -17803,6 +17843,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel6.2
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: voldoet_aan_omgevingswaarden
             type: boolean
@@ -18095,6 +18137,8 @@ articles:
         artikel: '4'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: is_omgevingsverordening_met_regels_art_4_2_lid_2
             type: boolean
@@ -18902,6 +18946,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel8.0a
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: is_omgevingsplanactiviteit
             type: boolean
@@ -18945,6 +18992,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel8.0a
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: is_buitenplanse_omgevingsplanactiviteit
             type: boolean
@@ -19019,6 +19069,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel8.0b
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: AFWIJZING
         parameters:
           - name: leidt_tot_niet_toegelaten_situatie
             type: boolean
@@ -19331,6 +19384,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel8.2
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: type_infrastructuur
             type: string
@@ -19464,6 +19520,9 @@ articles:
         artikel: '4'
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: is_bouwactiviteit_nieuw_bouwwerk
             type: boolean
@@ -19518,6 +19577,9 @@ articles:
         hoofdstuk: '5'
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: is_bouwactiviteit_verbouw_of_verplaats
             type: boolean
@@ -19656,6 +19718,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel8.5
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: medegebruik_bestaande_installatie_mogelijk
             type: boolean
@@ -19836,6 +19901,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel8.9
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: milieuverontreiniging_voorkomen_of_beperkt
             type: boolean
@@ -20222,6 +20290,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel8.12
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: plaatsgebonden_risico_per_jaar
             type: number
@@ -27947,6 +28018,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.1
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: weg_behoort_tot_basisnet
             type: boolean
@@ -28412,6 +28485,8 @@ articles:
         artikel: ‘1’
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: weg_behoort_tot_basisnet
             type: boolean
@@ -28621,6 +28696,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.15
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: datum_vorig_verslag
             type: date
@@ -28694,6 +28771,8 @@ articles:
         afdeling: '11.1'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: datum_vorig_verslag_rivieren
             type: date
@@ -28939,6 +29018,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.22
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: emissie_pm_dierenverblijven_kg_per_jaar
             type: number
@@ -28962,6 +29043,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.22
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: emissie_pm_dierenverblijven_kg_per_jaar
             type: number
@@ -29946,6 +30029,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.47
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verkeersintensiteit_mvt_per_etmaal
             type: number
@@ -30001,6 +30086,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.49
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verwacht_aantal_voertuigpassages_per_jaar
             type: number
@@ -30037,6 +30124,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.49
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verwacht_aantal_treinpassages_per_jaar
             type: number
@@ -30082,6 +30171,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.49
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verwacht_aantal_vliegtuigbewegingen_per_jaar
             type: number
@@ -30444,6 +30535,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.57
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verslagjaar
             type: number
@@ -30505,6 +30598,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.57
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verslagjaar
             type: number
@@ -30533,6 +30628,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.58
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verslagjaar
             type: number
@@ -30580,6 +30677,8 @@ articles:
         afdeling: '11.2'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: datum_bekendmaking_verklaring
             type: date
@@ -30787,6 +30886,8 @@ articles:
         afdeling: '11.3'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: datum_verlening_omgevingsvergunning
             type: date
@@ -30970,6 +31071,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel11.69c
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: type_verslag
             type: string
@@ -31419,6 +31522,8 @@ articles:
         afdeling: '3.5'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: artikel_12_3_tweede_lid_toegepast
             type: boolean
@@ -31970,6 +32075,8 @@ articles:
         artikel: '15'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: type_gebouw
             type: string
@@ -32142,6 +32249,8 @@ articles:
         artikel: '15'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: type_gebouw
             type: string
@@ -33141,6 +33250,8 @@ articles:
         afdeling: '5.2'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: datum_inwerkingtreding_besluit
             type: date
@@ -33615,6 +33726,9 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041313/2024-01-01#Artikel12.33
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: type_vergunning
             type: string

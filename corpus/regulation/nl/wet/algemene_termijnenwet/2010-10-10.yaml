@@ -1,0 +1,917 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json
+$id: algemene_termijnenwet
+regulatory_layer: WET
+publication_date: '2010-09-01'
+valid_from: '2010-10-10'
+bwb_id: BWBR0002448
+url: https://wetten.overheid.nl/BWBR0002448/2010-10-10
+preamble:
+  text: |-
+    Wij JULIANA, bij de gratie Gods, Koningin der
+    Nederlanden, Prinses van Oranje-Nassau, enz.,
+    enz., enz.
+
+    Allen, die deze zullen zien of horen lezen,
+    saluut! doen te weten:
+
+    Alzo Wij in overweging genomen hebben, dat het
+    wenselijk is regelen te stellen inzake berekening
+    van termijnen in verband met de zaterdag, de
+    zondag en algemeen erkende feestdagen;
+
+    Zo is het, dat Wij, de Raad van State gehoord,
+    en met gemeen overleg der Staten-Generaal, hebben
+    goedgevonden en verstaan, gelijk Wij goedvinden
+    en verstaan bij deze:
+  url: >-
+    https://wetten.overheid.nl/BWBR0002448/2010-10-10#ArtikelAanhef
+articles:
+  # ======================================================
+  # Art 3.1 + 3.2: Feestdagenlijst
+  # ======================================================
+  - number: '3.1'
+    text: |-
+      Algemeen erkende feestdagen in de zin van deze
+      wet zijn: de Nieuwjaarsdag, de Christelijke
+      tweede Paas- en Pinksterdag, de beide
+      Kerstdagen, de Hemelvaartsdag, de dag waarop de
+      verjaardag van de Koning wordt gevierd en de
+      vijfde mei.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel3
+    machine_readable:
+      untranslatables:
+        - construct: >-
+            bepaling datum bewegelijke feestdagen
+          reason: >-
+            Tweede Paasdag, Tweede Pinksterdag,
+            Hemelvaartsdag en Goede Vrijdag zijn
+            afhankelijk van de paasdatum die jaarlijks
+            varieert volgens de computus. De wet noemt
+            deze feestdagen bij naam maar specificeert
+            niet hoe de datum wordt berekend.
+          suggestion: >-
+            Add EASTER_DATE(year) engine operation, or
+            provide holiday dates as external calendar
+            data
+          legal_text_excerpt: >-
+            de Christelijke tweede Paas- en
+            Pinksterdag, de Hemelvaartsdag
+          accepted: false
+      endpoint: is_feestdag
+      execution:
+        parameters:
+          - name: datum
+            type: date
+            required: true
+            description: Te controleren datum
+          - name: nieuwjaarsdag
+            type: date
+            required: true
+          - name: tweede_paasdag
+            type: date
+            required: true
+          - name: hemelvaartsdag
+            type: date
+            required: true
+          - name: tweede_pinksterdag
+            type: date
+            required: true
+          - name: eerste_kerstdag
+            type: date
+            required: true
+          - name: tweede_kerstdag
+            type: date
+            required: true
+          - name: koningsdag
+            type: date
+            required: true
+          - name: bevrijdingsdag
+            type: date
+            required: true
+          - name: goede_vrijdag
+            type: date
+            required: true
+            description: >-
+              Art 3.2: Goede Vrijdag gelijkgesteld
+        output:
+          - name: is_feestdag
+            type: boolean
+        actions:
+          - output: is_feestdag
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $datum
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $goede_vrijdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $datum
+                  value: $tweede_pinksterdag
+
+  - number: '3.2'
+    text: >-
+      Voor de toepassing van deze wet wordt de Goede
+      Vrijdag met de in het vorige lid genoemde dagen
+      gelijkgesteld.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel3
+
+  - number: '3.3'
+    text: |-
+      Wij kunnen bepaalde dagen voor de toepassing
+      van deze wet met de in het eerste lid genoemde
+      gelijkstellen. Ons besluit wordt in de
+      *Nederlandse Staatscourant* openbaar gemaakt.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel3
+    machine_readable:
+      open_terms:
+        - id: aanvullende_feestdagen
+          type: string
+          required: false
+          delegated_to: koning
+          delegation_type: KONINKLIJK_BESLUIT
+          legal_basis: >-
+            artikel 3 lid 3 Algemene termijnenwet
+      execution:
+        output:
+          - name: aanvullende_feestdagen
+            type: array
+        actions:
+          - output: aanvullende_feestdagen
+            value: $aanvullende_feestdagen
+
+  # ======================================================
+  # Art 1.1: Kernregel — termijnverlenging
+  # 9-case IF: max verschuiving is 9 dagen
+  # ======================================================
+  - number: '1.1'
+    text: |-
+      Een in een wet gestelde termijn die op een
+      zaterdag, zondag of algemeen erkende feestdag
+      eindigt, wordt verlengd tot en met de
+      eerstvolgende dag die niet een zaterdag, zondag
+      of algemeen erkende feestdag is.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel1
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        parameters:
+          - name: termijn_einddatum
+            type: date
+            required: true
+          - name: nieuwjaarsdag
+            type: date
+            required: true
+          - name: tweede_paasdag
+            type: date
+            required: true
+          - name: hemelvaartsdag
+            type: date
+            required: true
+          - name: tweede_pinksterdag
+            type: date
+            required: true
+          - name: eerste_kerstdag
+            type: date
+            required: true
+          - name: tweede_kerstdag
+            type: date
+            required: true
+          - name: koningsdag
+            type: date
+            required: true
+          - name: bevrijdingsdag
+            type: date
+            required: true
+          - name: goede_vrijdag
+            type: date
+            required: true
+        output:
+          - name: verlengde_einddatum
+            type: date
+            description: >-
+              Einddatum na verlenging conform art 1.1
+        actions:
+          # Bereken kandidaat-datums +0 t/m +8
+          - output: dag0
+            value: $termijn_einddatum
+          - output: dag1
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 1
+          - output: dag2
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 2
+          - output: dag3
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 3
+          - output: dag4
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 4
+          - output: dag5
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 5
+          - output: dag6
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 6
+          - output: dag7
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 7
+          - output: dag8
+            value:
+              operation: DATE_ADD
+              date: $termijn_einddatum
+              days: 8
+          # Dag van de week: 0=ma .. 5=za 6=zo
+          - output: dow0
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag0
+          - output: dow1
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag1
+          - output: dow2
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag2
+          - output: dow3
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag3
+          - output: dow4
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag4
+          - output: dow5
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag5
+          - output: dow6
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag6
+          - output: dow7
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag7
+          - output: dow8
+            value:
+              operation: DAY_OF_WEEK
+              date: $dag8
+          # Feestdag-check per kandidaat via art 3.1
+          - output: feest0
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag0
+                  value: $goede_vrijdag
+          - output: feest1
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag1
+                  value: $goede_vrijdag
+          - output: feest2
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag2
+                  value: $goede_vrijdag
+          - output: feest3
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag3
+                  value: $goede_vrijdag
+          - output: feest4
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag4
+                  value: $goede_vrijdag
+          - output: feest5
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag5
+                  value: $goede_vrijdag
+          - output: feest6
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag6
+                  value: $goede_vrijdag
+          - output: feest7
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag7
+                  value: $goede_vrijdag
+          - output: feest8
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $nieuwjaarsdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $tweede_paasdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $hemelvaartsdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $tweede_pinksterdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $eerste_kerstdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $tweede_kerstdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $koningsdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $bevrijdingsdag
+                - operation: EQUALS
+                  subject: $dag8
+                  value: $goede_vrijdag
+          # Werkdag = niet za/zo EN niet feestdag
+          - output: werkdag0
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow0
+                  value: 5
+                - operation: NOT
+                  value: $feest0
+          - output: werkdag1
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow1
+                  value: 5
+                - operation: NOT
+                  value: $feest1
+          - output: werkdag2
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow2
+                  value: 5
+                - operation: NOT
+                  value: $feest2
+          - output: werkdag3
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow3
+                  value: 5
+                - operation: NOT
+                  value: $feest3
+          - output: werkdag4
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow4
+                  value: 5
+                - operation: NOT
+                  value: $feest4
+          - output: werkdag5
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow5
+                  value: 5
+                - operation: NOT
+                  value: $feest5
+          - output: werkdag6
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow6
+                  value: 5
+                - operation: NOT
+                  value: $feest6
+          - output: werkdag7
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow7
+                  value: 5
+                - operation: NOT
+                  value: $feest7
+          - output: werkdag8
+            value:
+              operation: AND
+              conditions:
+                - operation: LESS_THAN
+                  subject: $dow8
+                  value: 5
+                - operation: NOT
+                  value: $feest8
+          # 9-case IF: eerste werkdag wint
+          - output: verlengde_einddatum
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag0
+                    value: true
+                  then: $dag0
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag1
+                    value: true
+                  then: $dag1
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag2
+                    value: true
+                  then: $dag2
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag3
+                    value: true
+                  then: $dag3
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag4
+                    value: true
+                  then: $dag4
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag5
+                    value: true
+                  then: $dag5
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag6
+                    value: true
+                  then: $dag6
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag7
+                    value: true
+                  then: $dag7
+                - when:
+                    operation: EQUALS
+                    subject: $werkdag8
+                    value: true
+                  then: $dag8
+              default: $termijn_einddatum
+
+  - number: '1.2'
+    text: >-
+      Het vorige lid geldt niet voor termijnen,
+      bepaald door terugrekening vanaf een tijdstip
+      of een gebeurtenis.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel1
+    machine_readable:
+      execution:
+        parameters:
+          - name: termijn_bepaald_door_terugrekening
+            type: boolean
+            required: true
+        output:
+          - name: verlenging_artikel_1_van_toepassing
+            type: boolean
+        actions:
+          - output: verlenging_artikel_1_van_toepassing
+            value:
+              operation: NOT
+              value: $termijn_bepaald_door_terugrekening
+
+  - number: '2'
+    text: |-
+      Een in een wet gestelde termijn van ten minste
+      drie dagen wordt, zo nodig, zoveel verlengd,
+      dat daarin ten minste twee dagen voorkomen die
+      niet een zaterdag, zondag of algemeen erkende
+      feestdag zijn.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel2
+
+  - number: '4'
+    text: 'Deze wet geldt niet voor termijnen:'
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel4
+    machine_readable:
+      execution:
+        parameters:
+          - name: termijn_eenheid
+            type: string
+            required: true
+            description: >-
+              Eenheid: uren, dagen, weken, maanden,
+              jaren
+          - name: termijn_waarde
+            type: number
+            required: true
+          - name: betreft_bekendmaking_wettelijk_voorschrift
+            type: boolean
+            required: true
+          - name: betreft_vrijheidsbeneming
+            type: boolean
+            required: true
+        output:
+          - name: termijnenwet_van_toepassing
+            type: boolean
+        actions:
+          - output: uitgesloten
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $termijn_eenheid
+                  value: uren
+                - operation: AND
+                  conditions:
+                    - operation: EQUALS
+                      subject: $termijn_eenheid
+                      value: dagen
+                    - operation: GREATER_THAN
+                      subject: $termijn_waarde
+                      value: 90
+                - operation: AND
+                  conditions:
+                    - operation: EQUALS
+                      subject: $termijn_eenheid
+                      value: weken
+                    - operation: GREATER_THAN
+                      subject: $termijn_waarde
+                      value: 12
+                - operation: AND
+                  conditions:
+                    - operation: EQUALS
+                      subject: $termijn_eenheid
+                      value: maanden
+                    - operation: GREATER_THAN
+                      subject: $termijn_waarde
+                      value: 3
+                - operation: EQUALS
+                  subject: $termijn_eenheid
+                  value: jaren
+                - operation: EQUALS
+                  subject: $betreft_bekendmaking_wettelijk_voorschrift
+                  value: true
+                - operation: EQUALS
+                  subject: $betreft_vrijheidsbeneming
+                  value: true
+          - output: termijnenwet_van_toepassing
+            value:
+              operation: NOT
+              value: $uitgesloten
+
+  - number: 4.a
+    text: |-
+      omschreven in uren, in meer dan 90 dagen, in
+      meer dan twaalf weken, in meer dan drie
+      maanden, of in een of meer jaren;
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel4
+
+  - number: 4.b
+    text: >-
+      betreffende de bekendmaking, inwerkingtreding
+      of buitenwerkingtreding van wettelijke
+      voorschriften;
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel4
+
+  - number: 4.c
+    text: van vrijheidsbeneming.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel4
+
+  - number: '5'
+    text: |-
+      Op in een algemene maatregel van bestuur
+      gestelde termijnen zijn de
+      [artikelen 1][ref1]-[4][ref2] van
+      overeenkomstige toepassing, tenzij bij
+      algemene maatregel van bestuur iets anders is
+      bepaald.
+
+
+      [ref1]: https://wetten.overheid.nl/BWBR0002448#Artikel1
+      [ref2]: https://wetten.overheid.nl/BWBR0002448#Artikel4
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel5
+    machine_readable:
+      execution:
+        parameters:
+          - name: regulatory_layer
+            type: string
+            required: true
+          - name: amvb_bepaalt_anders
+            type: boolean
+            required: true
+        output:
+          - name: termijnenwet_van_toepassing_op_amvb
+            type: boolean
+        actions:
+          - output: termijnenwet_van_toepassing_op_amvb
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $regulatory_layer
+                  value: AMVB
+                - operation: NOT
+                  value: $amvb_bepaalt_anders
+    references:
+      - id: ref1
+        bwb_id: BWBR0002448
+        artikel: '1'
+      - id: ref2
+        bwb_id: BWBR0002448
+        artikel: '4'
+
+  - number: 5a
+    text: >-
+      Deze wet is mede van toepassing in de openbare
+      lichamen Bonaire, Sint Eustatius en Saba.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel5a
+
+  - number: '6'
+    text: >-
+      Deze wet kan worden aangehaald als: Algemene
+      termijnenwet.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel6
+
+  - number: '7.1'
+    text: >-
+      Deze wet treedt in werking met ingang van
+      1 april 1965.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel7
+
+  - number: '7.2'
+    text: |-
+      Zij kan voor termijnen, gesteld in door Ons,
+      door plaatsing op een daartoe door Ons
+      aangehouden lijst, aangewezen wetten en
+      algemene maatregelen van bestuur, op door Ons
+      te bepalen eerdere tijdstippen in werking
+      treden.
+    url: >-
+      https://wetten.overheid.nl/BWBR0002448/2010-10-10#Artikel7

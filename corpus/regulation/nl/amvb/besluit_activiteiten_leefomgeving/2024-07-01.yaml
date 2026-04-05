@@ -210,6 +210,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel1.2
     machine_readable:
       execution:
+        produces:
+          legal_character: INFORMATIEF
         output:
           - name: ook_van_toepassing_in_eez
             type: boolean
@@ -1386,6 +1388,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.3a
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: energiegebruik_kwh_per_jaar
             type: number
@@ -1519,6 +1523,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.4
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: nominaal_thermisch_ingangsvermogen_kw
             type: number
@@ -1669,6 +1675,8 @@ articles:
         afdeling: '3.2'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: warmtevracht_koelwater_mw
             type: number
@@ -1864,6 +1872,8 @@ articles:
         afdeling: '3.2'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: elektrisch_vermogen_kw
             type: number
@@ -1914,6 +1924,8 @@ articles:
         afdeling: '7.2'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: rotordiameter_m
             type: number
@@ -1981,6 +1993,8 @@ articles:
         paragraaf: '4.30'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: aantal_windturbines_in_windpark
             type: number
@@ -2139,6 +2153,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.15
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: hoeveelheid_kooldioxide_kg
             type: number
@@ -2234,6 +2250,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.16
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: hoeveelheid_koolwaterstoffen_kg
             type: number
@@ -2315,6 +2333,8 @@ articles:
         afdeling: '3.2'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: warmtevracht_koelwater_mw
             type: number
@@ -2455,6 +2475,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.21
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: inhoud_opslagtank_giftig_bijtend_brandbaar_oxiderend_l
             type: number
@@ -2527,6 +2549,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.22
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: opslaan_giftige_bijtende_gassen
             type: boolean
@@ -2718,6 +2742,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.24
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: inhoud_opslagtank_l
             type: number
@@ -2828,6 +2854,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.25
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: inhoud_opslagtank_m3
             type: number
@@ -3295,6 +3323,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.31
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gewicht_pyrotechniek_theater_kg
             type: number
@@ -3442,6 +3472,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.34
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gewicht_zwart_rookzwak_kruit_1_1_kg
             type: number
@@ -3512,6 +3544,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.36
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gewicht_meststoffen_groep_1_2_of_1_3_kg
             type: number
@@ -3629,6 +3663,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.39
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gewicht_gevaarlijke_afvalstoffen_ton
             type: number
@@ -3804,6 +3840,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.40
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: volume_groenafval_m3
             type: number
@@ -7783,6 +7821,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.97
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: ontwerpcapaciteit_nm3_per_uur
             type: number
@@ -7850,6 +7890,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.98
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: werkdruk_inlaatzijde_kpa
             type: number
@@ -7936,6 +7978,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.100
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: datum_begin_activiteit
             type: date
@@ -7977,6 +8021,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel3.101
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: uitwendige_diameter_mm
             type: number
@@ -42256,6 +42302,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.602
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: afstand_peilbuizen_m
             type: number
@@ -42308,6 +42356,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.603
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: gemeten_waarde
             type: number
@@ -42431,6 +42481,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.608
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: bzv_mg_per_l
             type: number
@@ -42883,6 +42935,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.611
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: ontwerpcapaciteit_ie
             type: number
@@ -43580,6 +43634,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.637
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verblijftijd_seconden
             type: number
@@ -43625,6 +43681,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.637
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: zuurstofgehalte_procent
             type: number
@@ -43666,6 +43724,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.638
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: kwik_concentratie_g_per_nm3
             type: number
@@ -43757,6 +43817,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.642
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: totaal_stof_mg_per_nm3
             type: number
@@ -43778,6 +43840,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.642
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: totaal_stof_kg_per_jaar
             type: number
@@ -44452,6 +44516,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.664
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: geluidsvermogensniveau_dba
             type: number
@@ -44480,6 +44546,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.665
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: aantal_vliegbewegingen_niet_medisch
             type: number
@@ -44513,6 +44581,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.665
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: aantal_vliegbewegingen_niet_medisch
             type: number
@@ -44552,6 +44622,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.666a
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: geluidsvermogensniveau_dba
             type: number
@@ -44664,6 +44736,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.672
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: tetrachlooretheen_mg_per_l
             type: number
@@ -45210,6 +45284,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.694
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: totaal_stof_mg_per_nm3
             type: number
@@ -45231,6 +45307,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.694
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: totaal_stof_kg_per_jaar
             type: number
@@ -45839,6 +45917,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.713
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: restpercentage_middel
             type: number
@@ -47190,6 +47270,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.790
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: verlichtingssterkte_lux
             type: number
@@ -47494,6 +47576,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.791e
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: teeltoppervlakte_m2
             type: number
@@ -48407,6 +48491,8 @@ articles:
         paragraaf: '4.79'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: onopgeloste_stoffen_mg_per_l
             type: number
@@ -48567,6 +48653,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.806
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: diercategorie
             type: string
@@ -49569,6 +49657,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.826
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: doorstroomoppervlakte_cm2_per_m3
             type: number
@@ -49593,6 +49683,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.826
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: afstand_ventilator_eerste_stap_m
             type: number
@@ -51093,6 +51185,8 @@ articles:
         afdeling: '3.3'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: inhoud_opslagtank_m3
             type: number
@@ -52955,6 +53049,8 @@ articles:
         paragraaf: '4.96'
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: afstand_vulpunt_tot_locatiegrens_m
             type: number
@@ -55811,6 +55907,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1038
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: oppervlakte_ventilatieopeningen_m2
             type: number
@@ -55875,6 +55973,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1038
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: oppervlaktetemperatuur_celsius
             type: number
@@ -55945,6 +56045,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1039
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: afstand_tot_werkzaamheden_m
             type: number
@@ -58879,6 +58981,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1152
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: temperatuur_grondwater_celsius
             type: number
@@ -58925,6 +59029,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1154
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: totale_warmte_mwh
             type: number
@@ -58961,6 +59067,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1156
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: meetonnauwkeurigheid_procent
             type: number
@@ -59064,6 +59172,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1160
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: maximale_dracht_m
             type: number
@@ -59088,6 +59198,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1160
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: afstand_tot_derden_m
             type: number
@@ -59111,6 +59223,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1161
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: afstand_tot_niet_deelnemers_m
             type: number
@@ -59138,6 +59252,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1162
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: hoeveelheid_springstof_g_nem
             type: number
@@ -59162,6 +59278,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1163
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: afstand_onveilige_zone_m
             type: number
@@ -59185,6 +59303,8 @@ articles:
     url: https://wetten.overheid.nl/BWBR0041330/2024-07-01#Artikel4.1163
     machine_readable:
       execution:
+        produces:
+          legal_character: TOETS
         parameters:
           - name: hoeveelheid_nem_kg
             type: number
