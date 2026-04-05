@@ -247,14 +247,17 @@ where
     Ok(count)
 }
 
-/// Create a harvest job only if no non-failed harvest job exists
+/// Create a harvest job only if no pending or processing harvest job exists
 /// for the same (law_id, date) combination.
 ///
 /// Uses `INSERT ... WHERE NOT EXISTS` to reduce duplicates compared to a
-/// separate check + insert. Note: under READ COMMITTED isolation, concurrent
-/// transactions can still both insert if they evaluate the subquery before
-/// either commits. This is acceptable for the single-worker MVP — duplicates
-/// only cause redundant work, not data corruption.
+/// separate check + insert. Only `pending` and `processing` jobs block
+/// creation — failed and completed jobs do not, allowing retries.
+///
+/// Note: under READ COMMITTED isolation, concurrent transactions can still
+/// both insert if they evaluate the subquery before either commits. This is
+/// acceptable for the single-worker MVP — duplicates only cause redundant
+/// work, not data corruption.
 ///
 /// Returns `Some(Job)` if a new job was created, `None` if a matching job already exists.
 pub async fn create_harvest_job_if_not_exists<'e, E>(
@@ -274,7 +277,7 @@ where
             WHERE job_type = 'harvest'
               AND law_id = $2
               AND (payload->>'date' = $6 OR payload->>'date' IS NULL)
-              AND status != 'failed'
+              AND status IN ('pending', 'processing')
         )
         RETURNING *
         "#,
