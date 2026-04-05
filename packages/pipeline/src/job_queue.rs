@@ -247,12 +247,13 @@ where
     Ok(count)
 }
 
-/// Create a harvest job only if no pending or processing harvest job exists
+/// Create a harvest job only if no active or completed harvest job exists
 /// for the same (law_id, date) combination.
 ///
 /// Uses `INSERT ... WHERE NOT EXISTS` to reduce duplicates compared to a
-/// separate check + insert. Only `pending` and `processing` jobs block
-/// creation — failed and completed jobs do not, allowing retries.
+/// separate check + insert. `pending`, `processing`, and `completed` jobs
+/// block creation. Only `failed` jobs allow re-creation, enabling retries
+/// without causing duplicate job explosions.
 ///
 /// Note: under READ COMMITTED isolation, concurrent transactions can still
 /// both insert if they evaluate the subquery before either commits. This is
@@ -277,7 +278,7 @@ where
             WHERE job_type = 'harvest'
               AND law_id = $2
               AND (payload->>'date' = $6 OR payload->>'date' IS NULL)
-              AND status IN ('pending', 'processing')
+              AND status IN ('pending', 'processing', 'completed')
         )
         RETURNING *
         "#,
