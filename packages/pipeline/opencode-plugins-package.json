@@ -1,0 +1,8 @@
+{
+  "name": "regelrecht-opencode-plugins",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "2.0.35"
+  }
+}

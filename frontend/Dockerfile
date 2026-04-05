@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Stage 1a: Build WASM module using cargo + wasm-bindgen-cli (no wasm-pack needed)
-FROM rust:1.94-alpine AS wasm-builder
+FROM rust:1.94-alpine@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 AS wasm-builder
 RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install wasm-bindgen-cli@0.2.114 --locked
@@ -14,7 +14,7 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
 
 # Stage 1b: Build frontend (with WASM module)
-FROM node:24-alpine AS frontend-builder
+FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
 RUN --mount=type=secret,id=GITHUB_TOKEN \
@@ -24,7 +24,7 @@ COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
 RUN npm run build
 
 # Stage 2: Chef base
-FROM rust:1.94-alpine AS chef
+FROM rust:1.94-alpine@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 AS chef
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef --locked
 WORKDIR /build
@@ -56,7 +56,7 @@ RUN find packages -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-editor-api
 
 # Stage 5: Runtime
-FROM alpine:3.23
+FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
 RUN apk add --no-cache ca-certificates && \
     addgroup -S app && adduser -S app -G app
 

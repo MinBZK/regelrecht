@@ -1,4 +1,4 @@
-FROM grafana/grafana-oss:12.4.0
+FROM grafana/grafana-oss:12.4.0@sha256:b0ae311af06228bcfd4a620504b653db80f5b91e94dc3dc2a5b7dab202bcde20
 
 # Install grafanactl for Git Sync configuration
 USER root
