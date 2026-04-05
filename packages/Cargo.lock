@@ -3606,6 +3606,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "strum 0.28.0",
+ "subtle",
  "testcontainers",
  "testcontainers-modules",
  "time",

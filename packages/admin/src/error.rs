@@ -19,6 +19,7 @@ struct ErrorBody {
 pub enum ApiError {
     BadRequest(String),
     Unauthorized(String),
+    Forbidden(String),
     NotFound(String),
     Conflict(String),
     NotImplemented(String),
@@ -30,6 +31,7 @@ impl ApiError {
         match self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::NotImplemented(_) => StatusCode::NOT_IMPLEMENTED,
@@ -41,6 +43,7 @@ impl ApiError {
         match self {
             Self::BadRequest(_) => "BAD_REQUEST",
             Self::Unauthorized(_) => "UNAUTHORIZED",
+            Self::Forbidden(_) => "FORBIDDEN",
             Self::NotFound(_) => "NOT_FOUND",
             Self::Conflict(_) => "CONFLICT",
             Self::NotImplemented(_) => "NOT_IMPLEMENTED",
@@ -52,6 +55,7 @@ impl ApiError {
         match self {
             Self::BadRequest(msg)
             | Self::Unauthorized(msg)
+            | Self::Forbidden(msg)
             | Self::NotFound(msg)
             | Self::Conflict(msg)
             | Self::NotImplemented(msg)

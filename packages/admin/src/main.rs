@@ -161,7 +161,7 @@ async fn main() {
         .route("/api/jobs/{job_id}", get(handlers::get_job))
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
         .route("/api/enrich-jobs", post(handlers::create_enrich_jobs))
-        .route("/api/jobs", delete(handlers::delete_all_jobs))
+        .route("/api/jobs", delete(handlers::delete_jobs))
         .route(
             "/api/law_entries/{law_id}/reset-exhausted",
             post(handlers::reset_exhausted),

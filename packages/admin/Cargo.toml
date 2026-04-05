@@ -39,6 +39,7 @@ base64 = "0.22"
 time = "0.3"
 prometheus-client = "0.24"
 strum = "0.28"
+subtle = "2"
 
 [dev-dependencies]
 tower = "0.5"

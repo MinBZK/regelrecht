@@ -755,26 +755,53 @@ pub async fn get_job(
 
 // --- Delete Jobs ---
 
+#[derive(Deserialize)]
+pub struct DeleteJobsRequest {
+    pub job_ids: Vec<uuid::Uuid>,
+}
+
 #[derive(Serialize)]
 pub struct DeleteJobsResponse {
     pub deleted: i64,
 }
 
-pub async fn delete_all_jobs(
+pub async fn delete_jobs(
     State(state): State<AppState>,
+    body: Option<Json<DeleteJobsRequest>>,
 ) -> Result<Json<DeleteJobsResponse>, ApiError> {
     let pool = &state.pool;
 
-    let result = sqlx::query("DELETE FROM jobs WHERE status != 'processing'")
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to delete jobs");
-            ApiError::Internal("failed to delete jobs".to_string())
-        })?;
+    if let Some(Json(ref req)) = body {
+        if req.job_ids.len() > 1000 {
+            return Err(ApiError::BadRequest(
+                "job_ids array exceeds maximum size of 1000".to_string(),
+            ));
+        }
+    }
+
+    let result = match body {
+        Some(Json(req)) => {
+            if req.job_ids.is_empty() {
+                return Ok(Json(DeleteJobsResponse { deleted: 0 }));
+            }
+            sqlx::query("DELETE FROM jobs WHERE id = ANY($1) AND status != 'processing'")
+                .bind(&req.job_ids)
+                .execute(pool)
+                .await
+        }
+        None => {
+            sqlx::query("DELETE FROM jobs WHERE status != 'processing'")
+                .execute(pool)
+                .await
+        }
+    }
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to delete jobs");
+        ApiError::Internal("failed to delete jobs".to_string())
+    })?;
 
     let deleted = result.rows_affected() as i64;
-    tracing::info!(deleted, "deleted non-processing jobs");
+    tracing::info!(deleted, "deleted jobs");
 
     Ok(Json(DeleteJobsResponse { deleted }))
 }
