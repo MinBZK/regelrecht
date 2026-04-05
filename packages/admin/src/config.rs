@@ -16,13 +16,6 @@
 //! *Required together — if `OIDC_CLIENT_ID` is set, `OIDC_CLIENT_SECRET` must also be set,
 //! and either `OIDC_DISCOVERY_URL` or both `KEYCLOAK_BASE_URL` + `KEYCLOAK_REALM`.
 //!
-//! ## Unauthenticated mode
-//!
-//! | Variable                  | Required | Description                                             |
-//! |---------------------------|----------|---------------------------------------------------------|
-//! | `ALLOW_UNAUTHENTICATED`   | no       | Must be set to `true` to run without OIDC. Prevents     |
-//! |                           |          | accidentally deploying an unprotected admin panel.       |
-//!
 //! ## Base URL
 //!
 //! | Variable   | Required | Description                                                     |
@@ -78,18 +71,10 @@ impl AppConfig {
         if oidc.is_some() {
             tracing::info!("OIDC authentication is enabled");
         } else {
-            let allow = env::var("ALLOW_UNAUTHENTICATED")
-                .ok()
-                .is_some_and(|v| v.eq_ignore_ascii_case("true"));
-            if !allow {
-                return Err(
-                    "OIDC is not configured and ALLOW_UNAUTHENTICATED is not set to 'true'. \
-                     Refusing to start an unprotected admin panel. Either configure OIDC \
-                     or set ALLOW_UNAUTHENTICATED=true to explicitly opt in."
-                        .to_string(),
-                );
-            }
-            tracing::warn!("OIDC authentication is DISABLED — ALLOW_UNAUTHENTICATED=true");
+            tracing::warn!(
+                "OIDC authentication is DISABLED — admin panel is unprotected. \
+                 Configure OIDC or set ALLOW_UNAUTHENTICATED=true to silence this warning."
+            );
         }
 
         let base_url = env::var("BASE_URL")
@@ -182,7 +167,6 @@ mod tests {
         "KEYCLOAK_BASE_URL",
         "KEYCLOAK_REALM",
         "OIDC_REQUIRED_ROLE",
-        "ALLOW_UNAUTHENTICATED",
     ];
 
     fn clear_oidc_env() {
@@ -199,27 +183,13 @@ mod tests {
     }
 
     #[test]
-    fn no_oidc_vars_with_allow_unauthenticated_disables_auth() {
+    fn no_oidc_vars_disables_auth() {
         let _lock = ENV_LOCK.lock();
         clear_oidc_env();
-        env::set_var("ALLOW_UNAUTHENTICATED", "true");
 
         let config = AppConfig::try_from_env().expect("should succeed");
         assert!(config.oidc.is_none());
         assert!(!config.is_auth_enabled());
-
-        clear_oidc_env();
-    }
-
-    #[test]
-    fn no_oidc_vars_without_allow_unauthenticated_is_error() {
-        let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
-
-        let result = AppConfig::try_from_env();
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("ALLOW_UNAUTHENTICATED"));
 
         clear_oidc_env();
     }
