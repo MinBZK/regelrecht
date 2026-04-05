@@ -27,8 +27,19 @@ use crate::types::Value;
 use chrono::NaiveDate;
 use std::collections::HashMap;
 
-/// A hook index entry: (law_id, article_number, filter).
-type HookEntry = (String, String, HookFilter);
+/// A reference to a law article, used in implements and overrides indexes.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LawArticleRef {
+    pub(crate) law_id: String,
+    pub(crate) article_number: String,
+}
+
+/// A hook index entry linking a hook declaration to the law and article that defined it.
+pub(crate) struct HookEntry {
+    pub(crate) law_id: String,
+    pub(crate) article_number: String,
+    filter: HookFilter,
+}
 
 /// Resolves cross-law references and provides law registry functionality.
 ///
@@ -72,14 +83,14 @@ pub struct RuleResolver {
     /// Note: This index uses the most recent version of each law.
     /// Uses a flat string key (null-separated) to avoid two allocations per lookup.
     output_index: HashMap<String, String>,
-    /// IoC index: (law_id, article, open_term_id) -> list of (implementing_law_id, implementing_article_number)
-    implements_index: HashMap<(String, String, String), Vec<(String, String)>>,
+    /// IoC index: (law_id, article, open_term_id) -> list of implementing articles
+    implements_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
     /// Hook index: (hook_point, legal_character) -> list of (law_id, article_number, filter)
     /// Enables O(1) lookup of hooks that should fire for a given lifecycle event.
     hooks_index: HashMap<(HookPoint, String), Vec<HookEntry>>,
-    /// Override index: (target_law, target_article, output) -> list of (overriding_law, overriding_article)
+    /// Override index: (target_law, target_article, output) -> list of overriding articles
     /// Enables O(1) lookup of lex specialis overrides for a given output.
-    overrides_index: HashMap<(String, String, String), Vec<(String, String)>>,
+    overrides_index: HashMap<(String, String, String), Vec<LawArticleRef>>,
     /// Procedure index: (legal_character, procedure_id) -> (procedure definition, defining_law_id)
     /// Loaded from laws that define `procedure:` (typically the AWB).
     procedure_index: HashMap<(String, String), (ProcedureDefinition, String)>,
@@ -346,8 +357,8 @@ impl RuleResolver {
         let mut candidates: Vec<Candidate> = Vec::new();
         let mut resolved: Vec<(&ArticleBasedLaw, &Article)> = Vec::new();
 
-        for (impl_law_id, impl_article_number) in candidate_entries {
-            let Some(law) = self.get_law_for_date(impl_law_id, reference_date) else {
+        for entry in candidate_entries {
+            let Some(law) = self.get_law_for_date(&entry.law_id, reference_date) else {
                 continue;
             };
 
@@ -357,7 +368,7 @@ impl RuleResolver {
             // same value. Unscoped regulations (national) always match.
             if !Self::matches_scope(law, scope) {
                 tracing::debug!(
-                    candidate = %impl_law_id,
+                    candidate = %entry.law_id,
                     "Skipping: scope fields do not match execution parameters"
                 );
                 continue;
@@ -366,14 +377,14 @@ impl RuleResolver {
             let Some(art) = law
                 .articles
                 .iter()
-                .find(|a| a.number == *impl_article_number)
+                .find(|a| a.number == entry.article_number)
             else {
                 continue;
             };
 
             candidates.push(Candidate {
                 law,
-                article_number: impl_article_number.clone(),
+                article_number: entry.article_number.clone(),
             });
             resolved.push((law, art));
         }
@@ -583,19 +594,19 @@ impl RuleResolver {
 
         // Remove old implements index entries where this law is an implementor
         for candidates in self.implements_index.values_mut() {
-            candidates.retain(|(impl_law_id, _)| impl_law_id != law_id);
+            candidates.retain(|r| r.law_id != law_id);
         }
         self.implements_index.retain(|_, v| !v.is_empty());
 
         // Remove old hook index entries for this law
         for entries in self.hooks_index.values_mut() {
-            entries.retain(|(hook_law_id, _, _)| hook_law_id != law_id);
+            entries.retain(|entry| entry.law_id != law_id);
         }
         self.hooks_index.retain(|_, v| !v.is_empty());
 
         // Remove old override index entries for this law
         for entries in self.overrides_index.values_mut() {
-            entries.retain(|(ovr_law_id, _)| ovr_law_id != law_id);
+            entries.retain(|r| r.law_id != law_id);
         }
         self.overrides_index.retain(|_, v| !v.is_empty());
 
@@ -651,7 +662,10 @@ impl RuleResolver {
                                 decl.article.clone(),
                                 decl.open_term.clone(),
                             );
-                            let entry = (law_id.to_string(), article.number.clone());
+                            let entry = LawArticleRef {
+                                law_id: law_id.to_string(),
+                                article_number: article.number.clone(),
+                            };
                             let candidates = self.implements_index.entry(key).or_default();
                             if !candidates.contains(&entry) {
                                 candidates.push(entry);
@@ -664,11 +678,11 @@ impl RuleResolver {
                         for decl in hook_decls {
                             if let Some(ref legal_char) = decl.applies_to.legal_character {
                                 let key = (decl.hook_point, legal_char.clone());
-                                let entry = (
-                                    law_id.to_string(),
-                                    article.number.clone(),
-                                    decl.applies_to.clone(),
-                                );
+                                let entry = HookEntry {
+                                    law_id: law_id.to_string(),
+                                    article_number: article.number.clone(),
+                                    filter: decl.applies_to.clone(),
+                                };
                                 self.hooks_index.entry(key).or_default().push(entry);
                             }
                         }
@@ -678,7 +692,10 @@ impl RuleResolver {
                     if let Some(ovr_decls) = article.get_overrides() {
                         for decl in ovr_decls {
                             let key = (decl.law.clone(), decl.article.clone(), decl.output.clone());
-                            let entry = (law_id.to_string(), article.number.clone());
+                            let entry = LawArticleRef {
+                                law_id: law_id.to_string(),
+                                article_number: article.number.clone(),
+                            };
                             let candidates = self.overrides_index.entry(key).or_default();
                             if !candidates.contains(&entry) {
                                 candidates.push(entry);
@@ -698,19 +715,19 @@ impl RuleResolver {
 
         // Remove from implements index (this law as implementor)
         for candidates in self.implements_index.values_mut() {
-            candidates.retain(|(impl_law_id, _)| impl_law_id != law_id);
+            candidates.retain(|r| r.law_id != law_id);
         }
         self.implements_index.retain(|_, v| !v.is_empty());
 
         // Remove hook index entries for this law
         for entries in self.hooks_index.values_mut() {
-            entries.retain(|(hook_law_id, _, _)| hook_law_id != law_id);
+            entries.retain(|entry| entry.law_id != law_id);
         }
         self.hooks_index.retain(|_, v| !v.is_empty());
 
         // Remove override index entries for this law
         for entries in self.overrides_index.values_mut() {
-            entries.retain(|(ovr_law_id, _)| ovr_law_id != law_id);
+            entries.retain(|r| r.law_id != law_id);
         }
         self.overrides_index.retain(|_, v| !v.is_empty());
 
@@ -726,13 +743,13 @@ impl RuleResolver {
     ///
     /// Returns matching (law_id, article_number, filter) entries.
     /// Filters by stage: if the hook has a stage, it must match; if not, it defaults to "BESLUIT".
-    pub fn find_hooks(
+    pub(crate) fn find_hooks(
         &self,
         hook_point: HookPoint,
         legal_character: &str,
         decision_type: Option<&str>,
         stage: &str,
-    ) -> Vec<&(String, String, HookFilter)> {
+    ) -> Vec<&HookEntry> {
         let key = (hook_point, legal_character.to_string());
         let Some(entries) = self.hooks_index.get(&key) else {
             return Vec::new();
@@ -740,15 +757,15 @@ impl RuleResolver {
 
         entries
             .iter()
-            .filter(|(_, _, filter)| {
+            .filter(|entry| {
                 // Stage filter: absent defaults to BESLUIT (backward compat per RFC-008)
-                let hook_stage = filter.stage.as_deref().unwrap_or("BESLUIT");
+                let hook_stage = entry.filter.stage.as_deref().unwrap_or("BESLUIT");
                 if hook_stage != stage {
                     return false;
                 }
 
                 // Decision type filter: if specified, must match
-                if let Some(ref filter_dt) = filter.decision_type {
+                if let Some(ref filter_dt) = entry.filter.decision_type {
                     match decision_type {
                         Some(dt) if dt == filter_dt => {}
                         _ => return false,
@@ -763,12 +780,12 @@ impl RuleResolver {
     /// Find overrides for a specific article output.
     ///
     /// Returns matching (overriding_law_id, overriding_article_number) entries.
-    pub fn find_overrides(
+    pub(crate) fn find_overrides(
         &self,
         target_law: &str,
         target_article: &str,
         output: &str,
-    ) -> &[(String, String)] {
+    ) -> &[LawArticleRef] {
         let key = (
             target_law.to_string(),
             target_article.to_string(),
@@ -805,9 +822,10 @@ impl RuleResolver {
         for ((target_law, target_article, target_output), overriders) in &self.overrides_index {
             // Check target law exists
             let Some(law) = self.get_law(target_law) else {
-                for (ovr_law, ovr_art) in overriders {
+                for ovr in overriders {
                     errors.push(format!(
-                        "Override {ovr_law}:{ovr_art} targets non-existent law '{target_law}'"
+                        "Override {}:{} targets non-existent law '{target_law}'",
+                        ovr.law_id, ovr.article_number
                     ));
                 }
                 continue;
@@ -815,9 +833,10 @@ impl RuleResolver {
 
             // Check target article exists
             let Some(article) = law.find_article_by_number(target_article) else {
-                for (ovr_law, ovr_art) in overriders {
+                for ovr in overriders {
                     errors.push(format!(
-                        "Override {ovr_law}:{ovr_art} targets non-existent article '{target_article}' in '{target_law}'"
+                        "Override {}:{} targets non-existent article '{target_article}' in '{target_law}'",
+                        ovr.law_id, ovr.article_number
                     ));
                 }
                 continue;
@@ -825,9 +844,10 @@ impl RuleResolver {
 
             // Check target output exists
             if !article.has_output(target_output) {
-                for (ovr_law, ovr_art) in overriders {
+                for ovr in overriders {
                     errors.push(format!(
-                        "Override {ovr_law}:{ovr_art} targets non-existent output '{target_output}' on '{target_law}:{target_article}'"
+                        "Override {}:{} targets non-existent output '{target_output}' on '{target_law}:{target_article}'",
+                        ovr.law_id, ovr.article_number
                     ));
                 }
             }

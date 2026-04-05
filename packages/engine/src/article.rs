@@ -85,7 +85,7 @@ pub struct Parameter {
 pub struct Input {
     pub name: String,
     #[serde(rename = "type")]
-    pub input_type: String,
+    pub input_type: ParameterType,
     #[serde(default)]
     pub source: Option<Source>,
     #[serde(default)]
@@ -99,7 +99,7 @@ pub struct Input {
 pub struct Output {
     pub name: String,
     #[serde(rename = "type")]
-    pub output_type: String,
+    pub output_type: ParameterType,
     #[serde(default)]
     pub type_spec: Option<TypeSpec>,
     #[serde(default)]
@@ -384,7 +384,7 @@ pub struct OpenTerm {
     pub description: Option<String>,
     /// Data type of the expected value
     #[serde(rename = "type")]
-    pub term_type: String,
+    pub term_type: ParameterType,
     /// Whether an implementation is mandatory (default: true)
     #[serde(default = "default_true")]
     pub required: bool,
@@ -1768,7 +1768,7 @@ articles:
 
             assert_eq!(open_terms.len(), 1);
             assert_eq!(open_terms[0].id, "standaardpremie");
-            assert_eq!(open_terms[0].term_type, "amount");
+            assert_eq!(open_terms[0].term_type, ParameterType::Amount);
             assert!(open_terms[0].required);
             assert_eq!(open_terms[0].delegated_to.as_deref(), Some("minister"));
             assert_eq!(

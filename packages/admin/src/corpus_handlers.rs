@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use crate::error::ApiError;
 use crate::state::AppState;
 
 /// Default and maximum page size for list endpoints.
@@ -40,7 +41,7 @@ pub struct CorpusLawEntry {
 /// GET /api/sources — list all registered corpus sources with law counts.
 pub async fn list_sources(
     State(state): State<AppState>,
-) -> Result<Json<Vec<SourceSummary>>, (StatusCode, String)> {
+) -> Result<Json<Vec<SourceSummary>>, ApiError> {
     let corpus = state.corpus.read().await;
 
     let summaries: Vec<SourceSummary> = corpus
@@ -79,7 +80,7 @@ pub async fn list_sources(
 pub async fn list_corpus_laws(
     State(state): State<AppState>,
     Query(params): Query<PaginationParams>,
-) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
+) -> Result<Json<Vec<CorpusLawEntry>>, ApiError> {
     let corpus = state.corpus.read().await;
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
 
@@ -122,52 +123,47 @@ pub async fn list_corpus_laws(
 pub async fn sync_source(
     State(state): State<AppState>,
     Path(source_id): Path<String>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     // Phase 1: read lock — validate source exists and is local, clone registry for I/O
     let registry = {
         let corpus = state.corpus.read().await;
 
-        let source = corpus.registry.get_source(&source_id).ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Source '{}' not found", source_id),
-            )
-        })?;
+        let source = corpus
+            .registry
+            .get_source(&source_id)
+            .ok_or_else(|| ApiError::NotFound(format!("Source '{}' not found", source_id)))?;
 
         if matches!(
             source.source_type,
             regelrecht_corpus::SourceType::GitHub { .. }
         ) {
-            return Err((
-                StatusCode::NOT_IMPLEMENTED,
-                format!(
-                    "Source '{}' is a GitHub source — sync is not yet supported for remote sources",
-                    source_id
-                ),
-            ));
+            return Err(ApiError::NotImplemented(format!(
+                "Source '{}' is a GitHub source — sync is not yet supported for remote sources",
+                source_id
+            )));
         }
 
         corpus.registry.clone()
     }; // read lock released
 
-    // Phase 2: no lock held — do all disk I/O
-    let new_map = registry.load_local_sources().map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to reload sources: {}", e),
-        )
-    })?;
+    // Phase 2: no lock held — do all disk I/O on a blocking thread
+    // to avoid blocking the Tokio worker pool during directory traversal.
+    let new_map = tokio::task::spawn_blocking(move || registry.load_local_sources())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "spawn_blocking task failed");
+            ApiError::Internal("failed to reload sources".to_string())
+        })?
+        .map_err(|e| ApiError::Internal(format!("Failed to reload sources: {}", e)))?;
+
+    // Compute counts before acquiring write lock to minimize lock duration.
+    let source_law_count = new_map.laws().filter(|l| l.source_id == source_id).count();
+    let total_law_count = new_map.len();
 
     // Phase 3: write lock — brief swap only
     let mut corpus = state.corpus.write().await;
     corpus.source_map = new_map;
-
-    let source_law_count = corpus
-        .source_map
-        .laws()
-        .filter(|l| l.source_id == source_id)
-        .count();
-    let total_law_count = corpus.source_map.len();
+    drop(corpus);
 
     Ok((
         StatusCode::OK,

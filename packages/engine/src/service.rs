@@ -57,21 +57,23 @@ use std::rc::Rc;
 /// during cross-law reference resolution. This reduces the number of
 /// parameters passed between internal resolution functions.
 ///
-/// Cache entry: (law_id, output_name, outputs, output_provenance, parameters).
-/// Stores identity fields for runtime collision detection alongside cached outputs.
-type CacheEntry = (
-    String,
-    String,
-    BTreeMap<String, Value>,
-    BTreeMap<String, OutputProvenance>,
-    BTreeMap<String, Value>,
-);
+/// Memoization cache entry storing identity fields (for collision detection)
+/// alongside the cached outputs from a cross-law evaluation.
+struct CacheEntry {
+    law_id: String,
+    output_name: String,
+    outputs: BTreeMap<String, Value>,
+    output_provenance: BTreeMap<String, OutputProvenance>,
+    parameters: BTreeMap<String, Value>,
+}
 
 /// Uses a scoped push/pop pattern for the visited set to avoid
 /// cloning the HashSet on every cross-law descent.
 struct ResolutionContext<'a> {
     /// Date for calculations (YYYY-MM-DD)
     calculation_date: &'a str,
+    /// Cached parsed date for version selection (parsed once at construction)
+    reference_date: Option<NaiveDate>,
     /// Set of law#output keys already being resolved (cycle detection)
     visited: HashSet<String>,
     /// Current resolution depth
@@ -88,8 +90,10 @@ struct ResolutionContext<'a> {
 impl<'a> ResolutionContext<'a> {
     /// Create a new resolution context.
     fn new(calculation_date: &'a str) -> Self {
+        let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
         Self {
             calculation_date,
+            reference_date,
             visited: HashSet::new(),
             depth: 0,
             trace: None,
@@ -100,8 +104,10 @@ impl<'a> ResolutionContext<'a> {
 
     /// Create a new resolution context with trace builder.
     fn with_trace(calculation_date: &'a str, trace: Rc<RefCell<TraceBuilder>>) -> Self {
+        let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
         Self {
             calculation_date,
+            reference_date,
             visited: HashSet::new(),
             depth: 0,
             trace: Some(trace),
@@ -110,9 +116,9 @@ impl<'a> ResolutionContext<'a> {
         }
     }
 
-    /// Parse the calculation_date as NaiveDate for version selection.
+    /// Return the cached parsed date for version selection.
     fn reference_date(&self) -> Option<NaiveDate> {
-        NaiveDate::parse_from_str(self.calculation_date, "%Y-%m-%d").ok()
+        self.reference_date
     }
 
     /// Enter a cross-law resolution scope: mark key as visited and increment depth.
@@ -1063,17 +1069,17 @@ impl LawExecutionService {
     ) -> Result<ArticleResult> {
         // --- Cache check (before depth check: cached results don't increase depth) ---
         let key = cache_key(law_id, output_name, &parameters);
-        if let Some((cached_law, cached_output, cached_outputs, cached_provenance, cached_params)) =
-            res_ctx.cache.get(&key)
-        {
+        if let Some(cached) = res_ctx.cache.get(&key) {
             // Runtime collision check: hash keys are u64 so collisions are
             // theoretically possible. For legally binding decisions, we must
             // never silently return wrong results.
-            if cached_law != law_id || cached_output != output_name || cached_params != &parameters
+            if cached.law_id != law_id
+                || cached.output_name != output_name
+                || cached.parameters != parameters
             {
                 tracing::warn!(
-                    cached_law,
-                    cached_output,
+                    cached_law = cached.law_id,
+                    cached_output = cached.output_name,
                     law_id,
                     output_name,
                     "Cache key hash collision detected, bypassing cache"
@@ -1083,12 +1089,12 @@ impl LawExecutionService {
                 tracing::debug!(law_id, output_name, "Cache hit");
                 let _guard = res_ctx
                     .trace_guard(format!("{}#{}", law_id, output_name), PathNodeType::Cached);
-                if let Some(val) = cached_outputs.get(output_name) {
+                if let Some(val) = cached.outputs.get(output_name) {
                     res_ctx.trace_set_result(val.clone());
                 }
                 return Ok(ArticleResult {
-                    outputs: cached_outputs.clone(),
-                    output_provenance: cached_provenance.clone(),
+                    outputs: cached.outputs.clone(),
+                    output_provenance: cached.output_provenance.clone(),
                     resolved_inputs: BTreeMap::new(),
                     article_number: String::new(),
                     law_id: law_id.to_string(),
@@ -1171,13 +1177,13 @@ impl LawExecutionService {
         // because every read validates the stored identity fields.
         res_ctx.cache.insert(
             key,
-            (
-                law_id.to_string(),
-                output_name.to_string(),
-                result.outputs.clone(),
-                result.output_provenance.clone(),
-                params_for_cache,
-            ),
+            CacheEntry {
+                law_id: law_id.to_string(),
+                output_name: output_name.to_string(),
+                outputs: result.outputs.clone(),
+                output_provenance: result.output_provenance.clone(),
+                parameters: params_for_cache,
+            },
         );
 
         Ok(result)
@@ -1242,7 +1248,9 @@ impl LawExecutionService {
             "Firing hooks"
         );
 
-        for (hook_law_id, hook_article_number, _filter) in matching_hooks {
+        for hook_entry in matching_hooks {
+            let hook_law_id = &hook_entry.law_id;
+            let hook_article_number = &hook_entry.article_number;
             // Cycle detection: don't re-enter a hook we're already executing
             let hook_key = format!("hook:{}\0{}", hook_law_id, hook_article_number);
             if res_ctx.is_visited(&hook_key) {
@@ -1440,7 +1448,7 @@ impl LawExecutionService {
             // Filter: only overrides from the contextual law apply
             let applicable: Vec<_> = overrides
                 .iter()
-                .filter(|(ovr_law_id, _)| *ovr_law_id == contextual_law_id)
+                .filter(|ovr| ovr.law_id == contextual_law_id)
                 .collect();
 
             if applicable.is_empty() {
@@ -1454,7 +1462,9 @@ impl LawExecutionService {
                 )));
             }
 
-            let (ovr_law_id, ovr_article_number) = applicable[0];
+            let ovr_ref = applicable[0];
+            let ovr_law_id = &ovr_ref.law_id;
+            let ovr_article_number = &ovr_ref.article_number;
 
             // Cycle detection
             let ovr_key = format!("override:{}\0{}", ovr_law_id, ovr_article_number);
@@ -1549,7 +1559,8 @@ impl LawExecutionService {
             Vec::new()
         };
 
-        // Create execution context
+        // Create execution context — pass parameters by reference, only clone
+        // into combined_params below when we need ownership.
         let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
 
         // Attach trace builder if available
@@ -1571,8 +1582,7 @@ impl LawExecutionService {
         // Use ArticleEngine for action execution (it handles the internal logic)
         let engine = ArticleEngine::new(article, law);
 
-        // Now execute with resolved inputs already in context
-        // We need to pass resolved inputs as parameters to avoid re-resolution
+        // Build combined_params: start with owned parameters, merge in resolved data.
         let mut combined_params = parameters;
         for (name, value) in context.resolved_inputs() {
             combined_params.insert(name.clone(), value.clone());
@@ -1595,17 +1605,20 @@ impl LawExecutionService {
             combined_params.insert(name.clone(), value.clone());
         }
 
+        // Clone for post-hook params before moving combined_params into the engine.
+        let mut post_params = combined_params.clone();
+
         // Use traced evaluation if trace is available
         let mut result = if let Some(ref tb) = res_ctx.trace {
             engine.evaluate_with_trace(
-                combined_params.clone(),
+                combined_params,
                 res_ctx.calculation_date,
                 requested_output,
                 Rc::clone(tb),
             )?
         } else {
             engine.evaluate_with_output(
-                combined_params.clone(),
+                combined_params,
                 res_ctx.calculation_date,
                 requested_output,
             )?
@@ -1613,7 +1626,6 @@ impl LawExecutionService {
 
         // Fire post_actions hooks (between action execution and result return).
         // Post-hooks receive both parameters and article outputs.
-        let mut post_params = combined_params;
         for (name, value) in &result.outputs {
             post_params.insert(name.clone(), value.clone());
         }

@@ -759,13 +759,14 @@ pub enum LegalStatus {
 pub use regelrecht_shared::RegulatoryLayer;
 
 /// Parameter type specification
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ParameterType {
     #[default]
     String,
     Number,
     Boolean,
+    Amount,
     Date,
     Array,
     Object,

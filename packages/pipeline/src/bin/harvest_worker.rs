@@ -32,7 +32,7 @@ async fn main() {
         }
     };
 
-    tokio::spawn(async move {
+    let health_handle = tokio::spawn(async move {
         loop {
             if let Ok((mut stream, _)) = listener.accept().await {
                 use tokio::io::AsyncWriteExt;
@@ -45,8 +45,19 @@ async fn main() {
         }
     });
 
-    if let Err(e) = run_harvest_worker(config).await {
-        tracing::error!(error = %e, "harvest worker exited with error");
-        std::process::exit(1);
+    tokio::select! {
+        result = run_harvest_worker(config) => {
+            if let Err(e) = result {
+                tracing::error!(error = %e, "harvest worker exited with error");
+                std::process::exit(1);
+            }
+        }
+        result = health_handle => {
+            match result {
+                Ok(_) => tracing::error!("health endpoint task exited unexpectedly"),
+                Err(e) => tracing::error!(error = %e, "health endpoint task panicked"),
+            }
+            std::process::exit(1);
+        }
     }
 }
