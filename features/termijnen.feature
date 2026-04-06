@@ -85,7 +85,7 @@ Feature: Termijnen — Algemene termijnenwet en AWB beslistermijnen
   # === ATW Art 4: Uitgesloten termijnen ===
 
   Scenario: Termijn in weken binnen grens — ATW is van toepassing
-    # 6 weken bezwaartermijn -> ATW geldt (<=12 weken)
+    # 6 weken bezwaartermijn -> ATW geldt (niet meer dan 12 weken / 3 maanden)
     Given a citizen with the following data:
       | termijn_eenheid                        | weken |
       | termijn_waarde                         | 6     |

@@ -25,11 +25,11 @@
 /// typically involves ~10-20 interconnected regulations).
 pub const MAX_LOADED_LAWS: usize = 100;
 
-/// Maximum YAML document size in bytes (10 MB).
+/// Maximum YAML document size in bytes (5 MB).
 ///
 /// Prevents YAML bomb attacks and excessive memory usage during parsing.
 /// Large laws like the Besluit activiteiten leefomgeving can exceed 3 MB.
-pub const MAX_YAML_SIZE: usize = 10_000_000;
+pub const MAX_YAML_SIZE: usize = 5_000_000;
 
 /// Maximum number of elements in any array within a law document.
 ///
