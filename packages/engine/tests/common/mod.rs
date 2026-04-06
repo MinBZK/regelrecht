@@ -14,3 +14,16 @@ pub fn regulation_base_path() -> PathBuf {
                 .join("regulation")
         })
 }
+
+/// Get the context base path from `CONTEXT_PATH` env var or default relative path.
+pub fn context_base_path() -> PathBuf {
+    std::env::var("CONTEXT_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join("corpus")
+                .join("context")
+        })
+}

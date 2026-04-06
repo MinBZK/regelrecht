@@ -1,0 +1,25 @@
+---
+law: algemene_termijnenwet
+description: >-
+  Verlengt termijnen die op zaterdag, zondag of
+  feestdag eindigen (art 1.1). Van toepassing op
+  alle wettelijke en AMvB-termijnen tenzij
+  uitgesloten door art 4.
+hooks:
+  - article: '1.1'
+    hook_point: post_actions
+    applies_to:
+      legal_character: BESCHIKKING
+      stage: BEKENDMAKING
+    trigger: >-
+      Elke termijn_einddatum output van type date
+    effect: >-
+      Verlengt termijn_einddatum tot eerstvolgende
+      werkdag als deze op zaterdag, zondag of
+      feestdag valt
+    requires_context:
+      - type: calendar
+        path: nl/calendar/{year}.yaml
+        description: >-
+          Feestdagdatums voor het jaar waarin de
+          termijn eindigt

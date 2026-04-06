@@ -1,0 +1,39 @@
+---
+law: algemene_wet_bestuursrecht
+description: >-
+  Algemeen bestuursrecht — cross-cutting procedurele
+  vereisten voor beschikkingen.
+hooks:
+  - article: '3:46'
+    hook_point: pre_actions
+    applies_to:
+      legal_character: BESCHIKKING
+      stage: BESLUIT
+    trigger: >-
+      Elk besluit met legal_character BESCHIKKING
+    effect: >-
+      Stelt motivering_vereist = true
+
+  - article: '6:7'
+    hook_point: post_actions
+    applies_to:
+      legal_character: BESCHIKKING
+      stage: BESLUIT
+    trigger: >-
+      Elk besluit met legal_character BESCHIKKING
+    effect: >-
+      Stelt bezwaartermijn_weken = 6. Kan worden
+      overridden door lex specialis (bv.
+      Vreemdelingenwet art 69 stelt 4 weken).
+
+  - article: '6:8'
+    hook_point: post_actions
+    applies_to:
+      legal_character: BESCHIKKING
+      stage: BEKENDMAKING
+    trigger: >-
+      Bekendmaking van een BESCHIKKING
+    effect: >-
+      Berekent bezwaartermijn_startdatum (dag na
+      bekendmaking) en bezwaartermijn_einddatum
+      (bekendmaking + bezwaartermijn_weken).
