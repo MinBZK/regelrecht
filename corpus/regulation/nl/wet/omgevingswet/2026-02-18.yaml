@@ -211,7 +211,7 @@ articles:
           type: string
           required: true
           delegated_to: regering
-          delegation_type: ALGEMENE_MAATREGEL_VAN_BESTUUR
+          delegation_type: AMVB
           legal_basis: artikel 1.7a lid 2 Omgevingswet
   - number: 1.7a.2.a
     text: de omvang van de nadelige gevolgen voor de fysieke leefomgeving,
@@ -7928,10 +7928,20 @@ articles:
         paragraaf: 18.1.3
         afdeling: '18.1'
     machine_readable:
+      untranslatables:
+        - construct: >-
+            decision_type INTREKKING
+          reason: >-
+            Intrekking van een omgevingsvergunning is
+            een eigenstandig bestuursrechtelijk
+            rechtshandeling, maar het schema kent geen
+            decision_type INTREKKING
+          suggestion: >-
+            Add INTREKKING to decision_type enum in
+            schema
       execution:
         produces:
           legal_character: BESCHIKKING
-          decision_type: AFWIJZING
         parameters:
           - name: intrekking_op_grond_van_artikel_18_10
             type: boolean
