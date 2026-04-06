@@ -4,8 +4,22 @@
 
 use cucumber::{gherkin::Step, given};
 
+use std::path::PathBuf;
+
 use crate::helpers::value_conversion::{convert_gherkin_value, parse_table_to_params};
 use crate::world::RegelrechtWorld;
+
+fn context_base_path() -> PathBuf {
+    std::env::var("CONTEXT_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join("corpus")
+                .join("context")
+        })
+}
 
 // =============================================================================
 // Context data steps (corpus/context/)
@@ -13,7 +27,7 @@ use crate::world::RegelrechtWorld;
 
 #[given(expr = "the holiday calendar for year {string}")]
 fn load_holiday_calendar(world: &mut RegelrechtWorld, year: String) {
-    let calendar_path = crate::common::context_base_path()
+    let calendar_path = context_base_path()
         .join("nl")
         .join("calendar")
         .join(format!("{}.yaml", year));
