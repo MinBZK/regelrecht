@@ -714,7 +714,12 @@ articles:
                     subject: $werkdag8
                     value: true
                   then: $dag8
-              default: $termijn_einddatum
+              # 9 kandidaten volstaat: max aaneengesloten
+              # niet-werkdagen in NL is ~4 (Paasweekend).
+              # Mocht art 3.3 (aanvullende feestdagen)
+              # ooit meer dan 4 extra dagen toevoegen,
+              # dan moet dit worden uitgebreid.
+              default: $dag8
 
   - number: '1.2'
     text: >-

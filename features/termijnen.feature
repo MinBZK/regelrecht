@@ -70,6 +70,15 @@ Feature: Termijnen — Algemene termijnenwet en AWB beslistermijnen
     When the termijnenwet deadline extension is executed
     Then the output "verlengde_einddatum" is "2025-05-30"
 
+  Scenario: Koningsdag 2025 verschoven naar zaterdag — verlenging naar maandag
+    # 2025: Koningsdag op za 26 april (verschoven van zo 27)
+    # za 26 (Koningsdag) -> zo 27 -> ma 28 werkdag!
+    Given a citizen with the following data:
+      | termijn_einddatum | 2025-04-26 |
+    And the holiday calendar for year "2025"
+    When the termijnenwet deadline extension is executed
+    Then the output "verlengde_einddatum" is "2025-04-28"
+
   # === Cross-year: 2026 Pasen ===
 
   Scenario: 2026 Goede Vrijdag — verlenging over Paasweekend
