@@ -9,6 +9,12 @@ hooks:
   - article: '1.1'
     hook_point: post_actions
     applies_to:
+      # NB: ATW art 1 geldt voor ALLE wettelijke
+      # termijnen, niet alleen BESCHIKKING. De hook
+      # is nu beperkt tot BESCHIKKING/BEKENDMAKING
+      # omdat dat het enige hook_point is dat de
+      # engine ondersteunt. Uitbreiding naar alle
+      # termijnen vereist engine-wijziging (#495).
       legal_character: BESCHIKKING
       stage: BEKENDMAKING
     trigger: >-

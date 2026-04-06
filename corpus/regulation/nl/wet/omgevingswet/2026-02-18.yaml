@@ -19369,9 +19369,16 @@ articles:
             required: false
             description: Of de beslistermijn is verlengd (eenmaal met ten hoogste 6 weken)
         output:
+          - name: beslistermijn_weken
+            type: number
+            description: >-
+              Totale beslistermijn in weken (overrides
+              AWB art 4:13)
           - name: uiterste_beslisdatum
             type: date
-            description: Uiterste datum waarop het bevoegd gezag moet beslissen
+            description: >-
+              Uiterste datum waarop het bevoegd gezag
+              moet beslissen
         actions:
           - output: basis_termijn_weken
             value:
@@ -19393,7 +19400,7 @@ articles:
                     value: true
                   then: 6
               default: 0
-          - output: totale_termijn_weken
+          - output: beslistermijn_weken
             value:
               operation: ADD
               values:
@@ -19403,7 +19410,7 @@ articles:
             value:
               operation: DATE_ADD
               date: $datum_ontvangst_aanvraag
-              weeks: $totale_termijn_weken
+              weeks: $beslistermijn_weken
   - number: 16.64.2
     text: |-
       Het bevoegd gezag kan de beslistermijnen, bedoeld in het eerste lid, eenmaal met ten hoogste zes weken verlengen.

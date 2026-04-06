@@ -85,7 +85,7 @@ mod tests {
         assert!(MAX_YAML_SIZE <= 10_000_000, "Should not allow 10MB+");
 
         assert!(MAX_ARRAY_SIZE >= 100, "Should allow reasonable arrays");
-        assert!(MAX_ARRAY_SIZE <= 20_000, "Should not allow huge arrays");
+        assert!(MAX_ARRAY_SIZE <= 16_000, "Should not allow huge arrays");
 
         assert!(
             MAX_RESOLUTION_DEPTH >= 10,
