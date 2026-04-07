@@ -421,6 +421,20 @@ impl ValueResolver for RuleContext {
     fn has_trace(&self) -> bool {
         RuleContext::has_trace(self)
     }
+
+    fn execute_foreach_op(
+        &self,
+        collection: &crate::article::ActionValue,
+        as_name: &str,
+        body: &crate::article::ActionValue,
+        filter: Option<&crate::article::ActionValue>,
+        combine: Option<&str>,
+        depth: usize,
+    ) -> Option<Result<Value>> {
+        Some(crate::operations::execute_foreach(
+            collection, as_name, body, filter, combine, self, depth,
+        ))
+    }
 }
 
 /// Convert a NaiveDate to a Value object with year, month, day properties.

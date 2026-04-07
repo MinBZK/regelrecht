@@ -104,6 +104,25 @@ pub trait ValueResolver {
         false
     }
 
+    /// Execute a FOREACH operation if the resolver supports child scopes.
+    ///
+    /// Returns `None` if FOREACH is not supported (e.g., for simple test resolvers).
+    /// Returns `Some(Result<Value>)` if FOREACH was executed.
+    ///
+    /// The default implementation returns `None`, causing the caller to fall
+    /// through to an error. Implementations that support child scopes (like
+    /// `RuleContext`) should override this to delegate to `execute_foreach`.
+    fn execute_foreach_op(
+        &self,
+        _collection: &ActionValue,
+        _as_name: &str,
+        _body: &ActionValue,
+        _filter: Option<&ActionValue>,
+        _combine: Option<&str>,
+        _depth: usize,
+    ) -> Option<Result<Value>> {
+        None
+    }
 }
 
 /// Evaluate an ActionValue to a concrete Value.
@@ -320,12 +339,29 @@ fn execute_operation_internal<R: ValueResolver>(
         }
         ActionOperation::DayOfWeek { date } => execute_day_of_week(date, resolver, depth),
 
-        // Collection iteration — FOREACH requires RuleContext for child scopes.
-        // When called via the generic ValueResolver path, it is not available.
-        // The engine layer (engine.rs) handles FOREACH before reaching this dispatch.
-        ActionOperation::Foreach { .. } => Err(EngineError::InvalidOperation(
-            "FOREACH must be executed via the engine layer (requires RuleContext)".to_string(),
-        )),
+        // Collection iteration — FOREACH requires child scopes.
+        // Delegate to the resolver's execute_foreach_op method, which returns
+        // None for resolvers that don't support child scopes (falls through to error).
+        ActionOperation::Foreach {
+            collection,
+            as_name,
+            body,
+            filter,
+            combine,
+        } => resolver
+            .execute_foreach_op(
+                collection,
+                as_name,
+                body,
+                filter.as_ref(),
+                combine.as_deref(),
+                depth,
+            )
+            .unwrap_or_else(|| {
+                Err(EngineError::InvalidOperation(
+                    "FOREACH requires a resolver that supports child scopes".to_string(),
+                ))
+            }),
     }
 }
 
@@ -427,6 +463,70 @@ where
 // Arithmetic Operations
 // =============================================================================
 
+/// Add (sum/concatenate) a slice of already-evaluated Values.
+///
+/// Polymorphic: numbers are summed, arrays concatenated, strings concatenated.
+/// The first element's type determines the mode. Nulls are skipped in numeric mode.
+fn add_values(evaluated: &[Value]) -> Result<Value> {
+    if evaluated.is_empty() {
+        return Ok(Value::Int(0));
+    }
+
+    match &evaluated[0] {
+        Value::Array(_) => {
+            let mut result = Vec::new();
+            for val in evaluated {
+                match val {
+                    Value::Array(arr) => result.extend(arr.iter().cloned()),
+                    _ => {
+                        return Err(EngineError::TypeMismatch {
+                            expected: "array".to_string(),
+                            actual: format!("{:?}", val),
+                        })
+                    }
+                }
+            }
+            Ok(Value::Array(result))
+        }
+        Value::String(_) => {
+            let mut result = String::new();
+            for val in evaluated {
+                match val {
+                    Value::String(s) => result.push_str(s),
+                    _ => {
+                        return Err(EngineError::TypeMismatch {
+                            expected: "string".to_string(),
+                            actual: format!("{:?}", val),
+                        })
+                    }
+                }
+            }
+            Ok(Value::String(result))
+        }
+        Value::Int(_) | Value::Float(_) | Value::Null => {
+            let mut sum = 0.0;
+            let mut has_float = false;
+            for val in evaluated {
+                match val {
+                    Value::Int(_) => sum += to_number(val)?,
+                    Value::Float(f) => {
+                        sum += f;
+                        has_float = true;
+                    }
+                    Value::Null => {} // Skip nulls in sum
+                    _ => return Err(type_error("number", val)),
+                }
+            }
+            Ok(if has_float {
+                Value::Float(sum)
+            } else {
+                Value::Int(f64_to_i64_safe(sum)?)
+            })
+        }
+        _ => Err(type_error("number, string, or array", &evaluated[0])),
+    }
+}
+
 /// Execute ADD operation: sum numbers, concatenate arrays, or concatenate strings.
 ///
 /// The type of the first value determines the operation mode:
@@ -450,62 +550,7 @@ fn execute_add<R: ValueResolver>(
         return Ok(tainted);
     }
 
-    // Determine type from first value
-    match &evaluated[0] {
-        Value::Array(_) => {
-            // Concatenate arrays
-            let mut result = Vec::new();
-            for val in &evaluated {
-                match val {
-                    Value::Array(arr) => result.extend(arr.iter().cloned()),
-                    _ => {
-                        return Err(EngineError::TypeMismatch {
-                            expected: "array".to_string(),
-                            actual: format!("{:?}", val),
-                        })
-                    }
-                }
-            }
-            Ok(Value::Array(result))
-        }
-        Value::String(_) => {
-            // Concatenate strings
-            let mut result = String::new();
-            for val in &evaluated {
-                match val {
-                    Value::String(s) => result.push_str(s),
-                    _ => {
-                        return Err(EngineError::TypeMismatch {
-                            expected: "string".to_string(),
-                            actual: format!("{:?}", val),
-                        })
-                    }
-                }
-            }
-            Ok(Value::String(result))
-        }
-        Value::Int(_) | Value::Float(_) => {
-            // Original numeric addition
-            let mut sum = 0.0;
-            let mut has_float = false;
-            for val in &evaluated {
-                match val {
-                    Value::Int(_) => sum += to_number(val)?,
-                    Value::Float(f) => {
-                        sum += f;
-                        has_float = true;
-                    }
-                    _ => return Err(type_error("number", val)),
-                }
-            }
-            Ok(if has_float {
-                Value::Float(sum)
-            } else {
-                Value::Int(f64_to_i64_safe(sum)?)
-            })
-        }
-        _ => Err(type_error("number, string, or array", &evaluated[0])),
-    }
+    add_values(&evaluated)
 }
 
 /// Execute SUBTRACT operation: first value minus all subsequent values.
@@ -1419,61 +1464,9 @@ pub fn execute_foreach(
     }
 }
 
-/// Combine results with ADD (polymorphic: numbers, strings, arrays).
+/// Combine FOREACH results with ADD. Delegates to the shared `add_values` helper.
 fn combine_add(results: &[Value]) -> Result<Value> {
-    if results.is_empty() {
-        return Ok(Value::Int(0));
-    }
-
-    // Determine type from first element
-    match &results[0] {
-        Value::String(_) => {
-            let mut s = String::new();
-            for v in results {
-                match v {
-                    Value::String(part) => s.push_str(part),
-                    _ => s.push_str(&format!("{:?}", v)),
-                }
-            }
-            Ok(Value::String(s))
-        }
-        Value::Array(_) => {
-            let mut arr = Vec::new();
-            for v in results {
-                match v {
-                    Value::Array(a) => arr.extend(a.iter().cloned()),
-                    other => arr.push(other.clone()),
-                }
-            }
-            Ok(Value::Array(arr))
-        }
-        _ => {
-            // Numeric sum
-            let mut sum: f64 = 0.0;
-            let mut all_int = true;
-            for v in results {
-                match v {
-                    Value::Int(i) => sum += *i as f64,
-                    Value::Float(f) => {
-                        sum += f;
-                        all_int = false;
-                    }
-                    Value::Null => {} // Skip nulls in sum
-                    _ => {
-                        return Err(EngineError::TypeMismatch {
-                            expected: "number".to_string(),
-                            actual: v.type_name().to_string(),
-                        })
-                    }
-                }
-            }
-            if all_int {
-                Ok(Value::Int(sum as i64))
-            } else {
-                Ok(Value::Float(sum))
-            }
-        }
-    }
+    add_values(results)
 }
 
 /// Combine results with MIN or MAX.
@@ -1510,7 +1503,7 @@ fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
     if best.is_infinite() {
         Ok(Value::Null) // All values were null
     } else if all_int {
-        Ok(Value::Int(best as i64))
+        Ok(Value::Int(f64_to_i64_safe(best)?))
     } else {
         Ok(Value::Float(best))
     }
@@ -2883,5 +2876,305 @@ mod tests {
         ));
         assert!(!values_equal(&Value::Int(0), &Value::Float(f64::NAN)));
         assert!(!values_equal(&Value::Float(f64::NAN), &Value::Int(0)));
+    }
+
+    // -------------------------------------------------------------------------
+    // FOREACH Operations Tests (using RuleContext for child scope support)
+    // -------------------------------------------------------------------------
+
+    mod foreach_ops {
+        use super::*;
+        use crate::context::RuleContext;
+
+        /// Helper to create a RuleContext with given parameters.
+        fn make_ctx(params: Vec<(&str, Value)>) -> RuleContext {
+            let p: BTreeMap<String, Value> = params
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
+            RuleContext::new(p, "2025-06-15").unwrap()
+        }
+
+        #[test]
+        fn test_foreach_basic_combine_add() {
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(10), Value::Int(20), Value::Int(30)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(60));
+        }
+
+        #[test]
+        fn test_foreach_body_with_operation() {
+            // FOREACH items as x: MULTIPLY(x, 2), combine ADD
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            )]);
+
+            let mul_op = ActionOperation::Multiply {
+                values: vec![var("x"), lit(2i64)],
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: ActionValue::Operation(Box::new(mul_op)),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            // 1*2 + 2*2 + 3*2 = 2+4+6 = 12
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(12));
+        }
+
+        #[test]
+        fn test_foreach_filter_skip_elements() {
+            // FOREACH [1, 2, 3, 4, 5] as x: x, filter x > 2, combine ADD
+            let ctx = make_ctx(vec![(
+                "nums",
+                Value::Array(vec![
+                    Value::Int(1),
+                    Value::Int(2),
+                    Value::Int(3),
+                    Value::Int(4),
+                    Value::Int(5),
+                ]),
+            )]);
+
+            let filter_op = ActionOperation::GreaterThan {
+                subject: var("x"),
+                value: lit(2i64),
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("nums"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(ActionValue::Operation(Box::new(filter_op))),
+                combine: Some("ADD".to_string()),
+            };
+
+            // Only 3+4+5 = 12
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(12));
+        }
+
+        #[test]
+        fn test_foreach_empty_collection() {
+            let ctx = make_ctx(vec![("items", Value::Array(vec![]))]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            // Empty collection with ADD combine returns 0
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_null_collection() {
+            let ctx = make_ctx(vec![("items", Value::Null)]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            // Null collection treated as empty array, ADD of empty = 0
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_propagation() {
+            let untranslatable = Value::Untranslatable {
+                article: "42".to_string(),
+                construct: "not applicable".to_string(),
+            };
+
+            let ctx = make_ctx(vec![("items", untranslatable.clone())]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            // Untranslatable collection should propagate
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(result.is_untranslatable());
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_in_body() {
+            let untranslatable = Value::Untranslatable {
+                article: "7".to_string(),
+                construct: "open norm".to_string(),
+            };
+
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), untranslatable.clone(), Value::Int(3)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            // Untranslatable in body should propagate immediately
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(result.is_untranslatable());
+        }
+
+        #[test]
+        fn test_foreach_single_value_wrapping() {
+            // Non-array collection is wrapped in a single-element array
+            let ctx = make_ctx(vec![("item", Value::Int(42))]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("item"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(42));
+        }
+
+        #[test]
+        fn test_foreach_no_combine_returns_array() {
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(10), Value::Int(20)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: None,
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Array(vec![Value::Int(10), Value::Int(20)]));
+        }
+
+        #[test]
+        fn test_foreach_combine_or() {
+            let ctx = make_ctx(vec![(
+                "flags",
+                Value::Array(vec![Value::Bool(false), Value::Bool(true), Value::Bool(false)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("flags"),
+                as_name: "f".to_string(),
+                body: var("f"),
+                filter: None,
+                combine: Some("OR".to_string()),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_foreach_combine_and() {
+            let ctx = make_ctx(vec![(
+                "flags",
+                Value::Array(vec![Value::Bool(true), Value::Bool(true)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("flags"),
+                as_name: "f".to_string(),
+                body: var("f"),
+                filter: None,
+                combine: Some("AND".to_string()),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_foreach_nested_in_add() {
+            // ADD(FOREACH([1,2,3] as x: x, combine ADD), 100)
+            // This tests the key fix: FOREACH as a nested operation inside ADD.
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            )]);
+
+            let foreach_op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some("ADD".to_string()),
+            };
+
+            let add_op = ActionOperation::Add {
+                values: vec![
+                    ActionValue::Operation(Box::new(foreach_op)),
+                    lit(100i64),
+                ],
+            };
+
+            // FOREACH sum = 1+2+3 = 6, then ADD(6, 100) = 106
+            let result = execute_operation(&add_op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(106));
+        }
+
+        #[test]
+        fn test_foreach_without_child_scope_support() {
+            // TestResolver does NOT implement execute_foreach_op,
+            // so FOREACH should return an appropriate error.
+            let resolver = TestResolver::new().with_var(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(2)]),
+            );
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: None,
+            };
+
+            let result = execute_operation(&op, &resolver, 0);
+            assert!(matches!(result, Err(EngineError::InvalidOperation(ref msg))
+                if msg.contains("child scopes")));
+        }
     }
 }

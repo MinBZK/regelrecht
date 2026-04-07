@@ -19,11 +19,11 @@
 //! println!("Output: {:?}", result.outputs);
 //! ```
 
-use crate::article::{Action, ActionOperation, ActionValue, Article, ArticleBasedLaw};
+use crate::article::{Action, ActionOperation, Article, ArticleBasedLaw};
 use crate::config;
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
-use crate::operations::{evaluate_value, execute_foreach, execute_operation};
+use crate::operations::{evaluate_value, execute_operation};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{PathNodeType, Value};
 use std::cell::RefCell;
@@ -467,54 +467,11 @@ impl<'a> ArticleEngine<'a> {
         // When an action has an operation, the value/subject fields are operands, not direct results
         if let Some(operation) = &action.operation {
             let action_op = self.action_to_operation(action, operation)?;
-
-            // FOREACH needs special handling: it requires RuleContext for child scopes,
-            // which the generic ValueResolver dispatch in execute_operation cannot provide.
-            if let ActionOperation::Foreach {
-                collection,
-                as_name,
-                body,
-                filter,
-                combine,
-            } = &action_op
-            {
-                return execute_foreach(
-                    collection,
-                    as_name,
-                    body,
-                    filter.as_ref(),
-                    combine.as_deref(),
-                    context,
-                    0,
-                );
-            }
-
             return execute_operation(&action_op, context, 0);
         }
 
         // Check for direct value (only when no operation is specified)
         if let Some(value) = &action.value {
-            // Handle FOREACH when specified as a nested operation in value
-            if let ActionValue::Operation(op) = value {
-                if let ActionOperation::Foreach {
-                    collection,
-                    as_name,
-                    body,
-                    filter,
-                    combine,
-                } = op.as_ref()
-                {
-                    return execute_foreach(
-                        collection,
-                        as_name,
-                        body,
-                        filter.as_ref(),
-                        combine.as_deref(),
-                        context,
-                        0,
-                    );
-                }
-            }
             return evaluate_value(value, context, 0);
         }
 
