@@ -10,7 +10,7 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
@@ -196,9 +196,11 @@ async fn main() {
         .layer(session_layer)
         .layer(axum_middleware::from_fn(middleware::security_headers))
         .layer(TraceLayer::new_for_http())
-        .fallback_service(ServeDir::new(
-            env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string()),
-        ));
+        .fallback_service({
+            let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
+            let index_path = format!("{static_dir}/index.html");
+            ServeDir::new(&static_dir).fallback(ServeFile::new(index_path))
+        });
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
     tracing::info!("listening on {addr}");
