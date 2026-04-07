@@ -40,7 +40,7 @@ ENV GF_ALERTING_ENABLED=false
 # Enable Git Sync (experimental) for dashboard version control
 ENV GF_FEATURE_TOGGLES_ENABLE=provisioning,kubernetesDashboards
 
-# Copy provisioning files and entrypoint
+# Copy provisioning files and entrypoint (includes GF_SECURITY_ADMIN_PASSWORD default fix)
 COPY provisioning/ /etc/grafana/provisioning/
 COPY entrypoint.sh /entrypoint.sh
 
