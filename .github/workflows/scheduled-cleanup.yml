@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Cleanup stale ZAD deployments and GitHub environments
-        uses: RijksICTGilde/zad-actions/scheduled-cleanup@v3
+        uses: RijksICTGilde/zad-actions/scheduled-cleanup@v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
