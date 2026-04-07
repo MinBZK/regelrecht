@@ -317,16 +317,26 @@ impl RepoBackend for GitBackend {
 
         let result = if self.local_only {
             // Create session branch on first persist
-            {
+            let branch_ok = {
                 let mut branched = self.branched.lock().await;
                 if !*branched {
-                    if let Some(branch) = &self.session_branch {
-                        self.client.create_local_branch(branch).await?;
+                    let res = if let Some(branch) = &self.session_branch {
+                        self.client.create_local_branch(branch).await
+                    } else {
+                        Ok(())
+                    };
+                    if res.is_ok() {
+                        *branched = true;
                     }
-                    *branched = true;
+                    res
+                } else {
+                    Ok(())
                 }
+            };
+            match branch_ok {
+                Ok(()) => self.client.commit_local(&paths, &ctx.message).await,
+                Err(e) => Err(e),
             }
-            self.client.commit_local(&paths, &ctx.message).await
         } else {
             self.client.commit_and_push(&paths, &ctx.message).await
         };

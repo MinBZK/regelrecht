@@ -213,7 +213,11 @@ pub async fn get_scenario(
     (StatusCode, String),
 > {
     // Reject path traversal attempts
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+    if filename.contains('/')
+        || filename.contains('\\')
+        || filename.contains("..")
+        || filename.contains('\0')
+    {
         return Err((StatusCode::BAD_REQUEST, "Invalid filename".to_string()));
     }
 
@@ -259,7 +263,11 @@ pub async fn get_scenario(
 
 /// Validate a scenario filename (no path traversal, must end with `.feature`).
 fn validate_scenario_filename(filename: &str) -> Result<(), (StatusCode, String)> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+    if filename.contains('/')
+        || filename.contains('\\')
+        || filename.contains("..")
+        || filename.contains('\0')
+    {
         return Err((StatusCode::BAD_REQUEST, "Invalid filename".to_string()));
     }
     if !filename.ends_with(".feature") {
