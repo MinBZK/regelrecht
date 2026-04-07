@@ -40,13 +40,13 @@ time = "0.3"
 prometheus-client = "0.24"
 strum = "0.28"
 subtle = "2"
+sha2 = "0.10"
 
 [dev-dependencies]
 tower = "0.5"
 tower-sessions-memory-store = "0.14"
 wiremock = "0.6"
 rsa = "0.9"
-sha2 = "0.10"
 uuid = { version = "1", features = ["v4"] }
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres"] }

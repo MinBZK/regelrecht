@@ -3,6 +3,7 @@ use axum::http::header;
 use axum::http::{HeaderValue, Method};
 use axum::middleware::Next;
 use axum::response::Response;
+use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
@@ -51,7 +52,11 @@ pub async fn require_auth(
     // Check bearer token first (fast path for programmatic access).
     if let Some(ref api_key) = state.config.api_key {
         if let Some(token) = extract_bearer_token(&request) {
-            let token_matches = token.as_bytes().ct_eq(api_key.as_bytes()).into();
+            // Hash both values to fixed-length digests before comparing,
+            // so timing does not leak the API key length.
+            let token_hash = Sha256::digest(token.as_bytes());
+            let key_hash = Sha256::digest(api_key.as_bytes());
+            let token_matches = token_hash.ct_eq(&key_hash).into();
             if token_matches {
                 if !API_KEY_ALLOWED_METHODS.contains(request.method()) {
                     tracing::warn!(
