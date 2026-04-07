@@ -296,9 +296,16 @@ async fn process_next_job(
                         _ => {}
                     }
 
+                    // Propagate the original requested date (not the parent's resolved
+                    // consolidation date) so the entire reference chain harvests each
+                    // law at its own correct consolidation for the same point in time.
+                    let follow_up_date = payload
+                        .date
+                        .clone()
+                        .or_else(|| Some(result.harvest_date.clone()));
                     let follow_up_payload = HarvestPayload {
                         bwb_id: bwb_id.clone(),
-                        date: Some(result.harvest_date.clone()),
+                        date: follow_up_date,
                         max_size_mb: payload.max_size_mb,
                         depth: Some(next_depth),
                     };
@@ -312,13 +319,8 @@ async fn process_next_job(
                     let req = CreateJobRequest::new(JobType::Harvest, bwb_id.as_str())
                         .with_priority(Priority::new(30))
                         .with_payload(payload_json);
-                    match job_queue::create_harvest_job_if_not_exists(
-                        pool,
-                        req,
-                        &result.harvest_date,
-                    )
-                    .await
-                    {
+                    let dedup_date = payload.date.as_deref().unwrap_or(&result.harvest_date);
+                    match job_queue::create_harvest_job_if_not_exists(pool, req, dedup_date).await {
                         Ok(Some(_)) => created += 1,
                         Ok(None) => {} // already exists, skip
                         Err(e) => tracing::warn!(

@@ -10,11 +10,6 @@ ignore = [
     # Transitive dep via openidconnect -> rsa; no patched version available.
     # We don't use RSA directly; the OIDC flow uses HTTPS transport security.
     "RUSTSEC-2023-0071",
-    # RUSTSEC-2026-0066: PAX extension validation in astral-tokio-tar 0.5.6.
-    # Transitive dep via testcontainers 0.27.1 (dev-only); no upgrade path
-    # until testcontainers releases a version using astral-tokio-tar >=0.6.0.
-    # Low severity, requires a secondary vulnerable tar parser to exploit.
-    "RUSTSEC-2026-0066",
 ]
 
 [licenses]

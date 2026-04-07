@@ -251,10 +251,14 @@ where
 /// for the same (law_id, date) combination.
 ///
 /// Uses `INSERT ... WHERE NOT EXISTS` to reduce duplicates compared to a
-/// separate check + insert. Note: under READ COMMITTED isolation, concurrent
-/// transactions can still both insert if they evaluate the subquery before
-/// either commits. This is acceptable for the single-worker MVP — duplicates
-/// only cause redundant work, not data corruption.
+/// separate check + insert. Only `failed` jobs allow re-creation, enabling
+/// retries. Uses negation (`!= 'failed'`) rather than an explicit allowlist
+/// so that any future job statuses automatically block duplicate creation.
+///
+/// Note: under READ COMMITTED isolation, concurrent transactions can still
+/// both insert if they evaluate the subquery before either commits. This is
+/// acceptable for the single-worker MVP — duplicates only cause redundant
+/// work, not data corruption.
 ///
 /// Returns `Some(Job)` if a new job was created, `None` if a matching job already exists.
 pub async fn create_harvest_job_if_not_exists<'e, E>(
