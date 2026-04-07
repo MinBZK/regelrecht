@@ -271,6 +271,24 @@ pub enum ActionOperation {
     },
     #[serde(rename = "DAY_OF_WEEK")]
     DayOfWeek { date: ActionValue },
+
+    // Collection iteration
+    #[serde(rename = "FOREACH")]
+    Foreach {
+        collection: ActionValue,
+        #[serde(default = "default_foreach_as")]
+        #[serde(rename = "as")]
+        as_name: String,
+        body: ActionValue,
+        #[serde(default)]
+        filter: Option<ActionValue>,
+        #[serde(default)]
+        combine: Option<String>,
+    },
+}
+
+fn default_foreach_as() -> String {
+    "item".to_string()
 }
 
 impl ActionOperation {
@@ -302,6 +320,7 @@ impl ActionOperation {
             ActionOperation::DateAdd { .. } => "DATE_ADD",
             ActionOperation::Date { .. } => "DATE",
             ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
+            ActionOperation::Foreach { .. } => "FOREACH",
         }
     }
 }

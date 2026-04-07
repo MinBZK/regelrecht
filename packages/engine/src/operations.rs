@@ -16,6 +16,7 @@
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
 
 use crate::article::{ActionOperation, ActionValue, Case};
+use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::types::{PathNodeType, Value};
 use chrono::{Datelike, NaiveDate};
@@ -102,6 +103,7 @@ pub trait ValueResolver {
     fn has_trace(&self) -> bool {
         false
     }
+
 }
 
 /// Evaluate an ActionValue to a concrete Value.
@@ -317,6 +319,13 @@ fn execute_operation_internal<R: ValueResolver>(
             execute_date_construct(year, month, day, resolver, depth)
         }
         ActionOperation::DayOfWeek { date } => execute_day_of_week(date, resolver, depth),
+
+        // Collection iteration — FOREACH requires RuleContext for child scopes.
+        // When called via the generic ValueResolver path, it is not available.
+        // The engine layer (engine.rs) handles FOREACH before reaching this dispatch.
+        ActionOperation::Foreach { .. } => Err(EngineError::InvalidOperation(
+            "FOREACH must be executed via the engine layer (requires RuleContext)".to_string(),
+        )),
     }
 }
 
@@ -1314,6 +1323,196 @@ fn type_error(expected: &str, actual: &Value) -> EngineError {
     EngineError::TypeMismatch {
         expected: expected.to_string(),
         actual: actual.type_name().to_string(),
+    }
+}
+
+// =============================================================================
+// Collection Iteration (RFC-016)
+// =============================================================================
+
+/// Execute FOREACH operation: iterate over a collection, evaluate body per element.
+///
+/// FOREACH requires a `RuleContext` (not generic `ValueResolver`) because it needs
+/// to create child scopes with local variable bindings. This is the only operation
+/// that introduces a new variable name into scope (RFC-016).
+///
+/// The `collection` is evaluated in the current scope. For each element, a child
+/// context is created with the element bound to the `as_name` variable. The `filter`
+/// and `body` are evaluated in the child scope.
+pub fn execute_foreach(
+    collection: &ActionValue,
+    as_name: &str,
+    body: &ActionValue,
+    filter: Option<&ActionValue>,
+    combine: Option<&str>,
+    context: &RuleContext,
+    depth: usize,
+) -> Result<Value> {
+    // Evaluate collection in current (outer) scope
+    let collection_value = evaluate_value(collection, context, depth)?;
+
+    // Propagate untranslatable
+    if collection_value.is_untranslatable() {
+        return Ok(collection_value);
+    }
+
+    // Get array to iterate over (wrap non-arrays in single-element array, null → empty)
+    let items = match &collection_value {
+        Value::Array(arr) => arr.clone(),
+        Value::Null => Vec::new(),
+        other => vec![other.clone()],
+    };
+
+    // Security: check array size limit
+    if items.len() > crate::config::MAX_ARRAY_SIZE {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH collection size {} exceeds limit {}",
+            items.len(),
+            crate::config::MAX_ARRAY_SIZE,
+        )));
+    }
+
+    // Iterate and collect results
+    let mut results: Vec<Value> = Vec::with_capacity(items.len());
+
+    for item in &items {
+        // Create child context with the element bound to as_name
+        let mut child = context.create_child();
+        child.set_local(as_name.to_string(), item.clone());
+
+        // Evaluate filter if present (in child scope)
+        if let Some(filter_expr) = filter {
+            let filter_result = evaluate_value(filter_expr, &child, depth + 1)?;
+            if filter_result.is_untranslatable() {
+                return Ok(filter_result);
+            }
+            if !filter_result.to_bool() {
+                continue; // Skip this element
+            }
+        }
+
+        // Evaluate body (in child scope)
+        let result = evaluate_value(body, &child, depth + 1)?;
+
+        // Propagate untranslatable immediately
+        if result.is_untranslatable() {
+            return Ok(result);
+        }
+
+        results.push(result);
+    }
+
+    // Apply combine aggregation or return array
+    match combine {
+        Some("ADD") => combine_add(&results),
+        Some("OR") => Ok(Value::Bool(results.iter().any(|v| v.to_bool()))),
+        Some("AND") => Ok(Value::Bool(
+            results.is_empty() || results.iter().all(|v| v.to_bool()),
+        )),
+        Some("MIN") => combine_min_max(&results, true),
+        Some("MAX") => combine_min_max(&results, false),
+        Some(other) => Err(EngineError::InvalidOperation(format!(
+            "Unknown FOREACH combine operation: {}",
+            other
+        ))),
+        None => Ok(Value::Array(results)),
+    }
+}
+
+/// Combine results with ADD (polymorphic: numbers, strings, arrays).
+fn combine_add(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Int(0));
+    }
+
+    // Determine type from first element
+    match &results[0] {
+        Value::String(_) => {
+            let mut s = String::new();
+            for v in results {
+                match v {
+                    Value::String(part) => s.push_str(part),
+                    _ => s.push_str(&format!("{:?}", v)),
+                }
+            }
+            Ok(Value::String(s))
+        }
+        Value::Array(_) => {
+            let mut arr = Vec::new();
+            for v in results {
+                match v {
+                    Value::Array(a) => arr.extend(a.iter().cloned()),
+                    other => arr.push(other.clone()),
+                }
+            }
+            Ok(Value::Array(arr))
+        }
+        _ => {
+            // Numeric sum
+            let mut sum: f64 = 0.0;
+            let mut all_int = true;
+            for v in results {
+                match v {
+                    Value::Int(i) => sum += *i as f64,
+                    Value::Float(f) => {
+                        sum += f;
+                        all_int = false;
+                    }
+                    Value::Null => {} // Skip nulls in sum
+                    _ => {
+                        return Err(EngineError::TypeMismatch {
+                            expected: "number".to_string(),
+                            actual: v.type_name().to_string(),
+                        })
+                    }
+                }
+            }
+            if all_int {
+                Ok(Value::Int(sum as i64))
+            } else {
+                Ok(Value::Float(sum))
+            }
+        }
+    }
+}
+
+/// Combine results with MIN or MAX.
+fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    let mut best: f64 = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
+    let mut all_int = true;
+
+    for v in results {
+        let n = match v {
+            Value::Int(i) => *i as f64,
+            Value::Float(f) => {
+                all_int = false;
+                *f
+            }
+            Value::Null => continue,
+            _ => {
+                return Err(EngineError::TypeMismatch {
+                    expected: "number".to_string(),
+                    actual: v.type_name().to_string(),
+                })
+            }
+        };
+        if is_min {
+            best = best.min(n);
+        } else {
+            best = best.max(n);
+        }
+    }
+
+    if best.is_infinite() {
+        Ok(Value::Null) // All values were null
+    } else if all_int {
+        Ok(Value::Int(best as i64))
+    } else {
+        Ok(Value::Float(best))
     }
 }
 
