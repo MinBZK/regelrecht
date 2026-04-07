@@ -488,6 +488,7 @@ mod tests {
             oidc: None,
             base_url: None,
             api_key: None,
+            api_key_hash: None,
         }
     }
 
@@ -555,6 +556,7 @@ mod tests {
             oidc: None,
             base_url: Some("https://admin.example.com".to_string()),
             api_key: None,
+            api_key_hash: None,
         };
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-host", "evil.example.com".parse().unwrap());
@@ -677,6 +679,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             }),
             base_url: None,
             api_key: None,
+            api_key_hash: None,
         };
 
         #[allow(clippy::expect_used)]
@@ -700,6 +703,7 @@ FEs4SYxqDdCakQ9CV5M4uyyjLrxg+/Ra9BqycPcmJGQQrVhnTnBa2g==
             oidc: None,
             base_url: None,
             api_key: None,
+            api_key_hash: None,
         };
 
         #[allow(clippy::expect_used)]

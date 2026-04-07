@@ -32,6 +32,7 @@
 //! |            |          | used for all OIDC redirect/logout URLs instead of request        |
 //! |            |          | headers. Prevents open-redirect via `X-Forwarded-Host`.          |
 
+use sha2::{Digest, Sha256};
 use std::env;
 
 #[derive(Clone)]
@@ -58,6 +59,8 @@ pub struct AppConfig {
     pub oidc: Option<OidcConfig>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    /// Pre-computed SHA-256 hash of the API key (avoids re-hashing on every request).
+    pub api_key_hash: Option<[u8; 32]>,
 }
 
 impl std::fmt::Debug for AppConfig {
@@ -66,6 +69,7 @@ impl std::fmt::Debug for AppConfig {
             .field("oidc", &self.oidc)
             .field("base_url", &self.base_url)
             .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("api_key_hash", &self.api_key_hash.map(|_| "[REDACTED]"))
             .finish()
     }
 }
@@ -124,10 +128,15 @@ impl AppConfig {
             tracing::info!("API key authentication is enabled (GET + DELETE)");
         }
 
+        let api_key_hash = api_key
+            .as_ref()
+            .map(|k| Sha256::digest(k.as_bytes()).into());
+
         Ok(Self {
             oidc,
             base_url,
             api_key,
+            api_key_hash,
         })
     }
 

@@ -50,13 +50,12 @@ pub async fn require_auth(
     next: Next,
 ) -> Result<Response, ApiError> {
     // Check bearer token first (fast path for programmatic access).
-    if let Some(ref api_key) = state.config.api_key {
+    if let Some(ref key_hash) = state.config.api_key_hash {
         if let Some(token) = extract_bearer_token(&request) {
-            // Hash both values to fixed-length digests before comparing,
-            // so timing does not leak the API key length.
+            // Compare SHA-256 digests in constant time to prevent
+            // timing leaks of both key content and length.
             let token_hash = Sha256::digest(token.as_bytes());
-            let key_hash = Sha256::digest(api_key.as_bytes());
-            let token_matches = token_hash.ct_eq(&key_hash).into();
+            let token_matches = token_hash.ct_eq(key_hash).into();
             if token_matches {
                 if !API_KEY_ALLOWED_METHODS.contains(request.method()) {
                     tracing::warn!(
@@ -140,6 +139,10 @@ mod tests {
             },
             base_url: None,
             api_key: api_key.map(String::from),
+            api_key_hash: api_key.map(|k| {
+                use sha2::{Digest, Sha256};
+                Sha256::digest(k.as_bytes()).into()
+            }),
         };
 
         #[allow(clippy::expect_used)]
