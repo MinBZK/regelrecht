@@ -767,11 +767,20 @@ pub struct DeleteJobsResponse {
 
 pub async fn delete_jobs(
     State(state): State<AppState>,
-    body: Option<Json<DeleteJobsRequest>>,
+    body: axum::body::Bytes,
 ) -> Result<Json<DeleteJobsResponse>, ApiError> {
     let pool = &state.pool;
 
-    if let Some(Json(ref req)) = body {
+    let request = if body.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::from_slice::<DeleteJobsRequest>(&body)
+                .map_err(|e| ApiError::BadRequest(format!("invalid request body: {e}")))?,
+        )
+    };
+
+    if let Some(ref req) = request {
         if req.job_ids.len() > 1000 {
             return Err(ApiError::BadRequest(
                 "job_ids array exceeds maximum size of 1000".to_string(),
@@ -779,8 +788,8 @@ pub async fn delete_jobs(
         }
     }
 
-    let result = match body {
-        Some(Json(req)) => {
+    let result = match request {
+        Some(req) => {
             if req.job_ids.is_empty() {
                 return Ok(Json(DeleteJobsResponse { deleted: 0 }));
             }
