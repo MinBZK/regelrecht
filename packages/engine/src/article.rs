@@ -275,12 +275,15 @@ pub enum ActionOperation {
     // Collection iteration
     #[serde(rename = "FOREACH")]
     Foreach {
+        #[serde(alias = "subject")]
         collection: ActionValue,
         #[serde(default = "default_foreach_as")]
         #[serde(rename = "as")]
         as_name: String,
+        #[serde(alias = "value")]
         body: ActionValue,
         #[serde(default)]
+        #[serde(alias = "where")]
         filter: Option<ActionValue>,
         #[serde(default)]
         combine: Option<String>,
@@ -344,6 +347,9 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
+    /// Legal basis metadata (not used in computation, preserved for traceability)
+    #[serde(default)]
+    pub legal_basis: Option<serde_yaml_ng::Value>,
 }
 
 /// Execution specification within machine_readable section
