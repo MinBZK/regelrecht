@@ -36,6 +36,7 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 209692
 
   Scenario: Minderjarige heeft geen recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
@@ -63,3 +64,180 @@ Feature: Zorgtoeslag eligibility
     When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
     Then the execution succeeds
     Then output "heeft_recht_op_zorgtoeslag" is false
+
+  Scenario: Laag inkomen alleenstaande heeft recht op zorgtoeslag
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1998-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 20000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 10000     | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 210821
+
+  Scenario: Student met studiefinanciering heeft recht op zorgtoeslag
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 2004-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 15000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given the following "inschrijvingen" data with key "bsn":
+      | bsn       | onderwijstype |
+      | 999993653 | WO            |
+    Given the following "studiefinanciering" data with key "bsn":
+      | bsn       | aantal_studerend_gezin |
+      | 999993653 | 0                      |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 210916
+
+  Scenario: Partner met gecombineerd inkomen heeft recht op zorgtoeslag
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | HUWELIJK          | 999993654   |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 3500000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+      | 999993654 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+      | 999993654 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+      | 999993654 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 272845
+
+  Scenario: Alleenstaande met box3 vermogen heeft recht op zorgtoeslag
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1990-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 2000000                   | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 7000000   | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 173280
+
+  Scenario: Verdragsinschrijving geeft verzekeringsdekking bij inactieve polis
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1985-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | VERLOPEN     | true                 |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | null     | null                 |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 210726
+
+  Scenario: Forensische zorg heeft geen invloed op zorgtoeslag
+    Given the following "personal_data" data with key "bsn":
+      | bsn       | geboortedatum | verblijfsadres | land_verblijf |
+      | 999993653 | 1985-01-01    | Amsterdam      | NEDERLAND     |
+    Given the following "relationship_data" data with key "bsn":
+      | bsn       | partnerschap_type | partner_bsn |
+      | 999993653 | GEEN              | null        |
+    Given the following "insurance" data with key "bsn":
+      | bsn       | polis_status | verdragsinschrijving |
+      | 999993653 | ACTIEF       | false                |
+    Given the following "box1" data with key "bsn":
+      | bsn       | loon_uit_dienstbetrekking | uitkeringen_en_pensioenen | winst_uit_onderneming | resultaat_overige_werkzaamheden | eigen_woning | buitenlands_inkomen |
+      | 999993653 | 25000                     | 0                         | 0                     | 0                               | 0            | 0                   |
+    Given the following "box2" data with key "bsn":
+      | bsn       | reguliere_voordelen | vervreemdingsvoordelen |
+      | 999993653 | 0                   | 0                      |
+    Given the following "box3" data with key "bsn":
+      | bsn       | spaargeld | beleggingen | onroerend_goed | schulden |
+      | 999993653 | 0         | 0           | 0              | 0        |
+    Given the following "detenties" data with key "bsn":
+      | bsn       | detentiestatus | inrichting_type | zorgtype | juridische_grondslag |
+      | 999993653 | null           | null            | GGZ      | TBS                  |
+    Given parameter "bsn" is "999993653"
+    When I evaluate "heeft_recht_op_zorgtoeslag" of "zorgtoeslagwet"
+    Then the execution succeeds
+    Then output "heeft_recht_op_zorgtoeslag" is true
+    Then output "hoogte_zorgtoeslag" equals 210726
