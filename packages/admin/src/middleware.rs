@@ -91,7 +91,11 @@ pub async fn require_auth(
 }
 
 fn extract_bearer_token(request: &Request) -> Option<String> {
-    let value = request.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
+    let value = request
+        .headers()
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     // RFC 7235: auth-scheme is case-insensitive.
     if value.len() > 7 && value[..7].eq_ignore_ascii_case("bearer ") {
         Some(value[7..].to_string())
