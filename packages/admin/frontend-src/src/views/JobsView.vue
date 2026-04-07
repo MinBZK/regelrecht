@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted } from 'vue';
+import { computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useJobs } from '../composables/useJobs.js';
 import { useJobDetail } from '../composables/useJobDetail.js';
@@ -26,7 +26,7 @@ const {
 
 const { job: detailJob, isOpen: detailOpen, open: openDetail, close: closeDetail } = useJobDetail();
 
-const paginationUnit = () => viewMode.value === 'grouped' ? 'laws' : 'results';
+const paginationUnit = computed(() => viewMode.value === 'grouped' ? 'laws' : 'results');
 
 // Handle incoming law_id query param
 onMounted(() => {
@@ -51,7 +51,7 @@ onMounted(() => {
       :current-page="currentPage"
       :total-pages="totalPages"
       :total-count="totalCount"
-      :unit="paginationUnit()"
+      :unit="paginationUnit"
       @prev="prevPage"
       @next="nextPage"
     />

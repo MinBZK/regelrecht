@@ -1,4 +1,4 @@
-import { ref, reactive, computed, watch } from 'vue';
+import { ref, reactive, computed } from 'vue';
 import { usePollingFetch } from './usePollingFetch.js';
 
 export function useLawEntries() {

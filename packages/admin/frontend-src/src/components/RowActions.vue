@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue';
 import { RE_HARVESTABLE_STATUSES, ENRICHABLE_STATUSES } from '../constants.js';
 
 const props = defineProps({
@@ -7,10 +8,16 @@ const props = defineProps({
 
 const emit = defineEmits(['action-complete']);
 
-async function onHarvest(event) {
-  const btn = event.currentTarget;
-  btn.setAttribute('disabled', '');
-  btn.textContent = 'Submitting\u2026';
+const harvestSubmitting = ref(false);
+const harvestLabel = ref('Harvest');
+const enrichSubmitting = ref(false);
+const enrichLabel = ref('Enrich');
+const resetSubmitting = ref(false);
+const resetLabel = ref('Reset');
+
+async function onHarvest() {
+  harvestSubmitting.value = true;
+  harvestLabel.value = 'Submitting\u2026';
 
   try {
     const response = await fetch('api/harvest-jobs', {
@@ -37,15 +44,14 @@ async function onHarvest(event) {
   } catch (err) {
     alert('Harvest failed: ' + err.message);
   } finally {
-    btn.removeAttribute('disabled');
-    btn.textContent = 'Harvest';
+    harvestSubmitting.value = false;
+    harvestLabel.value = 'Harvest';
   }
 }
 
-async function onEnrich(event) {
-  const btn = event.currentTarget;
-  btn.setAttribute('disabled', '');
-  btn.textContent = 'Submitting\u2026';
+async function onEnrich() {
+  enrichSubmitting.value = true;
+  enrichLabel.value = 'Submitting\u2026';
 
   try {
     const response = await fetch('api/enrich-jobs', {
@@ -72,15 +78,14 @@ async function onEnrich(event) {
   } catch (err) {
     alert('Enrich failed: ' + err.message);
   } finally {
-    btn.removeAttribute('disabled');
-    btn.textContent = 'Enrich';
+    enrichSubmitting.value = false;
+    enrichLabel.value = 'Enrich';
   }
 }
 
-async function onResetExhausted(event) {
-  const btn = event.currentTarget;
-  btn.setAttribute('disabled', '');
-  btn.textContent = 'Resetting\u2026';
+async function onResetExhausted() {
+  resetSubmitting.value = true;
+  resetLabel.value = 'Resetting\u2026';
 
   try {
     const response = await fetch(`api/law_entries/${encodeURIComponent(props.row.law_id)}/reset-exhausted`, {
@@ -94,13 +99,13 @@ async function onResetExhausted(event) {
       const text = await response.text().catch(() => '');
       throw new Error(text || `HTTP ${response.status}`);
     }
-    btn.textContent = 'Reset \u2713';
-    setTimeout(() => { btn.textContent = 'Reset'; }, 2000);
+    resetLabel.value = 'Reset \u2713';
+    setTimeout(() => { resetLabel.value = 'Reset'; }, 2000);
     emit('action-complete');
   } catch (err) {
     alert('Reset failed: ' + err.message);
   } finally {
-    btn.removeAttribute('disabled');
+    resetSubmitting.value = false;
   }
 }
 </script>
@@ -112,21 +117,24 @@ async function onResetExhausted(event) {
       variant="accent-outlined"
       size="sm"
       :title="'Re-harvest ' + row.law_id"
+      :disabled="harvestSubmitting ? '' : undefined"
       @click.stop="onHarvest"
-    >Harvest</rr-button>
+    >{{ harvestLabel }}</rr-button>
     <rr-button
       v-if="ENRICHABLE_STATUSES.includes(row.status)"
       variant="neutral-tinted"
       size="sm"
       :title="'Trigger enrichment for ' + row.law_id"
+      :disabled="enrichSubmitting ? '' : undefined"
       @click.stop="onEnrich"
-    >Enrich</rr-button>
+    >{{ enrichLabel }}</rr-button>
     <rr-button
       v-if="row.status === 'harvest_exhausted' || row.status === 'enrich_exhausted'"
       variant="accent-outlined"
       size="sm"
       :title="'Reset exhausted status for ' + row.law_id"
+      :disabled="resetSubmitting ? '' : undefined"
       @click.stop="onResetExhausted"
-    >Reset</rr-button>
+    >{{ resetLabel }}</rr-button>
   </span>
 </template>

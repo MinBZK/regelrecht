@@ -1,19 +1,23 @@
 import { ref } from 'vue';
 
-export function usePlatformInfo() {
-  const info = ref(null);
+const info = ref(null);
+let fetched = false;
 
-  async function load() {
-    try {
-      const response = await fetch('/api/info');
-      if (!response.ok) return;
-      info.value = await response.json();
-    } catch {
-      // ignore
-    }
+async function load() {
+  try {
+    const response = await fetch('/api/info');
+    if (!response.ok) return;
+    info.value = await response.json();
+  } catch {
+    // ignore
   }
+}
 
-  load();
+export function usePlatformInfo() {
+  if (!fetched) {
+    fetched = true;
+    load();
+  }
 
   return { info };
 }

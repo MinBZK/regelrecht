@@ -2,7 +2,7 @@ import { ref, reactive, computed } from 'vue';
 import { usePollingFetch } from './usePollingFetch.js';
 
 export function useJobs(initialFilter = {}) {
-  const sort = ref('created_at');
+  const sort = ref('latest_created_at');
   const order = ref('desc');
   const limit = ref(50);
   const offset = ref(0);
@@ -67,7 +67,7 @@ export function useJobs(initialFilter = {}) {
     }
   }
 
-  function toggleViewMode() {
+  async function toggleViewMode() {
     viewMode.value = viewMode.value === 'grouped' ? 'flat' : 'grouped';
     offset.value = 0;
     sort.value = viewMode.value === 'grouped' ? 'latest_created_at' : 'created_at';
@@ -80,7 +80,7 @@ export function useJobs(initialFilter = {}) {
       delete filters.law_id;
     }
     reset();
-    refresh();
+    await refresh();
   }
 
   function setSort(key) {
@@ -144,9 +144,6 @@ export function useJobs(initialFilter = {}) {
 
   const currentPage = computed(() => Math.floor(offset.value / limit.value) + 1);
   const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / limit.value)));
-
-  // Set initial sort for grouped mode
-  sort.value = viewMode.value === 'grouped' ? 'latest_created_at' : 'created_at';
 
   // Initial load + start polling
   refresh();

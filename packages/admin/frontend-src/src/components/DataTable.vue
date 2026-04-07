@@ -1,5 +1,4 @@
 <script setup>
-import { ref } from 'vue';
 import StatusBadge from './StatusBadge.vue';
 import { formatDate, formatCoverageScore, truncateUuid } from '../formatters.js';
 
@@ -18,7 +17,6 @@ const emit = defineEmits(['sort', 'filter-change', 'row-click']);
 
 // Debounce timers for text filters
 const debounceTimers = {};
-const textFilterValues = ref({});
 
 function onHeaderClick(col, event) {
   if (event.target.closest('.th-filter')) return;

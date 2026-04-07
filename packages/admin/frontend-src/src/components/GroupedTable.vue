@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import StatusBadge from './StatusBadge.vue';
 import { GROUPED_COLUMNS, JOB_COLUMNS, STATUS_BADGE_MAP } from '../constants.js';
-import { formatDate, truncateUuid } from '../formatters.js';
+import { formatDate, truncateUuid, truncateError } from '../formatters.js';
 
 const props = defineProps({
   data: { type: Array, required: true },
@@ -149,7 +149,7 @@ function formatChildCell(value, key) {
                           class="cell-error"
                           :title="job.result.error"
                         >
-                          {{ job.result.error.length > 80 ? job.result.error.substring(0, 80) + '\u2026' : job.result.error }}
+                          {{ truncateError(job.result.error) }}
                         </span>
                         <span v-else class="cell-null">&mdash;</span>
                       </template>

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue';
+import { computed, watch, onUnmounted } from 'vue';
 import StatusBadge from './StatusBadge.vue';
 import ProgressIndicator from './ProgressIndicator.vue';
 import { DATE_FORMATTER } from '../constants.js';
@@ -47,7 +47,14 @@ function onKeydown(e) {
   if (e.key === 'Escape') emit('close');
 }
 
-onMounted(() => document.addEventListener('keydown', onKeydown));
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    document.addEventListener('keydown', onKeydown);
+  } else {
+    document.removeEventListener('keydown', onKeydown);
+  }
+});
+
 onUnmounted(() => document.removeEventListener('keydown', onKeydown));
 </script>
 
