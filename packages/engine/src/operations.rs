@@ -481,7 +481,7 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
                     _ => {
                         return Err(EngineError::TypeMismatch {
                             expected: "array".to_string(),
-                            actual: format!("{:?}", val),
+                            actual: val.type_name().to_string(),
                         })
                     }
                 }
@@ -496,7 +496,7 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
                     _ => {
                         return Err(EngineError::TypeMismatch {
                             expected: "string".to_string(),
-                            actual: format!("{:?}", val),
+                            actual: val.type_name().to_string(),
                         })
                     }
                 }
@@ -504,24 +504,49 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
             Ok(Value::String(result))
         }
         Value::Int(_) | Value::Float(_) | Value::Null => {
-            let mut sum = 0.0;
-            let mut has_float = false;
+            // First pass: check if all numeric values are integers.
+            // If so, use i64::checked_add to avoid f64 precision loss.
+            let mut all_int = true;
             for val in evaluated {
                 match val {
-                    Value::Int(_) => sum += to_number(val)?,
-                    Value::Float(f) => {
-                        sum += f;
-                        has_float = true;
+                    Value::Int(_) | Value::Null => {}
+                    Value::Float(_) => {
+                        all_int = false;
+                        break;
                     }
-                    Value::Null => {} // Skip nulls in sum
                     _ => return Err(type_error("number", val)),
                 }
             }
-            Ok(if has_float {
-                Value::Float(sum)
+
+            if all_int {
+                let mut sum: i64 = 0;
+                for val in evaluated {
+                    match val {
+                        Value::Int(i) => {
+                            sum = sum.checked_add(*i).ok_or_else(|| {
+                                EngineError::ArithmeticOverflow(format!(
+                                    "Integer overflow in ADD: {} + {}",
+                                    sum, i
+                                ))
+                            })?;
+                        }
+                        Value::Null => {} // Skip nulls in sum
+                        _ => unreachable!("checked in first pass"),
+                    }
+                }
+                Ok(Value::Int(sum))
             } else {
-                Value::Int(f64_to_i64_safe(sum)?)
-            })
+                let mut sum = 0.0;
+                for val in evaluated {
+                    match val {
+                        Value::Int(_) => sum += to_number(val)?,
+                        Value::Float(f) => sum += f,
+                        Value::Null => {} // Skip nulls in sum
+                        _ => return Err(type_error("number", val)),
+                    }
+                }
+                Ok(Value::Float(sum))
+            }
         }
         _ => Err(type_error("number, string, or array", &evaluated[0])),
     }
@@ -1451,6 +1476,10 @@ pub fn execute_foreach(
     match combine {
         Some("ADD") => combine_add(&results),
         Some("OR") => Ok(Value::Bool(results.iter().any(|v| v.to_bool()))),
+        // Vacuous truth: AND over an empty collection returns true, matching standard
+        // logical convention (the universal quantifier over an empty domain is true).
+        // This aligns with the legal reading "all conditions are met" being trivially
+        // satisfied when there are no conditions to check.
         Some("AND") => Ok(Value::Bool(
             results.is_empty() || results.iter().all(|v| v.to_bool()),
         )),
@@ -1470,20 +1499,51 @@ fn combine_add(results: &[Value]) -> Result<Value> {
 }
 
 /// Combine results with MIN or MAX.
+/// Uses i64 comparison directly when all values are integers to avoid f64 precision loss.
 fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
     if results.is_empty() {
         return Ok(Value::Null);
     }
 
-    let mut best: f64 = if is_min { f64::INFINITY } else { f64::NEG_INFINITY };
     let mut all_int = true;
+    let mut best_int: Option<i64> = None;
+    let mut best_float: f64 = if is_min {
+        f64::INFINITY
+    } else {
+        f64::NEG_INFINITY
+    };
+    let mut has_any_number = false;
 
     for v in results {
-        let n = match v {
-            Value::Int(i) => *i as f64,
+        match v {
+            Value::Int(i) => {
+                has_any_number = true;
+                best_int = Some(match best_int {
+                    None => *i,
+                    Some(prev) => {
+                        if is_min {
+                            prev.min(*i)
+                        } else {
+                            prev.max(*i)
+                        }
+                    }
+                });
+                // Also track f64 in case we later encounter a Float
+                let n = *i as f64;
+                best_float = if is_min {
+                    best_float.min(n)
+                } else {
+                    best_float.max(n)
+                };
+            }
             Value::Float(f) => {
+                has_any_number = true;
                 all_int = false;
-                *f
+                best_float = if is_min {
+                    best_float.min(*f)
+                } else {
+                    best_float.max(*f)
+                };
             }
             Value::Null => continue,
             _ => {
@@ -1492,20 +1552,15 @@ fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
                     actual: v.type_name().to_string(),
                 })
             }
-        };
-        if is_min {
-            best = best.min(n);
-        } else {
-            best = best.max(n);
         }
     }
 
-    if best.is_infinite() {
-        Ok(Value::Null) // All values were null
-    } else if all_int {
-        Ok(Value::Int(f64_to_i64_safe(best)?))
-    } else {
-        Ok(Value::Float(best))
+    match (has_any_number, all_int, best_int) {
+        (false, _, _) => Ok(Value::Null), // All values were null
+        (true, true, Some(i)) => Ok(Value::Int(i)),
+        (true, false, _) => Ok(Value::Float(best_float)),
+        // Unreachable: has_any_number && all_int implies best_int is Some
+        (true, true, None) => Ok(Value::Null),
     }
 }
 
@@ -2328,17 +2383,23 @@ mod tests {
 
         #[test]
         fn test_arithmetic_with_large_integer() {
+            // Values beyond f64's safe integer range (2^53) are fine with i64::checked_add
             let large_value: i64 = 9_007_199_254_740_993; // MAX_SAFE_INTEGER + 1
-
             let resolver = TestResolver::new();
             let op = ActionOperation::Add {
                 values: vec![lit(large_value), lit(1i64)],
             };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Int(9_007_199_254_740_994));
 
+            // Actual i64 overflow should still produce an error
+            let op = ActionOperation::Add {
+                values: vec![lit(i64::MAX), lit(1i64)],
+            };
             let result = execute_operation(&op, &resolver, 0);
             assert!(
                 matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Large integer in arithmetic should cause overflow error"
+                "i64 overflow in ADD should cause arithmetic overflow error"
             );
         }
     }
@@ -3092,7 +3153,11 @@ mod tests {
         fn test_foreach_combine_or() {
             let ctx = make_ctx(vec![(
                 "flags",
-                Value::Array(vec![Value::Bool(false), Value::Bool(true), Value::Bool(false)]),
+                Value::Array(vec![
+                    Value::Bool(false),
+                    Value::Bool(true),
+                    Value::Bool(false),
+                ]),
             )]);
 
             let op = ActionOperation::Foreach {
@@ -3144,10 +3209,7 @@ mod tests {
             };
 
             let add_op = ActionOperation::Add {
-                values: vec![
-                    ActionValue::Operation(Box::new(foreach_op)),
-                    lit(100i64),
-                ],
+                values: vec![ActionValue::Operation(Box::new(foreach_op)), lit(100i64)],
             };
 
             // FOREACH sum = 1+2+3 = 6, then ADD(6, 100) = 106
@@ -3159,10 +3221,8 @@ mod tests {
         fn test_foreach_without_child_scope_support() {
             // TestResolver does NOT implement execute_foreach_op,
             // so FOREACH should return an appropriate error.
-            let resolver = TestResolver::new().with_var(
-                "items",
-                Value::Array(vec![Value::Int(1), Value::Int(2)]),
-            );
+            let resolver = TestResolver::new()
+                .with_var("items", Value::Array(vec![Value::Int(1), Value::Int(2)]));
 
             let op = ActionOperation::Foreach {
                 collection: var("items"),
