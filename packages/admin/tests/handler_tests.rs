@@ -29,6 +29,8 @@ fn test_app(pool: sqlx::PgPool) -> Router {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
+            api_key: None,
+            api_key_hash: None,
         }),
         metrics_cache: Arc::new(metrics::new_cache()),
         http_client: reqwest::Client::new(),

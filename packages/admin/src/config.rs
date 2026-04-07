@@ -16,6 +16,14 @@
 //! *Required together — if `OIDC_CLIENT_ID` is set, `OIDC_CLIENT_SECRET` must also be set,
 //! and either `OIDC_DISCOVERY_URL` or both `KEYCLOAK_BASE_URL` + `KEYCLOAK_REALM`.
 //!
+//! ## API key authentication
+//!
+//! | Variable         | Required | Description                                             |
+//! |------------------|----------|---------------------------------------------------------|
+//! | `ADMIN_API_KEY`  | no       | Bearer token for programmatic access (GET + DELETE).    |
+//! |                  |          | When set, `Authorization: Bearer <key>` grants          |
+//! |                  |          | GET + DELETE access without an OIDC session.             |
+//!
 //! ## Base URL
 //!
 //! | Variable   | Required | Description                                                     |
@@ -24,6 +32,7 @@
 //! |            |          | used for all OIDC redirect/logout URLs instead of request        |
 //! |            |          | headers. Prevents open-redirect via `X-Forwarded-Host`.          |
 
+use sha2::{Digest, Sha256};
 use std::env;
 
 #[derive(Clone)]
@@ -45,10 +54,24 @@ impl std::fmt::Debug for OidcConfig {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct AppConfig {
     pub oidc: Option<OidcConfig>,
     pub base_url: Option<String>,
+    pub api_key: Option<String>,
+    /// Pre-computed SHA-256 hash of the API key (avoids re-hashing on every request).
+    pub api_key_hash: Option<[u8; 32]>,
+}
+
+impl std::fmt::Debug for AppConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppConfig")
+            .field("oidc", &self.oidc)
+            .field("base_url", &self.base_url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("api_key_hash", &self.api_key_hash.map(|_| "[REDACTED]"))
+            .finish()
+    }
 }
 
 impl AppConfig {
@@ -95,7 +118,26 @@ impl AppConfig {
             );
         }
 
-        Ok(Self { oidc, base_url })
+        let api_key = env::var("ADMIN_API_KEY").ok().filter(|s| !s.is_empty());
+        if let Some(ref key) = api_key {
+            if key.len() < 32 {
+                tracing::warn!(
+                    "ADMIN_API_KEY is shorter than 32 characters — consider using a longer key"
+                );
+            }
+            tracing::info!("API key authentication is enabled (GET + DELETE)");
+        }
+
+        let api_key_hash = api_key
+            .as_ref()
+            .map(|k| Sha256::digest(k.as_bytes()).into());
+
+        Ok(Self {
+            oidc,
+            base_url,
+            api_key,
+            api_key_hash,
+        })
     }
 
     fn parse_oidc_config(client_id: String) -> Result<OidcConfig, String> {
@@ -169,10 +211,12 @@ mod tests {
         "OIDC_REQUIRED_ROLE",
     ];
 
-    fn clear_oidc_env() {
+    fn clear_env() {
         for var in OIDC_VARS {
             env::remove_var(var);
         }
+        env::remove_var("ADMIN_API_KEY");
+        env::remove_var("BASE_URL");
     }
 
     fn set_complete_oidc_env() {
@@ -185,19 +229,19 @@ mod tests {
     #[test]
     fn no_oidc_vars_disables_auth() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
 
         let config = AppConfig::try_from_env().expect("should succeed");
         assert!(config.oidc.is_none());
         assert!(!config.is_auth_enabled());
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
     fn complete_keycloak_vars_enables_auth() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
         set_complete_oidc_env();
 
         let config = AppConfig::try_from_env().expect("should succeed");
@@ -210,13 +254,13 @@ mod tests {
             "https://keycloak.example.com/realms/test-realm"
         );
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
     fn discovery_url_takes_priority_over_keycloak_vars() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
         set_complete_oidc_env();
         env::set_var(
             "OIDC_DISCOVERY_URL",
@@ -227,13 +271,13 @@ mod tests {
         let oidc = config.oidc.unwrap();
         assert_eq!(oidc.issuer_url, "https://idp.example.com/realms/my-realm");
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
     fn discovery_url_without_wellknown_suffix() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
         env::set_var("OIDC_CLIENT_ID", "test-client");
         env::set_var("OIDC_CLIENT_SECRET", "secret");
         env::set_var(
@@ -245,13 +289,13 @@ mod tests {
         let oidc = config.oidc.unwrap();
         assert_eq!(oidc.issuer_url, "https://idp.example.com/realms/myrealm");
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
     fn missing_secret_is_hard_error() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
         env::set_var("OIDC_CLIENT_ID", "test-client");
 
         let result = AppConfig::try_from_env();
@@ -259,13 +303,13 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.contains("OIDC_CLIENT_SECRET"));
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
     fn missing_issuer_is_hard_error() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
         env::set_var("OIDC_CLIENT_ID", "test-client");
         env::set_var("OIDC_CLIENT_SECRET", "secret");
 
@@ -275,31 +319,66 @@ mod tests {
         assert!(err.contains("OIDC_DISCOVERY_URL"));
         assert!(err.contains("KEYCLOAK_BASE_URL"));
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
     fn default_role_is_allowed_user() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
         set_complete_oidc_env();
 
         let config = AppConfig::try_from_env().expect("should succeed");
         assert_eq!(config.oidc.unwrap().required_role, "allowed-user");
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
     fn custom_role_from_env() {
         let _lock = ENV_LOCK.lock();
-        clear_oidc_env();
+        clear_env();
         set_complete_oidc_env();
         env::set_var("OIDC_REQUIRED_ROLE", "super-admin");
 
         let config = AppConfig::try_from_env().expect("should succeed");
         assert_eq!(config.oidc.unwrap().required_role, "super-admin");
 
-        clear_oidc_env();
+        clear_env();
+    }
+
+    #[test]
+    fn api_key_from_env() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("ADMIN_API_KEY", "test-secret-key");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert_eq!(config.api_key.as_deref(), Some("test-secret-key"));
+
+        clear_env();
+    }
+
+    #[test]
+    fn empty_api_key_is_none() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("ADMIN_API_KEY", "");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.api_key.is_none());
+
+        clear_env();
+    }
+
+    #[test]
+    fn no_api_key_is_none() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.api_key.is_none());
+
+        clear_env();
     }
 }

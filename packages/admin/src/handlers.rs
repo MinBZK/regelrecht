@@ -755,26 +755,62 @@ pub async fn get_job(
 
 // --- Delete Jobs ---
 
+#[derive(Deserialize)]
+pub struct DeleteJobsRequest {
+    pub job_ids: Vec<uuid::Uuid>,
+}
+
 #[derive(Serialize)]
 pub struct DeleteJobsResponse {
     pub deleted: i64,
 }
 
-pub async fn delete_all_jobs(
+pub async fn delete_jobs(
     State(state): State<AppState>,
+    body: axum::body::Bytes,
 ) -> Result<Json<DeleteJobsResponse>, ApiError> {
     let pool = &state.pool;
 
-    let result = sqlx::query("DELETE FROM jobs WHERE status != 'processing'")
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to delete jobs");
-            ApiError::Internal("failed to delete jobs".to_string())
-        })?;
+    let request = if body.is_empty() {
+        None
+    } else {
+        Some(
+            serde_json::from_slice::<DeleteJobsRequest>(&body)
+                .map_err(|e| ApiError::BadRequest(format!("invalid request body: {e}")))?,
+        )
+    };
 
-    let deleted = result.rows_affected() as i64;
-    tracing::info!(deleted, "deleted non-processing jobs");
+    if let Some(ref req) = request {
+        if req.job_ids.len() > 1000 {
+            return Err(ApiError::BadRequest(
+                "job_ids array exceeds maximum size of 1000".to_string(),
+            ));
+        }
+    }
+
+    let result = match request {
+        Some(req) => {
+            if req.job_ids.is_empty() {
+                return Ok(Json(DeleteJobsResponse { deleted: 0 }));
+            }
+            sqlx::query("DELETE FROM jobs WHERE id = ANY($1) AND status != 'processing'")
+                .bind(&req.job_ids)
+                .execute(pool)
+                .await
+        }
+        None => {
+            sqlx::query("DELETE FROM jobs WHERE status != 'processing'")
+                .execute(pool)
+                .await
+        }
+    }
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to delete jobs");
+        ApiError::Internal("failed to delete jobs".to_string())
+    })?;
+
+    let deleted = i64::try_from(result.rows_affected()).unwrap_or(i64::MAX);
+    tracing::info!(deleted, "deleted jobs");
 
     Ok(Json(DeleteJobsResponse { deleted }))
 }

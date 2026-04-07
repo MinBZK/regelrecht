@@ -1,8 +1,10 @@
 use axum::extract::{Request, State};
 use axum::http::header;
-use axum::http::HeaderValue;
+use axum::http::{HeaderValue, Method};
 use axum::middleware::Next;
 use axum::response::Response;
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
 use crate::auth::SESSION_KEY_AUTHENTICATED;
@@ -38,12 +40,40 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     response
 }
 
+/// Methods allowed via API key authentication (no OIDC session required).
+const API_KEY_ALLOWED_METHODS: &[Method] = &[Method::GET, Method::DELETE];
+
 pub async fn require_auth(
     State(state): State<AppState>,
     session: Session,
     request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
+    // Check bearer token first (fast path for programmatic access).
+    if let Some(ref key_hash) = state.config.api_key_hash {
+        if let Some(token) = extract_bearer_token(&request) {
+            // Compare SHA-256 digests in constant time to prevent
+            // timing leaks of both key content and length.
+            let token_hash = Sha256::digest(token.as_bytes());
+            let token_matches = token_hash.ct_eq(key_hash).into();
+            if token_matches {
+                if !API_KEY_ALLOWED_METHODS.contains(request.method()) {
+                    tracing::warn!(
+                        method = %request.method(),
+                        uri = %request.uri(),
+                        "API key auth: method not allowed"
+                    );
+                    return Err(ApiError::Forbidden("method not allowed".to_string()));
+                }
+                return Ok(next.run(request).await);
+            }
+            // Invalid bearer token — reject immediately, don't fall through to session.
+            tracing::warn!(uri = %request.uri(), "API key auth: invalid bearer token");
+            return Err(ApiError::Unauthorized("invalid bearer token".to_string()));
+        }
+    }
+
+    // Fall through to OIDC/session authentication.
     if !state.config.is_auth_enabled() {
         return Ok(next.run(request).await);
     }
@@ -64,6 +94,20 @@ pub async fn require_auth(
     }
 }
 
+fn extract_bearer_token(request: &Request) -> Option<String> {
+    let value = request
+        .headers()
+        .get(header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
+    // RFC 7235: auth-scheme is case-insensitive.
+    if value.len() > 7 && value[..7].eq_ignore_ascii_case("bearer ") {
+        Some(value[7..].to_string())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -81,22 +125,24 @@ mod tests {
     use tower_sessions::SessionManagerLayer;
     use tower_sessions_memory_store::MemoryStore;
 
-    fn test_state(auth_enabled: bool) -> AppState {
-        let config = if auth_enabled {
-            AppConfig {
-                oidc: Some(crate::config::OidcConfig {
+    fn test_state_with_api_key(auth_enabled: bool, api_key: Option<&str>) -> AppState {
+        let config = AppConfig {
+            oidc: if auth_enabled {
+                Some(crate::config::OidcConfig {
                     client_id: "test".into(),
                     client_secret: "test".into(),
                     issuer_url: "https://example.com".into(),
                     required_role: "user".into(),
-                }),
-                base_url: None,
-            }
-        } else {
-            AppConfig {
-                oidc: None,
-                base_url: None,
-            }
+                })
+            } else {
+                None
+            },
+            base_url: None,
+            api_key: api_key.map(String::from),
+            api_key_hash: api_key.map(|k| {
+                use sha2::{Digest, Sha256};
+                Sha256::digest(k.as_bytes()).into()
+            }),
         };
 
         #[allow(clippy::expect_used)]
@@ -115,12 +161,21 @@ mod tests {
         }
     }
 
+    fn test_state(auth_enabled: bool) -> AppState {
+        test_state_with_api_key(auth_enabled, None)
+    }
+
     fn test_app(state: AppState) -> Router {
         let store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(store);
 
         Router::new()
-            .route("/test", get(|| async { "ok" }))
+            .route(
+                "/test",
+                get(|| async { "ok" })
+                    .post(|| async { "ok" })
+                    .delete(|| async { "ok" }),
+            )
             .route_layer(axum_middleware::from_fn_with_state(
                 state.clone(),
                 require_auth,
@@ -261,6 +316,143 @@ mod tests {
                 axum::http::Request::builder()
                     .uri("/test")
                     .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_valid_get_passes() {
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_valid_delete_passes() {
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("DELETE")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_valid_post_returns_403() {
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn api_key_invalid_returns_401() {
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("authorization", "Bearer wrong-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn api_key_not_configured_ignores_bearer() {
+        // No API key configured, OIDC disabled — should pass through regardless of bearer header.
+        let state = test_state_with_api_key(false, None);
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("authorization", "Bearer some-token")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_without_oidc_rejects_invalid_token() {
+        // API key configured but OIDC disabled — invalid bearer should still be rejected.
+        let state = test_state_with_api_key(false, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("authorization", "Bearer wrong-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn api_key_without_oidc_no_bearer_falls_through() {
+        // API key configured, OIDC disabled, no bearer header — auth disabled passthrough.
+        let state = test_state_with_api_key(false, Some("test-key"));
+        let app = test_app(state);
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
                     .body(Body::empty())
                     .expect("request"),
             )
