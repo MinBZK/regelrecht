@@ -73,6 +73,43 @@ impl CorpusClient {
         &self.config.repo_path
     }
 
+    /// Whether this client has a push token configured.
+    pub fn has_push_token(&self) -> bool {
+        self.config.git_token().is_some()
+    }
+
+    /// Create a local branch (no push).
+    pub async fn create_local_branch(&self, branch: &str) -> Result<()> {
+        self.run_git(&["checkout", "-b", branch]).await?;
+        tracing::info!(branch = %branch, "created local branch");
+        Ok(())
+    }
+
+    /// Stage the given paths and commit locally (no push).
+    ///
+    /// If there are no changes to commit (working tree is clean), this is a no-op.
+    pub async fn commit_local(&self, paths: &[PathBuf], message: &str) -> Result<()> {
+        let mut add_args = vec!["add", "--"];
+        let path_strings: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for p in &path_strings {
+            add_args.push(p);
+        }
+        self.run_git(&add_args).await?;
+
+        let status_output = self.run_git_output(&["status", "--porcelain"]).await?;
+        if status_output.trim().is_empty() {
+            tracing::debug!("no changes to commit, skipping");
+            return Ok(());
+        }
+
+        self.run_git(&["commit", "-m", message]).await?;
+        tracing::info!(message = %message, "committed locally (no push)");
+        Ok(())
+    }
+
     /// Maximum number of rebase+push attempts before giving up.
     const MAX_PUSH_ATTEMPTS: u32 = 5;
 
@@ -560,6 +597,64 @@ mod tests {
             log_str.contains("worker B commit"),
             "worker B commit not found in log: {log_str}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_commit_local_without_push() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Create a local branch
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+        client
+            .create_local_branch("editor/test-session")
+            .await
+            .unwrap();
+
+        // Write and commit locally
+        let test_file = repo_path.join("local-edit.txt");
+        tokio::fs::write(&test_file, "local change").await.unwrap();
+        client
+            .commit_local(&[test_file], "local edit")
+            .await
+            .unwrap();
+
+        // Verify commit exists locally
+        let log = Command::new("git")
+            .args(["log", "--oneline", "-1"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let log_str = String::from_utf8_lossy(&log.stdout);
+        assert!(log_str.contains("local edit"));
+
+        // Verify it was NOT pushed to the bare repo
+        let remote_log = Command::new("git")
+            .args(["log", "--oneline", "--all"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let remote_str = String::from_utf8_lossy(&remote_log.stdout);
+        assert!(
+            !remote_str.contains("local edit"),
+            "commit should not be on remote: {remote_str}"
+        );
+
+        // Verify we're on the session branch
+        let branch = Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let branch_str = String::from_utf8_lossy(&branch.stdout);
+        assert_eq!(branch_str.trim(), "editor/test-session");
     }
 
     #[tokio::test]

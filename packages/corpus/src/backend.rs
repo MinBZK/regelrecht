@@ -188,6 +188,10 @@ impl RepoBackend for LocalBackend {
 // ---------------------------------------------------------------------------
 
 /// Backend that reads/writes to a local git checkout and commits/pushes on persist.
+///
+/// When no push token is configured (`local_only` mode), edits are committed
+/// to a local session branch without pushing. This is useful for playground
+/// environments where users want to experiment without affecting the remote.
 pub struct GitBackend {
     client: CorpusClient,
     /// Sub-path within the repo that corresponds to the source root
@@ -195,14 +199,33 @@ pub struct GitBackend {
     repo_subpath: Option<String>,
     /// Files written since the last persist, as absolute paths.
     dirty_files: tokio::sync::Mutex<Vec<PathBuf>>,
+    /// When true, commits stay local (no push). Set when no push token is available.
+    local_only: bool,
+    /// Name of the local session branch (created on first persist).
+    session_branch: Option<String>,
+    /// Whether the session branch has been created yet.
+    branched: tokio::sync::Mutex<bool>,
 }
 
 impl GitBackend {
     pub fn new(client: CorpusClient, repo_subpath: Option<String>) -> Self {
+        let local_only = !client.has_push_token();
+        let session_branch = if local_only {
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            Some(format!("editor/session-{ts}"))
+        } else {
+            None
+        };
         Self {
             client,
             repo_subpath,
             dirty_files: tokio::sync::Mutex::new(Vec::new()),
+            local_only,
+            session_branch,
+            branched: tokio::sync::Mutex::new(false),
         }
     }
 
@@ -292,14 +315,29 @@ impl RepoBackend for GitBackend {
             return Ok(());
         }
 
-        match self.client.commit_and_push(&paths, &ctx.message).await {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                // Restore dirty files so the next persist attempt can retry.
-                self.dirty_files.lock().await.extend(paths);
-                Err(e)
+        let result = if self.local_only {
+            // Create session branch on first persist
+            {
+                let mut branched = self.branched.lock().await;
+                if !*branched {
+                    if let Some(branch) = &self.session_branch {
+                        self.client.create_local_branch(branch).await?;
+                    }
+                    *branched = true;
+                }
             }
+            self.client.commit_local(&paths, &ctx.message).await
+        } else {
+            self.client.commit_and_push(&paths, &ctx.message).await
+        };
+
+        if let Err(e) = result {
+            // Restore dirty files so the next persist attempt can retry.
+            self.dirty_files.lock().await.extend(paths);
+            return Err(e);
         }
+
+        Ok(())
     }
 
     async fn ensure_ready(&mut self) -> Result<()> {
@@ -447,5 +485,97 @@ mod tests {
         let mut backend = LocalBackend::new(PathBuf::from("/nonexistent/path"), true);
         let result = backend.ensure_ready().await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn git_local_only_commits_without_push() {
+        use tokio::process::Command;
+
+        // Set up a bare repo
+        let dir = TempDir::new().unwrap();
+        let bare_path = dir.path().join("bare.git");
+        Command::new("git")
+            .args(["init", "--bare", "--initial-branch=development"])
+            .arg(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Push an initial commit
+        let tmp_clone = dir.path().join("tmp-clone");
+        Command::new("git")
+            .args(["clone", &bare_url])
+            .arg(&tmp_clone)
+            .output()
+            .await
+            .unwrap();
+        for args in [
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+            vec!["commit", "--allow-empty", "-m", "init"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp_clone)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Create a GitBackend without a token (local_only mode)
+        let repo_path = dir.path().join("editor-repo");
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        // No .with_token() — triggers local_only
+        let client = CorpusClient::new(config);
+        let mut backend = GitBackend::new(client, None);
+        assert!(backend.local_only);
+
+        backend.ensure_ready().await.unwrap();
+
+        // Write and persist
+        backend
+            .write_file(Path::new("test.feature"), "Feature: Test\n")
+            .await
+            .unwrap();
+        backend
+            .persist(&WriteContext {
+                message: "add test scenario".to_string(),
+            })
+            .await
+            .unwrap();
+
+        // Verify local commit exists on a session branch
+        let branch = Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let branch_str = String::from_utf8_lossy(&branch.stdout);
+        assert!(
+            branch_str.trim().starts_with("editor/session-"),
+            "expected session branch, got: {branch_str}"
+        );
+
+        let log = Command::new("git")
+            .args(["log", "--oneline", "-1"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let log_str = String::from_utf8_lossy(&log.stdout);
+        assert!(log_str.contains("add test scenario"));
+
+        // Verify NOT pushed
+        let remote_log = Command::new("git")
+            .args(["log", "--oneline", "--all"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let remote_str = String::from_utf8_lossy(&remote_log.stdout);
+        assert!(!remote_str.contains("add test scenario"));
     }
 }
