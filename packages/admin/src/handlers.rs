@@ -800,7 +800,7 @@ pub async fn delete_jobs(
         ApiError::Internal("failed to delete jobs".to_string())
     })?;
 
-    let deleted = result.rows_affected() as i64;
+    let deleted = i64::try_from(result.rows_affected()).unwrap_or(i64::MAX);
     tracing::info!(deleted, "deleted jobs");
 
     Ok(Json(DeleteJobsResponse { deleted }))

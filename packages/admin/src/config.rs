@@ -226,7 +226,7 @@ mod tests {
         assert!(config.oidc.is_none());
         assert!(!config.is_auth_enabled());
 
-        clear_oidc_env();
+        clear_env();
     }
 
     #[test]
