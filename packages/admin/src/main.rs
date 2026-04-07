@@ -163,8 +163,7 @@ async fn main() {
         .route("/api/enrich-jobs", post(handlers::create_enrich_jobs))
         .route(
             "/api/jobs",
-            delete(handlers::delete_jobs)
-                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024)),
+            delete(handlers::delete_jobs).layer(axum::extract::DefaultBodyLimit::max(64 * 1024)),
         )
         .route(
             "/api/law_entries/{law_id}/reset-exhausted",
