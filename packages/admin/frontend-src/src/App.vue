@@ -33,8 +33,7 @@ watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
   }
 });
 
-function onAccountClick(e) {
-  e.preventDefault();
+function onAccountClick() {
   logout();
 }
 </script>
@@ -51,7 +50,7 @@ function onAccountClick(e) {
           no-menu
           utility-no-language-switch
           :utility-account-label="accountLabel"
-          @account-click.prevent="onAccountClick"
+          @account-click="onAccountClick"
         />
         <rr-toolbar size="md">
           <rr-toolbar-start-area>

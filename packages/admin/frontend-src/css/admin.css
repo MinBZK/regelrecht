@@ -19,22 +19,10 @@
   white-space: nowrap;
 }
 
-.harvest-form {
-  display: flex;
-  align-items: center;
-  gap: var(--primitives-space-8);
-}
-
 
 /* ============================================================
    Pagination
    ============================================================ */
-
-#pagination-container {
-  display: flex;
-  align-items: center;
-  gap: var(--primitives-space-8);
-}
 
 .pagination-info {
   font-family: var(--primitives-font-family-body);

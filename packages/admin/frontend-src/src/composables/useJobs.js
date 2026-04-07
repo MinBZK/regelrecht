@@ -1,12 +1,12 @@
 import { ref, reactive, computed } from 'vue';
 import { usePollingFetch } from './usePollingFetch.js';
 
-export function useJobs(initialFilter = {}) {
+export function useJobs() {
   const sort = ref('latest_created_at');
   const order = ref('desc');
   const limit = ref(50);
   const offset = ref(0);
-  const filters = reactive({ ...initialFilter });
+  const filters = reactive({});
   const viewMode = ref('grouped');
   const expandedLawIds = reactive(new Set());
   const expandedJobsCache = reactive({});

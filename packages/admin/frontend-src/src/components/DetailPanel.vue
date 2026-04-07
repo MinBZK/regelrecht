@@ -2,7 +2,7 @@
 import { computed, watch, onUnmounted } from 'vue';
 import StatusBadge from './StatusBadge.vue';
 import ProgressIndicator from './ProgressIndicator.vue';
-import { DATE_FORMATTER } from '../constants.js';
+import { formatDate } from '../formatters.js';
 
 const props = defineProps({
   job: { type: Object, default: null },
@@ -10,13 +10,6 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close']);
-
-function formatDate(value) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return String(value);
-  return DATE_FORMATTER.format(date);
-}
 
 const infoFields = computed(() => {
   if (!props.job) return [];

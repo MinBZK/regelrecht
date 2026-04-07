@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useJobs } from '../composables/useJobs.js';
 import { useJobDetail } from '../composables/useJobDetail.js';
@@ -28,12 +28,10 @@ const { job: detailJob, isOpen: detailOpen, open: openDetail, close: closeDetail
 
 const paginationUnit = computed(() => viewMode.value === 'grouped' ? 'laws' : 'results');
 
-// Handle incoming law_id query param
-onMounted(() => {
-  if (route.query.law_id) {
-    setLawIdFilter(route.query.law_id);
-  }
-});
+// Handle incoming law_id query param (runs synchronously during setup)
+if (route.query.law_id) {
+  setLawIdFilter(route.query.law_id);
+}
 </script>
 
 <template>

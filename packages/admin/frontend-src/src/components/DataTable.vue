@@ -1,4 +1,5 @@
 <script setup>
+import { onUnmounted } from 'vue';
 import StatusBadge from './StatusBadge.vue';
 import { formatDate, formatCoverageScore, truncateUuid } from '../formatters.js';
 
@@ -50,6 +51,8 @@ function getFilterKey(col) {
 function getFilterLabel(col) {
   return col.filter?.label || col.label;
 }
+
+onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
 </script>
 
 <template>
