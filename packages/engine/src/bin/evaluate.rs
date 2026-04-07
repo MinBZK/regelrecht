@@ -37,6 +37,17 @@ struct EvaluateRequest {
     date: String,
     #[serde(default)]
     extra_laws: Vec<String>,
+    /// External data sources (e.g., BRP personal data, tax records).
+    /// Each entry registers a named data source with a key field and records.
+    #[serde(default)]
+    data_sources: Vec<DataSourceInput>,
+}
+
+#[derive(serde::Deserialize)]
+struct DataSourceInput {
+    name: String,
+    key_field: String,
+    records: Vec<BTreeMap<String, serde_json::Value>>,
 }
 
 #[derive(serde::Serialize)]

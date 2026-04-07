@@ -40,6 +40,24 @@ fn propagate_binary(a: &Value, b: &Value) -> Option<Value> {
     }
 }
 
+/// If any value in the slice is Null, return Some(Value::Null).
+fn find_null(values: &[Value]) -> Option<Value> {
+    if values.iter().any(|v| v.is_null()) {
+        Some(Value::Null)
+    } else {
+        None
+    }
+}
+
+/// If either of two values is Null, return Some(Value::Null).
+fn propagate_null_binary(a: &Value, b: &Value) -> Option<Value> {
+    if a.is_null() || b.is_null() {
+        Some(Value::Null)
+    } else {
+        None
+    }
+}
+
 /// Maximum integer value that can be exactly represented in f64.
 /// Beyond this, precision is lost when converting i64 to f64.
 /// This is 2^53 = 9007199254740992.
@@ -147,7 +165,11 @@ pub fn evaluate_value<R: ValueResolver>(
             // Check if it's a variable reference (starts with $)
             if let Value::String(s) = v {
                 if let Some(var_name) = s.strip_prefix('$') {
-                    return resolver.resolve(var_name);
+                    return match resolver.resolve(var_name) {
+                        Ok(val) => Ok(val),
+                        Err(EngineError::VariableNotFound(_)) => Ok(Value::Null),
+                        Err(e) => Err(e),
+                    };
                 }
             }
             Ok(v.clone())
@@ -429,6 +451,11 @@ fn execute_equality<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Note: No null propagation for EQUALS/NOT_EQUALS.
+    // Null == Null returns true (needed for null-checking patterns like
+    // `EQUALS($var, null)` which is a common idiom in law YAML).
+    // Null == non-null returns false. This matches Python semantics.
+
     let equal = values_equal(&subject_val, &value_val);
     Ok(Value::Bool(if negate { !equal } else { equal }))
 }
@@ -451,6 +478,11 @@ where
 
     if let Some(tainted) = propagate_binary(&subject_val, &value_val) {
         return Ok(tainted);
+    }
+
+    // Null propagation: comparison with Null yields Null (unknown)
+    if let Some(null) = propagate_null_binary(&subject_val, &value_val) {
+        return Ok(null);
     }
 
     let subject_num = to_number(&subject_val)?;
@@ -599,6 +631,11 @@ fn execute_subtract<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Null propagation: if any value is Null, result is Null
+    if let Some(null) = find_null(&evaluated) {
+        return Ok(null);
+    }
+
     // SAFETY: values guaranteed non-empty by check above
     let Some((first, rest)) = evaluated.split_first() else {
         unreachable!("values checked non-empty above")
@@ -641,6 +678,11 @@ fn execute_multiply<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Null propagation: if any value is Null, result is Null
+    if let Some(null) = find_null(&evaluated) {
+        return Ok(null);
+    }
+
     let mut result = 1.0;
     let mut has_float = false;
 
@@ -681,6 +723,11 @@ fn execute_divide<R: ValueResolver>(
 
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
+    }
+
+    // Null propagation: if any value is Null, result is Null
+    if let Some(null) = find_null(&evaluated) {
+        return Ok(null);
     }
 
     // SAFETY: values guaranteed non-empty by check above
@@ -739,8 +786,14 @@ where
         return Ok(tainted);
     }
 
+    // Skip Null values in aggregation
+    let non_null: Vec<&Value> = evaluated.iter().filter(|v| !v.is_null()).collect();
+    if non_null.is_empty() {
+        return Ok(Value::Null);
+    }
+
     let mut has_float = false;
-    let nums: Vec<f64> = evaluated
+    let nums: Vec<f64> = non_null
         .iter()
         .map(|v| {
             if matches!(v, Value::Float(_)) {
@@ -750,9 +803,9 @@ where
         })
         .collect::<Result<Vec<_>>>()?;
 
-    // SAFETY: values guaranteed non-empty by check above
+    // SAFETY: non_null guaranteed non-empty by check above
     let Some(result) = nums.into_iter().reduce(combine) else {
-        unreachable!("values checked non-empty above")
+        unreachable!("non_null checked non-empty above")
     };
 
     Ok(if has_float {
@@ -777,11 +830,11 @@ fn execute_and<R: ValueResolver>(
     let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive false wins over taint (AND commutativity)
-        if !val.to_bool() && !val.is_untranslatable() {
+        // Definitive false wins over taint/null (AND commutativity)
+        if !val.to_bool() && !val.is_untranslatable() && !val.is_null() {
             return Ok(Value::Bool(false));
         }
-        if val.is_untranslatable() && taint.is_none() {
+        if (val.is_untranslatable() || val.is_null()) && taint.is_none() {
             taint = Some(val);
             continue;
         }
@@ -790,7 +843,7 @@ fn execute_and<R: ValueResolver>(
         }
     }
 
-    // If any operand was tainted but none was definitively false, propagate
+    // If any operand was tainted/null but none was definitively false, propagate
     if let Some(t) = taint {
         return Ok(t);
     }
@@ -812,16 +865,16 @@ fn execute_or<R: ValueResolver>(
     let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive true wins over taint (OR commutativity)
+        // Definitive true wins over taint/null (OR commutativity)
         if val.to_bool() {
             return Ok(Value::Bool(true));
         }
-        if val.is_untranslatable() && taint.is_none() {
+        if (val.is_untranslatable() || val.is_null()) && taint.is_none() {
             taint = Some(val);
         }
     }
 
-    // If any operand was tainted but none was definitively true, propagate
+    // If any operand was tainted/null but none was definitively true, propagate
     if let Some(t) = taint {
         return Ok(t);
     }
@@ -836,6 +889,10 @@ fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize
     let val = evaluate_value(value, resolver, depth)?;
     if val.is_untranslatable() {
         return Ok(val);
+    }
+    // Null propagation: NOT(Null) = Null (unknown)
+    if val.is_null() {
+        return Ok(Value::Null);
     }
     Ok(Value::Bool(!val.to_bool()))
 }
@@ -952,6 +1009,10 @@ fn execute_membership<R: ValueResolver>(
     if subject_val.is_untranslatable() {
         return Ok(subject_val);
     }
+    // Null propagation: if subject is Null, return Null (unknown membership)
+    if subject_val.is_null() {
+        return Ok(Value::Null);
+    }
 
     let check_values = if let Some(values) = values {
         evaluate_values(values, resolver, depth)?
@@ -1010,6 +1071,11 @@ fn execute_age<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Null propagation: if either input is null, return null
+    if matches!(dob_val, Value::Null) || matches!(ref_val, Value::Null) {
+        return Ok(Value::Null);
+    }
+
     let dob_date = parse_date(&dob_val)?;
     let ref_date_parsed = parse_date(&ref_val)?;
 
@@ -1041,11 +1107,18 @@ fn execute_date_add<R: ValueResolver>(
     if date_val.is_untranslatable() {
         return Ok(date_val);
     }
+    // Null propagation: if date input is Null, return Null
+    if date_val.is_null() {
+        return Ok(Value::Null);
+    }
     let mut result_date = parse_date(&date_val)?;
 
     // Years: add to year component, clamp day to last day of target month
     if let Some(years) = years {
         let years_val = evaluate_value(years, resolver, depth)?;
+        if years_val.is_null() {
+            return Ok(Value::Null);
+        }
         let years_i64 = years_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'years' must be a number".to_string())
         })?;
@@ -1071,6 +1144,9 @@ fn execute_date_add<R: ValueResolver>(
     // Months: add to month component, clamp day to last day of target month
     if let Some(months) = months {
         let months_val = evaluate_value(months, resolver, depth)?;
+        if months_val.is_null() {
+            return Ok(Value::Null);
+        }
         let months_int = months_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'months' must be a number".to_string())
         })?;
@@ -1080,6 +1156,9 @@ fn execute_date_add<R: ValueResolver>(
     // Weeks
     if let Some(weeks) = weeks {
         let weeks_val = evaluate_value(weeks, resolver, depth)?;
+        if weeks_val.is_null() {
+            return Ok(Value::Null);
+        }
         let weeks_int = weeks_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'weeks' must be a number".to_string())
         })?;
@@ -1095,6 +1174,9 @@ fn execute_date_add<R: ValueResolver>(
     // Days
     if let Some(days) = days {
         let days_val = evaluate_value(days, resolver, depth)?;
+        if days_val.is_null() {
+            return Ok(Value::Null);
+        }
         let days_int = days_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
         })?;
@@ -1156,6 +1238,11 @@ fn execute_date_construct<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Null propagation: if any component is Null, return Null
+    if let Some(null) = find_null(&[year_val.clone(), month_val.clone(), day_val.clone()]) {
+        return Ok(null);
+    }
+
     let y_i64 = year_val
         .as_int()
         .ok_or_else(|| EngineError::InvalidOperation("DATE 'year' must be a number".to_string()))?;
@@ -1195,6 +1282,10 @@ fn execute_day_of_week<R: ValueResolver>(
     let val = evaluate_value(date_value, resolver, depth)?;
     if val.is_untranslatable() {
         return Ok(val);
+    }
+    // Null propagation: if date is Null, return Null
+    if val.is_null() {
+        return Ok(Value::Null);
     }
     let parsed = parse_date(&val)?;
     Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
@@ -2258,15 +2349,12 @@ mod tests {
         }
 
         #[test]
-        fn test_variable_not_found() {
+        fn test_variable_not_found_returns_null() {
             let resolver = TestResolver::new();
-            let op = ActionOperation::Equals {
-                subject: var("nonexistent"),
-                value: lit(42i64),
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+            // Unresolved variables return Null (lenient mode)
+            let val = var("nonexistent");
+            let result = evaluate_value(&val, &resolver, 0);
+            assert!(matches!(result, Ok(Value::Null)));
         }
 
         #[test]

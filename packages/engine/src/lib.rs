@@ -44,6 +44,9 @@ pub mod uri;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+#[cfg(feature = "python")]
+mod python;
+
 /// OpenTelemetry integration (requires `otel` feature).
 ///
 /// **Note:** The `otel` and `wasm` features are mutually exclusive in practice —
