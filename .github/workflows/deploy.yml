@@ -224,7 +224,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Preview)
         if: needs.build-admin.result != 'failure'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -240,7 +240,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Preview)
         if: needs.build-harvester-worker.result != 'failure'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -258,7 +258,7 @@ jobs:
         if: >-
           (needs.changes.outputs.enrich-worker == 'true' || contains(github.event.pull_request.labels.*.name, 'deploy:enrich-worker')) &&
           needs.build-enrich-worker.result != 'failure'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -276,7 +276,7 @@ jobs:
       - name: Deploy editor to ZAD (Preview)
         if: needs.build.result != 'failure'
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -292,7 +292,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Preview)
         if: needs.changes.outputs.lawmaking == 'true' && needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -308,7 +308,7 @@ jobs:
 
       - name: Deploy landing to ZAD (Preview)
         if: needs.changes.outputs.landing == 'true' && needs.build-landing.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -324,7 +324,7 @@ jobs:
 
       - name: Deploy docs to ZAD (Preview)
         if: needs.changes.outputs.docs == 'true' && needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -360,7 +360,7 @@ jobs:
 
       - name: Deploy admin to ZAD (Production)
         if: needs.build-admin.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -371,7 +371,7 @@ jobs:
       - name: Deploy editor to ZAD (Production)
         if: needs.build.result == 'success'
         id: deploy
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -381,7 +381,7 @@ jobs:
 
       - name: Deploy harvester-worker to ZAD (Production)
         if: needs.build-harvester-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -391,7 +391,7 @@ jobs:
 
       - name: Deploy enrich-worker to ZAD (Production)
         if: needs.build-enrich-worker.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -401,7 +401,7 @@ jobs:
 
       - name: Deploy grafana to ZAD (Production)
         if: needs.build-grafana.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -411,7 +411,7 @@ jobs:
 
       - name: Deploy lawmaking to ZAD (Production)
         if: needs.build-lawmaking.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -421,7 +421,7 @@ jobs:
 
       - name: Deploy landing to ZAD (Production)
         if: needs.build-landing.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
@@ -431,7 +431,7 @@ jobs:
 
       - name: Deploy docs to ZAD (Production)
         if: needs.build-docs.result == 'success'
-        uses: RijksICTGilde/zad-actions/deploy@02fea0a223d3b18db796454b110f2afc16a09cf9  # v3
+        uses: RijksICTGilde/zad-actions/deploy@0d3336f6507878c054646c1d752f61465f2d80f5  # v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
