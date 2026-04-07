@@ -1418,6 +1418,23 @@ pub fn execute_foreach(
     context: &RuleContext,
     depth: usize,
 ) -> Result<Value> {
+    // Validate as_name: must be lowercase identifier per RFC-016 schema
+    if !as_name.is_empty()
+        && !as_name
+            .chars()
+            .enumerate()
+            .all(|(i, c)| match (i, c) {
+                (0, 'a'..='z' | '_') => true,
+                (_, 'a'..='z' | '0'..='9' | '_') => true,
+                _ => false,
+            })
+    {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH 'as' must be a lowercase identifier (got '{}')",
+            as_name
+        )));
+    }
+
     // Evaluate collection in current (outer) scope
     let collection_value = evaluate_value(collection, context, depth)?;
 
