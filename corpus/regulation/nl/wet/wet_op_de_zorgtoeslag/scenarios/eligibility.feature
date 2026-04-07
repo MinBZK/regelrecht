@@ -38,6 +38,9 @@ Feature: Zorgtoeslag eligibility
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 209692
 
+  # NB: Engine currently returns true for minors — age check was removed (#375)
+  # because AWIR Art 10 (verzekeringsplicht vs meeverzekerd) is not yet modeled.
+  # This scenario asserts false as the desired outcome, not the current engine result.
   Scenario: Minderjarige heeft geen recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
@@ -127,6 +130,9 @@ Feature: Zorgtoeslag eligibility
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210916
 
+  # NB: Gezamenlijk toetsingsinkomen is NOT YET implemented (#377).
+  # Expected amount reflects applicant income only, not combined partner income.
+  # Blocked by engine limitation: conditional cross-law input resolution.
   Scenario: Partner met gecombineerd inkomen heeft recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
@@ -158,6 +164,8 @@ Feature: Zorgtoeslag eligibility
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 272845
 
+  # NB: Toetsingsinkomen excludes box3 — Art 5.2a forfaitair rendement is not
+  # yet implemented (#383). Only box1 income counts toward the toeslag amount.
   Scenario: Alleenstaande met box3 vermogen heeft recht op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
@@ -214,6 +222,8 @@ Feature: Zorgtoeslag eligibility
     Then output "heeft_recht_op_zorgtoeslag" is true
     Then output "hoogte_zorgtoeslag" equals 210726
 
+  # NB: Forensische zorg exclusion was removed as scope violation (#375).
+  # It belongs in Zvw Art 24 or Wfz, not in the zorgtoeslag law.
   Scenario: Forensische zorg heeft geen invloed op zorgtoeslag
     Given the following "personal_data" data with key "bsn":
       | bsn       | geboortedatum | verblijfsadres | land_verblijf |
