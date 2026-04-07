@@ -771,43 +771,33 @@ pub async fn delete_jobs(
 ) -> Result<Json<DeleteJobsResponse>, ApiError> {
     let pool = &state.pool;
 
-    let request = if body.is_empty() {
-        None
-    } else {
-        Some(
-            serde_json::from_slice::<DeleteJobsRequest>(&body)
-                .map_err(|e| ApiError::BadRequest(format!("invalid request body: {e}")))?,
-        )
-    };
-
-    if let Some(ref req) = request {
-        if req.job_ids.len() > 1000 {
-            return Err(ApiError::BadRequest(
-                "job_ids array exceeds maximum size of 1000".to_string(),
-            ));
-        }
+    if body.is_empty() {
+        return Err(ApiError::BadRequest(
+            "request body with job_ids is required".to_string(),
+        ));
     }
 
-    let result = match request {
-        Some(req) => {
-            if req.job_ids.is_empty() {
-                return Ok(Json(DeleteJobsResponse { deleted: 0 }));
-            }
-            sqlx::query("DELETE FROM jobs WHERE id = ANY($1) AND status != 'processing'")
-                .bind(&req.job_ids)
-                .execute(pool)
-                .await
-        }
-        None => {
-            sqlx::query("DELETE FROM jobs WHERE status != 'processing'")
-                .execute(pool)
-                .await
-        }
+    let req = serde_json::from_slice::<DeleteJobsRequest>(&body)
+        .map_err(|e| ApiError::BadRequest(format!("invalid request body: {e}")))?;
+
+    if req.job_ids.is_empty() {
+        return Ok(Json(DeleteJobsResponse { deleted: 0 }));
     }
-    .map_err(|e| {
-        tracing::error!(error = %e, "failed to delete jobs");
-        ApiError::Internal("failed to delete jobs".to_string())
-    })?;
+
+    if req.job_ids.len() > 1000 {
+        return Err(ApiError::BadRequest(
+            "job_ids array exceeds maximum size of 1000".to_string(),
+        ));
+    }
+
+    let result = sqlx::query("DELETE FROM jobs WHERE id = ANY($1) AND status != 'processing'")
+        .bind(&req.job_ids)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to delete jobs");
+            ApiError::Internal("failed to delete jobs".to_string())
+        })?;
 
     let deleted = i64::try_from(result.rows_affected()).unwrap_or(i64::MAX);
     tracing::info!(deleted, "deleted jobs");
