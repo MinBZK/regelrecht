@@ -248,6 +248,12 @@ pub enum ActionOperation {
     },
     #[serde(rename = "LIST")]
     List { items: Vec<ActionValue> },
+    /// GET: look up a key in a map/object. subject=key, values=map.
+    #[serde(rename = "GET")]
+    Get {
+        subject: ActionValue,
+        values: ActionValue,
+    },
 
     // Date
     #[serde(rename = "AGE")]
@@ -338,6 +344,7 @@ impl ActionOperation {
             ActionOperation::In { .. } => "IN",
             ActionOperation::NotIn { .. } => "NOT_IN",
             ActionOperation::List { .. } => "LIST",
+            ActionOperation::Get { .. } => "GET",
             ActionOperation::Age { .. } => "AGE",
             ActionOperation::DateAdd { .. } => "DATE_ADD",
             ActionOperation::Date { .. } => "DATE",

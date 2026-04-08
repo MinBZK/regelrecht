@@ -336,6 +336,7 @@ fn execute_operation_internal<R: ValueResolver>(
             true,
         ),
         ActionOperation::List { items } => execute_list(items, resolver, depth),
+        ActionOperation::Get { subject, values } => execute_get(subject, values, resolver, depth),
 
         // Date
         ActionOperation::Age {
@@ -1048,25 +1049,44 @@ fn execute_membership<R: ValueResolver>(
         return Ok(Value::Null);
     }
 
-    let check_values = if let Some(values) = values {
-        evaluate_values(values, resolver, depth)?
-    } else if let Some(value) = value {
-        let resolved = evaluate_value(value, resolver, depth)?;
-        match resolved {
-            Value::Array(items) => items,
-            other => vec![other],
-        }
-    } else {
-        let op_name = if negate { "NOT_IN" } else { "IN" };
-        return Err(EngineError::InvalidOperation(format!(
-            "{op_name} requires 'values' or 'value'"
-        )));
-    };
+    if let Some(values) = values {
+        let check_values = evaluate_values(values, resolver, depth)?;
+        let found = check_values
+            .iter()
+            .any(|val| values_equal(&subject_val, val));
+        return Ok(Value::Bool(if negate { !found } else { found }));
+    }
 
-    let found = check_values
-        .iter()
-        .any(|val| values_equal(&subject_val, val));
-    Ok(Value::Bool(if negate { !found } else { found }))
+    if let Some(value) = value {
+        let resolved = evaluate_value(value, resolver, depth)?;
+        let found = match &resolved {
+            Value::Array(items) => items.iter().any(|val| values_equal(&subject_val, val)),
+            // Object/map: check if subject is a key in the map.
+            // Coerce subject to string for key lookup (keys are always strings).
+            Value::Object(map) => {
+                let key = match &subject_val {
+                    Value::String(s) => s.clone(),
+                    Value::Int(i) => i.to_string(),
+                    Value::Float(f) => {
+                        if *f == (*f as i64) as f64 {
+                            (*f as i64).to_string()
+                        } else {
+                            f.to_string()
+                        }
+                    }
+                    _ => format!("{}", subject_val),
+                };
+                map.contains_key(&key)
+            }
+            other => values_equal(&subject_val, other),
+        };
+        return Ok(Value::Bool(if negate { !found } else { found }));
+    }
+
+    let op_name = if negate { "NOT_IN" } else { "IN" };
+    Err(EngineError::InvalidOperation(format!(
+        "{op_name} requires 'values' or 'value'"
+    )))
 }
 
 /// Execute LIST operation: construct an array from items.
@@ -1081,6 +1101,45 @@ fn execute_list<R: ValueResolver>(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(Value::Array(values))
+}
+
+/// Execute GET operation: look up a key in a map/object.
+///
+/// `subject` is the key to look up, `values` is the map/object.
+/// The key is coerced to string for lookup (map keys are always strings).
+fn execute_get<R: ValueResolver>(
+    subject: &ActionValue,
+    values: &ActionValue,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let key_val = evaluate_value(subject, resolver, depth)?;
+    if key_val.is_null() {
+        return Ok(Value::Null);
+    }
+    let map_val = evaluate_value(values, resolver, depth)?;
+    if map_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    match &map_val {
+        Value::Object(map) => {
+            let key = match &key_val {
+                Value::String(s) => s.clone(),
+                Value::Int(i) => i.to_string(),
+                Value::Float(f) => {
+                    if *f == (*f as i64) as f64 {
+                        (*f as i64).to_string()
+                    } else {
+                        f.to_string()
+                    }
+                }
+                _ => format!("{}", key_val),
+            };
+            Ok(map.get(&key).cloned().unwrap_or(Value::Null))
+        }
+        _ => Ok(Value::Null),
+    }
 }
 
 // =============================================================================
