@@ -32,7 +32,8 @@ WORKDIR /build
 # Stage 3: Plan dependencies
 FROM chef AS planner
 COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/auth",\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY packages/auth/ packages/auth/
 COPY packages/editor-api/ packages/editor-api/
 COPY packages/corpus/ packages/corpus/
 COPY packages/engine/ packages/engine/
