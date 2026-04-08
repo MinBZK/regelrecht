@@ -485,6 +485,29 @@ where
         return Ok(null);
     }
 
+    // Date string comparison: if both values look like ISO dates (YYYY-MM-DD),
+    // compare as dates rather than numbers. Also handle date objects ({iso: "..."}).
+    let subject_date_str = extract_date_string(&subject_val);
+    let value_date_str = extract_date_string(&value_val);
+    if let (Some(s), Some(v)) = (&subject_date_str, &value_date_str) {
+        if let (Ok(sd), Ok(vd)) = (
+            NaiveDate::parse_from_str(s, "%Y-%m-%d"),
+            NaiveDate::parse_from_str(v, "%Y-%m-%d"),
+        ) {
+            // Convert dates to ordinal days for numeric comparison
+            let s_ord = sd.num_days_from_ce() as f64;
+            let v_ord = vd.num_days_from_ce() as f64;
+            return Ok(Value::Bool(compare(s_ord, v_ord)));
+        }
+    }
+
+    // String comparison: if both are strings (non-date), compare lexicographically
+    if let (Value::String(s), Value::String(v)) = (&subject_val, &value_val) {
+        let cmp = s.cmp(v);
+        let result = compare(cmp as i32 as f64, 0.0);
+        return Ok(Value::Bool(result));
+    }
+
     let subject_num = to_number(&subject_val)?;
     let value_num = to_number(&value_val)?;
 
@@ -1501,6 +1524,17 @@ fn to_number(val: &Value) -> Result<f64> {
 }
 
 /// Create a TypeMismatch error.
+/// Extract a date string from a Value, handling both String and Object ({iso: "..."}) forms.
+fn extract_date_string(val: &Value) -> Option<String> {
+    match val {
+        Value::String(s) if s.len() == 10 && s.chars().nth(4) == Some('-') => Some(s.clone()),
+        Value::Object(obj) => obj.get("iso").and_then(|v| {
+            if let Value::String(s) = v { Some(s.clone()) } else { None }
+        }),
+        _ => None,
+    }
+}
+
 fn type_error(expected: &str, actual: &Value) -> EngineError {
     EngineError::TypeMismatch {
         expected: expected.to_string(),
