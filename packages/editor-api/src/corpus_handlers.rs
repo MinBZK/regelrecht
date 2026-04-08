@@ -338,23 +338,23 @@ fn resolve_writable_backend(
     // Try the law's own backend first, then fall back to any other backend.
     // The fallback picks the backend with the lowest source ID (alphabetical)
     // for deterministic behaviour across restarts.
-    let backend = corpus
-        .backends
-        .get(&law.source_id)
-        .or_else(|| {
-            corpus
-                .backends
-                .iter()
-                .min_by_key(|(k, _)| (*k).clone())
-                .map(|(_, v)| v)
-        })
-        .ok_or_else(|| {
-            (
-                StatusCode::FORBIDDEN,
-                "No write backend available".to_string(),
-            )
-        })?
-        .clone();
+    let backend = if let Some(b) = corpus.backends.get(&law.source_id) {
+        b.clone()
+    } else if let Some((fallback_id, b)) = corpus.backends.iter().min_by_key(|(k, _)| (*k).clone())
+    {
+        tracing::warn!(
+            law_id = %law_id,
+            law_source = %law.source_id,
+            fallback_source = %fallback_id,
+            "law's own source has no write backend, falling back to a different source"
+        );
+        b.clone()
+    } else {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "No write backend available".to_string(),
+        ));
+    };
 
     Ok(ResolvedBackend { law, backend })
 }
@@ -379,12 +379,6 @@ async fn resolve_write_target(
     let relative_path = rel_dir.join("scenarios").join(filename);
 
     let backend = resolved.backend.lock_owned().await;
-    if !backend.is_writable() {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "No writable backend available".to_string(),
-        ));
-    }
 
     Ok((relative_path, backend))
 }

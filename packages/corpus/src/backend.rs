@@ -371,7 +371,7 @@ pub fn create_backend(source: &Source, auth_token: Option<&str>) -> Result<Box<d
         SourceType::Local { local } => Ok(Box::new(LocalBackend::new(local.path.clone(), true))),
         SourceType::GitHub { github } => {
             let repo_url = format!("https://github.com/{}/{}.git", github.owner, github.repo);
-            let repo_path = PathBuf::from(format!("/tmp/corpus-editor/{}", source.id));
+            let repo_path = std::env::temp_dir().join("corpus-editor").join(&source.id);
             let mut config = CorpusConfig::new(&repo_url, &repo_path);
             config.branch = github.effective_ref().to_string();
 
