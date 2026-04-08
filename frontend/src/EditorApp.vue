@@ -228,7 +228,7 @@ function handleSave({ section, key, newKey, index, data }) {
                 <ndd-tab-bar-item selected text="Editor"></ndd-tab-bar-item>
               </ndd-tab-bar>
             </ndd-toolbar-item>
-<ndd-toolbar-item slot="end">
+            <ndd-toolbar-item slot="end">
               <ndd-button-bar size="md">
                 <ndd-button id="project-menu-btn" size="md" expandable text="RR Project" popovertarget="project-menu"></ndd-button>
                 <ndd-menu id="project-menu" anchor="project-menu-btn">
@@ -253,7 +253,7 @@ function handleSave({ section, key, newKey, index, data }) {
           <ndd-spacer size="8"></ndd-spacer>
 
           <!-- Document Tab Bar -->
-          <ndd-document-tab-bar v-if="!loading && !error && openTabs.length > 0">
+          <ndd-document-tab-bar v-if="openTabs.length > 0">
             <ndd-document-tab-bar-item
               v-for="tab in openTabs"
               :key="tabKey(tab)"
@@ -273,8 +273,15 @@ function handleSave({ section, key, newKey, index, data }) {
 
       <!-- Main content area -->
       <ndd-split-view-pane slot="main">
+        <!-- Empty state: no tabs open -->
+        <ndd-page v-if="!activeTab">
+          <ndd-simple-section align="center">
+            <ndd-inline-dialog text="Open een artikel vanuit de bibliotheek om te bewerken"></ndd-inline-dialog>
+          </ndd-simple-section>
+        </ndd-page>
+
         <!-- Error state -->
-        <ndd-page v-if="error">
+        <ndd-page v-else-if="error">
           <ndd-simple-section align="center">
             <ndd-inline-dialog variant="alert" text="Kon de wet niet laden" :supporting-text="error.message"></ndd-inline-dialog>
           </ndd-simple-section>
