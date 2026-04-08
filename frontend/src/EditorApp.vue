@@ -229,14 +229,7 @@ function handleSave({ section, key, newKey, index, data }) {
                 <ndd-tab-bar-item selected text="Editor"></ndd-tab-bar-item>
               </ndd-tab-bar>
             </ndd-toolbar-item>
-            <ndd-toolbar-item slot="center" min-width="240px" width="40%">
-              <ndd-search-field
-                size="md"
-                placeholder="Zoeken"
-                @input="search = $event.target.value"
-              ></ndd-search-field>
-            </ndd-toolbar-item>
-            <ndd-toolbar-item slot="end">
+<ndd-toolbar-item slot="end">
               <ndd-button-bar size="md">
                 <ndd-button id="project-menu-btn" size="md" expandable text="RR Project" popovertarget="project-menu"></ndd-button>
                 <ndd-menu id="project-menu" anchor="project-menu-btn">
