@@ -8,7 +8,7 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 
-const { authenticated, loading, person, login, logout } = useAuth();
+const { authenticated, loading: authLoading, person, login, logout } = useAuth();
 
 const route = useRoute();
 const router = useRouter();
@@ -247,12 +247,12 @@ loadIndex();
                 <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
                 </ndd-icon-button>
                 <ndd-menu id="account-menu" anchor="account-menu-btn">
-                  <template v-if="!loading && authenticated">
+                  <template v-if="!authLoading && authenticated">
                     <ndd-menu-item :text="person?.name || person?.email" disabled></ndd-menu-item>
                     <ndd-menu-divider></ndd-menu-divider>
                     <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
                   </template>
-                  <template v-else-if="!loading">
+                  <template v-else-if="!authLoading">
                     <ndd-menu-item text="Inloggen" @click="login"></ndd-menu-item>
                   </template>
                 </ndd-menu>

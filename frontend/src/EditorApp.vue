@@ -4,13 +4,13 @@ import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
-
-const { authenticated, oidcConfigured, person, logout } = useAuth();
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
+
+const { authenticated, oidcConfigured, person, logout } = useAuth();
 
 // --- Initial law load (from URL params) ---
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
