@@ -161,7 +161,8 @@ fn assert_output_null(world: &mut RegelrechtWorld, output_name: String) {
             assert!(
                 value.is_null(),
                 "Output '{}': expected Null, got {:?}",
-                output_name, value
+                output_name,
+                value
             );
         }
         None => {
