@@ -388,8 +388,8 @@ impl RuleContext {
             return Ok(value.clone());
         }
 
-        // Not found
-        Err(EngineError::VariableNotFound(path.to_string()))
+        // Not found — return Null (lenient resolution for missing variables)
+        Ok(Value::Null)
     }
 }
 
@@ -478,21 +478,18 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
     }
 
     match value {
-        Value::Object(obj) => obj
+        Value::Object(obj) => Ok(obj
             .get(property_path)
             .cloned()
-            .ok_or_else(|| EngineError::VariableNotFound(format!(".{}", property_path))),
+            .unwrap_or(Value::Null)),
         Value::Array(arr) => {
             // Support numeric indexing for arrays
             if let Ok(index) = property_path.parse::<usize>() {
-                arr.get(index)
+                Ok(arr.get(index)
                     .cloned()
-                    .ok_or_else(|| EngineError::VariableNotFound(format!("[{}]", index)))
+                    .unwrap_or(Value::Null))
             } else {
-                Err(EngineError::TypeMismatch {
-                    expected: "object".to_string(),
-                    actual: "array".to_string(),
-                })
+                Ok(Value::Null)
             }
         }
         _ => Err(EngineError::TypeMismatch {
@@ -575,7 +572,7 @@ mod tests {
     fn test_resolve_not_found() {
         let ctx = make_context();
         let result = ctx.resolve("nonexistent");
-        assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     // -------------------------------------------------------------------------
@@ -722,7 +719,7 @@ mod tests {
         ctx.set_output("person", Value::Object(person));
 
         let result = ctx.resolve("person.nonexistent");
-        assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     #[test]
@@ -770,7 +767,7 @@ mod tests {
 
         // Child's changes shouldn't affect parent
         assert_eq!(ctx.resolve("shared").unwrap(), Value::Int(100));
-        assert!(ctx.resolve("child_only").is_err());
+        assert_eq!(ctx.resolve("child_only").unwrap(), Value::Null);
 
         // Child should see its own value
         assert_eq!(child.resolve("shared").unwrap(), Value::Int(200));
@@ -785,9 +782,9 @@ mod tests {
         // Create child - should NOT inherit parent's local variables
         let child = ctx.create_child();
 
-        // Child should NOT see parent's loop variables
-        assert!(child.resolve("parent_loop_var").is_err());
-        assert!(child.resolve("index").is_err());
+        // Child should NOT see parent's loop variables (resolves to Null)
+        assert_eq!(child.resolve("parent_loop_var").unwrap(), Value::Null);
+        assert_eq!(child.resolve("index").unwrap(), Value::Null);
 
         // But parent should still have them
         assert_eq!(ctx.resolve("parent_loop_var").unwrap(), Value::Int(999));
@@ -809,7 +806,7 @@ mod tests {
     fn test_empty_context() {
         let ctx = RuleContext::with_defaults(BTreeMap::new());
         let result = ctx.resolve("anything");
-        assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     #[test]
