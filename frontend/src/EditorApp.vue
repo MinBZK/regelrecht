@@ -5,7 +5,7 @@ import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 
-const { person, logout } = useAuth();
+const { authenticated, oidcConfigured, person, logout } = useAuth();
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -248,9 +248,14 @@ function handleSave({ section, key, newKey, index, data }) {
                 <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
                 </ndd-icon-button>
                 <ndd-menu id="account-menu" anchor="account-menu-btn">
-                  <ndd-menu-item v-if="person" :text="person.name || person.email" disabled></ndd-menu-item>
-                  <ndd-menu-divider v-if="person"></ndd-menu-divider>
-                  <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
+                  <template v-if="authenticated">
+                    <ndd-menu-item :text="person?.name || person?.email" disabled></ndd-menu-item>
+                    <ndd-menu-divider></ndd-menu-divider>
+                    <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
+                  </template>
+                  <template v-else-if="oidcConfigured">
+                    <ndd-menu-item text="Inloggen" @click="() => window.location.href = '/auth/login'"></ndd-menu-item>
+                  </template>
                 </ndd-menu>
               </ndd-button-bar>
             </ndd-toolbar-item>
