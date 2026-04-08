@@ -286,8 +286,22 @@ pub enum ActionOperation {
         #[serde(alias = "where")]
         filter: Option<ActionValue>,
         #[serde(default)]
-        combine: Option<String>,
+        combine: Option<CombineOp>,
     },
+}
+
+/// Aggregation operations for FOREACH combine.
+///
+/// Using a typed enum ensures invalid combine values are rejected at
+/// deserialization time (schema validation), not at execution time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CombineOp {
+    Add,
+    Or,
+    And,
+    Min,
+    Max,
 }
 
 fn default_foreach_as() -> String {

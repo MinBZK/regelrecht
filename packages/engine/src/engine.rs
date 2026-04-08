@@ -853,18 +853,36 @@ articles:
     // -------------------------------------------------------------------------
 
     #[test]
-    fn test_missing_parameter_returns_null_outputs() {
+    fn test_missing_parameter_returns_null_or_default_outputs() {
         let law = make_simple_law();
         let article = law.find_article_by_number("1").unwrap();
         let engine = ArticleEngine::new(article, &law);
 
         // No parameters - age resolves to Null via lenient resolution.
-        // The engine may error on required parameter validation or on
-        // type mismatches when Null is used in operations. Either outcome
-        // is acceptable for missing required params.
+        // GREATER_THAN_OR_EQUAL(null, 18) → Null (null propagation).
+        // is_adult = Null (comparison with missing param).
+        // age_check_result = "minor" (IF condition is Null → falsy → falls to default).
         let params = BTreeMap::new();
-        let _result = engine.evaluate(params, "2025-01-01");
-        // We just verify it doesn't panic
+        let result = engine.evaluate(params, "2025-01-01");
+        match result {
+            Ok(eval_result) => {
+                // is_adult should be Null (comparison on null propagates)
+                assert_eq!(
+                    eval_result.outputs.get("is_adult"),
+                    Some(&Value::Null),
+                    "Expected is_adult to be Null when age param is missing"
+                );
+                // age_check_result falls to IF default branch since condition is Null (falsy)
+                assert_eq!(
+                    eval_result.outputs.get("age_check_result"),
+                    Some(&Value::String("minor".to_string())),
+                    "Expected age_check_result to fall to default when age param is missing"
+                );
+            }
+            Err(_) => {
+                // An error is also acceptable for missing required parameters
+            }
+        }
     }
 
     #[test]

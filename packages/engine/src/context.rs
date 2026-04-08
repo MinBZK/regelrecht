@@ -428,7 +428,7 @@ impl ValueResolver for RuleContext {
         as_name: &str,
         body: &crate::article::ActionValue,
         filter: Option<&crate::article::ActionValue>,
-        combine: Option<&str>,
+        combine: Option<&crate::article::CombineOp>,
         depth: usize,
     ) -> Option<Result<Value>> {
         Some(crate::operations::execute_foreach(
@@ -480,16 +480,11 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
     match value {
         // Null propagation: accessing a property on Null returns Null
         Value::Null => Ok(Value::Null),
-        Value::Object(obj) => Ok(obj
-            .get(property_path)
-            .cloned()
-            .unwrap_or(Value::Null)),
+        Value::Object(obj) => Ok(obj.get(property_path).cloned().unwrap_or(Value::Null)),
         Value::Array(arr) => {
             // Support numeric indexing for arrays
             if let Ok(index) = property_path.parse::<usize>() {
-                Ok(arr.get(index)
-                    .cloned()
-                    .unwrap_or(Value::Null))
+                Ok(arr.get(index).cloned().unwrap_or(Value::Null))
             } else {
                 Ok(Value::Null)
             }

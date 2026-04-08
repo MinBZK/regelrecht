@@ -38,12 +38,14 @@ struct EvaluateRequest {
     #[serde(default)]
     extra_laws: Vec<String>,
     /// External data sources (e.g., BRP personal data, tax records).
-    /// Each entry registers a named data source with a key field and records.
+    /// Scaffolding: deserialized but not yet wired to service.register_dict_source.
     #[serde(default)]
+    #[allow(dead_code)]
     data_sources: Vec<DataSourceInput>,
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)]
 struct DataSourceInput {
     name: String,
     key_field: String,

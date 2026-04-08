@@ -175,14 +175,13 @@ impl PartialEq for Value {
 }
 
 impl Value {
-    /// Check if value is null
+    /// Check if value is null.
+    ///
+    /// Only `Value::Null` is null. Empty arrays `[]` and empty objects `{}`
+    /// are **not** null — they are valid, concrete values. "Has zero children"
+    /// is a known fact, not a missing/unknown value.
     pub fn is_null(&self) -> bool {
-        match self {
-            Value::Null => true,
-            Value::Array(arr) => arr.is_empty(),
-            Value::Object(obj) => obj.is_empty(),
-            _ => false,
-        }
+        matches!(self, Value::Null)
     }
 
     /// Try to get value as boolean

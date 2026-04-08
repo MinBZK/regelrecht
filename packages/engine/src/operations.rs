@@ -15,7 +15,7 @@
 //! **Engine-only (not in schema, accepted for backward compatibility):**
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
 
-use crate::article::{ActionOperation, ActionValue, Case};
+use crate::article::{ActionOperation, ActionValue, Case, CombineOp};
 use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::types::{PathNodeType, Value};
@@ -136,7 +136,7 @@ pub trait ValueResolver {
         _as_name: &str,
         _body: &ActionValue,
         _filter: Option<&ActionValue>,
-        _combine: Option<&str>,
+        _combine: Option<&crate::article::CombineOp>,
         _depth: usize,
     ) -> Option<Result<Value>> {
         None
@@ -376,7 +376,7 @@ fn execute_operation_internal<R: ValueResolver>(
                 as_name,
                 body,
                 filter.as_ref(),
-                combine.as_deref(),
+                combine.as_ref(),
                 depth,
             )
             .unwrap_or_else(|| {
@@ -521,7 +521,12 @@ where
 /// Add (sum/concatenate) a slice of already-evaluated Values.
 ///
 /// Polymorphic: numbers are summed, arrays concatenated, strings concatenated.
-/// The first element's type determines the mode. Nulls are skipped in numeric mode.
+/// The first element's type determines the mode.
+///
+/// Null handling: if any element is Null, returns Null (propagation). This
+/// preserves the contract that a regular ADD with a missing operand surfaces
+/// the problem rather than silently computing a partial sum. FOREACH combine
+/// uses `combine_add` which has different null semantics (SQL-style skip).
 fn add_values(evaluated: &[Value]) -> Result<Value> {
     if evaluated.is_empty() {
         return Ok(Value::Int(0));
@@ -560,17 +565,16 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
             }
             Ok(Value::String(result))
         }
-        Value::Int(_) | Value::Float(_) | Value::Null => {
-            // First pass: check if all numeric values are integers.
-            // If so, use i64::checked_add to avoid f64 precision loss.
+        Value::Int(_) | Value::Float(_) => {
+            // First pass: check types and detect Null.
             let mut all_int = true;
             for val in evaluated {
                 match val {
-                    Value::Int(_) | Value::Null => {}
+                    Value::Int(_) => {}
                     Value::Float(_) => {
                         all_int = false;
-                        break;
                     }
+                    Value::Null => return Ok(Value::Null),
                     _ => return Err(type_error("number", val)),
                 }
             }
@@ -578,17 +582,13 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
             if all_int {
                 let mut sum: i64 = 0;
                 for val in evaluated {
-                    match val {
-                        Value::Int(i) => {
-                            sum = sum.checked_add(*i).ok_or_else(|| {
-                                EngineError::ArithmeticOverflow(format!(
-                                    "Integer overflow in ADD: {} + {}",
-                                    sum, i
-                                ))
-                            })?;
-                        }
-                        Value::Null => {} // Skip nulls in sum
-                        _ => unreachable!("checked in first pass"),
+                    if let Value::Int(i) = val {
+                        sum = sum.checked_add(*i).ok_or_else(|| {
+                            EngineError::ArithmeticOverflow(format!(
+                                "Integer overflow in ADD: {} + {}",
+                                sum, i
+                            ))
+                        })?;
                     }
                 }
                 Ok(Value::Int(sum))
@@ -598,13 +598,14 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
                     match val {
                         Value::Int(_) => sum += to_number(val)?,
                         Value::Float(f) => sum += f,
-                        Value::Null => {} // Skip nulls in sum
                         _ => return Err(type_error("number", val)),
                     }
                 }
                 Ok(Value::Float(sum))
             }
         }
+        // Null as first element: propagate Null
+        Value::Null => Ok(Value::Null),
         _ => Err(type_error("number, string, or array", &evaluated[0])),
     }
 }
@@ -1515,11 +1516,10 @@ fn to_number(val: &Value) -> Result<f64> {
             Ok(*i as f64)
         }
         Value::Float(f) => Ok(*f),
-        Value::String(s) => Ok(s.parse::<f64>().unwrap_or(0.0)),
-        Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
-        Value::Null => Ok(0.0),
-        Value::Untranslatable { .. } => Ok(0.0),
-        _ => Ok(0.0), // Lenient: non-numeric types → 0
+        // String numeric coercion: parse if possible, error otherwise.
+        // This supports data sources that deliver numeric values as strings.
+        Value::String(s) => s.parse::<f64>().map_err(|_| type_error("number", val)),
+        _ => Err(type_error("number", val)),
     }
 }
 
@@ -1529,7 +1529,11 @@ fn extract_date_string(val: &Value) -> Option<String> {
     match val {
         Value::String(s) if s.len() == 10 && s.chars().nth(4) == Some('-') => Some(s.clone()),
         Value::Object(obj) => obj.get("iso").and_then(|v| {
-            if let Value::String(s) = v { Some(s.clone()) } else { None }
+            if let Value::String(s) = v {
+                Some(s.clone())
+            } else {
+                None
+            }
         }),
         _ => None,
     }
@@ -1560,23 +1564,19 @@ pub fn execute_foreach(
     as_name: &str,
     body: &ActionValue,
     filter: Option<&ActionValue>,
-    combine: Option<&str>,
+    combine: Option<&crate::article::CombineOp>,
     context: &RuleContext,
     depth: usize,
 ) -> Result<Value> {
-    // Validate as_name: must be lowercase identifier per RFC-016 schema
-    if !as_name.is_empty()
-        && !as_name
+    // Validate as_name: must be non-empty lowercase identifier per RFC-016 schema
+    if as_name.is_empty()
+        || !as_name
             .chars()
             .enumerate()
-            .all(|(i, c)| match (i, c) {
-                (0, 'a'..='z' | '_') => true,
-                (_, 'a'..='z' | '0'..='9' | '_') => true,
-                _ => false,
-            })
+            .all(|(i, c)| matches!((i, c), (0, 'a'..='z' | '_') | (_, 'a'..='z' | '0'..='9' | '_')))
     {
         return Err(EngineError::InvalidOperation(format!(
-            "FOREACH 'as' must be a lowercase identifier (got '{}')",
+            "FOREACH 'as' must be a non-empty lowercase identifier (got '{}')",
             as_name
         )));
     }
@@ -1619,6 +1619,11 @@ pub fn execute_foreach(
             if filter_result.is_untranslatable() {
                 return Ok(filter_result);
             }
+            // Null filter means "unknown whether this element qualifies" —
+            // propagate Null rather than silently excluding the element.
+            if filter_result.is_null() {
+                return Ok(Value::Null);
+            }
             if !filter_result.to_bool() {
                 continue; // Skip this element
             }
@@ -1637,28 +1642,96 @@ pub fn execute_foreach(
 
     // Apply combine aggregation or return array
     match combine {
-        Some("ADD") => combine_add(&results),
-        Some("OR") => Ok(Value::Bool(results.iter().any(|v| v.to_bool()))),
+        Some(CombineOp::Add) => combine_add(&results),
+        Some(CombineOp::Or) => combine_or(&results),
         // Vacuous truth: AND over an empty collection returns true, matching standard
         // logical convention (the universal quantifier over an empty domain is true).
-        // This aligns with the legal reading "all conditions are met" being trivially
-        // satisfied when there are no conditions to check.
-        Some("AND") => Ok(Value::Bool(
-            results.is_empty() || results.iter().all(|v| v.to_bool()),
-        )),
-        Some("MIN") => combine_min_max(&results, true),
-        Some("MAX") => combine_min_max(&results, false),
-        Some(other) => Err(EngineError::InvalidOperation(format!(
-            "Unknown FOREACH combine operation: {}",
-            other
-        ))),
+        // Law authors using combine: AND must separately verify the collection is
+        // non-empty if "no items" should not imply "all conditions are met".
+        Some(CombineOp::And) => combine_and(&results),
+        Some(CombineOp::Min) => combine_min_max(&results, true),
+        Some(CombineOp::Max) => combine_min_max(&results, false),
         None => Ok(Value::Array(results)),
     }
 }
 
-/// Combine FOREACH results with ADD. Delegates to the shared `add_values` helper.
+/// Combine FOREACH results with ADD.
+///
+/// Unlike regular `add_values`, this skips Null elements (SQL SUM semantics):
+/// a FOREACH body that cannot produce a value for some element should not
+/// abort the entire sum. If ALL elements are null, returns Null.
 fn combine_add(results: &[Value]) -> Result<Value> {
-    add_values(results)
+    if results.is_empty() {
+        return Ok(Value::Int(0));
+    }
+    // If any result is null, filter it out and sum the rest.
+    // If all are null, return Null (unknown total).
+    let non_null: Vec<&Value> = results.iter().filter(|v| !v.is_null()).collect();
+    if non_null.is_empty() {
+        return Ok(Value::Null);
+    }
+    let non_null_owned: Vec<Value> = non_null.into_iter().cloned().collect();
+    add_values(&non_null_owned)
+}
+
+/// Combine FOREACH results with OR.
+///
+/// Mirrors standalone `execute_or` null semantics: a definitive `true` wins,
+/// but if any element is Null and no element is definitively `true`, the
+/// result is Null (unknown). Returns `false` only if all elements are
+/// definitively falsy.
+fn combine_or(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(false));
+    }
+    let mut has_null = false;
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            has_null = true;
+            continue;
+        }
+        if v.to_bool() {
+            return Ok(Value::Bool(true));
+        }
+    }
+    if has_null {
+        Ok(Value::Null)
+    } else {
+        Ok(Value::Bool(false))
+    }
+}
+
+/// Combine FOREACH results with AND.
+///
+/// Mirrors standalone `execute_and` null semantics: a definitive `false` wins,
+/// but if any element is Null and no element is definitively `false`, the
+/// result is Null (unknown). Returns `true` only if all elements are
+/// definitively truthy (or the collection is empty — vacuous truth).
+fn combine_and(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(true));
+    }
+    let mut has_null = false;
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            has_null = true;
+            continue;
+        }
+        if !v.to_bool() {
+            return Ok(Value::Bool(false));
+        }
+    }
+    if has_null {
+        Ok(Value::Null)
+    } else {
+        Ok(Value::Bool(true))
+    }
 }
 
 /// Combine results with MIN or MAX.
@@ -3128,7 +3201,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             let result = execute_operation(&op, &ctx, 0).unwrap();
@@ -3152,7 +3225,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: ActionValue::Operation(Box::new(mul_op)),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             // 1*2 + 2*2 + 3*2 = 2+4+6 = 12
@@ -3184,7 +3257,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: Some(ActionValue::Operation(Box::new(filter_op))),
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             // Only 3+4+5 = 12
@@ -3201,7 +3274,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             // Empty collection with ADD combine returns 0
@@ -3218,7 +3291,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             // Null collection treated as empty array, ADD of empty = 0
@@ -3240,7 +3313,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             // Untranslatable collection should propagate
@@ -3265,7 +3338,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             // Untranslatable in body should propagate immediately
@@ -3283,7 +3356,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             let result = execute_operation(&op, &ctx, 0).unwrap();
@@ -3325,7 +3398,7 @@ mod tests {
                 as_name: "f".to_string(),
                 body: var("f"),
                 filter: None,
-                combine: Some("OR".to_string()),
+                combine: Some(CombineOp::Or),
             };
 
             let result = execute_operation(&op, &ctx, 0).unwrap();
@@ -3344,7 +3417,7 @@ mod tests {
                 as_name: "f".to_string(),
                 body: var("f"),
                 filter: None,
-                combine: Some("AND".to_string()),
+                combine: Some(CombineOp::And),
             };
 
             let result = execute_operation(&op, &ctx, 0).unwrap();
@@ -3365,7 +3438,7 @@ mod tests {
                 as_name: "x".to_string(),
                 body: var("x"),
                 filter: None,
-                combine: Some("ADD".to_string()),
+                combine: Some(CombineOp::Add),
             };
 
             let add_op = ActionOperation::Add {
@@ -3395,6 +3468,184 @@ mod tests {
             let result = execute_operation(&op, &resolver, 0);
             assert!(matches!(result, Err(EngineError::InvalidOperation(ref msg))
                 if msg.contains("child scopes")));
+        }
+
+        #[test]
+        fn test_foreach_filter_null_propagates() {
+            // When filter expression itself evaluates to Null, FOREACH should
+            // propagate Null (not silently skip the element via to_bool()).
+            //
+            // Use a comparison (GREATER_THAN) which does propagate null,
+            // unlike EQUALS which has special null == null = true semantics.
+            let mut obj = BTreeMap::new();
+            obj.insert("value".to_string(), Value::Int(10));
+            // No "threshold" field → $x.threshold resolves to Null
+
+            let ctx = make_ctx(vec![("items", Value::Array(vec![Value::Object(obj)]))]);
+
+            // GREATER_THAN(Null, 5) → Null (null propagation in numeric comparison)
+            let filter_op = ActionOperation::GreaterThan {
+                subject: var("x.threshold"),
+                value: lit(5i64),
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x.value"),
+                filter: Some(ActionValue::Operation(Box::new(filter_op))),
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            // Null filter → FOREACH returns Null (unknown aggregate)
+            assert!(
+                result.is_null(),
+                "Expected Null when filter evaluates to Null, got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_or_with_null() {
+            // OR combine with [false, Null] should return Null (not false)
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Bool(false), Value::Null]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Or),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_null(),
+                "Expected Null for OR with [false, Null], got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_and_with_null() {
+            // AND combine with [true, Null] should return Null (not false)
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Bool(true), Value::Null]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::And),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_null(),
+                "Expected Null for AND with [true, Null], got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_add_with_all_null() {
+            // ADD combine with [Null, Null] should return Null (not 0)
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Null, Value::Null]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_null(),
+                "Expected Null for ADD with all-Null results, got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_add_with_some_null() {
+            // ADD combine with [10, Null, 20] should sum non-null = 30
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(10), Value::Null, Value::Int(20)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(30));
+        }
+
+        #[test]
+        fn test_foreach_empty_as_name_rejected() {
+            // Empty as_name should be rejected
+            let ctx = make_ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "".to_string(),
+                body: ActionValue::Literal(Value::Int(1)),
+                filter: None,
+                combine: None,
+            };
+
+            let result = execute_operation(&op, &ctx, 0);
+            assert!(matches!(result, Err(EngineError::InvalidOperation(ref msg))
+                if msg.contains("non-empty lowercase identifier")));
+        }
+
+        #[test]
+        fn test_foreach_filter_untranslatable_propagates() {
+            // When filter evaluates to Untranslatable, FOREACH propagates it
+            let untranslatable = Value::Untranslatable {
+                article: "3".to_string(),
+                construct: "open norm".to_string(),
+            };
+
+            let mut obj = BTreeMap::new();
+            obj.insert("status".to_string(), untranslatable);
+            let ctx = make_ctx(vec![("items", Value::Array(vec![Value::Object(obj)]))]);
+
+            let filter_op = ActionOperation::Equals {
+                subject: var("x.status"),
+                value: lit(true),
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(ActionValue::Operation(Box::new(filter_op))),
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_untranslatable(),
+                "Expected Untranslatable when filter references untranslatable value"
+            );
         }
     }
 }

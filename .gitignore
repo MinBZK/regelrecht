@@ -36,6 +36,13 @@ __pycache__/
 
 # Mutation testing
 mutants.out/
+mutants.out.old/
+
+# Coverage
+.coverage
+
+# Claude Code worktrees
+.claude/worktrees/
 
 # BDD trace output
 trace_output/
