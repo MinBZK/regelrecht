@@ -65,16 +65,6 @@ function defaultForType(type) {
   }
 }
 
-function inputType(fieldType) {
-  switch (fieldType) {
-    case 'number':
-    case 'amount':
-      return 'number';
-    default:
-      return 'text';
-  }
-}
-
 // All columns: key field + declared fields (deduplicated)
 const allColumns = computed(() => {
   const cols = [];
@@ -95,6 +85,23 @@ const allColumns = computed(() => {
 });
 
 const rowCount = computed(() => rows.value.length);
+
+const PAGE_SIZE = 10;
+const currentPage = ref(1);
+const totalPages = computed(() => Math.max(1, Math.ceil(rowCount.value / PAGE_SIZE)));
+
+const paginatedRows = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE;
+  return rows.value.slice(start, start + PAGE_SIZE);
+});
+
+function actualIndex(paginatedIndex) {
+  return (currentPage.value - 1) * PAGE_SIZE + paginatedIndex;
+}
+
+function onPageChange(event) {
+  currentPage.value = event.detail.page;
+}
 </script>
 
 <template>
@@ -106,58 +113,64 @@ const rowCount = computed(() => rows.value.length);
     </button>
 
     <div v-if="expanded" class="ds-table-body">
-      <div v-if="rows.length === 0" class="ds-table-empty">
-        Geen gegevens &mdash; vul in indien relevant
-      </div>
+      <ndd-inline-dialog v-if="rows.length === 0" text="Geen gegevens — vul in indien relevant"></ndd-inline-dialog>
 
-      <div v-else class="ds-table-scroll">
-        <table class="ds-table-grid">
-          <thead>
-            <tr>
-              <th v-for="col in allColumns" :key="col.name" :class="{ 'ds-key-col': col.isKey }">
-                {{ col.name }}
-              </th>
-              <th v-if="!readonly" class="ds-action-col"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, ri) in rows" :key="row._id ?? ri">
-              <td v-for="col in allColumns" :key="col.name">
-                <template v-if="readonly">
-                  <span class="ds-cell-readonly" :class="{ 'ds-key-col': col.isKey }">{{ row[col.name] ?? '' }}</span>
-                </template>
-                <template v-else-if="col.type === 'boolean'">
-                  <select
-                    class="ds-cell-input ds-cell-select"
-                    :value="String(row[col.name] || 'null')"
-                    @change="updateCell(ri, col.name, $event.target.value)"
-                  >
-                    <option value="true">true</option>
-                    <option value="false">false</option>
-                    <option value="null">null</option>
-                  </select>
-                </template>
-                <template v-else>
-                  <input
-                    class="ds-cell-input"
-                    :type="inputType(col.type)"
-                    :value="row[col.name] ?? ''"
-                    @input="updateCell(ri, col.name, $event.target.value)"
-                    :placeholder="col.name"
-                  />
-                </template>
-              </td>
-              <td v-if="!readonly" class="ds-action-col">
-                <button class="ds-remove-btn" @click="removeRow(ri)" type="button" title="Rij verwijderen">&times;</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <ndd-list v-else variant="simple">
+        <!-- Header row with title cells -->
+        <ndd-list-item size="sm">
+          <ndd-title-cell v-for="col in allColumns" :key="col.name" :text="col.name"></ndd-title-cell>
+          <ndd-cell v-if="!readonly" width="fit-content"></ndd-cell>
+        </ndd-list-item>
 
-      <button v-if="!readonly" class="ds-add-btn" @click="addRow" type="button">
-        + Rij toevoegen
-      </button>
+        <!-- Data rows -->
+        <ndd-list-item v-for="(row, ri) in paginatedRows" :key="row._id ?? ri" size="md">
+          <template v-for="col in allColumns" :key="col.name">
+            <!-- Readonly -->
+            <ndd-text-cell v-if="readonly" :text="String(row[col.name] ?? '')"></ndd-text-cell>
+
+            <!-- Boolean editable -->
+            <ndd-cell v-else-if="col.type === 'boolean'">
+              <ndd-dropdown size="md">
+                <select
+                  :value="String(row[col.name] || 'null')"
+                  @change="updateCell(actualIndex(ri), col.name, $event.target.value)"
+                  :aria-label="col.name"
+                >
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                  <option value="null">null</option>
+                </select>
+              </ndd-dropdown>
+            </ndd-cell>
+
+            <!-- Text/number editable -->
+            <ndd-cell v-else>
+              <ndd-text-field
+                size="md"
+                :value="row[col.name] ?? ''"
+                :placeholder="col.name"
+                @input="updateCell(actualIndex(ri), col.name, $event.target?.value ?? $event.detail?.value ?? '')"
+              ></ndd-text-field>
+            </ndd-cell>
+          </template>
+
+          <!-- Delete button -->
+          <ndd-cell v-if="!readonly" width="fit-content" vertical-alignment="center">
+            <ndd-icon-button icon="minus" @click="removeRow(actualIndex(ri))" title="Rij verwijderen"></ndd-icon-button>
+          </ndd-cell>
+        </ndd-list-item>
+      </ndd-list>
+
+      <ndd-pagination
+        v-if="totalPages > 1"
+        :current="currentPage"
+        :total="totalPages"
+        full-width
+        @page-change="onPageChange"
+      ></ndd-pagination>
+
+      <ndd-spacer v-if="!readonly" size="4"></ndd-spacer>
+      <ndd-button v-if="!readonly" start-icon="plus-small" @click="addRow" text="Rij toevoegen" style="width: 100%;"></ndd-button>
     </div>
   </div>
 </template>
@@ -216,110 +229,5 @@ const rowCount = computed(() => rows.value.length);
 .ds-table-body {
   border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
   padding: 8px;
-}
-
-.ds-table-empty {
-  padding: 12px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--semantics-text-color-secondary, #999);
-  font-style: italic;
-}
-
-.ds-table-scroll {
-  overflow-x: auto;
-}
-
-.ds-table-grid {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.ds-table-grid th {
-  padding: 4px 6px;
-  text-align: left;
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--semantics-text-color-secondary, #666);
-  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  white-space: nowrap;
-}
-
-.ds-table-grid td {
-  padding: 2px 4px;
-}
-
-.ds-key-col {
-  color: #154273 !important;
-}
-
-.ds-cell-input {
-  width: 100%;
-  min-width: 60px;
-  padding: 4px 6px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  background: white;
-}
-
-.ds-cell-input:focus {
-  outline: none;
-  border-color: #154273;
-  box-shadow: 0 0 0 1px #154273;
-}
-
-.ds-cell-select {
-  min-width: 70px;
-}
-
-.ds-cell-readonly {
-  display: block;
-  padding: 4px 6px;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  color: var(--semantics-text-color-primary, #1C2029);
-  white-space: nowrap;
-}
-
-.ds-action-col {
-  width: 28px;
-  text-align: center;
-}
-
-.ds-remove-btn {
-  background: none;
-  border: none;
-  color: #c00;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  opacity: 0.5;
-}
-
-.ds-remove-btn:hover {
-  opacity: 1;
-}
-
-.ds-add-btn {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 6px;
-  background: none;
-  border: 1px dashed var(--semantics-dividers-color, #D0D3D8);
-  border-radius: 4px;
-  font-size: 12px;
-  color: #154273;
-  cursor: pointer;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.ds-add-btn:hover {
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
-  border-color: #154273;
 }
 </style>
