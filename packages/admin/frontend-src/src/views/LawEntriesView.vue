@@ -22,7 +22,7 @@ function viewJobsForLaw(lawId) {
 </script>
 
 <template>
-  <Teleport to="#pagination-target">
+  <Teleport to="#pagination-target" defer>
     <PaginationControls
       :current-page="currentPage"
       :total-pages="totalPages"

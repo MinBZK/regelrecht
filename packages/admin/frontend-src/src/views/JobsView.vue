@@ -35,7 +35,7 @@ if (route.query.law_id) {
 </script>
 
 <template>
-  <Teleport to="#view-toggle-target">
+  <Teleport to="#view-toggle-target" defer>
     <rr-button
       variant="neutral-tinted"
       size="md"
@@ -44,7 +44,7 @@ if (route.query.law_id) {
     >{{ viewMode === 'grouped' ? 'Flat view' : 'Grouped view' }}</rr-button>
   </Teleport>
 
-  <Teleport to="#pagination-target">
+  <Teleport to="#pagination-target" defer>
     <PaginationControls
       :current-page="currentPage"
       :total-pages="totalPages"
