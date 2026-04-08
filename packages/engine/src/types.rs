@@ -177,7 +177,12 @@ impl PartialEq for Value {
 impl Value {
     /// Check if value is null
     pub fn is_null(&self) -> bool {
-        matches!(self, Value::Null)
+        match self {
+            Value::Null => true,
+            Value::Array(arr) => arr.is_empty(),
+            Value::Object(obj) => obj.is_empty(),
+            _ => false,
+        }
     }
 
     /// Try to get value as boolean
