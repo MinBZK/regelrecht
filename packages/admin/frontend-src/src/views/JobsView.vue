@@ -19,7 +19,7 @@ const {
   sort, order, filters,
   viewMode, expandedLawIds, expandedJobsCache,
   currentPage, totalPages,
-  setSort, setFilter, prevPage, nextPage,
+  setSort, setFilter, goToPage,
   toggleViewMode, toggleGroupExpansion, setLawIdFilter,
   refresh,
 } = useJobs();
@@ -51,8 +51,7 @@ if (route.query.law_id) {
       :total-pages="totalPages"
       :total-count="totalCount"
       :unit="paginationUnit"
-      @prev="prevPage"
-      @next="nextPage"
+      @page-change="goToPage"
     />
   </Teleport>
 

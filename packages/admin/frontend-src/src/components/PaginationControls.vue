@@ -6,30 +6,21 @@ defineProps({
   unit: { type: String, default: 'results' },
 });
 
-const emit = defineEmits(['prev', 'next']);
+const emit = defineEmits(['page-change']);
+
+function onPageChange(event) {
+  emit('page-change', event.detail.page);
+}
 </script>
 
 <template>
   <div class="pagination-controls">
-    <ndd-button
-      variant="neutral-tinted"
-      size="md"
-      text="&#8249;"
-      :disabled="currentPage <= 1 ? '' : undefined"
-      title="Previous page"
-      @click="emit('prev')"
-    />
-    <span class="pagination-info">
-      {{ currentPage }} / {{ totalPages }} ({{ totalCount }} {{ unit }})
-    </span>
-    <ndd-button
-      variant="neutral-tinted"
-      size="md"
-      text="&#8250;"
-      :disabled="currentPage >= totalPages ? '' : undefined"
-      title="Next page"
-      @click="emit('next')"
-    />
+    <ndd-pagination
+      :current="currentPage"
+      :total="totalPages"
+      @page-change="onPageChange"
+    ></ndd-pagination>
+    <span class="pagination-info">{{ totalCount }} {{ unit }}</span>
   </div>
 </template>
 

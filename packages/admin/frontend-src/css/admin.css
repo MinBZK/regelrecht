@@ -35,92 +35,8 @@
 
 
 /* ============================================================
-   Data Table
+   NDD List Table Overrides
    ============================================================ */
-
-.table-container {
-  margin-top: var(--primitives-space-16);
-  background-color: var(--semantics-surfaces-background-color);
-  border: 1px solid var(--semantics-dividers-color);
-  border-radius: var(--primitives-corner-radius-sm);
-  overflow: clip;
-  box-shadow: var(--primitives-box-shadows-level-1);
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--primitives-font-family-body);
-  font-size: var(--primitives-font-size-80);
-}
-
-.data-table thead {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.data-table th {
-  padding: var(--primitives-space-8) var(--primitives-space-12);
-  text-align: left;
-  font-size: 12px;
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: var(--semantics-content-secondary-color);
-  background-color: var(--semantics-surfaces-tinted-background-color);
-  border-bottom: 1px solid var(--semantics-dividers-color);
-  user-select: none;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  vertical-align: top;
-}
-
-.data-table th.sortable {
-  cursor: pointer;
-  transition: color 150ms ease;
-}
-
-.data-table th.sortable:hover {
-  color: var(--semantics-content-color);
-}
-
-.data-table th .sort-indicator {
-  display: inline-block;
-  margin-left: var(--primitives-space-4);
-  font-size: 10px;
-  vertical-align: middle;
-  opacity: 0.4;
-}
-
-.data-table th.sort-active .sort-indicator {
-  opacity: 1;
-  color: var(--semantics-accent-color, var(--primitives-color-accent-500));
-}
-
-.data-table td {
-  padding: var(--primitives-space-8) var(--primitives-space-12);
-  border-bottom: 1px solid var(--semantics-dividers-color);
-  color: var(--semantics-content-color);
-  vertical-align: middle;
-}
-
-.data-table tbody tr:hover {
-  background-color: var(--semantics-surfaces-tinted-background-color);
-}
-
-.data-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-
-/* ============================================================
-   Column Header Labels
-   ============================================================ */
-
-.th-label {
-  display: flex;
-  align-items: center;
-  white-space: nowrap;
-}
 
 
 /* ============================================================
@@ -162,16 +78,6 @@
   vertical-align: middle;
 }
 
-.table-message {
-  text-align: center;
-  padding: var(--primitives-space-24) var(--primitives-space-16);
-  color: var(--semantics-content-secondary-color);
-  font-size: var(--primitives-font-size-80);
-}
-
-.table-message--error {
-  color: var(--primitives-color-danger-700);
-}
 
 
 /* ============================================================
@@ -241,47 +147,11 @@
    ============================================================ */
 
 .group-row {
-  cursor: pointer;
   font-weight: var(--primitives-font-weight-body-extra-bold);
-  background-color: var(--semantics-surfaces-tinted-background-color);
-}
-
-.data-table tbody tr.group-row:hover {
-  background-color: var(--semantics-surfaces-background-color);
-}
-
-.group-row--expanded {
-  border-bottom: none;
-}
-
-.group-row__toggle {
-  text-align: center;
-  font-size: 10px;
-  color: var(--semantics-content-secondary-color);
-  width: 40px;
-}
-
-.child-header {
-  background-color: var(--semantics-surfaces-tinted-background-color);
-}
-
-.child-header__cell {
-  font-size: 11px;
-  font-weight: var(--primitives-font-weight-body-extra-bold);
-  color: var(--semantics-content-secondary-color);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: var(--primitives-space-4) var(--primitives-space-12);
-  border-bottom: 1px solid var(--semantics-dividers-color);
 }
 
 .child-row {
-  background-color: var(--semantics-surfaces-background-color);
-}
-
-.child-row td {
   padding-left: var(--primitives-space-16);
-  font-size: var(--primitives-font-size-80);
 }
 
 
@@ -442,15 +312,6 @@
   padding-left: var(--primitives-space-16);
 }
 
-
-/* Clickable job rows */
-.data-table tbody tr.clickable-row {
-  cursor: pointer;
-}
-
-.data-table tbody tr.clickable-row:hover {
-  background-color: var(--semantics-surfaces-tinted-background-color);
-}
 
 /* Environment badge for preview deployments */
 .env-badge {

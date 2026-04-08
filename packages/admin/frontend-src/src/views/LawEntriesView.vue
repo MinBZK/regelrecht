@@ -13,7 +13,7 @@ const {
   data, totalCount, loading, error,
   sort, order, filters,
   currentPage, totalPages,
-  setSort, setFilter, prevPage, nextPage, refresh,
+  setSort, setFilter, goToPage, refresh,
 } = useLawEntries();
 
 function viewJobsForLaw(lawId) {
@@ -27,8 +27,7 @@ function viewJobsForLaw(lawId) {
       :current-page="currentPage"
       :total-pages="totalPages"
       :total-count="totalCount"
-      @prev="prevPage"
-      @next="nextPage"
+      @page-change="goToPage"
     />
   </Teleport>
 
