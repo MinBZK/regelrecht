@@ -73,18 +73,20 @@ function formatChildCell(value, key) {
         >
           <template v-for="col in columns" :key="col.key">
             <ndd-cell width="stretch">
-              <span v-if="col.key === 'law_id'" class="cell-mono">{{ group.law_id }}</span>
-              <template v-else-if="statusCountKeys.includes(col.key)">
-                <span v-if="group[col.key] === 0" class="cell-null">0</span>
-                <span v-else class="badge" :class="'badge--' + (STATUS_BADGE_MAP[col.key] || 'grey')">
-                  {{ group[col.key] }}
-                </span>
-              </template>
-              <template v-else-if="col.key.endsWith('_at') && formatDate(group[col.key])">
-                {{ formatDate(group[col.key]) }}
-              </template>
-              <template v-else-if="group[col.key] != null">{{ group[col.key] }}</template>
-              <span v-else class="cell-null">&mdash;</span>
+              <div class="cell-wrap">
+                <span v-if="col.key === 'law_id'" class="cell-mono">{{ group.law_id }}</span>
+                <template v-else-if="statusCountKeys.includes(col.key)">
+                  <span v-if="group[col.key] === 0" class="cell-null">0</span>
+                  <span v-else class="badge" :class="'badge--' + (STATUS_BADGE_MAP[col.key] || 'grey')">
+                    {{ group[col.key] }}
+                  </span>
+                </template>
+                <template v-else-if="col.key.endsWith('_at') && formatDate(group[col.key])">
+                  {{ formatDate(group[col.key]) }}
+                </template>
+                <template v-else-if="group[col.key] != null">{{ group[col.key] }}</template>
+                <span v-else class="cell-null">&mdash;</span>
+              </div>
             </ndd-cell>
           </template>
           <ndd-cell width="fit-content">
@@ -120,23 +122,25 @@ function formatChildCell(value, key) {
             >
               <template v-for="col in childColumns" :key="col.key">
                 <ndd-cell width="stretch">
-                  <template v-if="col.key === '_error'">
-                    <span
-                      v-if="job.result && job.result.error"
-                      class="cell-error"
-                      :title="job.result.error"
-                    >{{ truncateError(job.result.error) }}</span>
+                  <div class="cell-wrap">
+                    <template v-if="col.key === '_error'">
+                      <span
+                        v-if="job.result && job.result.error"
+                        class="cell-error"
+                        :title="job.result.error"
+                      >{{ truncateError(job.result.error) }}</span>
+                      <span v-else class="cell-null">&mdash;</span>
+                    </template>
+                    <StatusBadge v-else-if="col.key === 'status'" :status="job[col.key] || 'unknown'" />
+                    <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(job[col.key])">
+                      {{ formatChildCell(job[col.key], col.key) }}
+                    </span>
+                    <span v-else-if="col.key === 'law_id'" class="cell-mono">{{ job[col.key] }}</span>
+                    <template v-else-if="formatChildCell(job[col.key], col.key) !== null">
+                      {{ formatChildCell(job[col.key], col.key) }}
+                    </template>
                     <span v-else class="cell-null">&mdash;</span>
-                  </template>
-                  <StatusBadge v-else-if="col.key === 'status'" :status="job[col.key] || 'unknown'" />
-                  <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(job[col.key])">
-                    {{ formatChildCell(job[col.key], col.key) }}
-                  </span>
-                  <span v-else-if="col.key === 'law_id'" class="cell-mono">{{ job[col.key] }}</span>
-                  <template v-else-if="formatChildCell(job[col.key], col.key) !== null">
-                    {{ formatChildCell(job[col.key], col.key) }}
-                  </template>
-                  <span v-else class="cell-null">&mdash;</span>
+                  </div>
                 </ndd-cell>
               </template>
             </ndd-list-item>

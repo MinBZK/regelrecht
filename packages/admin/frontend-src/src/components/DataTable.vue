@@ -53,6 +53,7 @@ function formatCellValue(value, key) {
           v-for="col in columns"
           :key="col.key"
           :text="sortLabel(col)"
+          width="stretch"
         ></ndd-title-cell>
         <slot name="extra-header" />
       </ndd-list-item>
@@ -68,19 +69,21 @@ function formatCellValue(value, key) {
         >
           <template v-for="col in columns" :key="col.key">
             <ndd-cell width="stretch">
-              <slot :name="'cell-' + col.key" :row="row" :value="row[col.key]">
-                <StatusBadge v-if="col.key === 'status'" :status="row[col.key] || 'unknown'" />
-                <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(row[col.key])">
-                  {{ formatCellValue(row[col.key], col.key) }}
-                </span>
-                <span v-else-if="col.key === 'law_id'" class="cell-mono">
-                  {{ row[col.key] }}
-                </span>
-                <template v-else-if="formatCellValue(row[col.key], col.key) !== null">
-                  {{ formatCellValue(row[col.key], col.key) }}
-                </template>
-                <span v-else class="cell-null">&mdash;</span>
-              </slot>
+              <div class="cell-wrap">
+                <slot :name="'cell-' + col.key" :row="row" :value="row[col.key]">
+                  <StatusBadge v-if="col.key === 'status'" :status="row[col.key] || 'unknown'" />
+                  <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(row[col.key])">
+                    {{ formatCellValue(row[col.key], col.key) }}
+                  </span>
+                  <span v-else-if="col.key === 'law_id'" class="cell-mono">
+                    {{ row[col.key] }}
+                  </span>
+                  <template v-else-if="formatCellValue(row[col.key], col.key) !== null">
+                    {{ formatCellValue(row[col.key], col.key) }}
+                  </template>
+                  <span v-else class="cell-null">&mdash;</span>
+                </slot>
+              </div>
             </ndd-cell>
           </template>
         </ndd-list-item>

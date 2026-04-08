@@ -35,6 +35,17 @@
 
 
 /* ============================================================
+   Cell content wrapper — prevents content from stretching
+   inside ndd-cell (which defaults to align-items: stretch)
+   ============================================================ */
+
+.cell-wrap {
+  align-self: center;
+  width: fit-content;
+}
+
+
+/* ============================================================
    Table Toolbar (filter & sort controls above table)
    ============================================================ */
 
