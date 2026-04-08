@@ -10,7 +10,7 @@ use regelrecht_pipeline::models::{JobType, LawStatusValue};
 async fn test_upsert_law() {
     let db = common::TestDb::new().await;
 
-    let entry = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"))
+    let entry = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
         .await
         .unwrap();
 
@@ -19,9 +19,10 @@ async fn test_upsert_law() {
     assert_eq!(entry.status, LawStatusValue::Unknown);
     assert!(entry.coverage_score.is_none());
 
-    let updated = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet v2"))
-        .await
-        .unwrap();
+    let updated =
+        law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet v2"), None)
+            .await
+            .unwrap();
     assert_eq!(updated.law_name, Some("Zorgtoeslagwet v2".to_string()));
 }
 
@@ -29,11 +30,11 @@ async fn test_upsert_law() {
 async fn test_upsert_law_without_name() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", Some("Test Law"))
+    law_status::upsert_law(&db.pool, "test_law", Some("Test Law"), None)
         .await
         .unwrap();
 
-    let entry = law_status::upsert_law(&db.pool, "test_law", None)
+    let entry = law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
     assert_eq!(entry.law_name, Some("Test Law".to_string()));
@@ -43,7 +44,7 @@ async fn test_upsert_law_without_name() {
 async fn test_update_status() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -70,7 +71,7 @@ async fn test_update_status_not_found() {
 async fn test_set_job_links() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -101,7 +102,7 @@ async fn test_set_job_links() {
 async fn test_set_coverage_score() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -115,7 +116,7 @@ async fn test_set_coverage_score() {
 async fn test_set_coverage_score_validation() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -149,7 +150,7 @@ async fn test_set_coverage_score_validation() {
 async fn test_get_law() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"))
+    law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
         .await
         .unwrap();
 
@@ -171,10 +172,10 @@ async fn test_get_law_not_found() {
 async fn test_list_laws() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "law_a", Some("Law A"))
+    law_status::upsert_law(&db.pool, "law_a", Some("Law A"), None)
         .await
         .unwrap();
-    law_status::upsert_law(&db.pool, "law_b", Some("Law B"))
+    law_status::upsert_law(&db.pool, "law_b", Some("Law B"), None)
         .await
         .unwrap();
 
@@ -208,7 +209,7 @@ async fn test_transaction_atomicity() {
         .await
         .unwrap();
 
-    law_status::upsert_law(&mut *tx, "tx_law", Some("Transaction Law"))
+    law_status::upsert_law(&mut *tx, "tx_law", Some("Transaction Law"), None)
         .await
         .unwrap();
 
@@ -241,7 +242,7 @@ async fn test_transaction_rollback() {
         .await
         .unwrap();
 
-        law_status::upsert_law(&mut *tx, "rollback_law", Some("Should Not Exist"))
+        law_status::upsert_law(&mut *tx, "rollback_law", Some("Should Not Exist"), None)
             .await
             .unwrap();
 

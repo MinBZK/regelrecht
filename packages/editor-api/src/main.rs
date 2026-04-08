@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
 use axum::routing::get;
+#[cfg(feature = "pipeline")]
+use axum::routing::post;
 use axum::Router;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::services::{ServeDir, ServeFile};
@@ -19,6 +21,8 @@ use tracing_subscriber::EnvFilter;
 
 mod config;
 mod corpus_handlers;
+#[cfg(feature = "pipeline")]
+mod harvest_handlers;
 mod middleware;
 mod state;
 
@@ -61,12 +65,17 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
+    #[cfg(feature = "pipeline")]
+    let pipeline_pool = init_pipeline_pool().await;
+
     let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
         http_client,
+        #[cfg(feature = "pipeline")]
+        pipeline_pool,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -108,7 +117,7 @@ async fn main() {
     // but federated regulations can reach a few hundred KiB. A 5 MiB cap
     // gives ample headroom while still rejecting pathological bodies.
     const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
-    let protected_api_routes = Router::new()
+    let mut protected_api_routes = Router::new()
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             axum::routing::put(corpus_handlers::save_scenario)
@@ -119,11 +128,20 @@ async fn main() {
             "/api/corpus/laws/{law_id}",
             axum::routing::put(corpus_handlers::save_law)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
-        )
-        .route_layer(axum_middleware::from_fn_with_state(
-            app_state.clone(),
-            middleware::require_session_auth::<AppState>,
-        ));
+        );
+
+    #[cfg(feature = "pipeline")]
+    {
+        protected_api_routes = protected_api_routes.route(
+            "/api/corpus/request-harvest",
+            post(harvest_handlers::request_harvest),
+        );
+    }
+
+    let protected_api_routes = protected_api_routes.route_layer(axum_middleware::from_fn_with_state(
+        app_state.clone(),
+        middleware::require_session_auth::<AppState>,
+    ));
 
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the
@@ -241,6 +259,35 @@ async fn serve(
     } else if let Err(e) = axum::serve(listener, app).await {
         tracing::error!(error = %e, "server error");
         std::process::exit(1);
+    }
+}
+
+/// Optionally connect to the pipeline database for harvest request support.
+/// Returns `None` if `DATABASE_URL` is not set.
+#[cfg(feature = "pipeline")]
+async fn init_pipeline_pool() -> Option<sqlx::PgPool> {
+    let database_url = match env::var("DATABASE_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            tracing::info!("DATABASE_URL not set — harvest request endpoint disabled");
+            return None;
+        }
+    };
+
+    match sqlx::postgres::PgPoolOptions::new()
+        .max_connections(3)
+        .acquire_timeout(std::time::Duration::from_secs(10))
+        .connect(&database_url)
+        .await
+    {
+        Ok(pool) => {
+            tracing::info!("connected to pipeline database — harvest requests enabled");
+            Some(pool)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to connect to pipeline database — harvest requests disabled");
+            None
+        }
     }
 }
 

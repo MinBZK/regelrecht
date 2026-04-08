@@ -4,6 +4,9 @@
  * Parses a law's YAML structure to find all `source.regulation` references,
  * fetches each dependency via the API, loads it into the engine, and recurses.
  * Also discovers implementing regulations via corpus scan.
+ *
+ * When dependencies cannot be loaded, automatically requests their harvesting
+ * via the editor-api so they become available in a future session.
  */
 import { ref } from 'vue';
 import yaml from 'js-yaml';
@@ -81,6 +84,29 @@ async function discoverImplementors(lawId, allLaws, fetchLawYaml) {
 }
 
 /**
+ * Request harvesting for missing dependencies so they become available
+ * in a future session. Best-effort — errors are silently ignored.
+ *
+ * @param {string[]} missingIds - Law slugs that could not be loaded
+ * @returns {Promise<object|null>} Harvest response or null on failure
+ */
+async function requestHarvest(missingIds) {
+  try {
+    const res = await fetch('/api/corpus/request-harvest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ law_ids: missingIds }),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // Harvest request is best-effort
+  }
+  return null;
+}
+
+/**
  * Composable for loading all dependencies of a law recursively.
  */
 export function useDependencies() {
@@ -88,6 +114,7 @@ export function useDependencies() {
   const loadedDeps = ref([]);
   const progress = ref('');
   const error = ref(null);
+  const harvestRequested = ref([]);
 
   /**
    * Load all dependencies for a law, recursively.
@@ -100,6 +127,7 @@ export function useDependencies() {
     loading.value = true;
     error.value = null;
     loadedDeps.value = [];
+    harvestRequested.value = [];
     progress.value = 'Afhankelijkheden analyseren...';
 
     try {
@@ -136,6 +164,7 @@ export function useDependencies() {
       // Phase 3: Load all collected dependencies
       let total = toLoad.length;
       let loaded = 0;
+      const missingDeps = [];
 
       for (const lawId of toLoad) {
         if (engine.hasLaw(lawId)) {
@@ -162,14 +191,37 @@ export function useDependencies() {
           }
         } catch (e) {
           console.warn(`Failed to load dependency '${lawId}':`, e);
+          missingDeps.push(lawId);
           loaded++;
           progress.value = `${loaded}/${total} wetten geladen (${lawId} mislukt)`;
         }
       }
 
-      progress.value = total > 0
-        ? `${loadedDeps.value.length}/${total} wetten geladen`
-        : 'Geen afhankelijkheden';
+      // Phase 4: Request harvest for missing dependencies
+      if (missingDeps.length > 0) {
+        const harvestResult = await requestHarvest(missingDeps);
+        if (harvestResult?.results) {
+          const queued = harvestResult.results.filter(
+            (r) => r.status === 'queued',
+          );
+          harvestRequested.value = queued.map((r) => r.law_id);
+
+          if (queued.length > 0) {
+            progress.value =
+              `${loadedDeps.value.length}/${total} wetten geladen \u2014 ${queued.length} ontbrekende wet(ten) aangevraagd`;
+          } else {
+            progress.value = `${loadedDeps.value.length}/${total} wetten geladen`;
+          }
+        } else {
+          progress.value = total > 0
+            ? `${loadedDeps.value.length}/${total} wetten geladen`
+            : 'Geen afhankelijkheden';
+        }
+      } else {
+        progress.value = total > 0
+          ? `${loadedDeps.value.length}/${total} wetten geladen`
+          : 'Geen afhankelijkheden';
+      }
     } catch (e) {
       error.value = e.message || String(e);
     } finally {
@@ -177,7 +229,7 @@ export function useDependencies() {
     }
   }
 
-  return { loading, loadedDeps, progress, error, loadAllDependencies };
+  return { loading, loadedDeps, progress, error, harvestRequested, loadAllDependencies };
 }
 
 /**

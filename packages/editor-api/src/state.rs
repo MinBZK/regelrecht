@@ -16,6 +16,9 @@ pub struct AppState {
     pub end_session_url: Option<String>,
     pub config: Arc<AppConfig>,
     pub http_client: reqwest::Client,
+    /// Optional connection to the pipeline database for harvest requests.
+    #[cfg(feature = "pipeline")]
+    pub pipeline_pool: Option<sqlx::PgPool>,
 }
 
 impl OidcAppState for AppState {

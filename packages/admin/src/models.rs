@@ -15,6 +15,7 @@ pub struct PaginatedResponse<T: Serialize> {
 pub struct LawEntry {
     pub law_id: String,
     pub law_name: Option<String>,
+    pub slug: Option<String>,
     pub status: LawStatusValue,
     pub coverage_score: Option<f64>,
     pub harvest_job_id: Option<sqlx::types::Uuid>,

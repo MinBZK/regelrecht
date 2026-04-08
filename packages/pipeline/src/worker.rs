@@ -152,7 +152,7 @@ async fn process_next_job(
         },
     };
 
-    if let Err(e) = law_status::upsert_law(pool, &job.law_id, None).await {
+    if let Err(e) = law_status::upsert_law(pool, &job.law_id, None, None).await {
         tracing::warn!(error = %e, law_id = %job.law_id, "failed to upsert law entry before harvest");
     }
     if let Err(e) = law_status::update_status(pool, &job.law_id, LawStatusValue::Harvesting).await {
@@ -191,14 +191,16 @@ async fn process_next_job(
                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset harvest fail count after success");
             }
 
-            if let Ok(entry) = law_status::get_law(pool, &job.law_id).await {
-                if entry.law_name.is_none() {
-                    if let Err(e) =
-                        law_status::upsert_law(pool, &job.law_id, Some(&result.law_name)).await
-                    {
-                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to upsert law name");
-                    }
-                }
+            // Always store slug; update law_name if not yet set.
+            if let Err(e) = law_status::upsert_law(
+                pool,
+                &job.law_id,
+                Some(&result.law_name),
+                Some(&result.slug),
+            )
+            .await
+            {
+                tracing::warn!(error = %e, law_id = %job.law_id, "failed to upsert law name/slug");
             }
 
             // Auto-create enrich jobs after successful harvest — one per provider.

@@ -109,6 +109,7 @@ pub struct Job {
 pub struct LawEntry {
     pub law_id: String,
     pub law_name: Option<String>,
+    pub slug: Option<String>,
     pub status: LawStatusValue,
     pub harvest_job_id: Option<Uuid>,
     pub enrich_job_id: Option<Uuid>,
