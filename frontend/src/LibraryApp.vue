@@ -8,7 +8,7 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import { useAuth } from './composables/useAuth.js';
 
-const { authenticated, loading: authLoading, person, login, logout } = useAuth();
+const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 
 const route = useRoute();
 const router = useRouter();
@@ -252,7 +252,7 @@ loadIndex();
                     <ndd-menu-divider></ndd-menu-divider>
                     <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
                   </template>
-                  <template v-else-if="!authLoading">
+                  <template v-else-if="!authLoading && oidcConfigured">
                     <ndd-menu-item text="Inloggen" @click="login"></ndd-menu-item>
                   </template>
                 </ndd-menu>

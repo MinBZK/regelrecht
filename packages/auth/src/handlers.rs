@@ -293,22 +293,18 @@ pub async fn logout<S: OidcAppState>(
     let base_url = base_url_from_config_or_request(&state, &headers);
 
     if let (Some(end_session_url), Some(oidc)) = (state.end_session_url(), state.oidc_config()) {
-        let mut params = vec![
-            ("post_logout_redirect_uri", base_url),
-            ("client_id", oidc.client_id.clone()),
-        ];
+        let mut url = url::Url::parse(end_session_url).map_err(|e| {
+            tracing::error!(error = %e, "invalid end_session_endpoint URL");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        url.query_pairs_mut()
+            .append_pair("post_logout_redirect_uri", &base_url)
+            .append_pair("client_id", &oidc.client_id);
         if let Some(ref hint) = id_token_hint {
-            params.push(("id_token_hint", hint.clone()));
+            url.query_pairs_mut().append_pair("id_token_hint", hint);
         }
 
-        let query = params
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, urlencoding::encode(v)))
-            .collect::<Vec<_>>()
-            .join("&");
-
-        let redirect_url = format!("{end_session_url}?{query}");
-        Ok(Redirect::temporary(&redirect_url).into_response())
+        Ok(Redirect::temporary(url.as_str()).into_response())
     } else {
         Ok(Redirect::temporary(&format!("{base_url}/")).into_response())
     }

@@ -49,9 +49,9 @@ impl AppConfig {
 
         let base_url = regelrecht_auth::parse_base_url()?;
         if base_url.is_none() && oidc.is_some() {
-            tracing::warn!(
-                "BASE_URL is not set — OIDC redirect URLs will be derived from request headers. \
-                 Set BASE_URL to prevent open-redirect attacks."
+            return Err(
+                "BASE_URL must be set when OIDC is enabled (prevents open-redirect attacks)"
+                    .to_string(),
             );
         }
 
@@ -112,6 +112,7 @@ mod tests {
         env::set_var("OIDC_CLIENT_SECRET", "secret");
         env::set_var("KEYCLOAK_BASE_URL", "https://keycloak.example.com");
         env::set_var("KEYCLOAK_REALM", "test-realm");
+        env::set_var("BASE_URL", "https://admin.example.com");
     }
 
     #[test]
