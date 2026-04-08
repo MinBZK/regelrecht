@@ -70,7 +70,7 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
 </script>
 
 <template>
-  <div class="table-toolbar">
+  <div v-if="sortableColumns.length > 0 || filterColumns.length > 0" class="table-toolbar">
     <!-- Sort menu -->
     <ndd-button
       v-if="sortableColumns.length > 0"
@@ -126,6 +126,7 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
       :key="getFilterKey(col)"
       size="sm"
       :placeholder="`Filter ${getFilterLabel(col)}…`"
+      :accessible-label="`Filter ${getFilterLabel(col)}`"
       :value="filters[getFilterKey(col)] || ''"
       @input="onTextFilter(col, $event)"
     />
