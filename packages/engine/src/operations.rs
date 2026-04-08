@@ -1645,6 +1645,14 @@ pub fn execute_foreach(
         let mut child = context.create_child();
         child.set_local(as_name.to_string(), item.clone());
 
+        // Flatten object fields into local scope so $field references work
+        // without requiring $current.field notation.
+        if let Value::Object(fields) = item {
+            for (key, value) in fields {
+                child.set_local(key.clone(), value.clone());
+            }
+        }
+
         // Evaluate filter if present (in child scope)
         if let Some(filter_expr) = filter {
             let filter_result = evaluate_value(filter_expr, &child, depth + 1)?;
