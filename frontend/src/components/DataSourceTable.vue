@@ -36,9 +36,10 @@ function addRow() {
       newRow[field.name] = defaultForType(field.type);
     }
   }
+  const newLength = rows.value.length + 1;
   rows.value = [...rows.value, newRow];
   // Navigate to the last page so the new row is visible
-  currentPage.value = Math.max(1, Math.ceil((rowCount.value + 1) / PAGE_SIZE));
+  currentPage.value = Math.max(1, Math.ceil(newLength / PAGE_SIZE));
 }
 
 function removeRow(index) {
