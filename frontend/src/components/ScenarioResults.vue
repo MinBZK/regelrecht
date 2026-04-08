@@ -114,7 +114,7 @@ function normalizeForCompare(value) {
 
 <style scoped>
 .sr-container {
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
 .sr-running {
@@ -189,7 +189,7 @@ function normalizeForCompare(value) {
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 3px;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
 .sr-output-badge--pass {

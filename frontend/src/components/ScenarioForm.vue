@@ -175,28 +175,19 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 <template>
   <div class="sf-form">
     <!-- Expected outputs at top -->
-    <rr-list v-if="hasExpectations" variant="simple">
-      <rr-list-item
+    <ndd-list v-if="hasExpectations" variant="simple">
+      <ndd-list-item
         v-for="(exp, name) in expectations"
         :key="name"
         size="sm"
         class="sf-expectation"
         :class="result ? `sf-expectation--${matchStatus(name, result.outputs?.[name])}` : (error ? 'sf-expectation--failed' : '')"
       >
-        <rr-text-cell size="sm">
-          {{ name }}
-          <span v-if="articleMap?.outputToArticle?.get(name)" class="sf-article-tag">
-            Art. {{ articleMap.outputToArticle.get(name) }}
-          </span>
-        </rr-text-cell>
-        <rr-text-cell size="sm" class="sf-expectation-value">
-          verwacht: {{ formatValue(normalizeForCompare(exp)) }}
-        </rr-text-cell>
-        <rr-text-cell v-if="result && result.outputs" size="sm" class="sf-expectation-actual">
-          &rarr; {{ formatOutputValue(result.outputs[name], name) }}
-        </rr-text-cell>
-      </rr-list-item>
-    </rr-list>
+        <ndd-text-cell size="sm" :text="articleMap?.outputToArticle?.get(name) ? `${name} (Art. ${articleMap.outputToArticle.get(name)})` : name"></ndd-text-cell>
+        <ndd-text-cell size="sm" class="sf-expectation-value" :text="`verwacht: ${formatValue(normalizeForCompare(exp))}`"></ndd-text-cell>
+        <ndd-text-cell v-if="result && result.outputs" size="sm" class="sf-expectation-actual" :text="`→ ${formatOutputValue(result.outputs[name], name)}`"></ndd-text-cell>
+      </ndd-list-item>
+    </ndd-list>
 
     <!-- Error -->
     <div v-if="error && !running" class="sf-error">{{ error }}</div>
@@ -205,29 +196,24 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <div v-if="running" class="sf-running">Uitvoeren...</div>
 
     <!-- Input: date + parameters -->
-    <rr-list variant="simple" class="sf-input-list">
-      <rr-list-item size="sm">
-        <rr-text-cell size="sm">Datum</rr-text-cell>
-        <rr-cell>
+    <ndd-list variant="simple" class="sf-input-list">
+      <ndd-list-item size="sm">
+        <ndd-text-cell size="sm" text="Datum"></ndd-text-cell>
+        <ndd-cell>
           <input type="date" class="sf-date" v-model="calculationDate" />
-        </rr-cell>
-      </rr-list-item>
-      <rr-list-item v-for="(value, name) in parameterValues" :key="name" size="sm">
-        <rr-text-cell size="sm">
-          {{ name }}
-          <span v-if="articleMap?.paramToArticle?.get(name)" class="sf-article-tag">
-            Art. {{ articleMap.paramToArticle.get(name) }}
-          </span>
-        </rr-text-cell>
-        <rr-cell>
+        </ndd-cell>
+      </ndd-list-item>
+      <ndd-list-item v-for="(value, name) in parameterValues" :key="name" size="sm">
+        <ndd-text-cell size="sm" :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name"></ndd-text-cell>
+        <ndd-cell>
           <input
             class="sf-input"
             :value="value"
             @input="parameterValues = { ...parameterValues, [name]: $event.target.value }"
           />
-        </rr-cell>
-      </rr-list-item>
-    </rr-list>
+        </ndd-cell>
+      </ndd-list-item>
+    </ndd-list>
 
     <!-- Data sources -->
     <DataSourceTable
@@ -243,21 +229,20 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 
     <!-- Details button -->
     <div class="sf-actions-row">
-      <rr-button
-        variant="neutral-tinted"
+      <ndd-button
+       
         size="sm"
         :disabled="!result && !error || undefined"
         @click="emit('show-details')"
-      >
-        Details &#x25B6;
-      </rr-button>
+        text="Details &#x25B6;"
+      ></ndd-button>
     </div>
   </div>
 </template>
 
 <style scoped>
 .sf-form {
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
 /* Expected outputs */
@@ -295,13 +280,13 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 }
 
 /* Input list */
-.sf-input-list rr-text-cell {
+.sf-input-list ndd-text-cell {
   width: 80px;
   min-width: 80px;
   flex-shrink: 0;
 }
 
-.sf-input-list rr-cell {
+.sf-input-list ndd-cell {
   flex: 1;
   min-width: 0;
 }

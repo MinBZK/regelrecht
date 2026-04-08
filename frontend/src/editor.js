@@ -1,5 +1,5 @@
 import '@minbzk/storybook';
-import '@minbzk/storybook/css';
+import '@minbzk/storybook/styles';
 import { createApp } from 'vue';
 import EditorApp from './EditorApp.vue';
 

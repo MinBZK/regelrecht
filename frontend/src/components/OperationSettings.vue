@@ -103,90 +103,73 @@ function currentDropdownValue(val) {
 </script>
 
 <template>
-  <div v-if="operation">
-    <div class="settings-title-bar">
-      <rr-title-bar size="4">Instellingen operatie {{ operation.number }}</rr-title-bar>
-      <rr-icon-button variant="neutral-tinted" size="s" icon="ellipsis" title="Meer opties">
-      </rr-icon-button>
-    </div>
-
-    <rr-list variant="box" class="settings-list">
+  <template v-if="operation">
+    <ndd-title size="4">
+      <h4>Instellingen operatie {{ operation.number }}</h4>
+      <ndd-icon-button slot="actions" icon="ellipsis" title="Meer opties"></ndd-icon-button>
+    </ndd-title>
+    <ndd-spacer size="4"></ndd-spacer>
+    <ndd-list variant="box" class="settings-list">
       <!-- Titel -->
-      <rr-list-item size="md">
-        <rr-text-cell>Titel</rr-text-cell>
-        <rr-cell>
-          <rr-text-field size="md" :value="operation.title"></rr-text-field>
-        </rr-cell>
-      </rr-list-item>
+      <ndd-list-item size="md">
+        <ndd-text-cell text="Titel" max-width="120"></ndd-text-cell>
+        <ndd-cell>
+          <ndd-text-field size="md" :value="operation.title"></ndd-text-field>
+        </ndd-cell>
+      </ndd-list-item>
 
       <!-- Type -->
-      <rr-list-item size="md">
-        <rr-text-cell>Type</rr-text-cell>
-        <rr-cell>
-          <rr-dropdown size="md">
+      <ndd-list-item size="md">
+        <ndd-text-cell text="Type" max-width="120"></ndd-text-cell>
+        <ndd-cell>
+          <ndd-dropdown size="md">
             <select aria-label="Operatie type" :value="operation.operation">
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
-          </rr-dropdown>
-        </rr-cell>
-      </rr-list-item>
+          </ndd-dropdown>
+        </ndd-cell>
+      </ndd-list-item>
 
       <!-- Waarde rows -->
-      <rr-list-item v-for="(val, i) in operationValues" :key="i" size="md">
-        <rr-text-cell>{{ val._label }}</rr-text-cell>
-        <rr-cell>
+      <ndd-list-item v-for="(val, i) in operationValues" :key="i" size="md">
+        <ndd-text-cell :text="val._label" max-width="120"></ndd-text-cell>
+        <ndd-cell>
           <div class="value-row">
             <template v-if="isLiteralValue(val._value)">
-              <rr-text-field size="md" :value="String(val._value)" is-full-width></rr-text-field>
+              <ndd-text-field size="md" :value="String(val._value)" is-full-width></ndd-text-field>
             </template>
             <template v-else>
-              <rr-dropdown size="md" style="flex: 1; min-width: 0;">
+              <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)">
                   <option v-for="opt in valueDropdownOptions(val._value)" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                 </select>
-              </rr-dropdown>
+              </ndd-dropdown>
             </template>
-            <rr-icon-button variant="neutral-tinted" size="s" icon="minus" title="Verwijder waarde">
-            </rr-icon-button>
+            <ndd-icon-button icon="minus" title="Verwijder waarde">
+            </ndd-icon-button>
           </div>
           <p v-if="isNestedOperation(val._value)" class="value-help-text">
             {{ describeSubtitle(val._value) }}
             <a href="#" @click.prevent="emit('select-operation', val._value)">Bewerk</a>
           </p>
-        </rr-cell>
-      </rr-list-item>
+        </ndd-cell>
+      </ndd-list-item>
 
       <!-- Add value -->
-      <rr-list-item size="md">
-        <rr-button variant="neutral-tinted" size="md" style="width: 100%;">
-          <rr-icon slot="start" name="plus-small"></rr-icon>
-          Voeg waarde toe
-        </rr-button>
-      </rr-list-item>
-    </rr-list>
-  </div>
+      <ndd-list-item size="md">
+        <ndd-button size="md" start-icon="plus-small" style="width: 100%;" text="Voeg waarde toe"></ndd-button>
+      </ndd-list-item>
+    </ndd-list>
+  </template>
 </template>
 
 <style>
-.settings-title-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 4px;
-}
-
-.settings-list rr-text-cell {
-  width: 80px;
-  min-width: 80px;
-  flex-shrink: 0;
-}
-.settings-list rr-cell {
+.settings-list ndd-cell {
   flex: 1;
   min-width: 0;
 }
-.settings-list rr-text-field,
-.settings-list rr-dropdown {
+.settings-list ndd-text-field,
+.settings-list ndd-dropdown {
   width: 100%;
 }
 
@@ -196,14 +179,14 @@ function currentDropdownValue(val) {
   align-items: center;
   width: 100%;
 }
-.value-row rr-text-field,
-.value-row rr-dropdown {
+.value-row ndd-text-field,
+.value-row ndd-dropdown {
   flex: 1;
   min-width: 0;
 }
 
 .value-help-text {
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.25;

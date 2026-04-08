@@ -14,9 +14,9 @@ const yamlText = computed(() => {
 </script>
 
 <template>
-  <div v-if="!yamlText" style="padding: 32px; color: #999; text-align: center;">
-    Geen machine-leesbare gegevens voor dit artikel
-  </div>
+  <ndd-simple-section v-if="!yamlText" align="center">
+    <ndd-inline-dialog text="Geen machine-leesbare gegevens voor dit artikel"></ndd-inline-dialog>
+  </ndd-simple-section>
   <pre v-else class="yaml-source"><code>{{ yamlText }}</code></pre>
 </template>
 

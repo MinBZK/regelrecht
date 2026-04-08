@@ -1,17 +1,13 @@
 /* Main CSS - Minimal app-level styles */
 /* Component styles are provided by @minbzk/storybook (imported in JS entry points) */
 
-@import url('../fonts/fonts.css');
-
 html,
 body {
   height: 100%;
 }
 
 body {
-  font-family: var(--rr-font-family-sans, 'RijksSansVF', system-ui, -apple-system, sans-serif);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
 }
 
 *,

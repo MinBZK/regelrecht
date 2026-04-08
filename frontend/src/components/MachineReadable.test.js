@@ -62,11 +62,11 @@ function mountEditable(articleOverrides = {}) {
 }
 
 function findBewerkButtons(wrapper) {
-  return wrapper.findAll('rr-button').filter((b) => b.text() === 'Bewerk');
+  return wrapper.findAll('ndd-button[text="Bewerk"]');
 }
 
 function findBekijkButtons(wrapper) {
-  return wrapper.findAll('rr-button').filter((b) => b.text() === 'Bekijk');
+  return wrapper.findAll('ndd-button[text="Bekijk"]');
 }
 
 async function clickBewerk(wrapper, index) {
@@ -75,14 +75,14 @@ async function clickBewerk(wrapper, index) {
 }
 
 function findAddButton(wrapper, text) {
-  return wrapper.findAll('rr-button').find((b) => b.text().includes(`Nieuwe ${text}`));
+  return wrapper.findAll('ndd-button').find((b) => b.attributes('text')?.includes(`Nieuwe ${text}`));
 }
 
 describe('MachineReadable', () => {
   describe('display mode', () => {
     it('renders all sections', () => {
       const wrapper = mountEditable();
-      const headings = wrapper.findAll('rr-title-bar');
+      const headings = wrapper.findAll('ndd-title');
       const titles = headings.map((h) => h.text());
       expect(titles).toContain('Definities');
       expect(titles).toContain('Parameters');
@@ -93,30 +93,30 @@ describe('MachineReadable', () => {
 
     it('shows produces metadata', () => {
       const wrapper = mountEditable();
-      expect(wrapper.text()).toContain('BESCHIKKING');
-      expect(wrapper.text()).toContain('TOEKENNING');
+      expect(wrapper.html()).toContain('BESCHIKKING');
+      expect(wrapper.html()).toContain('TOEKENNING');
     });
 
     it('shows empty state when no machine_readable', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: { number: '1' }, editable: true },
       });
-      expect(wrapper.text()).toContain('Geen machine-leesbare gegevens');
+      expect(wrapper.find('ndd-inline-dialog').attributes('text')).toContain('Geen machine-leesbare gegevens');
     });
 
     it('formats percentage values (0 < v < 1)', () => {
       const wrapper = mountEditable();
-      expect(wrapper.text()).toMatch(/1,896\s*%/);
+      expect(wrapper.html()).toMatch(/1,896\s*%/);
     });
 
     it('formats eurocent values as currency', () => {
       const wrapper = mountEditable();
-      expect(wrapper.text()).toMatch(/1\.500,00/);
+      expect(wrapper.html()).toMatch(/1\.500,00/);
     });
 
     it('shows plain number when no unit', () => {
       const wrapper = mountEditable();
-      expect(wrapper.text()).toContain('3971900');
+      expect(wrapper.html()).toContain('3971900');
     });
 
     it('shows Bewerk buttons for each editable item', () => {
@@ -218,7 +218,7 @@ describe('MachineReadable', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const addButtons = wrapper.findAll('rr-button').filter((b) => b.text().includes('Nieuwe'));
+      const addButtons = wrapper.findAll('ndd-button').filter((b) => b.attributes('text')?.includes('Nieuwe'));
       expect(addButtons.length).toBe(0);
     });
 
