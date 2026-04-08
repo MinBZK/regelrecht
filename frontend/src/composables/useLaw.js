@@ -90,11 +90,15 @@ export function useLaw(lawParam) {
   // Derive the law ID from the parsed law or the original param
   const lawId = computed(() => law.value?.$id || lawParam);
 
+  let switchVersion = 0;
+
   async function switchLaw(newLawId, articleNumber) {
+    const version = ++switchVersion;
     try {
       loading.value = true;
       error.value = null;
       const entry = await fetchLaw(newLawId);
+      if (version !== switchVersion) return; // stale, discard
       law.value = entry.law;
       rawYaml.value = entry.rawYaml;
       if (articleNumber) {

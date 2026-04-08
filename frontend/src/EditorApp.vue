@@ -66,13 +66,17 @@ watch(lawName, (name) => {
   }
 });
 
+let switchGeneration = 0;
+
 async function selectTab(tab) {
+  const gen = ++switchGeneration;
   activeTab.value = tab;
   activeAction.value = null;
   if (tab.lawId === lawId.value) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
     await switchLaw(tab.lawId, tab.articleNumber);
+    if (gen !== switchGeneration) return; // stale, another switch started
     lawNames.value = { ...lawNames.value, [tab.lawId]: lawName.value };
   }
 }
