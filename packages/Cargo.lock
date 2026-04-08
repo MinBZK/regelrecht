@@ -3644,13 +3644,29 @@ name = "regelrecht-editor-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
+ "chrono",
+ "http-body-util",
+ "openidconnect",
  "regelrecht-corpus",
+ "reqwest 0.12.28",
+ "rsa",
  "serde",
  "serde_json",
+ "sha2",
+ "sqlx",
+ "time",
  "tokio",
+ "tower",
  "tower-http",
+ "tower-sessions",
+ "tower-sessions-memory-store",
+ "tower-sessions-sqlx-store",
  "tracing",
  "tracing-subscriber",
+ "urlencoding",
+ "uuid",
+ "wiremock",
 ]
 
 [[package]]

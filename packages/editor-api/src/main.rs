@@ -10,10 +10,18 @@ use axum::Router;
 use tokio::sync::RwLock;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
+use tower_sessions::ExpiredDeletion;
+use tower_sessions::Expiry;
+use tower_sessions::SessionManagerLayer;
+use tower_sessions_memory_store::MemoryStore;
+use tower_sessions_sqlx_store::PostgresStore;
 use tracing_subscriber::EnvFilter;
 
+mod auth;
+mod config;
 mod corpus_handlers;
 mod middleware;
+mod oidc;
 mod state;
 
 use state::{AppState, CorpusState};
@@ -26,16 +34,54 @@ async fn main() {
         )
         .init();
 
+    let app_config = config::AppConfig::from_env();
+
+    // --- OIDC discovery (conditional) ---
+    let (oidc_client, end_session_url) = if let Some(ref oidc_config) = app_config.oidc {
+        match oidc::discover_client(oidc_config).await {
+            Ok(result) => (Some(Arc::new(result.client)), result.end_session_url),
+            Err(e) => {
+                tracing::error!(error = %e, "OIDC discovery failed");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        (None, None)
+    };
+
+    // --- HTTP client for OIDC token exchange ---
+    let http_client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "failed to build HTTP client");
+            std::process::exit(1);
+        });
+
+    // --- Corpus init ---
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
     let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
+        oidc_client,
+        end_session_url,
+        config: Arc::new(app_config),
+        http_client,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
 
-    let api_routes = Router::new()
+    // --- Routes ---
+    let auth_routes = Router::new()
+        .route("/auth/login", get(auth::login))
+        .route("/auth/callback", get(auth::callback))
+        .route("/auth/logout", get(auth::logout))
+        .route("/auth/status", get(auth::status));
+
+    // Public API routes — accessible without authentication
+    let public_api_routes = Router::new()
         .route("/api/sources", get(corpus_handlers::list_sources))
         .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
         .route(
@@ -51,14 +97,89 @@ async fn main() {
             get(corpus_handlers::get_scenario),
         );
 
-    let app = Router::new()
-        .route("/health", get(|| async { "OK" }))
-        .merge(api_routes)
-        .with_state(app_state)
-        .layer(axum_middleware::from_fn(middleware::security_headers))
-        .layer(TraceLayer::new_for_http())
-        .fallback_service(ServeDir::new(&static_dir).not_found_service(ServeFile::new(index_file)));
+    // Protected API routes — require authentication when OIDC is enabled.
+    // Currently empty; PR #422 and #517 will add write endpoints here.
+    let protected_api_routes = Router::new().route_layer(axum_middleware::from_fn_with_state(
+        app_state.clone(),
+        middleware::require_auth,
+    ));
 
+    // --- Build app with session layer ---
+    // SessionManagerLayer is generic over the store type, so we build the
+    // router in two branches depending on whether auth is enabled.
+    if app_state.config.is_auth_enabled() {
+        let database_url = env::var("DATABASE_URL")
+            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
+            .unwrap_or_else(|_| {
+                tracing::error!(
+                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
+                );
+                std::process::exit(1);
+            });
+
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&database_url)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, "failed to connect to database");
+                std::process::exit(1);
+            });
+
+        let session_store = PostgresStore::new(pool);
+        if let Err(e) = session_store.migrate().await {
+            tracing::error!(error = %e, "failed to create session table");
+            std::process::exit(1);
+        }
+        tracing::info!("session store ready (PostgreSQL-backed)");
+
+        let _deletion_task = tokio::task::spawn(
+            session_store
+                .clone()
+                .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
+        );
+
+        let session_layer = SessionManagerLayer::new(session_store)
+            .with_expiry(Expiry::OnInactivity(time::Duration::hours(8)))
+            .with_same_site(tower_sessions::cookie::SameSite::Lax)
+            .with_http_only(true)
+            .with_secure(true);
+
+        let app = Router::new()
+            .route("/health", get(|| async { "OK" }))
+            .merge(auth_routes)
+            .merge(public_api_routes)
+            .merge(protected_api_routes)
+            .with_state(app_state)
+            .layer(session_layer)
+            .layer(axum_middleware::from_fn(middleware::security_headers))
+            .layer(TraceLayer::new_for_http())
+            .fallback_service(
+                ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index_file)),
+            );
+
+        serve(app).await;
+    } else {
+        let session_layer = SessionManagerLayer::new(MemoryStore::default());
+
+        let app = Router::new()
+            .route("/health", get(|| async { "OK" }))
+            .merge(auth_routes)
+            .merge(public_api_routes)
+            .merge(protected_api_routes)
+            .with_state(app_state)
+            .layer(session_layer)
+            .layer(axum_middleware::from_fn(middleware::security_headers))
+            .layer(TraceLayer::new_for_http())
+            .fallback_service(
+                ServeDir::new(&static_dir).not_found_service(ServeFile::new(index_file)),
+            );
+
+        serve(app).await;
+    }
+}
+
+async fn serve(app: Router) {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
     tracing::info!("listening on {addr}");
 

@@ -3,6 +3,9 @@ import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
+import { useAuth } from './composables/useAuth.js';
+
+const { person, logout } = useAuth();
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -242,13 +245,12 @@ function handleSave({ section, key, newKey, index, data }) {
                   <ndd-menu-item text="Nieuw project"></ndd-menu-item>
                 </ndd-menu>
                 <ndd-button-bar-divider></ndd-button-bar-divider>
-                <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable title="Account" popovertarget="account-menu">
+                <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
                 </ndd-icon-button>
                 <ndd-menu id="account-menu" anchor="account-menu-btn">
-                  <ndd-menu-item text="Profiel"></ndd-menu-item>
-                  <ndd-menu-item text="Voorkeuren"></ndd-menu-item>
-                  <ndd-menu-divider></ndd-menu-divider>
-                  <ndd-menu-item text="Uitloggen"></ndd-menu-item>
+                  <ndd-menu-item v-if="person" :text="person.name || person.email" disabled></ndd-menu-item>
+                  <ndd-menu-divider v-if="person"></ndd-menu-divider>
+                  <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
                 </ndd-menu>
               </ndd-button-bar>
             </ndd-toolbar-item>
