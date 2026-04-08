@@ -269,13 +269,9 @@ impl RegelrechtEngine {
     ) -> PyResult<()> {
         let mut parsed: Vec<BTreeMap<String, Value>> = Vec::with_capacity(records.len());
         for item in records.iter() {
-            let dict = item
-                .downcast::<PyDict>()
-                .map_err(|_| {
-                    PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                        "Each record must be a dict",
-                    )
-                })?;
+            let dict = item.downcast::<PyDict>().map_err(|_| {
+                PyErr::new::<pyo3::exceptions::PyTypeError, _>("Each record must be a dict")
+            })?;
             parsed.push(pydict_to_btreemap(dict)?);
         }
 

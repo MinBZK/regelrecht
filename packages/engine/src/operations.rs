@@ -308,6 +308,7 @@ fn execute_operation_internal<R: ValueResolver>(
         // Null checking operations
         ActionOperation::IsNull { subject } => execute_null_check(subject, resolver, depth, false),
         ActionOperation::NotNull { subject } => execute_null_check(subject, resolver, depth, true),
+        ActionOperation::Exists { subject } => execute_exists(subject, resolver, depth),
 
         // Collection operations
         ActionOperation::In {
@@ -1544,6 +1545,30 @@ fn type_error(expected: &str, actual: &Value) -> EngineError {
         expected: expected.to_string(),
         actual: actual.type_name().to_string(),
     }
+}
+
+/// Execute EXISTS check: true if value is not null AND not empty.
+///
+/// Unlike NOT_NULL (which only checks for Null), EXISTS also returns false
+/// for empty arrays `[]` and empty objects `{}`. This matches the legal
+/// semantics of "data exists" — an empty registration list means no
+/// registrations exist.
+fn execute_exists<R: ValueResolver>(
+    subject: &ActionValue,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let subject_val = evaluate_value(subject, resolver, depth)?;
+    if subject_val.is_untranslatable() {
+        return Ok(subject_val);
+    }
+    let exists = match &subject_val {
+        Value::Null => false,
+        Value::Array(arr) => !arr.is_empty(),
+        Value::Object(obj) => !obj.is_empty(),
+        _ => true,
+    };
+    Ok(Value::Bool(exists))
 }
 
 // =============================================================================

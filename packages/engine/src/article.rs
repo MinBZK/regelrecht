@@ -224,6 +224,10 @@ pub enum ActionOperation {
     IsNull { subject: ActionValue },
     #[serde(rename = "NOT_NULL")]
     NotNull { subject: ActionValue },
+    /// EXISTS: true if value is not null AND not an empty array/object.
+    /// Semantics: "this data exists and has content" — stricter than NOT_NULL.
+    #[serde(rename = "EXISTS")]
+    Exists { subject: ActionValue },
 
     // Collection
     #[serde(rename = "IN")]
@@ -329,6 +333,7 @@ impl ActionOperation {
             ActionOperation::Not { .. } => "NOT",
             ActionOperation::If { .. } => "IF",
             ActionOperation::IsNull { .. } => "IS_NULL",
+            ActionOperation::Exists { .. } => "EXISTS",
             ActionOperation::NotNull { .. } => "NOT_NULL",
             ActionOperation::In { .. } => "IN",
             ActionOperation::NotIn { .. } => "NOT_IN",
