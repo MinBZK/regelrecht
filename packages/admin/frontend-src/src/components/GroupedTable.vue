@@ -69,7 +69,6 @@ function formatChildCell(value, key) {
           size="md"
           type="button"
           class="group-row"
-          :class="{ 'group-row--expanded': expandedLawIds.has(group.law_id) }"
           @click="emit('toggle-expand', group.law_id)"
         >
           <template v-for="col in columns" :key="col.key">
