@@ -254,6 +254,9 @@ pub enum ActionOperation {
         subject: ActionValue,
         values: ActionValue,
     },
+    /// CONCAT: concatenate values into a string.
+    #[serde(rename = "CONCAT")]
+    Concat { values: Vec<ActionValue> },
 
     // Date
     #[serde(rename = "AGE")]
@@ -345,6 +348,7 @@ impl ActionOperation {
             ActionOperation::NotIn { .. } => "NOT_IN",
             ActionOperation::List { .. } => "LIST",
             ActionOperation::Get { .. } => "GET",
+            ActionOperation::Concat { .. } => "CONCAT",
             ActionOperation::Age { .. } => "AGE",
             ActionOperation::DateAdd { .. } => "DATE_ADD",
             ActionOperation::Date { .. } => "DATE",

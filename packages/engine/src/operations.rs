@@ -337,6 +337,7 @@ fn execute_operation_internal<R: ValueResolver>(
         ),
         ActionOperation::List { items } => execute_list(items, resolver, depth),
         ActionOperation::Get { subject, values } => execute_get(subject, values, resolver, depth),
+        ActionOperation::Concat { values } => execute_concat(values, resolver, depth),
 
         // Date
         ActionOperation::Age {
@@ -1140,6 +1141,29 @@ fn execute_get<R: ValueResolver>(
         }
         _ => Ok(Value::Null),
     }
+}
+
+/// Execute CONCAT operation: concatenate values into a string.
+///
+/// Each value is evaluated and converted to string. Null values become empty strings.
+fn execute_concat<R: ValueResolver>(
+    values: &[ActionValue],
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let mut result = String::new();
+    for val_expr in values {
+        let val = evaluate_value(val_expr, resolver, depth)?;
+        match val {
+            Value::Null => {} // Skip null (empty string)
+            Value::String(s) => result.push_str(&s),
+            Value::Int(i) => result.push_str(&i.to_string()),
+            Value::Float(f) => result.push_str(&f.to_string()),
+            Value::Bool(b) => result.push_str(&b.to_string()),
+            _ => result.push_str(&format!("{}", val)),
+        }
+    }
+    Ok(Value::String(result))
 }
 
 // =============================================================================
