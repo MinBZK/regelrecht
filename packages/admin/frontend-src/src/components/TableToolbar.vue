@@ -11,7 +11,8 @@ const props = defineProps({
 const emit = defineEmits(['sort', 'filter-change']);
 
 // Unique prefix for menu anchor IDs (avoid collisions when multiple toolbars exist)
-const uid = Math.random().toString(36).slice(2, 8);
+let _counter = 0;
+const uid = `tb${_counter++}`;
 
 const sortableColumns = computed(() => props.columns.filter((c) => c.sortable));
 const filterColumns = computed(() => props.columns.filter((c) => c.filter));
