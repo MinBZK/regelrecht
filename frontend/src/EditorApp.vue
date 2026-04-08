@@ -1,7 +1,7 @@
 <script setup>
-import { ref, computed, watch, shallowRef } from 'vue';
+import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
-import { useLaw, fetchLaw, resolveLawName } from './composables/useLaw.js';
+import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
@@ -10,7 +10,7 @@ import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
 // --- Initial law load (from URL params) ---
-const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, loading, error } = useLaw();
+const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
 
 const middlePaneView = ref('form');
 
@@ -49,7 +49,9 @@ watch([() => lawId.value, selectedArticle], ([id, article]) => {
   if (!id || !article) return;
   const num = String(article.number);
   if (!findTab(id, num)) {
-    openTabs.value = [...openTabs.value, { lawId: id, articleNumber: num }];
+    const MAX_TABS = 20;
+    const tabs = [...openTabs.value, { lawId: id, articleNumber: num }];
+    openTabs.value = tabs.length > MAX_TABS ? tabs.slice(-MAX_TABS) : tabs;
     saveTabs(openTabs.value);
   }
   activeTab.value = { lawId: id, articleNumber: num };
@@ -68,16 +70,8 @@ async function selectTab(tab) {
   if (tab.lawId === lawId.value) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
-    // Switch to a different law
-    try {
-      const entry = await fetchLaw(tab.lawId);
-      law.value = entry.law;
-      rawYaml.value = entry.rawYaml;
-      lawNames.value = { ...lawNames.value, [tab.lawId]: entry.lawName };
-      selectedArticleNumber.value = tab.articleNumber;
-    } catch (e) {
-      console.warn(`Failed to load law '${tab.lawId}':`, e);
-    }
+    await switchLaw(tab.lawId, tab.articleNumber);
+    lawNames.value = { ...lawNames.value, [tab.lawId]: lawName.value };
   }
 }
 
@@ -87,7 +81,7 @@ function closeTab(tab) {
   if (activeTab.value && tabKey(activeTab.value) === tabKey(tab)) {
     const remaining = openTabs.value;
     if (remaining.length > 0) {
-      selectTab(remaining[remaining.length - 1]);
+      selectTab(remaining[remaining.length - 1]).catch(console.warn);
     } else {
       activeTab.value = null;
     }

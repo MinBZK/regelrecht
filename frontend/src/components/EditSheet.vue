@@ -149,7 +149,7 @@ const sectionLabels = {
       <ndd-simple-section v-if="item">
           <!-- Definition -->
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
-            <ndd-list variant="box" class="settings-list">
+            <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
                 <ndd-text-cell text="Naam"></ndd-text-cell>
                 <ndd-cell>
@@ -177,7 +177,7 @@ const sectionLabels = {
 
           <!-- Parameter -->
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
-            <ndd-list variant="box" class="settings-list">
+            <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
                 <ndd-text-cell text="Naam"></ndd-text-cell>
                 <ndd-cell>
@@ -205,7 +205,7 @@ const sectionLabels = {
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
-            <ndd-list variant="box" class="settings-list">
+            <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
                 <ndd-text-cell text="Naam"></ndd-text-cell>
                 <ndd-cell>
@@ -239,7 +239,7 @@ const sectionLabels = {
 
           <!-- Output -->
           <template v-if="item.section === 'output' || item.section === 'add-output'">
-            <ndd-list variant="box" class="settings-list">
+            <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
                 <ndd-text-cell text="Naam"></ndd-text-cell>
                 <ndd-cell>
@@ -269,16 +269,16 @@ const sectionLabels = {
 
 <style>
 /* Form field layout in settings list */
-.settings-list ndd-list-item {
+.edit-settings-list ndd-list-item {
   display: grid;
   grid-template-columns: 120px 1fr;
   gap: 0 12px;
   align-items: center;
 }
-.settings-list ndd-cell {
+.edit-settings-list ndd-cell {
   width: 100%;
 }
-.settings-list ndd-text-field {
+.edit-settings-list ndd-text-field {
   width: 100%;
 }
 .edit-sheet-value-group {

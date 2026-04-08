@@ -230,11 +230,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <!-- Details button -->
     <div class="sf-actions-row">
       <ndd-button
-       
-        size="sm"
         :disabled="!result && !error || undefined"
         @click="emit('show-details')"
-        text="Details &#x25B6;"
+        text="Details" end-icon="chevron-right"
       ></ndd-button>
     </div>
   </div>
