@@ -19,7 +19,7 @@ const props = defineProps({
   articleMap: { type: Object, default: null },
 });
 
-const emit = defineEmits(['show-details']);
+const emit = defineEmits(['show-details', 'executed']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -143,6 +143,7 @@ function execute() {
     }
   } finally {
     running.value = false;
+    emit('executed', getExecutionData());
   }
 }
 
@@ -157,6 +158,18 @@ function getExecutionData() {
 }
 
 defineExpose({ execute, getExecutionData });
+
+// --- Auto-re-execute when input values change ---
+let executeTimer = null;
+watch(
+  [parameterValues, calculationDate, dataSources],
+  () => {
+    if (!props.engine || !props.ready) return;
+    clearTimeout(executeTimer);
+    executeTimer = setTimeout(() => execute(), 300);
+  },
+  { deep: true },
+);
 
 function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];

@@ -297,6 +297,7 @@ async function onSave() {
               :law-id="lawId"
               :article-map="articleMap"
               @show-details="() => onShowDetails(i)"
+              @executed="(data) => onScenarioResult(i, data)"
             />
           </div>
         </details>
