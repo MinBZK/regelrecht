@@ -533,7 +533,15 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
         return Ok(Value::Int(0));
     }
 
-    match &evaluated[0] {
+    // Find the first non-Null value to determine the operation type.
+    // If the first element is Null but later elements are Int, we should do numeric add.
+    let first_non_null = evaluated.iter().find(|v| !v.is_null());
+    if first_non_null.is_none() {
+        // All values are Null
+        return Ok(Value::Null);
+    }
+
+    match first_non_null.unwrap() {
         Value::Array(_) => {
             let mut result = Vec::new();
             for val in evaluated {
@@ -567,7 +575,7 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
             Ok(Value::String(result))
         }
         Value::Int(_) | Value::Float(_) => {
-            // First pass: check types and detect Null.
+            // For numeric ADD, skip Null values (SQL SUM semantics).
             let mut all_int = true;
             for val in evaluated {
                 match val {
@@ -575,7 +583,7 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
                     Value::Float(_) => {
                         all_int = false;
                     }
-                    Value::Null => return Ok(Value::Null),
+                    Value::Null => {} // skip nulls in numeric add
                     _ => return Err(type_error("number", val)),
                 }
             }
@@ -599,15 +607,14 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
                     match val {
                         Value::Int(_) => sum += to_number(val)?,
                         Value::Float(f) => sum += f,
+                        Value::Null => {} // skip nulls in numeric add
                         _ => return Err(type_error("number", val)),
                     }
                 }
                 Ok(Value::Float(sum))
             }
         }
-        // Null as first element: propagate Null
-        Value::Null => Ok(Value::Null),
-        _ => Err(type_error("number, string, or array", &evaluated[0])),
+        _ => Err(type_error("number, string, or array", first_non_null.unwrap())),
     }
 }
 
