@@ -1,5 +1,6 @@
 import { ref, reactive, computed } from 'vue';
 import { usePollingFetch } from './usePollingFetch.js';
+import { LAW_ENTRY_SORT_KEYS } from '../constants.js';
 
 export function useLawEntries() {
   const sort = ref('updated_at');
@@ -10,8 +11,10 @@ export function useLawEntries() {
 
   function buildUrl() {
     const params = new URLSearchParams();
-    params.set('sort', sort.value);
-    params.set('order', order.value);
+    if (LAW_ENTRY_SORT_KEYS.has(sort.value)) {
+      params.set('sort', sort.value);
+    }
+    params.set('order', order.value === 'asc' ? 'asc' : 'desc');
     params.set('limit', String(limit.value));
     params.set('offset', String(offset.value));
     for (const [key, value] of Object.entries(filters)) {
@@ -24,6 +27,7 @@ export function useLawEntries() {
     usePollingFetch(buildUrl);
 
   function setSort(key) {
+    if (!LAW_ENTRY_SORT_KEYS.has(key)) return;
     if (sort.value === key) {
       order.value = order.value === 'asc' ? 'desc' : 'asc';
     } else {
