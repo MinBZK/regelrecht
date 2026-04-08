@@ -116,25 +116,28 @@ async function onResetExhausted() {
       v-if="RE_HARVESTABLE_STATUSES.includes(row.status)"
       variant="accent-outlined"
       size="sm"
+      :text="harvestLabel"
       :title="'Re-harvest ' + row.law_id"
       :disabled="harvestSubmitting ? '' : undefined"
       @click.stop="onHarvest"
-    >{{ harvestLabel }}</ndd-button>
+    />
     <ndd-button
       v-if="ENRICHABLE_STATUSES.includes(row.status)"
       variant="neutral-tinted"
       size="sm"
+      :text="enrichLabel"
       :title="'Trigger enrichment for ' + row.law_id"
       :disabled="enrichSubmitting ? '' : undefined"
       @click.stop="onEnrich"
-    >{{ enrichLabel }}</ndd-button>
+    />
     <ndd-button
       v-if="row.status === 'harvest_exhausted' || row.status === 'enrich_exhausted'"
       variant="accent-outlined"
       size="sm"
+      :text="resetLabel"
       :title="'Reset exhausted status for ' + row.law_id"
       :disabled="resetSubmitting ? '' : undefined"
       @click.stop="onResetExhausted"
-    >{{ resetLabel }}</ndd-button>
+    />
   </span>
 </template>

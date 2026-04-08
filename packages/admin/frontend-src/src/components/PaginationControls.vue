@@ -14,20 +14,22 @@ const emit = defineEmits(['prev', 'next']);
     <ndd-button
       variant="neutral-tinted"
       size="md"
+      text="&#8249;"
       :disabled="currentPage <= 1 ? '' : undefined"
       title="Previous page"
       @click="emit('prev')"
-    >&#8249;</ndd-button>
+    />
     <span class="pagination-info">
       {{ currentPage }} / {{ totalPages }} ({{ totalCount }} {{ unit }})
     </span>
     <ndd-button
       variant="neutral-tinted"
       size="md"
+      text="&#8250;"
       :disabled="currentPage >= totalPages ? '' : undefined"
       title="Next page"
       @click="emit('next')"
-    >&#8250;</ndd-button>
+    />
   </div>
 </template>
 

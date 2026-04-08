@@ -30,15 +30,15 @@ function formatCellValue(value, key) {
 </script>
 
 <template>
-  <TableToolbar
-    :columns="columns"
-    :sort="sort"
-    :order="order"
-    :filters="filters"
-    @sort="(key) => emit('sort', key)"
-    @filter-change="(key, value) => emit('filter-change', key, value)"
-  />
   <ndd-simple-section>
+    <TableToolbar
+      :columns="columns"
+      :sort="sort"
+      :order="order"
+      :filters="filters"
+      @sort="(key) => emit('sort', key)"
+      @filter-change="(key, value) => emit('filter-change', key, value)"
+    />
     <div class="table-container">
       <table class="data-table">
         <thead>

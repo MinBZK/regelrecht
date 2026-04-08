@@ -75,10 +75,11 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
     <ndd-button
       v-if="sortableColumns.length > 0"
       :id="`sort-btn-${uid}`"
-      is-expandable
+      expandable
       variant="neutral-tinted"
       size="sm"
-    >{{ activeSortLabel }}</ndd-button>
+      :text="activeSortLabel"
+    />
     <ndd-menu
       v-if="sortableColumns.length > 0"
       :anchor="`sort-btn-${uid}`"
@@ -97,10 +98,11 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
     <template v-for="col in dropdownFilters" :key="getFilterKey(col)">
       <ndd-button
         :id="`filter-btn-${uid}-${getFilterKey(col)}`"
-        is-expandable
+        expandable
         variant="neutral-tinted"
         size="sm"
-      >{{ getFilterButtonLabel(col) }}</ndd-button>
+        :text="getFilterButtonLabel(col)"
+      />
       <ndd-menu
         :anchor="`filter-btn-${uid}-${getFilterKey(col)}`"
         @select="onFilterSelect(col, $event)"

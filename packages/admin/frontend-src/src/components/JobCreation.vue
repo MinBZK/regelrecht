@@ -80,8 +80,9 @@ function onKeydown(e) {
     <ndd-button
       variant="accent-filled"
       size="md"
+      :text="buttonLabel"
       :disabled="submitting ? '' : undefined"
       @click="onSubmit"
-    >{{ buttonLabel }}</ndd-button>
+    />
   </div>
 </template>

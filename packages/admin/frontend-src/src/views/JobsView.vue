@@ -39,9 +39,10 @@ if (route.query.law_id) {
     <ndd-button
       variant="neutral-tinted"
       size="md"
+      :text="viewMode === 'grouped' ? 'Flat view' : 'Grouped view'"
       :title="viewMode === 'grouped' ? 'Show individual jobs' : 'Group jobs by law'"
       @click="toggleViewMode"
-    >{{ viewMode === 'grouped' ? 'Flat view' : 'Grouped view' }}</ndd-button>
+    />
   </Teleport>
 
   <Teleport to="#pagination-target" defer>

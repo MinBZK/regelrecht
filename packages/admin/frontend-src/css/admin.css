@@ -131,7 +131,7 @@
   display: flex;
   align-items: center;
   gap: var(--primitives-space-8);
-  padding: var(--primitives-space-8) var(--primitives-space-24);
+  padding-bottom: var(--primitives-space-8);
   flex-wrap: wrap;
 }
 
