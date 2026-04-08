@@ -20,7 +20,7 @@ const textFilters = computed(() => filterColumns.value.filter((c) => c.filter.ty
 
 const activeSortLabel = computed(() => {
   const col = sortableColumns.value.find((c) => c.key === props.sort);
-  if (!col) return 'Sorteer';
+  if (!col) return 'Sort';
   const arrow = props.order === 'asc' ? '\u2191' : '\u2193';
   return `${col.label} ${arrow}`;
 });
@@ -106,7 +106,7 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
         @select="onFilterSelect(col, $event)"
       >
         <ndd-menu-item
-          text="Alles"
+          text="All"
           value=""
           :selected="!filters[getFilterKey(col)]"
         />
