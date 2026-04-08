@@ -7,7 +7,7 @@ export function useLaw(lawParam) {
     lawParam = params.get('law') || 'wet_op_de_zorgtoeslag';
   }
   // If the parameter looks like a URL, fetch directly; otherwise use the API.
-  const yamlUrl = (lawParam.startsWith('/') || lawParam.startsWith('http'))
+  const yamlUrl = (lawParam.startsWith('/') || lawParam.startsWith('http') || lawParam.startsWith('blob:'))
     ? lawParam
     : `/api/corpus/laws/${encodeURIComponent(lawParam)}`;
   const law = shallowRef(null);
@@ -45,9 +45,15 @@ export function useLaw(lawParam) {
   async function load() {
     try {
       loading.value = true;
-      const res = await fetch(yamlUrl);
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-      const text = await res.text();
+      let text;
+      if (lawParam === 'local') {
+        text = localStorage.getItem('regelrecht_yaml');
+        if (!text) throw new Error('Geen YAML data gevonden in localStorage');
+      } else {
+        const res = await fetch(yamlUrl);
+        if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+        text = await res.text();
+      }
       law.value = yaml.load(text);
       const articleParam = new URLSearchParams(window.location.search).get('article');
       if (articleParam && articles.value.some(a => String(a.number) === articleParam)) {

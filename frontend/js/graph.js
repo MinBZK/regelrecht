@@ -1,3 +1,31 @@
+// ─── WASM Engine ───
+import initWasm, { WasmEngine } from '../wasm/regelrecht_engine.js';
+
+let wasmEngine = null;
+
+async function initEngine() {
+  try {
+    await initWasm();
+    wasmEngine = new WasmEngine();
+    console.log('WASM engine initialized');
+  } catch (e) {
+    console.warn('Could not initialize WASM engine:', e.message);
+  }
+}
+
+function loadLawIntoEngine(yamlText) {
+  if (!wasmEngine) return;
+  try {
+    const doc = jsyaml.load(yamlText);
+    if (doc?.$id && wasmEngine.hasLaw(doc.$id)) {
+      wasmEngine.unloadLaw(doc.$id);
+    }
+    wasmEngine.loadLaw(yamlText);
+  } catch (e) {
+    // Silently skip laws that can't be loaded (e.g. missing machine_readable)
+  }
+}
+
 const LAYER_COLORS = {
   WET: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' },
   AMVB: { bg: '#dcfce7', border: '#22c55e', text: '#166534' },
@@ -39,6 +67,8 @@ let graphData = null;
 let selectedNode = null;
 let parsedScenarios = [];
 let activeScenarioIdx = null;
+// Map law $id → raw YAML text, for passing to the editor via localStorage
+const rawYamlByLawId = new Map();
 
 async function init() {
   try {
@@ -47,7 +77,41 @@ async function init() {
       graphData = await resp.json();
     }
   } catch (e) {
-    // No pre-generated data — that's fine, user can upload YAML
+    // No pre-generated data — try index.json fallback
+  }
+
+  // Fallback: load all laws from index.json (static YAML files from predev script)
+  if (!graphData) {
+    try {
+      const indexResp = await fetch('/data/index.json');
+      if (indexResp.ok) {
+        const index = await indexResp.json();
+        const docs = [];
+        for (const entry of index) {
+          try {
+            const yamlResp = await fetch(entry.path);
+            if (yamlResp.ok) {
+              const text = await yamlResp.text();
+              const doc = jsyaml.load(text);
+              if (doc) {
+                docs.push(doc);
+                if (doc.$id) {
+                  rawYamlByLawId.set(doc.$id, text);
+                  loadLawIntoEngine(text);
+                }
+              }
+            }
+          } catch (e) {
+            console.warn(`Could not load ${entry.path}: ${e.message}`);
+          }
+        }
+        if (docs.length > 0) {
+          graphData = parseYamlToGraphData(docs);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load index.json:', e.message);
+    }
   }
 
   if (!graphData) {
@@ -64,6 +128,8 @@ async function init() {
   } catch (e) {
     console.warn('Features data not available');
   }
+
+  buildTestList();
 
   if (graphData) {
     buildScenarioFilters();
@@ -653,7 +719,14 @@ function renderGraph(data) {
     const node = evt.target;
     const lawId = node.data('lawId');
     const artNum = node.data('articleNumber');
-    window.open(`editor.html?law=${encodeURIComponent(lawId)}&article=${artNum}`, '_blank');
+    const rawYaml = rawYamlByLawId.get(lawId);
+    if (rawYaml) {
+      localStorage.setItem('regelrecht_yaml', rawYaml);
+      localStorage.setItem('regelrecht_law_id', lawId);
+      window.open(`editor.html?law=local&article=${artNum}`, '_blank');
+    } else {
+      window.open(`editor.html?law=${encodeURIComponent(lawId)}&article=${artNum}`, '_blank');
+    }
   });
 
   // Right-click: cycle validation status on law, article, or user_input nodes
@@ -1431,7 +1504,13 @@ async function loadYamlFiles(files) {
     try {
       const text = await file.text();
       const doc = jsyaml.load(text);
-      if (doc) docs.push(doc);
+      if (doc) {
+        docs.push(doc);
+        if (doc.$id) {
+          rawYamlByLawId.set(doc.$id, text);
+          loadLawIntoEngine(text);
+        }
+      }
     } catch (e) {
       console.warn(`Could not parse ${file.name}: ${e.message}`);
     }
@@ -1473,6 +1552,313 @@ function setupYamlUpload() {
 // Disable browser context menu on graph canvas so right-click cycles status
 document.getElementById('graph-canvas')?.addEventListener('contextmenu', (e) => e.preventDefault());
 
-// Init
-init();
+// ─── Tab switching ───
+
+function setupTabs() {
+  const tabs = document.querySelectorAll('.graph-tabs__tab');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('graph-tabs__tab--active'));
+      tab.classList.add('graph-tabs__tab--active');
+      document.querySelectorAll('.graph-tab-content').forEach(c => c.style.display = 'none');
+      const target = document.getElementById(`tab-${tab.dataset.tab}`);
+      if (target) target.style.display = '';
+    });
+  });
+}
+
+// ─── Test Panel ───
+
+const testResults = new Map(); // scenarioIdx → {status: 'pass'|'fail'|'pending', outputs: {}, error: ''}
+
+function buildTestList() {
+  const container = document.getElementById('test-list');
+  if (!container || parsedScenarios.length === 0) {
+    if (container) container.innerHTML = '<p style="font-size:12px;color:#94a3b8;padding:8px 0;">Geen scenario\'s gevonden. Genereer features-data.json.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+
+  // Group by feature
+  const byFeature = {};
+  for (const s of parsedScenarios) {
+    const key = s.featureName || s.featureFilename;
+    if (!byFeature[key]) byFeature[key] = [];
+    byFeature[key].push(s);
+  }
+
+  for (const [featureName, scenarios] of Object.entries(byFeature)) {
+    const featureDiv = document.createElement('div');
+    featureDiv.className = 'test-panel__feature';
+
+    const header = document.createElement('div');
+    header.className = 'test-panel__feature-name';
+    header.textContent = featureName;
+    featureDiv.appendChild(header);
+
+    for (const s of scenarios) {
+      const row = document.createElement('div');
+      row.className = 'test-panel__scenario';
+      row.dataset.scenarioIdx = s._idx;
+
+      const result = testResults.get(s._idx);
+      const statusClass = result ? result.status : 'pending';
+      const statusText = statusClass === 'pass' ? '\u2713' : statusClass === 'fail' ? '\u2717' : statusClass === 'running' ? '\u2026' : '\u00b7';
+
+      row.innerHTML = `
+        <span class="test-panel__scenario-status test-panel__scenario-status--${statusClass}">${statusText}</span>
+        <span class="test-panel__scenario-name" title="${s.name}">${s.name}</span>
+        <button class="test-panel__scenario-run" data-idx="${s._idx}">\u25B6</button>
+      `;
+
+      // Click scenario name → show overlay on graph
+      row.querySelector('.test-panel__scenario-name').addEventListener('click', () => {
+        document.querySelectorAll('.test-panel__scenario').forEach(r => r.classList.remove('test-panel__scenario--active'));
+        row.classList.add('test-panel__scenario--active');
+        activateScenarioOverlay(s._idx);
+      });
+
+      // Click run button → execute test
+      row.querySelector('.test-panel__scenario-run').addEventListener('click', (e) => {
+        e.stopPropagation();
+        executeTest(s._idx);
+      });
+
+      featureDiv.appendChild(row);
+    }
+
+    container.appendChild(featureDiv);
+  }
+}
+
+function parseInputValue(val) {
+  if (val === 'true') return true;
+  if (val === 'false') return false;
+  const num = Number(val);
+  if (!isNaN(num) && val.trim() !== '') return num;
+  return val;
+}
+
+async function executeTest(idx) {
+  const scenario = parsedScenarios[idx];
+  if (!scenario) return;
+
+  testResults.set(idx, { status: 'running', outputs: {}, error: null });
+  buildTestList();
+
+  try {
+    if (!wasmEngine) throw new Error('WASM engine niet geladen');
+    if (!wasmEngine.hasLaw(scenario.lawId)) throw new Error(`Wet '${scenario.lawId}' niet geladen in engine`);
+
+    const calcDate = scenario.inputs.calculation_date || '2025-01-01';
+    const params = {};
+    for (const [key, val] of Object.entries(scenario.inputs)) {
+      if (key === 'calculation_date') continue;
+      params[key] = parseInputValue(val);
+    }
+
+    // Execute for each expected output and collect results
+    const allOutputs = {};
+    let pass = true;
+    const mismatches = [];
+
+    for (const [outputName, expected] of Object.entries(scenario.outputs)) {
+      const result = wasmEngine.execute(scenario.lawId, outputName, params, calcDate);
+      Object.assign(allOutputs, result.outputs || {});
+    }
+
+    // Compare
+    for (const [key, expected] of Object.entries(scenario.outputs)) {
+      const actual = String(allOutputs[key] ?? '');
+      if (actual !== expected) {
+        pass = false;
+        mismatches.push(`${key}: verwacht "${expected}", kreeg "${actual}"`);
+      }
+    }
+
+    testResults.set(idx, {
+      status: pass ? 'pass' : 'fail',
+      outputs: allOutputs,
+      error: pass ? null : mismatches.join('; '),
+    });
+  } catch (e) {
+    testResults.set(idx, { status: 'fail', outputs: {}, error: e.message });
+  }
+
+  buildTestList();
+  updateTestSummary();
+  activateScenarioOverlay(idx);
+}
+
+async function executeAllTests() {
+  const btn = document.getElementById('run-all-tests');
+  if (btn) btn.disabled = true;
+
+  for (const s of parsedScenarios) {
+    await executeTest(s._idx);
+  }
+
+  if (btn) btn.disabled = false;
+}
+
+function updateTestSummary() {
+  const el = document.getElementById('test-summary');
+  if (!el) return;
+
+  const total = parsedScenarios.length;
+  let pass = 0, fail = 0;
+  for (const r of testResults.values()) {
+    if (r.status === 'pass') pass++;
+    if (r.status === 'fail') fail++;
+  }
+  const pending = total - pass - fail;
+  el.textContent = `${pass} geslaagd, ${fail} gefaald, ${pending} resterend`;
+}
+
+function setupTestResultsImport() {
+  const input = document.getElementById('test-results-upload');
+  if (!input) return;
+
+  input.addEventListener('change', async (evt) => {
+    const file = evt.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const results = JSON.parse(text);
+      // Expected format: [{scenarioName, lawId, article, status, outputs}]
+      for (const r of results) {
+        const scenario = parsedScenarios.find(s =>
+          s.name === r.scenarioName || (s.lawId === r.lawId && s.article === r.article && s.name === r.scenarioName)
+        );
+        if (scenario) {
+          testResults.set(scenario._idx, {
+            status: r.status || (r.success ? 'pass' : 'fail'),
+            outputs: r.outputs || {},
+            error: r.error || null,
+          });
+        }
+      }
+      buildTestList();
+      updateTestSummary();
+    } catch (e) {
+      console.warn('Could not parse test results:', e.message);
+    }
+  });
+}
+
+// ─── Feature file upload (browser-side Gherkin parser) ───
+
+function parseFeatureText(text, filename) {
+  const lines = text.split('\n');
+  const feature = { name: '', filename, scenarios: [] };
+  let currentScenario = null;
+  let backgroundSteps = [];
+  let inBackground = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith('#')) continue;
+
+    if (line.startsWith('Feature:')) {
+      feature.name = line.slice('Feature:'.length).trim();
+      continue;
+    }
+    if (line.startsWith('Background:')) {
+      inBackground = true;
+      continue;
+    }
+    if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
+      inBackground = false;
+      if (currentScenario) feature.scenarios.push(currentScenario);
+      const isOutline = line.startsWith('Scenario Outline:');
+      currentScenario = {
+        type: isOutline ? 'scenario_outline' : 'scenario',
+        name: line.slice(isOutline ? 'Scenario Outline:'.length : 'Scenario:'.length).trim(),
+        steps: [...backgroundSteps],
+      };
+      continue;
+    }
+    const stepMatch = line.match(/^(Given|When|Then|And|But)\s+(.+)/);
+    if (stepMatch) {
+      const step = { keyword: stepMatch[1], text: stepMatch[2] };
+      if (i + 1 < lines.length && lines[i + 1].trim().startsWith('|')) {
+        const rows = [];
+        let j = i + 1;
+        while (j < lines.length && lines[j].trim().startsWith('|')) {
+          rows.push(lines[j].trim().split('|').filter(c => c !== '').map(c => c.trim()));
+          j++;
+        }
+        if (rows.length >= 2) {
+          const headers = rows[0];
+          if (rows.length === 2) {
+            step.table = headers.map((h, idx) => [h, rows[1][idx] || '']);
+          } else {
+            step.table = rows;
+          }
+        } else if (rows.length === 1) {
+          step.table = rows[0].map(c => [c]);
+        }
+        i = j - 1;
+      }
+      if (inBackground) backgroundSteps.push(step);
+      else if (currentScenario) currentScenario.steps.push(step);
+    }
+  }
+  if (currentScenario) feature.scenarios.push(currentScenario);
+  return feature;
+}
+
+async function loadFeatureFiles(files) {
+  const features = [];
+  for (const file of files) {
+    if (!file.name.endsWith('.feature')) continue;
+    try {
+      const text = await file.text();
+      features.push(parseFeatureText(text, file.name));
+    } catch (e) {
+      console.warn(`Could not parse ${file.name}: ${e.message}`);
+    }
+  }
+  if (features.length === 0) return;
+
+  const newScenarios = parseAllScenarios(features);
+  // Re-index and merge
+  const startIdx = parsedScenarios.length;
+  for (const s of newScenarios) {
+    s._idx = parsedScenarios.length;
+    parsedScenarios.push(s);
+  }
+
+  buildScenarioFilters();
+  buildTestList();
+
+  const status = document.getElementById('feature-upload-status');
+  if (status) {
+    const count = newScenarios.length;
+    status.textContent = `${count} scenario${count !== 1 ? "'s" : ''} geladen uit ${features.length} bestand${features.length !== 1 ? 'en' : ''}`;
+    setTimeout(() => { status.textContent = ''; }, 4000);
+  }
+}
+
+function setupFeatureUpload() {
+  const input = document.getElementById('feature-upload');
+  if (input) {
+    input.addEventListener('change', (evt) => loadFeatureFiles(evt.target.files));
+  }
+  const folderInput = document.getElementById('feature-folder-upload');
+  if (folderInput) {
+    folderInput.addEventListener('change', (evt) => loadFeatureFiles(evt.target.files));
+  }
+}
+
+// ─── Init ───
+
+setupTabs();
+initEngine().then(() => init());
 setupYamlUpload();
+setupFeatureUpload();
+setupTestResultsImport();
+
+document.getElementById('run-all-tests')?.addEventListener('click', executeAllTests);

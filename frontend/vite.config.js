@@ -20,6 +20,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         editor: resolve(__dirname, 'editor.html'),
+        graph: resolve(__dirname, 'graph.html'),
       },
     },
   },
