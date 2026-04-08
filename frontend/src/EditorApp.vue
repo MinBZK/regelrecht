@@ -10,7 +10,7 @@ import EditSheet from './components/EditSheet.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
-const { authenticated, oidcConfigured, person, logout } = useAuth();
+const { authenticated, loading: authLoading, oidcConfigured, person, logout } = useAuth();
 
 // --- Initial law load (from URL params) ---
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
@@ -248,12 +248,12 @@ function handleSave({ section, key, newKey, index, data }) {
                 <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
                 </ndd-icon-button>
                 <ndd-menu id="account-menu" anchor="account-menu-btn">
-                  <template v-if="authenticated">
+                  <template v-if="!authLoading && authenticated">
                     <ndd-menu-item :text="person?.name || person?.email" disabled></ndd-menu-item>
                     <ndd-menu-divider></ndd-menu-divider>
                     <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
                   </template>
-                  <template v-else-if="oidcConfigured">
+                  <template v-else-if="!authLoading && oidcConfigured">
                     <ndd-menu-item text="Inloggen" @click="() => window.location.href = '/auth/login'"></ndd-menu-item>
                   </template>
                 </ndd-menu>

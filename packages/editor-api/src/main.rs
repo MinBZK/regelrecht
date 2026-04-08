@@ -17,11 +17,9 @@ use tower_sessions_memory_store::MemoryStore;
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing_subscriber::EnvFilter;
 
-mod auth;
 mod config;
 mod corpus_handlers;
 mod middleware;
-mod oidc;
 mod state;
 
 use state::{AppState, CorpusState};
@@ -38,7 +36,7 @@ async fn main() {
 
     // --- OIDC discovery (conditional) ---
     let (oidc_client, end_session_url) = if let Some(ref oidc_config) = app_config.oidc {
-        match oidc::discover_client(oidc_config).await {
+        match regelrecht_auth::discover_client(oidc_config).await {
             Ok(result) => (Some(Arc::new(result.client)), result.end_session_url),
             Err(e) => {
                 tracing::error!(error = %e, "OIDC discovery failed");
@@ -74,11 +72,7 @@ async fn main() {
     let index_file = PathBuf::from(&static_dir).join("index.html");
 
     // --- Routes ---
-    let auth_routes = Router::new()
-        .route("/auth/login", get(auth::login))
-        .route("/auth/callback", get(auth::callback))
-        .route("/auth/logout", get(auth::logout))
-        .route("/auth/status", get(auth::status));
+    let auth_routes = regelrecht_auth::auth_routes::<AppState>();
 
     // Public API routes — accessible without authentication
     let public_api_routes = Router::new()
@@ -101,7 +95,7 @@ async fn main() {
     // Currently empty; PR #422 and #517 will add write endpoints here.
     let protected_api_routes = Router::new().route_layer(axum_middleware::from_fn_with_state(
         app_state.clone(),
-        middleware::require_auth,
+        middleware::require_session_auth::<AppState>,
     ));
 
     // --- Build app with session layer ---
