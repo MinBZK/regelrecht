@@ -40,6 +40,11 @@ export const GROUPED_COLUMNS = [
   { key: 'latest_created_at', label: 'Latest', sortable: true, filter: { key: 'job_type', options: JOB_TYPES, label: 'Type' } },
 ];
 
+// Sort allowlists derived from sortable column definitions (defence in depth)
+export const LAW_ENTRY_SORT_KEYS = new Set(LAW_ENTRY_COLUMNS.filter((c) => c.sortable).map((c) => c.key));
+export const JOB_SORT_KEYS = new Set(JOB_COLUMNS.filter((c) => c.sortable).map((c) => c.key));
+export const GROUPED_SORT_KEYS = new Set(GROUPED_COLUMNS.filter((c) => c.sortable).map((c) => c.key));
+
 export const STATUS_BADGE_MAP = {
   completed: 'green',
   harvested: 'green',
