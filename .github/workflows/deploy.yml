@@ -82,7 +82,6 @@ jobs:
     if: >-
       github.event.action != 'closed' &&
       (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
         needs.changes.outputs.editor == 'true' ||
         contains(github.event.pull_request.labels.*.name, 'deploy:editor')
       )
@@ -97,12 +96,7 @@ jobs:
 
   build-admin:
     needs: changes
-    if: >-
-      github.event.action != 'closed' &&
-      (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-        needs.changes.outputs.admin == 'true'
-      )
+    if: github.event.action != 'closed' && needs.changes.outputs.admin == 'true'
     permissions:
       contents: read
       packages: write
@@ -115,12 +109,7 @@ jobs:
 
   build-harvester-worker:
     needs: changes
-    if: >-
-      github.event.action != 'closed' &&
-      (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-        needs.changes.outputs.harvester-worker == 'true'
-      )
+    if: github.event.action != 'closed' && needs.changes.outputs.harvester-worker == 'true'
     permissions:
       contents: read
       packages: write
@@ -136,7 +125,6 @@ jobs:
     if: >-
       github.event.action != 'closed' &&
       (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
         needs.changes.outputs.enrich-worker == 'true' ||
         contains(github.event.pull_request.labels.*.name, 'deploy:enrich-worker')
       )
@@ -168,12 +156,7 @@ jobs:
 
   build-lawmaking:
     needs: changes
-    if: >-
-      github.event.action != 'closed' &&
-      (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-        needs.changes.outputs.lawmaking == 'true'
-      )
+    if: github.event.action != 'closed' && needs.changes.outputs.lawmaking == 'true'
     permissions:
       contents: read
       packages: write
@@ -186,12 +169,7 @@ jobs:
 
   build-landing:
     needs: changes
-    if: >-
-      github.event.action != 'closed' &&
-      (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-        needs.changes.outputs.landing == 'true'
-      )
+    if: github.event.action != 'closed' && needs.changes.outputs.landing == 'true'
     permissions:
       contents: read
       packages: write
@@ -204,12 +182,7 @@ jobs:
 
   build-docs:
     needs: changes
-    if: >-
-      github.event.action != 'closed' &&
-      (
-        (github.ref == 'refs/heads/main' && github.event_name == 'push') ||
-        needs.changes.outputs.docs == 'true'
-      )
+    if: github.event.action != 'closed' && needs.changes.outputs.docs == 'true'
     permissions:
       contents: read
       packages: write
