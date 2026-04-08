@@ -1,0 +1,83 @@
+/* Design Tokens - Extracted from Figma */
+
+/* Import Rijksoverheid fonts */
+@import url('../fonts/fonts.css');
+
+:root {
+  /* Colors - Slate palette */
+  --color-white: #FFFFFF;
+  --color-slate-50: #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+
+  /* Brand colors */
+  --color-primary: #154273;
+  --color-primary-hover: #1a5490;
+
+  /* Semantic colors */
+  --color-background: var(--color-slate-50);
+  --color-surface: var(--color-white);
+  --color-border: var(--color-slate-200);
+  --color-text-primary: var(--color-slate-900);
+  --color-text-secondary: var(--color-slate-500);
+  --color-text-muted: var(--color-slate-400);
+
+  /* Typography - Using Rijksoverheid fonts from design system */
+  --font-family: var(--rr-font-family-sans, 'RijksoverheidSans', system-ui, -apple-system, sans-serif);
+
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-base: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 23px;
+  --font-size-3xl: 26px;
+  --font-size-4xl: 29px;
+
+  /* Note: Rijksoverheid fonts only have 400 (regular) and 700 (bold) */
+  --font-weight-normal: 400;
+  --font-weight-medium: 700;
+  --font-weight-semibold: 700;
+
+  --line-height-tight: 1;
+  --line-height-snug: 1.125;
+  --line-height-normal: 1.25;
+  --line-height-relaxed: 1.5;
+
+  /* Spacing */
+  --spacing-0: 0;
+  --spacing-0-5: 2px;
+  --spacing-1: 4px;
+  --spacing-1-5: 6px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+
+  /* Layout */
+  --nav-height: 44px;
+  --pane-width-narrow: 344px;
+  --pane-width-wide: 580px;
+  --divider-width: 1px;
+
+  /* Borders */
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 8px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+}

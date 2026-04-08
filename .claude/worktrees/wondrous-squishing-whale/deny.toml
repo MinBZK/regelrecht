@@ -1,0 +1,55 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# Vulnerabilities are denied by default in v0.19
+# Only warn on unmaintained crates in our own workspace deps
+unmaintained = "workspace"
+ignore = [
+    # RUSTSEC-2023-0071: Marvin Attack timing sidechannel in `rsa` crate.
+    # Transitive dep via openidconnect -> rsa; no patched version available.
+    # We don't use RSA directly; the OIDC flow uses HTTPS transport security.
+    "RUSTSEC-2023-0071",
+    # RUSTSEC-2026-0066: PAX extension validation in astral-tokio-tar 0.5.6.
+    # Transitive dep via testcontainers 0.27.1 (dev-only); no upgrade path
+    # until testcontainers releases a version using astral-tokio-tar >=0.6.0.
+    # Low severity, requires a secondary vulnerable tar parser to exploit.
+    "RUSTSEC-2026-0066",
+]
+
+[licenses]
+# Only explicitly allowed licenses are permitted
+confidence-threshold = 0.93
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Unlicense",
+    "OpenSSL",
+    "Zlib",
+    "EUPL-1.2",
+    "CDLA-Permissive-2.0",
+]
+
+# r-efi is LGPL but only used on EFI platforms, not in our builds
+[[licenses.exceptions]]
+allow = ["LGPL-2.1-or-later"]
+crate = "r-efi"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Temporary: testcontainers patched via git to fix RUSTSEC-2026-0066.
+# Remove once testcontainers releases a version with astral-tokio-tar >= 0.6.0.
+allow-git = ["https://github.com/testcontainers/testcontainers-rs"]

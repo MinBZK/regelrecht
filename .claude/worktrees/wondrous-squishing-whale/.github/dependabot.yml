@@ -1,0 +1,94 @@
+---
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /packages
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - rust
+    groups:
+      rust-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - javascript
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - docker
+    ignore:
+      - dependency-name: node
+        versions:
+          - '23'
+          - '25'
+          - '27'
+          - '29'
+          - '31'
+
+
+  - package-ecosystem: npm
+    directory: /packages/admin/frontend-src
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - javascript
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directory: /packages/admin
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - docker
+    ignore:
+      - dependency-name: node
+        versions:
+          - '23'
+          - '25'
+          - '27'
+          - '29'
+          - '31'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch

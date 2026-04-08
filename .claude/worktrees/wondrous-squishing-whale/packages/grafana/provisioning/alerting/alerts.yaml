@@ -1,0 +1,161 @@
+---
+apiVersion: 1
+
+# Remove the stale mattermost contact point provisioned by an earlier image.
+deleteContactPoints:
+  - orgId: 1
+    uid: mattermost-webhook
+
+contactPoints:
+  - orgId: 1
+    name: mattermost
+    receivers:
+      - uid: mattermost-digilab
+        type: slack
+        settings:
+          # Mattermost implements the Slack-compatible webhook API.
+          url: ${MATTERMOST_WEBHOOK_URL}
+          icon_emoji: ':scales:'
+          username: Regelrecht
+          # Plain text title — emoji shortcodes don't render in the
+          # Slack webhook title field on Mattermost.
+          title: Dagelijkse Regelrecht Update
+          text: |
+            {{ range .Alerts -}}
+            | | |
+            |:---|:---|
+            | :seedling: **Geharvest** | {{ .Annotations.harvested }} wetten |
+            | :sparkles: **Verrijkt** | {{ .Annotations.enriched }} wetten |
+            | :x: **Mislukt (24u)** | {{ .Annotations.failed_24h }} jobs |
+            | :x: **Totaal mislukt** | {{ .Annotations.failed_total }} jobs |
+            | :hourglass: **Openstaand** | {{ .Annotations.pending }} jobs |
+            | :white_check_mark: **Afgerond** | {{ .Annotations.completed }} jobs |
+            {{ end }}
+        disableResolveMessage: true
+
+muteTimes:
+  - orgId: 1
+    name: niet-middernacht
+    # Mute the daily summary outside midnight. This interval covers 01:00–24:00
+    # Amsterdam time, so notifications can only fire between 00:00 and 01:00.
+    # Combined with repeat_interval: 24h this gives exactly one message per day
+    # at midnight (handles CET/CEST automatically).
+    time_intervals:
+      - location: Europe/Amsterdam
+        times:
+          # yamllint disable-line rule:quoted-strings
+          - start_time: '01:00'
+            end_time: '24:00'
+
+policies:
+  - orgId: 1
+    receiver: mattermost
+    group_by:
+      - grafana_folder
+      - alertname
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 1h
+    routes:
+      # Daily summary: once per day, only at midnight Amsterdam time.
+      # The mute is scoped to this route so future real-time alerts
+      # on the root policy are unaffected.
+      - receiver: mattermost
+        matchers:
+          - alertname = "Dagelijkse Regelrecht Update"
+        repeat_interval: 24h
+        mute_time_intervals:
+          - niet-middernacht
+
+groups:
+  - orgId: 1
+    name: regelrecht
+    folder: Regelrecht
+    interval: 10m
+    rules:
+      - uid: daily-summary
+        title: Dagelijkse Regelrecht Update
+        # Always-fire: the math expression is always > 0, so this alert
+        # acts as a scheduled summary that repeats every 24h.
+        condition: H
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: max(regelrecht_laws{status="harvested"})
+              instant: true
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: max(regelrecht_laws{status="enriched"})
+              instant: true
+              refId: B
+          - refId: D
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: max(regelrecht_jobs{status="failed"})
+              instant: true
+              refId: D
+          - refId: E
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: max(regelrecht_jobs{status="pending"})
+              instant: true
+              refId: E
+          - refId: F
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: max(regelrecht_jobs{status="completed"})
+              instant: true
+              refId: F
+          # Recently failed in last 24h (for the daily summary context).
+          - refId: G
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: PBFA97CFB590B2093
+            model:
+              expr: regelrecht_jobs_recently_failed_24h
+              instant: true
+              refId: G
+          # Always-fire: A + B + 1 is always > 0.
+          - refId: H
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: math
+              expression: $A + $B + 1
+              refId: H
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        labels:
+          severity: info
+        annotations:
+          summary: >-
+            Geharvest: {{ (index $values "A").Value | printf "%.0f" }},
+            Verrijkt: {{ (index $values "B").Value | printf "%.0f" }}
+          harvested: '{{ (index $values "A").Value | printf "%.0f" }}'
+          enriched: '{{ (index $values "B").Value | printf "%.0f" }}'
+          failed_total: '{{ (index $values "D").Value | printf "%.0f" }}'
+          failed_24h: '{{ (index $values "G").Value | printf "%.0f" }}'
+          pending: '{{ (index $values "E").Value | printf "%.0f" }}'
+          completed: '{{ (index $values "F").Value | printf "%.0f" }}'

@@ -1,0 +1,16 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
+$id: test_wet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Test article for federation testing
+    machine_readable:
+      execution:
+        output:
+          - name: test_value
+            type: number
+        actions:
+          - output: test_value
+            value: 200

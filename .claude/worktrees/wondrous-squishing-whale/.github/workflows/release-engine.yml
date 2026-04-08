@@ -1,0 +1,92 @@
+---
+name: Release Engine Binary
+
+on:
+  push:
+    tags:
+      - "engine-v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: evaluate
+            asset: evaluate-linux-amd64
+
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            binary: evaluate
+            asset: evaluate-macos-amd64
+
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            binary: evaluate
+            asset: evaluate-macos-arm64
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-release-
+
+      - name: Build release binary
+        run: |
+          cd packages/engine
+          cargo build --release --locked --bin evaluate --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        run: |
+          cp packages/target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.asset }}
+          chmod +x ${{ matrix.asset }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          path: artifacts
+
+      - name: Create release
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe  # v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/evaluate-linux-amd64/evaluate-linux-amd64
+            artifacts/evaluate-macos-amd64/evaluate-macos-amd64
+            artifacts/evaluate-macos-arm64/evaluate-macos-arm64

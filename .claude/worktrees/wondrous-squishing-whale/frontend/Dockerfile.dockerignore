@@ -1,0 +1,20 @@
+.git
+.worktrees
+target
+node_modules
+features
+doc
+*.md
+*.png
+.vscode
+.idea
+.claude
+.pytest_cache
+__pycache__
+.github
+# Exclude packages not needed for editor-api build
+packages/admin
+packages/harvester
+packages/pipeline
+packages/tui
+# Keep: packages/editor-api, packages/corpus, packages/engine, packages/shared, packages/Cargo.*

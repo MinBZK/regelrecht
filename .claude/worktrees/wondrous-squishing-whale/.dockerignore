@@ -1,0 +1,27 @@
+.git
+.worktrees
+target
+node_modules
+features
+frontend
+doc
+*.md
+*.png
+*.json
+!package.json
+!package-lock.json
+!Cargo.toml
+!Cargo.lock
+.vscode
+.idea
+# Exclude .claude but keep skill files needed by the enrich worker image.
+# Docker requires un-excluding each path component from parent to child.
+.claude
+!.claude/skills
+.claude/skills/*
+!.claude/skills/law-generate
+!.claude/skills/law-mvt-research
+!.claude/skills/law-reverse-validate
+.pytest_cache
+__pycache__
+.github

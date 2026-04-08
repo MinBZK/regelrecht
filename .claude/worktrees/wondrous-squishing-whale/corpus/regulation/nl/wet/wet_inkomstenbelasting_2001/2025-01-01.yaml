@@ -1,0 +1,263 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.3.2/schema.json
+$id: wet_inkomstenbelasting_2001
+regulatory_layer: WET
+publication_date: '2001-12-15'
+valid_from: '2025-01-01'
+bwb_id: BWBR0011353
+url: https://wetten.overheid.nl/BWBR0011353/2025-01-01
+name: Wet inkomstenbelasting 2001
+competent_authority:
+  name: Belastingdienst
+
+articles:
+  - number: '3.1'
+    text: |-
+      Belastbaar inkomen uit werk en woning is het inkomen uit werk en woning verminderd met de te verrekenen
+      verliezen uit werk en woning.
+    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel3.1
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: loon_uit_dienstbetrekking
+            type: number
+            source: {}
+          - name: uitkeringen_en_pensioenen
+            type: number
+            source: {}
+          - name: winst_uit_onderneming
+            type: number
+            source: {}
+          - name: resultaat_overige_werkzaamheden
+            type: number
+            source: {}
+          - name: eigen_woning
+            type: number
+            source: {}
+        output:
+          - name: box1_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: box1_inkomen
+            value:
+              operation: ADD
+              values:
+                - $loon_uit_dienstbetrekking
+                - $uitkeringen_en_pensioenen
+                - $winst_uit_onderneming
+                - $resultaat_overige_werkzaamheden
+                - $eigen_woning
+
+  - number: '4.12'
+    text: |-
+      Inkomen uit aanmerkelijk belang is het gezamenlijke bedrag van de reguliere voordelen en de
+      vervreemdingsvoordelen verminderd met de te verrekenen verliezen uit aanmerkelijk belang.
+    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel4.12
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: reguliere_voordelen
+            type: number
+            source: {}
+          - name: vervreemdingsvoordelen
+            type: number
+            source: {}
+        output:
+          - name: box2_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: box2_inkomen
+            value:
+              operation: ADD
+              values:
+                - $reguliere_voordelen
+                - $vervreemdingsvoordelen
+
+  - number: '5.2'
+    text: |-
+      Rendementsgrondslag is de waarde van de bezittingen verminderd met de waarde van de schulden. De
+      rendementsgrondslag aan het begin van het kalenderjaar (peildatum 1 januari) wordt als uitgangspunt genomen.
+    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel5.2
+    machine_readable:
+      definitions:
+        heffingsvrije_voet_alleenstaand:
+          value: 5768400
+        heffingsvrije_voet_partners:
+          value: 11536800
+        rendement_spaargeld:
+          value: 0.0144
+        rendement_overige_bezittingen:
+          value: 0.0588
+        rendement_schulden:
+          value: 0.0247
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: spaargeld
+            type: number
+            source: {}
+          - name: beleggingen
+            type: number
+            source: {}
+          - name: onroerend_goed
+            type: number
+            source: {}
+          - name: schulden
+            type: number
+            source: {}
+          - name: heeft_toeslagpartner
+            type: boolean
+            source:
+              regulation: algemene_wet_inkomensafhankelijke_regelingen
+              output: heeft_toeslagpartner
+              parameters:
+                bsn: $bsn
+        output:
+          - name: rendementsgrondslag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: box3_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: box3_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: rendementsgrondslag
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: ADD
+                  values:
+                    - $spaargeld
+                    - $beleggingen
+                    - $onroerend_goed
+                - $schulden
+          - output: box3_bezittingen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - operation: ADD
+                      values:
+                        - $spaargeld
+                        - $beleggingen
+                        - $onroerend_goed
+                    - $schulden
+                    - operation: IF
+                      when:
+                        operation: EQUALS
+                        subject: $heeft_toeslagpartner
+                        value: true
+                      then: $heffingsvrije_voet_partners
+                      else: $heffingsvrije_voet_alleenstaand
+          - output: box3_inkomen
+            value:
+              operation: IF
+              when:
+                operation: GREATER_THAN
+                subject: $rendementsgrondslag
+                value: 0
+              then:
+                operation: MAX
+                values:
+                  - 0
+                  - operation: MULTIPLY
+                    values:
+                      - $box3_bezittingen
+                      - operation: DIVIDE
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - operation: ADD
+                                values:
+                                  - operation: MULTIPLY
+                                    values:
+                                      - $spaargeld
+                                      - $rendement_spaargeld
+                                  - operation: MULTIPLY
+                                    values:
+                                      - operation: ADD
+                                        values:
+                                          - $beleggingen
+                                          - $onroerend_goed
+                                      - $rendement_overige_bezittingen
+                              - operation: MULTIPLY
+                                values:
+                                  - $schulden
+                                  - $rendement_schulden
+                          - $rendementsgrondslag
+              else: 0
+
+  - number: '2.18'
+    text: |-
+      Verzamelinkomen is het gezamenlijke bedrag van het inkomen uit werk en woning, het inkomen uit aanmerkelijk
+      belang en het belastbaar inkomen uit sparen en beleggen.
+    url: https://wetten.overheid.nl/BWBR0011353/2025-01-01#Artikel2.18
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+        input:
+          - name: box1_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: wet_inkomstenbelasting_2001
+              output: box1_inkomen
+              parameters:
+                bsn: $bsn
+          - name: box2_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: wet_inkomstenbelasting_2001
+              output: box2_inkomen
+              parameters:
+                bsn: $bsn
+          - name: box3_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: wet_inkomstenbelasting_2001
+              output: box3_inkomen
+              parameters:
+                bsn: $bsn
+        output:
+          - name: toetsingsinkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: toetsingsinkomen
+            value:
+              operation: ADD
+              values:
+                - $box1_inkomen
+                - $box2_inkomen
+                - $box3_inkomen

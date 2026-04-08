@@ -1,0 +1,97 @@
+/* CSS-only Tabs */
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Hide radio inputs */
+.tabs__input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Tab Navigation */
+.tabs__nav {
+  display: flex;
+  gap: var(--spacing-1);
+  padding: var(--spacing-4);
+  background-color: var(--color-surface);
+}
+
+.tabs__label {
+  padding: var(--spacing-2) var(--spacing-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--border-radius-md);
+  transition: all var(--transition-fast);
+}
+
+.tabs__label:hover {
+  background-color: var(--color-slate-100);
+  color: var(--color-text-primary);
+}
+
+/* Tab Panels */
+.tabs__panels {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--color-surface);
+}
+
+.tabs__panel {
+  display: none;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Active State - Using :has() for modern browsers */
+.tabs:has(#tab-1:checked) .tabs__label[for="tab-1"],
+.tabs:has(#tab-2:checked) .tabs__label[for="tab-2"],
+.tabs:has(#tab-3:checked) .tabs__label[for="tab-3"] {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+#tab-1:checked ~ .tabs__panels .tabs__panel:nth-child(1),
+#tab-2:checked ~ .tabs__panels .tabs__panel:nth-child(2),
+#tab-3:checked ~ .tabs__panels .tabs__panel:nth-child(3) {
+  display: block;
+}
+
+/* Fallback for older browsers - adjacent sibling */
+.tabs__input:checked + .tabs__label {
+  background-color: var(--color-primary);
+  color: var(--color-white);
+}
+
+/* Centered tabs navigation */
+.tabs__nav--centered {
+  justify-content: center;
+}
+
+/* Lid Navigation */
+.lid-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background-color: var(--color-surface);
+  border-bottom: var(--divider-width) solid var(--color-border);
+}
+
+.lid-nav__buttons {
+  display: flex;
+  gap: var(--spacing-1);
+}
+
+/* Storybook toggle button styling within lid-nav */
+.lid-nav__buttons rr-toggle-button {
+  --rr-toggle-button-gap: var(--spacing-1);
+}

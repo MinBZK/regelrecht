@@ -1,0 +1,119 @@
+//! Error types for the harvester.
+//!
+//! Uses the dual-error pattern: `HarvesterError` for library consumers
+//! with detailed error context, and specific error types for internal use.
+
+use thiserror::Error;
+
+/// Main error type for the harvester library.
+#[derive(Debug, Error)]
+pub enum HarvesterError {
+    /// Invalid BWB ID format.
+    #[error("Invalid BWB ID format: '{0}'. Expected BWBRXXXXXXX (e.g., BWBR0018451)")]
+    InvalidBwbId(String),
+
+    /// Invalid date format.
+    #[error("Invalid date format: '{0}'. Expected YYYY-MM-DD (e.g., 2025-01-01)")]
+    InvalidDate(String),
+
+    /// HTTP request failed.
+    #[error("HTTP request failed: {0}")]
+    Http(#[from] reqwest::Error),
+
+    /// All HTTP retry attempts exhausted.
+    #[error("HTTP request failed after {attempts} attempts: {message}")]
+    RetriesExhausted { attempts: u32, message: String },
+
+    /// Failed to download WTI metadata.
+    #[error("Failed to download WTI metadata for {bwb_id}: {source}")]
+    WtiDownload {
+        bwb_id: String,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// Failed to download content XML.
+    #[error("Failed to download content for {bwb_id} at date {date}: {source}")]
+    ContentDownload {
+        bwb_id: String,
+        date: String,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// XML parsing failed.
+    #[error("XML parsing failed: {0}")]
+    XmlParse(#[from] roxmltree::Error),
+
+    /// Missing required XML element.
+    #[error("Missing required XML element: {element} in {context}")]
+    MissingElement { element: String, context: String },
+
+    /// Unknown XML element encountered.
+    #[error("No handler for element <{tag_name}>{}", .context.as_ref().map(|c| format!(" in {c}")).unwrap_or_default())]
+    UnknownElement {
+        tag_name: String,
+        context: Option<String>,
+    },
+
+    /// IO error.
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// YAML serialization error.
+    #[error("YAML serialization failed: {0}")]
+    YamlSerialization(#[from] serde_yaml_ng::Error),
+
+    /// No BWB ID found in JCI reference.
+    #[error("No BWB ID found in JCI reference: {0}")]
+    InvalidJciReference(String),
+
+    /// HTTP response too large.
+    #[error("HTTP response too large: {actual_bytes} bytes exceeds limit of {max_bytes} bytes")]
+    ResponseTooLarge { max_bytes: u64, actual_bytes: u64 },
+
+    /// Failed to download manifest.
+    #[error("Failed to download manifest for {bwb_id}: {source}")]
+    ManifestDownload {
+        bwb_id: String,
+        #[source]
+        source: reqwest::Error,
+    },
+
+    /// No consolidation found for the given date.
+    #[error("No consolidation found for {bwb_id} at date {date}")]
+    NoConsolidation { bwb_id: String, date: String },
+}
+
+/// Result type alias for harvester operations.
+pub type Result<T> = std::result::Result<T, HarvesterError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let err = HarvesterError::InvalidBwbId("INVALID".to_string());
+        assert!(err.to_string().contains("INVALID"));
+        assert!(err.to_string().contains("BWBRXXXXXXX"));
+    }
+
+    #[test]
+    fn test_unknown_element_with_context() {
+        let err = HarvesterError::UnknownElement {
+            tag_name: "foo".to_string(),
+            context: Some("artikel".to_string()),
+        };
+        assert_eq!(err.to_string(), "No handler for element <foo> in artikel");
+    }
+
+    #[test]
+    fn test_unknown_element_without_context() {
+        let err = HarvesterError::UnknownElement {
+            tag_name: "foo".to_string(),
+            context: None,
+        };
+        assert_eq!(err.to_string(), "No handler for element <foo>");
+    }
+}

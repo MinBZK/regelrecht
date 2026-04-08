@@ -1,0 +1,27 @@
+[package]
+name = "regelrecht-editor-api"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "RegelRecht editor API — lightweight Axum server for the law editor frontend"
+license = "MIT"
+repository = "https://github.com/MinBZK/regelrecht-mvp"
+
+[[bin]]
+name = "regelrecht-editor-api"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+regelrecht-corpus = { path = "../corpus", features = ["github"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"

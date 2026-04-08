@@ -1,0 +1,41 @@
+---
+name: Scheduled Cleanup
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # Elke nacht om 3:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'List stale environments without deleting'
+        type: boolean
+        default: false
+
+env:
+  ZAD_PROJECT: regel-k4c
+
+jobs:
+  cleanup-stale-previews:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      packages: write
+      actions: write
+
+    steps:
+      - name: Cleanup stale PR preview environments
+        uses: RijksICTGilde/zad-actions/scheduled-cleanup@v3
+        with:
+          api-key: ${{ secrets.RIG_API_KEY }}
+          project-id: ${{ env.ZAD_PROJECT }}
+          environment-pattern: '^pr[0-9]+$'
+          pr-number-pattern: 's/^pr//'
+          delete-github-env: true
+          delete-github-deployments: true
+          delete-container: true
+          container-org: ${{ github.repository_owner }}
+          container-name: regelrecht-mvp
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: ${{ inputs.dry-run || false }}
+          github-admin-token: ${{ secrets.ADMIN_TOKEN }}

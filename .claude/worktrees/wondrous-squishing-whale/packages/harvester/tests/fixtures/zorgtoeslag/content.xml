@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?><toestand xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" bwb-ng-vast-deel="http://wetten.overheid.nl/id/BWBR0018451/2025-01-01/0" xsi:noNamespaceSchemaLocation="https://repository.officiele-overheidspublicaties.nl/Schema/BWB-toestand/2016-1/xsd/toestand_2016-1.xsd" bwb-id="BWBR0018451" inwerkingtreding="2025-01-01"><bwb-inputbestand/><bwb-wijzigingen/><redactionele-correcties/><wetgeving dtdversie="2.0" soort="wet" stam-id="7165953" versie-id="30371592" id="C43593911" label-id="7153864" inwerkingtredingsdatum="2024-11-06">
+  <intitule bwb-ng-variabel-deel="/Intitule" stam-id="7165973" versie-id="12081062" id="C16933271" label-id="7153744" inwerking="2006-01-01" bron="Stb.2005-369" effect="nieuwe-regeling" ondertekening_bron="2005-06-16" publicatie_bron="2005-07-26" publicatie_iwt="2005-12-20" status="goed">Wet van 16 juni 2005, houdende regels inzake de aanspraak op een financiële tegemoetkoming in de premie van een zorgverzekering vanwege een laag inkomen (Wet op de zorgtoeslag)<meta-data><brondata><oorspronkelijk><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-369"><publicatiejaar>2005</publicatiejaar><publicatienr>369</publicatienr><uitgiftedatum isodatum="2005-07-26">26-07-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-06-16">16-06-2005</ondertekeningsdatum><dossierref dossier="29762">29762</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata></meta-data></intitule>
+  <citeertitel bwb-ng-variabel-deel="/Citeertitel" status="officieel" stam-id="7165983" versie-id="12081072" id="C16933281" label-id="7153754" inwerking="2006-01-01" bron="Stb.2005-369" effect="nieuwe-regeling" ondertekening_bron="2005-06-16" publicatie_bron="2005-07-26" publicatie_iwt="2005-12-20">Wet op de zorgtoeslag <meta-data><brondata><oorspronkelijk><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-369"><publicatiejaar>2005</publicatiejaar><publicatienr>369</publicatienr><uitgiftedatum isodatum="2005-07-26">26-07-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-06-16">16-06-2005</ondertekeningsdatum><dossierref dossier="29762">29762</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata></meta-data></citeertitel>
+  <wet-besluit>
+    <aanhef bwb-ng-variabel-deel="/Aanhef" stam-id="7165993" versie-id="12081082" id="C16933291" label-id="7153764" inwerking="2006-01-01" bron="Stb.2005-369" effect="nieuwe-regeling" ondertekening_bron="2005-06-16" publicatie_bron="2005-07-26" publicatie_iwt="2005-12-20" status="goed">
+  <wij>Wij Beatrix, bij de gratie Gods, Koningin der Nederlanden, Prinses van Oranje-Nassau, enz. enz. enz.</wij>
+  <considerans>
+    <considerans.al>Allen, die deze zullen zien of horen lezen, saluut! doen te weten:</considerans.al>
+    <considerans.al>Alzo Wij in overweging genomen hebben, dat het wenselijk is dat personen voor wie de premie voor een zorgverzekering in verhouding tot hun inkomen een te zware last vormt, een financiële tegemoetkoming kunnen krijgen;</considerans.al>
+  </considerans>
+  <afkondiging>
+    <al>Zo is het, dat Wij, de Raad van State gehoord, en met gemeen overleg der Staten-Generaal, hebben goedgevonden en verstaan, gelijk Wij goedvinden en verstaan bij deze:</al>
+  </afkondiging>
+<meta-data><brondata><oorspronkelijk><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-369"><publicatiejaar>2005</publicatiejaar><publicatienr>369</publicatienr><uitgiftedatum isodatum="2005-07-26">26-07-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-06-16">16-06-2005</ondertekeningsdatum><dossierref dossier="29762">29762</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata></meta-data></aanhef>
+    <wettekst>
+      <artikel bwb-ng-variabel-deel="/Artikel1" stam-id="7166003" versie-id="30374212" id="C43683971" label-id="7153774" inwerking="2025-01-01" label="Artikel 1" bron="Stb.2024-291" effect="wijziging" ondertekening_bron="2024-10-02" publicatie_bron="2024-10-18" publicatie_iwt="2024-12-06" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">1</nr>
+  </kop>
+  <lid bwb-ng-variabel-deel="/Artikel1/Lid1" label-id="7153774L1">
+    <lidnr status="officieel">1</lidnr>
+    <al>In deze wet en de daarop berustende bepalingen wordt, tenzij anders is geregeld, verstaan onder:</al>
+    <lijst level="single" nr-sluiting="." start="1" type="expliciet">
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeela">
+        <li.nr>a.</li.nr>
+        <al>Onze Minister: Onze Minister van Volksgezondheid, Welzijn en Sport;</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=a&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=a"/></jcis></meta-data></li>
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeelb">
+        <li.nr>b.</li.nr>
+        <al>zorgverzekering: de schadeverzekering, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=1" label-id="7146304" verwijzing-id="1970261" bwb-id="BWBR0018450">artikel 1, onder d, van de Zorgverzekeringswet</extref>;</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=b&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=b"/></jcis></meta-data></li>
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeelc">
+        <li.nr>c.</li.nr>
+        <al>verzekerde: de persoon, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=1" label-id="7146304" verwijzing-id="3335904" bwb-id="BWBR0018450">artikel 1, onder f, van de Zorgverzekeringswet</extref>, de persoon die een bijdrage als bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=68b" label-id="17150284" verwijzing-id="3335905" bwb-id="BWBR0018450">artikel 68b, vijfde lid, van de Zorgverzekeringswet</extref> verschuldigd is, of de persoon, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=69" label-id="7147214" verwijzing-id="3335906" bwb-id="BWBR0018450">artikel 69 van de Zorgverzekeringswet</extref>, steeds vanaf de eerste dag van de kalendermaand volgende op de maand waarin hij achttien jaar wordt, met uitzondering van de verzekerde, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=24" label-id="7146634" verwijzing-id="3335907" bwb-id="BWBR0018450">artikel 24, eerste of derde lid,van die wet</extref>;</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=c&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=c"/></jcis></meta-data></li>
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeeld">
+        <li.nr>d.</li.nr>
+        <al>premie: een premie als bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;afdeling=3.3.1" label-id="10135664" verwijzing-id="2293760" bwb-id="BWBR0018450">afdeling 3.3.1 van de Zorgverzekeringswet</extref>;</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=d&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=d"/></jcis></meta-data></li>
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeele">
+        <li.nr>e.</li.nr>
+        <al>zorgtoeslag: een tegemoetkoming in een premie dan wel in een bestuursrechtelijke premie als bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=18d" label-id="10135694" verwijzing-id="2293761" bwb-id="BWBR0018450">artikel 18d</extref> of <extref doc="jci1.3:c:BWBR0018450&amp;artikel=18e" label-id="10135704" verwijzing-id="2427598" bwb-id="BWBR0018450">18e van de Zorgverzekeringswet</extref> en in het verplicht eigen risico, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=19" label-id="7146564" verwijzing-id="2819405" bwb-id="BWBR0018450">artikel 19 van de Zorgverzekeringswet</extref>;</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=e&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=e"/></jcis></meta-data></li>
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeelf">
+        <li.nr>f.</li.nr>
+        <al>drempelinkomen: 108% van het twaalfvoud van het voor de maand januari van het berekeningsjaar geldende in <extref doc="jci1.3:c:BWBR0002638&amp;artikel=8" label-id="866514" verwijzing-id="2014587" bwb-id="BWBR0002638">artikel 8, eerste lid, onderdeel b, van de Wet minimumloon en minimumvakantiebijslag</extref> bedoelde bedrag per maand;</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=f&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=f"/></jcis></meta-data></li>
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeelg">
+        <li.nr>g.</li.nr>
+        <al>de standaardpremie: het op grond van <intref doc="jci1.3:c:BWBR0018451&amp;artikel=4&amp;z=2025-01-01&amp;g=2025-01-01" label-id="7153804" verwijzing-id="1993824" bwb-id="BWBR0018451" bwb-ng-variabel-deel="/Artikel4">artikel 4</intref> vastgestelde bedrag;</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=g&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=g"/></jcis></meta-data></li>
+      <li bwb-ng-variabel-deel="/Artikel1/Lid1/Onderdeelh">
+        <li.nr>h.</li.nr>
+        <al>de normpremie: de aan de hand van het drempelinkomen en het toetsingsinkomen van de verzekerde berekende premie voor een zorgverzekering in het berekeningsjaar.</al>
+      <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;o=h&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="o=h"/></jcis></meta-data></li>
+    </lijst>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=1&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=1"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel1/Lid2" label-id="7153774L2">
+    <lidnr status="officieel">2</lidnr>
+    <al>De hoogte van de zorgtoeslag is afhankelijk van de draagkracht op basis van het inkomen en het vermogen.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;lid=2&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=2"/></jcis></meta-data></lid>
+<meta-data><brondata><oorspronkelijk><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2024-291"><publicatiejaar>2024</publicatiejaar><publicatienr>291</publicatienr><uitgiftedatum isodatum="2024-10-18">18-10-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-10-02">02-10-2024</ondertekeningsdatum><dossierref dossier="36357">36357</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2024-383"><publicatiejaar>2024</publicatiejaar><publicatienr>383</publicatienr><uitgiftedatum isodatum="2024-12-06">06-12-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-12-02">02-12-2024</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2025-01-01">01-01-2025</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=1&amp;g=2025-01-01" onderdeel="artikel=1" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=1"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=1" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=1"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel2" stam-id="7166013" versie-id="19170652" id="C43643151" label-id="7153784" inwerking="2025-01-01" label="Artikel 2" bron="Stb.2011-620" effect="wijziging" ondertekening_bron="2011-12-06" publicatie_bron="2011-12-20" publicatie_iwt="2011-12-20" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">2</nr>
+  </kop>
+  <lid bwb-ng-variabel-deel="/Artikel2/Lid1" label-id="7153784L1">
+    <lidnr status="officieel">1</lidnr>
+    <al>Indien de normpremie voor een verzekerde in het berekeningsjaar minder bedraagt dan de standaardpremie in dat jaar, heeft de verzekerde aanspraak op een zorgtoeslag ter grootte van dat verschil. Voor een verzekerde met een partner wordt daarbij tweemaal de standaardpremie in aanmerking genomen; in dat geval worden de verzekerde en zijn partner voor de toepassing van deze wet geacht gezamenlijk één aanspraak te hebben.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;lid=1&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=1"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel2/Lid2" label-id="7153784L2">
+    <lidnr status="officieel">2</lidnr>
+    <al>De normpremie bedraagt een percentage van het drempelinkomen in het berekeningsjaar, vermeerderd met een percentage van het toetsingsinkomen van de verzekerde in dat jaar voorzover dat toetsingsinkomen het drempelinkomen te boven gaat. Voor een verzekerde met een partner wordt daarbij het gezamenlijke toetsingsinkomen in aanmerking genomen.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;lid=2&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=2"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel2/Lid3" label-id="7153784L3">
+    <lidnr status="officieel">3</lidnr>
+    <al>De percentages worden voor verzekerden met een partner vastgesteld op 4,273% van het drempelinkomen, vermeerderd met 13,700% van het toetsingsinkomen voor zover dat boven het drempelinkomen uitgaat en voor een verzekerde zonder partner op 1,896% van het drempelinkomen, vermeerderd met 13,700% van het toetsingsinkomen voor zover dat boven het drempelinkomen uitgaat. Deze percentages kunnen bij algemene maatregel van bestuur worden gewijzigd.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;lid=3&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=3"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel2/Lid4" label-id="7153784L4">
+    <lidnr status="officieel">4</lidnr>
+    <al>In afwijking van het eerste lid bedraagt de aanspraak op een zorgtoeslag voor een verzekerde met een partner die geen verzekerde is, vijftig procent van het op grond van het eerste lid berekende bedrag.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;lid=4&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=4"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel2/Lid5" label-id="7153784L5">
+    <lidnr status="officieel">5</lidnr>
+    <al>De aanspraak op een zorgtoeslag wordt voor iedere kalendermaand afzonderlijk bepaald.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;lid=5&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=5"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel2/Lid6" label-id="7153784L6">
+    <lidnr status="officieel">6</lidnr>
+    <al>Bij regeling van Onze Minister kunnen omtrent het bepaalde in het vijfde lid nadere regels worden gesteld.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;lid=6&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=6"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel2/Lid7" label-id="7153784L7">
+    <lidnr status="officieel">7</lidnr>
+    <al>De voordracht voor een krachtens het derde lid vast te stellen algemene maatregel van bestuur wordt niet eerder gedaan dan twee weken nadat het ontwerp aan beide kamers der Staten-Generaal is overgelegd.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;lid=7&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=7"/></jcis></meta-data></lid>
+<meta-data><brondata><oorspronkelijk><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2011-620"><publicatiejaar>2011</publicatiejaar><publicatienr>620</publicatienr><uitgiftedatum isodatum="2011-12-20">20-12-2011</uitgiftedatum><ondertekeningsdatum isodatum="2011-12-06">06-12-2011</ondertekeningsdatum></publicatie><juncto><publicatie soort="Stb" urlidentifier="stb-2020-452"><publicatiejaar>2020</publicatiejaar><publicatienr>452</publicatienr><uitgiftedatum isodatum="2020-11-16">16-11-2020</uitgiftedatum><ondertekeningsdatum isodatum="2020-11-02">02-11-2020</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2018-431"><publicatiejaar>2018</publicatiejaar><publicatienr>431</publicatienr><uitgiftedatum isodatum="2018-11-23">23-11-2018</uitgiftedatum><ondertekeningsdatum isodatum="2018-11-05">05-11-2018</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2012-627"><publicatiejaar>2012</publicatiejaar><publicatienr>627</publicatienr><uitgiftedatum isodatum="2012-12-13">13-12-2012</uitgiftedatum><ondertekeningsdatum isodatum="2012-11-30">30-11-2012</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2015-472"><publicatiejaar>2015</publicatiejaar><publicatienr>472</publicatienr><uitgiftedatum isodatum="2015-12-11">11-12-2015</uitgiftedatum><ondertekeningsdatum isodatum="2015-12-01">01-12-2015</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2016-469"><publicatiejaar>2016</publicatiejaar><publicatienr>469</publicatienr><uitgiftedatum isodatum="2016-12-07">07-12-2016</uitgiftedatum><ondertekeningsdatum isodatum="2016-11-26">26-11-2016</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2017-436"><publicatiejaar>2017</publicatiejaar><publicatienr>436</publicatienr><uitgiftedatum isodatum="2017-11-24">24-11-2017</uitgiftedatum><ondertekeningsdatum isodatum="2017-11-10">10-11-2017</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2019-386"><publicatiejaar>2019</publicatiejaar><publicatienr>386</publicatienr><uitgiftedatum isodatum="2019-11-06">06-11-2019</uitgiftedatum><ondertekeningsdatum isodatum="2019-10-24">24-10-2019</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2021-574"><publicatiejaar>2021</publicatiejaar><publicatienr>574</publicatienr><uitgiftedatum isodatum="2021-11-29">29-11-2021</uitgiftedatum><ondertekeningsdatum isodatum="2021-11-23">23-11-2021</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2024-351"><publicatiejaar>2024</publicatiejaar><publicatienr>351</publicatienr><uitgiftedatum isodatum="2024-11-22">22-11-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-11-14">14-11-2024</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2014-488"><publicatiejaar>2014</publicatiejaar><publicatienr>488</publicatienr><uitgiftedatum isodatum="2014-12-12">12-12-2014</uitgiftedatum><ondertekeningsdatum isodatum="2014-12-01">01-12-2014</ondertekeningsdatum></publicatie></juncto><juncto><publicatie soort="Stb" urlidentifier="stb-2022-472"><publicatiejaar>2022</publicatiejaar><publicatienr>472</publicatienr><uitgiftedatum isodatum="2022-11-28">28-11-2022</uitgiftedatum><ondertekeningsdatum isodatum="2022-11-24">24-11-2022</ondertekeningsdatum></publicatie></juncto></oorspronkelijk><inwerkingtreding><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2011-620"><publicatiejaar>2011</publicatiejaar><publicatienr>620</publicatienr><uitgiftedatum isodatum="2011-12-20">20-12-2011</uitgiftedatum><ondertekeningsdatum isodatum="2011-12-06">06-12-2011</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2025-01-01">01-01-2025</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=2&amp;g=2025-01-01" onderdeel="artikel=2" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=2"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=2" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=2"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel3" stam-id="11732473" versie-id="30426012" id="C43631361" label-id="7153794" inwerking="2025-01-01" label="Artikel 3" bron="Stcrt.2024-37672" effect="wijziging" ondertekening_bron="2024-11-12" publicatie_bron="2024-11-20" publicatie_iwt="2024-11-20" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">3</nr>
+  </kop>
+  <lid bwb-ng-variabel-deel="/Artikel3/Lid1" label-id="7153794L1">
+    <lidnr status="officieel">1</lidnr>
+    <al>In afwijking van <extref doc="jci1.3:c:BWBR0018472&amp;artikel=7" label-id="7122414" verwijzing-id="3041258" bwb-id="BWBR0018472">artikel 7, derde lid, van de Algemene wet inkomensafhankelijke regelingen</extref>, bestaat geen aanspraak op een zorgtoeslag indien de rendementsgrondslag, bedoeld in <extref doc="jci1.3:c:BWBR0011353&amp;artikel=5.3" label-id="2784714" verwijzing-id="3041259" bwb-id="BWBR0011353">artikel 5.3 van de Wet inkomstenbelasting 2001</extref>, van de verzekerde aan het begin van het berekeningsjaar meer bedraagt dan € 141.896 of, indien de verzekerde het gehele berekeningsjaar dezelfde partner heeft, de gezamenlijke rendementsgrondslag, bedoeld in artikel 5.3, van de Wet inkomstenbelasting 2001, van de verzekerde en zijn partner aan het begin van het berekeningsjaar meer bedraagt dan € 179.429. Bij de bepaling van de rendementsgrondslag, bedoeld in de vorige zin, wordt geen rekening gehouden met de vrijstelling, bedoeld in <extref doc="jci1.3:c:BWBR0011353&amp;artikel=5.13" label-id="2784834" verwijzing-id="3041459" bwb-id="BWBR0011353">artikel 5.13 van de Wet inkomstenbelasting 2001</extref>.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=3&amp;lid=1&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=1"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel3/Lid2" label-id="7153794L2">
+    <lidnr status="officieel">2</lidnr>
+    <al>Bij het begin van het kalenderjaar worden de bedragen, bedoeld in het eerste lid, bij ministeriële regeling gewijzigd overeenkomstig de tabelcorrectiefactor, bedoeld in <extref doc="jci1.3:c:BWBR0011353&amp;artikel=10.2" label-id="2786694" verwijzing-id="2495948" bwb-id="BWBR0011353">artikel 10.2 van de Wet inkomstenbelasting 2001</extref>. </al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=3&amp;lid=2&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=2"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel3/Lid3" label-id="7153794L3">
+    <lidnr status="officieel">3</lidnr>
+    <al>Indien er aanleiding is om de bedragen, bedoeld in het eerste lid, te verhogen op een andere wijze dan op grond van het tweede lid, worden de bedragen vastgesteld bij algemene maatregel van bestuur.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=3&amp;lid=3&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=3"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel3/Lid4" label-id="7153794L4">
+    <lidnr status="officieel">4</lidnr>
+    <al>De overeenkomstig het tweede en derde lid aangepaste bedragen treden in de plaats van de bedragen, genoemd in het eerste lid.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=3&amp;lid=4&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=4"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel3/Lid5" label-id="7153794L5">
+    <lidnr status="officieel">5</lidnr>
+    <al>Indien een verhoging als bedoeld in het derde lid wordt toegepast, vindt deze verhoging plaats nadat het tweede lid toepassing heeft gevonden.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=3&amp;lid=5&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=5"/></jcis></meta-data></lid>
+<meta-data><brondata><oorspronkelijk><publicatie effect="wijziging" soort="Stcrt" urlidentifier="stcrt-2024-37672"><publicatiejaar>2024</publicatiejaar><publicatienr>37672</publicatienr><uitgiftedatum isodatum="2024-11-20">20-11-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-11-12">12-11-2024</ondertekeningsdatum><kenmerk>3993079-1074685-MEVA</kenmerk></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="wijziging" soort="Stcrt" urlidentifier="stcrt-2024-37672"><publicatiejaar>2024</publicatiejaar><publicatienr>37672</publicatienr><uitgiftedatum isodatum="2024-11-20">20-11-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-11-12">12-11-2024</ondertekeningsdatum><kenmerk>3993079-1074685-MEVA</kenmerk></publicatie><inwerkingtreding.datum isodatum="2025-01-01">01-01-2025</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=3&amp;g=2025-01-01" onderdeel="artikel=3" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=3"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=3&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=3" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=3"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel4" stam-id="7166033" versie-id="24046532" id="C34688491" label-id="7153804" inwerking="2017-07-01" label="Artikel 4" bron="Stb.2017-146" effect="wijziging" ondertekening_bron="2017-03-22" publicatie_bron="2017-04-10" publicatie_iwt="2017-06-16" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">4</nr>
+  </kop>
+  <al>Onze Minister stelt uiterlijk 22 dagen voorafgaande aan het berekeningsjaar bij regeling de standaardpremie voor het berekeningsjaar vast die wordt gevormd door de geraamde gemiddelde premie voor een verzekerde voor een zorgverzekering in het berekeningsjaar te vermeerderen met het geraamde gemiddelde bedrag dat een verzekerde naar verwachting in dat jaar betaalt ingevolge <extref doc="jci1.3:c:BWBR0018450&amp;artikel=19" label-id="7146564" verwijzing-id="2293766" bwb-id="BWBR0018450">artikel 19 van de Zorgverzekeringswet</extref>.</al>
+<meta-data><brondata><oorspronkelijk><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2017-146"><publicatiejaar>2017</publicatiejaar><publicatienr>146</publicatienr><uitgiftedatum isodatum="2017-04-10">10-04-2017</uitgiftedatum><ondertekeningsdatum isodatum="2017-03-22">22-03-2017</ondertekeningsdatum><dossierref dossier="34575">34575</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2017-244"><publicatiejaar>2017</publicatiejaar><publicatienr>244</publicatienr><uitgiftedatum isodatum="2017-06-16">16-06-2017</uitgiftedatum><ondertekeningsdatum isodatum="2017-05-31">31-05-2017</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2017-07-01">01-07-2017</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=4&amp;g=2025-01-01" onderdeel="artikel=4" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=4"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=4" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel4a" stam-id="7166023" versie-id="30371612" id="C43593901" label-id="17150314" inwerking="2024-11-06" label="Artikel 4a" bron="Stb.2024-291" effect="vernummerd-wijziging" ondertekening_bron="2024-10-02" publicatie_bron="2024-10-18" publicatie_iwt="2024-11-05" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">4a</nr>
+  </kop>
+  <lid bwb-ng-variabel-deel="/Artikel4a/Lid1" label-id="17150314L1">
+    <lidnr status="officieel">1</lidnr>
+    <al>De standaardpremie voor een persoon als bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=69" label-id="7147214" verwijzing-id="2181006" bwb-id="BWBR0018450">artikel 69 van de Zorgverzekeringswet</extref> is, in afwijking van <intref doc="jci1.3:c:BWBR0018451&amp;artikel=4&amp;z=2025-01-01&amp;g=2025-01-01" label-id="7153804" verwijzing-id="2181007" bwb-id="BWBR0018451" bwb-ng-variabel-deel="/Artikel4">artikel 4</intref>, gelijk aan het met toepassing van dat artikel bepaalde bedrag, vermenigvuldigd met het getal dat wordt berekend uit de verhouding tussen de gemiddelde uitgaven voor zorg voor een persoon ten laste van de sociale zorgverzekeringen in het woonland van deze persoon, en de gemiddelde uitgaven voor zorg voor een persoon ten laste van de sociale zorgverzekeringen in Nederland.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4a&amp;lid=1&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=1"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel4a/Lid2" label-id="17150314L2">
+    <lidnr status="officieel">2</lidnr>
+    <al>Bij ministeriële regeling wordt jaarlijks uiterlijk in november per land het in het eerste lid bedoelde verhoudingsgetal vastgesteld.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4a&amp;lid=2&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=2"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel4a/Lid3" label-id="17150314L3">
+    <lidnr status="officieel">3</lidnr>
+    <al>De aanspraak op een zorgtoeslag van een verzekerde met een partner die een persoon is als bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=69" label-id="7147214" verwijzing-id="3335772" bwb-id="BWBR0018450">artikel 69 van de Zorgverzekeringswet</extref>, wordt berekend met toepassing van <intref doc="jci1.3:c:BWBR0018451&amp;artikel=2&amp;z=2025-01-01&amp;g=2025-01-01" label-id="7153784" verwijzing-id="3335773" bwb-id="BWBR0018451" bwb-ng-variabel-deel="/Artikel2">artikel 2, eerste lid, tweede zin</intref>, waarbij de standaardpremie, bedoeld in het eerste lid, in acht wordt genomen.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4a&amp;lid=3&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=3"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel4a/Lid4" label-id="17150314L4">
+    <lidnr status="officieel">4</lidnr>
+    <al>De standaardpremie voor een partner van een persoon als bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=69" label-id="7147214" verwijzing-id="2311071" bwb-id="BWBR0018450">artikel 69 van de Zorgverzekeringswet</extref> wordt overeenkomstig het eerste lid vastgesteld, tenzij deze partner een persoon is als bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=1" label-id="7146304" verwijzing-id="2311072" bwb-id="BWBR0018450">artikel 1, onderdeel f, van de Zorgverzekeringswet</extref>.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4a&amp;lid=4&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=4"/></jcis></meta-data></lid>
+<meta-data><brondata><oorspronkelijk><publicatie effect="vernummerd-wijziging" soort="Stb" urlidentifier="stb-2024-291"><publicatiejaar>2024</publicatiejaar><publicatienr>291</publicatienr><uitgiftedatum isodatum="2024-10-18">18-10-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-10-02">02-10-2024</ondertekeningsdatum><dossierref dossier="36357">36357</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="vernummerd-wijziging" soort="Stb" urlidentifier="stb-2024-322"><publicatiejaar>2024</publicatiejaar><publicatienr>322</publicatienr><uitgiftedatum isodatum="2024-11-05">05-11-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-10-23">23-10-2024</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2024-11-06">06-11-2024</inwerkingtreding.datum></inwerkingtreding><opmerkingen-inhoud><al>Voorheen art. 3.</al></opmerkingen-inhoud></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=4a&amp;g=2025-01-01" onderdeel="artikel=4a" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=4a"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4a&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=4a" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=4a"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel5" stam-id="7166043" versie-id="30371702" id="C43683981" label-id="7153814" inwerking="2025-01-01" label="Artikel 5" bron="Stb.2024-291" effect="wijziging" ondertekening_bron="2024-10-02" publicatie_bron="2024-10-18" publicatie_iwt="2024-12-06" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">5</nr>
+  </kop>
+  <lid bwb-ng-variabel-deel="/Artikel5/Lid1" label-id="7153814L1">
+    <lidnr status="officieel">1</lidnr>
+    <al>De Dienst Toeslagen is belast met de uitvoering van deze wet.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=5&amp;lid=1&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=1"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel5/Lid2" label-id="7153814L2">
+    <lidnr status="officieel">2</lidnr>
+    <al>In afwijking van <extref doc="jci1.3:c:BWBR0018472&amp;artikel=25" label-id="7122654" verwijzing-id="2293762" bwb-id="BWBR0018472">artikel 25, eerste lid, van de Algemene wet inkomensafhankelijke regelingen</extref> betaalt de Dienst Toeslagen in opdracht van het CAK, genoemd in <extref doc="jci1.3:c:BWBR0035917&amp;artikel=6.1.1" label-id="12849044" verwijzing-id="2761271" bwb-id="BWBR0035917">artikel 6.1.1, eerste lid, van de Wet langdurige zorg</extref>, de zorgtoeslag of het voorschot op de zorgtoeslag als tegemoetkoming in de bestuursrechtelijke premie, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=18d" label-id="10135694" verwijzing-id="2293764" bwb-id="BWBR0018450">artikel 18d</extref> of <extref doc="jci1.3:c:BWBR0018450&amp;artikel=18e" label-id="10135704" verwijzing-id="2427599" bwb-id="BWBR0018450">18e van de Zorgverzekeringswet</extref>, aan het CAK uit.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=5&amp;lid=2&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=2"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel5/Lid3" label-id="7153814L3">
+    <lidnr status="officieel">3</lidnr>
+    <al>De persoon, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=68b" label-id="17150284" verwijzing-id="3335767" bwb-id="BWBR0018450">artikel 68b, vijfde lid, van de Zorgverzekeringswet</extref>, wordt geacht, zo nodig in afwijking van <extref doc="jci1.3:c:BWBR0018472&amp;artikel=15" label-id="7122544" verwijzing-id="3335768" bwb-id="BWBR0018472">artikel 15, eerste lid, van de Algemene wet inkomensafhankelijke regelingen</extref>, tijdig een aanvraag als bedoeld in laatstgenoemd artikel te hebben gedaan voor de berekeningsjaren in de periode gelegen tussen de ingangsdatum van de verzekeringsplicht voor de <extref doc="jci1.3:c:BWBR0018450" label-id="7147974" verwijzing-id="3335769" bwb-id="BWBR0018450">Zorgverzekeringswet</extref> en het moment waarop hij van het CAK een kennisgeving heeft ontvangen van de verplichting om een zorgverzekering af te sluiten.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=5&amp;lid=3&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=3"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel5/Lid4" label-id="7153814L4">
+    <lidnr status="officieel">4</lidnr>
+    <al>Voor de toepassing van <extref doc="jci1.3:c:BWBR0018472&amp;artikel=16" label-id="7122554" verwijzing-id="3335770" bwb-id="BWBR0018472">artikel 16, eerste lid, van de Algemene wet inkomensafhankelijke regelingen</extref> wordt in het geval, bedoeld in het derde lid, de aanvraag geacht te zijn gedaan op het moment waarop de Belastingdienst/Toeslagen van het CAK een afschrift heeft ontvangen van de beschikking, bedoeld in <extref doc="jci1.3:c:BWBR0018450&amp;artikel=68b" label-id="17150284" verwijzing-id="3335771" bwb-id="BWBR0018450">artikel 68b, zesde lid, van de Zorgverzekeringswet</extref>.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=5&amp;lid=4&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=4"/></jcis></meta-data></lid>
+  <lid bwb-ng-variabel-deel="/Artikel5/Lid5" label-id="7153814L5">
+    <lidnr status="officieel">5</lidnr>
+    <al>De zorgtoeslag komt ten laste van het Rijk.</al>
+  <meta-data><jcis><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=5&amp;lid=5&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="lid=5"/></jcis></meta-data></lid>
+<meta-data><brondata><oorspronkelijk><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2024-291"><publicatiejaar>2024</publicatiejaar><publicatienr>291</publicatienr><uitgiftedatum isodatum="2024-10-18">18-10-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-10-02">02-10-2024</ondertekeningsdatum><dossierref dossier="36357">36357</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2024-383"><publicatiejaar>2024</publicatiejaar><publicatienr>383</publicatienr><uitgiftedatum isodatum="2024-12-06">06-12-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-12-02">02-12-2024</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2025-01-01">01-01-2025</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=5&amp;g=2025-01-01" onderdeel="artikel=5" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=5"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=5&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=5" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=5"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel6" code="b1-6" stam-id="7166053" versie-id="12416672" id="C21383511" label-id="7153824" inwerking="2006-01-01" label="Artikel 6" bron="Stb.2005-525" effect="wijziging" ondertekening_bron="2005-10-06" publicatie_bron="2005-11-01" publicatie_iwt="2005-12-20" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr status="officieel">6</nr>
+  </kop>
+  <al>Onze Minister zendt binnen vier jaar na de inwerkingtreding van deze wet, en vervolgens telkens na vier jaar, aan de Staten-Generaal een verslag over de doeltreffendheid en de effecten van deze wet in de praktijk, in het bijzonder van de bij of krachtens deze wet vastgestelde percentages ter bepaling van de normpremie.</al>
+<meta-data><brondata><oorspronkelijk><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-369"><publicatiejaar>2005</publicatiejaar><publicatienr>369</publicatienr><uitgiftedatum isodatum="2005-07-26">26-07-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-06-16">16-06-2005</ondertekeningsdatum><dossierref dossier="29762">29762</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata><brondata><oorspronkelijk><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2005-525"><publicatiejaar>2005</publicatiejaar><publicatienr>525</publicatienr><uitgiftedatum isodatum="2005-11-01">01-11-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-10-06">06-10-2005</ondertekeningsdatum><dossierref dossier="30124">30124</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="wijziging" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=6&amp;g=2025-01-01" onderdeel="artikel=6" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=6"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=6&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=6" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=6"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel7" code="b1-7" stam-id="7166063" versie-id="12081152" id="C16974121" label-id="7153834" inwerking="2006-01-01" label="Artikel 7" bron="Stb.2005-369" effect="nieuwe-regeling" ondertekening_bron="2005-06-16" publicatie_bron="2005-07-26" publicatie_iwt="2005-12-20" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr>7</nr>
+  </kop>
+  <al>Deze wet treedt in werking op een bij koninklijk besluit te bepalen tijdstip.</al>
+<meta-data><brondata><oorspronkelijk><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-369"><publicatiejaar>2005</publicatiejaar><publicatienr>369</publicatienr><uitgiftedatum isodatum="2005-07-26">26-07-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-06-16">16-06-2005</ondertekeningsdatum><dossierref dossier="29762">29762</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=7&amp;g=2025-01-01" onderdeel="artikel=7" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=7"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=7&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=7" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=7"/></jcis></meta-data></artikel>
+      <artikel bwb-ng-variabel-deel="/Artikel8" code="b1-8" stam-id="7166073" versie-id="12081162" id="C16974131" label-id="7153844" inwerking="2006-01-01" label="Artikel 8" bron="Stb.2005-369" effect="nieuwe-regeling" ondertekening_bron="2005-06-16" publicatie_bron="2005-07-26" publicatie_iwt="2005-12-20" status="goed">
+  <kop>
+    <label>Artikel</label>
+    <nr>8</nr>
+  </kop>
+  <al>Deze wet wordt aangehaald als: Wet op de zorgtoeslag.</al>
+<meta-data><brondata><oorspronkelijk><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-369"><publicatiejaar>2005</publicatiejaar><publicatienr>369</publicatienr><uitgiftedatum isodatum="2005-07-26">26-07-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-06-16">16-06-2005</ondertekeningsdatum><dossierref dossier="29762">29762</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;artikel=8&amp;g=2025-01-01" onderdeel="artikel=8" korte-verwijzing="1.0:c:BWBR0018451&amp;artikel=8"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;artikel=8&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="artikel=8" korte-verwijzing="jci1.3:c:BWBR0018451&amp;artikel=8"/></jcis></meta-data></artikel>
+    </wettekst>
+    <wetsluiting bwb-ng-variabel-deel="/SlotformulierEnOndertekening" stam-id="7166083" versie-id="12081172" id="C16933381" label-id="7153854" inwerking="2006-01-01" bron="Stb.2005-369" effect="nieuwe-regeling" ondertekening_bron="2005-06-16" publicatie_bron="2005-07-26" publicatie_iwt="2005-12-20" status="goed">
+  <slotformulering>
+    <al>Lasten en bevelen dat deze in het Staatsblad zal worden geplaatst en dat alle ministeries, autoriteiten, colleges en ambtenaren wie zulks aangaat, aan de nauwkeurige uitvoering de hand zullen houden.</al>
+  </slotformulering>
+  <gegeven>
+    <dagtekening>
+      <plaats>Gegeven te ’s-Gravenhage</plaats>
+      <datum isodatum="16 juni 2005">16 juni 2005</datum>
+    </dagtekening>
+    <koning>Beatrix</koning>
+  </gegeven>
+  <ondertekening>
+    <functie>De Minister van Volksgezondheid, Welzijn en Sport ,</functie>
+    <naam>
+      <voornaam>J. F.</voornaam>
+      <achternaam>Hoogervorst</achternaam>
+    </naam>
+  </ondertekening>
+  <ondertekening>
+    <functie>De Staatssecretaris van Financiën ,</functie>
+    <naam>
+      <voornaam>J. G.</voornaam>
+      <achternaam>Wijn</achternaam>
+    </naam>
+  </ondertekening>
+  <ondertekening>
+    <functie>De Minister van Sociale Zaken en Werkgelegenheid ,</functie>
+    <naam>
+      <voornaam>A. J.</voornaam>
+      <achternaam>de Geus</achternaam>
+    </naam>
+  </ondertekening>
+  <uitgifte>
+    <datum isodatum="2005-07-26">de <nadruk type="cur">zesentwintigste</nadruk> juli 2005</datum>
+    <ondertekening>
+      <functie>De Minister van Justitie ,</functie>
+      <naam>
+        <voornaam>J. P. H.</voornaam>
+        <achternaam>Donner</achternaam>
+      </naam>
+    </ondertekening>
+  </uitgifte>
+<meta-data><brondata><oorspronkelijk><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-369"><publicatiejaar>2005</publicatiejaar><publicatienr>369</publicatienr><uitgiftedatum isodatum="2005-07-26">26-07-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-06-16">16-06-2005</ondertekeningsdatum><dossierref dossier="29762">29762</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="nieuwe-regeling" soort="Stb" urlidentifier="stb-2005-649"><publicatiejaar>2005</publicatiejaar><publicatienr>649</publicatienr><uitgiftedatum isodatum="2005-12-20">20-12-2005</uitgiftedatum><ondertekeningsdatum isodatum="2005-12-09">09-12-2005</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2006-01-01">01-01-2006</inwerkingtreding.datum></inwerkingtreding></brondata></meta-data></wetsluiting>
+  </wet-besluit>
+<meta-data><brondata><oorspronkelijk><publicatie effect="structuurwijziging" soort="Stb" urlidentifier="stb-2024-291"><publicatiejaar>2024</publicatiejaar><publicatienr>291</publicatienr><uitgiftedatum isodatum="2024-10-18">18-10-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-10-02">02-10-2024</ondertekeningsdatum><dossierref dossier="36357">36357</dossierref></publicatie></oorspronkelijk><inwerkingtreding><publicatie effect="structuurwijziging" soort="Stb" urlidentifier="stb-2024-322"><publicatiejaar>2024</publicatiejaar><publicatienr>322</publicatienr><uitgiftedatum isodatum="2024-11-05">05-11-2024</uitgiftedatum><ondertekeningsdatum isodatum="2024-10-23">23-10-2024</ondertekeningsdatum></publicatie><inwerkingtreding.datum isodatum="2024-11-06">06-11-2024</inwerkingtreding.datum></inwerkingtreding></brondata><jcis><jci versie="1.0" verwijzing="1.0:c:BWBR0018451&amp;g=2025-01-01" onderdeel="wetgeving" korte-verwijzing="1.0:c:BWBR0018451"/><jci versie="1.3" verwijzing="jci1.3:c:BWBR0018451&amp;z=2025-01-01&amp;g=2025-01-01" onderdeel="wetgeving" korte-verwijzing="jci1.3:c:BWBR0018451"/></jcis></meta-data></wetgeving></toestand>

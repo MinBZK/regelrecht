@@ -1,0 +1,118 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-01-26T13:58:39.359850+00:00",
+  "category": "basic_operations",
+  "test_count": 6,
+  "test_cases": [
+    {
+      "id": "basic_001_literal_number",
+      "description": "Direct assignment of literal number",
+      "category": "basic_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 42
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_basic\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            value: 42\n\n",
+      "law_id": "test_basic",
+      "output_name": "result"
+    },
+    {
+      "id": "basic_002_literal_string",
+      "description": "Direct assignment of literal string",
+      "category": "basic_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "test_value"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_basic\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value: \"test_value\"\n\n",
+      "law_id": "test_basic",
+      "output_name": "result"
+    },
+    {
+      "id": "basic_003_literal_boolean_true",
+      "description": "Direct assignment of literal boolean true",
+      "category": "basic_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": true
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_basic\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            value: true\n\n",
+      "law_id": "test_basic",
+      "output_name": "result"
+    },
+    {
+      "id": "basic_004_literal_boolean_false",
+      "description": "Direct assignment of literal boolean false",
+      "category": "basic_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": false
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_basic\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: boolean\n        actions:\n          - output: result\n            value: false\n\n",
+      "law_id": "test_basic",
+      "output_name": "result"
+    },
+    {
+      "id": "basic_005_variable_reference",
+      "description": "Variable reference from definitions",
+      "category": "basic_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 100
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_basic\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      definitions:\n        TEST_VALUE: 100\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            value: $TEST_VALUE\n\n",
+      "law_id": "test_basic",
+      "output_name": "result"
+    },
+    {
+      "id": "basic_006_parameter_reference",
+      "description": "Parameter value reference",
+      "category": "basic_operations",
+      "parameters": {
+        "input_val": 123
+      },
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 123
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_basic\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        parameters:\n          - name: input_val\n            type: number\n            required: true\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            value: $input_val\n\n",
+      "law_id": "test_basic",
+      "output_name": "result"
+    }
+  ]
+}

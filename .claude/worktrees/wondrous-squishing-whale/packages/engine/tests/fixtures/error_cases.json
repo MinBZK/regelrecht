@@ -1,0 +1,44 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-01-26T13:58:39.686418+00:00",
+  "category": "error_cases",
+  "test_count": 2,
+  "test_cases": [
+    {
+      "id": "error_001_division_by_zero",
+      "description": "DIVIDE by zero raises error",
+      "category": "error_cases",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": false,
+        "error_type": "DivisionByZero",
+        "error_message": "Division by zero"
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_error\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: DIVIDE\n            values:\n              - 100\n              - 0\n\n",
+      "law_id": "test_error",
+      "output_name": "result"
+    },
+    {
+      "id": "error_002_missing_law_reference",
+      "description": "URI referencing non-existent law raises error",
+      "category": "error_cases",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": false,
+        "error_type": "LawNotFound",
+        "error_message": "Could not resolve URI: regelrecht://nonexistent_law/some_output#some_output"
+      },
+      "multi_law": true,
+      "laws": [
+        {
+          "yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_error\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: References missing law\n    machine_readable:\n      execution:\n        input:\n          - name: missing_value\n            type: number\n            source:\n              regulation: nonexistent_law\n              output: some_output\n        output:\n          - name: call_missing_law\n            type: number\n        actions:\n          - output: call_missing_law\n            value: $missing_value\n",
+          "law_id": "test_error"
+        }
+      ],
+      "law_id": "test_error",
+      "output_name": "call_missing_law"
+    }
+  ]
+}

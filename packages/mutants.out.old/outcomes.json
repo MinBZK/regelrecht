@@ -1,0 +1,46 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Failure",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.97714725,
+          "process_status": "Success",
+          "argv": [
+            "/opt/homebrew/Cellar/rust/1.87.0/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=regelrecht-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.436690792,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/opt/homebrew/Cellar/rust/1.87.0/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=regelrecht-engine@0.1.0"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 0,
+  "missed": 0,
+  "caught": 0,
+  "timeout": 0,
+  "unviable": 0,
+  "success": 0,
+  "start_time": "2026-02-18T20:10:33.881465Z",
+  "end_time": "2026-02-18T20:10:46.411717Z",
+  "cargo_mutants_version": "26.0.0"
+}

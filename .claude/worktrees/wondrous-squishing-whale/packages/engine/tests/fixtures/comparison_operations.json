@@ -1,0 +1,152 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-01-26T13:58:39.387884+00:00",
+  "category": "comparison_operations",
+  "test_count": 8,
+  "test_cases": [
+    {
+      "id": "comparison_001_equals_true",
+      "description": "EQUALS comparison returns true when equal",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "equal"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 10\n            then: \"equal\"\n            else: \"not_equal\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    },
+    {
+      "id": "comparison_002_equals_false",
+      "description": "EQUALS comparison returns false when not equal",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "not_equal"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 20\n            then: \"equal\"\n            else: \"not_equal\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    },
+    {
+      "id": "comparison_003_not_equals",
+      "description": "NOT_EQUALS comparison",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "not_equal"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: NOT_EQUALS\n              subject: 10\n              value: 20\n            then: \"not_equal\"\n            else: \"equal\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    },
+    {
+      "id": "comparison_004_greater_than_true",
+      "description": "GREATER_THAN comparison true",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "greater"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: GREATER_THAN\n              subject: 20\n              value: 10\n            then: \"greater\"\n            else: \"not_greater\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    },
+    {
+      "id": "comparison_005_less_than_true",
+      "description": "LESS_THAN comparison true",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "less"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: LESS_THAN\n              subject: 10\n              value: 20\n            then: \"less\"\n            else: \"not_less\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    },
+    {
+      "id": "comparison_006_gte_equal",
+      "description": "GREATER_THAN_OR_EQUAL with equal values",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "gte"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: GREATER_THAN_OR_EQUAL\n              subject: 10\n              value: 10\n            then: \"gte\"\n            else: \"not_gte\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    },
+    {
+      "id": "comparison_007_lte_equal",
+      "description": "LESS_THAN_OR_EQUAL with equal values",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "lte"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: LESS_THAN_OR_EQUAL\n              subject: 10\n              value: 10\n            then: \"lte\"\n            else: \"not_lte\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    },
+    {
+      "id": "comparison_008_with_variables",
+      "description": "Comparison with variable references",
+      "category": "comparison_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "above"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_comparison\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      definitions:\n        THRESHOLD: 18\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: GREATER_THAN\n              subject: $THRESHOLD\n              value: 15\n            then: \"above\"\n            else: \"below\"\n\n",
+      "law_id": "test_comparison",
+      "output_name": "result"
+    }
+  ]
+}

@@ -1,0 +1,199 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-01-26T13:58:39.513239+00:00",
+  "category": "conditional_operations",
+  "test_count": 10,
+  "test_cases": [
+    {
+      "id": "conditional_001_if_true",
+      "description": "IF operation with true test returns then value",
+      "category": "conditional_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 100
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 10\n            then: 100\n            else: 200\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_002_if_false",
+      "description": "IF operation with false test returns else value",
+      "category": "conditional_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 200
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 20\n            then: 100\n            else: 200\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_003_if_nested_operation_in_test",
+      "description": "IF with nested operation in test",
+      "category": "conditional_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "greater"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: GREATER_THAN\n              subject:\n                operation: ADD\n                values:\n                  - 10\n                  - 20\n              value: 25\n            then: \"greater\"\n            else: \"not_greater\"\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_004_if_nested_operation_in_then",
+      "description": "IF with nested operation in then",
+      "category": "conditional_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 75
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 10\n            then:\n              operation: ADD\n              values:\n                - 50\n                - 25\n            else: 0\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_005_if_nested_operation_in_else",
+      "description": "IF with nested operation in else",
+      "category": "conditional_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 50
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: IF\n            when:\n              operation: EQUALS\n              subject: 10\n              value: 20\n            then: 0\n            else:\n              operation: MULTIPLY\n              values:\n                - 5\n                - 10\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_006_switch_first_case",
+      "description": "SWITCH operation - first case matches",
+      "category": "conditional_operations",
+      "parameters": {
+        "x": 10
+      },
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "first"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        parameters:\n          - name: x\n            type: number\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: SWITCH\n              cases:\n                - when:\n                    operation: EQUALS\n                    subject: $x\n                    value: 10\n                  then: \"first\"\n                - when:\n                    operation: EQUALS\n                    subject: $x\n                    value: 20\n                  then: \"second\"\n              default: \"none\"\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_007_switch_second_case",
+      "description": "SWITCH operation - second case matches",
+      "category": "conditional_operations",
+      "parameters": {
+        "x": 20
+      },
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "second"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        parameters:\n          - name: x\n            type: number\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: SWITCH\n              cases:\n                - when:\n                    operation: EQUALS\n                    subject: $x\n                    value: 10\n                  then: \"first\"\n                - when:\n                    operation: EQUALS\n                    subject: $x\n                    value: 20\n                  then: \"second\"\n              default: \"none\"\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_008_switch_default",
+      "description": "SWITCH operation - no case matches, returns default",
+      "category": "conditional_operations",
+      "parameters": {
+        "x": 99
+      },
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "none"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        parameters:\n          - name: x\n            type: number\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: SWITCH\n              cases:\n                - when:\n                    operation: EQUALS\n                    subject: $x\n                    value: 10\n                  then: \"first\"\n                - when:\n                    operation: EQUALS\n                    subject: $x\n                    value: 20\n                  then: \"second\"\n              default: \"none\"\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_009_switch_with_nested_operation",
+      "description": "SWITCH with nested operation in then value",
+      "category": "conditional_operations",
+      "parameters": {
+        "x": 1
+      },
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 200
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      definitions:\n        BASE: 100\n      execution:\n        parameters:\n          - name: x\n            type: number\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            value:\n              operation: SWITCH\n              cases:\n                - when:\n                    operation: EQUALS\n                    subject: $x\n                    value: 1\n                  then:\n                    operation: MULTIPLY\n                    values:\n                      - $BASE\n                      - 2\n              default: $BASE\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    },
+    {
+      "id": "conditional_010_switch_boolean_variable",
+      "description": "SWITCH with boolean variable in when clause",
+      "category": "conditional_operations",
+      "parameters": {
+        "is_eligible": true,
+        "is_fallback": false
+      },
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": "eligible"
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_conditional\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        parameters:\n          - name: is_eligible\n            type: boolean\n          - name: is_fallback\n            type: boolean\n        output:\n          - name: result\n            type: string\n        actions:\n          - output: result\n            value:\n              operation: SWITCH\n              cases:\n                - when: $is_eligible\n                  then: \"eligible\"\n                - when: $is_fallback\n                  then: \"fallback\"\n              default: \"none\"\n\n",
+      "law_id": "test_conditional",
+      "output_name": "result"
+    }
+  ]
+}

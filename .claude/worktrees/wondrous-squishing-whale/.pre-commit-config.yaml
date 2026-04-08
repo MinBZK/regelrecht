@@ -1,0 +1,45 @@
+---
+ci:
+  autofix_prs: false
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-case-conflict
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args: [--strict]
+        types: [yaml]
+
+  - repo: local
+    hooks:
+      - id: rust-format
+        name: Check Rust formatting
+        entry: just format
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      - id: rust-lint
+        name: Rust clippy lints
+        entry: just lint
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      - id: validate-law-yaml
+        name: Validate law YAML schema
+        entry: just validate
+        language: system
+        pass_filenames: true
+        files: ^corpus/regulation/.*\.yaml$
+        types: [yaml]

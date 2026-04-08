@@ -1,0 +1,146 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht-mvp/refs/heads/main/schema/v0.4.0/schema.json
+$id: afstemmingsverordening_participatiewet_diemen
+regulatory_layer: GEMEENTELIJKE_VERORDENING
+publication_date: '2014-12-18'
+valid_from: '2015-01-01'
+gemeente_code: GM0384
+officiele_titel: Afstemmingsverordening Participatiewet, IOAW en IOAZ Diemen 2015
+url: https://lokaleregelgeving.overheid.nl/CVDR345917/1
+name: Afstemmingsverordening Participatiewet Diemen 2015
+
+# Note: This YAML contains only articles 7 and 9 for the proof of concept.
+# The full verordening contains 20 articles.
+
+# Grondslag: Participatiewet artikel 8, eerste lid, onderdeel a
+# (gedelegeerd via artikel 18)
+legal_basis:
+  - law_id: participatiewet
+    article: '8'
+    description: Artikel 8, eerste lid, onderdeel a - gemeentelijke verordening over verlaging bijstand
+
+articles:
+  - number: '7'
+    text: |-
+      **Gedragingen Participatiewet**
+
+      Gedragingen van een belanghebbende waardoor de verplichting op grond van artikel 9, eerste lid, van de
+      Participatiewet niet of onvoldoende is nagekomen worden onderscheiden in de volgende categorieën:
+
+         a. eerste categorie: het zich niet tijdig laten registreren als werkzoekende bij het Uitvoeringsinstituut
+         werknemersverzekeringen;
+
+         b. tweede categorie:
+            1. het niet of onvoldoende meewerken aan het opstellen, uitvoeren en evalueren van een plan van aanpak als
+            bedoeld in artikel 44a van de Participatiewet;
+            2. het niet binnen vier weken na melding als bedoeld in artikel 43, vierde en vijfde lid, van de
+            Participatiewet voldoende meewerken aan het onderzoek naar de mogelijkheden tot arbeidsinschakeling of
+            sociale activering als dit een persoon jonger dan 27 jaar betreft;
+            3. het als alleenstaande ouder niet naar vermogen trachten arbeid in deeltijd te verkrijgen;
+            4. het niet of onvoldoende verrichten van de door het college opgedragen tegenprestatie als bedoeld in
+            artikel 9, eerste lid, onderdeel c, van de Participatiewet;
+
+         c. derde categorie: het niet naar vermogen proberen algemeen geaccepteerde arbeid te verkrijgen.
+    url: https://lokaleregelgeving.overheid.nl/CVDR345917/1#Artikel7
+
+  - number: '9'
+    text: |-
+      **Hoogte en duur van de verlaging**
+
+      1. De verlaging bij gedragingen als bedoeld in de artikelen 7 en 8 bedraagt:
+         a. eerste categorie: 5 procent van de bijstandsnorm gedurende 1 maand;
+         b. tweede categorie: 30 procent van de bijstandsnorm gedurende 1 maand;
+         c. derde categorie: 100 procent van de bijstandsnorm gedurende 1 maand.
+
+      2. Het college kan de verlaging afwijkend vaststellen, met een minimum van 5% en een maximum van 100% van de
+      bijstandsnorm, als de ernst van de gedraging, de mate van verwijtbaarheid of de individuele omstandigheden van de
+      belanghebbende daartoe aanleiding geven.
+    url: https://lokaleregelgeving.overheid.nl/CVDR345917/1#Artikel9
+    machine_readable:
+      implements:
+        - law: participatiewet
+          article: '8'
+          open_term: verlaging_percentage
+          gelet_op: Gelet op artikel 8, eerste lid, onderdeel a van de Participatiewet
+        - law: participatiewet
+          article: '8'
+          open_term: duur_maanden
+          gelet_op: Gelet op artikel 8, eerste lid, onderdeel a van de Participatiewet
+      definitions:
+        # Categorie 1 en 2: gemeente bepaalt percentage
+        PERCENTAGE_CATEGORIE_1:
+          value: 5
+        PERCENTAGE_CATEGORIE_2:
+          value: 30
+        # Categorie 3: percentage komt uit Participatiewet art. 18 lid 5 (zie input)
+        DUUR_MAANDEN:
+          value: 1
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: ANDERE_HANDELING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: BSN van de belanghebbende
+          - name: gedragscategorie
+            type: number
+            required: false
+            description: Gedragscategorie (0=geen, 1, 2 of 3)
+        input:
+          # Categorie 3 percentage is vastgelegd in Participatiewet art. 18 lid 5
+          # Dit is GEEN gemeentelijke bevoegdheid - de rijkswet schrijft 100% voor
+          - name: percentage_categorie_3
+            type: number
+            description: Verlagingspercentage voor categorie 3 uit Participatiewet art. 18 lid 5
+            source:
+              regulation: participatiewet
+              output: verlaging_percentage_lid_5
+
+        output:
+          - name: verlaging_percentage
+            type: number
+            description: Verlagingspercentage conform art. 9 lid 1
+          - name: duur_maanden
+            type: number
+            description: Aantal maanden dat de verlaging duurt
+        actions:
+          - output: verlaging_percentage
+            value:
+              operation: SWITCH
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $gedragscategorie
+                    value: 0
+                  then: 0
+                - when:
+                    operation: EQUALS
+                    subject: $gedragscategorie
+                    value: 1
+                  then: $PERCENTAGE_CATEGORIE_1
+                - when:
+                    operation: EQUALS
+                    subject: $gedragscategorie
+                    value: 2
+                  then: $PERCENTAGE_CATEGORIE_2
+                - when:
+                    operation: EQUALS
+                    subject: $gedragscategorie
+                    value: 3
+                  then: $percentage_categorie_3
+          - output: duur_maanden
+            value:
+              operation: SWITCH
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $gedragscategorie
+                    value: 0
+                  then: 0
+                - when:
+                    operation: GREATER_THAN_OR_EQUAL
+                    subject: $gedragscategorie
+                    value: 1
+                  then: $DUUR_MAANDEN

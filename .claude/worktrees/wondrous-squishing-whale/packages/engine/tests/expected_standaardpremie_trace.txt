@@ -1,0 +1,7 @@
+regeling_standaardpremie (2025-01-01 {} standaardpremie)
+╟──Evaluating rules for regeling_standaardpremie (standaardpremie)
+║   ╟──Computing standaardpremie
+║   ║   └──Result: standaardpremie = 211200
+║   ╙──Computing berekeningsjaar
+║       └──Result: berekeningsjaar = 2025
+╙──Result: standaardpremie = 211200

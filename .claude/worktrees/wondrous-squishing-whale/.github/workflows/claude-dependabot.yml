@@ -1,0 +1,78 @@
+name: Claude Dependabot Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  claude-dependabot:
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Dependabot Review
+        id: claude-dependabot
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "dependabot[bot]"
+          use_sticky_comment: true
+          claude_args: "--allowedTools Bash,Read,Glob,Grep"
+          prompt: |
+            Review Dependabot PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+
+            ## Task
+
+            Assess this dependency update and decide whether to approve and merge it, or
+            flag it for human review.
+
+            ## Steps
+
+            1. **Identify the change**: What dependency is being bumped? What version change
+               (major/minor/patch)? Is it a direct or transitive dependency?
+
+            2. **Check for breaking changes**: Read the PR description and changelog links.
+               For major bumps, look for breaking changes that could affect this project.
+
+            3. **Assess risk for this project**:
+               - Rust crate updates: Could they break compilation, change behavior of the
+                 engine (law execution correctness), or affect the pipeline/harvester/admin?
+               - Frontend/npm updates: Could they break the build or introduce vulnerabilities?
+               - GitHub Actions updates: Could they change CI behavior or permissions?
+               - Docker base image updates: Could they affect the runtime environment?
+
+            4. **Check CI status**: Use the GitHub API to verify all CI checks have passed.
+               Do NOT proceed with merging if any required check is still pending or has failed.
+
+            5. **Decision**:
+
+               **Auto-approve and merge** (squash) if ALL of these are true:
+               - It is a patch or minor version bump
+               - CI checks all pass
+               - No breaking changes indicated in the changelog
+               - The dependency is not security-critical (e.g., crypto, auth, TLS libraries
+                 warrant extra scrutiny even for minor bumps)
+
+               **Flag for human review** if ANY of these are true:
+               - It is a major version bump
+               - CI checks fail
+               - Breaking changes are mentioned
+               - It touches security-critical dependencies
+               - You are uncertain about the impact
+
+            ## Output
+
+            Post a short comment explaining your assessment:
+            - What changed (dependency, version, type of bump)
+            - Risk assessment (one sentence)
+            - Decision: merging or flagging for human review, and why

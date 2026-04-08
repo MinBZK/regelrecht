@@ -1,0 +1,46 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-01-26T13:58:39.574818+00:00",
+  "category": "action_execution",
+  "test_count": 2,
+  "test_cases": [
+    {
+      "id": "action_001_multiple_actions",
+      "description": "Execute multiple actions in sequence",
+      "category": "action_execution",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "first": 100,
+          "second": 200
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_action\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: first\n            type: number\n          - name: second\n            type: number\n        actions:\n          - output: first\n            value: 100\n          - output: second\n            value: 200\n\n",
+      "law_id": "test_action",
+      "output_name": "first"
+    },
+    {
+      "id": "action_002_using_previous_output",
+      "description": "Action using previous action's output",
+      "category": "action_execution",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "first": 50,
+          "second": 75
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_action\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: first\n            type: number\n          - name: second\n            type: number\n        actions:\n          - output: first\n            value: 50\n          - output: second\n            operation: ADD\n            values:\n              - $first\n              - 25\n\n",
+      "law_id": "test_action",
+      "output_name": "second"
+    }
+  ]
+}

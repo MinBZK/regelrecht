@@ -1,0 +1,84 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  claude-review:
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          use_sticky_comment: true
+          claude_args: "--allowedTools Bash,Read,Glob,Grep"
+          prompt: |
+            ## Step 0: Clean up previous reviews
+
+            BEFORE doing anything else, clean up your own previous review comments and
+            reviews on this PR so they don't pile up. Run these commands:
+
+            ```bash
+            # Dismiss all previous claude[bot] reviews (changes CHANGES_REQUESTED to comments)
+            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" \
+              --paginate --jq '.[] | select(.user.login == "claude[bot]" and (.state == "CHANGES_REQUESTED" or .state == "COMMENTED")) | .id' \
+            | while read -r review_id; do
+                gh api -X PUT "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews/${review_id}/dismissals" \
+                  -f message="Superseded by new review" -f event="DISMISS" 2>/dev/null || true
+              done
+
+            # Delete all previous claude[bot] inline review comments
+            gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments" \
+              --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
+            | while read -r comment_id; do
+                gh api -X DELETE "repos/${{ github.repository }}/pulls/comments/${comment_id}" 2>/dev/null || true
+              done
+
+            # Delete all previous claude[bot] issue comments (except sticky which is managed automatically)
+            gh api "repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+              --paginate --jq '.[] | select(.user.login == "claude[bot]") | .id' \
+            | while read -r comment_id; do
+                gh api -X DELETE "repos/${{ github.repository }}/issues/comments/${comment_id}" 2>/dev/null || true
+              done
+            ```
+
+            After cleanup, proceed with the review below.
+
+            ---
+
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
+
+            Read `REVIEW.md` for the project context, review dimensions, severity scale, and
+            skip rules. Follow those guidelines strictly.
+
+            Review the PR diff. Only comment on changed lines.
+            Skip dimensions that have no findings. Be precise and actionable — no "consider"
+            or "you might want to" comments.
+
+            ## Output format
+
+            Structure your review as a single comment with sections for each dimension that has
+            findings. Use this severity scale:
+
+            - 🔴 **Critical** — wrong legal outcome, data loss, runtime crash, security vulnerability
+            - 🟠 **Significant** — likely bug, broken reference, missing edge case, lost jobs
+            - 🟡 **Minor** — code quality, style, non-blocking improvement
+
+            Also leave inline comments on specific lines where possible.
+
+            If there are no issues, say so briefly. Do not pad the review with praise or filler.

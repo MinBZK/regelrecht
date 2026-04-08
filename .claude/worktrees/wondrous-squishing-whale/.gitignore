@@ -1,0 +1,54 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/settings.local.json
+.claude/*.local.*
+
+# Logs
+*.log
+
+# Git worktrees
+.worktrees/
+
+# Frontend
+node_modules/
+frontend/dist/
+packages/admin/static/
+
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# Python (pre-commit uses a venv)
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+
+# Mutation testing
+mutants.out/
+
+# Dev stack
+.dev-pids
+
+# Corpus local overrides
+corpus-registry.local.yaml
+corpus-auth.yaml
+
+# Environment
+.env
+
+# Gemini CLI
+.gemini/*
+!.gemini/prompts/
+
+# Beads
+.beads/

@@ -1,0 +1,99 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-01-26T13:58:39.451552+00:00",
+  "category": "aggregate_operations",
+  "test_count": 5,
+  "test_cases": [
+    {
+      "id": "aggregate_001_max_multiple",
+      "description": "MAX with multiple values",
+      "category": "aggregate_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 50
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_aggregate\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: MAX\n            values:\n              - 10\n              - 50\n              - 30\n              - 20\n\n",
+      "law_id": "test_aggregate",
+      "output_name": "result"
+    },
+    {
+      "id": "aggregate_002_max_with_variables",
+      "description": "MAX with variable references",
+      "category": "aggregate_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 150
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_aggregate\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      definitions:\n        VALUE_A: 100\n        VALUE_B: 150\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: MAX\n            values:\n              - $VALUE_A\n              - $VALUE_B\n              - 120\n\n",
+      "law_id": "test_aggregate",
+      "output_name": "result"
+    },
+    {
+      "id": "aggregate_003_min_multiple",
+      "description": "MIN with multiple values",
+      "category": "aggregate_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 10
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_aggregate\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: MIN\n            values:\n              - 50\n              - 10\n              - 30\n              - 20\n\n",
+      "law_id": "test_aggregate",
+      "output_name": "result"
+    },
+    {
+      "id": "aggregate_004_min_with_variables",
+      "description": "MIN with variable references",
+      "category": "aggregate_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "result": 100
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_aggregate\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      definitions:\n        VALUE_A: 100\n        VALUE_B: 150\n      execution:\n        output:\n          - name: result\n            type: number\n        actions:\n          - output: result\n            operation: MIN\n            values:\n              - $VALUE_A\n              - $VALUE_B\n              - 120\n\n",
+      "law_id": "test_aggregate",
+      "output_name": "result"
+    },
+    {
+      "id": "aggregate_005_single_value",
+      "description": "MAX/MIN with single value returns that value",
+      "category": "aggregate_operations",
+      "parameters": {},
+      "calculation_date": "2025-01-01",
+      "expected": {
+        "success": true,
+        "article_number": "1",
+        "outputs": {
+          "max_result": 42,
+          "min_result": 42
+        },
+        "resolved_inputs": {}
+      },
+      "law_yaml": "\n$schema: https://example.com/schema/v0.1.0/schema.json\n$id: test_aggregate\nregulatory_layer: WET\npublication_date: '2025-01-01'\narticles:\n  - number: '1'\n    text: Test article\n    machine_readable:\n\n      execution:\n        output:\n          - name: max_result\n            type: number\n          - name: min_result\n            type: number\n        actions:\n          - output: max_result\n            operation: MAX\n            values:\n              - 42\n          - output: min_result\n            operation: MIN\n            values:\n              - 42\n\n",
+      "law_id": "test_aggregate",
+      "output_name": "max_result"
+    }
+  ]
+}

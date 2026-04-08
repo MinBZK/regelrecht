@@ -1,0 +1,60 @@
+/* CSS-only Collapsible/Accordion */
+
+/* Using native <details> element */
+.collapsible {
+  border-bottom: var(--divider-width) solid var(--color-border);
+}
+
+.collapsible__trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.collapsible__trigger::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible__trigger::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M6 4L10 8L6 12' stroke='%2364748B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.collapsible[open] > .collapsible__trigger::before {
+  transform: rotate(90deg);
+}
+
+.collapsible__trigger:hover {
+  background-color: var(--color-slate-50);
+}
+
+.collapsible__content {
+  padding: 0 var(--spacing-4) var(--spacing-2);
+}
+
+/* Nested collapsibles */
+.collapsible .collapsible {
+  border-bottom: none;
+}
+
+.collapsible .collapsible .collapsible__trigger {
+  padding-left: var(--spacing-6);
+}
+
+.collapsible .collapsible .collapsible .collapsible__trigger {
+  padding-left: var(--spacing-8);
+}

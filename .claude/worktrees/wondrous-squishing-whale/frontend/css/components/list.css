@@ -1,0 +1,157 @@
+/* List Components */
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* List with dividers between items */
+.list--dividers .list__item + .list__item {
+  border-top: var(--divider-width) solid var(--color-border);
+}
+
+/* List with box style */
+.list--box {
+  background-color: var(--color-surface);
+  border: var(--divider-width) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+}
+
+/* List item */
+.list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.list__item:hover {
+  background-color: var(--color-slate-50);
+}
+
+.list__item--selected {
+  background-color: var(--color-primary);
+  border-radius: var(--border-radius-md);
+}
+
+.list__item--selected:hover {
+  background-color: var(--color-primary);
+}
+
+.list__item--selected .list__title,
+.list__item--selected .list__subtitle {
+  color: var(--color-white);
+}
+
+.list__item--selected .list__badge {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: var(--color-white);
+}
+
+/* List item icon */
+.list__icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+/* List item content */
+.list__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.list__title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list__subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* List section header */
+.list__section {
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+/* Action/badge on right side */
+.list__action {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.list__badge {
+  padding: var(--spacing-0-5) var(--spacing-1);
+  font-size: var(--font-size-xs);
+  background-color: var(--color-slate-100);
+  border-radius: var(--border-radius-sm);
+}
+
+/* Chevron arrow */
+.list__chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.list__item--selected .list__chevron {
+  color: var(--color-white);
+}
+
+/* Chevron icon (img based) */
+.list__chevron-icon {
+  flex-shrink: 0;
+  opacity: 0.4;
+}
+
+.list__item:hover .list__chevron-icon {
+  opacity: 0.6;
+}
+
+.list__item--selected .list__chevron-icon {
+  filter: brightness(0) invert(1);
+  opacity: 0.8;
+}
+
+/* Group headers for law structure */
+.list__group-header {
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-1);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.list__group-subheader {
+  padding: var(--spacing-1) var(--spacing-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.list__group-subheader--level2 {
+  padding-left: var(--spacing-6);
+  font-weight: var(--font-weight-normal);
+}
+
+.list__group-subheader--level3 {
+  padding-left: var(--spacing-8);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-secondary);
+}

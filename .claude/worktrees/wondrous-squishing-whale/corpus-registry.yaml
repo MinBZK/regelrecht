@@ -1,0 +1,22 @@
+---
+schema_version: '1.0'
+sources:
+  - id: local
+    name: Local Test Corpus
+    type: local
+    local:
+      path: corpus/regulation/nl
+    scopes: []
+    priority: 1  # 1 = highest priority
+
+  - id: minbzk-central
+    name: Centrale Regelrecht Corpus
+    type: github
+    github:
+      owner: MinBZK
+      repo: regelrecht-corpus
+      branch: development
+      path: regulation/nl
+    scopes: []
+    priority: 2
+    # Auth by convention: CORPUS_AUTH_MINBZK_CENTRAL_TOKEN
