@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { buildOperationTree } from '../utils/operationTree.js';
+import { useOperationTitles } from '../composables/useOperationTitles.js';
 import OperationSettings from './OperationSettings.vue';
 
 const props = defineProps({
@@ -11,6 +12,12 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 
 const operationTree = computed(() => props.action ? buildOperationTree(props.action) : []);
+
+const { aiTitles, loading: titlesLoading } = useOperationTitles(operationTree);
+
+function resolveTitle(op) {
+  return aiTitles.value[op.number] || op.title;
+}
 
 const selectedOpIndex = ref(0);
 
@@ -82,7 +89,7 @@ onUnmounted(() => {
             <rr-list variant="box">
               <rr-list-item v-for="op in parentOperations" :key="op.number" size="md">
                 <rr-text-cell>
-                  <span slot="text">{{ op.number }}. {{ op.title }}</span>
+                  <span slot="text">{{ op.number }}. {{ resolveTitle(op) }}</span>
                   <span slot="supporting-text">{{ op.subtitle }}</span>
                 </rr-text-cell>
                 <rr-cell>
@@ -95,7 +102,7 @@ onUnmounted(() => {
           </template>
 
           <!-- Section B: Operation Settings -->
-          <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" @select-operation="selectOperationByNode" />
+          <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" :resolved-title="resolveTitle(selectedOperation)" @select-operation="selectOperationByNode" />
         </rr-simple-section>
       </div>
 
