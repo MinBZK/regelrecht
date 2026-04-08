@@ -71,17 +71,18 @@ function onKeydown(e) {
 <template>
   <div class="job-creation">
     <span class="job-creation__label">New harvest job</span>
-    <rr-text-field
+    <ndd-text-field
       ref="inputRef"
       size="md"
       placeholder="BWB ID (e.g. BWBR0018451)"
       @keydown="onKeydown"
     />
-    <rr-button
+    <ndd-button
       variant="accent-filled"
       size="md"
+      :text="buttonLabel"
       :disabled="submitting ? '' : undefined"
       @click="onSubmit"
-    >{{ buttonLabel }}</rr-button>
+    />
   </div>
 </template>

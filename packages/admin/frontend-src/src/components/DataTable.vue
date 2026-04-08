@@ -1,6 +1,6 @@
 <script setup>
-import { onUnmounted } from 'vue';
 import StatusBadge from './StatusBadge.vue';
+import TableToolbar from './TableToolbar.vue';
 import { formatDate, formatCoverageScore, truncateUuid } from '../formatters.js';
 
 const props = defineProps({
@@ -16,24 +16,8 @@ const props = defineProps({
 
 const emit = defineEmits(['sort', 'filter-change', 'row-click']);
 
-// Debounce timers for text filters
-const debounceTimers = {};
-
-function onHeaderClick(col, event) {
-  if (event.target.closest('.th-filter')) return;
+function onHeaderClick(col) {
   if (col.sortable) emit('sort', col.key);
-}
-
-function onSelectFilter(key, event) {
-  emit('filter-change', key, event.target.value);
-}
-
-function onTextFilter(key, event) {
-  const value = event.target.value.trim();
-  clearTimeout(debounceTimers[key]);
-  debounceTimers[key] = setTimeout(() => {
-    emit('filter-change', key, value);
-  }, 300);
 }
 
 function formatCellValue(value, key) {
@@ -43,20 +27,18 @@ function formatCellValue(value, key) {
   if (key.endsWith('_at')) return formatDate(value);
   return String(value);
 }
-
-function getFilterKey(col) {
-  return col.filter?.key || col.key;
-}
-
-function getFilterLabel(col) {
-  return col.filter?.label || col.label;
-}
-
-onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
 </script>
 
 <template>
-  <rr-simple-section>
+  <ndd-simple-section>
+    <TableToolbar
+      :columns="columns"
+      :sort="sort"
+      :order="order"
+      :filters="filters"
+      @sort="(key) => emit('sort', key)"
+      @filter-change="(key, value) => emit('filter-change', key, value)"
+    />
     <div class="table-container">
       <table class="data-table">
         <thead>
@@ -68,7 +50,7 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
                 sortable: col.sortable,
                 'sort-active': sort === col.key,
               }"
-              @click="onHeaderClick(col, $event)"
+              @click="onHeaderClick(col)"
             >
               <span class="th-label">
                 {{ col.label }}
@@ -76,26 +58,6 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
                   {{ sort === col.key ? (order === 'asc' ? '\u25B2' : '\u25BC') : '\u25BC' }}
                 </span>
               </span>
-              <div v-if="col.filter" class="th-filter" @click.stop>
-                <select
-                  v-if="col.filter.options"
-                  :aria-label="'Filter ' + getFilterLabel(col)"
-                  :value="filters[getFilterKey(col)] || ''"
-                  @change="onSelectFilter(getFilterKey(col), $event)"
-                >
-                  <option value="">All {{ getFilterLabel(col) }}</option>
-                  <option v-for="v in col.filter.options" :key="v" :value="v">{{ v }}</option>
-                </select>
-                <input
-                  v-else-if="col.filter.type === 'text'"
-                  type="text"
-                  placeholder="Filter&hellip;"
-                  :aria-label="'Filter ' + getFilterLabel(col)"
-                  :value="filters[getFilterKey(col)] || ''"
-                  @input="onTextFilter(getFilterKey(col), $event)"
-                  @click.stop
-                />
-              </div>
             </th>
             <slot name="extra-header" />
           </tr>
@@ -141,5 +103,5 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
         </tbody>
       </table>
     </div>
-  </rr-simple-section>
+  </ndd-simple-section>
 </template>

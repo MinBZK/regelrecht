@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import StatusBadge from './StatusBadge.vue';
+import TableToolbar from './TableToolbar.vue';
 import { GROUPED_COLUMNS, JOB_COLUMNS, STATUS_BADGE_MAP } from '../constants.js';
 import { formatDate, truncateUuid, truncateError } from '../formatters.js';
 
@@ -23,21 +24,8 @@ const colCount = computed(() => columns.length + 1);
 
 const statusCountKeys = ['pending', 'processing', 'completed', 'failed'];
 
-function onHeaderClick(col, event) {
-  if (event.target.closest('.th-filter')) return;
+function onHeaderClick(col) {
   if (col.sortable) emit('sort', col.key);
-}
-
-function onSelectFilter(key, event) {
-  emit('filter-change', key, event.target.value);
-}
-
-function getFilterKey(col) {
-  return col.filter?.key || col.key;
-}
-
-function getFilterLabel(col) {
-  return col.filter?.label || col.label;
 }
 
 function formatChildCell(value, key) {
@@ -49,7 +37,15 @@ function formatChildCell(value, key) {
 </script>
 
 <template>
-  <rr-simple-section>
+  <ndd-simple-section>
+    <TableToolbar
+      :columns="columns"
+      :sort="sort"
+      :order="order"
+      :filters="filters"
+      @sort="(key) => emit('sort', key)"
+      @filter-change="(key, value) => emit('filter-change', key, value)"
+    />
     <div class="table-container">
       <table class="data-table">
         <thead>
@@ -58,7 +54,7 @@ function formatChildCell(value, key) {
               v-for="col in columns"
               :key="col.key"
               :class="{ sortable: col.sortable, 'sort-active': sort === col.key }"
-              @click="onHeaderClick(col, $event)"
+              @click="onHeaderClick(col)"
             >
               <span class="th-label">
                 {{ col.label }}
@@ -66,17 +62,6 @@ function formatChildCell(value, key) {
                   {{ sort === col.key ? (order === 'asc' ? '\u25B2' : '\u25BC') : '\u25BC' }}
                 </span>
               </span>
-              <div v-if="col.filter" class="th-filter" @click.stop>
-                <select
-                  v-if="col.filter.options"
-                  :aria-label="'Filter ' + getFilterLabel(col)"
-                  :value="filters[getFilterKey(col)] || ''"
-                  @change="onSelectFilter(getFilterKey(col), $event)"
-                >
-                  <option value="">All {{ getFilterLabel(col) }}</option>
-                  <option v-for="v in col.filter.options" :key="v" :value="v">{{ v }}</option>
-                </select>
-              </div>
             </th>
             <th style="width: 40px"></th>
           </tr>
@@ -171,5 +156,5 @@ function formatChildCell(value, key) {
         </tbody>
       </table>
     </div>
-  </rr-simple-section>
+  </ndd-simple-section>
 </template>

@@ -113,7 +113,7 @@
 
 
 /* ============================================================
-   Column Header Filters
+   Column Header Labels
    ============================================================ */
 
 .th-label {
@@ -122,27 +122,17 @@
   white-space: nowrap;
 }
 
-.th-filter {
-  margin-top: var(--primitives-space-4);
-}
 
-.th-filter select,
-.th-filter input {
-  font-family: var(--primitives-font-family-body);
-  font-size: 11px;
-  padding: 2px 4px;
-  border: 1px solid var(--semantics-dividers-color);
-  border-radius: var(--primitives-corner-radius-xs);
-  background: var(--semantics-surfaces-background-color);
-  color: var(--semantics-content-color);
-  max-width: 130px;
-  width: 100%;
-}
+/* ============================================================
+   Table Toolbar (filter & sort controls above table)
+   ============================================================ */
 
-.th-filter select:focus,
-.th-filter input:focus {
-  outline: 2px solid var(--semantics-accent-color, var(--primitives-color-accent-500));
-  outline-offset: -1px;
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--primitives-space-8);
+  padding-bottom: var(--primitives-space-8);
+  flex-wrap: wrap;
 }
 
 

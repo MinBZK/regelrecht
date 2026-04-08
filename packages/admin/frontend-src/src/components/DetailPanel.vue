@@ -62,15 +62,15 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown));
     <aside class="detail-panel" :class="{ 'is-open': isOpen }">
       <div class="detail-panel__header">
         <h2 class="detail-panel__title">Job Details</h2>
-        <rr-icon-button
+        <ndd-icon-button
           variant="neutral-transparent"
           size="sm"
           accessible-label="Close"
           @click="emit('close')"
         >
-          <rr-icon name="dismiss" />
+          <ndd-icon name="dismiss" />
           Close
-        </rr-icon-button>
+        </ndd-icon-button>
       </div>
       <div v-if="job" class="detail-panel__body">
         <!-- Info section -->
