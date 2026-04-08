@@ -42,9 +42,9 @@ function onAccountClick() {
   <div v-if="authLoading" />
   <template v-else>
     <span v-if="deploymentName" class="env-badge">{{ deploymentName }}</span>
-    <rr-page sticky-header>
+    <ndd-page sticky-header>
       <div slot="header">
-        <rr-top-navigation-bar
+        <ndd-top-navigation-bar
           title="RegelRecht admin"
           no-logo
           no-menu
@@ -52,26 +52,26 @@ function onAccountClick() {
           :utility-account-label="accountLabel"
           @account-click="onAccountClick"
         />
-        <rr-toolbar size="md">
-          <rr-toolbar-start-area>
-            <rr-toolbar-item>
-              <rr-tab-bar>
-                <rr-tab-bar-item
+        <ndd-toolbar size="md">
+          <ndd-toolbar-start-area>
+            <ndd-toolbar-item>
+              <ndd-tab-bar>
+                <ndd-tab-bar-item
                   v-for="tab in tabs"
                   :key="tab.key"
                   :selected="activeTab === tab.key ? '' : undefined"
                   @click="router.push(tab.route)"
-                >{{ tab.label }}</rr-tab-bar-item>
-              </rr-tab-bar>
-            </rr-toolbar-item>
-          </rr-toolbar-start-area>
-          <rr-toolbar-end-area>
-            <rr-toolbar-item id="view-toggle-target" />
-            <rr-toolbar-item id="pagination-target" />
-          </rr-toolbar-end-area>
-        </rr-toolbar>
+                >{{ tab.label }}</ndd-tab-bar-item>
+              </ndd-tab-bar>
+            </ndd-toolbar-item>
+          </ndd-toolbar-start-area>
+          <ndd-toolbar-end-area>
+            <ndd-toolbar-item id="view-toggle-target" />
+            <ndd-toolbar-item id="pagination-target" />
+          </ndd-toolbar-end-area>
+        </ndd-toolbar>
       </div>
       <router-view />
-    </rr-page>
+    </ndd-page>
   </template>
 </template>

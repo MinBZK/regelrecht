@@ -36,12 +36,12 @@ if (route.query.law_id) {
 
 <template>
   <Teleport to="#view-toggle-target" defer>
-    <rr-button
+    <ndd-button
       variant="neutral-tinted"
       size="md"
       :title="viewMode === 'grouped' ? 'Show individual jobs' : 'Group jobs by law'"
       @click="toggleViewMode"
-    >{{ viewMode === 'grouped' ? 'Flat view' : 'Grouped view' }}</rr-button>
+    >{{ viewMode === 'grouped' ? 'Flat view' : 'Grouped view' }}</ndd-button>
   </Teleport>
 
   <Teleport to="#pagination-target" defer>

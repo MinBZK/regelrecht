@@ -11,23 +11,23 @@ const emit = defineEmits(['prev', 'next']);
 
 <template>
   <div class="pagination-controls">
-    <rr-button
+    <ndd-button
       variant="neutral-tinted"
       size="md"
       :disabled="currentPage <= 1 ? '' : undefined"
       title="Previous page"
       @click="emit('prev')"
-    >&#8249;</rr-button>
+    >&#8249;</ndd-button>
     <span class="pagination-info">
       {{ currentPage }} / {{ totalPages }} ({{ totalCount }} {{ unit }})
     </span>
-    <rr-button
+    <ndd-button
       variant="neutral-tinted"
       size="md"
       :disabled="currentPage >= totalPages ? '' : undefined"
       title="Next page"
       @click="emit('next')"
-    >&#8250;</rr-button>
+    >&#8250;</ndd-button>
   </div>
 </template>
 
