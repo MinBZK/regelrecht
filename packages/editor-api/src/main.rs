@@ -301,6 +301,9 @@ async fn init_backends(
             None
         });
 
+        // When a push token is present, the backend will push commits to the
+        // remote repo. This requires authentication on the write endpoints —
+        // do NOT enable push tokens without adding auth middleware first.
         match regelrecht_corpus::backend::create_backend(source, token.as_deref()) {
             Ok(mut backend) => {
                 if let Err(e) = backend.ensure_ready().await {
