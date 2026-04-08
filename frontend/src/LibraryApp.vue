@@ -212,56 +212,65 @@ loadIndex();
 </script>
 
 <template>
-  <rr-app-view>
-    <rr-bar-split-view>
+  <ndd-app-view>
+    <ndd-bar-split-view>
       <!-- Primary Bar: App Toolbar -->
-      <rr-split-view-pane slot="primary-bar">
-        <rr-container>
-          <rr-toolbar size="md">
-            <rr-toolbar-start-area>
-              <rr-toolbar-item>
-                <rr-tab-bar size="md">
-                  <rr-tab-bar-item selected>Bibliotheek</rr-tab-bar-item>
-                  <rr-tab-bar-item href="/editor.html">Editor</rr-tab-bar-item>
-                </rr-tab-bar>
-              </rr-toolbar-item>
-            </rr-toolbar-start-area>
-            <rr-toolbar-center-area>
-              <rr-toolbar-item>
-                <rr-search-field
-                  size="md"
-                  placeholder="Zoeken"
-                  @input="search = $event.target.value"
-                ></rr-search-field>
-              </rr-toolbar-item>
-            </rr-toolbar-center-area>
-            <rr-toolbar-end-area>
-              <rr-toolbar-item>
-                <rr-button-bar size="md">
-                  <rr-button variant="neutral-tinted" size="md" is-picker>RR Project</rr-button>
-                  <rr-icon-button variant="neutral-tinted" size="m" icon="person-circle" has-menu title="Account">
-                  </rr-icon-button>
-                </rr-button-bar>
-              </rr-toolbar-item>
-            </rr-toolbar-end-area>
-          </rr-toolbar>
-        </rr-container>
-      </rr-split-view-pane>
+      <ndd-split-view-pane slot="primary-bar">
+        <ndd-container padding="8">
+          <ndd-toolbar size="md">
+            <ndd-toolbar-item slot="start">
+              <ndd-tab-bar size="md">
+                <ndd-tab-bar-item selected text="Bibliotheek"></ndd-tab-bar-item>
+                <ndd-tab-bar-item href="/editor.html" text="Editor"></ndd-tab-bar-item>
+              </ndd-tab-bar>
+            </ndd-toolbar-item>
+            <ndd-toolbar-item slot="center" min-width="240px" width="40%">
+              <ndd-search-field
+                size="md"
+                placeholder="Zoeken"
+                @input="search = $event.target.value"
+              ></ndd-search-field>
+            </ndd-toolbar-item>
+            <ndd-toolbar-item slot="end">
+              <ndd-button-bar size="md">
+                <ndd-button id="project-menu-btn" size="md" expandable text="RR Project" popovertarget="project-menu"></ndd-button>
+                <ndd-menu id="project-menu" anchor="project-menu-btn">
+                  <ndd-menu-item text="Instellingen"></ndd-menu-item>
+                  <ndd-menu-item text="Leden"></ndd-menu-item>
+                  <ndd-menu-divider></ndd-menu-divider>
+                  <ndd-menu-item text="Nieuw project"></ndd-menu-item>
+                </ndd-menu>
+                <ndd-button-bar-divider></ndd-button-bar-divider>
+                <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable title="Account" popovertarget="account-menu">
+                </ndd-icon-button>
+                <ndd-menu id="account-menu" anchor="account-menu-btn">
+                  <ndd-menu-item text="Profiel"></ndd-menu-item>
+                  <ndd-menu-item text="Voorkeuren"></ndd-menu-item>
+                  <ndd-menu-divider></ndd-menu-divider>
+                  <ndd-menu-item text="Uitloggen"></ndd-menu-item>
+                </ndd-menu>
+              </ndd-button-bar>
+            </ndd-toolbar-item>
+          </ndd-toolbar>
+        </ndd-container>
+      </ndd-split-view-pane>
 
       <!-- Main: Navigation Split View -->
-      <rr-split-view-pane slot="main">
-        <rr-navigation-split-view>
+      <ndd-split-view-pane slot="main">
+        <ndd-navigation-split-view>
 
           <!-- Sidebar: Wetten Browser -->
-          <rr-split-view-pane slot="sidebar" has-content>
-            <rr-page sticky-header>
-              <rr-top-title-bar slot="header" title="Wetten en regels"></rr-top-title-bar>
+          <ndd-split-view-pane slot="sidebar" has-content>
+            <ndd-page sticky-header>
+              <ndd-top-title-bar slot="header" text="Wetten en regels" collapse-anchor="home-titel"></ndd-top-title-bar>
 
-              <rr-simple-section container="sm">
-                <div v-if="loading" style="padding: 32px; text-align: center;">Laden...</div>
-                <div v-else-if="indexError" style="padding: 32px; text-align: center; color: #c00;">{{ indexError.message }}</div>
-                <rr-list v-else variant="simple">
-                  <rr-list-item
+              <ndd-simple-section :align="loading || indexError ? 'center' : undefined">
+                <ndd-title id="home-titel" size="3"><h3>Wetten en regels</h3></ndd-title>
+                <ndd-spacer size="16"></ndd-spacer>
+                <ndd-inline-dialog v-if="loading" text="Laden..."></ndd-inline-dialog>
+                <ndd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></ndd-inline-dialog>
+                <ndd-list v-else variant="simple">
+                  <ndd-list-item
                     v-for="law in filteredLaws"
                     :key="law.law_id"
                     size="md"
@@ -269,42 +278,44 @@ loadIndex();
                     :selected="law.law_id === selectedLawId || undefined"
                     @click="selectLaw(law.law_id)"
                   >
-                    <rr-text-cell>
-                      <span slot="text">{{ displayName(law) }}</span>
-                      <span slot="supporting-text" style="font-size: 11px; color: #888;">{{ law.source_name }}</span>
-                    </rr-text-cell>
-                    <rr-icon-cell slot="end" size="20">
-                      <rr-icon name="chevron-right"></rr-icon>
-                    </rr-icon-cell>
-                  </rr-list-item>
-                </rr-list>
-              </rr-simple-section>
-            </rr-page>
-          </rr-split-view-pane>
+                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+                    </ndd-text-cell>
+                    <ndd-icon-cell slot="end" size="20">
+                      <ndd-icon name="chevron-right"></ndd-icon>
+                    </ndd-icon-cell>
+                  </ndd-list-item>
+                </ndd-list>
+              </ndd-simple-section>
+            </ndd-page>
+          </ndd-split-view-pane>
 
           <!-- Secondary Sidebar: Artikelen Lijst -->
-          <rr-split-view-pane slot="secondary-sidebar" has-content>
-            <rr-page sticky-header>
-              <rr-top-title-bar
+          <ndd-split-view-pane slot="secondary-sidebar" has-content>
+            <ndd-page sticky-header>
+              <ndd-top-title-bar
                 slot="header"
-                :title="lawName || 'Selecteer een wet'"
-                back-label="Wetten"
-              >
-                <rr-icon-button slot="toolbar" variant="neutral-tinted" size="s" icon="heart" title="Favoriet">
-                </rr-icon-button>
-                <rr-button slot="toolbar" variant="neutral-tinted" size="md">Filter</rr-button>
-                <a v-if="selectedLawId" slot="toolbar" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
-                  <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
-                </a>
-                <rr-button v-else slot="toolbar" variant="accent-filled" size="md" disabled>Bewerk</rr-button>
-              </rr-top-title-bar>
+                :text="lawName || 'Selecteer een wet'"
+                back-text="Wetten"
+                collapse-anchor="wet-titel"
+              ></ndd-top-title-bar>
 
-              <rr-simple-section container="sm">
-                <div v-if="selectedLawLoading" style="padding: 32px; text-align: center;">Laden...</div>
-                <div v-else-if="lawError" style="padding: 32px; text-align: center; color: #c00;">{{ lawError.message }}</div>
-                <div v-else-if="!selectedLaw" style="padding: 32px; text-align: center;">Selecteer een wet</div>
-                <rr-list v-else variant="simple">
-                  <rr-list-item
+              <ndd-simple-section :align="selectedLawLoading || lawError || !selectedLaw ? 'center' : undefined">
+                <ndd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></ndd-title>
+                <ndd-spacer size="16"></ndd-spacer>
+                <ndd-toolbar>
+                  <ndd-toolbar-item slot="start">
+                    <ndd-icon-button icon="heart" title="Favoriet"></ndd-icon-button>
+                  </ndd-toolbar-item>
+                  <ndd-toolbar-item slot="start">
+                    <ndd-button text="Filter"></ndd-button>
+                  </ndd-toolbar-item>
+                </ndd-toolbar>
+                <ndd-spacer size="16"></ndd-spacer>
+                <ndd-inline-dialog v-if="selectedLawLoading" text="Laden..."></ndd-inline-dialog>
+                <ndd-inline-dialog v-else-if="lawError" variant="alert" text="Fout bij laden" :supporting-text="lawError.message"></ndd-inline-dialog>
+                <ndd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></ndd-inline-dialog>
+                <ndd-list v-else variant="simple">
+                  <ndd-list-item
                     v-for="article in articles"
                     :key="article.number"
                     size="md"
@@ -312,61 +323,61 @@ loadIndex();
                     :selected="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >
-                    <rr-text-cell>
-                      <span slot="text">Artikel {{ article.number }}</span>
-                      <span slot="supporting-text">{{ articleDescription(article) }}</span>
-                    </rr-text-cell>
-                    <rr-icon-cell slot="end" size="20">
-                      <rr-icon name="chevron-right"></rr-icon>
-                    </rr-icon-cell>
-                  </rr-list-item>
-                </rr-list>
-              </rr-simple-section>
-            </rr-page>
-          </rr-split-view-pane>
+                    <ndd-text-cell :text="`Artikel ${article.number}`" :supporting-text="articleDescription(article)">
+                    </ndd-text-cell>
+                    <ndd-icon-cell slot="end" size="20">
+                      <ndd-icon name="chevron-right"></ndd-icon>
+                    </ndd-icon-cell>
+                  </ndd-list-item>
+                </ndd-list>
+              </ndd-simple-section>
+            </ndd-page>
+          </ndd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <rr-split-view-pane slot="main" has-content>
-            <rr-page sticky-header>
-              <rr-top-title-bar
-                slot="header"
-                :title="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
-                :back-label="lawName || 'Terug'"
-              >
-                <rr-segmented-control slot="toolbar" size="md" :value="detailView" @change="detailView = $event.detail.value">
-                  <rr-segmented-control-item value="tekst">Tekst</rr-segmented-control-item>
-                  <rr-segmented-control-item value="machine">Machine</rr-segmented-control-item>
-                  <rr-segmented-control-item value="yaml">YAML</rr-segmented-control-item>
-                </rr-segmented-control>
-                <a v-if="selectedLawId" slot="toolbar" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}`">
-                  <rr-button variant="accent-filled" size="md">Bewerk</rr-button>
-                </a>
-                <rr-button v-else slot="toolbar" variant="accent-filled" size="md" disabled>Bewerk</rr-button>
-              </rr-top-title-bar>
+          <ndd-split-view-pane slot="main" has-content>
+            <ndd-page sticky-header>
+              <div slot="header">
+                <ndd-top-title-bar
+                  :text="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
+                  :back-text="lawName || 'Terug'"
+                ></ndd-top-title-bar>
+                <ndd-container padding-inline="16">
+                  <ndd-toolbar>
+                    <ndd-toolbar-item slot="start">
+                      <ndd-tab-bar>
+                        <ndd-tab-bar-item :selected="detailView === 'tekst' || undefined" @click="detailView = 'tekst'" text="Tekst"></ndd-tab-bar-item>
+                        <ndd-tab-bar-item :selected="detailView === 'machine' || undefined" @click="detailView = 'machine'" text="Machine"></ndd-tab-bar-item>
+                        <ndd-tab-bar-item :selected="detailView === 'yaml' || undefined" @click="detailView = 'yaml'" text="YAML"></ndd-tab-bar-item>
+                      </ndd-tab-bar>
+                    </ndd-toolbar-item>
+                    <ndd-toolbar-item slot="end">
+                      <a v-if="selectedLawId" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}&article=${encodeURIComponent(selectedArticleNumber)}`">
+                        <ndd-button variant="primary" text="Bewerk"></ndd-button>
+                      </a>
+                      <ndd-button v-else variant="primary" disabled text="Bewerk"></ndd-button>
+                    </ndd-toolbar-item>
+                  </ndd-toolbar>
+                </ndd-container>
+              </div>
 
-              <rr-simple-section container="sm">
-                <div v-if="!selectedArticle" style="padding: 32px; text-align: center;">
-                  Selecteer een artikel
-                </div>
-                <template v-else>
-                  <div v-show="detailView === 'tekst'">
-                    <ArticleText :article="selectedArticle" />
-                  </div>
-                  <div v-show="detailView === 'machine'">
-                    <MachineReadable :article="selectedArticle" @open-action="activeAction = $event" />
-                  </div>
-                  <div v-show="detailView === 'yaml'">
-                    <YamlView :article="selectedArticle" />
-                  </div>
-                </template>
-              </rr-simple-section>
-            </rr-page>
-          </rr-split-view-pane>
+              <ndd-simple-section v-if="!selectedArticle" align="center">
+                <ndd-inline-dialog text="Selecteer een artikel"></ndd-inline-dialog>
+              </ndd-simple-section>
+              <template v-else>
+                <KeepAlive>
+                  <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" />
+                  <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
+                  <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
+                </KeepAlive>
+              </template>
+            </ndd-page>
+          </ndd-split-view-pane>
 
-        </rr-navigation-split-view>
-      </rr-split-view-pane>
-    </rr-bar-split-view>
-  </rr-app-view>
+        </ndd-navigation-split-view>
+      </ndd-split-view-pane>
+    </ndd-bar-split-view>
+  </ndd-app-view>
 
   <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
 </template>

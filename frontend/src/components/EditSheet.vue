@@ -142,176 +142,143 @@ const sectionLabels = {
 </script>
 
 <template>
-  <rr-sheet ref="sheetEl" placement="right" @close="emit('close')">
-    <div class="edit-sheet-content">
-      <!-- Header -->
-      <rr-toolbar size="md">
-        <rr-toolbar-start-area>
-          <rr-toolbar-item>
-            <rr-title-bar v-if="item" size="4">{{ sectionLabels[item.section] || 'Bewerk' }}</rr-title-bar>
-          </rr-toolbar-item>
-        </rr-toolbar-start-area>
-        <rr-toolbar-end-area>
-          <rr-toolbar-item>
-            <rr-button variant="accent-transparent" size="md" @click="emit('close')">Annuleer</rr-button>
-          </rr-toolbar-item>
-        </rr-toolbar-end-area>
-      </rr-toolbar>
+  <ndd-sheet ref="sheetEl" placement="right" @close="emit('close')">
+    <ndd-page sticky-header>
+      <ndd-top-title-bar slot="header" :text="item ? (sectionLabels[item.section] || 'Bewerk') : ''" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
-      <!-- Body -->
-      <div class="edit-sheet-body" v-if="item">
-        <rr-simple-section>
+      <ndd-simple-section v-if="item">
           <!-- Definition -->
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
-            <rr-list variant="box" class="settings-list">
-              <rr-list-item size="md">
-                <rr-text-cell>Naam</rr-text-cell>
-                <rr-cell>
-                  <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-cell>
-              </rr-list-item>
-              <rr-list-item size="md">
-                <rr-text-cell>Waarde</rr-text-cell>
-                <rr-cell>
+            <ndd-list variant="box" class="edit-settings-list">
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Waarde"></ndd-text-cell>
+                <ndd-cell>
                   <div v-if="values.controlType === 'currency'" class="edit-sheet-value-group">
                     <span class="edit-sheet-unit">&euro;</span>
-                    <rr-number-field :value="values.displayValue" step="0.01" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></rr-number-field>
+                    <ndd-number-field :value="values.displayValue" step="0.01" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></ndd-number-field>
                   </div>
                   <div v-else-if="values.controlType === 'percentage'" class="edit-sheet-value-group">
-                    <rr-number-field :value="values.displayValue" step="0.001" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></rr-number-field>
+                    <ndd-number-field :value="values.displayValue" step="0.001" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></ndd-number-field>
                     <span class="edit-sheet-unit">%</span>
                   </div>
-                  <rr-switch-field v-else-if="values.controlType === 'boolean'" :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</rr-switch-field>
-                  <rr-number-field v-else-if="values.controlType === 'number'" :value="values.displayValue" full-width hide-spin-buttons @change="values.displayValue = $event.detail?.value ?? values.displayValue"></rr-number-field>
-                  <rr-text-field v-else size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></rr-text-field>
-                </rr-cell>
-              </rr-list-item>
-            </rr-list>
+                  <ndd-switch-field v-else-if="values.controlType === 'boolean'" :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</ndd-switch-field>
+                  <ndd-number-field v-else-if="values.controlType === 'number'" :value="values.displayValue" full-width hide-spin-buttons @change="values.displayValue = $event.detail?.value ?? values.displayValue"></ndd-number-field>
+                  <ndd-text-field v-else size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></ndd-text-field>
+                </ndd-cell>
+              </ndd-list-item>
+            </ndd-list>
           </template>
 
           <!-- Parameter -->
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
-            <rr-list variant="box" class="settings-list">
-              <rr-list-item size="md">
-                <rr-text-cell>Naam</rr-text-cell>
-                <rr-cell>
-                  <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-cell>
-              </rr-list-item>
-              <rr-list-item size="md">
-                <rr-text-cell>Type</rr-text-cell>
-                <rr-cell>
-                  <rr-dropdown size="md">
+            <ndd-list variant="box" class="edit-settings-list">
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Type"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
-                  </rr-dropdown>
-                </rr-cell>
-              </rr-list-item>
-              <rr-list-item size="md">
-                <rr-text-cell>Verplicht</rr-text-cell>
-                <rr-cell>
-                  <rr-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></rr-switch>
-                </rr-cell>
-              </rr-list-item>
-            </rr-list>
+                  </ndd-dropdown>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Verplicht"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></ndd-switch>
+                </ndd-cell>
+              </ndd-list-item>
+            </ndd-list>
           </template>
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
-            <rr-list variant="box" class="settings-list">
-              <rr-list-item size="md">
-                <rr-text-cell>Naam</rr-text-cell>
-                <rr-cell>
-                  <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-cell>
-              </rr-list-item>
-              <rr-list-item size="md">
-                <rr-text-cell>Type</rr-text-cell>
-                <rr-cell>
-                  <rr-dropdown size="md">
+            <ndd-list variant="box" class="edit-settings-list">
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Type"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
-                  </rr-dropdown>
-                </rr-cell>
-              </rr-list-item>
-              <rr-list-item size="md">
-                <rr-text-cell>Bron regelgeving</rr-text-cell>
-                <rr-cell>
-                  <rr-text-field size="md" :value="values.sourceRegulation" @input="values.sourceRegulation = $event.target?.value ?? $event.detail?.value ?? values.sourceRegulation"></rr-text-field>
-                </rr-cell>
-              </rr-list-item>
-              <rr-list-item size="md">
-                <rr-text-cell>Bron output</rr-text-cell>
-                <rr-cell>
-                  <rr-text-field size="md" :value="values.sourceOutput" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></rr-text-field>
-                </rr-cell>
-              </rr-list-item>
-            </rr-list>
+                  </ndd-dropdown>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Bron regelgeving"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-text-field size="md" :value="values.sourceRegulation" @input="values.sourceRegulation = $event.target?.value ?? $event.detail?.value ?? values.sourceRegulation"></ndd-text-field>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Bron output"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-text-field size="md" :value="values.sourceOutput" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></ndd-text-field>
+                </ndd-cell>
+              </ndd-list-item>
+            </ndd-list>
           </template>
 
           <!-- Output -->
           <template v-if="item.section === 'output' || item.section === 'add-output'">
-            <rr-list variant="box" class="settings-list">
-              <rr-list-item size="md">
-                <rr-text-cell>Naam</rr-text-cell>
-                <rr-cell>
-                  <rr-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></rr-text-field>
-                </rr-cell>
-              </rr-list-item>
-              <rr-list-item size="md">
-                <rr-text-cell>Type</rr-text-cell>
-                <rr-cell>
-                  <rr-dropdown size="md">
+            <ndd-list variant="box" class="edit-settings-list">
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-text-cell text="Type"></ndd-text-cell>
+                <ndd-cell>
+                  <ndd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
-                  </rr-dropdown>
-                </rr-cell>
-              </rr-list-item>
-            </rr-list>
+                  </ndd-dropdown>
+                </ndd-cell>
+              </ndd-list-item>
+            </ndd-list>
           </template>
-        </rr-simple-section>
-      </div>
+      </ndd-simple-section>
 
-      <!-- Footer -->
-      <div class="edit-sheet-footer">
-        <rr-button variant="accent-filled" size="md" full-width @click="save">
-          Opslaan
-        </rr-button>
-      </div>
-    </div>
-  </rr-sheet>
+      <ndd-container slot="footer" padding="16">
+        <ndd-button variant="primary" size="md" full-width @click="save" text="Opslaan"></ndd-button>
+      </ndd-container>
+    </ndd-page>
+  </ndd-sheet>
 </template>
 
 <style>
-.edit-sheet-content {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 480px;
-  max-width: 100vw;
-}
-.edit-sheet-body {
-  flex: 1;
-  overflow-y: auto;
-}
-.edit-sheet-footer {
-  padding: 0 16px 16px;
-}
-
 /* Form field layout in settings list */
-.edit-sheet-content .settings-list rr-list-item {
+.edit-settings-list ndd-list-item {
   display: grid;
   grid-template-columns: 120px 1fr;
   gap: 0 12px;
   align-items: center;
 }
-.edit-sheet-content .settings-list rr-cell {
+.edit-settings-list ndd-cell {
   width: 100%;
 }
-.edit-sheet-content .settings-list rr-text-field {
+.edit-settings-list ndd-text-field {
   width: 100%;
 }
 .edit-sheet-value-group {
@@ -320,7 +287,7 @@ const sectionLabels = {
   gap: 6px;
   width: 100%;
 }
-.edit-sheet-value-group rr-number-field {
+.edit-sheet-value-group ndd-number-field {
   flex: 1;
   min-width: 0;
 }

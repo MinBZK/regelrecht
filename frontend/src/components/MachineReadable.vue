@@ -101,130 +101,114 @@ function addOutput() {
 </script>
 
 <template>
-  <div v-if="!mr" style="padding: 32px; color: var(--semantics-text-secondary-color, #999); text-align: center;">
-    Geen machine-leesbare gegevens voor dit artikel
-  </div>
+  <ndd-simple-section v-if="!mr" align="center">
+    <ndd-inline-dialog text="Geen machine-leesbare gegevens voor dit artikel"></ndd-inline-dialog>
+  </ndd-simple-section>
 
-  <div v-else>
+  <ndd-simple-section v-else>
     <!-- Metadata: produces -->
-    <rr-list v-if="produces" variant="box">
-      <rr-list-item v-if="produces.legal_character" size="md">
-        <rr-text-cell>Juridische basis</rr-text-cell>
-        <rr-cell>
-          <rr-button variant="neutral-tinted" size="md" expandable>
-            {{ produces.legal_character }}
-          </rr-button>
-        </rr-cell>
-      </rr-list-item>
-      <rr-list-item v-if="produces.decision_type" size="md">
-        <rr-text-cell>Besluit-type</rr-text-cell>
-        <rr-cell>
-          <rr-button variant="neutral-tinted" size="md" expandable>
-            {{ produces.decision_type }}
-          </rr-button>
-        </rr-cell>
-      </rr-list-item>
-    </rr-list>
+    <ndd-list v-if="produces" variant="box">
+      <ndd-list-item v-if="produces.legal_character" size="md">
+        <ndd-text-cell text="Juridische basis"></ndd-text-cell>
+        <ndd-cell>
+          <ndd-button size="md" expandable :text="produces.legal_character"></ndd-button>
+        </ndd-cell>
+      </ndd-list-item>
+      <ndd-list-item v-if="produces.decision_type" size="md">
+        <ndd-text-cell text="Besluit-type"></ndd-text-cell>
+        <ndd-cell>
+          <ndd-button size="md" expandable :text="produces.decision_type"></ndd-button>
+        </ndd-cell>
+      </ndd-list-item>
+    </ndd-list>
 
-    <rr-spacer v-if="produces" size="12"></rr-spacer>
+    <ndd-spacer v-if="produces" size="12"></ndd-spacer>
 
     <!-- Definities -->
     <template v-if="definitions.length || editable">
-      <rr-title-bar size="5">Definities</rr-title-bar>
-      <rr-spacer size="4"></rr-spacer>
-      <rr-list variant="box">
-        <rr-list-item v-for="def in definitions" :key="def.name" size="md">
-          <rr-text-cell>{{ def.name }} = {{ formatValue(def.value, def.unit) }}</rr-text-cell>
-          <rr-cell v-if="editable">
-            <rr-button variant="neutral-tinted" size="sm" @click="editDef(def.name)">Bewerk</rr-button>
-          </rr-cell>
-        </rr-list-item>
-        <rr-list-item v-if="editable" size="md">
-          <rr-button variant="neutral-tinted" size="sm" @click="addDef">
-            <rr-icon slot="start" name="plus-small"></rr-icon>
-            Nieuwe definitie
-          </rr-button>
-        </rr-list-item>
-      </rr-list>
-      <rr-spacer size="12"></rr-spacer>
+      <ndd-title size="5"><h5>Definities</h5></ndd-title>
+      <ndd-spacer size="8"></ndd-spacer>
+      <ndd-list variant="box">
+        <ndd-list-item v-for="def in definitions" :key="def.name" size="md">
+          <ndd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></ndd-text-cell>
+          <ndd-cell v-if="editable">
+            <ndd-button @click="editDef(def.name)" text="Bewerk"></ndd-button>
+          </ndd-cell>
+        </ndd-list-item>
+        <ndd-list-item v-if="editable" size="md">
+          <ndd-button start-icon="plus-small" @click="addDef" text="Nieuwe definitie"></ndd-button>
+        </ndd-list-item>
+      </ndd-list>
+      <ndd-spacer size="16"></ndd-spacer>
     </template>
 
     <!-- Parameters -->
     <template v-if="parameters.length || editable">
-      <rr-title-bar size="5">Parameters</rr-title-bar>
-      <rr-spacer size="4"></rr-spacer>
-      <rr-list variant="box">
-        <rr-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
-          <rr-text-cell>{{ param.name }} ({{ param.type }})</rr-text-cell>
-          <rr-cell v-if="editable">
-            <rr-button variant="neutral-tinted" size="sm" @click="editParam(index)">Bewerk</rr-button>
-          </rr-cell>
-        </rr-list-item>
-        <rr-list-item v-if="editable" size="md">
-          <rr-button variant="neutral-tinted" size="sm" @click="addParam">
-            <rr-icon slot="start" name="plus-small"></rr-icon>
-            Nieuwe parameter
-          </rr-button>
-        </rr-list-item>
-      </rr-list>
-      <rr-spacer size="12"></rr-spacer>
+      <ndd-title size="5"><h5>Parameters</h5></ndd-title>
+      <ndd-spacer size="8"></ndd-spacer>
+      <ndd-list variant="box">
+        <ndd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
+          <ndd-text-cell :text="`${param.name} (${param.type})`"></ndd-text-cell>
+          <ndd-cell v-if="editable">
+            <ndd-button @click="editParam(index)" text="Bewerk"></ndd-button>
+          </ndd-cell>
+        </ndd-list-item>
+        <ndd-list-item v-if="editable" size="md">
+          <ndd-button start-icon="plus-small" @click="addParam" text="Nieuwe parameter"></ndd-button>
+        </ndd-list-item>
+      </ndd-list>
+      <ndd-spacer size="16"></ndd-spacer>
     </template>
 
     <!-- Inputs -->
     <template v-if="inputs.length || editable">
-      <rr-title-bar size="5">Inputs</rr-title-bar>
-      <rr-spacer size="4"></rr-spacer>
-      <rr-list variant="box">
-        <rr-list-item v-for="(input, index) in inputs" :key="input.name" size="md">
-          <rr-text-cell>{{ input.name }} ({{ input.type }})<template v-if="input.source"> — {{ input.source }}</template></rr-text-cell>
-          <rr-cell v-if="editable">
-            <rr-button variant="neutral-tinted" size="sm" @click="editInput(index)">Bewerk</rr-button>
-          </rr-cell>
-        </rr-list-item>
-        <rr-list-item v-if="editable" size="md">
-          <rr-button variant="neutral-tinted" size="sm" @click="addInput">
-            <rr-icon slot="start" name="plus-small"></rr-icon>
-            Nieuwe input
-          </rr-button>
-        </rr-list-item>
-      </rr-list>
-      <rr-spacer size="12"></rr-spacer>
+      <ndd-title size="5"><h5>Inputs</h5></ndd-title>
+      <ndd-spacer size="8"></ndd-spacer>
+      <ndd-list variant="box">
+        <ndd-list-item v-for="(input, index) in inputs" :key="input.name" size="md">
+          <ndd-text-cell :text="`${input.name} (${input.type})${input.source ? ` — ${input.source}` : ''}`"></ndd-text-cell>
+          <ndd-cell v-if="editable">
+            <ndd-button @click="editInput(index)" text="Bewerk"></ndd-button>
+          </ndd-cell>
+        </ndd-list-item>
+        <ndd-list-item v-if="editable" size="md">
+          <ndd-button start-icon="plus-small" @click="addInput" text="Nieuwe input"></ndd-button>
+        </ndd-list-item>
+      </ndd-list>
+      <ndd-spacer size="16"></ndd-spacer>
     </template>
 
     <!-- Outputs -->
     <template v-if="outputs.length || editable">
-      <rr-title-bar size="5">Outputs</rr-title-bar>
-      <rr-spacer size="4"></rr-spacer>
-      <rr-list variant="box">
-        <rr-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
-          <rr-text-cell>{{ output.name }} ({{ output.type }})</rr-text-cell>
-          <rr-cell v-if="editable">
-            <rr-button variant="neutral-tinted" size="sm" @click="editOutput(index)">Bewerk</rr-button>
-          </rr-cell>
-        </rr-list-item>
-        <rr-list-item v-if="editable" size="md">
-          <rr-button variant="neutral-tinted" size="sm" @click="addOutput">
-            <rr-icon slot="start" name="plus-small"></rr-icon>
-            Nieuwe output
-          </rr-button>
-        </rr-list-item>
-      </rr-list>
-      <rr-spacer size="12"></rr-spacer>
+      <ndd-title size="5"><h5>Outputs</h5></ndd-title>
+      <ndd-spacer size="8"></ndd-spacer>
+      <ndd-list variant="box">
+        <ndd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
+          <ndd-text-cell :text="`${output.name} (${output.type})`"></ndd-text-cell>
+          <ndd-cell v-if="editable">
+            <ndd-button @click="editOutput(index)" text="Bewerk"></ndd-button>
+          </ndd-cell>
+        </ndd-list-item>
+        <ndd-list-item v-if="editable" size="md">
+          <ndd-button start-icon="plus-small" @click="addOutput" text="Nieuwe output"></ndd-button>
+        </ndd-list-item>
+      </ndd-list>
+      <ndd-spacer size="16"></ndd-spacer>
     </template>
 
     <!-- Acties -->
     <template v-if="actions.length">
-      <rr-title-bar size="5">Acties</rr-title-bar>
-      <rr-spacer size="4"></rr-spacer>
-      <rr-list variant="box">
-        <rr-list-item v-for="(action, index) in actions" :key="index" size="md">
-          <rr-text-cell>{{ action.output }}</rr-text-cell>
-          <rr-cell>
-            <rr-button variant="neutral-tinted" size="sm" @click="emit('open-action', action)">{{ editable ? 'Bewerk' : 'Bekijk' }}</rr-button>
-          </rr-cell>
-        </rr-list-item>
-      </rr-list>
-      <rr-spacer size="12"></rr-spacer>
+      <ndd-title size="5"><h5>Acties</h5></ndd-title>
+      <ndd-spacer size="8"></ndd-spacer>
+      <ndd-list variant="box">
+        <ndd-list-item v-for="(action, index) in actions" :key="index" size="md">
+          <ndd-text-cell :text="action.output"></ndd-text-cell>
+          <ndd-cell>
+            <ndd-button @click="emit('open-action', action)" :text="editable ? 'Bewerk' : 'Bekijk'"></ndd-button>
+          </ndd-cell>
+        </ndd-list-item>
+      </ndd-list>
+      <ndd-spacer size="16"></ndd-spacer>
     </template>
-  </div>
+  </ndd-simple-section>
 </template>

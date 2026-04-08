@@ -235,7 +235,7 @@ function dataSourceToTableProps(ds) {
 
 <style scoped>
 .sv-container {
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   font-size: 12px;
 }
 
@@ -288,7 +288,7 @@ function dataSourceToTableProps(ds) {
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   text-align: left;
   color: var(--semantics-text-color-primary, #1C2029);
 }
@@ -442,7 +442,7 @@ function dataSourceToTableProps(ds) {
   padding: 4px 10px;
   font-size: 10px;
   font-weight: 600;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   color: #888;
   background: var(--semantics-surfaces-color-secondary, #F8F9FA);
   border: none;

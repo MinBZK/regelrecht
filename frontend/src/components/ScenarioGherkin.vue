@@ -201,7 +201,7 @@ function stepIcon(status) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
 .scenario-controls {
@@ -250,7 +250,7 @@ function stepIcon(status) {
   padding: 5px 14px;
   font-size: 12px;
   font-weight: 600;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   background: white;
   color: var(--semantics-text-color-secondary, #666);

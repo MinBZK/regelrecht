@@ -8,7 +8,7 @@ export default defineConfig({
     vue({
       template: {
         compilerOptions: {
-          isCustomElement: (tag) => tag.startsWith('rr-'),
+          isCustomElement: (tag) => tag.startsWith('ndd-'),
         },
       },
     }),

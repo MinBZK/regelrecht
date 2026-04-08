@@ -42,20 +42,17 @@ function onModeChange(event) {
 <template>
   <div class="scenario-panel">
     <!-- Init error -->
-    <div v-if="initError" class="scenario-error">
-      WASM engine failed to load: {{ initError.message }}
-      <div class="scenario-error-hint">
-        Run <code>just wasm-build</code> to build the WASM module.
-      </div>
-    </div>
+    <ndd-simple-section v-if="initError" align="center">
+      <ndd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${initError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></ndd-inline-dialog>
+    </ndd-simple-section>
 
     <template v-else>
       <!-- Mode toggle -->
       <div class="scenario-mode-bar">
-        <rr-segmented-control size="md" :value="mode" @change="onModeChange">
-          <rr-segmented-control-item value="form">Formulier</rr-segmented-control-item>
-          <rr-segmented-control-item value="gherkin">Gherkin</rr-segmented-control-item>
-        </rr-segmented-control>
+        <ndd-segmented-control size="md" :value="mode" @change="onModeChange">
+          <ndd-segmented-control-item value="form" text="Formulier"></ndd-segmented-control-item>
+          <ndd-segmented-control-item value="gherkin" text="Gherkin"></ndd-segmented-control-item>
+        </ndd-segmented-control>
       </div>
 
       <!-- Form mode -->
@@ -88,7 +85,7 @@ function onModeChange(event) {
   display: flex;
   flex-direction: column;
   height: 100%;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
 .scenario-mode-bar {

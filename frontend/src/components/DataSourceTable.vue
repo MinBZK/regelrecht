@@ -184,7 +184,7 @@ const rowCount = computed(() => rows.value.length);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   text-align: left;
   color: var(--semantics-text-color-primary, #1C2029);
 }
@@ -315,7 +315,7 @@ const rowCount = computed(() => rows.value.length);
   font-size: 12px;
   color: #154273;
   cursor: pointer;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
 .ds-add-btn:hover {

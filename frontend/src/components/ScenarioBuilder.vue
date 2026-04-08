@@ -235,7 +235,7 @@ function onScenarioFileSelect(event) {
 
       <!-- Scenario accordion -->
       <template v-if="formState">
-        <rr-spacer size="8"></rr-spacer>
+        <ndd-spacer size="8"></ndd-spacer>
         <details
           v-for="(scenario, i) in formState.scenarios"
           :key="i"
@@ -279,7 +279,7 @@ function onScenarioFileSelect(event) {
 <style scoped>
 .sb-container {
   height: 100%;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
 .sb-scroll {
@@ -305,7 +305,7 @@ function onScenarioFileSelect(event) {
   border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   border-radius: 6px;
   font-size: 13px;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   background: white;
 }
 

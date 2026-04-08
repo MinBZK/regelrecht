@@ -23,13 +23,15 @@ const paragraphs = computed(() => {
 </script>
 
 <template>
-  <rr-box v-if="article" on-tinted style="border-radius: 16px; padding: 16px;">
-    <p v-for="(para, i) in paragraphs" :key="i">
-      <strong v-if="para.prefix">{{ para.prefix }}</strong>
-      {{ para.prefix ? ' ' : '' }}{{ para.body }}
-    </p>
-  </rr-box>
-  <div v-else style="padding: 32px; color: #666; text-align: center;">
-    Geen artikel geselecteerd
-  </div>
+  <ndd-simple-section v-if="article">
+    <ndd-rich-text>
+      <p v-for="(para, i) in paragraphs" :key="i">
+        <strong v-if="para.prefix">{{ para.prefix }}</strong>
+        {{ para.prefix ? ' ' : '' }}{{ para.body }}
+      </p>
+    </ndd-rich-text>
+  </ndd-simple-section>
+  <ndd-simple-section v-else align="center">
+    <ndd-inline-dialog text="Geen artikel geselecteerd"></ndd-inline-dialog>
+  </ndd-simple-section>
 </template>
