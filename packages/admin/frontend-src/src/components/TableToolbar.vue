@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onUnmounted } from 'vue';
+import { computed, onUnmounted, useId } from 'vue';
 
 const props = defineProps({
   columns: { type: Array, required: true },
@@ -11,8 +11,7 @@ const props = defineProps({
 const emit = defineEmits(['sort', 'filter-change']);
 
 // Unique prefix for menu anchor IDs (avoid collisions when multiple toolbars exist)
-let _counter = 0;
-const uid = `tb${_counter++}`;
+const uid = useId();
 
 const sortableColumns = computed(() => props.columns.filter((c) => c.sortable));
 const filterColumns = computed(() => props.columns.filter((c) => c.filter));
