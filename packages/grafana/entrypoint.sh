@@ -24,9 +24,16 @@ else
   export GF_AUTH_GENERIC_OAUTH_AUTH_URL="${OIDC_URL}/realms/${OIDC_REALM}/protocol/openid-connect/auth"
   export GF_AUTH_GENERIC_OAUTH_TOKEN_URL="${OIDC_URL}/realms/${OIDC_REALM}/protocol/openid-connect/token"
   export GF_AUTH_GENERIC_OAUTH_API_URL="${OIDC_URL}/realms/${OIDC_REALM}/protocol/openid-connect/userinfo"
-  # Disable local login form and admin when OIDC is the auth path
+  # Disable local login form when OIDC is the auth path
   export GF_AUTH_DISABLE_LOGIN_FORM=true
-  export GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true
+fi
+
+# Always set a strong random admin password to avoid the insecure admin/admin
+# default. The login form is disabled when OIDC is active, so the admin account
+# can only be used internally (e.g. grafanactl for Git Sync).
+if [ -z "${GF_SECURITY_ADMIN_PASSWORD:-}" ]; then
+  export GF_SECURITY_ADMIN_PASSWORD
+  GF_SECURITY_ADMIN_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '\n')
 fi
 
 # Mattermost webhook URL for alert notifications.
@@ -82,10 +89,6 @@ secure:
   token:
     create: "${GITHUB_PAT}"
 GITEOF
-
-  if [ -z "${GF_SECURITY_ADMIN_PASSWORD:-}" ]; then
-    echo "WARNING: GF_SECURITY_ADMIN_PASSWORD is not set — Git Sync may fail with default admin password."
-  fi
 
   export GRAFANA_SERVER="http://localhost:${GF_SERVER_HTTP_PORT:-8000}"
   export GRAFANA_USER=admin
