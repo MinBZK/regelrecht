@@ -76,57 +76,6 @@ const hasContent = computed(() =>
 </template>
 
 <style scoped>
-.etv-container {
-  height: 100%;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.etv-scroll {
-  height: 100%;
-  overflow-y: auto;
-}
-
-.etv-empty {
-  padding: 32px 16px;
-  text-align: center;
-}
-
-.etv-empty-text {
-  font-size: 13px;
-  color: var(--semantics-text-color-secondary, #666);
-}
-
-.etv-running {
-  padding: 12px 16px;
-  font-size: 13px;
-  color: var(--semantics-text-color-secondary, #666);
-  font-style: italic;
-}
-
-.etv-error {
-  padding: 12px 16px;
-}
-
-.etv-error-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: #c00;
-  margin-bottom: 4px;
-}
-
-.etv-error-message {
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  color: #c00;
-  word-break: break-word;
-  white-space: pre-wrap;
-}
-
-.etv-section {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
-}
-
 .etv-section-title {
   font-weight: 600;
   font-size: 13px;

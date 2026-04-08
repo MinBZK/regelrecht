@@ -342,7 +342,7 @@ loadIndex();
                   :text="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
                   :back-text="lawName || 'Terug'"
                 ></ndd-top-title-bar>
-                <ndd-container  padding-inline="16">
+                <ndd-container padding-inline="16">
                   <ndd-toolbar>
                     <ndd-toolbar-item slot="start">
                       <ndd-tab-bar>

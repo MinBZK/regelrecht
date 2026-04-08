@@ -267,16 +267,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   color: var(--semantics-text-color-primary, #1C2029);
 }
 
-/* Article tag */
-.sf-article-tag {
-  font-size: 10px;
-  font-weight: 600;
-  color: #666;
-  background: #eee;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
 /* Input list */
 .sf-input-list ndd-text-cell {
   width: 80px;
