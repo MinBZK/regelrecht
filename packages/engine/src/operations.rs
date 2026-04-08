@@ -510,6 +510,7 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
             for val in evaluated {
                 match val {
                     Value::Array(arr) => result.extend(arr.iter().cloned()),
+                    Value::Null => return Ok(Value::Null),
                     _ => {
                         return Err(EngineError::TypeMismatch {
                             expected: "array".to_string(),
@@ -525,6 +526,7 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
             for val in evaluated {
                 match val {
                     Value::String(s) => result.push_str(s),
+                    Value::Null => return Ok(Value::Null),
                     _ => {
                         return Err(EngineError::TypeMismatch {
                             expected: "string".to_string(),
@@ -1076,8 +1078,14 @@ fn execute_age<R: ValueResolver>(
         return Ok(Value::Null);
     }
 
-    let dob_date = parse_date(&dob_val)?;
-    let ref_date_parsed = parse_date(&ref_val)?;
+    let dob_date = match parse_date(&dob_val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
+    let ref_date_parsed = match parse_date(&ref_val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
 
     let age = calculate_years_difference(ref_date_parsed, dob_date);
     Ok(Value::Int(age))
@@ -1111,7 +1119,10 @@ fn execute_date_add<R: ValueResolver>(
     if date_val.is_null() {
         return Ok(Value::Null);
     }
-    let mut result_date = parse_date(&date_val)?;
+    let mut result_date = match parse_date(&date_val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
 
     // Years: add to year component, clamp day to last day of target month
     if let Some(years) = years {
@@ -1287,30 +1298,39 @@ fn execute_day_of_week<R: ValueResolver>(
     if val.is_null() {
         return Ok(Value::Null);
     }
-    let parsed = parse_date(&val)?;
+    let parsed = match parse_date(&val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
     Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
 }
 
 /// Parse a date from a Value.
 ///
 /// Expects the value to be a string in ISO 8601 format (YYYY-MM-DD).
-fn parse_date(value: &Value) -> Result<NaiveDate> {
+fn parse_date(value: &Value) -> Result<Option<NaiveDate>> {
     match value {
-        Value::String(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|e| {
-            EngineError::InvalidOperation(format!(
-                "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
-                s, e
-            ))
-        }),
+        // Null propagation: Null date input returns None (caller produces Value::Null)
+        Value::Null => Ok(None),
+        Value::String(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .map(Some)
+            .map_err(|e| {
+                EngineError::InvalidOperation(format!(
+                    "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
+                    s, e
+                ))
+            }),
         // Handle referencedate objects with {iso, year, month, day}
         Value::Object(obj) => {
             if let Some(Value::String(iso)) = obj.get("iso") {
-                NaiveDate::parse_from_str(iso, "%Y-%m-%d").map_err(|e| {
-                    EngineError::InvalidOperation(format!(
-                        "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
-                        iso, e
-                    ))
-                })
+                NaiveDate::parse_from_str(iso, "%Y-%m-%d")
+                    .map(Some)
+                    .map_err(|e| {
+                        EngineError::InvalidOperation(format!(
+                            "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
+                            iso, e
+                        ))
+                    })
             } else {
                 Err(EngineError::TypeMismatch {
                     expected: "date string (YYYY-MM-DD) or object with 'iso' field".to_string(),
@@ -2998,7 +3018,7 @@ mod tests {
         date_obj.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
         date_obj.insert("year".to_string(), Value::Int(2025));
 
-        let result = parse_date(&Value::Object(date_obj)).unwrap();
+        let result = parse_date(&Value::Object(date_obj)).unwrap().unwrap();
         assert_eq!(result.to_string(), "2025-01-01");
     }
 

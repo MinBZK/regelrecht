@@ -478,6 +478,8 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
     }
 
     match value {
+        // Null propagation: accessing a property on Null returns Null
+        Value::Null => Ok(Value::Null),
         Value::Object(obj) => Ok(obj
             .get(property_path)
             .cloned()
@@ -730,6 +732,29 @@ mod tests {
         // Can't access property on integer
         let result = ctx.resolve("value.something");
         assert!(matches!(result, Err(EngineError::TypeMismatch { .. })));
+    }
+
+    #[test]
+    fn test_dot_notation_null_propagation() {
+        let mut ctx = make_context();
+        ctx.set_output("nullable", Value::Null);
+
+        // Accessing a property on Null should return Null, not error
+        let result = ctx.resolve("nullable.something");
+        assert!(matches!(result, Ok(Value::Null)));
+
+        // Nested dot-notation on Null should also propagate
+        let result = ctx.resolve("nullable.deeply.nested.path");
+        assert!(matches!(result, Ok(Value::Null)));
+    }
+
+    #[test]
+    fn test_dot_notation_null_missing_base() {
+        let ctx = make_context();
+
+        // Accessing a property on a variable that doesn't exist (resolves to Null)
+        let result = ctx.resolve("nonexistent.property");
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     // -------------------------------------------------------------------------
