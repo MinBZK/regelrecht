@@ -37,12 +37,17 @@ function addRow() {
     }
   }
   rows.value = [...rows.value, newRow];
+  // Navigate to the last page so the new row is visible
+  currentPage.value = Math.max(1, Math.ceil((rowCount.value + 1) / PAGE_SIZE));
 }
 
 function removeRow(index) {
   const updated = [...rows.value];
   updated.splice(index, 1);
   rows.value = updated;
+  // Clamp page if the current page is now beyond the last page
+  const maxPage = Math.max(1, Math.ceil(updated.length / PAGE_SIZE));
+  if (currentPage.value > maxPage) currentPage.value = maxPage;
 }
 
 function updateCell(rowIndex, fieldName, value) {
