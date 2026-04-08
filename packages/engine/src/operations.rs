@@ -1492,10 +1492,11 @@ fn to_number(val: &Value) -> Result<f64> {
             Ok(*i as f64)
         }
         Value::Float(f) => Ok(*f),
-        // Untranslatable should be caught by the caller before reaching to_number,
-        // but handle it gracefully.
-        Value::Untranslatable { .. } => Err(type_error("number", val)),
-        _ => Err(type_error("number", val)),
+        Value::String(s) => Ok(s.parse::<f64>().unwrap_or(0.0)),
+        Value::Bool(b) => Ok(if *b { 1.0 } else { 0.0 }),
+        Value::Null => Ok(0.0),
+        Value::Untranslatable { .. } => Ok(0.0),
+        _ => Ok(0.0), // Lenient: non-numeric types → 0
     }
 }
 
