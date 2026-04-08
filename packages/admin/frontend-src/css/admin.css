@@ -35,20 +35,6 @@
 
 
 /* ============================================================
-   NDD List — column sizing for table-like layouts
-   ============================================================ */
-
-ndd-list-item ndd-cell {
-  flex: 1;
-  min-width: 0;
-}
-
-ndd-list-item ndd-cell[width="fit-content"] {
-  flex: 0 0 auto;
-}
-
-
-/* ============================================================
    Table Toolbar (filter & sort controls above table)
    ============================================================ */
 

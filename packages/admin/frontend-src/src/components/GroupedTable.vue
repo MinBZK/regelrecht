@@ -72,7 +72,7 @@ function formatChildCell(value, key) {
           @click="emit('toggle-expand', group.law_id)"
         >
           <template v-for="col in columns" :key="col.key">
-            <ndd-cell>
+            <ndd-cell width="stretch">
               <span v-if="col.key === 'law_id'" class="cell-mono">{{ group.law_id }}</span>
               <template v-else-if="statusCountKeys.includes(col.key)">
                 <span v-if="group[col.key] === 0" class="cell-null">0</span>
@@ -119,7 +119,7 @@ function formatChildCell(value, key) {
               @click.stop="emit('row-click', job)"
             >
               <template v-for="col in childColumns" :key="col.key">
-                <ndd-cell>
+                <ndd-cell width="stretch">
                   <template v-if="col.key === '_error'">
                     <span
                       v-if="job.result && job.result.error"

@@ -67,7 +67,7 @@ function formatCellValue(value, key) {
           @click="clickableRows && emit('row-click', row)"
         >
           <template v-for="col in columns" :key="col.key">
-            <ndd-cell>
+            <ndd-cell width="stretch">
               <slot :name="'cell-' + col.key" :row="row" :value="row[col.key]">
                 <StatusBadge v-if="col.key === 'status'" :status="row[col.key] || 'unknown'" />
                 <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(row[col.key])">
