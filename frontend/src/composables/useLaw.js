@@ -49,7 +49,10 @@ export function useLaw(lawParam) {
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
       const text = await res.text();
       law.value = yaml.load(text);
-      if (articles.value.length > 0 && !selectedArticleNumber.value) {
+      const articleParam = new URLSearchParams(window.location.search).get('article');
+      if (articleParam && articles.value.some(a => String(a.number) === articleParam)) {
+        selectedArticleNumber.value = articleParam;
+      } else if (articles.value.length > 0 && !selectedArticleNumber.value) {
         selectedArticleNumber.value = String(articles.value[0].number);
       }
     } catch (e) {

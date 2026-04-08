@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RegelRecht - Graaf</title>
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components/graph.css">
+</head>
+<body>
+  <div class="app">
+    <header style="padding:12px 16px;border-bottom:1px solid #e2e8f0;background:#fff;font-size:18px;font-weight:700;">
+      RegelRecht graaf
+    </header>
+
+    <main class="graph-page">
+      <aside class="graph-sidebar scrollable">
+        <div class="graph-sidebar__header">
+          <h2 class="graph-sidebar__title">Wetten</h2>
+        </div>
+        <div class="graph-sidebar__scenarios" id="scenario-filters">
+          <!-- Dynamically populated -->
+        </div>
+        <div class="graph-sidebar__filters" id="law-filters">
+          <!-- Dynamically populated -->
+        </div>
+        <div class="graph-sidebar__upload">
+          <h3 class="graph-sidebar__subtitle">YAML laden</h3>
+          <label class="graph-upload__label" for="yaml-upload">
+            <span class="graph-upload__button">Bestanden kiezen</span>
+            <span class="graph-upload__hint">of sleep YAML naar de graaf</span>
+          </label>
+          <input type="file" id="yaml-upload" accept=".yaml,.yml" multiple class="graph-upload__input">
+          <label class="graph-upload__label" for="yaml-folder-upload" style="margin-top:8px;">
+            <span class="graph-upload__button graph-upload__button--folder">Map laden</span>
+            <span class="graph-upload__hint">selecteer een map met YAML bestanden</span>
+          </label>
+          <input type="file" id="yaml-folder-upload" webkitdirectory class="graph-upload__input">
+          <div id="upload-status" class="graph-upload__status"></div>
+        </div>
+        <div class="graph-sidebar__legend">
+          <h3 class="graph-sidebar__subtitle">Legenda</h3>
+          <div class="graph-legend">
+            <div class="graph-legend__item">
+              <span class="graph-legend__color graph-legend__color--wet"></span>
+              <span>Wet</span>
+            </div>
+            <div class="graph-legend__item">
+              <span class="graph-legend__color graph-legend__color--amvb"></span>
+              <span>AMvB</span>
+            </div>
+            <div class="graph-legend__item">
+              <span class="graph-legend__color graph-legend__color--mr"></span>
+              <span>Ministeri&euml;le regeling</span>
+            </div>
+            <div class="graph-legend__item">
+              <span class="graph-legend__color graph-legend__color--verordening"></span>
+              <span>Verordening</span>
+            </div>
+            <div class="graph-legend__item">
+              <span class="graph-legend__color graph-legend__color--user-input"></span>
+              <span>Gebruikersinvoer</span>
+            </div>
+            <div class="graph-legend__item graph-legend__item--edge">
+              <span class="graph-legend__line graph-legend__line--data"></span>
+              <span>Datastroom</span>
+            </div>
+            <div class="graph-legend__item graph-legend__item--edge">
+              <span class="graph-legend__line graph-legend__line--grondslag"></span>
+              <span>Grondslag</span>
+            </div>
+            <div class="graph-legend__item graph-legend__item--edge">
+              <span class="graph-legend__line graph-legend__line--user-input"></span>
+              <span>Invoer</span>
+            </div>
+          </div>
+          <h3 class="graph-sidebar__subtitle" style="margin-top:12px;">Validatiestatus</h3>
+          <div class="graph-legend">
+            <div class="graph-legend__item">
+              <span class="graph-legend__color" style="background:#fff7ed;border-color:#ea580c;"></span>
+              <span>Te controleren</span>
+            </div>
+            <div class="graph-legend__item">
+              <span class="graph-legend__color" style="background:#fefce8;border-color:#ca8a04;"></span>
+              <span>Bezig</span>
+            </div>
+            <div class="graph-legend__item">
+              <span class="graph-legend__color" style="background:#f0fdf4;border-color:#16a34a;"></span>
+              <span>Gevalideerd</span>
+            </div>
+          </div>
+          <p style="font-size:11px;color:#94a3b8;margin-top:6px;">Rechtsklik op node om status te wisselen</p>
+        </div>
+      </aside>
+
+      <div class="graph-canvas" id="graph-canvas">
+        <!-- Cytoscape renders here -->
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/cytoscape@3.31.0/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/elkjs@0.9.3/lib/elk.bundled.js"></script>
+  <script src="https://unpkg.com/cytoscape-elk@2.2.0/dist/cytoscape-elk.js"></script>
+  <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script src="/js/graph.js"></script>
+</body>
+</html>
