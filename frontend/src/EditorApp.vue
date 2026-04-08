@@ -20,7 +20,8 @@ const TABS_STORAGE_KEY = 'regelrecht-open-tabs';
 function loadSavedTabs() {
   try {
     const saved = localStorage.getItem(TABS_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch { return []; }
 }
 
@@ -67,6 +68,7 @@ watch(lawName, (name) => {
 
 async function selectTab(tab) {
   activeTab.value = tab;
+  activeAction.value = null;
   if (tab.lawId === lawId.value) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
@@ -92,17 +94,14 @@ function tabDisplayName(tab) {
   return lawNames.value[tab.lawId] || tab.lawId;
 }
 
-// Load lawNames for persisted tabs on startup
-(async () => {
-  for (const tab of openTabs.value) {
-    if (!lawNames.value[tab.lawId]) {
-      try {
-        const entry = await fetchLaw(tab.lawId);
-        lawNames.value = { ...lawNames.value, [tab.lawId]: entry.lawName };
-      } catch { /* ignore */ }
-    }
-  }
-})();
+// Load lawNames for persisted tabs on startup (parallel, deduplicated)
+const uniqueLawIds = [...new Set(openTabs.value.map(t => t.lawId))];
+Promise.all(uniqueLawIds.map(async (id) => {
+  try {
+    const entry = await fetchLaw(id);
+    lawNames.value = { ...lawNames.value, [id]: entry.lawName };
+  } catch { /* ignore */ }
+}));
 
 function onMiddlePaneChange(event) {
   const value = event.target?.value ?? event.detail?.[0];

@@ -93,8 +93,8 @@ describe('MachineReadable', () => {
 
     it('shows produces metadata', () => {
       const wrapper = mountEditable();
-      expect(wrapper.html()).toContain('BESCHIKKING');
-      expect(wrapper.html()).toContain('TOEKENNING');
+      expect(wrapper.find('ndd-button[text="BESCHIKKING"]').exists()).toBe(true);
+      expect(wrapper.find('ndd-button[text="TOEKENNING"]').exists()).toBe(true);
     });
 
     it('shows empty state when no machine_readable', () => {
@@ -106,17 +106,20 @@ describe('MachineReadable', () => {
 
     it('formats percentage values (0 < v < 1)', () => {
       const wrapper = mountEditable();
-      expect(wrapper.html()).toMatch(/1,896\s*%/);
+      const cells = wrapper.findAll('ndd-text-cell').map(c => c.attributes('text') || '');
+      expect(cells.some(t => /1,896\s*%/.test(t))).toBe(true);
     });
 
     it('formats eurocent values as currency', () => {
       const wrapper = mountEditable();
-      expect(wrapper.html()).toMatch(/1\.500,00/);
+      const cells = wrapper.findAll('ndd-text-cell').map(c => c.attributes('text') || '');
+      expect(cells.some(t => /1\.500,00/.test(t))).toBe(true);
     });
 
     it('shows plain number when no unit', () => {
       const wrapper = mountEditable();
-      expect(wrapper.html()).toContain('3971900');
+      const cells = wrapper.findAll('ndd-text-cell').map(c => c.attributes('text') || '');
+      expect(cells.some(t => t.includes('3971900'))).toBe(true);
     });
 
     it('shows Bewerk buttons for each editable item', () => {
