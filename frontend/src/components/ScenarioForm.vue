@@ -157,7 +157,16 @@ function getExecutionData() {
   };
 }
 
-defineExpose({ execute, getExecutionData });
+/** Returns the current form input values for syncing back to formState */
+function getFormValues() {
+  return {
+    parameterValues: { ...parameterValues.value },
+    calculationDate: calculationDate.value,
+    dataSources: dataSources.value,
+  };
+}
+
+defineExpose({ execute, getExecutionData, getFormValues });
 
 // --- Auto-re-execute when input values change ---
 let executeTimer = null;

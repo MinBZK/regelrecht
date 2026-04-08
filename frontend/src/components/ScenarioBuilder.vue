@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
 import { parseFeature } from '../gherkin/parser.js';
-import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin } from '../gherkin/formMapper.js';
+import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus } from '../utils/outputFormat.js';
 import { buildArticleMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
@@ -211,6 +211,14 @@ function onScenarioFileSelect(event) {
 
 async function onSave() {
   if (!formState.value || !selectedScenarioFile.value) return;
+
+  // Sync edited input values back to formState before serializing
+  for (let i = 0; i < (formState.value.scenarios || []).length; i++) {
+    const formRef = scenarioRefs.value[i];
+    if (!formRef?.getFormValues) continue;
+    const values = formRef.getFormValues();
+    syncEditedValues(formState.value, i, values);
+  }
 
   saveSuccess.value = false;
   try {

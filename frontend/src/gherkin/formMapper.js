@@ -250,6 +250,54 @@ export function getEffectiveSetup(formState, scenarioIndex) {
   };
 }
 
+/**
+ * Sync edited form values back into formState for a given scenario.
+ *
+ * Parameters that exist in the scenario's own setup are updated in-place.
+ * Background-only parameters that were changed get added as scenario-level
+ * overrides so other scenarios are not affected.
+ *
+ * @param {object} formState - Mutable form state
+ * @param {number} scenarioIndex - Which scenario was edited
+ * @param {object} values - { parameterValues, calculationDate }
+ */
+export function syncEditedValues(formState, scenarioIndex, values) {
+  const scenario = formState.scenarios[scenarioIndex];
+  if (!scenario) return;
+
+  const { parameterValues, calculationDate } = values;
+
+  // Build lookup of scenario-level param names for fast check
+  const scenarioParamMap = new Map(
+    scenario.setup.parameters.map((p, i) => [p.name, i]),
+  );
+  const bgParams = formState.background?.parameters || [];
+  const bgParamMap = new Map(bgParams.map((p) => [p.name, p]));
+
+  for (const [name, rawValue] of Object.entries(parameterValues)) {
+    const value = parseValue(rawValue);
+
+    if (scenarioParamMap.has(name)) {
+      // Update existing scenario-level parameter
+      scenario.setup.parameters[scenarioParamMap.get(name)].value = value;
+    } else if (bgParamMap.has(name)) {
+      // Background param — add scenario override only if value differs
+      const bgValue = bgParamMap.get(name).value;
+      if (String(bgValue) !== String(value)) {
+        scenario.setup.parameters.push({ name, value });
+      }
+    }
+  }
+
+  // Sync calculation date (scenario-level override)
+  if (calculationDate) {
+    const bgDate = formState.background?.calculationDate || null;
+    if (calculationDate !== bgDate) {
+      scenario.setup.calculationDate = calculationDate;
+    }
+  }
+}
+
 // --- Reverse: Form State → Gherkin text ---
 
 function formatCell(value) {

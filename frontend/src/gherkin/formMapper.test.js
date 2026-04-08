@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseFeature } from './parser.js';
-import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin } from './formMapper.js';
+import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from './formMapper.js';
 
 describe('mapFeatureToForm', () => {
   it('maps a simple scenario with date, evaluate, and assertions', () => {
@@ -284,5 +284,86 @@ describe('formStateToGherkin round-trip', () => {
     expect(reformatted.scenarios[0].setup.dataSources).toHaveLength(1);
     expect(reformatted.scenarios[0].setup.dataSources[0].sourceName).toBe('personal_data');
     expect(reformatted.scenarios[0].setup.dataSources[0].keyField).toBe('bsn');
+  });
+});
+
+describe('syncEditedValues', () => {
+  it('updates scenario-level parameter values', () => {
+    const parsed = parseFeature(`
+Feature: Sync test
+
+  Scenario: Test
+    Given parameter "loon" is 30000
+    When I evaluate "result" of "law"
+    Then output "result" is true
+`);
+
+    const form = mapFeatureToForm(parsed);
+    syncEditedValues(form, 0, {
+      parameterValues: { loon: '50000' },
+      calculationDate: null,
+    });
+
+    expect(form.scenarios[0].setup.parameters[0].value).toBe(50000);
+
+    const gherkin = formStateToGherkin(form);
+    expect(gherkin).toContain('parameter "loon" is 50000');
+    expect(gherkin).not.toContain('30000');
+  });
+
+  it('adds scenario override when background parameter is changed', () => {
+    const parsed = parseFeature(`
+Feature: Background override
+
+  Background:
+    Given parameter "bsn" is "999993653"
+    Given parameter "loon" is 30000
+
+  Scenario: First
+    When I evaluate "result" of "law"
+
+  Scenario: Second
+    When I evaluate "result" of "law"
+`);
+
+    const form = mapFeatureToForm(parsed);
+
+    // Change loon only in the first scenario
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653', loon: '50000' },
+      calculationDate: null,
+    });
+
+    // First scenario should have an override
+    expect(form.scenarios[0].setup.parameters).toEqual([
+      { name: 'loon', value: 50000 },
+    ]);
+
+    // Background should be unchanged
+    expect(form.background.parameters[1].value).toBe(30000);
+
+    // Second scenario should still have no overrides
+    expect(form.scenarios[1].setup.parameters).toHaveLength(0);
+  });
+
+  it('does not add override when value matches background', () => {
+    const parsed = parseFeature(`
+Feature: No-op sync
+
+  Background:
+    Given parameter "bsn" is "999993653"
+
+  Scenario: Test
+    When I evaluate "result" of "law"
+`);
+
+    const form = mapFeatureToForm(parsed);
+    syncEditedValues(form, 0, {
+      parameterValues: { bsn: '999993653' },
+      calculationDate: null,
+    });
+
+    // No scenario-level override should be added
+    expect(form.scenarios[0].setup.parameters).toHaveLength(0);
   });
 });
