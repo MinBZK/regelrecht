@@ -10,6 +10,9 @@ use crate::state::AppState;
 /// Default pipeline priority is 50, follow-up jobs use 30.
 const EDITOR_HARVEST_PRIORITY: i32 = 80;
 
+/// Maximum number of law IDs per harvest request.
+const MAX_LAW_IDS: usize = 100;
+
 #[derive(Deserialize)]
 pub struct HarvestRequest {
     pub law_ids: Vec<String>,
@@ -39,6 +42,8 @@ pub enum HarvestStatus {
     AlreadyQueued,
     /// No BWB ID mapping found for this slug.
     NotFound,
+    /// An internal error occurred while processing the request.
+    Error,
     /// Pipeline database not configured.
     HarvestDisabled,
 }
@@ -47,7 +52,13 @@ pub async fn request_harvest(
     State(state): State<AppState>,
     Json(body): Json<HarvestRequest>,
 ) -> Result<Json<HarvestResponse>, (StatusCode, String)> {
-    let corpus = state.corpus.read().await;
+    if body.law_ids.len() > MAX_LAW_IDS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("too many law_ids: maximum is {MAX_LAW_IDS}"),
+        ));
+    }
+
     let pool = match &state.pipeline_pool {
         Some(pool) => pool,
         None => {
@@ -64,11 +75,21 @@ pub async fn request_harvest(
         }
     };
 
+    // Check which slugs are already available in the corpus, then release
+    // the read lock before doing any DB work.
+    let already_available: std::collections::HashSet<String> = {
+        let corpus = state.corpus.read().await;
+        body.law_ids
+            .iter()
+            .filter(|slug| corpus.source_map.get_law(slug).is_some())
+            .cloned()
+            .collect()
+    };
+
     let mut results = Vec::with_capacity(body.law_ids.len());
 
     for slug in &body.law_ids {
-        // Check if law is already in corpus
-        if corpus.source_map.get_law(slug).is_some() {
+        if already_available.contains(slug) {
             results.push(HarvestSlugResult {
                 law_id: slug.clone(),
                 status: HarvestStatus::AlreadyAvailable,
@@ -113,54 +134,32 @@ async fn find_bwb_id_by_slug(pool: &PgPool, slug: &str) -> Result<Option<String>
 }
 
 /// Create a high-priority harvest job for a law, with deduplication.
+///
+/// Uses `INSERT ... ON CONFLICT DO NOTHING` against the partial unique index
+/// `idx_unique_active_harvest_job` to atomically deduplicate. If the insert
+/// returns no rows, a pending/processing job already exists.
 async fn create_harvest_job(pool: &PgPool, slug: &str, bwb_id: &str) -> HarvestSlugResult {
-    // Check for existing pending/processing harvest job
-    let existing: Option<(uuid::Uuid,)> = match sqlx::query_as(
-        "SELECT id FROM jobs \
-         WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
-         LIMIT 1",
-    )
-    .bind(bwb_id)
-    .fetch_optional(pool)
-    .await
-    {
-        Ok(row) => row,
-        Err(e) => {
-            tracing::warn!(error = %e, bwb_id = %bwb_id, "failed to check existing jobs");
-            return HarvestSlugResult {
-                law_id: slug.to_string(),
-                status: HarvestStatus::NotFound,
-                bwb_id: Some(bwb_id.to_string()),
-            };
-        }
-    };
-
-    if existing.is_some() {
-        return HarvestSlugResult {
-            law_id: slug.to_string(),
-            status: HarvestStatus::AlreadyQueued,
-            bwb_id: Some(bwb_id.to_string()),
-        };
-    }
-
-    // Create the harvest job with high priority
     let payload = serde_json::json!({
         "bwb_id": bwb_id,
     });
 
+    // Atomic insert-or-skip: the partial unique index on (law_id, job_type)
+    // WHERE job_type = 'harvest' AND status IN ('pending', 'processing')
+    // prevents duplicates without a separate SELECT.
     let result = sqlx::query_scalar::<_, uuid::Uuid>(
         "INSERT INTO jobs (id, job_type, law_id, status, priority, payload) \
          VALUES (gen_random_uuid(), 'harvest', $1, 'pending', $2, $3) \
+         ON CONFLICT DO NOTHING \
          RETURNING id",
     )
     .bind(bwb_id)
     .bind(EDITOR_HARVEST_PRIORITY)
     .bind(&payload)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await;
 
     match result {
-        Ok(job_id) => {
+        Ok(Some(job_id)) => {
             tracing::info!(
                 job_id = %job_id,
                 slug = %slug,
@@ -192,11 +191,19 @@ async fn create_harvest_job(pool: &PgPool, slug: &str, bwb_id: &str) -> HarvestS
                 bwb_id: Some(bwb_id.to_string()),
             }
         }
-        Err(e) => {
-            tracing::warn!(error = %e, bwb_id = %bwb_id, "failed to create harvest job");
+        Ok(None) => {
+            // ON CONFLICT DO NOTHING returned no rows — an active job exists.
             HarvestSlugResult {
                 law_id: slug.to_string(),
-                status: HarvestStatus::NotFound,
+                status: HarvestStatus::AlreadyQueued,
+                bwb_id: Some(bwb_id.to_string()),
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, bwb_id = %bwb_id, "failed to create harvest job");
+            HarvestSlugResult {
+                law_id: slug.to_string(),
+                status: HarvestStatus::Error,
                 bwb_id: Some(bwb_id.to_string()),
             }
         }

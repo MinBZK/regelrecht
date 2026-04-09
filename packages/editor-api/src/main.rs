@@ -138,32 +138,45 @@ async fn main() {
         );
     }
 
-    let protected_api_routes = protected_api_routes.route_layer(axum_middleware::from_fn_with_state(
-        app_state.clone(),
-        middleware::require_session_auth::<AppState>,
-    ));
+    let protected_api_routes =
+        protected_api_routes.route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_session_auth::<AppState>,
+        ));
 
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the
     // router in two branches depending on whether auth is enabled.
     if app_state.config.is_auth_enabled() {
-        let database_url = env::var("DATABASE_URL")
-            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
-                );
-                std::process::exit(1);
-            });
+        // Reuse the pipeline pool for session storage when available,
+        // avoiding a duplicate connection pool to the same database.
+        #[cfg(feature = "pipeline")]
+        let session_pool = app_state.pipeline_pool.clone();
+        #[cfg(not(feature = "pipeline"))]
+        let session_pool: Option<sqlx::PgPool> = None;
 
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
-            .connect(&database_url)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::error!(error = %e, "failed to connect to database");
-                std::process::exit(1);
-            });
+        let pool = match session_pool {
+            Some(pool) => pool,
+            None => {
+                let database_url = env::var("DATABASE_URL")
+                    .or_else(|_| env::var("DATABASE_SERVER_FULL"))
+                    .unwrap_or_else(|_| {
+                        tracing::error!(
+                            "DATABASE_URL is required when OIDC is enabled (for session storage)"
+                        );
+                        std::process::exit(1);
+                    });
+
+                sqlx::postgres::PgPoolOptions::new()
+                    .max_connections(5)
+                    .connect(&database_url)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::error!(error = %e, "failed to connect to database");
+                        std::process::exit(1);
+                    })
+            }
+        };
 
         let session_store = PostgresStore::new(pool);
         if let Err(e) = session_store.migrate().await {
