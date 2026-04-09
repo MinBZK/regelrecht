@@ -526,10 +526,15 @@ where
 /// Polymorphic: numbers are summed, arrays concatenated, strings concatenated.
 /// The first element's type determines the mode.
 ///
-/// Null handling: if any element is Null, returns Null (propagation). This
-/// preserves the contract that a regular ADD with a missing operand surfaces
-/// the problem rather than silently computing a partial sum. FOREACH combine
-/// uses `combine_add` which has different null semantics (SQL-style skip).
+/// Null handling differs by type:
+/// - **Numeric ADD:** Null operands are skipped (SQL SUM semantics). This is a
+///   deliberate design choice: Dutch law definitions routinely use ADD with
+///   operands that may be absent, e.g. `ADD($box1_inkomen, $buitenlands_inkomen)`
+///   where buitenlands_inkomen is null for most citizens. Propagating Null here
+///   would make nearly every income calculation fail. The FOREACH `combine_add`
+///   delegates to this function after its own null filtering.
+/// - **String/Array ADD:** Null propagates (returns Null). Concatenating a
+///   string or array with an unknown value produces an unknown result.
 fn add_values(evaluated: &[Value]) -> Result<Value> {
     if evaluated.is_empty() {
         return Ok(Value::Int(0));
@@ -537,13 +542,12 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
 
     // Find the first non-Null value to determine the operation type.
     // If the first element is Null but later elements are Int, we should do numeric add.
-    let first_non_null = evaluated.iter().find(|v| !v.is_null());
-    if first_non_null.is_none() {
-        // All values are Null
-        return Ok(Value::Null);
-    }
+    let first_non_null = match evaluated.iter().find(|v| !v.is_null()) {
+        Some(v) => v,
+        None => return Ok(Value::Null), // All values are Null
+    };
 
-    match first_non_null.unwrap() {
+    match first_non_null {
         Value::Array(_) => {
             let mut result = Vec::new();
             for val in evaluated {
@@ -616,7 +620,7 @@ fn add_values(evaluated: &[Value]) -> Result<Value> {
                 Ok(Value::Float(sum))
             }
         }
-        _ => Err(type_error("number, string, or array", first_non_null.unwrap())),
+        other => Err(type_error("number, string, or array", other)),
     }
 }
 
@@ -1145,7 +1149,12 @@ fn execute_get<R: ValueResolver>(
 
 /// Execute CONCAT operation: concatenate values into a string.
 ///
-/// Each value is evaluated and converted to string. Null values become empty strings.
+/// Each value is evaluated and converted to string. Null operands are skipped
+/// (treated as empty string) rather than propagated. This differs from ADD on
+/// strings because CONCAT is used for assembling display/output strings where
+/// partial results are meaningful - e.g., building an address from parts where
+/// a missing house number should still show the street name, or composing a
+/// description where some optional components are absent.
 fn execute_concat<R: ValueResolver>(
     values: &[ActionValue],
     resolver: &R,
@@ -1728,8 +1737,16 @@ pub fn execute_foreach(
         let mut child = context.create_child();
         child.set_local(as_name.to_string(), item.clone());
 
-        // Flatten object fields into local scope so $field references work
-        // without requiring $current.field notation.
+        // Object field flattening: when iterating over arrays of objects, inject
+        // each field as a local variable alongside the `as` binding. This allows
+        // law authors to write `$status` instead of `$item.status`, which matches
+        // how existing Dutch law YAML files reference element properties. Dot
+        // notation (`$item.status`) also works and is preferred for clarity.
+        //
+        // Caveat: flattened field names can shadow outer-scope variables if they
+        // collide. Law authors should use distinct `as` names to avoid ambiguity.
+        //
+        // See RFC-016 "Object field flattening" for rationale.
         if let Value::Object(fields) = item {
             for (key, value) in fields {
                 child.set_local(key.clone(), value.clone());
@@ -1780,9 +1797,11 @@ pub fn execute_foreach(
 
 /// Combine FOREACH results with ADD.
 ///
-/// Unlike regular `add_values`, this skips Null elements (SQL SUM semantics):
-/// a FOREACH body that cannot produce a value for some element should not
-/// abort the entire sum. If ALL elements are null, returns Null.
+/// Pre-filters Null elements before delegating to `add_values`. For numeric
+/// values this is redundant (`add_values` already skips nulls for numbers),
+/// but for string/array combine it prevents null propagation: a FOREACH body
+/// that cannot produce a value for some element should not abort the entire
+/// aggregation. If ALL elements are null, returns Null.
 fn combine_add(results: &[Value]) -> Result<Value> {
     if results.is_empty() {
         return Ok(Value::Int(0));

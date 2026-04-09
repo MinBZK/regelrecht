@@ -879,8 +879,11 @@ articles:
                     "Expected age_check_result to fall to default when age param is missing"
                 );
             }
-            Err(_) => {
-                // An error is also acceptable for missing required parameters
+            Err(e) => {
+                panic!(
+                    "Expected Ok with null outputs for missing parameters, but got error: {:?}",
+                    e
+                );
             }
         }
     }
