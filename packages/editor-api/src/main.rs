@@ -154,6 +154,9 @@ async fn main() {
 
         serve(app, Some(deletion_handle)).await;
     } else {
+        // No .with_secure(true) — this branch only runs when OIDC is disabled
+        // (local development over plain HTTP). In production OIDC is always
+        // enabled and the auth-enabled branch above sets secure cookies.
         let session_layer = SessionManagerLayer::new(MemoryStore::default())
             .with_same_site(tower_sessions::cookie::SameSite::Lax)
             .with_http_only(true);

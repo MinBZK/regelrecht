@@ -304,19 +304,14 @@ pub async fn callback<S: OidcAppState>(
 
 pub async fn logout<S: OidcAppState>(
     State(state): State<S>,
-    headers: HeaderMap,
     session: Session,
 ) -> Result<Response, StatusCode> {
     let id_token_hint: Option<String> = session.get(SESSION_KEY_ID_TOKEN).await.ok().flatten();
 
-    // For the post-logout redirect, prefer the explicit BASE_URL config.
-    // Fall back to deriving from request headers (safe here: logout is not
-    // an attack vector since the session is being destroyed anyway).
-    let base_url = if let Some(base_url) = state.base_url() {
-        base_url.to_string()
-    } else {
-        base_url_from_config_or_request(&state, &headers)
-    };
+    // For the post-logout redirect, use the explicit BASE_URL config.
+    // When not configured, fall back to "/" (relative redirect) to avoid
+    // trusting request headers for the redirect target.
+    let base_url = state.base_url().unwrap_or_default().to_string();
 
     session.flush().await.map_err(|e| {
         tracing::error!(error = %e, "failed to flush session");
