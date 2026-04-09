@@ -4,7 +4,6 @@ pub use regelrecht_auth::OidcConfig;
 pub struct AppConfig {
     pub oidc: Option<OidcConfig>,
     pub base_url: Option<String>,
-    pub allowed_hosts: Vec<String>,
 }
 
 impl AppConfig {
@@ -34,13 +33,7 @@ impl AppConfig {
             );
         }
 
-        let allowed_hosts = regelrecht_auth::parse_allowed_hosts();
-
-        Ok(Self {
-            oidc,
-            base_url,
-            allowed_hosts,
-        })
+        Ok(Self { oidc, base_url })
     }
 
     pub fn is_auth_enabled(&self) -> bool {

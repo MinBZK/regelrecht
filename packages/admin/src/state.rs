@@ -37,9 +37,6 @@ impl OidcAppState for AppState {
     fn base_url(&self) -> Option<&str> {
         self.config.base_url.as_deref()
     }
-    fn allowed_hosts(&self) -> &[String] {
-        &self.config.allowed_hosts
-    }
     fn http_client(&self) -> &reqwest::Client {
         &self.http_client
     }

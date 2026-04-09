@@ -102,9 +102,6 @@ mod tests {
         fn base_url(&self) -> Option<&str> {
             None
         }
-        fn allowed_hosts(&self) -> &[String] {
-            &[]
-        }
         fn http_client(&self) -> &reqwest::Client {
             // Not called in middleware tests
             unimplemented!()

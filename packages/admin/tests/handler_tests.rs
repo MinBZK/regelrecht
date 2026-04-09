@@ -29,7 +29,6 @@ fn test_app(pool: sqlx::PgPool) -> Router {
         config: Arc::new(AppConfig {
             oidc: None,
             base_url: None,
-            allowed_hosts: vec![],
             api_key: None,
             api_key_hash: None,
         }),

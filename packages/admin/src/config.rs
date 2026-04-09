@@ -8,7 +8,6 @@ pub use regelrecht_auth::OidcConfig;
 pub struct AppConfig {
     pub oidc: Option<OidcConfig>,
     pub base_url: Option<String>,
-    pub allowed_hosts: Vec<String>,
     pub api_key: Option<String>,
     /// Pre-computed SHA-256 hash of the API key (avoids re-hashing on every request).
     pub api_key_hash: Option<[u8; 32]>,
@@ -69,12 +68,9 @@ impl AppConfig {
             .as_ref()
             .map(|k| Sha256::digest(k.as_bytes()).into());
 
-        let allowed_hosts = regelrecht_auth::parse_allowed_hosts();
-
         Ok(Self {
             oidc,
             base_url,
-            allowed_hosts,
             api_key,
             api_key_hash,
         })

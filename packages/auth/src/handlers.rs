@@ -26,7 +26,14 @@ pub const SESSION_KEY_SUB: &str = "person_sub";
 pub const SESSION_KEY_EMAIL: &str = "person_email";
 pub const SESSION_KEY_NAME: &str = "person_name";
 pub const SESSION_KEY_ID_TOKEN: &str = "id_token_hint";
+const SESSION_KEY_BASE_URL: &str = "oidc_base_url";
 
+/// Derive the base URL from `BASE_URL` env or request headers.
+///
+/// Used only during `/auth/login` to construct the initial `redirect_uri`.
+/// The result is stored in the session so that `/auth/callback` and
+/// `/auth/logout` don't need to trust request headers again — Keycloak's
+/// "Valid redirect URIs" check validates the URL at login time.
 fn base_url_from_config_or_request<S: OidcAppState>(state: &S, headers: &HeaderMap) -> String {
     if let Some(base_url) = state.base_url() {
         return base_url.to_string();
@@ -37,12 +44,6 @@ fn base_url_from_config_or_request<S: OidcAppState>(state: &S, headers: &HeaderM
         .or_else(|| headers.get("host"))
         .and_then(|v| v.to_str().ok())
         .unwrap_or("localhost");
-
-    let allowed = state.allowed_hosts();
-    if !allowed.is_empty() && !crate::config::host_is_allowed(host, allowed) {
-        tracing::warn!(host, "host not in ALLOWED_HOSTS — using relative redirect");
-        return String::new();
-    }
 
     let scheme = headers
         .get("x-forwarded-proto")
@@ -113,6 +114,7 @@ pub async fn login<S: OidcAppState>(
         pkce_verifier.secret().clone(),
     )
     .await?;
+    session_insert(&session, SESSION_KEY_BASE_URL, base_url).await?;
 
     Ok(Redirect::temporary(auth_url.as_str()).into_response())
 }
@@ -134,7 +136,6 @@ pub struct CallbackQuery {
 
 pub async fn callback<S: OidcAppState>(
     State(app_state): State<S>,
-    headers: HeaderMap,
     session: Session,
     axum::extract::Query(params): axum::extract::Query<CallbackQuery>,
 ) -> Result<Response, StatusCode> {
@@ -151,7 +152,21 @@ pub async fn callback<S: OidcAppState>(
 
     let client = app_state.oidc_client().ok_or(StatusCode::NOT_IMPLEMENTED)?;
 
-    let base_url = base_url_from_config_or_request(&app_state, &headers);
+    // Retrieve the base_url that was stored during /auth/login.
+    // This is the URL that Keycloak validated against its redirect URI allowlist,
+    // so we know it's trusted — no need to re-derive from request headers.
+    let base_url: String = session
+        .get(SESSION_KEY_BASE_URL)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to read base_url from session");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or_else(|| {
+            tracing::warn!("no base_url in session — session may have expired");
+            StatusCode::BAD_REQUEST
+        })?;
+
     let redirect_url = RedirectUrl::new(format!("{base_url}/auth/callback")).map_err(|e| {
         tracing::error!(error = %e, "invalid redirect URL");
         StatusCode::INTERNAL_SERVER_ERROR
@@ -269,6 +284,9 @@ pub async fn callback<S: OidcAppState>(
     if let Err(e) = session.remove::<String>(SESSION_KEY_PKCE_VERIFIER).await {
         tracing::warn!(error = %e, "failed to remove PKCE verifier from session");
     }
+    if let Err(e) = session.remove::<String>(SESSION_KEY_BASE_URL).await {
+        tracing::warn!(error = %e, "failed to remove base_url from session");
+    }
 
     session
         .insert(SESSION_KEY_AUTHENTICATED, true)
@@ -291,12 +309,19 @@ pub async fn logout<S: OidcAppState>(
 ) -> Result<Response, StatusCode> {
     let id_token_hint: Option<String> = session.get(SESSION_KEY_ID_TOKEN).await.ok().flatten();
 
+    // For the post-logout redirect, prefer the explicit BASE_URL config.
+    // Fall back to deriving from request headers (safe here: logout is not
+    // an attack vector since the session is being destroyed anyway).
+    let base_url = if let Some(base_url) = state.base_url() {
+        base_url.to_string()
+    } else {
+        base_url_from_config_or_request(&state, &headers)
+    };
+
     session.flush().await.map_err(|e| {
         tracing::error!(error = %e, "failed to flush session");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-
-    let base_url = base_url_from_config_or_request(&state, &headers);
 
     if let (Some(end_session_url), Some(oidc)) = (state.end_session_url(), state.oidc_config()) {
         let mut url = url::Url::parse(end_session_url).map_err(|e| {

@@ -111,7 +111,6 @@ mod tests {
                 None
             },
             base_url: None,
-            allowed_hosts: vec![],
             api_key: api_key.map(String::from),
             api_key_hash: api_key.map(|k| {
                 use sha2::{Digest, Sha256};
