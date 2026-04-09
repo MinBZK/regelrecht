@@ -1,5 +1,5 @@
 ---
-name: page-hierarchy
+name: storybook-component-hierarchy
 description: Activeer bij het samenstellen van NDD Storybook web components tot pagina's en layouts — beschrijft de verplichte component-hiërarchie, nesting-regels en beschikbare layout-patronen
 user-invocable: true
 argument-hint: <layout-type>
