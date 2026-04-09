@@ -53,6 +53,7 @@ impl CorpusState {
         Self {
             registry: regelrecht_corpus::CorpusRegistry::empty(),
             source_map: SourceMap::new(),
+            backends: HashMap::new(),
         }
     }
 }
