@@ -227,6 +227,67 @@ function handleSave({ section, key, newKey, index, data }) {
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
 }
+
+// Initialize empty machine_readable scaffold
+function handleInitMr() {
+  machineReadable.value = {
+    definitions: {},
+    execution: {
+      parameters: [],
+      input: [],
+      output: [],
+      actions: [],
+    },
+  };
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+}
+
+// Add a new action and open ActionSheet
+let actionSnapshot = null;
+
+function handleAddAction() {
+  const mr = machineReadable.value || {};
+  if (!mr.execution) mr.execution = {};
+  if (!mr.execution.actions) mr.execution.actions = [];
+  actionSnapshot = JSON.stringify(machineReadable.value);
+  const newAction = { output: '', value: '' };
+  mr.execution.actions.push(newAction);
+  machineReadable.value = { ...mr };
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+  activeAction.value = newAction;
+}
+
+function handleOpenAction(action) {
+  actionSnapshot = JSON.stringify(machineReadable.value);
+  activeAction.value = action;
+}
+
+// Restore model from snapshot when ActionSheet is cancelled
+function handleActionClose() {
+  if (actionSnapshot) {
+    machineReadable.value = JSON.parse(actionSnapshot);
+    yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+    actionSnapshot = null;
+  }
+  activeAction.value = null;
+}
+
+// Sync YAML when ActionSheet saves (mutations happened in-place)
+function handleActionSave() {
+  actionSnapshot = null;
+  activeAction.value = null;
+  // Re-assign to trigger reactivity + re-dump YAML
+  machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+}
+
+function selectArticle(number) {
+  activeAction.value = null;
+  selectedArticleNumber.value = String(number);
+}
 </script>
 
 <template>
@@ -378,7 +439,7 @@ function handleSave({ section, key, newKey, index, data }) {
     </ndd-bar-split-view>
   </ndd-app-view>
 
-  <ActionSheet :action="activeAction" :article="editedArticle" @close="activeAction = null" />
+  <ActionSheet :action="activeAction" :article="editedArticle" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" @save="handleSave" @close="activeEditItem = null" />
 </template>
 

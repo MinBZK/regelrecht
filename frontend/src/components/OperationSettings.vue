@@ -32,6 +32,9 @@ const COMPARISON_OPS = new Set([
   'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'NOT_NULL', 'IN', 'NOT_IN',
 ]);
 
+const LOGICAL_OPS = new Set(['AND', 'OR']);
+const ARITHMETIC_OPS = new Set(['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'MIN', 'MAX', 'CONCAT']);
+
 const isComparisonOp = computed(() => COMPARISON_OPS.has(props.operation?.operation));
 
 const operationValues = computed(() => {
@@ -40,16 +43,18 @@ const operationValues = computed(() => {
 
   if (isComparisonOp.value) {
     const vals = [];
-    if (node.subject != null) vals.push({ _label: 'Onderwerp', _value: node.subject, _kind: 'subject' });
-    if (node.value !== undefined) vals.push({ _label: 'Waarde', _value: node.value, _kind: 'value' });
+    vals.push({ _label: 'Onderwerp', _value: node.subject ?? '', _kind: 'subject' });
+    if (node.operation !== 'NOT_NULL') {
+      vals.push({ _label: 'Waarde', _value: node.value ?? '', _kind: 'value' });
+    }
     return vals;
   }
 
   if (node.operation === 'IF') {
     const vals = [];
-    if (node.when) vals.push({ _label: 'Voorwaarde', _value: node.when, _kind: 'operation' });
-    if (node.then !== undefined) vals.push({ _label: 'Dan', _value: node.then, _kind: 'value' });
-    if (node.else !== undefined) vals.push({ _label: 'Anders', _value: node.else, _kind: 'value' });
+    if (node.when) vals.push({ _label: 'Voorwaarde', _value: node.when, _kind: 'when' });
+    if (node.then !== undefined) vals.push({ _label: 'Dan', _value: node.then, _kind: 'then' });
+    if (node.else !== undefined) vals.push({ _label: 'Anders', _value: node.else, _kind: 'else' });
     return vals;
   }
 
@@ -57,19 +62,19 @@ const operationValues = computed(() => {
     const vals = [];
     if (Array.isArray(node.cases)) {
       node.cases.forEach((c, i) => {
-        if (c.when !== undefined) vals.push({ _label: `Geval ${i + 1} — als`, _value: c.when, _kind: 'value' });
-        if (c.then !== undefined) vals.push({ _label: `Geval ${i + 1} — dan`, _value: c.then, _kind: 'value' });
+        if (c.when !== undefined) vals.push({ _label: `Geval ${i + 1} — als`, _value: c.when, _kind: 'case-when', _caseIndex: i });
+        if (c.then !== undefined) vals.push({ _label: `Geval ${i + 1} — dan`, _value: c.then, _kind: 'case-then', _caseIndex: i });
       });
     }
-    if (node.default !== undefined) vals.push({ _label: 'Standaard', _value: node.default, _kind: 'value' });
+    if (node.default !== undefined) vals.push({ _label: 'Standaard', _value: node.default, _kind: 'default' });
     return vals;
   }
 
   if (Array.isArray(node.values)) {
-    return node.values.map((v, i) => ({ _label: `Waarde ${i + 1}`, _value: v, _kind: 'value' }));
+    return node.values.map((v, i) => ({ _label: `Waarde ${i + 1}`, _value: v, _kind: 'values', _index: i }));
   }
   if (Array.isArray(node.conditions)) {
-    return node.conditions.map((c, i) => ({ _label: `Conditie ${i + 1}`, _value: c, _kind: 'condition' }));
+    return node.conditions.map((c, i) => ({ _label: `Conditie ${i + 1}`, _value: c, _kind: 'conditions', _index: i }));
   }
 
   const vals = [];
@@ -100,6 +105,188 @@ function currentDropdownValue(val) {
   if (typeof val === 'string' && val.startsWith('$')) return val;
   return String(val);
 }
+
+// --- Mutation helpers ---
+
+function parseInputValue(str) {
+  if (str === 'true') return true;
+  if (str === 'false') return false;
+  const n = Number(str);
+  if (!isNaN(n) && str.trim() !== '') return n;
+  return str;
+}
+
+function changeOperationType(event) {
+  const node = props.operation?.node;
+  if (!node) return;
+  const newType = event.target.value;
+  const oldType = node.operation;
+  if (newType === oldType) return;
+
+  node.operation = newType;
+
+  if (COMPARISON_OPS.has(newType)) {
+    if (node.subject === undefined) node.subject = '';
+    if (newType === 'IN' || newType === 'NOT_IN') {
+      if (!Array.isArray(node.value)) node.value = [];
+    } else if (newType === 'NOT_NULL') {
+      delete node.value;
+    } else {
+      if (node.value === undefined) node.value = '';
+    }
+    delete node.values;
+    delete node.conditions;
+    delete node.cases;
+    delete node.default;
+    delete node.when;
+    delete node.then;
+    delete node.else;
+  } else if (LOGICAL_OPS.has(newType)) {
+    if (!Array.isArray(node.conditions)) {
+      node.conditions = [];
+    }
+    delete node.values;
+    delete node.subject;
+    delete node.value;
+    delete node.cases;
+    delete node.default;
+    delete node.when;
+    delete node.then;
+    delete node.else;
+  } else if (newType === 'IF') {
+    if (!node.when) node.when = { operation: 'EQUALS', subject: '', value: '' };
+    if (node.then === undefined) node.then = 0;
+    if (node.else === undefined) node.else = 0;
+    delete node.values;
+    delete node.conditions;
+    delete node.cases;
+    delete node.default;
+    delete node.subject;
+    delete node.value;
+  } else if (newType === 'NOT') {
+    if (node.value === undefined) {
+      node.value = node.subject ?? '';
+    }
+    delete node.values;
+    delete node.conditions;
+    delete node.cases;
+    delete node.default;
+    delete node.subject;
+    delete node.when;
+    delete node.then;
+    delete node.else;
+  } else if (newType === 'SWITCH') {
+    if (!Array.isArray(node.cases)) node.cases = [];
+    if (node.default === undefined) node.default = '';
+    delete node.values;
+    delete node.conditions;
+    delete node.subject;
+    delete node.value;
+    delete node.when;
+    delete node.then;
+    delete node.else;
+  } else if (ARITHMETIC_OPS.has(newType)) {
+    if (!Array.isArray(node.values)) {
+      node.values = [];
+    }
+    delete node.conditions;
+    delete node.cases;
+    delete node.default;
+    delete node.subject;
+    delete node.value;
+    delete node.when;
+    delete node.then;
+    delete node.else;
+  }
+}
+
+function updateValue(val, event) {
+  const node = props.operation?.node;
+  if (!node) return;
+  const newVal = parseInputValue(event.target?.value ?? event.detail?.value ?? '');
+
+  if (val._kind === 'subject') node.subject = newVal;
+  else if (val._kind === 'value') node.value = newVal;
+  else if (val._kind === 'when') node.when = newVal;
+  else if (val._kind === 'then') node.then = newVal;
+  else if (val._kind === 'else') node.else = newVal;
+  else if (val._kind === 'values' && val._index !== undefined) node.values[val._index] = newVal;
+  else if (val._kind === 'conditions' && val._index !== undefined) node.conditions[val._index] = newVal;
+  else if (val._kind === 'default') node.default = newVal;
+  else if (val._kind === 'case-when') node.cases[val._caseIndex].when = newVal;
+  else if (val._kind === 'case-then') node.cases[val._caseIndex].then = newVal;
+}
+
+function updateDropdownValue(val, event) {
+  const node = props.operation?.node;
+  if (!node) return;
+  const selected = event.target.value;
+  if (selected === '__nested__') return;
+  if (isNestedOperation(val._value)) return;
+
+  const newVal = selected.startsWith('$') ? selected : parseInputValue(selected);
+
+  if (val._kind === 'subject') node.subject = newVal;
+  else if (val._kind === 'value') node.value = newVal;
+  else if (val._kind === 'when') node.when = newVal;
+  else if (val._kind === 'then') node.then = newVal;
+  else if (val._kind === 'else') node.else = newVal;
+  else if (val._kind === 'values' && val._index !== undefined) node.values[val._index] = newVal;
+  else if (val._kind === 'conditions' && val._index !== undefined) node.conditions[val._index] = newVal;
+  else if (val._kind === 'default') node.default = newVal;
+  else if (val._kind === 'case-when') node.cases[val._caseIndex].when = newVal;
+  else if (val._kind === 'case-then') node.cases[val._caseIndex].then = newVal;
+}
+
+function removeValue(val) {
+  const node = props.operation?.node;
+  if (!node) return;
+
+  if (val._kind === 'values' && val._index !== undefined && Array.isArray(node.values)) {
+    node.values.splice(val._index, 1);
+  } else if (val._kind === 'conditions' && val._index !== undefined && Array.isArray(node.conditions)) {
+    node.conditions.splice(val._index, 1);
+  } else if (val._kind === 'subject') {
+    delete node.subject;
+  } else if (val._kind === 'value') {
+    delete node.value;
+  } else if (val._kind === 'when') {
+    delete node.when;
+  } else if (val._kind === 'then') {
+    delete node.then;
+  } else if (val._kind === 'else') {
+    delete node.else;
+  }
+}
+
+function addValue() {
+  const node = props.operation?.node;
+  if (!node) return;
+
+  if (Array.isArray(node.values)) {
+    node.values.push(0);
+  } else if (Array.isArray(node.conditions)) {
+    node.conditions.push({ operation: 'EQUALS', subject: '', value: '' });
+  } else if (isComparisonOp.value) {
+    if (node.subject === undefined) node.subject = '';
+    else if (node.value === undefined) node.value = '';
+  } else {
+    if (!node.values) node.values = [];
+    node.values.push(0);
+  }
+}
+
+function addNestedOperation() {
+  const node = props.operation?.node;
+  if (!node || isComparisonOp.value) return;
+  if (node.operation === 'NOT' || node.operation === 'IF' || node.operation === 'SWITCH') return;
+
+  if (Array.isArray(node.conditions)) {
+    node.conditions.push({ operation: 'EQUALS', subject: '', value: '' });
+  } else if (Array.isArray(node.values)) {
+    node.values.push({ operation: 'ADD', values: [] });
+  }
+}
 </script>
 
 <template>
@@ -114,7 +301,7 @@ function currentDropdownValue(val) {
       <ndd-list-item size="md">
         <ndd-text-cell text="Titel" max-width="120"></ndd-text-cell>
         <ndd-cell>
-          <ndd-text-field size="md" :value="operation.title"></ndd-text-field>
+          <ndd-text-field size="md" :value="operation.title" @input="operation.title = $event.target?.value ?? $event.detail?.value ?? operation.title"></ndd-text-field>
         </ndd-cell>
       </ndd-list-item>
 
@@ -122,8 +309,8 @@ function currentDropdownValue(val) {
       <ndd-list-item size="md">
         <ndd-text-cell text="Type" max-width="120"></ndd-text-cell>
         <ndd-cell>
-          <ndd-dropdown size="md">
-            <select aria-label="Operatie type" :value="operation.operation">
+          <ndd-dropdown size="md" data-testid="operation-type-dropdown">
+            <select aria-label="Operatie type" :value="operation.operation" @change="changeOperationType">
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </ndd-dropdown>
@@ -131,21 +318,21 @@ function currentDropdownValue(val) {
       </ndd-list-item>
 
       <!-- Waarde rows -->
-      <ndd-list-item v-for="(val, i) in operationValues" :key="i" size="md">
+      <ndd-list-item v-for="(val, i) in operationValues" :key="i" size="md" :data-testid="`op-value-${i}`">
         <ndd-text-cell :text="val._label" max-width="120"></ndd-text-cell>
         <ndd-cell>
           <div class="value-row">
             <template v-if="isLiteralValue(val._value)">
-              <ndd-text-field size="md" :value="String(val._value)" is-full-width></ndd-text-field>
+              <ndd-text-field size="md" :value="String(val._value)" is-full-width @input="updateValue(val, $event)"></ndd-text-field>
             </template>
             <template v-else>
               <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
-                <select :aria-label="val._label" :value="currentDropdownValue(val._value)">
+                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
                   <option v-for="opt in valueDropdownOptions(val._value)" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                 </select>
               </ndd-dropdown>
             </template>
-            <ndd-icon-button icon="minus" title="Verwijder waarde">
+            <ndd-icon-button v-if="!(isComparisonOp && (val._kind === 'subject' || val._kind === 'value'))" icon="minus" title="Verwijder waarde" @click="removeValue(val)">
             </ndd-icon-button>
           </div>
           <p v-if="isNestedOperation(val._value)" class="value-help-text">
@@ -157,7 +344,10 @@ function currentDropdownValue(val) {
 
       <!-- Add value -->
       <ndd-list-item size="md">
-        <ndd-button size="md" start-icon="plus-small" style="width: 100%;" text="Voeg waarde toe"></ndd-button>
+        <div class="add-value-buttons">
+          <ndd-button size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></ndd-button>
+          <ndd-button v-if="!isComparisonOp" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Voeg operatie toe"></ndd-button>
+        </div>
       </ndd-list-item>
     </ndd-list>
   </template>
@@ -183,6 +373,12 @@ function currentDropdownValue(val) {
 .value-row ndd-dropdown {
   flex: 1;
   min-width: 0;
+}
+
+.add-value-buttons {
+  display: flex;
+  gap: 8px;
+  width: 100%;
 }
 
 .value-help-text {

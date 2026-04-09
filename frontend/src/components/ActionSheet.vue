@@ -8,7 +8,7 @@ const props = defineProps({
   article: { type: Object, default: null },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'save']);
 
 const sheetEl = ref(null);
 
@@ -69,6 +69,18 @@ onUnmounted(() => {
       <ndd-top-title-bar slot="header" text="Actie" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
       <ndd-simple-section>
+        <!-- Output binding -->
+        <ndd-list variant="box" class="settings-list" data-testid="action-output-binding">
+          <ndd-list-item size="md">
+            <ndd-text-cell text="Output"></ndd-text-cell>
+            <ndd-cell>
+              <ndd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></ndd-text-field>
+            </ndd-cell>
+          </ndd-list-item>
+        </ndd-list>
+
+        <ndd-spacer size="8"></ndd-spacer>
+
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
           <ndd-title size="5"><h5>Bovenliggende operaties</h5></ndd-title>
@@ -91,7 +103,7 @@ onUnmounted(() => {
       </ndd-simple-section>
 
       <ndd-container slot="footer" padding="16">
-        <ndd-button variant="primary" size="md" full-width @click="emit('close')" text="Opslaan"></ndd-button>
+        <ndd-button variant="primary" size="md" full-width @click="emit('save')" text="Opslaan"></ndd-button>
       </ndd-container>
     </ndd-page>
   </ndd-sheet>
