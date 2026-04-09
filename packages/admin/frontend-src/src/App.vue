@@ -58,9 +58,10 @@ function onAccountClick() {
               <ndd-tab-bar-item
                 v-for="tab in tabs"
                 :key="tab.key"
+                :text="tab.label"
                 :selected="activeTab === tab.key ? '' : undefined"
                 @click="router.push(tab.route)"
-              >{{ tab.label }}</ndd-tab-bar-item>
+              ></ndd-tab-bar-item>
             </ndd-tab-bar>
           </ndd-toolbar-item>
           <ndd-toolbar-item id="view-toggle-target" slot="end" />
