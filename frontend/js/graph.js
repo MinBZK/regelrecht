@@ -1606,11 +1606,21 @@ function buildTestList() {
       const statusClass = result ? result.status : 'pending';
       const statusText = statusClass === 'pass' ? '\u2713' : statusClass === 'fail' ? '\u2717' : statusClass === 'running' ? '\u2026' : '\u00b7';
 
-      row.innerHTML = `
-        <span class="test-panel__scenario-status test-panel__scenario-status--${statusClass}">${statusText}</span>
-        <span class="test-panel__scenario-name" title="${s.name}">${s.name}</span>
-        <button class="test-panel__scenario-run" data-idx="${s._idx}">\u25B6</button>
-      `;
+      const statusSpan = document.createElement('span');
+      statusSpan.className = `test-panel__scenario-status test-panel__scenario-status--${statusClass}`;
+      statusSpan.textContent = statusText;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'test-panel__scenario-name';
+      nameSpan.title = s.name;
+      nameSpan.textContent = s.name;
+
+      const runBtn = document.createElement('button');
+      runBtn.className = 'test-panel__scenario-run';
+      runBtn.dataset.idx = s._idx;
+      runBtn.textContent = '\u25B6';
+
+      row.append(statusSpan, nameSpan, runBtn);
 
       // Click scenario name → show overlay on graph
       row.querySelector('.test-panel__scenario-name').addEventListener('click', () => {
