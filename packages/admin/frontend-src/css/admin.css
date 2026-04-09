@@ -21,20 +21,6 @@
 
 
 /* ============================================================
-   Pagination
-   ============================================================ */
-
-.pagination-info {
-  font-family: var(--primitives-font-family-body);
-  font-size: var(--primitives-font-size-80);
-  color: var(--semantics-content-secondary-color);
-  white-space: nowrap;
-  min-width: 80px;
-  text-align: center;
-}
-
-
-/* ============================================================
    Cell content wrapper — prevents content from stretching
    inside ndd-cell (which defaults to align-items: stretch)
    ============================================================ */

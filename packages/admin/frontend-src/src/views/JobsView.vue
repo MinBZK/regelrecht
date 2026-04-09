@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useJobs } from '../composables/useJobs.js';
 import { useJobDetail } from '../composables/useJobDetail.js';
@@ -25,8 +24,6 @@ const {
 } = useJobs();
 
 const { job: detailJob, isOpen: detailOpen, open: openDetail, close: closeDetail } = useJobDetail();
-
-const paginationUnit = computed(() => viewMode.value === 'grouped' ? 'laws' : 'results');
 
 // Handle incoming law_id query param (runs synchronously during setup)
 if (route.query.law_id) {
@@ -95,8 +92,6 @@ if (route.query.law_id) {
   <PaginationControls
     :current-page="currentPage"
     :total-pages="totalPages"
-    :total-count="totalCount"
-    :unit="paginationUnit"
     @page-change="goToPage"
   />
 

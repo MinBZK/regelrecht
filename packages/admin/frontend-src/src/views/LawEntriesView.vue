@@ -49,7 +49,6 @@ function viewJobsForLaw(lawId) {
   <PaginationControls
     :current-page="currentPage"
     :total-pages="totalPages"
-    :total-count="totalCount"
     @page-change="goToPage"
   />
 </template>
