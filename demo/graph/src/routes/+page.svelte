@@ -114,10 +114,13 @@
   let traceFilter = $state<'highlights' | 'all'>('highlights');
   let traceStartNodeIds = $state<string[]>([]); // root laws + initial output leaves
 
-  // Bekendmaking follow-up execution. Default is een zaterdag zodat de demo
-  // direct de Algemene termijnenwet art. 1 weekend-correctie laat zien:
-  // bek=za 11 jan 2025 → einddatum za 22 feb 2025 → verlengd naar ma 24 feb.
-  let bekendmakingDatum = $state<string>('2025-01-11');
+  // Bekendmaking follow-up execution. Default = vandaag: juridisch de meest
+  // voor de hand liggende datum (het besluit wordt direct na vaststelling
+  // bekendgemaakt). Als die datum geen verlenging triggert laat de UI
+  // expliciet zien dat er geen weekend/feestdag-correctie nodig is, en
+  // kan de gebruiker met de datepicker zelf een andere dag kiezen.
+  const today = new Date().toISOString().slice(0, 10);
+  let bekendmakingDatum = $state<string>(today);
   let bekendmakingRunning = $state<boolean>(false);
   let bekendmakingAwbTrace = $state<import('$lib/wasmEngine').TraceResult | null>(null);
   let bekendmakingTermijnenTrace = $state<import('$lib/wasmEngine').TraceResult | null>(null);
@@ -915,6 +918,11 @@
       const res = await fetch('/features/list');
       if (!res.ok) return;
       features = await res.json();
+      // Auto-select the only feature when there's exactly one — avoids an
+      // unnecessary "kies een feature" click for the demo.
+      if (features.length === 1 && !selectedFeature) {
+        selectedFeature = features[0];
+      }
     } catch (e) {
       console.error('Failed to load features', e);
     }
@@ -1193,6 +1201,19 @@
     });
   });
 
+  // Scroll the active step into view when navigating with prev/next.
+  // Reads currentStepIdx as dependency; defers to DOM update.
+  $effect(() => {
+    const idx = currentStepIdx;
+    if (idx < 0) return;
+    queueMicrotask(() => {
+      const el = document.querySelector<HTMLElement>(`[data-step-idx="${idx}"]`);
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+  });
+
   // Load features once on mount
   $effect(() => {
     loadFeatureList();
@@ -1222,19 +1243,21 @@
   <!-- Scenario toolbar -->
   <div class="flex flex-col border-b border-gray-200 bg-white text-sm">
   <div class="flex items-center gap-2 px-4 py-2">
-    <label class="font-semibold text-gray-700" for="feature-select">Feature:</label>
-    <select
-      id="feature-select"
-      bind:value={selectedFeature}
-      class="rounded border border-gray-300 px-2 py-1 text-sm"
-    >
-      <option value={null}>— kies een feature —</option>
-      {#each features as f}
-        <option value={f}>{f}</option>
-      {/each}
-    </select>
+    {#if features.length > 1}
+      <label class="font-semibold text-gray-700" for="feature-select">Feature:</label>
+      <select
+        id="feature-select"
+        bind:value={selectedFeature}
+        class="rounded border border-gray-300 px-2 py-1 text-sm"
+      >
+        <option value={null}>— kies een feature —</option>
+        {#each features as f}
+          <option value={f}>{f}</option>
+        {/each}
+      </select>
+    {/if}
 
-    <label class="ml-4 font-semibold text-gray-700" for="scenario-select">Scenario:</label>
+    <label class="font-semibold text-gray-700" for="scenario-select">Scenario:</label>
     <select
       id="scenario-select"
       bind:value={selectedScenarioIdx}
@@ -1304,7 +1327,6 @@
         {@const eindOut = bekendmakingAwbTrace.outputs?.bezwaartermijn_einddatum}
         {@const startOut = bekendmakingAwbTrace.outputs?.bezwaartermijn_startdatum}
         {@const verlengd = bekendmakingTermijnenTrace.outputs?.verlengde_einddatum}
-        {@const dag = bekendmakingTermijnenTrace.outputs?.dag_van_week}
         <span class="font-mono text-xs text-gray-700">
           start: <strong>{String(startOut ?? '∅')}</strong>
           · eind: <strong>{String(eindOut ?? '∅')}</strong>
@@ -1312,7 +1334,8 @@
             <span class="text-amber-700">→ verlengd tot <strong>{String(verlengd)}</strong></span>
             <span class="text-[10px] text-amber-600">(termijnenwet art. 1)</span>
           {:else if verlengd !== undefined}
-            <span class="text-emerald-700">(geen verlenging)</span>
+            <span class="text-emerald-700">(geen verlenging nodig)</span>
+            <span class="text-[10px] text-gray-500 italic">— probeer een zaterdag of zondag om de termijnenwet-correctie te zien</span>
           {/if}
         </span>
       {/if}
@@ -1411,6 +1434,7 @@
               {@const i = traceSteps.indexOf(step)}
               <button
                 type="button"
+                data-step-idx={i}
                 onclick={() => (currentStepIdx = i)}
                 class="group block w-full cursor-pointer border-b border-gray-100 px-3 py-1 text-left font-mono text-xs hover:bg-gray-50 {i ===
                 currentStepIdx
