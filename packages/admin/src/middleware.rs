@@ -67,6 +67,30 @@ pub async fn require_auth(
     }
 }
 
+/// Guard for the `/metrics` endpoint. When `METRICS_AUTH_TOKEN` is configured,
+/// only requests carrying a matching bearer token are allowed. When the env var
+/// is absent the endpoint is open (backwards compatible).
+pub async fn require_metrics_auth(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
+    let Some(ref expected_hash) = state.config.metrics_token_hash else {
+        return Ok(next.run(request).await);
+    };
+
+    if let Some(token) = extract_bearer_token(&request) {
+        let token_hash = Sha256::digest(token.as_bytes());
+        if token_hash.ct_eq(expected_hash).into() {
+            return Ok(next.run(request).await);
+        }
+    }
+
+    Err(ApiError::Unauthorized(
+        "metrics auth token required".to_string(),
+    ))
+}
+
 fn extract_bearer_token(request: &Request) -> Option<String> {
     let value = request
         .headers()
@@ -116,6 +140,7 @@ mod tests {
                 use sha2::{Digest, Sha256};
                 Sha256::digest(k.as_bytes()).into()
             }),
+            metrics_token_hash: None,
         };
 
         #[allow(clippy::expect_used)]
@@ -411,5 +436,115 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // -- require_metrics_auth tests --
+
+    fn metrics_state(token: Option<&str>) -> AppState {
+        let config = AppConfig {
+            oidc: None,
+            base_url: None,
+            api_key: None,
+            api_key_hash: None,
+            metrics_token_hash: token.map(|k| {
+                use sha2::{Digest, Sha256};
+                Sha256::digest(k.as_bytes()).into()
+            }),
+        };
+
+        #[allow(clippy::expect_used)]
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://test@localhost/test")
+            .expect("lazy pool");
+
+        AppState {
+            pool,
+            oidc_client: None,
+            end_session_url: None,
+            config: Arc::new(config),
+            metrics_cache: Arc::new(crate::metrics::new_cache()),
+            http_client: reqwest::Client::new(),
+            corpus: Arc::new(tokio::sync::RwLock::new(crate::state::CorpusState::empty())),
+        }
+    }
+
+    fn metrics_app(state: AppState) -> Router {
+        Router::new()
+            .route("/metrics", get(|| async { "metrics" }))
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_metrics_auth,
+            ))
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn metrics_no_token_configured_allows_all() {
+        let app = metrics_app(metrics_state(None));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn metrics_valid_token_passes() {
+        let app = metrics_app(metrics_state(Some("prom-secret")));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/metrics")
+                    .header("authorization", "Bearer prom-secret")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn metrics_invalid_token_rejects() {
+        let app = metrics_app(metrics_state(Some("prom-secret")));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/metrics")
+                    .header("authorization", "Bearer wrong")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn metrics_no_token_sent_rejects() {
+        let app = metrics_app(metrics_state(Some("prom-secret")));
+
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }
