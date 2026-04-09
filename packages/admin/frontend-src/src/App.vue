@@ -42,33 +42,35 @@ function onAccountClick() {
   <div v-if="authLoading" />
   <template v-else>
     <span v-if="deploymentName" class="env-badge">{{ deploymentName }}</span>
-    <ndd-page sticky-header style="height: 100%;">
-      <div slot="header">
-        <ndd-top-navigation-bar
-          title="RegelRecht admin"
-          no-logo
-          no-menu
-          utility-no-language-switch
-          :utility-account-label="accountLabel"
-          @account-click="onAccountClick"
-        />
-        <ndd-toolbar size="md">
-          <ndd-toolbar-item slot="start">
-            <ndd-tab-bar>
-              <ndd-tab-bar-item
-                v-for="tab in tabs"
-                :key="tab.key"
-                :text="tab.label"
-                :selected="activeTab === tab.key ? '' : undefined"
-                @click="router.push(tab.route)"
-              ></ndd-tab-bar-item>
-            </ndd-tab-bar>
-          </ndd-toolbar-item>
-          <ndd-toolbar-item id="view-toggle-target" slot="end" />
-          <ndd-toolbar-item id="pagination-target" slot="end" />
-        </ndd-toolbar>
-      </div>
-      <router-view />
-    </ndd-page>
+    <ndd-app-view>
+      <ndd-page sticky-header>
+        <div slot="header">
+          <ndd-top-navigation-bar
+            title="RegelRecht admin"
+            no-logo
+            no-menu
+            utility-no-language-switch
+            :utility-account-label="accountLabel"
+            @account-click="onAccountClick"
+          />
+          <ndd-toolbar size="md">
+            <ndd-toolbar-item slot="start">
+              <ndd-tab-bar>
+                <ndd-tab-bar-item
+                  v-for="tab in tabs"
+                  :key="tab.key"
+                  :text="tab.label"
+                  :selected="activeTab === tab.key ? '' : undefined"
+                  @click="router.push(tab.route)"
+                ></ndd-tab-bar-item>
+              </ndd-tab-bar>
+            </ndd-toolbar-item>
+            <ndd-toolbar-item id="view-toggle-target" slot="end" />
+            <ndd-toolbar-item id="pagination-target" slot="end" />
+          </ndd-toolbar>
+        </div>
+        <router-view />
+      </ndd-page>
+    </ndd-app-view>
   </template>
 </template>
