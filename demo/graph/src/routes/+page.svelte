@@ -112,7 +112,16 @@
   let currentStepIdx = $state<number>(-1);
   let traceView = $state<'steps' | 'tree'>('steps');
   let traceFilter = $state<'highlights' | 'all'>('highlights');
-  let traceStartNodeIds = $state<string[]>([]); // root law + initial output leaf
+  let traceStartNodeIds = $state<string[]>([]); // root laws + initial output leaves
+
+  // Bekendmaking follow-up execution. Default is een zaterdag zodat de demo
+  // direct de Algemene termijnenwet art. 1 weekend-correctie laat zien:
+  // bek=za 11 jan 2025 → einddatum za 22 feb 2025 → verlengd naar ma 24 feb.
+  let bekendmakingDatum = $state<string>('2025-01-11');
+  let bekendmakingRunning = $state<boolean>(false);
+  let bekendmakingAwbTrace = $state<import('$lib/wasmEngine').TraceResult | null>(null);
+  let bekendmakingTermijnenTrace = $state<import('$lib/wasmEngine').TraceResult | null>(null);
+  let bekendmakingError = $state<string | null>(null);
 
   function parseLaw(yamlContent: string): Law | null {
     const data = yaml.parse(yamlContent);
@@ -951,6 +960,9 @@
     currentStepIdx = -1;
     runError = null;
     traceStartNodeIds = [];
+    bekendmakingAwbTrace = null;
+    bekendmakingTermijnenTrace = null;
+    bekendmakingError = null;
     clearTraceClasses();
   }
 
@@ -1014,6 +1026,124 @@
       return s.length > 80 ? s.substring(0, 77) + '…' : s;
     } catch {
       return String(v);
+    }
+  }
+
+  /**
+   * Vervolgstadium: simuleer BEKENDMAKING (AWB 3:41). Dit bestaat juridisch
+   * uit twee opeenvolgende stappen:
+   *
+   *   1. AWB 6:8 → bereken de bezwaartermijn_einddatum op basis van de
+   *      bekendmakingsdatum (post_actions hook op BESCHIKKING stage
+   *      BEKENDMAKING).
+   *   2. Algemene termijnenwet art. 1 → als die einddatum in een weekend
+   *      of op een erkende feestdag valt, verleng tot de eerstvolgende
+   *      werkdag.
+   *
+   * Beide runs worden sequentieel uitgevoerd. De traces worden als aparte
+   * secties achter de besluit-trace aangeplakt zodat de gebruiker de
+   * cascade BESLUIT → BEKENDMAKING → TERMIJNEN-CORRECTIE kan doorlopen.
+   *
+   * We doen twee losse executes (in plaats van één via cross-law) omdat
+   * de engine parameters niet automatisch doorreikt naar een op-aanvraag-
+   * geladen target law bij cross-law resolution. Dit sluit juridisch ook
+   * prima aan bij het feit dat het twee zelfstandige wetsartikelen zijn
+   * die los van elkaar getoetst kunnen worden.
+   */
+  async function runBekendmaking() {
+    if (bekendmakingRunning || !traceRun) return;
+    const scn = featureScenarios[selectedScenarioIdx];
+    if (!scn) return;
+    bekendmakingRunning = true;
+    bekendmakingError = null;
+    try {
+      const engine = await initEngine();
+
+      // Stap 1: AWB 6:8 → bezwaartermijn_einddatum
+      const awbResult = engine.executeWithTrace(
+        'algemene_wet_bestuursrecht',
+        'bezwaartermijn_einddatum',
+        { bekendmaking_datum: bekendmakingDatum },
+        scn.calculationDate,
+      );
+      bekendmakingAwbTrace = awbResult;
+      const einddatum = awbResult.outputs?.bezwaartermijn_einddatum;
+      if (typeof einddatum !== 'string') {
+        throw new Error('AWB 6:8 leverde geen bezwaartermijn_einddatum op');
+      }
+
+      // Stap 2: Algemene termijnenwet art. 1 → verlengde_einddatum
+      const termijnenResult = engine.executeWithTrace(
+        'algemene_termijnenwet',
+        'verlengde_einddatum',
+        { bezwaartermijn_einddatum: einddatum },
+        scn.calculationDate,
+      );
+      bekendmakingTermijnenTrace = termijnenResult;
+
+      // Bouw de aangevulde stappenlijst: besluit-trace + 2 secties.
+      const currentEdges = untrack(() => edges);
+      const currentNodes = untrack(() => nodes);
+
+      const enrichSteps = (trace: import('$lib/wasmEngine').PathNode, rootLaw: string): Step[] =>
+        flattenTraceSteps(trace, rootLaw).map((s) => ({
+          ...s,
+          edgeIds: edgeIdsForStep(s, currentEdges as any),
+          nodeIds: graphNodeIdsForStep(s, currentNodes as any),
+        }));
+
+      const awbSection: Step = {
+        label: `── Bekendmaking op ${bekendmakingDatum} · AWB 6:8 ──`,
+        nodeType: 'article',
+        lawId: 'algemene_wet_bestuursrecht',
+        name: 'bekendmaking',
+        depth: 0,
+        edgeIds: [],
+        nodeIds: ['algemene_wet_bestuursrecht'],
+      };
+      const termijnenSection: Step = {
+        label: `── Termijnen-correctie · Algemene termijnenwet art. 1 ──`,
+        nodeType: 'article',
+        lawId: 'algemene_termijnenwet',
+        name: 'termijnen-correctie',
+        depth: 0,
+        edgeIds: [],
+        nodeIds: ['algemene_termijnenwet'],
+      };
+
+      const awbSteps = awbResult.trace ? enrichSteps(awbResult.trace, 'algemene_wet_bestuursrecht') : [];
+      const termijnenSteps = termijnenResult.trace ? enrichSteps(termijnenResult.trace, 'algemene_termijnenwet') : [];
+
+      const jumpTo = traceSteps.length; // eerste nieuwe step (awbSection)
+      traceSteps = [
+        ...traceSteps,
+        awbSection,
+        ...awbSteps,
+        termijnenSection,
+        ...termijnenSteps,
+      ];
+
+      // Extend start-points to also mark AWB + termijnenwet roots + output leaves
+      const nodeIdSet = new Set(currentNodes.map((n) => n.id));
+      const startSet = new Set(traceStartNodeIds);
+      startSet.add('algemene_wet_bestuursrecht');
+      startSet.add('algemene_termijnenwet');
+      const eindOutId = 'algemene_wet_bestuursrecht-output-bezwaartermijn_einddatum';
+      const verlOutId = 'algemene_termijnenwet-output-verlengde_einddatum';
+      if (nodeIdSet.has(eindOutId)) startSet.add(eindOutId);
+      if (nodeIdSet.has(verlOutId)) startSet.add(verlOutId);
+      traceStartNodeIds = Array.from(startSet);
+
+      currentStepIdx = jumpTo;
+    } catch (e: unknown) {
+      const msg = typeof e === 'object' && e && 'error' in e
+        ? String((e as { error: unknown }).error)
+        : e instanceof Error
+          ? e.message
+          : String(e);
+      bekendmakingError = msg;
+    } finally {
+      bekendmakingRunning = false;
     }
   }
 
@@ -1088,63 +1218,10 @@
   <title>Wettengraaf — Regelrecht</title>
 </svelte:head>
 
-<div class="float-right h-screen w-80 overflow-y-auto px-6 pb-4 text-sm">
-  <div class="sticky top-0 bg-white pt-6 pb-2">
-    <h1 class="mb-3 text-base font-semibold">Selectie van wetten</h1>
-
-    <div class="flex gap-2">
-      <button
-        type="button"
-        onclick={calculatePositions}
-        class="cursor-pointer rounded-md border border-blue-600 bg-blue-600 px-3 py-1.5 text-white transition duration-200 hover:border-blue-700 hover:bg-blue-700"
-        >Her-positioneer</button
-      >
-      <button
-        type="button"
-        onclick={() => { selectedLaws = laws.filter(l => l.articles.length > 0).map((law) => law.id); }}
-        class="cursor-pointer rounded-md border border-gray-600 bg-gray-600 px-3 py-1.5 text-white transition duration-200 hover:border-gray-700 hover:bg-gray-700"
-        >Selecteer alles</button
-      >
-    </div>
-  </div>
-
-  {#each Object.entries(laws.filter(l => l.articles.length > 0).reduce((acc, law) => {
-        if (!acc[law.layer]) acc[law.layer] = [];
-        acc[law.layer].push(law);
-        return acc;
-      }, {} as Record<string, Law[]>)) as [layer, layerLaws]}
-    <h2
-      class="service-{getLayerColorIndex(layer)} mt-4 mb-2 inline-block rounded-md px-2 py-1 text-sm font-semibold first:mt-0"
-    >
-      {layerLabels[layer] || layer}
-    </h2>
-    {#each layerLaws as law}
-      <div class="mb-1.5">
-        <label class="group inline-flex items-start">
-          <input
-            bind:group={selectedLaws}
-            class="form-checkbox mt-0.5 mr-1.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            type="checkbox"
-            value={law.id}
-          />
-          <span
-            >{law.name}
-            <button
-              type="button"
-              onclick={() => { selectedLaws = [law.id]; }}
-              class="invisible cursor-pointer font-semibold text-blue-700 group-hover:visible hover:text-blue-800"
-              >alleen</button
-            ></span
-          >
-        </label>
-      </div>
-    {/each}
-  {/each}
-</div>
-
-<div class="mr-80 flex h-screen flex-col">
+<div class="flex h-screen flex-col">
   <!-- Scenario toolbar -->
-  <div class="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-2 text-sm">
+  <div class="flex flex-col border-b border-gray-200 bg-white text-sm">
+  <div class="flex items-center gap-2 px-4 py-2">
     <label class="font-semibold text-gray-700" for="feature-select">Feature:</label>
     <select
       id="feature-select"
@@ -1201,6 +1278,49 @@
         {passed}/{total} asserts
       </span>
     {/if}
+  </div>
+
+  <!-- Bekendmaking row: alleen zichtbaar als het besluit een BESCHIKKING was
+       (AWB 6:7 heeft dan bezwaartermijn_weken gezet via post_actions hook). -->
+  {#if traceRun && typeof traceRun.trace.outputs?.bezwaartermijn_weken === 'number' && traceRun.trace.outputs.bezwaartermijn_weken > 0}
+    <div class="flex items-center gap-2 border-t border-dashed border-gray-200 bg-slate-50 px-4 py-2">
+      <span class="text-gray-500 italic">Vervolgstadium · AWB 3:41 Bekendmaking →</span>
+      <label class="font-semibold text-gray-700" for="bekendmaking-datum">Bekendmaking op:</label>
+      <input
+        id="bekendmaking-datum"
+        type="date"
+        bind:value={bekendmakingDatum}
+        class="rounded border border-gray-300 px-2 py-1 font-mono text-sm"
+      />
+      <button
+        type="button"
+        onclick={runBekendmaking}
+        disabled={bekendmakingRunning}
+        class="cursor-pointer rounded-md border border-indigo-600 bg-indigo-600 px-3 py-1 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {bekendmakingRunning ? 'Bezig…' : '▶ Bekendmaken'}
+      </button>
+      {#if bekendmakingAwbTrace && bekendmakingTermijnenTrace}
+        {@const eindOut = bekendmakingAwbTrace.outputs?.bezwaartermijn_einddatum}
+        {@const startOut = bekendmakingAwbTrace.outputs?.bezwaartermijn_startdatum}
+        {@const verlengd = bekendmakingTermijnenTrace.outputs?.verlengde_einddatum}
+        {@const dag = bekendmakingTermijnenTrace.outputs?.dag_van_week}
+        <span class="font-mono text-xs text-gray-700">
+          start: <strong>{String(startOut ?? '∅')}</strong>
+          · eind: <strong>{String(eindOut ?? '∅')}</strong>
+          {#if verlengd !== undefined && String(verlengd) !== String(eindOut)}
+            <span class="text-amber-700">→ verlengd tot <strong>{String(verlengd)}</strong></span>
+            <span class="text-[10px] text-amber-600">(termijnenwet art. 1)</span>
+          {:else if verlengd !== undefined}
+            <span class="text-emerald-700">(geen verlenging)</span>
+          {/if}
+        </span>
+      {/if}
+      {#if bekendmakingError}
+        <span class="truncate text-red-700" title={bekendmakingError}>⚠ {bekendmakingError}</span>
+      {/if}
+    </div>
+  {/if}
   </div>
 
   <!-- Graph -->
