@@ -38,7 +38,8 @@ pub fn convert_gherkin_value(val: &str) -> Value {
         return Value::Float(f);
     }
 
-    // Default to string
+    // Default to string (dates like "2025-01-01" are kept as strings;
+    // the engine's DATE_ADD/AGE operations parse them internally)
     Value::String(trimmed.to_string())
 }
 

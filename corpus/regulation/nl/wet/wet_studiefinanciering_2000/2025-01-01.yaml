@@ -101,11 +101,25 @@ articles:
       van de desbetreffende opleiding omgezet in een gift.
     url: https://wetten.overheid.nl/BWBR0011453/2025-01-01#Artikel5.7
     machine_readable:
+      definitions:
+        kwalificerende_opleidingen:
+          value: associate_degree, hbo_bachelor, hbo_master,
+            wo_bachelor_en_master
+          description: >-
+            Lid 1+3: opleidingen die kwalificeren voor omzetting
+            in gift (en daarmee voor de tegemoetkoming van art. 12.30)
       execution:
         parameters:
           - name: bsn
             type: string
             required: true
+          - name: type_opleiding
+            type: string
+            required: true
+            description: >-
+              Type afgeronde opleiding. Moet een van de in lid 1/3
+              genoemde types zijn: associate_degree, hbo_bachelor,
+              hbo_master, wo_bachelor_en_master
           - name: maanden_studie
             type: number
             required: true
@@ -118,17 +132,38 @@ articles:
             source:
               output: diplomatermijn_maanden
         output:
+          - name: is_kwalificerende_opleiding
+            type: boolean
+            description: >-
+              Of het type opleiding voorkomt in de opsomming van
+              lid 1 en lid 3
           - name: heeft_diploma_binnen_termijn
             type: boolean
             description: >-
-              Of de student binnen de diplomatermijn met goed gevolg een
-              opleiding heeft afgerond
+              Of de student binnen de diplomatermijn met goed gevolg
+              een kwalificerende opleiding heeft afgerond
         actions:
+          # Lid 1+3: check of opleiding kwalificeert
+          - output: is_kwalificerende_opleiding
+            value:
+              operation: IN
+              subject: $type_opleiding
+              values:
+                - associate_degree
+                - hbo_bachelor
+                - hbo_master
+                - wo_bachelor_en_master
+          # Combinatie: kwalificerend EN binnen termijn
           - output: heeft_diploma_binnen_termijn
             value:
-              operation: LESS_THAN_OR_EQUAL
-              subject: $maanden_studie
-              value: $diplomatermijn_maanden
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $is_kwalificerende_opleiding
+                  value: true
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $maanden_studie
+                  value: $diplomatermijn_maanden
   - number: '12.30'
     text: >-
       1. In dit artikel wordt onder tegemoetkoming begrepen: een
@@ -180,6 +215,21 @@ articles:
       voor student wordt gelezen: de rechthebbende op een tegemoetkoming.
     url: https://wetten.overheid.nl/BWBR0011453/2025-01-01#Artikel12.30
     machine_readable:
+      untranslatables:
+        - construct: meerdere inschrijvingen en overstap tussen opleidingen
+          reason: >-
+            Lid 2c en lid 3 veronderstellen een enkel studietraject.
+            Bij meerdere inschrijvingen (bijv. overstap van WO naar
+            HBO) moet per opleiding worden bepaald of deze binnen de
+            diplomatermijn valt, en moeten de maanden SF over
+            opleidingen worden gesommeerd. Dit vereist een FOREACH
+            over een collectie van inschrijvingen, wat de engine niet
+            ondersteunt.
+          suggestion: >-
+            Voeg FOREACH operatie toe aan de engine, zodat over een
+            array van inschrijving-objecten kan worden geitereerd met
+            per-element berekeningen.
+          accepted: true
       definitions:
         leenstelsel_start:
           value: '2015-09-01'
@@ -193,6 +243,11 @@ articles:
         minimum_maanden_studiefinanciering:
           value: 12
           description: Ten minste twaalf maanden studiefinanciering vereist
+        diplomatermijn_basis_maanden:
+          value: 48
+          description: >-
+            Art. 5.2 lid 1: 4 jaar = 48 maanden standaard
+            diplomatermijn hoger onderwijs
       execution:
         produces:
           legal_character: BESCHIKKING
@@ -214,27 +269,112 @@ articles:
             description: >-
               Lid 2b: aantal maanden aanspraak op studiefinanciering
               (niet zijnde collegegeldkrediet) in de leenstelselperiode
-          - name: heeft_diploma_binnen_termijn
+          - name: heeft_studiefinanciering_aangevraagd
             type: boolean
             required: true
             description: >-
-              Lid 2c: binnen de diplomatermijn of binnen tien jaar na
-              eerste inschrijving met goed gevolg afgerond
+              Lid 2c: of de student studiefinanciering heeft
+              aangevraagd (bepaalt welke termijn geldt)
+          - name: type_opleiding
+            type: string
+            required: true
+            description: >-
+              Lid 2c: type afgeronde opleiding (als bedoeld in
+              artikel 5.7)
+          - name: datum_eerste_inschrijving
+            type: string
+            required: true
+            description: >-
+              Lid 2c: datum eerste inschrijving in het hoger onderwijs
+              (voor de 10-jaar termijn bij niet-SF studenten)
+          - name: datum_diploma
+            type: string
+            required: true
+            description: >-
+              Lid 2c: datum waarop diploma is behaald
+        input: []
         output:
           - name: is_rechthebbende
             type: boolean
             description: >-
               Of de persoon voldoet aan alle voorwaarden van lid 2
               (rechthebbende op tegemoetkoming)
+          - name: binnen_termijn
+            type: boolean
+            description: >-
+              Lid 2c: of de student binnen de toepasselijke termijn
+              is afgestudeerd (diplomatermijn of 10 jaar)
           - name: tegemoetkoming_bedrag
             type: amount
             type_spec:
               unit: eurocent
             description: >-
               Hoogte van de tegemoetkoming (lid 3): €29,92 × aantal
-              maanden studiefinanciering
+              maanden SF, tot maximum van de diplomatermijn
         actions:
-          # Lid 2: eligibility check
+          # Lid 2c: kwalificerende opleiding (als bedoeld in art. 5.7)
+          - output: is_kwalificerende_opleiding
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $type_opleiding
+                  value: associate_degree
+                - operation: EQUALS
+                  subject: $type_opleiding
+                  value: hbo_bachelor
+                - operation: EQUALS
+                  subject: $type_opleiding
+                  value: hbo_master
+                - operation: EQUALS
+                  subject: $type_opleiding
+                  value: wo_bachelor_en_master
+            legal_basis:
+              law: Wet studiefinanciering 2000
+              article: '5.7'
+          # Lid 2c pad A: binnen diplomatermijn (art. 5.2 lid 1 = 4 jaar)
+          - output: studieduur_jaren
+            value:
+              operation: AGE
+              date_of_birth: $datum_eerste_inschrijving
+              reference_date: $datum_diploma
+          - output: binnen_diplomatermijn
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $studieduur_jaren
+              value: 4
+            legal_basis:
+              law: Wet studiefinanciering 2000
+              article: '5.2'
+          # Lid 2c pad B: binnen 10 jaar na eerste inschrijving
+          # AGE berekent hele jaren tussen twee datums
+          - output: jaren_sinds_inschrijving
+            value:
+              operation: AGE
+              date_of_birth: $datum_eerste_inschrijving
+              reference_date: $datum_diploma
+          - output: binnen_10_jaar
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $jaren_sinds_inschrijving
+              value: 10
+          # Lid 2c: combinatie — kwalificerend diploma + juiste termijn
+          - output: binnen_termijn
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $is_kwalificerende_opleiding
+                  value: true
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $heeft_studiefinanciering_aangevraagd
+                        value: true
+                      then: $binnen_diplomatermijn
+                  default: $binnen_10_jaar
+          # Lid 2: alle drie de voorwaarden
           - output: is_rechthebbende
             value:
               operation: AND
@@ -246,9 +386,9 @@ articles:
                   subject: $maanden_studiefinanciering
                   value: $minimum_maanden_studiefinanciering
                 - operation: EQUALS
-                  subject: $heeft_diploma_binnen_termijn
+                  subject: $binnen_termijn
                   value: true
-          # Lid 3: amount calculation
+          # Lid 3: bedrag = €29,92 × maanden SF, max diplomatermijn
           - output: tegemoetkoming_bedrag
             value:
               operation: IF
@@ -261,5 +401,8 @@ articles:
                     operation: MULTIPLY
                     values:
                       - $bedrag_per_maand
-                      - $maanden_studiefinanciering
+                      - operation: MIN
+                        values:
+                          - $maanden_studiefinanciering
+                          - $diplomatermijn_basis_maanden
               default: 0

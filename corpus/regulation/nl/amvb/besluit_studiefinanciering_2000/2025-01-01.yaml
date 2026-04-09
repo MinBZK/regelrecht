@@ -80,14 +80,24 @@ articles:
             type: string
             required: true
             description: Burgerservicenummer van de (oud-)student
+          # Gegevens voor art. 12.30 eligibility check
           - name: was_ho_student_tijdens_leenstelsel
             type: boolean
             required: true
           - name: maanden_studiefinanciering
             type: number
             required: true
-          - name: heeft_diploma_binnen_termijn
+          - name: heeft_studiefinanciering_aangevraagd
             type: boolean
+            required: true
+          - name: type_opleiding
+            type: string
+            required: true
+          - name: datum_eerste_inschrijving
+            type: string
+            required: true
+          - name: datum_diploma
+            type: string
             required: true
           # Per gegeven: is het bij de Minister (DUO) bekend?
           # Dit zijn de "benodigde gegevens" uit lid 1.
@@ -129,7 +139,10 @@ articles:
                 bsn: $bsn
                 was_ho_student_tijdens_leenstelsel: $was_ho_student_tijdens_leenstelsel
                 maanden_studiefinanciering: $maanden_studiefinanciering
-                heeft_diploma_binnen_termijn: $heeft_diploma_binnen_termijn
+                heeft_studiefinanciering_aangevraagd: $heeft_studiefinanciering_aangevraagd
+                type_opleiding: $type_opleiding
+                datum_eerste_inschrijving: $datum_eerste_inschrijving
+                datum_diploma: $datum_diploma
         output:
           - name: minister_beschikt_over_benodigde_gegevens
             type: boolean
