@@ -44,7 +44,7 @@ function onAccountClick() {
     <span v-if="deploymentName" class="env-badge">{{ deploymentName }}</span>
     <ndd-app-view>
       <ndd-bar-split-view>
-        <ndd-split-view-pane slot="primary-bar">
+        <ndd-page slot="toolbar">
           <ndd-top-navigation-bar
             title="RegelRecht admin"
             no-logo
@@ -70,12 +70,10 @@ function onAccountClick() {
               <ndd-toolbar-item id="pagination-target" slot="end" />
             </ndd-toolbar>
           </ndd-container>
-        </ndd-split-view-pane>
-        <ndd-split-view-pane slot="main">
-          <ndd-page>
-            <router-view />
-          </ndd-page>
-        </ndd-split-view-pane>
+        </ndd-page>
+        <ndd-page slot="main">
+          <router-view />
+        </ndd-page>
       </ndd-bar-split-view>
     </ndd-app-view>
   </template>
