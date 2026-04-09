@@ -107,10 +107,10 @@ pub async fn request_harvest(
                 bwb_id: None,
             },
             Err(e) => {
-                tracing::warn!(error = %e, slug = %slug, "failed to look up slug");
+                tracing::error!(error = %e, slug = %slug, "failed to look up slug");
                 HarvestSlugResult {
                     law_id: slug.clone(),
-                    status: HarvestStatus::NotFound,
+                    status: HarvestStatus::Error,
                     bwb_id: None,
                 }
             }
