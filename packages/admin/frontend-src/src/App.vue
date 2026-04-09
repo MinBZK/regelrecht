@@ -43,8 +43,8 @@ function onAccountClick() {
   <template v-else>
     <span v-if="deploymentName" class="env-badge">{{ deploymentName }}</span>
     <ndd-app-view>
-      <ndd-page sticky-header>
-        <div slot="header">
+      <ndd-bar-split-view>
+        <ndd-split-view-pane slot="primary-bar">
           <ndd-top-navigation-bar
             title="RegelRecht admin"
             no-logo
@@ -53,24 +53,30 @@ function onAccountClick() {
             :utility-account-label="accountLabel"
             @account-click="onAccountClick"
           />
-          <ndd-toolbar size="md">
-            <ndd-toolbar-item slot="start">
-              <ndd-tab-bar>
-                <ndd-tab-bar-item
-                  v-for="tab in tabs"
-                  :key="tab.key"
-                  :text="tab.label"
-                  :selected="activeTab === tab.key ? '' : undefined"
-                  @click="router.push(tab.route)"
-                ></ndd-tab-bar-item>
-              </ndd-tab-bar>
-            </ndd-toolbar-item>
-            <ndd-toolbar-item id="view-toggle-target" slot="end" />
-            <ndd-toolbar-item id="pagination-target" slot="end" />
-          </ndd-toolbar>
-        </div>
-        <router-view />
-      </ndd-page>
+          <ndd-container padding="8">
+            <ndd-toolbar size="md">
+              <ndd-toolbar-item slot="start">
+                <ndd-tab-bar>
+                  <ndd-tab-bar-item
+                    v-for="tab in tabs"
+                    :key="tab.key"
+                    :text="tab.label"
+                    :selected="activeTab === tab.key ? '' : undefined"
+                    @click="router.push(tab.route)"
+                  ></ndd-tab-bar-item>
+                </ndd-tab-bar>
+              </ndd-toolbar-item>
+              <ndd-toolbar-item id="view-toggle-target" slot="end" />
+              <ndd-toolbar-item id="pagination-target" slot="end" />
+            </ndd-toolbar>
+          </ndd-container>
+        </ndd-split-view-pane>
+        <ndd-split-view-pane slot="main">
+          <ndd-page>
+            <router-view />
+          </ndd-page>
+        </ndd-split-view-pane>
+      </ndd-bar-split-view>
     </ndd-app-view>
   </template>
 </template>
