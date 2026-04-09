@@ -284,9 +284,7 @@ pub async fn callback<S: OidcAppState>(
     if let Err(e) = session.remove::<String>(SESSION_KEY_PKCE_VERIFIER).await {
         tracing::warn!(error = %e, "failed to remove PKCE verifier from session");
     }
-    if let Err(e) = session.remove::<String>(SESSION_KEY_BASE_URL).await {
-        tracing::warn!(error = %e, "failed to remove base_url from session");
-    }
+    // Keep SESSION_KEY_BASE_URL — logout needs it for post_logout_redirect_uri.
 
     session
         .insert(SESSION_KEY_AUTHENTICATED, true)
@@ -308,10 +306,25 @@ pub async fn logout<S: OidcAppState>(
 ) -> Result<Response, StatusCode> {
     let id_token_hint: Option<String> = session.get(SESSION_KEY_ID_TOKEN).await.ok().flatten();
 
-    // For the post-logout redirect, use the explicit BASE_URL config.
-    // When not configured, fall back to "/" (relative redirect) to avoid
-    // trusting request headers for the redirect target.
-    let base_url = state.base_url().unwrap_or_default().to_string();
+    // Read the base_url stored during the OIDC login flow. Derived from
+    // trusted config or request headers at login time (same origin used for
+    // the Keycloak-validated redirect_uri). Stored server-side after
+    // cycle_id() prevents session fixation. Falls back to BASE_URL config,
+    // then to "/" for a relative redirect.
+    let base_url: String = match session.get(SESSION_KEY_BASE_URL).await {
+        Ok(Some(url)) => url,
+        Ok(None) => state.base_url().map(|u| u.to_string()).unwrap_or_else(|| {
+            tracing::warn!("no base_url in session and BASE_URL not configured — post_logout_redirect_uri will be relative");
+            "/".to_string()
+        }),
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to read base_url from session, using config fallback");
+            state.base_url().map(|u| u.to_string()).unwrap_or_else(|| {
+                tracing::warn!("BASE_URL not configured — post_logout_redirect_uri will be relative");
+                "/".to_string()
+            })
+        }
+    };
 
     session.flush().await.map_err(|e| {
         tracing::error!(error = %e, "failed to flush session");
