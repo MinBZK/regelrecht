@@ -42,6 +42,7 @@ export function useScenarios(lawId) {
 
   async function selectScenario(filename) {
     selectedScenario.value = filename;
+    saveError.value = null;
 
     try {
       const res = await fetch(

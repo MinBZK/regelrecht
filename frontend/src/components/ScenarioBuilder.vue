@@ -363,7 +363,7 @@ async function onSave() {
   border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   border-radius: 6px;
   font-size: 13px;
-  font-family: var(--rr-font-family-body, 'RijksSansVF', sans-serif);
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   background: var(--semantics-surfaces-color-primary, white);
   color: var(--semantics-text-color-primary, #1C2029);
   cursor: pointer;

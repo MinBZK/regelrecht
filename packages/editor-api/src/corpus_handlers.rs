@@ -212,21 +212,7 @@ pub async fn get_scenario(
     ),
     (StatusCode, String),
 > {
-    // Reject path traversal attempts
-    if filename.contains('/')
-        || filename.contains('\\')
-        || filename.contains("..")
-        || filename.contains('\0')
-    {
-        return Err((StatusCode::BAD_REQUEST, "Invalid filename".to_string()));
-    }
-
-    if !filename.ends_with(".feature") {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Only .feature files are served".to_string(),
-        ));
-    }
+    validate_scenario_filename(&filename)?;
 
     // Resolve path while holding the lock, then drop it before I/O.
     let file_path = {

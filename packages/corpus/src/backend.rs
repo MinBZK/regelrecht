@@ -67,15 +67,35 @@ impl LocalBackend {
         Self { root, writable }
     }
 
-    fn resolve(&self, relative: &Path) -> PathBuf {
-        self.root.join(relative)
+    fn resolve(&self, relative: &Path) -> Result<PathBuf> {
+        validate_relative_path(relative)?;
+        Ok(self.root.join(relative))
     }
+}
+
+/// Reject paths that are absolute or contain `..` components.
+fn validate_relative_path(path: &Path) -> Result<()> {
+    if path.is_absolute() {
+        return Err(CorpusError::Config(format!(
+            "path must be relative: {}",
+            path.display()
+        )));
+    }
+    for component in path.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err(CorpusError::Config(format!(
+                "path must not contain '..': {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[async_trait]
 impl RepoBackend for LocalBackend {
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
-        let abs = self.resolve(relative_path);
+        let abs = self.resolve(relative_path)?;
         match tokio::fs::read_to_string(&abs).await {
             Ok(content) => Ok(Some(content)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -89,7 +109,7 @@ impl RepoBackend for LocalBackend {
                 "local source is read-only".to_string(),
             ));
         }
-        let abs = self.resolve(relative_path);
+        let abs = self.resolve(relative_path)?;
         if let Some(parent) = abs.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
@@ -103,7 +123,7 @@ impl RepoBackend for LocalBackend {
                 "local source is read-only".to_string(),
             ));
         }
-        let abs = self.resolve(relative_path);
+        let abs = self.resolve(relative_path)?;
         match tokio::fs::remove_file(&abs).await {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -112,7 +132,7 @@ impl RepoBackend for LocalBackend {
     }
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
-        let abs = self.resolve(dir);
+        let abs = self.resolve(dir)?;
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
@@ -230,19 +250,20 @@ impl GitBackend {
     }
 
     /// Resolve a source-relative path to an absolute path in the checkout.
-    fn resolve(&self, relative: &Path) -> PathBuf {
+    fn resolve(&self, relative: &Path) -> Result<PathBuf> {
+        validate_relative_path(relative)?;
         let base = match &self.repo_subpath {
             Some(sub) => self.client.repo_path().join(sub),
             None => self.client.repo_path().to_path_buf(),
         };
-        base.join(relative)
+        Ok(base.join(relative))
     }
 }
 
 #[async_trait]
 impl RepoBackend for GitBackend {
     async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
-        let abs = self.resolve(relative_path);
+        let abs = self.resolve(relative_path)?;
         match tokio::fs::read_to_string(&abs).await {
             Ok(content) => Ok(Some(content)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -251,7 +272,7 @@ impl RepoBackend for GitBackend {
     }
 
     async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
-        let abs = self.resolve(relative_path);
+        let abs = self.resolve(relative_path)?;
         if let Some(parent) = abs.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
@@ -262,7 +283,7 @@ impl RepoBackend for GitBackend {
     }
 
     async fn delete_file(&self, relative_path: &Path) -> Result<()> {
-        let abs = self.resolve(relative_path);
+        let abs = self.resolve(relative_path)?;
         match tokio::fs::remove_file(&abs).await {
             Ok(()) => {
                 self.dirty_files.lock().await.push(abs);
@@ -274,7 +295,7 @@ impl RepoBackend for GitBackend {
     }
 
     async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
-        let abs = self.resolve(dir);
+        let abs = self.resolve(dir)?;
         let mut entries = Vec::new();
 
         let mut read_dir = match tokio::fs::read_dir(&abs).await {
@@ -488,6 +509,21 @@ mod tests {
         let result = backend.write_file(Path::new("test.txt"), "content").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("read-only"));
+    }
+
+    #[tokio::test]
+    async fn local_rejects_path_traversal() {
+        let dir = TempDir::new().unwrap();
+        let mut backend = LocalBackend::new(dir.path().to_path_buf(), true);
+        backend.ensure_ready().await.unwrap();
+
+        let result = backend.read_file(Path::new("../etc/passwd")).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains(".."));
+
+        let result = backend.read_file(Path::new("/etc/passwd")).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("relative"));
     }
 
     #[tokio::test]

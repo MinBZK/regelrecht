@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
 import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
@@ -179,6 +179,10 @@ watch(
   },
   { deep: true },
 );
+
+onBeforeUnmount(() => {
+  clearTimeout(executeTimer);
+});
 
 function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];
