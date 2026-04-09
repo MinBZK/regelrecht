@@ -53,22 +53,18 @@ function onAccountClick() {
           @account-click="onAccountClick"
         />
         <ndd-toolbar size="md">
-          <ndd-toolbar-start-area>
-            <ndd-toolbar-item>
-              <ndd-tab-bar>
-                <ndd-tab-bar-item
-                  v-for="tab in tabs"
-                  :key="tab.key"
-                  :selected="activeTab === tab.key ? '' : undefined"
-                  @click="router.push(tab.route)"
-                >{{ tab.label }}</ndd-tab-bar-item>
-              </ndd-tab-bar>
-            </ndd-toolbar-item>
-          </ndd-toolbar-start-area>
-          <ndd-toolbar-end-area>
-            <ndd-toolbar-item id="view-toggle-target" />
-            <ndd-toolbar-item id="pagination-target" />
-          </ndd-toolbar-end-area>
+          <ndd-toolbar-item slot="start">
+            <ndd-tab-bar>
+              <ndd-tab-bar-item
+                v-for="tab in tabs"
+                :key="tab.key"
+                :selected="activeTab === tab.key ? '' : undefined"
+                @click="router.push(tab.route)"
+              >{{ tab.label }}</ndd-tab-bar-item>
+            </ndd-tab-bar>
+          </ndd-toolbar-item>
+          <ndd-toolbar-item id="view-toggle-target" slot="end" />
+          <ndd-toolbar-item id="pagination-target" slot="end" />
         </ndd-toolbar>
       </div>
       <router-view />
