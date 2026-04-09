@@ -13,15 +13,31 @@ Context: $ARGUMENTS
 
 Elke NDD applicatie volgt een vaste hiërarchie van layout-componenten. De buitenste laag is altijd `ndd-app-view`, de binnenste laag bevat content-componenten.
 
+### Met Split View
+
 ```
 ndd-app-view                              ← verplichte root
-  └── Split View OF ndd-page              ← layout keuze
-      └── ndd-page                        ← pagina met header/footer
-          ├── slot="header"               ← navigatie, titelbalk
-          ├── Secties                     ← content layout
-          │   └── Content-componenten     ← tekst, lijsten, formulieren
-          └── slot="footer"               ← footer content
+  └── Split View                          ← layout keuze (kan genest worden)
+      └── Split View Pane                 ← paneel binnen split view
+          └── ndd-page OF ndd-container   ← page voor scrollbare content, container voor simpele content
+              ├── ndd-container slot="header"  ← navigatie, titelbalk (altijd in container)
+              ├── Page sections           ← content layout
+              │   └── Content-componenten ← tekst, lijsten, formulieren
+              └── ndd-container slot="footer"  ← footer content (altijd in container)
 ```
+
+### Zonder Split View
+
+```
+ndd-app-view                              ← verplichte root
+  └── ndd-page                            ← enkele pagina
+      ├── ndd-container slot="header"     ← navigatie, titelbalk (altijd in container)
+      ├── Page sections                   ← content layout
+      │   └── Content-componenten         ← tekst, lijsten, formulieren
+      └── ndd-container slot="footer"     ← footer content (altijd in container)
+```
+
+**Let op:** Split views kunnen genest worden. Bijvoorbeeld een `ndd-navigation-split-view` in het main-slot van een `ndd-bar-split-view`.
 
 ---
 
@@ -47,16 +63,26 @@ Kies één layout-type op basis van de applicatie:
 
 ### Optie A: Navigation Split View (meest gebruikt)
 
-Vier-koloms layout met sidebar, secundaire sidebar, main content en inspector. Panelen verschijnen automatisch wanneer content geslot wordt.
+Vier-koloms layout met sidebar, secundaire sidebar, main content en inspector. Panelen verschijnen automatisch wanneer content geslot wordt. Elk slot bevat een `ndd-split-view-pane`, die op zijn beurt een `ndd-page` of `ndd-container` bevat.
 
 ```html
 <ndd-navigation-split-view>
-  <ndd-page slot="sidebar">...</ndd-page>
-  <ndd-page slot="secondary-sidebar">...</ndd-page>
-  <ndd-page slot="main">...</ndd-page>
-  <ndd-page slot="inspector">...</ndd-page>
+  <ndd-split-view-pane slot="sidebar">
+    <ndd-page>...</ndd-page>
+  </ndd-split-view-pane>
+  <ndd-split-view-pane slot="secondary-sidebar">
+    <ndd-page>...</ndd-page>
+  </ndd-split-view-pane>
+  <ndd-split-view-pane slot="main">
+    <ndd-page>...</ndd-page>
+  </ndd-split-view-pane>
+  <ndd-split-view-pane slot="inspector">
+    <ndd-page>...</ndd-page>
+  </ndd-split-view-pane>
 </ndd-navigation-split-view>
 ```
+
+Split views kunnen genest worden. Bijvoorbeeld een `ndd-bar-split-view` in het main-slot van een `ndd-navigation-split-view`.
 
 | Slot | Beschrijving | Verplicht |
 |------|--------------|-----------|
@@ -82,11 +108,13 @@ Verticale layout met een main-gebied en onbeperkt aantal bars (toolbars, statusb
 
 ```html
 <ndd-bar-split-view>
-  <ndd-page slot="toolbar" sm-order="1" md-order="1">...</ndd-page>
+  <ndd-container slot="toolbar" sm-order="1" md-order="1">...</ndd-container>
   <ndd-page slot="main" sm-order="2" md-order="2">...</ndd-page>
-  <ndd-page slot="status-bar" sm-order="3" md-order="3">...</ndd-page>
+  <ndd-container slot="status-bar" sm-order="3" md-order="3">...</ndd-container>
 </ndd-bar-split-view>
 ```
+
+Bars bevatten typisch een `ndd-container` (voor eenvoudige toolbars/statusbalken), het main-slot bevat een `ndd-page`.
 
 | Attribuut (op children) | Beschrijving |
 |-------------------------|--------------|
@@ -139,17 +167,19 @@ Elk paneel in een split view bevat een `ndd-page`. Een page biedt scrollgedrag, 
 ```html
 <ndd-page sticky-header sticky-footer background="inherit|default|tinted">
   <ndd-container slot="header" padding="16">
-    <!-- Navigatiebalk of titelbalk -->
+    <!-- Navigatiebalk of titelbalk — altijd in een container -->
   </ndd-container>
 
-  <!-- Secties met content -->
+  <!-- Page sections met content -->
   <ndd-simple-section>...</ndd-simple-section>
 
   <ndd-container slot="footer" padding="16">
-    <!-- Footer content -->
+    <!-- Footer content — altijd in een container -->
   </ndd-container>
 </ndd-page>
 ```
+
+**Regel:** Header en footer content staan altijd in een `ndd-container` om items de juiste ruimte te geven.
 
 | Attribuut | Beschrijving |
 |-----------|--------------|
@@ -192,7 +222,7 @@ De hoofdnavigatiebalk met logo, titel, menu en utility-items. Typisch in de head
 
 ### Top Title Bar (pagina/paneel-niveau)
 
-Titelbalk voor panelen met optionele terugknop en toolbar. Wordt automatisch compact bij scrollen.
+Titelbalk voor panelen met optionele terugknop en toolbar. Wanneer er een anchor-titel in de content staat (`collapse-anchor`), schakelt de title bar automatisch van default naar compact zodra dat element de bovenkant van de scroll-container bereikt.
 
 ```html
 <ndd-top-title-bar
@@ -265,11 +295,11 @@ Titelbalk voor panelen met optionele terugknop en toolbar. Wordt automatisch com
 
 ---
 
-## Laag 5: Secties (content layout)
+## Laag 5: Page sections (content layout)
 
-Secties organiseren content binnen een page. Ze bieden responsieve padding en gap via container queries.
+Page sections organiseren content binnen een page. Ze bieden responsieve padding en gap via container queries.
 
-### Beschikbare secties
+### Beschikbare page sections
 
 | Component | Layout | Beschrijving |
 |-----------|--------|--------------|
@@ -380,8 +410,12 @@ Achtergrondkleur wordt gecascade via `--context-parent-background-color`:
 <!-- Per paneel -->
 <ndd-app-view>
   <ndd-navigation-split-view>
-    <ndd-page slot="sidebar" background="tinted">...</ndd-page>
-    <ndd-page slot="main" background="default">...</ndd-page>
+    <ndd-split-view-pane slot="sidebar">
+      <ndd-page background="tinted">...</ndd-page>
+    </ndd-split-view-pane>
+    <ndd-split-view-pane slot="main">
+      <ndd-page background="default">...</ndd-page>
+    </ndd-split-view-pane>
   </ndd-navigation-split-view>
 </ndd-app-view>
 ```
@@ -396,43 +430,49 @@ Achtergrondkleur wordt gecascade via `--context-parent-background-color`:
 <ndd-app-view background="default">
   <ndd-navigation-split-view>
     <!-- Sidebar met navigatie -->
-    <ndd-page sticky-header slot="sidebar" background="tinted">
-      <ndd-container slot="header" padding="16">
-        <ndd-top-title-bar text="Navigatie"></ndd-top-title-bar>
-      </ndd-container>
-      <ndd-simple-section>
-        <ndd-list>
-          <!-- Navigatie-items -->
-        </ndd-list>
-      </ndd-simple-section>
-    </ndd-page>
+    <ndd-split-view-pane slot="sidebar">
+      <ndd-page sticky-header background="tinted">
+        <ndd-container slot="header" padding="16">
+          <ndd-top-title-bar text="Navigatie"></ndd-top-title-bar>
+        </ndd-container>
+        <ndd-simple-section>
+          <ndd-list>
+            <!-- Navigatie-items -->
+          </ndd-list>
+        </ndd-simple-section>
+      </ndd-page>
+    </ndd-split-view-pane>
 
     <!-- Hoofdinhoud -->
-    <ndd-page sticky-header slot="main">
-      <ndd-container slot="header" padding="16">
-        <ndd-top-title-bar text="Documenttitel" supporting-text="Laatst bewerkt: vandaag">
-          <ndd-icon-button slot="toolbar" icon="edit"></ndd-icon-button>
-        </ndd-top-title-bar>
-      </ndd-container>
-      <ndd-simple-section>
-        <ndd-rich-text>
-          <h2>Inhoud</h2>
-          <p>Primaire content van de pagina.</p>
-        </ndd-rich-text>
-      </ndd-simple-section>
-    </ndd-page>
+    <ndd-split-view-pane slot="main">
+      <ndd-page sticky-header>
+        <ndd-container slot="header" padding="16">
+          <ndd-top-title-bar text="Documenttitel" supporting-text="Laatst bewerkt: vandaag">
+            <ndd-icon-button slot="toolbar" icon="edit"></ndd-icon-button>
+          </ndd-top-title-bar>
+        </ndd-container>
+        <ndd-simple-section>
+          <ndd-rich-text>
+            <h2>Inhoud</h2>
+            <p>Primaire content van de pagina.</p>
+          </ndd-rich-text>
+        </ndd-simple-section>
+      </ndd-page>
+    </ndd-split-view-pane>
 
     <!-- Inspector voor details -->
-    <ndd-page sticky-header slot="inspector">
-      <ndd-container slot="header" padding="16">
-        <ndd-top-title-bar text="Eigenschappen"></ndd-top-title-bar>
-      </ndd-container>
-      <ndd-simple-section>
-        <ndd-rich-text>
-          <p>Details over het geselecteerde item.</p>
-        </ndd-rich-text>
-      </ndd-simple-section>
-    </ndd-page>
+    <ndd-split-view-pane slot="inspector">
+      <ndd-page sticky-header>
+        <ndd-container slot="header" padding="16">
+          <ndd-top-title-bar text="Eigenschappen"></ndd-top-title-bar>
+        </ndd-container>
+        <ndd-simple-section>
+          <ndd-rich-text>
+            <p>Details over het geselecteerde item.</p>
+          </ndd-rich-text>
+        </ndd-simple-section>
+      </ndd-page>
+    </ndd-split-view-pane>
   </ndd-navigation-split-view>
 </ndd-app-view>
 ```
@@ -482,12 +522,12 @@ Achtergrondkleur wordt gecascade via `--context-parent-background-color`:
 ```html
 <ndd-app-view>
   <ndd-bar-split-view>
-    <ndd-page slot="toolbar" sm-order="1" md-order="1">
+    <ndd-container slot="toolbar" sm-order="1" md-order="1">
       <ndd-tab-bar navigation responsive>
         <ndd-tab-bar-item text="Start" selected></ndd-tab-bar-item>
         <ndd-tab-bar-item text="Zoeken"></ndd-tab-bar-item>
       </ndd-tab-bar>
-    </ndd-page>
+    </ndd-container>
 
     <ndd-page slot="main" sm-order="2" md-order="2" sticky-header>
       <ndd-container slot="header" padding="16">
@@ -511,7 +551,8 @@ Achtergrondkleur wordt gecascade via `--context-parent-background-color`:
 Heeft de app een zijnavigatie?
 ├── Ja → ndd-navigation-split-view
 │   ├── Met details-paneel? → voeg inspector slot toe
-│   └── Met subnavigatie? → voeg secondary-sidebar slot toe
+│   ├── Met subnavigatie? → voeg secondary-sidebar slot toe
+│   └── Met toolbars in main? → nest ndd-bar-split-view in main slot
 │
 ├── Nee, maar wel toolbars/statusbalken?
 │   └── ndd-bar-split-view
@@ -525,3 +566,5 @@ Heeft de app een zijnavigatie?
 └── Nee, gewoon één pagina
     └── ndd-page direct in ndd-app-view
 ```
+
+**Nesting:** Split views kunnen in elkaar genest worden. Plaats een geneste split view in een `ndd-split-view-pane` binnen het gewenste slot.
