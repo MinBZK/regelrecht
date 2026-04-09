@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wendbare Wetgeving — Demo Regelrecht</title>
+  <style>
+    :root {
+      --rvo-blue: #154273;
+      --rvo-blue-light: #1e5a9e;
+      --rvo-blue-bg: #f0f4f8;
+      --rvo-green: #39870c;
+      --rvo-green-bg: #e8f5e1;
+      --rvo-orange: #e17000;
+      --rvo-orange-bg: #fff3e0;
+      --rvo-red: #d52b1e;
+      --rvo-red-bg: #fde8e6;
+      --rvo-gray: #696969;
+      --rvo-gray-light: #e8e8e8;
+      --rvo-white: #ffffff;
+      --rvo-text: #333333;
+      --rvo-radius: 6px;
+      --rvo-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      --rvo-font: "RO Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--rvo-font);
+      color: var(--rvo-text);
+      background: var(--rvo-blue-bg);
+      line-height: 1.6;
+    }
+
+    header {
+      background: var(--rvo-blue);
+      color: white;
+      padding: 1.5rem 2rem;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+
+    header p {
+      font-size: 0.95rem;
+      opacity: 0.85;
+      margin-top: 0.25rem;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* Navigation dots */
+    .steps-nav {
+      display: flex;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .step-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--rvo-gray-light);
+      border: 2px solid var(--rvo-gray);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .step-dot.active {
+      background: var(--rvo-blue);
+      border-color: var(--rvo-blue);
+      transform: scale(1.2);
+    }
+
+    .step-dot.visited {
+      background: var(--rvo-blue-light);
+      border-color: var(--rvo-blue-light);
+    }
+
+    /* Panels */
+    .panel {
+      background: var(--rvo-white);
+      border-radius: var(--rvo-radius);
+      box-shadow: var(--rvo-shadow);
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      display: none;
+      animation: fadeIn 0.4s ease;
+    }
+
+    .panel.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .panel h2 {
+      color: var(--rvo-blue);
+      font-size: 1.35rem;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid var(--rvo-blue-bg);
+      padding-bottom: 0.5rem;
+    }
+
+    .panel h3 {
+      color: var(--rvo-blue);
+      font-size: 1.1rem;
+      margin: 1.25rem 0 0.5rem;
+    }
+
+    .panel p, .panel li {
+      margin-bottom: 0.75rem;
+    }
+
+    .panel ul {
+      padding-left: 1.5rem;
+    }
+
+    /* Law text styling */
+    .law-text {
+      background: var(--rvo-blue-bg);
+      border-left: 4px solid var(--rvo-blue);
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+      border-radius: 0 var(--rvo-radius) var(--rvo-radius) 0;
+    }
+
+    .law-text .lid {
+      margin-bottom: 0.75rem;
+    }
+
+    .law-text .lid-nr {
+      font-weight: 700;
+      color: var(--rvo-blue);
+    }
+
+    /* MvT quote */
+    .mvt-quote {
+      background: var(--rvo-orange-bg);
+      border-left: 4px solid var(--rvo-orange);
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+      font-style: italic;
+      font-size: 0.92rem;
+      border-radius: 0 var(--rvo-radius) var(--rvo-radius) 0;
+    }
+
+    .mvt-quote .label {
+      font-style: normal;
+      font-weight: 700;
+      color: var(--rvo-orange);
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Highlight */
+    .highlight {
+      background: #fff3b0;
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+
+    .highlight-green {
+      background: var(--rvo-green-bg);
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+
+    .highlight-red {
+      background: var(--rvo-red-bg);
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+
+    /* Interactive simulator */
+    .simulator {
+      background: var(--rvo-white);
+      border: 2px solid var(--rvo-blue);
+      border-radius: var(--rvo-radius);
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+    }
+
+    .simulator h3 {
+      margin-top: 0;
+      color: var(--rvo-blue);
+    }
+
+    .sim-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--rvo-gray-light);
+    }
+
+    .sim-row:last-of-type { border-bottom: none; }
+
+    .sim-label {
+      flex: 1;
+      font-size: 0.95rem;
+    }
+
+    .sim-label small {
+      display: block;
+      color: var(--rvo-gray);
+      font-size: 0.82rem;
+    }
+
+    /* Toggle switch */
+    .toggle-wrapper {
+      position: relative;
+      width: 60px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+
+    .toggle-wrapper input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--rvo-gray-light);
+      border-radius: 32px;
+      transition: 0.3s;
+      border: 2px solid var(--rvo-gray);
+    }
+
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: 0.3s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    input:checked + .toggle-slider {
+      background: var(--rvo-green);
+      border-color: var(--rvo-green);
+    }
+
+    input:checked + .toggle-slider::before {
+      transform: translateX(28px);
+    }
+
+    .toggle-value {
+      font-weight: 700;
+      font-size: 0.85rem;
+      width: 40px;
+      text-align: center;
+    }
+
+    .toggle-value.true { color: var(--rvo-green); }
+    .toggle-value.false { color: var(--rvo-gray); }
+
+    /* Result box */
+    .result-box {
+      margin-top: 1.25rem;
+      padding: 1.25rem;
+      border-radius: var(--rvo-radius);
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      transition: all 0.3s;
+    }
+
+    .result-box.ambtshalve {
+      background: var(--rvo-green-bg);
+      border: 2px solid var(--rvo-green);
+      color: var(--rvo-green);
+    }
+
+    .result-box.op-aanvraag {
+      background: var(--rvo-orange-bg);
+      border: 2px solid var(--rvo-orange);
+      color: var(--rvo-orange);
+    }
+
+    .result-box.geen {
+      background: var(--rvo-red-bg);
+      border: 2px solid var(--rvo-red);
+      color: var(--rvo-red);
+    }
+
+    .result-explanation {
+      font-weight: 400;
+      font-size: 0.9rem;
+      color: var(--rvo-text);
+      margin-top: 0.5rem;
+    }
+
+    /* YAML code block */
+    .yaml-block {
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1.25rem;
+      border-radius: var(--rvo-radius);
+      font-family: "Fira Code", "Cascadia Code", "Consolas", monospace;
+      font-size: 0.82rem;
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 1rem 0;
+    }
+
+    .yaml-block .key { color: #89b4fa; }
+    .yaml-block .string { color: #a6e3a1; }
+    .yaml-block .comment { color: #6c7086; font-style: italic; }
+    .yaml-block .keyword { color: #cba6f7; }
+    .yaml-block .bool { color: #fab387; }
+
+    /* Comparison columns */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin: 1.5rem 0;
+    }
+
+    .comparison-col {
+      padding: 1.25rem;
+      border-radius: var(--rvo-radius);
+    }
+
+    .comparison-col.mvt {
+      background: var(--rvo-orange-bg);
+      border: 2px solid var(--rvo-orange);
+    }
+
+    .comparison-col.wet {
+      background: var(--rvo-green-bg);
+      border: 2px solid var(--rvo-green);
+    }
+
+    .comparison-col h4 {
+      font-size: 0.95rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .comparison-col.mvt h4 { color: var(--rvo-orange); }
+    .comparison-col.wet h4 { color: var(--rvo-green); }
+
+    .comparison-col ul {
+      font-size: 0.9rem;
+      padding-left: 1.25rem;
+    }
+
+    /* Navigation buttons */
+    .nav-buttons {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 2rem;
+    }
+
+    .btn {
+      padding: 0.65rem 1.5rem;
+      border: none;
+      border-radius: var(--rvo-radius);
+      font-family: var(--rvo-font);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--rvo-blue);
+      color: white;
+    }
+
+    .btn-primary:hover { background: var(--rvo-blue-light); }
+
+    .btn-secondary {
+      background: var(--rvo-gray-light);
+      color: var(--rvo-text);
+    }
+
+    .btn-secondary:hover { background: #d0d0d0; }
+
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* Scenario table */
+    .scenario-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+
+    .scenario-table th {
+      background: var(--rvo-blue);
+      color: white;
+      padding: 0.6rem 0.75rem;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .scenario-table td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid var(--rvo-gray-light);
+    }
+
+    .scenario-table tr:nth-child(even) { background: var(--rvo-blue-bg); }
+
+    .scenario-table .badge {
+      display: inline-block;
+      padding: 0.15em 0.6em;
+      border-radius: 3px;
+      font-weight: 700;
+      font-size: 0.8rem;
+    }
+
+    .badge-green { background: var(--rvo-green-bg); color: var(--rvo-green); }
+    .badge-orange { background: var(--rvo-orange-bg); color: var(--rvo-orange); }
+    .badge-red { background: var(--rvo-red-bg); color: var(--rvo-red); }
+
+    .scenario-table tr.highlight-row {
+      background: #fff3b0 !important;
+    }
+
+    .scenario-table tr.highlight-row td {
+      font-weight: 600;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem;
+      color: var(--rvo-gray);
+      font-size: 0.85rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .comparison { grid-template-columns: 1fr; }
+      .sim-row { flex-wrap: wrap; }
+      header h1 { font-size: 1.3rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div style="max-width:1100px;margin:0 auto;">
+    <h1>Wendbare Wetgeving</h1>
+    <p>Casus: ambtshalve toekennen van de tegemoetkoming voor leenstelselstudenten</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="steps-nav">
+    <div class="step-dot active" onclick="goToStep(0)"></div>
+    <div class="step-dot" onclick="goToStep(1)"></div>
+    <div class="step-dot" onclick="goToStep(2)"></div>
+    <div class="step-dot" onclick="goToStep(3)"></div>
+    <div class="step-dot" onclick="goToStep(4)"></div>
+  </div>
+
+  <!-- STEP 0: Context -->
+  <div class="panel active" id="step-0">
+    <h2>De casus</h2>
+    <p>In het regeerakkoord van kabinet Rutte-IV werd besloten een <strong>tegemoetkoming</strong> te geven aan studenten die tijdens het leenstelsel geen basisbeurs hadden ontvangen.</p>
+
+    <p>Het <strong>Besluit studiefinanciering 2000</strong> (AMvB) regelt wanneer deze tegemoetkoming <em>ambtshalve</em> wordt toegekend en wanneer de student zelf een aanvraag moet indienen.</p>
+
+    <h3>Het onderscheidend criterium</h3>
+    <div class="law-text">
+      <div class="lid"><span class="lid-nr">Artikel 21b, lid 1:</span> De tegemoetkoming wordt [...] <span class="highlight">ambtshalve toegekend</span>, [wanneer] Onze Minister over de voor vaststelling van de aanspraak <span class="highlight">benodigde gegevens beschikt</span>.</div>
+      <div class="lid"><span class="lid-nr">Lid 2:</span> In afwijking van het eerste lid wordt de tegemoetkoming <span class="highlight">op aanvraag toegekend</span> voor de periode waarover Onze Minister <span class="highlight">niet over de [...] benodigde gegevens beschikt</span>.</div>
+    </div>
+
+    <p>De wet maakt het criterium glashelder: <strong>beschikt de minister over de benodigde gegevens?</strong></p>
+    <p>Ja &rarr; ambtshalve. Nee &rarr; op aanvraag.</p>
+
+    <div class="nav-buttons">
+      <div></div>
+      <button class="btn btn-primary" onclick="goToStep(1)">Wat dacht de wetgever? &rarr;</button>
+    </div>
+  </div>
+
+  <!-- STEP 1: MvT assumption -->
+  <div class="panel" id="step-1">
+    <h2>Wat de wetgever veronderstelde</h2>
+
+    <p>De <strong>Nota van Toelichting</strong> (Stb. 2023, 187) legt uit hoe de wetgever dacht dat het criterium zou uitpakken:</p>
+
+    <div class="mvt-quote">
+      <span class="label">Nota van Toelichting, par. 2.2</span>
+      &ldquo;Voor studenten die gedurende hun studie een vorm van studiefinanciering hebben aangevraagd &mdash; dat hoeft niet per se een studielening te zijn, maar kan bijvoorbeeld ook alleen een studentenreisproduct zijn &mdash; en hoofdzakelijk in Nederland hebben gestudeerd, kan de tegemoetkoming <strong>ambtshalve</strong> worden toegekend. Deze studenten zijn bekend bij DUO.&rdquo;
+    </div>
+
+    <div class="mvt-quote">
+      <span class="label">Nota van Toelichting, par. 2.2</span>
+      &ldquo;Voor studenten die <strong>geen studiefinanciering</strong> hebben genoten, maar wel in aanmerking komen voor de tegemoetkoming, kan de uitkering <strong>niet ambtshalve</strong> worden toegekend en verstrekt. Deze studenten zullen <strong>zelf een aanvraag</strong> moeten doen bij DUO.&rdquo;
+    </div>
+
+    <h3>De impliciete aanname</h3>
+    <p>De wetgever ging ervan uit dat <span class="highlight">&ldquo;beschikt over benodigde gegevens&rdquo;</span> in de praktijk hetzelfde was als <span class="highlight">&ldquo;heeft studiefinanciering ontvangen&rdquo;</span>.</p>
+    <p>Want: alleen studenten met SF zouden bij DUO bekend zijn.</p>
+
+    <div class="nav-buttons">
+      <button class="btn btn-secondary" onclick="goToStep(0)">&larr; Terug</button>
+      <button class="btn btn-primary" onclick="goToStep(2)">Wat bleek in de praktijk? &rarr;</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: Reality -->
+  <div class="panel" id="step-2">
+    <h2>Wat bleek bij de implementatie</h2>
+
+    <p>Bij de implementatie bleek dat DUO <strong>ook gegevens had</strong> over studenten die <em>geen</em> studiefinanciering hadden aangevraagd.</p>
+
+    <p>Via het <strong>register onderwijsdeelnemers</strong> beschikte DUO over:</p>
+    <ul>
+      <li>Inschrijvingsgegevens bij de hogeronderwijsinstelling</li>
+      <li>Het tijdig behalen van een diploma</li>
+    </ul>
+    <p>Dit zijn precies de gegevens die nodig zijn voor vaststelling van de aanspraak.</p>
+
+    <div class="comparison">
+      <div class="comparison-col mvt">
+        <h4>Aanname in de MvT</h4>
+        <ul>
+          <li>Alleen studenten <strong>met SF</strong> zijn bij DUO bekend</li>
+          <li>Studenten <strong>zonder SF</strong> moeten altijd zelf aanvragen</li>
+          <li>Gesplitst: periode met SF ambtshalve, periode zonder SF op aanvraag</li>
+        </ul>
+      </div>
+      <div class="comparison-col wet">
+        <h4>Wat de wet toelaat</h4>
+        <ul>
+          <li>Criterium is: <strong>&ldquo;beschikt over benodigde gegevens&rdquo;</strong></li>
+          <li>DUO heeft ook gegevens via register onderwijsdeelnemers</li>
+          <li>Dus: ook studenten <strong>zonder SF</strong> kunnen ambtshalve worden toegekend</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>Omdat de wettekst het criterium <strong>breed</strong> had geformuleerd (&ldquo;beschikt over gegevens&rdquo;) en <strong>niet</strong> had beperkt tot de periode met studiefinanciering, was de bredere toepassing juridisch toelaatbaar.</p>
+
+    <div class="nav-buttons">
+      <button class="btn btn-secondary" onclick="goToStep(1)">&larr; Terug</button>
+      <button class="btn btn-primary" onclick="goToStep(3)">Probeer het zelf &rarr;</button>
+    </div>
+  </div>
+
+  <!-- STEP 3: Interactive simulator -->
+  <div class="panel" id="step-3">
+    <h2>Machine-leesbare wet in actie</h2>
+
+    <p>Regelrecht vertaalt de wettekst naar uitvoerbare logica. Hieronder de uitvoering van <strong>Artikel 21b</strong>. Probeer de inputs te wijzigen:</p>
+
+    <div class="simulator">
+      <h3>Artikel 21b &mdash; Simulator</h3>
+
+      <div class="sim-row">
+        <div class="sim-label">
+          Minister beschikt over benodigde gegevens
+          <small>Art. 21b lid 1 &mdash; het onderscheidend criterium</small>
+        </div>
+        <label class="toggle-wrapper">
+          <input type="checkbox" id="toggle-gegevens" checked onchange="updateResult()">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-value true" id="val-gegevens">true</span>
+      </div>
+
+      <div class="sim-row">
+        <div class="sim-label">
+          Heeft aanvraag ingediend
+          <small>Art. 21b lid 2-3 &mdash; vereist als geen gegevens beschikbaar</small>
+        </div>
+        <label class="toggle-wrapper">
+          <input type="checkbox" id="toggle-aanvraag" onchange="updateResult()">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-value false" id="val-aanvraag">false</span>
+      </div>
+
+      <div class="result-box ambtshalve" id="result-box">
+        <div id="result-label">AMBTSHALVE</div>
+        <div class="result-explanation" id="result-explanation">
+          Lid 1: Minister beschikt over de benodigde gegevens &rarr; ambtshalve toekenning.
+        </div>
+      </div>
+    </div>
+
+    <h3>De achterliggende logica (machine-leesbaar)</h3>
+    <div class="yaml-block"><span class="key">actions</span>:
+  - <span class="key">output</span>: <span class="string">wijze_van_toekenning</span>
+    <span class="key">value</span>:
+      <span class="key">operation</span>: <span class="keyword">IF</span>
+      <span class="key">cases</span>:
+        - <span class="key">when</span>:
+            <span class="key">operation</span>: <span class="keyword">EQUALS</span>
+            <span class="key">subject</span>: <span class="string">$minister_beschikt_over_benodigde_gegevens</span>
+            <span class="key">value</span>: <span class="bool">true</span>
+          <span class="key">then</span>: <span class="string">AMBTSHALVE</span>
+        - <span class="key">when</span>:
+            <span class="key">operation</span>: <span class="keyword">AND</span>
+            <span class="key">conditions</span>:
+              - <span class="key">operation</span>: <span class="keyword">NOT</span>
+                <span class="key">value</span>: <span class="string">$minister_beschikt_over_benodigde_gegevens</span>
+              - <span class="key">operation</span>: <span class="keyword">EQUALS</span>
+                <span class="key">subject</span>: <span class="string">$heeft_aanvraag_ingediend</span>
+                <span class="key">value</span>: <span class="bool">true</span>
+          <span class="key">then</span>: <span class="string">OP_AANVRAAG</span>
+      <span class="key">default</span>: <span class="string">GEEN_TOEKENNING</span></div>
+
+    <p>Merk op: het criterium is <span class="highlight">minister_beschikt_over_benodigde_gegevens</span>, niet <em>heeft_studiefinanciering_ontvangen</em>. De machine-leesbare versie volgt de wettekst, niet de aannames uit de toelichting.</p>
+
+    <div class="nav-buttons">
+      <button class="btn btn-secondary" onclick="goToStep(2)">&larr; Terug</button>
+      <button class="btn btn-primary" onclick="goToStep(4)">Alle scenario's &rarr;</button>
+    </div>
+  </div>
+
+  <!-- STEP 4: All scenarios -->
+  <div class="panel" id="step-4">
+    <h2>Testscenario's</h2>
+
+    <p>Deze scenario's zijn afgeleid uit de Nota van Toelichting en de praktijk. Ze draaien als geautomatiseerde tests (Gherkin/BDD) tegen de machine-leesbare wet.</p>
+
+    <table class="scenario-table">
+      <thead>
+        <tr>
+          <th>Scenario</th>
+          <th>Gegevens</th>
+          <th>Aanvraag</th>
+          <th>Uitkomst</th>
+          <th>Bron</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Student met SF in Nederland</td>
+          <td><span class="badge badge-green">true</span></td>
+          <td><span class="badge badge-red">false</span></td>
+          <td><span class="badge badge-green">AMBTSHALVE</span></td>
+          <td>NvT par. 2.2</td>
+        </tr>
+        <tr>
+          <td>Student zonder SF &mdash; MvT aanname</td>
+          <td><span class="badge badge-red">false</span></td>
+          <td><span class="badge badge-green">true</span></td>
+          <td><span class="badge badge-orange">OP_AANVRAAG</span></td>
+          <td>NvT par. 2.2</td>
+        </tr>
+        <tr>
+          <td>Student deels met/zonder SF</td>
+          <td><span class="badge badge-green">true</span></td>
+          <td><span class="badge badge-red">false</span></td>
+          <td><span class="badge badge-green">AMBTSHALVE</span></td>
+          <td>NvT art.gew. ond. F</td>
+        </tr>
+        <tr>
+          <td>Student in buitenland</td>
+          <td><span class="badge badge-red">false</span></td>
+          <td><span class="badge badge-green">true</span></td>
+          <td><span class="badge badge-orange">OP_AANVRAAG</span></td>
+          <td>NvT par. 2.2</td>
+        </tr>
+        <tr class="highlight-row">
+          <td>Student zonder SF, w&eacute;l bekend via register onderwijsdeelnemers</td>
+          <td><span class="badge badge-green">true</span></td>
+          <td><span class="badge badge-red">false</span></td>
+          <td><span class="badge badge-green">AMBTSHALVE</span></td>
+          <td><strong>Niet in MvT</strong></td>
+        </tr>
+        <tr>
+          <td>Geen gegevens, geen aanvraag</td>
+          <td><span class="badge badge-red">false</span></td>
+          <td><span class="badge badge-red">false</span></td>
+          <td><span class="badge badge-red">GEEN_TOEKENNING</span></td>
+          <td>Art. 21b lid 2</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>De <span class="highlight">geel gemarkeerde rij</span> is het scenario dat de kern van de casus illustreert: de MvT ging ervan uit dat deze student een aanvraag zou moeten indienen, maar de wettekst liet ambtshalve toekenning toe.</p>
+
+    <h3>De les</h3>
+    <p>Kennis over de mogelijkheden van geautomatiseerde uitvoering is relevant bij het vormgeven van wettelijke bepalingen. Had de wetgever <em>preciezer</em> opgeschreven &mdash; bijvoorbeeld: &ldquo;ambtshalve voor de periode waarin de student studiefinanciering heeft ontvangen&rdquo; &mdash; dan was de bredere ambtshalve toekenning <strong>niet</strong> mogelijk geweest.</p>
+
+    <p>Doordat de bepaling <strong>ruim</strong> was geformuleerd, kon de uitvoering <strong>wendbaarder</strong> omgaan met de werkelijkheid. Machine-leesbare wetgeving maakt dit soort ruimte in de wettekst zichtbaar en testbaar.</p>
+
+    <div class="nav-buttons">
+      <button class="btn btn-secondary" onclick="goToStep(3)">&larr; Terug</button>
+      <div></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  regelrecht &mdash; machine-leesbare wetgeving
+</footer>
+
+<script>
+  let currentStep = 0;
+  const totalSteps = 5;
+
+  function goToStep(n) {
+    // Hide current
+    document.getElementById('step-' + currentStep).classList.remove('active');
+    document.querySelectorAll('.step-dot')[currentStep].classList.remove('active');
+    document.querySelectorAll('.step-dot')[currentStep].classList.add('visited');
+
+    // Show new
+    currentStep = n;
+    document.getElementById('step-' + currentStep).classList.remove('active');
+    // Force reflow for animation
+    void document.getElementById('step-' + currentStep).offsetWidth;
+    document.getElementById('step-' + currentStep).classList.add('active');
+    document.querySelectorAll('.step-dot')[currentStep].classList.add('active');
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function updateResult() {
+    const gegevens = document.getElementById('toggle-gegevens').checked;
+    const aanvraag = document.getElementById('toggle-aanvraag').checked;
+
+    // Update toggle value displays
+    const valGegevens = document.getElementById('val-gegevens');
+    valGegevens.textContent = gegevens ? 'true' : 'false';
+    valGegevens.className = 'toggle-value ' + (gegevens ? 'true' : 'false');
+
+    const valAanvraag = document.getElementById('val-aanvraag');
+    valAanvraag.textContent = aanvraag ? 'true' : 'false';
+    valAanvraag.className = 'toggle-value ' + (aanvraag ? 'true' : 'false');
+
+    // Execute Article 21b logic
+    const resultBox = document.getElementById('result-box');
+    const resultLabel = document.getElementById('result-label');
+    const resultExplanation = document.getElementById('result-explanation');
+
+    if (gegevens) {
+      resultBox.className = 'result-box ambtshalve';
+      resultLabel.textContent = 'AMBTSHALVE';
+      resultExplanation.textContent = 'Lid 1: Minister beschikt over de benodigde gegevens \u2192 ambtshalve toekenning.';
+    } else if (aanvraag) {
+      resultBox.className = 'result-box op-aanvraag';
+      resultLabel.textContent = 'OP_AANVRAAG';
+      resultExplanation.textContent = 'Lid 2: Minister beschikt niet over benodigde gegevens, maar rechthebbende heeft aanvraag ingediend \u2192 toekenning op aanvraag.';
+    } else {
+      resultBox.className = 'result-box geen';
+      resultLabel.textContent = 'GEEN_TOEKENNING';
+      resultExplanation.textContent = 'Geen gegevens beschikbaar en geen aanvraag ingediend \u2192 geen toekenning mogelijk.';
+    }
+  }
+
+  // Keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' && currentStep < totalSteps - 1) goToStep(currentStep + 1);
+    if (e.key === 'ArrowLeft' && currentStep > 0) goToStep(currentStep - 1);
+  });
+</script>
+
+</body>
+</html>

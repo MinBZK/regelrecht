@@ -1,0 +1,121 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json
+$id: algemene_termijnenwet
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+name: Algemene termijnenwet
+bwb_id: BWBR0002448
+url: https://wetten.overheid.nl/BWBR0002448/2025-01-01
+
+articles:
+  - number: '1'
+    text: |-
+      1. Een in een wet gestelde termijn die op een zaterdag, zondag of
+      algemeen erkende feestdag eindigt, wordt verlengd tot en met de
+      eerstvolgende dag die niet een zaterdag, zondag of algemeen erkende
+      feestdag is.
+      2. Het vorige lid geldt niet voor termijnen, bepaald door
+      terugrekening vanaf een tijdstip of een gebeurtenis.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel1
+    machine_readable:
+      hooks:
+        - hook_point: post_actions
+          applies_to:
+            legal_character: BESCHIKKING
+            stage: BEKENDMAKING
+      execution:
+        input:
+          - name: bezwaartermijn_einddatum
+            type: date
+            source:
+              regulation: algemene_wet_bestuursrecht
+              output: bezwaartermijn_einddatum
+        output:
+          - name: dag_van_week
+            type: number
+          - name: verlengde_einddatum
+            type: date
+        actions:
+          - output: dag_van_week
+            value:
+              operation: DAY_OF_WEEK
+              date: $bezwaartermijn_einddatum
+          # 0=Monday ... 4=Friday, 5=Saturday, 6=Sunday
+          # If Saturday (5): extend by 2 days to Monday
+          # If Sunday (6): extend by 1 day to Monday
+          - output: verlengde_einddatum
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $dag_van_week
+                    value: 5
+                  then:
+                    operation: DATE_ADD
+                    date: $bezwaartermijn_einddatum
+                    days: 2
+                - when:
+                    operation: EQUALS
+                    subject: $dag_van_week
+                    value: 6
+                  then:
+                    operation: DATE_ADD
+                    date: $bezwaartermijn_einddatum
+                    days: 1
+              default: $bezwaartermijn_einddatum
+
+  - number: '2'
+    text: |-
+      Een in een wet gestelde termijn van ten minste drie dagen wordt, zo
+      nodig, zoveel verlengd, dat daarin ten minste twee dagen voorkomen
+      die niet een zaterdag, zondag of algemeen erkende feestdag zijn.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel2
+
+  - number: '3'
+    text: |-
+      1. Algemeen erkende feestdagen in de zin van deze wet zijn: de
+      Nieuwjaarsdag, de Christelijke tweede Paas- en Pinksterdag, de beide
+      Kerstdagen, de Hemelvaartsdag, de dag waarop de verjaardag van de
+      Koning wordt gevierd en de vijfde mei.
+      2. Voor de toepassing van deze wet wordt de Goede Vrijdag met de in
+      het vorige lid genoemde dagen gelijkgesteld.
+      3. Wij kunnen bepaalde dagen voor de toepassing van deze wet met de
+      in het eerste lid genoemde gelijkstellen.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel3
+
+  - number: '4'
+    text: |-
+      Deze wet geldt niet voor termijnen, omschreven in uren, in meer dan
+      negentig dagen, in meer dan twaalf weken, in meer dan drie maanden,
+      of in een of meer jaren.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel4
+
+  - number: '5'
+    text: |-
+      Op in een algemene maatregel van bestuur gestelde termijnen zijn de
+      artikelen 1-4 van overeenkomstige toepassing, tenzij bij algemene
+      maatregel van bestuur iets anders is bepaald.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel5
+
+  - number: 5a
+    text: |-
+      Deze wet is mede van toepassing in de openbare lichamen Bonaire,
+      Sint Eustatius en Saba.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel5a
+
+  - number: '6'
+    text: |-
+      Deze wet kan worden aangehaald als: Algemene termijnenwet.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel6
+
+  - number: '7'
+    text: |-
+      1. Deze wet treedt in werking met ingang van 1 april 1965.
+      2. Zij kan voor termijnen, gesteld in door Ons, door plaatsing op
+      een daartoe door Ons aangehouden lijst, aangewezen wetten en
+      algemene maatregelen van bestuur, op door Ons te bepalen eerdere
+      tijdstippen in werking treden.
+    url: https://wetten.overheid.nl/BWBR0002448/2025-01-01#Artikel7

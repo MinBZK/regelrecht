@@ -1,0 +1,299 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json
+$id: besluit_studiefinanciering_2000
+regulatory_layer: AMVB
+publication_date: '2000-08-23'
+valid_from: '2025-01-01'
+bwb_id: BWBR0011545
+url: https://wetten.overheid.nl/BWBR0011545/2025-01-01
+name: Besluit studiefinanciering 2000
+competent_authority: Minister van Onderwijs, Cultuur en Wetenschap
+articles:
+  - number: '1'
+    text: >-
+      1. In dit besluit wordt verstaan onder:
+
+      aflosfase: aflosfase, bedoeld in artikel 6.7 van de wet,
+
+      familielid: familielid als bedoeld in richtlijn 2004/38/EG,
+
+      richtlijn 2004/38/EG: richtlijn nr. 2004/38/EG van het Europees
+      Parlement en de Raad van 29 april 2004 betreffende het recht van vrij
+      verkeer en verblijf op het grondgebied van de lidstaten voor de burgers
+      van de Unie en hun familieleden, tot wijziging van Verordening (EEG) nr.
+      1612/68 en tot intrekking van de Richtlijnen 64/221/EEG, 68/360/EEG,
+      72/194/EEG, 73/148/EEG, 75/34/EEG, 75/35/EEG, 90/364/EEG, 90/365/EEG
+      en 93/96/EEG (PbEU L 158),
+
+      wet: Wet studiefinanciering 2000.
+
+      2. In hoofdstuk 3a van dit besluit wordt verstaan onder aanvullende
+      beurs: toegekende en uitbetaalde aanvullende beurs als bedoeld in artikel
+      6.2, tweede lid, van de wet.
+
+      3. Een wijziging van richtlijn 2004/38/EG gaat voor de toepassing van dit
+      besluit gelden met ingang van de dag waarop aan de betrokken
+      wijzigingsrichtlijn uitvoering moet zijn gegeven.
+    url: https://wetten.overheid.nl/BWBR0011545/2025-01-01#Artikel1
+  - number: 21a
+    text: >-
+      In dit hoofdstuk wordt onder tegemoetkoming verstaan: tegemoetkoming als
+      bedoeld in artikel 12.30, eerste lid, van de wet.
+    url: https://wetten.overheid.nl/BWBR0011545/2025-01-01#Artikel21a
+  - number: 21b
+    text: >-
+      1. De tegemoetkoming wordt uiterlijk per 1 januari van het kalenderjaar
+      volgend op het jaar waarin Onze Minister over de voor vaststelling van de
+      aanspraak benodigde gegevens beschikt, ambtshalve toegekend, met dien
+      verstande dat de toekenning aan een rechthebbende waarvan Onze Minister
+      reeds voor of op 31 december 2024 over de voor vaststelling van de
+      aanspraak benodigde gegevens beschikt, geschiedt in 2025.
+
+      2. In afwijking van het eerste lid wordt de tegemoetkoming op aanvraag
+      toegekend voor de periode waarover Onze Minister niet over de voor
+      vaststelling van de aanspraak van een rechthebbende benodigde gegevens
+      beschikt.
+
+      3. De rechthebbende, bedoeld in het tweede lid, dient uiterlijk binnen
+      drie maanden na het verstrijken van de diplomatermijn hoger onderwijs of,
+      indien hij geen studiefinanciering heeft aangevraagd, uiterlijk binnen
+      tien jaar en drie maanden nadat hij zich voor het eerst heeft ingeschreven
+      voor het hoger onderwijs, op een bij ministeriële regeling te bepalen
+      wijze een aanvraag in. Onze Minister besluit uiterlijk per 1 januari van
+      het kalenderjaar volgend op de aanvraag.
+    url: https://wetten.overheid.nl/BWBR0011545/2025-01-01#Artikel21b
+    machine_readable:
+      implements:
+        - law: wet_studiefinanciering_2000
+          article: '12.30'
+          open_term: wijze_van_toekenning
+          gelet_op: >-
+            Gelet op artikel 12.30, vijfde lid, onderdeel b, van de
+            Wet studiefinanciering 2000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Burgerservicenummer van de (oud-)student
+          - name: was_ho_student_tijdens_leenstelsel
+            type: boolean
+            required: true
+          - name: maanden_studiefinanciering
+            type: number
+            required: true
+          - name: heeft_diploma_binnen_termijn
+            type: boolean
+            required: true
+          # Per gegeven: is het bij de Minister (DUO) bekend?
+          # Dit zijn de "benodigde gegevens" uit lid 1.
+          # Bronnen: DUO studiefinanciering-administratie (SF)
+          #          DUO register onderwijsdeelnemers (ROD)
+          - name: gegeven_inschrijving_ho_bekend
+            type: boolean
+            required: true
+            description: >-
+              Is de HO-inschrijving tijdens leenstelsel bekend bij DUO?
+              Bron: register onderwijsdeelnemers (ROD) of SF-admin
+          - name: gegeven_studiefinanciering_bekend
+            type: boolean
+            required: true
+            description: >-
+              Is het aantal maanden studiefinanciering bekend bij DUO?
+              Bron: SF-administratie (alleen voor studenten die SF
+              hebben aangevraagd)
+          - name: gegeven_diploma_bekend
+            type: boolean
+            required: true
+            description: >-
+              Is het diploma (binnen termijn) bekend bij DUO?
+              Bron: register onderwijsdeelnemers (ROD) of
+              omzettingsprocedure (SF-admin)
+          - name: heeft_aanvraag_ingediend
+            type: boolean
+            required: true
+            description: >-
+              Of de rechthebbende een aanvraag heeft ingediend conform
+              lid 3.
+        input:
+          - name: is_rechthebbende
+            type: boolean
+            source:
+              regulation: wet_studiefinanciering_2000
+              output: is_rechthebbende
+              parameters:
+                bsn: $bsn
+                was_ho_student_tijdens_leenstelsel: $was_ho_student_tijdens_leenstelsel
+                maanden_studiefinanciering: $maanden_studiefinanciering
+                heeft_diploma_binnen_termijn: $heeft_diploma_binnen_termijn
+        output:
+          - name: minister_beschikt_over_benodigde_gegevens
+            type: boolean
+            description: >-
+              Of de Minister over ALLE voor vaststelling van de
+              aanspraak benodigde gegevens beschikt. Dit is een
+              afgeleide van de drie gegevensbronnen — de wet zegt
+              "beschikt over benodigde gegevens", niet "heeft
+              studiefinanciering ontvangen".
+          - name: wijze_van_toekenning
+            type: string
+            description: >-
+              AMBTSHALVE indien Minister beschikt over gegevens (lid 1),
+              OP_AANVRAAG indien niet maar aanvraag is ingediend (lid 2),
+              GEEN_TOEKENNING indien geen gegevens en geen aanvraag.
+        actions:
+          # Stap 1: bepaal of Minister over alle benodigde gegevens beschikt
+          # De "benodigde gegevens" zijn precies de inputs van art. 12.30:
+          # - HO-inschrijving tijdens leenstelsel (lid 2a)
+          # - maanden studiefinanciering (lid 2b)
+          # - diploma binnen termijn (lid 2c)
+          - output: minister_beschikt_over_benodigde_gegevens
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $gegeven_inschrijving_ho_bekend
+                  value: true
+                - operation: EQUALS
+                  subject: $gegeven_studiefinanciering_bekend
+                  value: true
+                - operation: EQUALS
+                  subject: $gegeven_diploma_bekend
+                  value: true
+          # Stap 2: lid 1 ambtshalve / lid 2 op aanvraag
+          - output: wijze_van_toekenning
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $minister_beschikt_over_benodigde_gegevens
+                    value: true
+                  then: AMBTSHALVE
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: NOT
+                        value: $minister_beschikt_over_benodigde_gegevens
+                      - operation: EQUALS
+                        subject: $heeft_aanvraag_ingediend
+                        value: true
+                  then: OP_AANVRAAG
+              default: GEEN_TOEKENNING
+  - number: 21c
+    text: >-
+      1. De tegemoetkoming wordt verstrekt in de vorm van:
+
+      a. een kwijtschelding van de openstaande studieschuld of een deel
+      daarvan; of
+
+      b. een bijschrijving op de bij Onze Minister voor de toekenning van
+      studiefinanciering bekende bankrekening, indien:
+
+      1° er op het moment van toekenning geen studieschuld openstaat; of
+
+      2° er na de kwijtschelding, bedoeld in onderdeel a, nog aanspraak op een
+      deel van de tegemoetkoming bestaat.
+
+      2. Indien bij Onze Minister de benodigde gegevens van de rechthebbende op
+      een tegemoetkoming over de bankrekening waarop de tegemoetkoming kan
+      worden uitbetaald niet bekend zijn, wordt de rechthebbende verzocht deze
+      gegevens binnen twaalf maanden te verstrekken. Indien de rechthebbende op
+      een tegemoetkoming niet binnen deze termijn de gegevens aanvult, vervalt
+      de aanspraak op de tegemoetkoming op grond van een daartoe strekkend
+      besluit van Onze Minister.
+    url: https://wetten.overheid.nl/BWBR0011545/2025-01-01#Artikel21c
+    machine_readable:
+      implements:
+        - law: wet_studiefinanciering_2000
+          article: '12.30'
+          open_term: wijze_van_verstrekking
+          gelet_op: >-
+            Gelet op artikel 12.30, vijfde lid, onderdeel a, van de
+            Wet studiefinanciering 2000
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Burgerservicenummer van de rechthebbende
+        input:
+          - name: heeft_openstaande_studieschuld
+            type: boolean
+            source:
+              description: >-
+                Of er op het moment van toekenning een studieschuld
+                openstaat bij DUO.
+          - name: tegemoetkoming_bedrag
+            type: amount
+            source:
+              regulation: wet_studiefinanciering_2000
+              output: tegemoetkoming_bedrag
+              parameters:
+                bsn: $bsn
+            type_spec:
+              unit: eurocent
+          - name: openstaande_studieschuld
+            type: amount
+            source:
+              description: Hoogte van de openstaande studieschuld
+            type_spec:
+              unit: eurocent
+        output:
+          - name: wijze_van_verstrekking
+            type: string
+            description: >-
+              KWIJTSCHELDING indien studieschuld openstaat (lid 1 sub a),
+              UITBETALING indien geen schuld (lid 1 sub b onder 1°),
+              KWIJTSCHELDING_EN_UITBETALING indien na kwijtschelding
+              nog aanspraak resteert (lid 1 sub b onder 2°).
+          - name: kwijtschelding_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: uitbetaling_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: kwijtschelding_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_openstaande_studieschuld
+                    value: true
+                  then:
+                    operation: MIN
+                    values:
+                      - $tegemoetkoming_bedrag
+                      - $openstaande_studieschuld
+              default: 0
+          - output: uitbetaling_bedrag
+            value:
+              operation: SUBTRACT
+              values:
+                - $tegemoetkoming_bedrag
+                - $kwijtschelding_bedrag
+          - output: wijze_van_verstrekking
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: NOT
+                    value: $heeft_openstaande_studieschuld
+                  then: UITBETALING
+                - when:
+                    operation: GREATER_THAN
+                    subject: $uitbetaling_bedrag
+                    value: 0
+                  then: KWIJTSCHELDING_EN_UITBETALING
+              default: KWIJTSCHELDING

@@ -126,6 +126,31 @@ fn execute_healthcare_allowance(world: &mut RegelrechtWorld) {
     world.execute_law("zorgtoeslagwet", "hoogte_zorgtoeslag");
 }
 
+// =============================================================================
+// Studiefinanciering tegemoetkoming steps
+// =============================================================================
+
+#[when(
+    regex = r"^the tegemoetkoming eligibility is executed for wet_studiefinanciering_2000 article 12.30$"
+)]
+fn execute_tegemoetkoming_eligibility(world: &mut RegelrechtWorld) {
+    world.execute_law("wet_studiefinanciering_2000", "is_rechthebbende");
+}
+
+#[when(
+    regex = r"^the tegemoetkoming toekenning is executed for besluit_studiefinanciering_2000 article 21b$"
+)]
+fn execute_tegemoetkoming_toekenning(world: &mut RegelrechtWorld) {
+    world.execute_law("besluit_studiefinanciering_2000", "wijze_van_toekenning");
+}
+
+#[when(
+    regex = r"^the tegemoetkoming verstrekking is executed for besluit_studiefinanciering_2000 article 21c$"
+)]
+fn execute_tegemoetkoming_verstrekking(world: &mut RegelrechtWorld) {
+    world.execute_law("besluit_studiefinanciering_2000", "wijze_van_verstrekking");
+}
+
 fn register_if_present(
     service: &mut regelrecht_engine::LawExecutionService,
     name: &str,

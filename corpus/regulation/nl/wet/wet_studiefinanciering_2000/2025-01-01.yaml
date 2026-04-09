@@ -1,0 +1,265 @@
+---
+$schema: >-
+  https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json
+$id: wet_studiefinanciering_2000
+regulatory_layer: WET
+publication_date: '2000-06-29'
+valid_from: '2025-01-01'
+bwb_id: BWBR0011453
+url: https://wetten.overheid.nl/BWBR0011453/2025-01-01
+name: Wet studiefinanciering 2000
+competent_authority: Minister van Onderwijs, Cultuur en Wetenschap
+articles:
+  - number: '3.1'
+    text: >-
+      1. Studiefinanciering bestaat voor een opleiding in het
+      beroepsonderwijs uit een basisbeurs, een basislening en een aanvullende
+      beurs of aanvullende lening, en kan geheel of gedeeltelijk worden
+      toegekend in de vorm van: a. een gift; b. een prestatiebeurs; of c. een
+      lening.
+
+      2. Studiefinanciering bestaat voor een opleiding in het hoger onderwijs
+      uit een basisbeurs, een basislening, een aanvullende beurs of
+      aanvullende lening en collegegeldkrediet, en kan geheel of gedeeltelijk
+      worden toegekend in de vorm van: a. een gift; b. een prestatiebeurs; of
+      c. een lening.
+
+      3. Indien een student geen aanspraak heeft op studiefinanciering als
+      bedoeld in het eerste of tweede lid bestaat studiefinanciering uit
+      levenlanglerenkrediet.
+
+      4. De hoogte van de studiefinanciering wordt vastgesteld op basis van een
+      budget voor een kalendermaand.
+
+      5. In afwijking van het vierde lid kan de hoogte van de
+      studiefinanciering ook worden vastgesteld op een tegemoetkoming in de
+      kosten van de toegang tot het onderwijs.
+    url: https://wetten.overheid.nl/BWBR0011453/2025-01-01#Artikel3.1
+    machine_readable:
+      definitions:
+        studiefinanciering_ho_componenten:
+          value: basisbeurs, basislening, aanvullende beurs, aanvullende
+            lening, collegegeldkrediet
+          description: >-
+            Lid 2: componenten van studiefinanciering hoger onderwijs.
+            NB voor de tegemoetkoming (art. 12.30) telt collegegeldkrediet
+            niet mee.
+  - number: '5.2'
+    text: >-
+      1. De prestatiebeurs hoger onderwijs wordt eenmalig aan een ho-student
+      verstrekt gedurende 4 jaar, vermeerderd met: a. eenmalig het aantal
+      maanden dat het resultaat is van het aantal studiepunten, genoemd in de
+      artikelen 7.5, eerste lid, onderdeel d, 7.5b, eerste lid en 7.5c,
+      tweede en vierde lid WHW, gedeeld door vijf, indien een student is
+      ingeschreven aan een in de betreffende artikelleden genoemde
+      masteropleiding in het hoger beroepsonderwijs; b. eenmalig het aantal
+      maanden dat het resultaat is van het aantal studiepunten, genoemd in de
+      artikelen 7.5a en 7.5c, tweede tot en met vijfde lid, WHW minus zestig
+      en gedeeld door vijf, indien een ho-student is ingeschreven aan een in
+      de betreffende artikelleden genoemde opleiding in het wetenschappelijk
+      onderwijs.
+    url: https://wetten.overheid.nl/BWBR0011453/2025-01-01#Artikel5.2
+    machine_readable:
+      definitions:
+        diplomatermijn_basis_maanden:
+          value: 48
+          description: >-
+            Lid 1: 4 jaar = 48 maanden basisperiode prestatiebeurs
+      untranslatables:
+        - construct: verlenging diplomatermijn voor masteropleiding
+          reason: >-
+            Lid 1 sub a/b voorzien in extra maanden op basis van
+            studiepunten van de masteropleiding. Dit vereist een
+            berekening op basis van WHW-artikelen die buiten scope
+            vallen.
+          legal_text_excerpt: >-
+            vermeerderd met eenmalig het aantal maanden dat het
+            resultaat is van het aantal studiepunten [...] gedeeld
+            door vijf
+          accepted: true
+      execution:
+        output:
+          - name: diplomatermijn_maanden
+            type: number
+            description: >-
+              Standaard diplomatermijn: 48 maanden (4 jaar).
+              Masterverlenging is untranslatable.
+        actions:
+          - output: diplomatermijn_maanden
+            value: $diplomatermijn_basis_maanden
+  - number: '5.7'
+    text: >-
+      1. Indien een ho-student binnen de diplomatermijn hoger onderwijs met
+      goed gevolg een associate degree-opleiding afrondt, wordt de toegekende
+      prestatiebeurs hoger onderwijs voor de duur van de desbetreffende
+      opleiding omgezet in een gift.
+
+      3. Indien een ho-student binnen de diplomatermijn hoger onderwijs met
+      goed gevolg een hbo-bacheloropleiding, hbo-masteropleiding of het
+      geheel van een wo-bacheloropleiding en een wo-masteropleiding afrondt,
+      wordt de aan hem toegekende prestatiebeurs hoger onderwijs voor de duur
+      van de desbetreffende opleiding omgezet in een gift.
+    url: https://wetten.overheid.nl/BWBR0011453/2025-01-01#Artikel5.7
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: maanden_studie
+            type: number
+            required: true
+            description: >-
+              Aantal maanden ingeschreven voor de opleiding (DUO
+              register onderwijsdeelnemers)
+        input:
+          - name: diplomatermijn_maanden
+            type: number
+            source:
+              output: diplomatermijn_maanden
+        output:
+          - name: heeft_diploma_binnen_termijn
+            type: boolean
+            description: >-
+              Of de student binnen de diplomatermijn met goed gevolg een
+              opleiding heeft afgerond
+        actions:
+          - output: heeft_diploma_binnen_termijn
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $maanden_studie
+              value: $diplomatermijn_maanden
+  - number: '12.30'
+    text: >-
+      1. In dit artikel wordt onder tegemoetkoming begrepen: een
+      tegemoetkoming van Onze Minister, niet zijnde studiefinanciering in de
+      zin van artikel 3.1, in verband met het volgen van hoger onderwijs in een
+      periode waarin een ho-student ingevolge de Wet studievoorschot hoger
+      onderwijs geen aanspraak kon maken op een basisbeurs.
+
+      2. Voor een tegemoetkoming komt in aanmerking, degene die:
+
+      a. in de periode van 1 september 2015 tot en met 31 augustus 2023
+      ingevolge de Wet studievoorschot hoger onderwijs geen aanspraak kon maken
+      op een basisbeurs;
+
+      b. gedurende de periode, bedoeld in onderdeel a, ten minste twaalf
+      maanden aanspraak maakte op studiefinanciering als bedoeld in artikel 3.1,
+      tweede lid, niet zijnde het collegegeldkrediet; en
+
+      c. binnen de diplomatermijn hoger onderwijs of, indien hij geen
+      studiefinanciering heeft aangevraagd, binnen tien jaar nadat hij zich
+      voor het eerst heeft ingeschreven voor het hoger onderwijs, met goed
+      gevolg een opleiding als bedoeld in artikel 5.7 heeft afgerond.
+
+      3. De tegemoetkoming bedraagt € 29,92 per maand voor iedere maand
+      binnen de periode, genoemd in het tweede lid, onderdeel a, dat de
+      rechthebbende op een tegemoetkoming aanspraak maakte op
+      studiefinanciering, niet zijnde het collegegeldkrediet, tot een maximum
+      van de periode, genoemd in artikel 5.2, eerste lid, en indien van
+      toepassing, vermeerderd met de periode, genoemd in artikel 5.2b, eerste
+      of tweede lid.
+
+      4. In afwijking van het derde lid wordt, indien van toepassing, voor de
+      periode, genoemd in artikel 5.2, eerste lid, gelezen: de duur, genoemd in
+      artikel 5.7, eerste of derde lid.
+
+      5. Bij of krachtens algemene maatregel van bestuur kunnen nadere regels
+      worden gesteld over de uitvoering van dit artikel en worden in ieder geval
+      regels gesteld over:
+
+      a. de wijze van verstrekking van de tegemoetkoming;
+
+      b. in welke gevallen de tegemoetkoming op aanvraag dan wel ambtshalve
+      wordt toegekend.
+
+      6. Onze Minister past het bedrag, genoemd in het derde lid,
+      overeenkomstig artikel 11.1 aan.
+
+      7. Artikel 1.7 is van overeenkomstige toepassing met dien verstande dat
+      voor student wordt gelezen: de rechthebbende op een tegemoetkoming.
+    url: https://wetten.overheid.nl/BWBR0011453/2025-01-01#Artikel12.30
+    machine_readable:
+      definitions:
+        leenstelsel_start:
+          value: '2015-09-01'
+          description: Start van het leenstelsel (geen basisbeurs)
+        leenstelsel_einde:
+          value: '2023-08-31'
+          description: Einde van het leenstelsel
+        bedrag_per_maand:
+          value: 2992
+          description: €29,92 per maand in eurocent
+        minimum_maanden_studiefinanciering:
+          value: 12
+          description: Ten minste twaalf maanden studiefinanciering vereist
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+            description: Burgerservicenummer van de (oud-)student
+          - name: was_ho_student_tijdens_leenstelsel
+            type: boolean
+            required: true
+            description: >-
+              Lid 2a: in de periode 1 september 2015 t/m 31 augustus 2023
+              geen aanspraak op basisbeurs
+          - name: maanden_studiefinanciering
+            type: number
+            required: true
+            description: >-
+              Lid 2b: aantal maanden aanspraak op studiefinanciering
+              (niet zijnde collegegeldkrediet) in de leenstelselperiode
+          - name: heeft_diploma_binnen_termijn
+            type: boolean
+            required: true
+            description: >-
+              Lid 2c: binnen de diplomatermijn of binnen tien jaar na
+              eerste inschrijving met goed gevolg afgerond
+        output:
+          - name: is_rechthebbende
+            type: boolean
+            description: >-
+              Of de persoon voldoet aan alle voorwaarden van lid 2
+              (rechthebbende op tegemoetkoming)
+          - name: tegemoetkoming_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Hoogte van de tegemoetkoming (lid 3): €29,92 × aantal
+              maanden studiefinanciering
+        actions:
+          # Lid 2: eligibility check
+          - output: is_rechthebbende
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $was_ho_student_tijdens_leenstelsel
+                  value: true
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $maanden_studiefinanciering
+                  value: $minimum_maanden_studiefinanciering
+                - operation: EQUALS
+                  subject: $heeft_diploma_binnen_termijn
+                  value: true
+          # Lid 3: amount calculation
+          - output: tegemoetkoming_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_rechthebbende
+                    value: true
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $bedrag_per_maand
+                      - $maanden_studiefinanciering
+              default: 0
