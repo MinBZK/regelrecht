@@ -1303,6 +1303,41 @@
     {/if}
   </div>
 
+  <!-- Scenario inputs row: toont de parameters die het gekozen scenario
+       aan de engine meegeeft. Zichtbaar zodra er een scenario geselecteerd
+       is, dus ook voordat Run geklikt wordt. -->
+  {#if featureScenarios[selectedScenarioIdx]}
+    {@const scn = featureScenarios[selectedScenarioIdx]}
+    {@const paramEntries = Object.entries(scn.parameters).filter(([k]) => k !== 'bsn')}
+    <div class="flex items-baseline gap-x-3 border-t border-dashed border-gray-200 bg-slate-50 px-4 py-2 text-xs">
+      <span class="shrink-0 font-semibold text-gray-600">Invoer:</span>
+      <div class="flex flex-1 flex-wrap gap-x-3 gap-y-1">
+        <span class="font-mono text-gray-500">peildatum = {scn.calculationDate}</span>
+        {#each paramEntries as [k, v]}
+          <span class="font-mono">
+            <span class="text-gray-500">{k}</span>
+            <span class="text-gray-400"> = </span>
+            <span class="text-gray-900">{formatValue(v)}</span>
+          </span>
+        {/each}
+      </div>
+    </div>
+    {#if traceRun}
+      <div class="flex items-baseline gap-x-3 border-t border-dashed border-gray-200 bg-emerald-50/50 px-4 py-2 text-xs">
+        <span class="shrink-0 font-semibold text-gray-600">Uitkomst:</span>
+        <div class="flex flex-1 flex-wrap gap-x-3 gap-y-1">
+          {#each Object.entries(traceRun.trace.outputs ?? {}) as [k, v]}
+            <span class="font-mono">
+              <span class="text-gray-500">{k}</span>
+              <span class="text-gray-400"> = </span>
+              <span class="font-semibold text-emerald-700">{formatValue(v)}</span>
+            </span>
+          {/each}
+        </div>
+      </div>
+    {/if}
+  {/if}
+
   <!-- Bekendmaking row: alleen zichtbaar als het besluit een BESCHIKKING was
        (AWB 6:7 heeft dan bezwaartermijn_weken gezet via post_actions hook). -->
   {#if traceRun && typeof traceRun.trace.outputs?.bezwaartermijn_weken === 'number' && traceRun.trace.outputs.bezwaartermijn_weken > 0}
