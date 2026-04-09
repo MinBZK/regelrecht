@@ -191,7 +191,7 @@ async fn process_next_job(
                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to reset harvest fail count after success");
             }
 
-            // Always store slug; update law_name if not yet set.
+            // Always store slug and refresh law_name from latest harvest.
             if let Err(e) = law_status::upsert_law(
                 pool,
                 &job.law_id,

@@ -173,7 +173,7 @@ async fn create_harvest_job(pool: &PgPool, slug: &str, bwb_id: &str) -> HarvestS
                 "INSERT INTO law_entries (law_id, status) \
                  VALUES ($1, 'queued') \
                  ON CONFLICT (law_id) DO UPDATE SET status = 'queued', updated_at = NOW() \
-                 WHERE law_entries.status NOT IN ('harvesting', 'enriching')",
+                 WHERE law_entries.status NOT IN ('harvesting', 'enriching', 'harvested', 'enriched')",
             )
             .bind(bwb_id)
             .execute(pool)

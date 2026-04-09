@@ -222,19 +222,6 @@ where
     Ok(entry)
 }
 
-/// Find a law entry by its slug ($id). Returns `None` if no law with that slug exists.
-pub async fn find_law_by_slug<'e, E>(executor: E, slug: &str) -> Result<Option<LawEntry>>
-where
-    E: sqlx::PgExecutor<'e>,
-{
-    let entry = sqlx::query_as::<_, LawEntry>(r#"SELECT * FROM law_entries WHERE slug = $1"#)
-        .bind(slug)
-        .fetch_optional(executor)
-        .await?;
-
-    Ok(entry)
-}
-
 /// List all law entries, optionally filtered by status.
 pub async fn list_laws<'e, E>(executor: E, status: Option<LawStatusValue>) -> Result<Vec<LawEntry>>
 where
