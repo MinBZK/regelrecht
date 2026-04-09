@@ -174,7 +174,6 @@ async fn main() {
             post(corpus_handlers::sync_source),
         )
         .route("/api/info", get(handlers::platform_info))
-        .route("/metrics", get(metrics::metrics_handler))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_auth,
@@ -182,8 +181,16 @@ async fn main() {
 
     let auth_routes = regelrecht_auth::auth_routes::<AppState>();
 
+    let metrics_route = Router::new()
+        .route("/metrics", get(metrics::metrics_handler))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_metrics_auth,
+        ));
+
     let app = Router::new()
         .route("/health", get(health))
+        .merge(metrics_route)
         .merge(auth_routes)
         .merge(api_routes)
         .with_state(app_state)

@@ -11,6 +11,8 @@ pub struct AppConfig {
     pub api_key: Option<String>,
     /// Pre-computed SHA-256 hash of the API key (avoids re-hashing on every request).
     pub api_key_hash: Option<[u8; 32]>,
+    /// Pre-computed SHA-256 hash of the metrics auth token (sent by Prometheus).
+    pub metrics_token_hash: Option<[u8; 32]>,
 }
 
 impl std::fmt::Debug for AppConfig {
@@ -20,6 +22,10 @@ impl std::fmt::Debug for AppConfig {
             .field("base_url", &self.base_url)
             .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
             .field("api_key_hash", &self.api_key_hash.map(|_| "[REDACTED]"))
+            .field(
+                "metrics_token_hash",
+                &self.metrics_token_hash.map(|_| "[REDACTED]"),
+            )
             .finish()
     }
 }
@@ -68,11 +74,22 @@ impl AppConfig {
             .as_ref()
             .map(|k| Sha256::digest(k.as_bytes()).into());
 
+        let metrics_token = env::var("METRICS_AUTH_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty());
+        if metrics_token.is_some() {
+            tracing::info!("Metrics endpoint authentication is enabled (METRICS_AUTH_TOKEN)");
+        }
+        let metrics_token_hash = metrics_token
+            .as_ref()
+            .map(|k| Sha256::digest(k.as_bytes()).into());
+
         Ok(Self {
             oidc,
             base_url,
             api_key,
             api_key_hash,
+            metrics_token_hash,
         })
     }
 
@@ -104,6 +121,7 @@ mod tests {
         }
         env::remove_var("ADMIN_API_KEY");
         env::remove_var("BASE_URL");
+        env::remove_var("METRICS_AUTH_TOKEN");
     }
 
     fn set_complete_oidc_env() {
@@ -170,6 +188,29 @@ mod tests {
 
         let config = AppConfig::try_from_env().expect("should succeed");
         assert!(config.api_key.is_none());
+
+        clear_env();
+    }
+
+    #[test]
+    fn metrics_token_from_env() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("METRICS_AUTH_TOKEN", "prom-secret");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.metrics_token_hash.is_some());
+
+        clear_env();
+    }
+
+    #[test]
+    fn no_metrics_token_is_none() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.metrics_token_hash.is_none());
 
         clear_env();
     }
