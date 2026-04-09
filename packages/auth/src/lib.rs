@@ -10,7 +10,9 @@ pub mod handlers;
 pub mod middleware;
 pub mod oidc;
 
-pub use config::{parse_base_url, parse_oidc_from_env, OidcConfig};
+pub use config::{
+    host_is_allowed, parse_allowed_hosts, parse_base_url, parse_oidc_from_env, OidcConfig,
+};
 pub use handlers::{AuthStatus, PersonInfo, SESSION_KEY_AUTHENTICATED};
 pub use middleware::{require_session_auth, security_headers};
 pub use oidc::{discover_client, ConfiguredClient, DiscoveryResult};
@@ -23,6 +25,7 @@ pub trait OidcAppState: Clone + Send + Sync + 'static {
     fn oidc_config(&self) -> Option<&OidcConfig>;
     fn is_auth_enabled(&self) -> bool;
     fn base_url(&self) -> Option<&str>;
+    fn allowed_hosts(&self) -> &[String];
     fn http_client(&self) -> &reqwest::Client;
 }
 

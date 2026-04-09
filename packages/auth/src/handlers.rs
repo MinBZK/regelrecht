@@ -38,6 +38,12 @@ fn base_url_from_config_or_request<S: OidcAppState>(state: &S, headers: &HeaderM
         .and_then(|v| v.to_str().ok())
         .unwrap_or("localhost");
 
+    let allowed = state.allowed_hosts();
+    if !allowed.is_empty() && !crate::config::host_is_allowed(host, allowed) {
+        tracing::warn!(host, "host not in ALLOWED_HOSTS — using relative redirect");
+        return String::new();
+    }
+
     let scheme = headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())

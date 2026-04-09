@@ -97,6 +97,41 @@ pub fn parse_base_url() -> Result<Option<String>, String> {
     Ok(base_url)
 }
 
+/// Parse `ALLOWED_HOSTS` from the environment.
+///
+/// Comma-separated list of allowed host patterns for redirect validation
+/// when `BASE_URL` is not configured. Supports exact matches and wildcard
+/// suffix patterns (e.g. `*.regelrecht.rijks.app`).
+pub fn parse_allowed_hosts() -> Vec<String> {
+    let hosts: Vec<String> = env::var("ALLOWED_HOSTS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !hosts.is_empty() {
+        tracing::info!(hosts = ?hosts, "ALLOWED_HOSTS configured");
+    }
+    hosts
+}
+
+/// Check whether a host matches any of the allowed patterns.
+///
+/// Patterns can be exact (`editor.example.com`) or wildcard suffix
+/// (`*.example.com` matches `a.example.com` but not `example.com`).
+pub fn host_is_allowed(host: &str, allowed: &[String]) -> bool {
+    let host = host.split(':').next().unwrap_or(host).to_lowercase();
+    allowed.iter().any(|pattern| {
+        if let Some(suffix) = pattern.strip_prefix("*.") {
+            host.ends_with(suffix)
+                && host.len() > suffix.len()
+                && host.as_bytes()[host.len() - suffix.len() - 1] == b'.'
+        } else {
+            host == *pattern
+        }
+    })
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -204,6 +239,43 @@ mod tests {
         assert_eq!(oidc.required_role, "allowed-user");
 
         clear_oidc_env();
+    }
+
+    // --- host_is_allowed ---
+
+    #[test]
+    fn exact_host_match() {
+        let allowed = vec!["editor.regelrecht.rijks.app".into()];
+        assert!(host_is_allowed("editor.regelrecht.rijks.app", &allowed));
+        assert!(!host_is_allowed("evil.com", &allowed));
+    }
+
+    #[test]
+    fn wildcard_suffix_match() {
+        let allowed = vec!["*.regelrecht.rijks.app".into()];
+        assert!(host_is_allowed("editor.regelrecht.rijks.app", &allowed));
+        assert!(host_is_allowed("admin.regelrecht.rijks.app", &allowed));
+        assert!(!host_is_allowed("regelrecht.rijks.app", &allowed));
+        assert!(!host_is_allowed("evil.com", &allowed));
+    }
+
+    #[test]
+    fn host_with_port_is_matched() {
+        let allowed = vec!["*.regelrecht.rijks.app".into()];
+        assert!(host_is_allowed("editor.regelrecht.rijks.app:443", &allowed));
+    }
+
+    #[test]
+    fn case_insensitive_match() {
+        let allowed = vec!["*.regelrecht.rijks.app".into()];
+        assert!(host_is_allowed("Editor.Regelrecht.Rijks.App", &allowed));
+    }
+
+    #[test]
+    fn empty_allowlist_rejects_nothing() {
+        // When allowlist is empty, the handler skips validation entirely,
+        // so host_is_allowed is not called. But if it were, it returns false.
+        assert!(!host_is_allowed("anything.com", &[]));
     }
 
     #[test]
