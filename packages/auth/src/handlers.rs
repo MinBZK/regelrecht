@@ -284,9 +284,7 @@ pub async fn callback<S: OidcAppState>(
     if let Err(e) = session.remove::<String>(SESSION_KEY_PKCE_VERIFIER).await {
         tracing::warn!(error = %e, "failed to remove PKCE verifier from session");
     }
-    if let Err(e) = session.remove::<String>(SESSION_KEY_BASE_URL).await {
-        tracing::warn!(error = %e, "failed to remove base_url from session");
-    }
+    // Keep SESSION_KEY_BASE_URL — logout needs it for post_logout_redirect_uri.
 
     session
         .insert(SESSION_KEY_AUTHENTICATED, true)
@@ -308,10 +306,16 @@ pub async fn logout<S: OidcAppState>(
 ) -> Result<Response, StatusCode> {
     let id_token_hint: Option<String> = session.get(SESSION_KEY_ID_TOKEN).await.ok().flatten();
 
-    // For the post-logout redirect, use the explicit BASE_URL config.
-    // When not configured, fall back to "/" (relative redirect) to avoid
-    // trusting request headers for the redirect target.
-    let base_url = state.base_url().unwrap_or_default().to_string();
+    // Read the base_url that was stored during the OIDC login flow. This was
+    // validated by Keycloak's redirect URI allowlist at login time, so it's
+    // trusted. Fall back to the explicit BASE_URL config, then to "/" for a
+    // relative redirect.
+    let base_url: String = session
+        .get(SESSION_KEY_BASE_URL)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| state.base_url().unwrap_or_default().to_string());
 
     session.flush().await.map_err(|e| {
         tracing::error!(error = %e, "failed to flush session");
