@@ -306,10 +306,11 @@ pub async fn logout<S: OidcAppState>(
 ) -> Result<Response, StatusCode> {
     let id_token_hint: Option<String> = session.get(SESSION_KEY_ID_TOKEN).await.ok().flatten();
 
-    // Read the base_url that was stored during the OIDC login flow. This was
-    // validated by Keycloak's redirect URI allowlist at login time, so it's
-    // trusted. Fall back to the explicit BASE_URL config, then to "/" for a
-    // relative redirect.
+    // Read the base_url stored during the OIDC login flow. Derived from
+    // trusted config or request headers at login time (same origin used for
+    // the Keycloak-validated redirect_uri). Stored server-side after
+    // cycle_id() prevents session fixation. Falls back to BASE_URL config,
+    // then to "/" for a relative redirect.
     let base_url: String = match session.get(SESSION_KEY_BASE_URL).await {
         Ok(Some(url)) => url,
         Ok(None) => state.base_url().unwrap_or("/").to_string(),
