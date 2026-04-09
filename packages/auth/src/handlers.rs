@@ -313,7 +313,12 @@ pub async fn logout<S: OidcAppState>(
     // then to "/" for a relative redirect.
     let base_url: String = match session.get(SESSION_KEY_BASE_URL).await {
         Ok(Some(url)) => url,
-        Ok(None) => state.base_url().unwrap_or("/").to_string(),
+        Ok(None) => {
+            if state.base_url().is_none() {
+                tracing::warn!("no base_url in session and BASE_URL not configured — post_logout_redirect_uri will be relative");
+            }
+            state.base_url().unwrap_or("/").to_string()
+        }
         Err(e) => {
             tracing::warn!(error = %e, "failed to read base_url from session, using config fallback");
             state.base_url().unwrap_or("/").to_string()
