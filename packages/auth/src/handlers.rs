@@ -319,7 +319,10 @@ pub async fn logout<S: OidcAppState>(
         }),
         Err(e) => {
             tracing::warn!(error = %e, "failed to read base_url from session, using config fallback");
-            state.base_url().unwrap_or("/").to_string()
+            state.base_url().map(|u| u.to_string()).unwrap_or_else(|| {
+                tracing::warn!("BASE_URL not configured — post_logout_redirect_uri will be relative");
+                "/".to_string()
+            })
         }
     };
 
