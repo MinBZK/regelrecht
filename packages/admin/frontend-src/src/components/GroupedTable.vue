@@ -58,6 +58,7 @@ function formatChildCell(value, key) {
           v-for="col in columns"
           :key="col.key"
           :text="sortLabel(col)"
+          :width="col.width || 'stretch'"
         ></ndd-title-cell>
         <ndd-cell width="fit-content"></ndd-cell>
       </ndd-list-item>
@@ -72,7 +73,7 @@ function formatChildCell(value, key) {
           @click="emit('toggle-expand', group.law_id)"
         >
           <template v-for="col in columns" :key="col.key">
-            <ndd-cell width="stretch">
+            <ndd-cell :width="col.width || 'stretch'">
               <div class="cell-wrap">
                 <span v-if="col.key === 'law_id'" class="cell-mono">{{ group.law_id }}</span>
                 <template v-else-if="statusCountKeys.includes(col.key)">
@@ -109,6 +110,7 @@ function formatChildCell(value, key) {
                 v-for="col in childColumns"
                 :key="col.key"
                 :text="col.label"
+                :width="col.width || 'stretch'"
               ></ndd-title-cell>
             </ndd-list-item>
             <!-- Child job rows -->
@@ -121,7 +123,7 @@ function formatChildCell(value, key) {
               @click.stop="emit('row-click', job)"
             >
               <template v-for="col in childColumns" :key="col.key">
-                <ndd-cell width="stretch">
+                <ndd-cell :width="col.width || 'stretch'">
                   <div class="cell-wrap">
                     <template v-if="col.key === '_error'">
                       <span

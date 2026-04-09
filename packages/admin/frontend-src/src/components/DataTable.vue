@@ -53,7 +53,7 @@ function formatCellValue(value, key) {
           v-for="col in columns"
           :key="col.key"
           :text="sortLabel(col)"
-          width="stretch"
+          :width="col.width || 'stretch'"
         ></ndd-title-cell>
         <slot name="extra-header" />
       </ndd-list-item>
@@ -68,7 +68,7 @@ function formatCellValue(value, key) {
           @click="clickableRows && emit('row-click', row)"
         >
           <template v-for="col in columns" :key="col.key">
-            <ndd-cell width="stretch">
+            <ndd-cell :width="col.width || 'stretch'">
               <div class="cell-wrap">
                 <slot :name="'cell-' + col.key" :row="row" :value="row[col.key]">
                   <StatusBadge v-if="col.key === 'status'" :status="row[col.key] || 'unknown'" />
