@@ -12,6 +12,13 @@ import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, logout } = useAuth();
 
+// Redirect to login when OIDC is configured but user is not authenticated.
+watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) => {
+  if (!isLoading && oidc && !authed) {
+    window.location.href = '/auth/login';
+  }
+});
+
 // --- Initial law load (from URL params) ---
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
 

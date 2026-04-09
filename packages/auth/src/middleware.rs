@@ -158,6 +158,31 @@ mod tests {
             "nosniff"
         );
         assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(
+            response.headers().get("referrer-policy").unwrap(),
+            "strict-origin-when-cross-origin"
+        );
+        assert!(response
+            .headers()
+            .get("content-security-policy")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("default-src 'self'"));
+        assert!(response
+            .headers()
+            .get("permissions-policy")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("geolocation=()"));
+        assert!(response
+            .headers()
+            .get("strict-transport-security")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("max-age="));
     }
 
     #[tokio::test]
