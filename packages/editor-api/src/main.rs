@@ -127,7 +127,7 @@ async fn main() {
         }
         tracing::info!("session store ready (PostgreSQL-backed)");
 
-        let _deletion_task = tokio::task::spawn(
+        let deletion_handle = tokio::task::spawn(
             session_store
                 .clone()
                 .continuously_delete_expired(tokio::time::Duration::from_secs(60)),
@@ -152,9 +152,11 @@ async fn main() {
                 ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index_file)),
             );
 
-        serve(app).await;
+        serve(app, Some(deletion_handle)).await;
     } else {
-        let session_layer = SessionManagerLayer::new(MemoryStore::default());
+        let session_layer = SessionManagerLayer::new(MemoryStore::default())
+            .with_same_site(tower_sessions::cookie::SameSite::Lax)
+            .with_http_only(true);
 
         let app = Router::new()
             .route("/health", get(|| async { "OK" }))
@@ -169,11 +171,16 @@ async fn main() {
                 ServeDir::new(&static_dir).not_found_service(ServeFile::new(index_file)),
             );
 
-        serve(app).await;
+        serve(app, None).await;
     }
 }
 
-async fn serve(app: Router) {
+async fn serve(
+    app: Router,
+    deletion_handle: Option<
+        tokio::task::JoinHandle<Result<(), tower_sessions::session_store::Error>>,
+    >,
+) {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
     tracing::info!("listening on {addr}");
 
@@ -184,7 +191,24 @@ async fn serve(app: Router) {
             std::process::exit(1);
         });
 
-    if let Err(e) = axum::serve(listener, app).await {
+    if let Some(deletion_handle) = deletion_handle {
+        tokio::select! {
+            result = axum::serve(listener, app) => {
+                if let Err(e) = result {
+                    tracing::error!(error = %e, "server error");
+                    std::process::exit(1);
+                }
+            }
+            result = deletion_handle => {
+                match result {
+                    Ok(Ok(())) => tracing::error!("session deletion task exited unexpectedly"),
+                    Ok(Err(e)) => tracing::error!(error = %e, "session deletion task failed"),
+                    Err(e) => tracing::error!(error = %e, "session deletion task panicked"),
+                }
+                std::process::exit(1);
+            }
+        }
+    } else if let Err(e) = axum::serve(listener, app).await {
         tracing::error!(error = %e, "server error");
         std::process::exit(1);
     }
