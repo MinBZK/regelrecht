@@ -42,7 +42,7 @@ function onAccountClick() {
   <div v-if="authLoading" />
   <template v-else>
     <span v-if="deploymentName" class="env-badge">{{ deploymentName }}</span>
-    <ndd-page sticky-header>
+    <ndd-page sticky-header style="height: 100%;">
       <div slot="header">
         <ndd-top-navigation-bar
           title="RegelRecht admin"
