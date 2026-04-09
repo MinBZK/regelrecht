@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "admin",
+    "auth",
     "corpus",
     "editor-api",
     "engine",

@@ -3,11 +3,21 @@ import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
+import { useAuth } from './composables/useAuth.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
+
+const { authenticated, loading: authLoading, oidcConfigured, person, logout } = useAuth();
+
+// Redirect to login when OIDC is configured but user is not authenticated.
+watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) => {
+  if (!isLoading && oidc && !authed) {
+    window.location.href = '/auth/login';
+  }
+});
 
 // --- Initial law load (from URL params) ---
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
@@ -242,13 +252,17 @@ function handleSave({ section, key, newKey, index, data }) {
                   <ndd-menu-item text="Nieuw project"></ndd-menu-item>
                 </ndd-menu>
                 <ndd-button-bar-divider></ndd-button-bar-divider>
-                <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable title="Account" popovertarget="account-menu">
+                <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
                 </ndd-icon-button>
                 <ndd-menu id="account-menu" anchor="account-menu-btn">
-                  <ndd-menu-item text="Profiel"></ndd-menu-item>
-                  <ndd-menu-item text="Voorkeuren"></ndd-menu-item>
-                  <ndd-menu-divider></ndd-menu-divider>
-                  <ndd-menu-item text="Uitloggen"></ndd-menu-item>
+                  <template v-if="!authLoading && authenticated">
+                    <ndd-menu-item :text="person?.name || person?.email" disabled></ndd-menu-item>
+                    <ndd-menu-divider></ndd-menu-divider>
+                    <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
+                  </template>
+                  <template v-else-if="!authLoading && oidcConfigured">
+                    <ndd-menu-item text="Inloggen" @click="() => window.location.href = '/auth/login'"></ndd-menu-item>
+                  </template>
                 </ndd-menu>
               </ndd-button-bar>
             </ndd-toolbar-item>

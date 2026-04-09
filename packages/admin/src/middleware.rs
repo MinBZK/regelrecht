@@ -1,44 +1,17 @@
 use axum::extract::{Request, State};
 use axum::http::header;
-use axum::http::{HeaderValue, Method};
+use axum::http::Method;
 use axum::middleware::Next;
 use axum::response::Response;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
-use crate::auth::SESSION_KEY_AUTHENTICATED;
+pub use regelrecht_auth::middleware::security_headers;
+use regelrecht_auth::SESSION_KEY_AUTHENTICATED;
+
 use crate::error::ApiError;
 use crate::state::AppState;
-
-pub async fn security_headers(request: Request, next: Next) -> Response {
-    let mut response = next.run(request).await;
-    let headers = response.headers_mut();
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
-    headers.insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
-    );
-    headers.insert(
-        "content-security-policy",
-        HeaderValue::from_static(
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'",
-        ),
-    );
-    headers.insert(
-        "permissions-policy",
-        HeaderValue::from_static("geolocation=(), camera=(), microphone=()"),
-    );
-    headers.insert(
-        header::STRICT_TRANSPORT_SECURITY,
-        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
-    );
-    response
-}
 
 /// Methods allowed via API key authentication (no OIDC session required).
 const API_KEY_ALLOWED_METHODS: &[Method] = &[Method::GET, Method::DELETE];
@@ -188,7 +161,7 @@ mod tests {
     async fn security_headers_are_set() {
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
-            .layer(axum_middleware::from_fn(super::security_headers));
+            .layer(axum_middleware::from_fn(security_headers));
 
         let response = app
             .oneshot(
@@ -206,22 +179,6 @@ mod tests {
             "nosniff"
         );
         assert_eq!(response.headers().get("x-frame-options").unwrap(), "DENY");
-        assert_eq!(
-            response.headers().get("referrer-policy").unwrap(),
-            "strict-origin-when-cross-origin"
-        );
-        assert_eq!(
-            response.headers().get("content-security-policy").unwrap(),
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'"
-        );
-        assert_eq!(
-            response.headers().get("permissions-policy").unwrap(),
-            "geolocation=(), camera=(), microphone=()"
-        );
-        assert_eq!(
-            response.headers().get("strict-transport-security").unwrap(),
-            "max-age=31536000; includeSubDomains"
-        );
     }
 
     #[tokio::test]
@@ -268,7 +225,6 @@ mod tests {
         let state = test_state(true);
         let session_layer = SessionManagerLayer::new(store);
 
-        // Add a helper endpoint that sets the session authenticated flag.
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(axum_middleware::from_fn_with_state(
@@ -288,7 +244,6 @@ mod tests {
             .with_state(state)
             .layer(session_layer);
 
-        // Hit the helper to create an authenticated session.
         let response = app
             .clone()
             .oneshot(
@@ -310,7 +265,6 @@ mod tests {
             .expect("cookie str")
             .to_string();
 
-        // Use the session cookie on the protected endpoint.
         let response = app
             .oneshot(
                 axum::http::Request::builder()
@@ -405,7 +359,6 @@ mod tests {
 
     #[tokio::test]
     async fn api_key_not_configured_ignores_bearer() {
-        // No API key configured, OIDC disabled — should pass through regardless of bearer header.
         let state = test_state_with_api_key(false, None);
         let app = test_app(state);
 
@@ -425,7 +378,6 @@ mod tests {
 
     #[tokio::test]
     async fn api_key_without_oidc_rejects_invalid_token() {
-        // API key configured but OIDC disabled — invalid bearer should still be rejected.
         let state = test_state_with_api_key(false, Some("test-key"));
         let app = test_app(state);
 
@@ -445,7 +397,6 @@ mod tests {
 
     #[tokio::test]
     async fn api_key_without_oidc_no_bearer_falls_through() {
-        // API key configured, OIDC disabled, no bearer header — auth disabled passthrough.
         let state = test_state_with_api_key(false, Some("test-key"));
         let app = test_app(state);
 

@@ -17,7 +17,6 @@ use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing_subscriber::EnvFilter;
 
-mod auth;
 mod config;
 mod corpus_handlers;
 mod error;
@@ -25,7 +24,6 @@ mod handlers;
 mod metrics;
 mod middleware;
 mod models;
-mod oidc;
 mod state;
 
 use config::AppConfig;
@@ -99,7 +97,7 @@ async fn main() {
     }
 
     let (oidc_client, end_session_url) = if let Some(ref oidc_config) = app_config.oidc {
-        match oidc::discover_client(oidc_config).await {
+        match regelrecht_auth::discover_client(oidc_config).await {
             Ok(result) => (Some(Arc::new(result.client)), result.end_session_url),
             Err(e) => {
                 tracing::error!(error = %e, "OIDC discovery failed");
@@ -182,11 +180,7 @@ async fn main() {
             middleware::require_auth,
         ));
 
-    let auth_routes = Router::new()
-        .route("/auth/login", get(auth::login))
-        .route("/auth/callback", get(auth::callback))
-        .route("/auth/logout", get(auth::logout))
-        .route("/auth/status", get(auth::status));
+    let auth_routes = regelrecht_auth::auth_routes::<AppState>();
 
     let app = Router::new()
         .route("/health", get(health))

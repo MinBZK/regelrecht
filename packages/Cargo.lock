@@ -3596,6 +3596,7 @@ dependencies = [
  "openidconnect",
  "pretty_assertions",
  "prometheus-client",
+ "regelrecht-auth",
  "regelrecht-corpus",
  "regelrecht-pipeline",
  "regex",
@@ -3625,6 +3626,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-auth"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "http-body-util",
+ "openidconnect",
+ "reqwest 0.12.28",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha2",
+ "subtle",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tower-sessions",
+ "tower-sessions-memory-store",
+ "tracing",
+ "url",
+ "urlencoding",
+ "uuid",
+ "wiremock",
+]
+
+[[package]]
 name = "regelrecht-corpus"
 version = "0.1.0"
 dependencies = [
@@ -3644,13 +3672,21 @@ name = "regelrecht-editor-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "regelrecht-auth",
  "regelrecht-corpus",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sqlx",
+ "time",
  "tokio",
  "tower-http",
+ "tower-sessions",
+ "tower-sessions-memory-store",
+ "tower-sessions-sqlx-store",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
