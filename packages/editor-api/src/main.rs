@@ -93,10 +93,10 @@ async fn main() {
 
     // Protected API routes — require authentication when OIDC is enabled.
     // Currently empty; PR #422 and #517 will add write endpoints here.
-    let protected_api_routes = Router::new().route_layer(axum_middleware::from_fn_with_state(
-        app_state.clone(),
-        middleware::require_session_auth::<AppState>,
-    ));
+    // NOTE: add .route_layer(axum_middleware::from_fn_with_state(
+    //     app_state.clone(), middleware::require_session_auth::<AppState>))
+    // once actual routes are added — an empty Router with route_layer panics.
+    let protected_api_routes = Router::new();
 
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the
