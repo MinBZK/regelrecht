@@ -28,6 +28,8 @@ function onPageChange(event) {
 .pagination-controls {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--primitives-space-8);
+  padding: var(--primitives-space-16) 0;
 }
 </style>

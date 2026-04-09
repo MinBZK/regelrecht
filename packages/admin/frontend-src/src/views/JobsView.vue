@@ -45,16 +45,6 @@ if (route.query.law_id) {
     />
   </Teleport>
 
-  <Teleport to="#pagination-target" defer>
-    <PaginationControls
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      :total-count="totalCount"
-      :unit="paginationUnit"
-      @page-change="goToPage"
-    />
-  </Teleport>
-
   <JobCreation @job-created="refresh" />
 
   <!-- Flat view -->
@@ -100,6 +90,14 @@ if (route.query.law_id) {
     @filter-change="setFilter"
     @toggle-expand="toggleGroupExpansion"
     @row-click="openDetail"
+  />
+
+  <PaginationControls
+    :current-page="currentPage"
+    :total-pages="totalPages"
+    :total-count="totalCount"
+    :unit="paginationUnit"
+    @page-change="goToPage"
   />
 
   <DetailPanel :job="detailJob" :is-open="detailOpen" @close="closeDetail" />

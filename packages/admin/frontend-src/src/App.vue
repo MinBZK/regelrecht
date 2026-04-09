@@ -67,7 +67,6 @@ function onAccountClick() {
                 </ndd-tab-bar>
               </ndd-toolbar-item>
               <ndd-toolbar-item id="view-toggle-target" slot="end" />
-              <ndd-toolbar-item id="pagination-target" slot="end" />
             </ndd-toolbar>
           </ndd-container>
         </ndd-page>

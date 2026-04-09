@@ -41,6 +41,8 @@
 
 .cell-wrap {
   align-self: flex-start;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 
