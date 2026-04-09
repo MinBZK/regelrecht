@@ -310,12 +310,14 @@ pub async fn logout<S: OidcAppState>(
     // validated by Keycloak's redirect URI allowlist at login time, so it's
     // trusted. Fall back to the explicit BASE_URL config, then to "/" for a
     // relative redirect.
-    let base_url: String = session
-        .get(SESSION_KEY_BASE_URL)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| state.base_url().unwrap_or_default().to_string());
+    let base_url: String = match session.get(SESSION_KEY_BASE_URL).await {
+        Ok(Some(url)) => url,
+        Ok(None) => state.base_url().unwrap_or("/").to_string(),
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to read base_url from session, using config fallback");
+            state.base_url().unwrap_or("/").to_string()
+        }
+    };
 
     session.flush().await.map_err(|e| {
         tracing::error!(error = %e, "failed to flush session");
