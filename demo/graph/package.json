@@ -3,8 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "predev": "mkdir -p static && ln -sfn ../../../frontend/public/wasm static/wasm",
     "dev": "vite dev",
     "prepare": "svelte-kit sync",
+    "prebuild": "rm -rf static/wasm && cp -R ../../frontend/public/wasm static/wasm",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",

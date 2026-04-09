@@ -14,6 +14,19 @@
   } from '@xyflow/svelte';
   import LawNode from './LawNode.svelte';
   import LeafNode from './LeafNode.svelte';
+  import { initEngine, type WasmEngine } from '$lib/wasmEngine';
+  import {
+    parseFeature,
+    runScenario,
+    type DemoScenario,
+    type ScenarioRunResult,
+  } from '$lib/demoGherkin';
+  import {
+    flattenTraceSteps,
+    edgeIdsForStep,
+    graphNodeIdsForStep,
+    type Step,
+  } from '$lib/traceEdges';
 
   // Import the styles for Svelte Flow to work
   import '@xyflow/svelte/dist/style.css';
@@ -85,6 +98,21 @@
   let laws = $state<Law[]>([]);
   let selectedLaws = $state<string[]>([]);
   let selectedRootNode = $state<string | null>(null);
+
+  // --- Scenario runner state ---
+  let rawYamlById = new Map<string, string>(); // filled during initial load
+  let features = $state<string[]>([]);
+  let selectedFeature = $state<string | null>(null);
+  let featureScenarios = $state<DemoScenario[]>([]);
+  let selectedScenarioIdx = $state<number>(0);
+  let running = $state<boolean>(false);
+  let runError = $state<string | null>(null);
+  let traceRun = $state<ScenarioRunResult | null>(null);
+  let traceSteps = $state<Step[]>([]);
+  let currentStepIdx = $state<number>(-1);
+  let traceView = $state<'steps' | 'tree'>('steps');
+  let traceFilter = $state<'highlights' | 'all'>('highlights');
+  let traceStartNodeIds = $state<string[]>([]); // root law + initial output leaf
 
   function parseLaw(yamlContent: string): Law | null {
     const data = yaml.parse(yamlContent);
@@ -228,11 +256,18 @@
       const filePaths: string[] = await response.json();
 
       const allLaws: Law[] = [];
+      const yamlByLawKey = new Map<string, { yaml: string; valid_from: string }>();
       await Promise.all(
         filePaths.map(async (filePath) => {
           const fileContent = await fetch(`/law/${filePath}`).then((r) => r.text());
           const law = parseLaw(fileContent);
-          if (law) allLaws.push(law);
+          if (law) {
+            allLaws.push(law);
+            const existing = yamlByLawKey.get(law.id);
+            if (!existing || law.valid_from > existing.valid_from) {
+              yamlByLawKey.set(law.id, { yaml: fileContent, valid_from: law.valid_from });
+            }
+          }
         }),
       );
 
@@ -246,6 +281,9 @@
       }
 
       laws = Array.from(lawMap.values());
+      rawYamlById = new Map(
+        Array.from(yamlByLawKey.entries()).map(([id, v]) => [id, v.yaml]),
+      );
 
       // Build output index: "law_id:output_name" → law_id[]
       const serviceOutputToIDs = new Map<string, string[]>();
@@ -853,6 +891,190 @@
     }));
   });
 
+  // --- Scenario runner wiring ---
+
+  async function loadDependency(lawId: string): Promise<void> {
+    const engine = await initEngine();
+    if (engine.hasLaw(lawId)) return;
+    const yaml = rawYamlById.get(lawId);
+    if (!yaml) throw new Error(`Law not cached in demo: ${lawId}`);
+    engine.loadLaw(yaml);
+  }
+
+  async function loadFeatureList() {
+    try {
+      const res = await fetch('/features/list');
+      if (!res.ok) return;
+      features = await res.json();
+    } catch (e) {
+      console.error('Failed to load features', e);
+    }
+  }
+
+  async function loadSelectedFeature(name: string) {
+    try {
+      const res = await fetch(`/feature/${encodeURIComponent(name)}`);
+      if (!res.ok) throw new Error(`Failed to load feature: ${res.status}`);
+      const text = await res.text();
+      featureScenarios = parseFeature(text);
+      selectedScenarioIdx = 0;
+      resetTrace();
+    } catch (e: any) {
+      runError = e.message ?? String(e);
+    }
+  }
+
+  function stripTraceClass(cls: unknown): string {
+    if (typeof cls !== 'string') return '';
+    return cls
+      .replace(/\btrace-active\b/g, '')
+      .replace(/\btrace-visited\b/g, '')
+      .replace(/\btrace-start\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function clearTraceClasses() {
+    edges = untrack(() => edges).map((e) => {
+      const cleaned = stripTraceClass(e.class);
+      return { ...e, class: cleaned || undefined };
+    });
+    nodes = untrack(() => nodes).map((n) => {
+      const cleaned = stripTraceClass(n.class);
+      return { ...n, class: cleaned || undefined };
+    });
+  }
+
+  function resetTrace() {
+    traceRun = null;
+    traceSteps = [];
+    currentStepIdx = -1;
+    runError = null;
+    traceStartNodeIds = [];
+    clearTraceClasses();
+  }
+
+  async function runSelected() {
+    if (running) return;
+    const scn = featureScenarios[selectedScenarioIdx];
+    if (!scn) return;
+    running = true;
+    runError = null;
+    try {
+      const engine = await initEngine();
+      // Preload all cached laws so cross-law resolution works. loadLaw
+      // silently replaces an existing law with the same (id, valid_from).
+      for (const [, yaml] of rawYamlById) {
+        try {
+          engine.loadLaw(yaml);
+        } catch {
+          // ignore parse errors on unrelated demo laws
+        }
+      }
+      const result = await runScenario(engine, scn, loadDependency);
+      traceRun = result;
+      const flat = result.trace.trace
+        ? flattenTraceSteps(result.trace.trace, scn.lawId)
+        : [];
+      const currentEdges = untrack(() => edges);
+      const currentNodes = untrack(() => nodes);
+      traceSteps = flat.map((s) => ({
+        ...s,
+        edgeIds: edgeIdsForStep(s, currentEdges as any),
+        nodeIds: graphNodeIdsForStep(s, currentNodes as any),
+      }));
+
+      // Start point: the scenario's root law + initial output leaf.
+      const nodeIdSet = new Set(currentNodes.map((n) => n.id));
+      const startIds: string[] = [];
+      if (nodeIdSet.has(scn.lawId)) startIds.push(scn.lawId);
+      const outId = `${scn.lawId}-output-${scn.outputName}`;
+      if (nodeIdSet.has(outId)) startIds.push(outId);
+      traceStartNodeIds = startIds;
+      currentStepIdx = traceSteps.length > 0 ? 0 : -1;
+      selectedRootNode = null;
+      updateEdgeHighlighting(null);
+    } catch (e: any) {
+      runError = e.message ?? String(e);
+      traceRun = null;
+      traceSteps = [];
+      currentStepIdx = -1;
+    } finally {
+      running = false;
+    }
+  }
+
+  function formatValue(v: unknown): string {
+    if (v === null || v === undefined) return '∅';
+    if (typeof v === 'string') return v.length > 60 ? v.substring(0, 57) + '…' : v;
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (typeof v === 'number') return String(v);
+    try {
+      const s = JSON.stringify(v);
+      return s.length > 80 ? s.substring(0, 77) + '…' : s;
+    } catch {
+      return String(v);
+    }
+  }
+
+  function stepPrev() {
+    if (currentStepIdx > 0) currentStepIdx -= 1;
+  }
+
+  function stepNext() {
+    if (currentStepIdx < traceSteps.length - 1) currentStepIdx += 1;
+  }
+
+  // Update trace-active / trace-visited / trace-start classes when the
+  // current step changes. trace-start is sticky across all steps.
+  $effect(() => {
+    if (traceSteps.length === 0 || currentStepIdx < 0) return;
+
+    const activeStep = traceSteps[currentStepIdx];
+    const activeEdgeIds = new Set(activeStep?.edgeIds ?? []);
+    const activeNodeIds = new Set(activeStep?.nodeIds ?? []);
+    const visitedEdgeIds = new Set<string>();
+    const visitedNodeIds = new Set<string>();
+    for (let i = 0; i < currentStepIdx; i++) {
+      for (const eid of traceSteps[i].edgeIds) visitedEdgeIds.add(eid);
+      for (const nid of traceSteps[i].nodeIds) visitedNodeIds.add(nid);
+    }
+    const startIds = new Set(traceStartNodeIds);
+
+    edges = untrack(() => edges).map((e) => {
+      const base = stripTraceClass(e.class);
+      let cls = base;
+      if (activeEdgeIds.has(e.id)) {
+        cls = cls ? `${cls} trace-active` : 'trace-active';
+      } else if (visitedEdgeIds.has(e.id)) {
+        cls = cls ? `${cls} trace-visited` : 'trace-visited';
+      }
+      return { ...e, class: cls || undefined };
+    });
+
+    nodes = untrack(() => nodes).map((n) => {
+      const base = stripTraceClass(n.class);
+      const classes: string[] = [];
+      if (base) classes.push(base);
+      if (startIds.has(n.id)) classes.push('trace-start');
+      if (activeNodeIds.has(n.id)) classes.push('trace-active');
+      else if (visitedNodeIds.has(n.id)) classes.push('trace-visited');
+      return { ...n, class: classes.join(' ') || undefined };
+    });
+  });
+
+  // Load features once on mount
+  $effect(() => {
+    loadFeatureList();
+  });
+
+  // Load a feature's scenarios when selected
+  $effect(() => {
+    if (selectedFeature) {
+      loadSelectedFeature(selectedFeature);
+    }
+  });
+
   const layerLabels: Record<string, string> = {
     WET: 'Wet',
     AMVB: 'AMvB',
@@ -920,25 +1142,263 @@
   {/each}
 </div>
 
-<div class="mr-80 h-screen">
-  <SvelteFlow
-    bind:nodes
-    bind:edges
-    {nodeTypes}
-    onnodeclick={handleNodeClick}
-    fitView
-    nodesConnectable={false}
-    proOptions={{ hideAttribution: true }}
-    minZoom={0.1}
-  >
-    <Controls showLock={false} />
-    <Background variant={BackgroundVariant.Dots} />
-    <MiniMap
-      zoomable
-      pannable
-      nodeColor={(n) => (n.class?.includes('root') && !n.hidden ? '#ccc' : 'transparent')}
-    />
-  </SvelteFlow>
+<div class="mr-80 flex h-screen flex-col">
+  <!-- Scenario toolbar -->
+  <div class="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-2 text-sm">
+    <label class="font-semibold text-gray-700" for="feature-select">Feature:</label>
+    <select
+      id="feature-select"
+      bind:value={selectedFeature}
+      class="rounded border border-gray-300 px-2 py-1 text-sm"
+    >
+      <option value={null}>— kies een feature —</option>
+      {#each features as f}
+        <option value={f}>{f}</option>
+      {/each}
+    </select>
+
+    <label class="ml-4 font-semibold text-gray-700" for="scenario-select">Scenario:</label>
+    <select
+      id="scenario-select"
+      bind:value={selectedScenarioIdx}
+      disabled={featureScenarios.length === 0}
+      class="max-w-lg flex-1 rounded border border-gray-300 px-2 py-1 text-sm disabled:opacity-50"
+    >
+      {#each featureScenarios as scn, i}
+        <option value={i}>{scn.name}</option>
+      {/each}
+    </select>
+
+    <button
+      type="button"
+      onclick={runSelected}
+      disabled={running || featureScenarios.length === 0 || !featureScenarios[selectedScenarioIdx]?.lawId}
+      class="ml-2 cursor-pointer rounded-md border border-emerald-600 bg-emerald-600 px-3 py-1 text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {running ? 'Bezig…' : '▶ Run'}
+    </button>
+
+    {#if traceRun}
+      <button
+        type="button"
+        onclick={resetTrace}
+        class="cursor-pointer rounded-md border border-gray-400 px-3 py-1 text-gray-700 transition hover:bg-gray-100"
+      >
+        Reset
+      </button>
+    {/if}
+
+    {#if runError}
+      <span class="ml-2 truncate text-red-700" title={runError}>⚠ {runError}</span>
+    {:else if traceRun}
+      {@const passed = traceRun.assertions.filter((a) => a.passed).length}
+      {@const total = traceRun.assertions.length}
+      <span
+        class="ml-2 rounded px-2 py-0.5 text-xs font-semibold {passed === total
+          ? 'bg-emerald-100 text-emerald-800'
+          : 'bg-red-100 text-red-800'}"
+      >
+        {passed}/{total} asserts
+      </span>
+    {/if}
+  </div>
+
+  <!-- Graph -->
+  <div class="min-h-0 flex-1">
+    <SvelteFlow
+      bind:nodes
+      bind:edges
+      {nodeTypes}
+      onnodeclick={handleNodeClick}
+      fitView
+      nodesConnectable={false}
+      proOptions={{ hideAttribution: true }}
+      minZoom={0.1}
+    >
+      <Controls showLock={false} />
+      <Background variant={BackgroundVariant.Dots} />
+      <MiniMap
+        zoomable
+        pannable
+        nodeColor={(n) => (n.class?.includes('root') && !n.hidden ? '#ccc' : 'transparent')}
+      />
+    </SvelteFlow>
+  </div>
+
+  <!-- Trace panel -->
+  {#if traceRun && traceSteps.length > 0}
+    {@const visibleSteps = traceFilter === 'highlights'
+      ? traceSteps.filter((s) => s.edgeIds.length > 0 || s.nodeIds.length > 0)
+      : traceSteps}
+    <div class="flex h-[40vh] flex-col border-t-2 border-amber-500 bg-white text-sm">
+      <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-amber-50 px-4 py-2">
+        <button
+          type="button"
+          onclick={stepPrev}
+          disabled={currentStepIdx <= 0}
+          class="cursor-pointer rounded border border-gray-400 px-2 py-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          >◀ Prev</button
+        >
+        <button
+          type="button"
+          onclick={stepNext}
+          disabled={currentStepIdx >= traceSteps.length - 1}
+          class="cursor-pointer rounded border border-gray-400 px-2 py-0.5 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          >Next ▶</button
+        >
+        <span class="text-gray-600">
+          Step <strong>{currentStepIdx + 1}</strong> / {traceSteps.length}
+        </span>
+
+        <div class="ml-auto flex items-center gap-1 text-xs">
+          <span class="text-gray-500">Filter:</span>
+          <button
+            type="button"
+            onclick={() => (traceFilter = 'highlights')}
+            class="cursor-pointer rounded border px-2 py-0.5 {traceFilter === 'highlights' ? 'border-amber-500 bg-amber-100 font-semibold' : 'border-gray-300 bg-white'}"
+            >Met highlights</button
+          >
+          <button
+            type="button"
+            onclick={() => (traceFilter = 'all')}
+            class="cursor-pointer rounded border px-2 py-0.5 {traceFilter === 'all' ? 'border-amber-500 bg-amber-100 font-semibold' : 'border-gray-300 bg-white'}"
+            >Alles ({traceSteps.length})</button
+          >
+
+          <span class="ml-3 text-gray-500">Weergave:</span>
+          <button
+            type="button"
+            onclick={() => (traceView = 'steps')}
+            class="cursor-pointer rounded border px-2 py-0.5 {traceView === 'steps' ? 'border-amber-500 bg-amber-100 font-semibold' : 'border-gray-300 bg-white'}"
+            >Stappen</button
+          >
+          <button
+            type="button"
+            onclick={() => (traceView = 'tree')}
+            class="cursor-pointer rounded border px-2 py-0.5 {traceView === 'tree' ? 'border-amber-500 bg-amber-100 font-semibold' : 'border-gray-300 bg-white'}"
+            >Boom</button
+          >
+        </div>
+      </div>
+
+      <div class="flex min-h-0 flex-1">
+        <!-- Left: step list OR box-drawing tree -->
+        <div class="w-1/2 overflow-y-auto border-r border-gray-200">
+          {#if traceView === 'tree'}
+            <pre class="whitespace-pre p-3 font-mono text-[11px] leading-4 text-gray-800">{traceRun.trace.trace_text ?? '(geen box-drawing trace)'}</pre>
+          {:else}
+            {#each visibleSteps as step}
+              {@const i = traceSteps.indexOf(step)}
+              <button
+                type="button"
+                onclick={() => (currentStepIdx = i)}
+                class="group block w-full cursor-pointer border-b border-gray-100 px-3 py-1 text-left font-mono text-xs hover:bg-gray-50 {i ===
+                currentStepIdx
+                  ? 'bg-amber-100 font-semibold text-amber-900'
+                  : ''}"
+                style="padding-left: {step.depth * 10 + 12}px"
+              >
+                <div class="flex items-baseline gap-1 truncate">
+                  <span class="inline-block w-7 text-right text-gray-400">{i + 1}.</span>
+                  <span class="node-type-{step.nodeType} rounded px-1 text-[10px] uppercase tracking-wide">
+                    {step.nodeType.replace(/_/g, ' ')}
+                  </span>
+                  <span class="truncate">{step.name}</span>
+                  {#if step.resolveType}
+                    <span class="text-[10px] text-indigo-600">[{step.resolveType}]</span>
+                  {/if}
+                </div>
+                {#if step.result !== undefined && step.result !== null}
+                  <div class="pl-8 text-[11px] text-emerald-700 truncate">= {formatValue(step.result)}</div>
+                {/if}
+                {#if step.message}
+                  <div class="pl-8 text-[10px] italic text-gray-500 truncate">{step.message}</div>
+                {/if}
+                {#if step.edgeIds.length > 0 || step.nodeIds.length > 0}
+                  <div class="pl-8 text-[10px] text-amber-600">
+                    {#if step.edgeIds.length > 0}→ {step.edgeIds.length} edge{step.edgeIds.length === 1 ? '' : 's'}{/if}
+                    {#if step.nodeIds.length > 0}{step.edgeIds.length > 0 ? ', ' : '→ '}{step.nodeIds.length} node{step.nodeIds.length === 1 ? '' : 's'}{/if}
+                  </div>
+                {/if}
+              </button>
+            {/each}
+          {/if}
+        </div>
+
+        <!-- Right: current step detail + outputs + assertions -->
+        <div class="w-1/2 overflow-y-auto bg-gray-50 p-3">
+          {#if currentStepIdx >= 0 && traceSteps[currentStepIdx]}
+            {@const cur = traceSteps[currentStepIdx]}
+            <div class="mb-3 rounded border border-amber-300 bg-amber-50 p-2">
+              <div class="mb-1 flex items-center gap-2">
+                <span class="node-type-{cur.nodeType} rounded px-1 text-[10px] uppercase tracking-wide">{cur.nodeType.replace(/_/g, ' ')}</span>
+                <span class="font-mono text-xs font-semibold">{cur.name}</span>
+              </div>
+              <dl class="space-y-0.5 font-mono text-[11px]">
+                <div class="flex gap-2">
+                  <dt class="w-20 text-gray-500">Wet:</dt>
+                  <dd class="text-gray-900">{cur.lawId}</dd>
+                </div>
+                {#if cur.resolveType}
+                  <div class="flex gap-2">
+                    <dt class="w-20 text-gray-500">Resolve:</dt>
+                    <dd class="text-indigo-700">{cur.resolveType}</dd>
+                  </div>
+                {/if}
+                {#if cur.result !== undefined && cur.result !== null}
+                  <div class="flex gap-2">
+                    <dt class="w-20 text-gray-500">Resultaat:</dt>
+                    <dd class="text-emerald-700">{formatValue(cur.result)}</dd>
+                  </div>
+                {/if}
+                {#if cur.durationUs !== undefined}
+                  <div class="flex gap-2">
+                    <dt class="w-20 text-gray-500">Duur:</dt>
+                    <dd class="text-gray-700">{cur.durationUs}µs</dd>
+                  </div>
+                {/if}
+                {#if cur.message}
+                  <div class="flex gap-2">
+                    <dt class="w-20 text-gray-500">Bericht:</dt>
+                    <dd class="italic text-gray-700">{cur.message}</dd>
+                  </div>
+                {/if}
+              </dl>
+            </div>
+          {/if}
+
+          <h3 class="mb-1 font-semibold text-gray-700">Outputs</h3>
+          <dl class="mb-3 space-y-0.5 font-mono text-xs">
+            {#each Object.entries(traceRun.trace.outputs ?? {}) as [k, v]}
+              <div class="flex gap-2">
+                <dt class="text-gray-500">{k}:</dt>
+                <dd class="text-gray-900">{formatValue(v)}</dd>
+              </div>
+            {/each}
+          </dl>
+
+          {#if traceRun.assertions.length > 0}
+            <h3 class="mb-1 font-semibold text-gray-700">Assertions</h3>
+            <ul class="space-y-0.5 font-mono text-xs">
+              {#each traceRun.assertions as a}
+                <li class="flex gap-2">
+                  <span class={a.passed ? 'text-emerald-600' : 'text-red-600'}>
+                    {a.passed ? '✓' : '✗'}
+                  </span>
+                  <span class="text-gray-700">
+                    {a.output} = {a.expected}
+                    {#if !a.passed}
+                      <span class="text-red-600">(got {formatValue(a.actual)})</span>
+                    {/if}
+                  </span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style lang="postcss">
@@ -987,4 +1447,92 @@
   :global(.svelte-flow__edge.inbound path:first-child, .svelte-flow__edge.outbound path:first-child) {
     marker-end: none;
   }
+
+  /* Trace stepping highlights — use !important to override inline stroke
+     styles that hook/impl/ovr edges set in +page.svelte:587,613,670. */
+  :global(.svelte-flow__edge.trace-active path) {
+    stroke: #f59e0b !important;
+    stroke-dasharray: none !important;
+    animation: trace-pulse 1.2s ease-in-out infinite;
+  }
+  :global(.svelte-flow__edge.trace-visited path) {
+    stroke: #fbbf24 !important;
+    stroke-width: 4 !important;
+    opacity: 0.75;
+  }
+  @keyframes trace-pulse {
+    0%, 100% { stroke-width: 6; }
+    50% { stroke-width: 10; }
+  }
+
+  /* Trace-highlight for graph nodes (leaves + root law cards).
+     Leaves are <div>s with tailwind padding — we override background
+     directly so it's unmistakable against the already-tinted property
+     groups. Root law cards get an outline + glow instead. */
+  :global(.svelte-flow__node.trace-active) {
+    z-index: 10;
+  }
+  :global(.svelte-flow__node-leaf.trace-active) {
+    background: #f59e0b !important;
+    color: #1f2937 !important;
+    font-weight: 700 !important;
+    outline: 3px solid #b45309 !important;
+    outline-offset: 0 !important;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.8) !important;
+  }
+  :global(.svelte-flow__node-law.trace-active),
+  :global(.svelte-flow__node-default.trace-active) {
+    outline: 4px solid #f59e0b !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 24px rgba(245, 158, 11, 0.75) !important;
+  }
+
+  :global(.svelte-flow__node-leaf.trace-visited) {
+    background: #fde68a !important;
+    color: #78350f !important;
+  }
+  :global(.svelte-flow__node-law.trace-visited),
+  :global(.svelte-flow__node-default.trace-visited) {
+    outline: 2px solid #fbbf24 !important;
+    outline-offset: 1px !important;
+  }
+
+  /* Start point — sticky blue outline on the scenario's entry law + output */
+  :global(.svelte-flow__node.trace-start) {
+    outline: 3px dashed #2563eb;
+    outline-offset: 4px;
+    z-index: 9;
+  }
+  :global(.svelte-flow__node.trace-start::before) {
+    content: '▶ start';
+    position: absolute;
+    top: -18px;
+    left: -4px;
+    background: #2563eb;
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    z-index: 11;
+  }
+  /* When a start node is also active, combine outlines cleanly */
+  :global(.svelte-flow__node.trace-start.trace-active) {
+    outline: 3px solid #f59e0b;
+    box-shadow: 0 0 0 7px rgba(37, 99, 235, 0.35), 0 0 16px rgba(245, 158, 11, 0.55);
+  }
+
+  /* Trace step type chips */
+  .node-type-article { @apply bg-blue-200 text-blue-900; }
+  .node-type-action { @apply bg-emerald-200 text-emerald-900; }
+  .node-type-requirement { @apply bg-sky-200 text-sky-900; }
+  .node-type-resolve { @apply bg-slate-200 text-slate-800; }
+  .node-type-operation { @apply bg-gray-200 text-gray-800; }
+  .node-type-cached { @apply bg-gray-100 text-gray-600; }
+  .node-type-cross_law_reference { @apply bg-amber-200 text-amber-900; }
+  .node-type-open_term_resolution { @apply bg-green-200 text-green-900; }
+  .node-type-hook_resolution { @apply bg-purple-200 text-purple-900; }
+  .node-type-override_resolution { @apply bg-red-200 text-red-900; }
 </style>

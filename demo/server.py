@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 CORPUS_DIR = Path(__file__).resolve().parent.parent / "corpus" / "regulation" / "nl"
+FEATURES_DIR = Path(__file__).resolve().parent.parent / "features"
 
 app = FastAPI()
 
@@ -51,5 +52,22 @@ async def get_law(path: str):
     return PlainTextResponse(full_path.read_text())
 
 
+@app.get("/features/list")
+async def list_features():
+    if not FEATURES_DIR.exists():
+        return JSONResponse(content=[])
+    return JSONResponse(
+        content=[p.name for p in sorted(FEATURES_DIR.glob("*.feature"))]
+    )
+
+
+@app.get("/feature/{name}")
+async def get_feature(name: str):
+    full_path = (FEATURES_DIR / name).resolve()
+    if not full_path.exists() or not str(full_path).startswith(str(FEATURES_DIR)):
+        return PlainTextResponse("Not found", status_code=404)
+    return PlainTextResponse(full_path.read_text())
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8765)
