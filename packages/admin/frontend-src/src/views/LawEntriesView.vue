@@ -13,7 +13,7 @@ const {
   data, totalCount, loading, error,
   sort, order, filters,
   currentPage, totalPages,
-  setSort, setFilter, prevPage, nextPage, refresh,
+  setSort, setFilter, goToPage, refresh,
 } = useLawEntries();
 
 function viewJobsForLaw(lawId) {
@@ -22,16 +22,6 @@ function viewJobsForLaw(lawId) {
 </script>
 
 <template>
-  <Teleport to="#pagination-target" defer>
-    <PaginationControls
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      :total-count="totalCount"
-      @prev="prevPage"
-      @next="nextPage"
-    />
-  </Teleport>
-
   <DataTable
     :columns="LAW_ENTRY_COLUMNS"
     :data="data"
@@ -55,4 +45,10 @@ function viewJobsForLaw(lawId) {
       <RowActions :row="row" @action-complete="refresh" />
     </template>
   </DataTable>
+
+  <PaginationControls
+    :current-page="currentPage"
+    :total-pages="totalPages"
+    @page-change="goToPage"
+  />
 </template>

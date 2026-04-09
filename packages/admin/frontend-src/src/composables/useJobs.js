@@ -114,20 +114,11 @@ export function useJobs() {
     refresh();
   }
 
-  function prevPage() {
-    if (offset.value > 0) {
-      offset.value = Math.max(0, offset.value - limit.value);
-      refresh();
-    }
-  }
-
-  function nextPage() {
-    const pages = Math.ceil(totalCount.value / limit.value);
-    const current = Math.floor(offset.value / limit.value) + 1;
-    if (current < pages) {
-      offset.value += limit.value;
-      refresh();
-    }
+  function goToPage(page) {
+    const maxPage = Math.max(1, Math.ceil(totalCount.value / limit.value));
+    const clamped = Math.max(1, Math.min(page, maxPage));
+    offset.value = (clamped - 1) * limit.value;
+    refresh();
   }
 
   function setLawIdFilter(lawId) {
@@ -160,7 +151,7 @@ export function useJobs() {
     sort, order, limit, offset, filters,
     viewMode, expandedLawIds, expandedJobsCache,
     currentPage, totalPages,
-    setSort, setFilter, prevPage, nextPage,
+    setSort, setFilter, goToPage,
     toggleViewMode, toggleGroupExpansion, setLawIdFilter,
     refresh, startPolling, stopPolling,
   };

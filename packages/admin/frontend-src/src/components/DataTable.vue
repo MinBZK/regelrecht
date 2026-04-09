@@ -16,8 +16,10 @@ const props = defineProps({
 
 const emit = defineEmits(['sort', 'filter-change', 'row-click']);
 
-function onHeaderClick(col) {
-  if (col.sortable) emit('sort', col.key);
+function sortLabel(col) {
+  if (!col.sortable) return col.label;
+  if (props.sort !== col.key) return col.label;
+  return `${col.label} ${props.order === 'asc' ? '\u2191' : '\u2193'}`;
 }
 
 function formatCellValue(value, key) {
@@ -39,69 +41,53 @@ function formatCellValue(value, key) {
       @sort="(key) => emit('sort', key)"
       @filter-change="(key, value) => emit('filter-change', key, value)"
     />
-    <div class="table-container">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th
-              v-for="col in columns"
-              :key="col.key"
-              :class="{
-                sortable: col.sortable,
-                'sort-active': sort === col.key,
-              }"
-              @click="onHeaderClick(col)"
-            >
-              <span class="th-label">
-                {{ col.label }}
-                <span v-if="col.sortable" class="sort-indicator">
-                  {{ sort === col.key ? (order === 'asc' ? '\u25B2' : '\u25BC') : '\u25BC' }}
-                </span>
-              </span>
-            </th>
-            <slot name="extra-header" />
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading && data.length === 0">
-            <td :colspan="columns.length" class="table-message">Loading&hellip;</td>
-          </tr>
-          <tr v-else-if="error && data.length === 0">
-            <td :colspan="columns.length" class="table-message table-message--error">
-              Failed to load data: {{ error }}
-            </td>
-          </tr>
-          <tr v-else-if="data.length === 0">
-            <td :colspan="columns.length" class="table-message">No data found</td>
-          </tr>
-          <template v-else>
-            <slot name="rows" :data="data" :columns="columns">
-              <tr
-                v-for="row in data"
-                :key="row.id || row.law_id"
-                :class="{ 'clickable-row': clickableRows }"
-                @click="clickableRows && emit('row-click', row)"
-              >
-                <td v-for="col in columns" :key="col.key">
-                  <slot :name="'cell-' + col.key" :row="row" :value="row[col.key]">
-                    <StatusBadge v-if="col.key === 'status'" :status="row[col.key] || 'unknown'" />
-                    <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(row[col.key])">
-                      {{ formatCellValue(row[col.key], col.key) }}
-                    </span>
-                    <span v-else-if="col.key === 'law_id'" class="cell-mono">
-                      {{ row[col.key] }}
-                    </span>
-                    <template v-else-if="formatCellValue(row[col.key], col.key) !== null">
-                      {{ formatCellValue(row[col.key], col.key) }}
-                    </template>
-                    <span v-else class="cell-null">&mdash;</span>
-                  </slot>
-                </td>
-              </tr>
-            </slot>
+
+    <ndd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></ndd-inline-dialog>
+    <ndd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></ndd-inline-dialog>
+    <ndd-inline-dialog v-else-if="data.length === 0" text="No data found"></ndd-inline-dialog>
+
+    <ndd-list v-else variant="simple">
+      <!-- Header row -->
+      <ndd-list-item size="sm">
+        <ndd-title-cell
+          v-for="col in columns"
+          :key="col.key"
+          :text="sortLabel(col)"
+          :width="col.width || 'stretch'"
+        ></ndd-title-cell>
+        <slot name="extra-header" />
+      </ndd-list-item>
+
+      <!-- Data rows -->
+      <slot name="rows" :data="data" :columns="columns">
+        <ndd-list-item
+          v-for="row in data"
+          :key="row.id || row.law_id"
+          size="md"
+          :type="clickableRows ? 'button' : undefined"
+          @click="clickableRows && emit('row-click', row)"
+        >
+          <template v-for="col in columns" :key="col.key">
+            <ndd-cell :width="col.width || 'stretch'">
+              <div class="cell-wrap">
+                <slot :name="'cell-' + col.key" :row="row" :value="row[col.key]">
+                  <StatusBadge v-if="col.key === 'status'" :status="row[col.key] || 'unknown'" />
+                  <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(row[col.key])">
+                    {{ formatCellValue(row[col.key], col.key) }}
+                  </span>
+                  <span v-else-if="col.key === 'law_id'" class="cell-mono">
+                    {{ row[col.key] }}
+                  </span>
+                  <template v-else-if="formatCellValue(row[col.key], col.key) !== null">
+                    {{ formatCellValue(row[col.key], col.key) }}
+                  </template>
+                  <span v-else class="cell-null">&mdash;</span>
+                </slot>
+              </div>
+            </ndd-cell>
           </template>
-        </tbody>
-      </table>
-    </div>
+        </ndd-list-item>
+      </slot>
+    </ndd-list>
   </ndd-simple-section>
 </template>

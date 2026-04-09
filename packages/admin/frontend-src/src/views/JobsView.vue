@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { useJobs } from '../composables/useJobs.js';
 import { useJobDetail } from '../composables/useJobDetail.js';
@@ -19,14 +18,12 @@ const {
   sort, order, filters,
   viewMode, expandedLawIds, expandedJobsCache,
   currentPage, totalPages,
-  setSort, setFilter, prevPage, nextPage,
+  setSort, setFilter, goToPage,
   toggleViewMode, toggleGroupExpansion, setLawIdFilter,
   refresh,
 } = useJobs();
 
 const { job: detailJob, isOpen: detailOpen, open: openDetail, close: closeDetail } = useJobDetail();
-
-const paginationUnit = computed(() => viewMode.value === 'grouped' ? 'laws' : 'results');
 
 // Handle incoming law_id query param (runs synchronously during setup)
 if (route.query.law_id) {
@@ -42,17 +39,6 @@ if (route.query.law_id) {
       :text="viewMode === 'grouped' ? 'Flat view' : 'Grouped view'"
       :title="viewMode === 'grouped' ? 'Show individual jobs' : 'Group jobs by law'"
       @click="toggleViewMode"
-    />
-  </Teleport>
-
-  <Teleport to="#pagination-target" defer>
-    <PaginationControls
-      :current-page="currentPage"
-      :total-pages="totalPages"
-      :total-count="totalCount"
-      :unit="paginationUnit"
-      @prev="prevPage"
-      @next="nextPage"
     />
   </Teleport>
 
@@ -101,6 +87,12 @@ if (route.query.law_id) {
     @filter-change="setFilter"
     @toggle-expand="toggleGroupExpansion"
     @row-click="openDetail"
+  />
+
+  <PaginationControls
+    :current-page="currentPage"
+    :total-pages="totalPages"
+    @page-change="goToPage"
   />
 
   <DetailPanel :job="detailJob" :is-open="detailOpen" @close="closeDetail" />
