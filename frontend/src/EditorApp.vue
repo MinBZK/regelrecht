@@ -280,6 +280,42 @@ function handleActionClose() {
   activeAction.value = null;
 }
 
+// Walk a value tree and report the first incomplete operation (e.g. a stub
+// `{ operation: 'ADD', values: [] }` that the user inserted via "Voeg operatie
+// toe" but never filled in). Returns null when the tree is structurally valid.
+function findIncompleteOperation(value) {
+  if (value == null || typeof value !== 'object') return null;
+  if (!value.operation) return null;
+  const op = value.operation;
+  // Arithmetic / logical / set ops need a non-empty values or conditions array
+  if (Array.isArray(value.values) && value.values.length === 0) return op;
+  if (Array.isArray(value.conditions) && value.conditions.length === 0) return op;
+  // Recurse into structural slots
+  for (const child of [value.subject, value.value, value.when, value.then, value.else, value.default]) {
+    const inner = findIncompleteOperation(child);
+    if (inner) return inner;
+  }
+  if (Array.isArray(value.values)) {
+    for (const v of value.values) {
+      const inner = findIncompleteOperation(v);
+      if (inner) return inner;
+    }
+  }
+  if (Array.isArray(value.conditions)) {
+    for (const c of value.conditions) {
+      const inner = findIncompleteOperation(c);
+      if (inner) return inner;
+    }
+  }
+  if (Array.isArray(value.cases)) {
+    for (const c of value.cases) {
+      const inner = findIncompleteOperation(c?.when) || findIncompleteOperation(c?.then);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
 // Sync YAML when ActionSheet saves (mutations happened in-place)
 function handleActionSave() {
   // Reject empty output/value — schema requires both, the engine will fail
@@ -295,6 +331,14 @@ function handleActionSave() {
     // A nested operation object, a literal 0, false, null etc. are all valid.
     if (action.value === '') {
       parseError.value = 'Waarde mag niet leeg zijn';
+      return;
+    }
+    // Reject incomplete nested operations (e.g. ADD with empty values[]) that
+    // the user inserted via "Voeg operatie toe" but never filled in. Saving
+    // these would produce a YAML the engine cannot execute.
+    const incomplete = findIncompleteOperation(action.value);
+    if (incomplete) {
+      parseError.value = `Operatie '${incomplete}' is nog niet ingevuld`;
       return;
     }
   }

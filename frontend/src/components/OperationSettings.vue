@@ -67,11 +67,20 @@ const canAddNestedOperation = computed(() => {
 // cannot delete them and silently produce an invalid node.
 function canRemoveValue(val) {
   if (!props.editable) return false;
+  const node = props.operation?.node;
+  const op = props.operation?.operation;
   if (isComparisonOp.value && (val._kind === 'subject' || val._kind === 'value')) return false;
   // IF needs when/then/else
-  if (props.operation?.operation === 'IF' && (val._kind === 'when' || val._kind === 'then' || val._kind === 'else')) return false;
+  if (op === 'IF' && (val._kind === 'when' || val._kind === 'then' || val._kind === 'else')) return false;
   // NOT needs value
-  if (props.operation?.operation === 'NOT' && val._kind === 'value') return false;
+  if (op === 'NOT' && val._kind === 'value') return false;
+  // SWITCH needs a default branch
+  if (op === 'SWITCH' && val._kind === 'default') return false;
+  // AND/OR/arithmetic ops need at least one entry — block removal of the
+  // last condition or value so the user can't drain conditions: [] / values: []
+  // and produce a semantically undefined node.
+  if (val._kind === 'conditions' && Array.isArray(node?.conditions) && node.conditions.length <= 1) return false;
+  if (val._kind === 'values' && Array.isArray(node?.values) && node.values.length <= 1) return false;
   return true;
 }
 
