@@ -280,6 +280,11 @@ function handleActionClose() {
   activeAction.value = null;
 }
 
+const COMPARISON_OPS_SET = new Set([
+  'EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL',
+  'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'NOT_NULL', 'IN', 'NOT_IN',
+]);
+
 // Walk a value tree and report the first incomplete operation (e.g. a stub
 // `{ operation: 'ADD', values: [] }` that the user inserted via "Voeg operatie
 // toe" but never filled in). Returns null when the tree is structurally valid.
@@ -292,6 +297,13 @@ function findIncompleteOperation(value) {
   if (Array.isArray(value.conditions) && value.conditions.length === 0) return op;
   // IF/SWITCH need at least one case
   if ((op === 'IF' || op === 'SWITCH') && (!Array.isArray(value.cases) || value.cases.length === 0)) return op;
+  // Comparison ops need a non-empty subject (and value, except for NOT_NULL).
+  // changeOperationType / addNestedOperation seed these as empty strings, so
+  // we must reject the stub before persisting.
+  if (COMPARISON_OPS_SET.has(op)) {
+    if ((value.subject ?? '') === '') return op;
+    if (op !== 'NOT_NULL' && (value.value ?? '') === '') return op;
+  }
   // Recurse into structural slots
   for (const child of [value.subject, value.value, value.default]) {
     const inner = findIncompleteOperation(child);
