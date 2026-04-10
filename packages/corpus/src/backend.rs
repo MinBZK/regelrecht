@@ -57,20 +57,84 @@ pub trait RepoBackend: Send + Sync {
 // ---------------------------------------------------------------------------
 
 /// Backend that reads/writes directly to the local filesystem.
+///
+/// When the configured `root` is on a read-only filesystem (typical for a
+/// corpus baked into a container image), [`ensure_ready`] transparently
+/// rehomes the backend onto an **ephemeral scratch copy** under
+/// `$TMPDIR/regelrecht-editor-corpus/<host>/<source_id>` and operates on
+/// that copy from then on. Edits survive for the lifetime of the process
+/// but are lost on the next deployment — by design.
 pub struct LocalBackend {
+    /// Stable identifier of the source this backend belongs to. Used to
+    /// namespace the scratch directory so multiple local sources do not
+    /// collide on the same node.
+    source_id: String,
     root: PathBuf,
     writable: bool,
 }
 
 impl LocalBackend {
-    pub fn new(root: PathBuf, writable: bool) -> Self {
-        Self { root, writable }
+    pub fn new(source_id: String, root: PathBuf, writable: bool) -> Self {
+        Self {
+            source_id,
+            root,
+            writable,
+        }
     }
 
     fn resolve(&self, relative: &Path) -> Result<PathBuf> {
         validate_relative_path(relative)?;
         Ok(self.root.join(relative))
     }
+}
+
+/// Probe whether a directory accepts writes by creating and removing a
+/// short-lived sentinel file. Returns `false` on any IO error.
+async fn probe_writable(dir: &Path) -> bool {
+    let probe = dir.join(".write-probe");
+    match tokio::fs::write(&probe, b"").await {
+        Ok(()) => {
+            if let Err(e) = tokio::fs::remove_file(&probe).await {
+                tracing::warn!(
+                    path = %probe.display(),
+                    error = %e,
+                    "failed to remove write probe file after success"
+                );
+            }
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Recursively copy a directory tree.
+///
+/// Uses [`walkdir::WalkDir`] for traversal and `std::fs` for the file ops;
+/// callers should wrap in [`tokio::task::spawn_blocking`] to avoid stalling
+/// the runtime on a large corpus.
+fn copy_dir_recursive_sync(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst)?;
+    }
+    for entry in walkdir::WalkDir::new(src)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        let Ok(rel) = path.strip_prefix(src) else {
+            continue;
+        };
+        let target = dst.join(rel);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target)?;
+        } else if entry.file_type().is_file() {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(path, &target)?;
+        }
+    }
+    Ok(())
 }
 
 /// Reject paths that are absolute or contain `..` components.
@@ -176,31 +240,80 @@ impl RepoBackend for LocalBackend {
             )));
         }
 
-        // Probe write access: try creating and removing a temporary file.
-        // If the filesystem is read-only (e.g. inside a container), downgrade
-        // to read-only mode rather than failing at save time.
-        if self.writable {
-            let probe = self.root.join(".write-probe");
-            match tokio::fs::write(&probe, b"").await {
-                Ok(()) => {
-                    if let Err(e) = tokio::fs::remove_file(&probe).await {
-                        // The write succeeded but cleanup failed — leave a
-                        // visible warning rather than silently leaving a
-                        // .write-probe file behind in the source root.
-                        tracing::warn!(
-                            path = %probe.display(),
-                            error = %e,
-                            "failed to remove write probe file after success"
+        // Probe write access at the configured root. If it succeeds, we
+        // operate in place. If it fails (typical for a corpus baked into a
+        // read-only container layer), copy the corpus to an ephemeral
+        // scratch directory under $TMPDIR and operate there. The copy is
+        // lost on container restart — by design — but for the lifetime of
+        // the process the source is fully editable and the engine sees
+        // every edit because both reads and writes route through the same
+        // backend.
+        if self.writable && !probe_writable(&self.root).await {
+            tracing::info!(
+                path = %self.root.display(),
+                "local source root is not writable; preparing ephemeral scratch copy"
+            );
+
+            let host_id = std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
+            let scratch = std::env::temp_dir()
+                .join("regelrecht-editor-corpus")
+                .join(host_id)
+                .join(&self.source_id);
+
+            // If a previous invocation of this process already populated
+            // the scratch dir, leave it alone — that preserves any edits
+            // the operator made earlier in the same container lifetime.
+            // Otherwise copy the corpus tree across.
+            if !scratch.exists() {
+                let src = self.root.clone();
+                let dst = scratch.clone();
+                let copy_result =
+                    tokio::task::spawn_blocking(move || copy_dir_recursive_sync(&src, &dst)).await;
+
+                match copy_result {
+                    Ok(Ok(())) => {
+                        tracing::info!(
+                            from = %self.root.display(),
+                            to = %scratch.display(),
+                            "copied read-only local source to writable scratch directory"
                         );
                     }
+                    Ok(Err(e)) => {
+                        tracing::warn!(
+                            error = %e,
+                            from = %self.root.display(),
+                            to = %scratch.display(),
+                            "failed to copy local source to scratch directory; \
+                             marking backend read-only"
+                        );
+                        self.writable = false;
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "scratch copy task panicked; marking backend read-only"
+                        );
+                        self.writable = false;
+                        return Ok(());
+                    }
                 }
-                Err(_) => {
-                    tracing::info!(
-                        path = %self.root.display(),
-                        "local source is not writable, disabling writes"
-                    );
-                    self.writable = false;
-                }
+            } else {
+                tracing::info!(
+                    path = %scratch.display(),
+                    "reusing existing scratch directory from a previous run in this process"
+                );
+            }
+
+            // Re-probe at the scratch location to confirm it's writable.
+            if probe_writable(&scratch).await {
+                self.root = scratch;
+            } else {
+                tracing::warn!(
+                    path = %scratch.display(),
+                    "scratch directory is not writable; marking backend read-only"
+                );
+                self.writable = false;
             }
         }
 
@@ -414,7 +527,11 @@ impl RepoBackend for GitBackend {
 /// other's git state during concurrent `clone`/`pull --rebase`/`push`.
 pub fn create_backend(source: &Source, auth_token: Option<&str>) -> Result<Box<dyn RepoBackend>> {
     match &source.source_type {
-        SourceType::Local { local } => Ok(Box::new(LocalBackend::new(local.path.clone(), true))),
+        SourceType::Local { local } => Ok(Box::new(LocalBackend::new(
+            source.id.clone(),
+            local.path.clone(),
+            true,
+        ))),
         SourceType::GitHub { github } => {
             let repo_url = format!("https://github.com/{}/{}.git", github.owner, github.repo);
             let host_id = std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
@@ -448,7 +565,7 @@ mod tests {
     #[tokio::test]
     async fn local_read_write_roundtrip() {
         let dir = TempDir::new().unwrap();
-        let mut backend = LocalBackend::new(dir.path().to_path_buf(), true);
+        let mut backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), true);
         backend.ensure_ready().await.unwrap();
 
         let path = Path::new("scenarios/test.feature");
@@ -475,7 +592,7 @@ mod tests {
     #[tokio::test]
     async fn local_delete_file() {
         let dir = TempDir::new().unwrap();
-        let mut backend = LocalBackend::new(dir.path().to_path_buf(), true);
+        let mut backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), true);
         backend.ensure_ready().await.unwrap();
 
         let path = Path::new("test.feature");
@@ -492,7 +609,7 @@ mod tests {
     #[tokio::test]
     async fn local_list_files_with_extension() {
         let dir = TempDir::new().unwrap();
-        let mut backend = LocalBackend::new(dir.path().to_path_buf(), true);
+        let mut backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), true);
         backend.ensure_ready().await.unwrap();
 
         backend
@@ -520,7 +637,7 @@ mod tests {
     #[tokio::test]
     async fn local_list_files_missing_dir() {
         let dir = TempDir::new().unwrap();
-        let mut backend = LocalBackend::new(dir.path().to_path_buf(), true);
+        let mut backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), true);
         backend.ensure_ready().await.unwrap();
 
         let entries = backend
@@ -533,7 +650,7 @@ mod tests {
     #[tokio::test]
     async fn local_read_only_rejects_writes() {
         let dir = TempDir::new().unwrap();
-        let backend = LocalBackend::new(dir.path().to_path_buf(), false);
+        let backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), false);
 
         let result = backend.write_file(Path::new("test.txt"), "content").await;
         assert!(result.is_err());
@@ -543,7 +660,7 @@ mod tests {
     #[tokio::test]
     async fn local_rejects_path_traversal() {
         let dir = TempDir::new().unwrap();
-        let mut backend = LocalBackend::new(dir.path().to_path_buf(), true);
+        let mut backend = LocalBackend::new("test".to_string(), dir.path().to_path_buf(), true);
         backend.ensure_ready().await.unwrap();
 
         let result = backend.read_file(Path::new("../etc/passwd")).await;
@@ -557,7 +674,8 @@ mod tests {
 
     #[tokio::test]
     async fn local_ensure_ready_fails_for_missing_dir() {
-        let mut backend = LocalBackend::new(PathBuf::from("/nonexistent/path"), true);
+        let mut backend =
+            LocalBackend::new("test".to_string(), PathBuf::from("/nonexistent/path"), true);
         let result = backend.ensure_ready().await;
         assert!(result.is_err());
     }
