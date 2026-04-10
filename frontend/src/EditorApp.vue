@@ -28,6 +28,15 @@ const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
 
 const middlePaneView = ref('form');
+const rightPaneView = ref('result');
+
+const middlePaneTitle = computed(() => middlePaneView.value === 'yaml' ? 'YAML' : 'Scenario\u2019s');
+const rightPaneTitle = computed(() => rightPaneView.value === 'machine' ? 'Machine' : 'Resultaat');
+
+function onRightPaneChange(event) {
+  const value = event.target?.value ?? event.detail?.[0];
+  if (value) rightPaneView.value = value;
+}
 
 // --- Multi-law tab state (persisted in localStorage) ---
 const TABS_STORAGE_KEY = 'regelrecht-open-tabs';
@@ -469,10 +478,9 @@ function handleActionSave() {
           <!-- Middle: Form or YAML -->
           <ndd-split-view-pane slot="pane-2">
             <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" text="Scenario's">
+              <ndd-top-title-bar slot="header" :text="middlePaneTitle">
                 <ndd-segmented-control slot="toolbar" size="md" :value="middlePaneView" @change="onMiddlePaneChange">
                   <ndd-segmented-control-item value="form" text="Scenario's"></ndd-segmented-control-item>
-                  <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
                 </ndd-segmented-control>
                 <span v-if="middlePaneView === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
@@ -494,18 +502,6 @@ function handleActionSave() {
                 @executed="handleScenarioExecuted"
               />
 
-              <!-- Machine view: structured editor -->
-              <ndd-simple-section v-if="middlePaneView === 'machine'">
-                <MachineReadable
-                  :article="editedArticle"
-                  :editable="canEdit"
-                  @open-action="handleOpenAction"
-                  @open-edit="activeEditItem = $event"
-                  @init-mr="handleInitMr"
-                  @add-action="handleAddAction"
-                />
-              </ndd-simple-section>
-
               <!-- YAML view -->
               <ndd-simple-section v-if="middlePaneView === 'yaml'">
                 <div class="editor-yaml-wrap">
@@ -524,17 +520,35 @@ function handleActionSave() {
             </ndd-page>
           </ndd-split-view-pane>
 
-          <!-- Right: Execution Result -->
+          <!-- Right: Execution Result or Machine Readable -->
           <ndd-split-view-pane slot="pane-3">
             <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" text="Resultaat"></ndd-top-title-bar>
+              <ndd-top-title-bar slot="header" :text="rightPaneTitle">
+                <ndd-segmented-control slot="toolbar" size="md" :value="rightPaneView" @change="onRightPaneChange">
+                  <ndd-segmented-control-item value="result" text="Resultaat"></ndd-segmented-control-item>
+                  <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
+                </ndd-segmented-control>
+              </ndd-top-title-bar>
 
               <ExecutionTraceView
+                v-if="rightPaneView === 'result'"
                 :result="lastResult"
                 :trace-text="lastTraceText"
                 :error="lastError"
                 :expectations="lastExpectations"
               />
+
+              <!-- Machine view: structured editor -->
+              <ndd-simple-section v-else-if="rightPaneView === 'machine'">
+                <MachineReadable
+                  :article="editedArticle"
+                  :editable="canEdit"
+                  @open-action="handleOpenAction"
+                  @open-edit="activeEditItem = $event"
+                  @init-mr="handleInitMr"
+                  @add-action="handleAddAction"
+                />
+              </ndd-simple-section>
             </ndd-page>
           </ndd-split-view-pane>
         </ndd-side-by-side-split-view>
