@@ -221,6 +221,16 @@ const parsedRawLaw = computed(() => {
 // Only the currently selected article's machine_readable is swapped — edits
 // on other articles are not tracked across tab switches (existing behavior
 // of the editor state model).
+//
+// KNOWN LIMITATION: when this value is sent to `saveLaw` (via the Machine
+// panel save button), the body is the `yaml.dump` output of the
+// reconstructed document — which strips YAML comments and may reorder
+// top-level keys compared to `rawYaml`. The YAML-pane edit path preserves
+// the user's exact text via `yamlSource`, so it does not have this drift.
+// Today's corpus is harvester-generated and comment-free, so the impact is
+// zero in practice; revisit if hand-annotated laws are introduced (e.g.
+// keep an "as-typed" base alongside `rawYaml` and only re-dump the edited
+// article).
 const currentLawYaml = computed(() => {
   if (!rawYaml.value) return null;
   if (!selectedArticle.value || machineReadable.value == null) {
