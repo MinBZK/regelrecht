@@ -315,6 +315,9 @@ function findIncompleteOperation(value) {
       if ((value.value ?? '') === '') return op;
     }
   }
+  // NOT wraps a single value/operation; reject the empty-string stub created
+  // when transitioning from arithmetic ops via changeOperationType.
+  if (op === 'NOT' && (value.value ?? '') === '') return op;
   // Recurse into structural slots
   for (const child of [value.subject, value.value, value.default]) {
     const inner = findIncompleteOperation(child);

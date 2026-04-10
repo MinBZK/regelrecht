@@ -203,9 +203,13 @@ function changeOperationType(event) {
     delete node.then;
     delete node.else;
   } else if (newType === 'IF') {
-    // IF uses the same cases[]/default schema as SWITCH (one case for IF).
+    // IF uses the same cases[]/default schema as SWITCH but is single-case.
+    // Truncate any extra cases when transitioning from SWITCH so we don't
+    // produce an IF with 2+ cases that the schema would reject.
     if (!Array.isArray(node.cases) || node.cases.length === 0) {
       node.cases = [{ when: { operation: 'EQUALS', subject: '', value: '' }, then: 0 }];
+    } else if (node.cases.length > 1) {
+      node.cases = node.cases.slice(0, 1);
     }
     if (node.default === undefined) node.default = 0;
     delete node.values;
