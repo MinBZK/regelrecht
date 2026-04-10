@@ -163,10 +163,20 @@ pub async fn list_scenarios(
     };
 
     let backend = resolved.backend.lock().await;
+    // Surface real backend errors (permissions, broken git checkout, …) as
+    // 500 instead of swallowing them as "no scenarios". `list_files` itself
+    // already returns `Ok(vec![])` for a missing directory, so anything that
+    // does reach the error arm is a genuine fault worth telling the client.
     let entries = backend
         .list_files(&scenarios_dir, Some("feature"))
         .await
-        .unwrap_or_default();
+        .map_err(|e| {
+            tracing::warn!(law_id = %law_id, error = %e, "list_scenarios backend failure");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to list scenarios".to_string(),
+            )
+        })?;
     drop(backend);
 
     let mut out: Vec<ScenarioEntry> = entries
@@ -371,14 +381,23 @@ async fn resolve_backend_for_law(
 ///
 /// `ReadOnly` is an expected, recoverable precondition (e.g. the resolved
 /// backend is a baked-in local source on a read-only container filesystem),
-/// and must surface as `403 Forbidden` so the frontend can render a useful
-/// message instead of "Internal Server Error". Everything else (IO, git
-/// command failures, push failures, …) is unexpected from the client's
-/// perspective and falls through to `500 Internal Server Error`.
+/// and the message is safe to surface to the user as `403 Forbidden`.
+///
+/// Every other variant (IO, git command failures, push failures, …) goes
+/// out as `500 Internal Server Error` with a **generic** message. The full
+/// error — which can include git stderr, repository URLs that may carry
+/// push tokens for local-only backends, and absolute filesystem paths — is
+/// logged at warn level for operators but never returned to the client.
 fn corpus_write_error(e: CorpusError) -> (StatusCode, String) {
     match e {
         CorpusError::ReadOnly(_) => (StatusCode::FORBIDDEN, e.to_string()),
-        _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        _ => {
+            tracing::warn!(error = %e, "scenario write/persist failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal error while writing scenario".to_string(),
+            )
+        }
     }
 }
 

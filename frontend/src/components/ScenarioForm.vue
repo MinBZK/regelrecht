@@ -161,12 +161,14 @@ function getExecutionData() {
   };
 }
 
-/** Returns the current form input values for syncing back to formState */
+/** Returns the current form input values for syncing back to formState.
+ *  All collections are returned as fresh shallow copies so a caller cannot
+ *  accidentally mutate the component's reactive form state. */
 function getFormValues() {
   return {
     parameterValues: { ...parameterValues.value },
     calculationDate: calculationDate.value,
-    dataSources: dataSources.value,
+    dataSources: [...dataSources.value],
   };
 }
 

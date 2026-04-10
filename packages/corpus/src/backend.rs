@@ -298,6 +298,12 @@ impl RepoBackend for GitBackend {
                 self.dirty_files.lock().await.push(abs);
                 Ok(())
             }
+            // Deleting a file that doesn't exist is intentionally a no-op
+            // and does NOT enqueue anything onto `dirty_files`. Callers
+            // typically follow up with `persist`, which short-circuits on
+            // an empty dirty set — so the overall flow stays an idempotent
+            // no-op (no spurious empty commit, no push) when the target
+            // was already gone.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e.into()),
         }
