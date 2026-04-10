@@ -157,13 +157,21 @@ export function useLaw(lawParam) {
         },
       );
       if (!res.ok) {
-        // res.text() can throw on a network drop after headers; if that
-        // happens we still want to surface the HTTP status, not whatever
-        // confusing low-level error the body read produced.
+        // Only surface the body when it's our editor-api speaking. The
+        // editor-api returns plain `text/plain; charset=utf-8` for its
+        // 400/403 bodies (corpus_handlers.rs), so a non-text/plain
+        // content-type means a reverse proxy is intercepting (5xx HTML
+        // page, etc.) and we should fall back to a generic message
+        // rather than render proxy HTML in the save error dialog.
+        // res.text() can also throw on a network drop after headers;
+        // the same fallback covers that.
         let text = `Save failed: ${res.status}`;
-        try {
-          text = (await res.text()) || text;
-        } catch { /* keep status fallback */ }
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.startsWith('text/plain')) {
+          try {
+            text = (await res.text()) || text;
+          } catch { /* keep status fallback */ }
+        }
         throw new Error(text);
       }
       // Parse once and reuse for both reactive state and the shared
