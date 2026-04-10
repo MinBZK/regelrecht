@@ -284,6 +284,8 @@ function handleActionClose() {
     actionSnapshot = null;
   }
   activeAction.value = null;
+  // Clear any stale parse error from a failed save attempt
+  parseError.value = null;
 }
 
 const COMPARISON_OPS_SET = new Set([
@@ -305,14 +307,15 @@ function findIncompleteOperation(value) {
   if ((op === 'IF' || op === 'SWITCH') && (!Array.isArray(value.cases) || value.cases.length === 0)) return op;
   // Comparison ops need a non-empty subject (and value, except for NOT_NULL).
   // changeOperationType / addNestedOperation seed these as empty strings, so
-  // we must reject the stub before persisting.
+  // we must reject the stub before persisting. IN/NOT_IN accept either a
+  // variable reference (e.g. "$list") or a literal non-empty array; both
+  // are non-empty by the same value !== '' / array.length > 0 check.
   if (COMPARISON_OPS_SET.has(op)) {
     if ((value.subject ?? '') === '') return op;
-    if (op === 'IN' || op === 'NOT_IN') {
-      // IN/NOT_IN seed value as [] — reject if still empty
-      if (!Array.isArray(value.value) || value.value.length === 0) return op;
-    } else if (op !== 'NOT_NULL') {
-      if ((value.value ?? '') === '') return op;
+    if (op !== 'NOT_NULL') {
+      const v = value.value;
+      if (v == null || v === '') return op;
+      if (Array.isArray(v) && v.length === 0) return op;
     }
   }
   // NOT wraps a single value/operation; reject the empty-string stub created

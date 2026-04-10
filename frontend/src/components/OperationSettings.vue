@@ -175,13 +175,14 @@ function changeOperationType(event) {
 
   if (COMPARISON_OPS.has(newType)) {
     if (node.subject === undefined) node.subject = '';
-    if (newType === 'IN' || newType === 'NOT_IN') {
-      if (!Array.isArray(node.value)) node.value = [];
-    } else if (newType === 'NOT_NULL') {
+    if (newType === 'NOT_NULL') {
       delete node.value;
     } else {
-      // Reset to scalar default when undefined OR when previously an array (e.g. coming from IN/NOT_IN)
-      if (node.value === undefined || Array.isArray(node.value)) node.value = '';
+      // For all other comparison ops (including IN/NOT_IN), seed value as
+      // an empty string. The UI dropdown lets the user pick a variable
+      // reference that resolves to a list at runtime; arrays as literal
+      // values can be entered through the YAML pane.
+      if (node.value === undefined || node.value === null) node.value = '';
     }
     delete node.values;
     delete node.conditions;
