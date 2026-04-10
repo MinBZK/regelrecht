@@ -268,36 +268,21 @@ fn validate_scenario_filename(filename: &str) -> Result<(), (StatusCode, String)
 
 /// Extract the law-relative directory from a law's file_path.
 ///
-/// Returns the structural path like `wet/law_id/` — the path from the
-/// regulation root to the law directory. This is source-agnostic and works
-/// with any backend.
+/// Returns the path of the law's directory, relative to the source root.
 ///
-/// The law's file_path is either absolute (local sources) or repo-relative
-/// (GitHub-fetched). In both cases the structural part is the last two path
-/// components: `{regulatory_layer}/{law_id}/`.
+/// `LoadedLaw::relative_path` is computed at load time by stripping the
+/// source root (for local sources) or the in-repo subpath (for GitHub
+/// sources). Taking its parent gives the directory the backend writes to,
+/// without making any assumption about the structural depth of the corpus
+/// layout.
 fn law_relative_dir(law: &LoadedLaw) -> Result<PathBuf, (StatusCode, String)> {
-    let file_path = std::path::Path::new(&law.file_path);
-    let law_dir = file_path.parent().ok_or_else(|| {
+    let rel = std::path::Path::new(&law.relative_path);
+    rel.parent().map(PathBuf::from).ok_or_else(|| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Cannot determine law directory".to_string(),
         )
-    })?;
-
-    // Extract the last two components: regulatory_layer/law_id
-    // e.g. from "/abs/path/corpus/regulation/nl/wet/my_law/2025.yaml"
-    //   → parent = ".../wet/my_law"
-    //   → last two components = "wet/my_law"
-    let components: Vec<_> = law_dir.components().rev().take(2).collect();
-    if components.len() == 2 {
-        let mut rel = PathBuf::new();
-        rel.push(components[1].as_os_str());
-        rel.push(components[0].as_os_str());
-        Ok(rel)
-    } else {
-        // Fallback: use the full law_dir filename as-is
-        Ok(law_dir.file_name().map(PathBuf::from).unwrap_or_default())
-    }
+    })
 }
 
 /// Resolved backend information for a law.

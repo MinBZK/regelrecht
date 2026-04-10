@@ -391,12 +391,22 @@ impl RepoBackend for GitBackend {
 /// Create a [`RepoBackend`] for a given corpus source.
 ///
 /// For GitHub sources, an optional authentication token can be provided.
+///
+/// The on-disk checkout path is namespaced by the host identifier
+/// (`HOSTNAME` env var, falling back to `"local"`) so that multiple replicas
+/// of the editor running on the same node — or a pod restart racing with a
+/// previous instance — do not share a working directory and corrupt each
+/// other's git state during concurrent `clone`/`pull --rebase`/`push`.
 pub fn create_backend(source: &Source, auth_token: Option<&str>) -> Result<Box<dyn RepoBackend>> {
     match &source.source_type {
         SourceType::Local { local } => Ok(Box::new(LocalBackend::new(local.path.clone(), true))),
         SourceType::GitHub { github } => {
             let repo_url = format!("https://github.com/{}/{}.git", github.owner, github.repo);
-            let repo_path = std::env::temp_dir().join("corpus-editor").join(&source.id);
+            let host_id = std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
+            let repo_path = std::env::temp_dir()
+                .join("corpus-editor")
+                .join(&host_id)
+                .join(&source.id);
             let mut config = CorpusConfig::new(&repo_url, &repo_path);
             config.branch = github.effective_ref().to_string();
 
