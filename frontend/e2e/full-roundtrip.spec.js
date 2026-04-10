@@ -1,25 +1,20 @@
 import { test, expect } from '@playwright/test';
-import { interceptLaw, gotoEditor, selectArticle, readYamlPane } from './helpers.js';
+import { interceptLaw, gotoEditor, selectArticle, readYamlPane, loadFixture } from './helpers.js';
 import yaml from 'js-yaml';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
 
 /**
- * Load the original (with machine_readable) zorgtoeslag YAML.
+ * Load the pinned zorgtoeslag fixture (snapshot of the corpus law file).
+ * Pinning insulates this test from upstream corpus edits.
  */
 function loadOriginal() {
-  const path = resolve(import.meta.dirname, '../../corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml');
-  return yaml.load(readFileSync(path, 'utf-8'));
+  return yaml.load(loadFixture('zorgtoeslag-full.yaml'));
 }
 
 test.describe('Full round-trip', () => {
   test('YAML textarea round-trips without data loss', async ({ page }) => {
-    // Load the FULL zorgtoeslag (with machine_readable) instead of stripped
+    // Load the FULL zorgtoeslag fixture (with machine_readable) instead of stripped
     const original = loadOriginal();
-    const fullYaml = readFileSync(
-      resolve(import.meta.dirname, '../../corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml'),
-      'utf-8'
-    );
+    const fullYaml = loadFixture('zorgtoeslag-full.yaml');
 
     await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fullYaml })

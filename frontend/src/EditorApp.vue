@@ -282,13 +282,21 @@ function handleActionClose() {
 
 // Sync YAML when ActionSheet saves (mutations happened in-place)
 function handleActionSave() {
-  // Reject empty output names — schema requires a non-empty value and the engine
-  // will fail to load the law. Show a parse error rather than silently writing
+  // Reject empty output/value — schema requires both, the engine will fail
+  // to load the law. Show a parse error rather than silently writing
   // invalid YAML.
   const action = activeAction.value;
-  if (action && (action.output == null || String(action.output).trim() === '')) {
-    parseError.value = 'Output mag niet leeg zijn';
-    return;
+  if (action) {
+    if (action.output == null || String(action.output).trim() === '') {
+      parseError.value = 'Output mag niet leeg zijn';
+      return;
+    }
+    // Reject only the literal empty-string default we inserted in handleAddAction.
+    // A nested operation object, a literal 0, false, null etc. are all valid.
+    if (action.value === '') {
+      parseError.value = 'Waarde mag niet leeg zijn';
+      return;
+    }
   }
   actionSnapshot = null;
   activeAction.value = null;

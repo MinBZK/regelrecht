@@ -46,6 +46,10 @@ const canAddValue = computed(() => {
   if (op === 'NOT' || op === 'IF' || op === 'SWITCH') return false;
   // NOT_NULL never takes a value field (it only checks the subject is non-null)
   if (op === 'NOT_NULL') return false;
+  // Comparison ops always have exactly subject + value (or just subject for
+  // NOT_NULL); operationValues pushes both unconditionally, so addValue() has
+  // nothing to do. Hide the button to avoid a no-op click.
+  if (COMPARISON_OPS.has(op)) return false;
   // Logical ops only accept nested operations as conditions; "Voeg waarde toe"
   // would push an EQUALS predicate identical to "Voeg operatie toe", so we
   // suppress the duplicate button.
