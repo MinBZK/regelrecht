@@ -88,17 +88,22 @@ async fn main() {
         )
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
-            get(corpus_handlers::get_scenario)
-                .put(corpus_handlers::save_scenario)
-                .delete(corpus_handlers::delete_scenario),
+            get(corpus_handlers::get_scenario),
         );
 
     // Protected API routes — require authentication when OIDC is enabled.
-    // Currently empty; PR #422 and #517 will add write endpoints here.
-    // NOTE: add .route_layer(axum_middleware::from_fn_with_state(
-    //     app_state.clone(), middleware::require_session_auth::<AppState>))
-    // once actual routes are added — an empty Router with route_layer panics.
-    let protected_api_routes = Router::new();
+    // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
+    // invoked anonymously when a deployment has a git push token configured.
+    let protected_api_routes = Router::new()
+        .route(
+            "/api/corpus/laws/{law_id}/scenarios/{filename}",
+            axum::routing::put(corpus_handlers::save_scenario)
+                .delete(corpus_handlers::delete_scenario),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_session_auth::<AppState>,
+        ));
 
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the

@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 
 use regelrecht_corpus::backend::{RepoBackend, WriteContext};
 use regelrecht_corpus::source_map::LoadedLaw;
+use regelrecht_corpus::CorpusError;
 
 use crate::state::AppState;
 
@@ -345,6 +346,19 @@ fn resolve_writable_backend(
     Ok(ResolvedBackend { law, backend })
 }
 
+/// Map a [`CorpusError`] from a write/delete operation to an HTTP error tuple.
+///
+/// `ReadOnly` is an expected, recoverable precondition (e.g. the resolved
+/// backend is a baked-in local source on a read-only container filesystem),
+/// and must surface as `403 Forbidden` so the frontend can render a useful
+/// message instead of "Internal Server Error".
+fn corpus_write_error(e: CorpusError) -> (StatusCode, String) {
+    match e {
+        CorpusError::ReadOnly(_) => (StatusCode::FORBIDDEN, e.to_string()),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Save / Delete scenario endpoints
 // ---------------------------------------------------------------------------
@@ -382,7 +396,7 @@ pub async fn save_scenario(
     backend
         .write_file(&relative_path, &body)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(corpus_write_error)?;
 
     backend
         .persist(&WriteContext {
@@ -406,7 +420,7 @@ pub async fn delete_scenario(
     backend
         .delete_file(&relative_path)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(corpus_write_error)?;
 
     backend
         .persist(&WriteContext {
