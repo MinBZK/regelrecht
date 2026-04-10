@@ -25,7 +25,21 @@ watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) 
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
 // --- Initial law load (from URL params) ---
-const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
+const {
+  law,
+  lawId,
+  rawYaml,
+  articles,
+  lawName,
+  selectedArticle,
+  selectedArticleNumber,
+  switchLaw,
+  loading,
+  error,
+  saving: lawSaving,
+  saveError: lawSaveError,
+  saveLaw,
+} = useLaw();
 
 const middlePaneView = ref('form');
 const rightPaneView = ref('result');
@@ -144,23 +158,8 @@ function onMiddlePaneChange(event) {
 const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
 initEngine().catch(() => {});
 
-// Load current law into engine when YAML is available
-watch(
-  [() => rawYaml.value, engineReady],
-  ([lawYaml, isReady]) => {
-    if (!isReady || !lawYaml) return;
-    const engine = getEngine();
-    try {
-      if (engine.hasLaw(lawId.value)) {
-        engine.unloadLaw(lawId.value);
-      }
-      engine.loadLaw(lawYaml);
-    } catch (e) {
-      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
-    }
-  },
-  { immediate: true },
-);
+// Engine-loading watch is set up lower, after machineReadable + currentLawYaml
+// are declared (temporal dead zone).
 
 // --- Trace state (receives trace from last executed scenario) ---
 const lastTraceText = ref(null);
@@ -198,6 +197,88 @@ const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
   return { ...selectedArticle.value, machine_readable: machineReadable.value };
 });
+
+// Reactive "edited" law YAML: rawYaml with the currently selected article's
+// machine_readable substituted in. This is what flows into the engine and
+// into ScenarioBuilder, so in-memory edits re-execute scenarios without a
+// round-trip through the backend.
+//
+// Only the currently selected article's machine_readable is swapped — edits
+// on other articles are not tracked across tab switches (existing behavior
+// of the editor state model).
+const currentLawYaml = computed(() => {
+  if (!rawYaml.value) return null;
+  if (!selectedArticle.value || machineReadable.value == null) {
+    return rawYaml.value;
+  }
+  try {
+    const doc = yaml.load(rawYaml.value);
+    const docArticles = doc?.articles;
+    if (!Array.isArray(docArticles)) return rawYaml.value;
+    const idx = docArticles.findIndex(
+      (a) => String(a.number) === String(selectedArticleNumber.value),
+    );
+    if (idx < 0) return rawYaml.value;
+    docArticles[idx] = {
+      ...docArticles[idx],
+      machine_readable: machineReadable.value,
+    };
+    return yaml.dump(doc, dumpOpts);
+  } catch {
+    return rawYaml.value;
+  }
+});
+
+// Load current law into engine. Reacts to currentLawYaml so in-memory edits
+// are immediately visible to scenarios.
+watch(
+  [currentLawYaml, engineReady],
+  ([lawYaml, isReady]) => {
+    if (!isReady || !lawYaml) return;
+    const engine = getEngine();
+    try {
+      if (engine.hasLaw(lawId.value)) {
+        engine.unloadLaw(lawId.value);
+      }
+      engine.loadLaw(lawYaml);
+    } catch (e) {
+      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+    }
+  },
+  { immediate: true },
+);
+
+// Dirty state: the selected article's in-memory machine_readable differs
+// from the article's saved copy. Comparing canonical YAML dumps avoids
+// false positives from trivial key-order or whitespace differences that
+// a deep JS equality check would miss.
+const isMachineReadableDirty = computed(() => {
+  if (!selectedArticle.value) return false;
+  const saved = selectedArticle.value.machine_readable ?? null;
+  const current = machineReadable.value ?? null;
+  if (saved == null && current == null) return false;
+  try {
+    const savedDump = saved ? yaml.dump(saved, dumpOpts) : '';
+    const currentDump = current ? yaml.dump(current, dumpOpts) : '';
+    return savedDump !== currentDump;
+  } catch {
+    return true;
+  }
+});
+
+async function handleMachineReadableSave() {
+  const lawYaml = currentLawYaml.value;
+  if (!lawYaml) return;
+  try {
+    await saveLaw(lawYaml);
+    // After save, `rawYaml` is the saved text; `selectedArticle` reflects
+    // the new machine_readable, so `isMachineReadableDirty` recomputes to
+    // false naturally. No extra bookkeeping needed.
+  } catch (e) {
+    // saveError is surfaced via lawSaveError; log for dev visibility.
+    console.warn('saveLaw failed:', e);
+  }
+}
 
 function onYamlInput(event) {
   const text = event.target.value;
@@ -495,7 +576,7 @@ function handleActionSave() {
               <ScenarioBuilder
                 v-else-if="middlePaneView === 'form'"
                 :law-id="lawId"
-                :law-yaml="rawYaml"
+                :law-yaml="currentLawYaml"
                 :engine="getEngine()"
                 :ready="engineReady"
                 :articles="articles"
@@ -543,10 +624,14 @@ function handleActionSave() {
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
+                  :dirty="isMachineReadableDirty"
+                  :saving="lawSaving"
+                  :save-error="lawSaveError"
                   @open-action="handleOpenAction"
                   @open-edit="activeEditItem = $event"
                   @init-mr="handleInitMr"
                   @add-action="handleAddAction"
+                  @save="handleMachineReadableSave"
                 />
               </ndd-simple-section>
             </ndd-page>

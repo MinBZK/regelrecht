@@ -46,6 +46,8 @@ export function useLaw(lawParam) {
   const selectedArticleNumber = ref(null);
   const loading = ref(true);
   const error = ref(null);
+  const saving = ref(false);
+  const saveError = ref(null);
 
   const articles = computed(() => law.value?.articles ?? []);
 
@@ -113,6 +115,56 @@ export function useLaw(lawParam) {
     }
   }
 
+  /**
+   * Persist edited law YAML to the backend via PUT.
+   *
+   * On success, updates `rawYaml` + `law` locally so downstream consumers
+   * (currentLawYaml computed, engine reload, scenario re-run) converge on
+   * the saved text and the editor's dirty-state marker clears.
+   *
+   * Throws on failure so callers can decide how to surface the error; the
+   * `saveError` ref is also populated for passive UI display.
+   *
+   * @param {string} yamlText - Full law YAML (must contain matching $id)
+   */
+  async function saveLaw(yamlText) {
+    if (!lawId.value) {
+      throw new Error('Cannot save law: no lawId');
+    }
+    saving.value = true;
+    saveError.value = null;
+    try {
+      const res = await fetch(
+        `/api/corpus/laws/${encodeURIComponent(lawId.value)}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'text/yaml; charset=utf-8' },
+          body: yamlText,
+        },
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `Save failed: ${res.status}`);
+      }
+      // Update local state so dirty-state tracking sees the edit as clean.
+      rawYaml.value = yamlText;
+      law.value = yaml.load(yamlText);
+      // Keep the shared cache in sync so other tabs on the same law see the
+      // edited version on their next fetchLaw() call.
+      const resolvedId = law.value?.$id || lawId.value;
+      lawCache.set(resolvedId, {
+        law: law.value,
+        rawYaml: yamlText,
+        lawName: resolveLawName(law.value),
+      });
+    } catch (e) {
+      saveError.value = e;
+      throw e;
+    } finally {
+      saving.value = false;
+    }
+  }
+
   return {
     law,
     lawId,
@@ -124,5 +176,8 @@ export function useLaw(lawParam) {
     switchLaw,
     loading,
     error,
+    saving,
+    saveError,
+    saveLaw,
   };
 }
