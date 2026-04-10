@@ -291,6 +291,13 @@ function removeValue(val) {
     delete node.then;
   } else if (val._kind === 'else') {
     delete node.else;
+  } else if (val._kind === 'case-when' && val._caseIndex !== undefined && Array.isArray(node.cases)) {
+    // Removing the predicate from a switch case removes the whole case entry
+    node.cases.splice(val._caseIndex, 1);
+  } else if (val._kind === 'case-then' && val._caseIndex !== undefined && Array.isArray(node.cases)) {
+    node.cases.splice(val._caseIndex, 1);
+  } else if (val._kind === 'default') {
+    delete node.default;
   }
 }
 
@@ -342,7 +349,9 @@ function addNestedOperation() {
       <ndd-list-item size="md">
         <ndd-text-cell text="Titel" max-width="120"></ndd-text-cell>
         <ndd-cell>
-          <ndd-text-field size="md" :value="operation.title" :readonly="!editable" @input="editable && (operation.title = $event.target?.value ?? $event.detail?.value ?? operation.title)"></ndd-text-field>
+          <!-- Title is derived from the operation type (humanized) and not a
+               persistable YAML field, so it's display-only. -->
+          <ndd-text-field size="md" :value="operation.title" readonly></ndd-text-field>
         </ndd-cell>
       </ndd-list-item>
 
