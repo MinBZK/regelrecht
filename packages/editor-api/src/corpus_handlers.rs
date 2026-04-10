@@ -533,10 +533,14 @@ pub async fn save_law(
     };
 
     if !resolved.writable {
-        // Log the internal source id for operators but keep it out of the
-        // HTTP body — `source_id` is a registry key ("central",
-        // "local-scratch", …) and leaking it exposes internal
-        // infrastructure naming for no caller-side benefit.
+        // Log the internal source id (and the law id, even though the
+        // caller already knows it) for operators but keep both out of the
+        // HTTP body. `source_id` is a registry key ("central",
+        // "local-scratch", …) so leaking it exposes infrastructure naming;
+        // `law_id` echoed in the body would also flow through
+        // useLaw.saveError into ndd-inline-dialog's supporting-text, with
+        // the same self-XSS concern as the $id-mismatch branch above. The
+        // hard-coded message keeps both branches consistent.
         tracing::warn!(
             law_id = %law_id,
             source_id = %resolved.law.source_id,
@@ -544,7 +548,7 @@ pub async fn save_law(
         );
         return Err((
             StatusCode::FORBIDDEN,
-            format!("Law '{}' is stored on a read-only source", law_id),
+            "Law is stored on a read-only source".to_string(),
         ));
     }
 

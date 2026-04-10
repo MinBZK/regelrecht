@@ -346,7 +346,7 @@ function addNestedOperation() {
 
 <template>
   <template v-if="operation">
-    <ndd-title size="4" class="op-settings-title">
+    <ndd-title size="4" class="operation-settings__title">
       <h4>Instellingen operatie {{ operation.number }}</h4>
       <ndd-icon-button slot="actions" icon="ellipsis" title="Meer opties"></ndd-icon-button>
     </ndd-title>
@@ -416,12 +416,12 @@ function addNestedOperation() {
  * (~1em) collapses into the spacer unpredictably, which caused the
  * "textboxes falling under the title" visual in the action panel.
  *
- * Keyed off a `.op-settings-title` class added to the ndd-title element in
+ * Keyed off a `.operation-settings__title` BEM class on the ndd-title in
  * this component. The rule is in an unscoped `<style>` block alongside the
  * rest of the file's selectors (Vue scoped styles can't reach into NDD
  * shadow DOM), so the class name is the only thing preventing bleed into
  * other components — keep the class unique to this component. */
-.op-settings-title h4 {
+.operation-settings__title h4 {
   margin: 0;
 }
 
