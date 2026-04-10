@@ -286,6 +286,26 @@ impl SourceMap {
         self.laws.get(law_id)
     }
 
+    /// Update the cached YAML content for an existing law. Used after the
+    /// editor persists an edit through [`crate::backend::RepoBackend`], so
+    /// subsequent GETs (and dependency walks) see the new text without
+    /// waiting for a full corpus reload. Returns `true` if the law was
+    /// present and updated, `false` otherwise.
+    ///
+    /// Only `yaml_content` (and the optional human-readable `name`, which is
+    /// derived from the YAML) is updated — `$id`, `file_path`, source
+    /// provenance, and priority are stable across an edit and are left
+    /// untouched. If the caller writes a new file under a different `$id`
+    /// that's a different operation (unsupported via this hook).
+    pub fn update_yaml_content(&mut self, law_id: &str, new_content: String) -> bool {
+        let Some(law) = self.laws.get_mut(law_id) else {
+            return false;
+        };
+        law.name = extract_law_name(&new_content);
+        law.yaml_content = new_content;
+        true
+    }
+
     /// Get the number of loaded laws.
     pub fn len(&self) -> usize {
         self.laws.len()
@@ -387,7 +407,7 @@ pub(crate) fn pick_best_version(existing: Option<&str>, new: Option<&str>, today
 /// Uses a simple line-based approach to avoid full YAML parsing overhead.
 /// Only matches `$id:` at the start of a line (no leading whitespace) to
 /// avoid matching nested `$id:` fields.
-fn extract_law_id(yaml: &str) -> Option<String> {
+pub fn extract_law_id(yaml: &str) -> Option<String> {
     for line in yaml.lines() {
         if let Some(rest) = line.strip_prefix("$id:") {
             let value = rest.trim().trim_matches('"').trim_matches('\'');

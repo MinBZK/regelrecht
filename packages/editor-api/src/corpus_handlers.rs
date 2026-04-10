@@ -462,6 +462,97 @@ pub async fn save_scenario(
     Ok(StatusCode::OK)
 }
 
+/// PUT /api/corpus/laws/{law_id} — save edited law YAML content.
+///
+/// Writes the new YAML to the backend (same RepoBackend used for scenario
+/// saves, with the same writable-fallback resolution), then refreshes the
+/// in-memory `yaml_content` on the law's `SourceMap` entry so subsequent
+/// GETs see the edited text without waiting for a full corpus reload.
+///
+/// The `$id` in the body must match the path parameter: allowing them to
+/// diverge would either create a phantom law (new `$id` lands on an
+/// existing file) or orphan the original (old `$id` can never be fetched
+/// again). We reject the mismatch up-front instead of silently corrupting
+/// the source map.
+pub async fn save_law(
+    State(state): State<AppState>,
+    Path(law_id): Path<String>,
+    body: String,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Minimal validation: body must have a top-level `$id` that matches
+    // the path parameter. We do NOT run full schema validation here — the
+    // frontend already blocks incomplete operation stubs
+    // (findIncompleteOperation) and the YAML pane has a live parse check.
+    // Full JSON Schema validation is a separate follow-up (mirroring
+    // `just validate`). Using the same line-based extractor the corpus
+    // loader uses keeps the "is this a loadable law file?" check consistent
+    // with how source_map decides which files to track.
+    let body_id = regelrecht_corpus::source_map::extract_law_id(&body).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Body missing top-level `$id` field".to_string(),
+        )
+    })?;
+
+    if body_id != law_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Body $id '{}' does not match path law_id '{}'",
+                body_id, law_id
+            ),
+        ));
+    }
+
+    // Resolve backend with writable fallback (same path scenarios take).
+    let resolved = {
+        let corpus = state.corpus.read().await;
+        resolve_backend_for_law(&corpus, &law_id).await?
+    };
+
+    if !resolved.writable {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!(
+                "No writable backend available for law '{}' (source '{}' is read-only \
+                 and no other registered source contains a matching copy of the law)",
+                law_id, resolved.law.source_id
+            ),
+        ));
+    }
+
+    let relative_path = PathBuf::from(&resolved.law.relative_path);
+
+    {
+        let backend = resolved.backend.lock_owned().await;
+        backend
+            .write_file(&relative_path, &body)
+            .await
+            .map_err(corpus_write_error)?;
+        backend
+            .persist(&WriteContext {
+                message: format!("Update law {}", law_id),
+            })
+            .await
+            .map_err(corpus_write_error)?;
+    }
+
+    // Refresh the in-memory cache so /api/corpus/laws/{law_id} (and
+    // dependency walks) see the edit without a full corpus reload.
+    {
+        let mut corpus = state.corpus.write().await;
+        let updated = corpus.source_map.update_yaml_content(&law_id, body);
+        if !updated {
+            tracing::warn!(
+                law_id = %law_id,
+                "save_law wrote to backend but law vanished from source_map between write and cache refresh"
+            );
+        }
+    }
+
+    Ok(StatusCode::OK)
+}
+
 /// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
 pub async fn delete_scenario(
     State(state): State<AppState>,
