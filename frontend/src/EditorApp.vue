@@ -247,10 +247,11 @@ function handleInitMr() {
 let actionSnapshot = null;
 
 function handleAddAction() {
+  // Snapshot BEFORE any mutations so cancel restores the exact original state
+  actionSnapshot = JSON.stringify(machineReadable.value);
   const mr = machineReadable.value || {};
   if (!mr.execution) mr.execution = {};
   if (!mr.execution.actions) mr.execution.actions = [];
-  actionSnapshot = JSON.stringify(machineReadable.value);
   const newAction = { output: '', value: '' };
   mr.execution.actions.push(newAction);
   machineReadable.value = { ...mr };

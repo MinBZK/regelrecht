@@ -132,7 +132,8 @@ function changeOperationType(event) {
     } else if (newType === 'NOT_NULL') {
       delete node.value;
     } else {
-      if (node.value === undefined) node.value = '';
+      // Reset to scalar default when undefined OR when previously an array (e.g. coming from IN/NOT_IN)
+      if (node.value === undefined || Array.isArray(node.value)) node.value = '';
     }
     delete node.values;
     delete node.conditions;
