@@ -555,6 +555,16 @@ pub async fn save_law(
     let relative_path = PathBuf::from(&resolved.law.relative_path);
 
     {
+        // The `if !resolved.writable` early return above ensures the
+        // RepoBackend will not refuse the write under normal operation, so
+        // the only realistic path to a `CorpusError::ReadOnly` here is a
+        // TOCTOU between the writability check and the write itself
+        // (e.g. the underlying volume flips read-only mid-request). In
+        // that race the `corpus_write_error` helper falls through to its
+        // generic 500-style mapping, mirroring the existing scenario
+        // write paths; the `ReadOnly` arm of `corpus_write_error` —
+        // which echoes `e.to_string()` — is unreachable here in
+        // practice and is not in scope to harden in this PR.
         let backend = resolved.backend.lock_owned().await;
         backend
             .write_file(&relative_path, &body)

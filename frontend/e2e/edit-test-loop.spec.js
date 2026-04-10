@@ -32,6 +32,15 @@ const CORPUS_ROOT = resolve(__dirname, '../../corpus/regulation/nl');
  * Recursively walk a corpus directory and pick one YAML per `$id`,
  * preferring the latest publication date. Returns a map from law id →
  * { content: string, path: string }.
+ *
+ * NOTE: this picks by `publication_date` (lexicographic compare),
+ * whereas the editor-api's `SourceMap::pick_best_version` selects by
+ * `valid_from` against today's date. The two will agree as long as
+ * each law in the test corpus has only one dated file (the case for
+ * zorgtoeslagwet today). If a future test fixture introduces multiple
+ * dated files for the same `$id`, align this with the server logic
+ * to avoid the spec serving a different version than the editor would
+ * see in production.
  */
 function loadCorpus(rootDir) {
   const byId = new Map();
