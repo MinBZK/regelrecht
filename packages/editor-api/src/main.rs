@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 use axum::middleware as axum_middleware;
 use axum::routing::get;
 use axum::Router;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tower_sessions::ExpiredDeletion;
@@ -92,11 +92,25 @@ async fn main() {
         );
 
     // Protected API routes — require authentication when OIDC is enabled.
-    // Currently empty; PR #422 and #517 will add write endpoints here.
-    // NOTE: add .route_layer(axum_middleware::from_fn_with_state(
-    //     app_state.clone(), middleware::require_session_auth::<AppState>))
-    // once actual routes are added — an empty Router with route_layer panics.
-    let protected_api_routes = Router::new();
+    // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
+    // invoked anonymously when a deployment has a git push token configured.
+    //
+    // The 1 MiB body cap is generous for a single Gherkin scenario file
+    // (real-world scenarios are a few KiB) and prevents a caller from
+    // streaming an arbitrarily large body to disk — important when OIDC
+    // is disabled in local dev and the endpoint is reachable without auth.
+    const MAX_SCENARIO_BODY: usize = 1024 * 1024;
+    let protected_api_routes = Router::new()
+        .route(
+            "/api/corpus/laws/{law_id}/scenarios/{filename}",
+            axum::routing::put(corpus_handlers::save_scenario)
+                .delete(corpus_handlers::delete_scenario)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_session_auth::<AppState>,
+        ));
 
     // --- Build app with session layer ---
     // SessionManagerLayer is generic over the store type, so we build the
@@ -272,10 +286,76 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
         }
     };
 
+    let backends = init_backends(&registry, auth_file).await;
+
     CorpusState {
         registry,
         source_map,
+        backends,
     }
+}
+
+/// Create and initialize backends for each registered source.
+///
+/// All successfully-initialised backends are registered, including read-only
+/// ones (e.g. a local source on a read-only container filesystem). Reads
+/// route through the same backends as writes so the editor never has a
+/// read/write path mismatch — see [`crate::state::BackendEntry::writable`].
+async fn init_backends(
+    registry: &regelrecht_corpus::CorpusRegistry,
+    auth_file: Option<&std::path::Path>,
+) -> HashMap<String, crate::state::BackendEntry> {
+    let mut backends = HashMap::new();
+
+    for source in registry.sources() {
+        let token = regelrecht_corpus::auth::resolve_token_for_source(
+            &source.id,
+            source.auth_ref.as_deref(),
+            auth_file,
+        )
+        .unwrap_or_else(|e| {
+            tracing::warn!(source_id = %source.id, error = %e, "failed to resolve auth token");
+            None
+        });
+
+        // When a push token is present, the backend will push commits to the
+        // remote repo. This requires authentication on the write endpoints —
+        // do NOT enable push tokens without adding auth middleware first.
+        match regelrecht_corpus::backend::create_backend(source, token.as_deref()) {
+            Ok(mut backend) => {
+                if let Err(e) = backend.ensure_ready().await {
+                    tracing::warn!(
+                        source_id = %source.id,
+                        error = %e,
+                        "backend init failed, skipping registration"
+                    );
+                    continue;
+                }
+                let writable = backend.is_writable();
+                tracing::info!(
+                    source_id = %source.id,
+                    writable,
+                    "backend ready"
+                );
+                backends.insert(
+                    source.id.clone(),
+                    crate::state::BackendEntry {
+                        backend: Arc::new(Mutex::new(backend)),
+                        writable,
+                    },
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    source_id = %source.id,
+                    error = %e,
+                    "failed to create backend"
+                );
+            }
+        }
+    }
+
+    backends
 }
 
 /// Read favorites.json from the static directory.

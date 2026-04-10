@@ -250,6 +250,143 @@ export function getEffectiveSetup(formState, scenarioIndex) {
   };
 }
 
+/**
+ * Convert a DataSourceTable form-format data source to the formState format.
+ *
+ * Form format: `{ sourceName, keyField, fields: [{name, type}], rows: [{_id, [h]: v}] }`
+ * State format: `{ sourceName, keyField, headers: string[], rows: string[][] }`
+ */
+function formDataSourceToState(ds) {
+  const headers = [ds.keyField, ...(ds.fields || []).map((f) => f.name)];
+  const rows = (ds.rows || []).map((row) =>
+    headers.map((h) => {
+      const v = row[h];
+      return v === undefined || v === null ? '' : String(v);
+    }),
+  );
+  return { sourceName: ds.sourceName, keyField: ds.keyField, headers, rows };
+}
+
+/** Deep equality check for two state-format data sources. */
+function dataSourcesEqual(a, b) {
+  if (!a || !b) return false;
+  if (a.sourceName !== b.sourceName || a.keyField !== b.keyField) return false;
+  if ((a.headers || []).length !== (b.headers || []).length) return false;
+  for (let i = 0; i < a.headers.length; i++) {
+    if (a.headers[i] !== b.headers[i]) return false;
+  }
+  if ((a.rows || []).length !== (b.rows || []).length) return false;
+  for (let i = 0; i < a.rows.length; i++) {
+    const ra = a.rows[i];
+    const rb = b.rows[i];
+    if (ra.length !== rb.length) return false;
+    for (let j = 0; j < ra.length; j++) {
+      if (String(ra[j]) !== String(rb[j])) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Sync edited form values back into formState for a given scenario.
+ *
+ * Parameters that exist in the scenario's own setup are updated in-place.
+ * Background-only parameters that were changed get added as scenario-level
+ * overrides so other scenarios are not affected. Scenario-level overrides
+ * that end up matching the background value are removed so the Gherkin
+ * round-trip does not accumulate redundant `Given parameter ...` steps.
+ *
+ * Data sources follow the same rule: scenario-level overrides exist only
+ * when they differ from the background source with the same name.
+ *
+ * @param {object} formState - Mutable form state
+ * @param {number} scenarioIndex - Which scenario was edited
+ * @param {object} values - { parameterValues, calculationDate, dataSources }
+ */
+export function syncEditedValues(formState, scenarioIndex, values) {
+  const scenario = formState.scenarios[scenarioIndex];
+  if (!scenario) return;
+
+  const { parameterValues, calculationDate, dataSources } = values;
+
+  // --- Parameters ---
+  const scenarioParamMap = new Map(
+    scenario.setup.parameters.map((p, i) => [p.name, i]),
+  );
+  const bgParams = formState.background?.parameters || [];
+  const bgParamMap = new Map(bgParams.map((p) => [p.name, p]));
+
+  for (const [name, rawValue] of Object.entries(parameterValues)) {
+    const value = parseValue(rawValue);
+
+    if (scenarioParamMap.has(name)) {
+      // Update existing scenario-level parameter
+      scenario.setup.parameters[scenarioParamMap.get(name)].value = value;
+    } else if (bgParamMap.has(name)) {
+      // Background param — add scenario override only if value differs
+      const bgValue = bgParamMap.get(name).value;
+      if (String(bgValue) !== String(value)) {
+        scenario.setup.parameters.push({ name, value });
+      }
+    }
+  }
+
+  // Drop scenario-level overrides that now match the background — otherwise
+  // a save/edit/save cycle accumulates redundant `Given parameter ...` steps.
+  scenario.setup.parameters = scenario.setup.parameters.filter((p) => {
+    if (!bgParamMap.has(p.name)) return true;
+    return String(bgParamMap.get(p.name).value) !== String(p.value);
+  });
+
+  // --- Data sources ---
+  if (Array.isArray(dataSources)) {
+    const bgDataSources = formState.background?.dataSources || [];
+    const bgDsMap = new Map(bgDataSources.map((ds) => [ds.sourceName, ds]));
+    const scenarioDsMap = new Map(
+      scenario.setup.dataSources.map((ds, i) => [ds.sourceName, i]),
+    );
+
+    for (const formDs of dataSources) {
+      const stateDs = formDataSourceToState(formDs);
+
+      if (scenarioDsMap.has(stateDs.sourceName)) {
+        // Update existing scenario-level data source in place
+        scenario.setup.dataSources[scenarioDsMap.get(stateDs.sourceName)] = stateDs;
+      } else if (bgDsMap.has(stateDs.sourceName)) {
+        // Background data source — add scenario override only if it differs
+        if (!dataSourcesEqual(bgDsMap.get(stateDs.sourceName), stateDs)) {
+          scenario.setup.dataSources.push(stateDs);
+        }
+      } else {
+        // Wholly new data source — add at scenario level
+        scenario.setup.dataSources.push(stateDs);
+      }
+    }
+
+    // Drop scenario-level data sources that now match the background.
+    scenario.setup.dataSources = scenario.setup.dataSources.filter((ds) => {
+      const bg = bgDsMap.get(ds.sourceName);
+      return !bg || !dataSourcesEqual(bg, ds);
+    });
+  }
+
+  // Sync calculation date (scenario-level override).
+  // Treat `null`, `undefined` and `""` as "user cleared the field" so that
+  // a clear is not silently dropped — otherwise the next save would write
+  // the stale date back to the .feature file.
+  if (calculationDate !== undefined) {
+    const cleared = calculationDate === null || calculationDate === '';
+    const bgDate = formState.background?.calculationDate || null;
+    if (cleared || calculationDate === bgDate) {
+      // Either the user cleared the field, or it now matches the background:
+      // in both cases the scenario-level override should disappear.
+      scenario.setup.calculationDate = null;
+    } else {
+      scenario.setup.calculationDate = calculationDate;
+    }
+  }
+}
+
 // --- Reverse: Form State → Gherkin text ---
 
 function formatCell(value) {

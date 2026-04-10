@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
 import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
@@ -19,7 +19,7 @@ const props = defineProps({
   articleMap: { type: Object, default: null },
 });
 
-const emit = defineEmits(['show-details']);
+const emit = defineEmits(['show-details', 'executed']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -143,6 +143,11 @@ function execute() {
     }
   } finally {
     running.value = false;
+    // Always emit so the parent's result panel reflects the latest state,
+    // including the error path: getExecutionData() returns the error and
+    // any partial trace, which the parent renders instead of stale data
+    // from a previous successful run.
+    emit('executed', getExecutionData());
   }
 }
 
@@ -156,7 +161,34 @@ function getExecutionData() {
   };
 }
 
-defineExpose({ execute, getExecutionData });
+/** Returns the current form input values for syncing back to formState.
+ *  All collections are returned as fresh shallow copies so a caller cannot
+ *  accidentally mutate the component's reactive form state. */
+function getFormValues() {
+  return {
+    parameterValues: { ...parameterValues.value },
+    calculationDate: calculationDate.value,
+    dataSources: [...dataSources.value],
+  };
+}
+
+defineExpose({ execute, getExecutionData, getFormValues });
+
+// --- Auto-re-execute when input values change ---
+let executeTimer = null;
+watch(
+  [parameterValues, calculationDate, dataSources],
+  () => {
+    if (!props.engine || !props.ready) return;
+    clearTimeout(executeTimer);
+    executeTimer = setTimeout(() => execute(), 300);
+  },
+  { deep: true },
+);
+
+onBeforeUnmount(() => {
+  clearTimeout(executeTimer);
+});
 
 function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];

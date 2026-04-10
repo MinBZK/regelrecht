@@ -173,6 +173,7 @@ impl CorpusRegistry {
                             map.load_fetched_file(
                                 &file.content,
                                 &file.path,
+                                github.path.as_deref(),
                                 &source.id,
                                 &source.name,
                                 source.priority,
@@ -229,6 +230,7 @@ impl CorpusRegistry {
                                 map.load_fetched_file(
                                     &file.content,
                                     &file.path,
+                                    github.path.as_deref(),
                                     &source.id,
                                     &source.name,
                                     source.priority,

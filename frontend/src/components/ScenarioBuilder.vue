@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick } from 'vue';
 import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
 import { parseFeature } from '../gherkin/parser.js';
-import { mapFeatureToForm, getEffectiveSetup } from '../gherkin/formMapper.js';
+import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
 import { matchStatus } from '../utils/outputFormat.js';
 import { buildArticleMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
@@ -37,10 +37,14 @@ const {
   selectedScenario: selectedScenarioFile,
   featureText,
   loading: scenariosLoading,
+  saving,
+  saveError,
   selectScenario: selectScenarioFile,
+  saveScenario,
 } = useScenarios(lawIdRef);
 
 const formState = ref(null);
+const saveSuccess = ref(false);
 
 // Parse feature file when loaded
 watch(featureText, (text) => {
@@ -204,24 +208,68 @@ function onScenarioFileSelect(event) {
   const filename = event.target.value;
   if (filename) selectScenarioFile(filename);
 }
+
+async function onSave() {
+  if (!formState.value || !selectedScenarioFile.value) return;
+
+  saveSuccess.value = false;
+  try {
+    // Sync edited input values back to formState before serializing.
+    // This must be inside the try so that a throw from syncEditedValues
+    // (e.g. unexpected form shape) surfaces as a save error rather than
+    // failing silently.
+    for (let i = 0; i < (formState.value.scenarios || []).length; i++) {
+      const formRef = scenarioRefs.value[i];
+      if (!formRef?.getFormValues) continue;
+      const values = formRef.getFormValues();
+      syncEditedValues(formState.value, i, values);
+    }
+
+    const gherkin = formStateToGherkin(formState.value);
+    await saveScenario(selectedScenarioFile.value, gherkin);
+    saveSuccess.value = true;
+    setTimeout(() => { saveSuccess.value = false; }, 3000);
+  } catch (e) {
+    // The composable sets saveError on its own failures. For sync/serialise
+    // errors that happen before saveScenario, set it manually so the user
+    // still sees the banner instead of an unexplained no-op.
+    if (!saveError.value) saveError.value = e;
+  }
+}
 </script>
 
 <template>
   <div class="sb-container">
     <div class="sb-scroll">
-      <!-- Feature file selector -->
-      <div class="sb-section" v-if="scenarioFiles.length > 1 || scenariosLoading">
+      <!-- Feature file selector + save button -->
+      <div class="sb-section sb-toolbar" v-if="scenarioFiles.length > 0 || scenariosLoading">
         <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
-        <select
-          v-else
-          class="sb-select"
-          :value="selectedScenarioFile"
-          @change="onScenarioFileSelect"
-        >
-          <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
-            {{ sf.filename }}
-          </option>
-        </select>
+        <template v-else>
+          <select
+            v-if="scenarioFiles.length > 1"
+            class="sb-select"
+            :value="selectedScenarioFile"
+            @change="onScenarioFileSelect"
+          >
+            <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
+              {{ sf.filename }}
+            </option>
+          </select>
+          <button
+            v-if="formState"
+            class="sb-save-btn"
+            :disabled="saving"
+            @click="onSave"
+          >
+            {{ saving ? 'Opslaan...' : 'Opslaan' }}
+          </button>
+        </template>
+      </div>
+
+      <!-- Save feedback -->
+      <div v-if="saveSuccess" class="sb-section sb-save-success">Opgeslagen</div>
+      <div v-if="saveError" class="sb-section sb-error">
+        Opslaan mislukt: {{ saveError.message || saveError }}
       </div>
 
       <!-- Dependencies loading -->
@@ -263,6 +311,7 @@ function onScenarioFileSelect(event) {
               :law-id="lawId"
               :article-map="articleMap"
               @show-details="() => onShowDetails(i)"
+              @executed="(data) => onScenarioResult(i, data)"
             />
           </div>
         </details>
@@ -292,6 +341,12 @@ function onScenarioFileSelect(event) {
   border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
+.sb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .sb-section-title {
   font-weight: 600;
   font-size: 13px;
@@ -300,13 +355,34 @@ function onScenarioFileSelect(event) {
 }
 
 .sb-select {
-  width: 100%;
+  flex: 1;
   padding: 6px 8px;
   border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   border-radius: 6px;
   font-size: 13px;
   font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   background: white;
+}
+
+.sb-save-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
+  background: var(--semantics-surfaces-color-primary, white);
+  color: var(--semantics-text-color-primary, #1C2029);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sb-save-btn:hover:not(:disabled) {
+  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
+}
+
+.sb-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .sb-loading {
@@ -322,6 +398,12 @@ function onScenarioFileSelect(event) {
 .sb-error {
   background: #fee;
   color: #c00;
+  font-size: 13px;
+}
+
+.sb-save-success {
+  background: #efe;
+  color: #060;
   font-size: 13px;
 }
 

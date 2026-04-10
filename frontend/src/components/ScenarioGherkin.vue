@@ -20,13 +20,17 @@ const {
   selectedScenario,
   featureText,
   loading: scenariosLoading,
+  saving,
+  saveError,
   selectScenario,
+  saveScenario,
 } = useScenarios(lawIdRef);
 
 const results = ref(null);
 const running = ref(false);
 const runError = ref(null);
 const viewMode = ref('visual');
+const saveSuccess = ref(false);
 
 function onScenarioSelect(event) {
   const filename = event.target.value;
@@ -61,6 +65,19 @@ const formState = computed(() => {
     return null;
   }
 });
+
+async function onSave() {
+  if (!selectedScenario.value || !featureText.value) return;
+
+  saveSuccess.value = false;
+  try {
+    await saveScenario(selectedScenario.value, featureText.value);
+    saveSuccess.value = true;
+    setTimeout(() => { saveSuccess.value = false; }, 3000);
+  } catch {
+    // saveError is already set by the composable
+  }
+}
 
 const summary = computed(() => {
   if (!results.value) return null;
@@ -103,12 +120,26 @@ function stepIcon(status) {
       </select>
 
       <button
+        class="scenario-save-btn"
+        @click="onSave"
+        :disabled="saving || !featureText || !selectedScenario"
+      >
+        {{ saving ? 'Opslaan...' : 'Opslaan' }}
+      </button>
+
+      <button
         class="scenario-run-btn"
         @click="runScenarios"
         :disabled="!ready || running || !featureText"
       >
         {{ running ? 'Bezig...' : 'Run \u25B6' }}
       </button>
+    </div>
+
+    <!-- Save feedback -->
+    <div v-if="saveSuccess" class="scenario-save-success">Opgeslagen</div>
+    <div v-if="saveError" class="scenario-error">
+      Opslaan mislukt: {{ saveError.message || saveError }}
     </div>
 
     <!-- View mode toggle -->
@@ -218,6 +249,33 @@ function stepIcon(status) {
   border-radius: 6px;
   font-size: 13px;
   background: white;
+}
+
+.scenario-save-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
+  background: white;
+  color: var(--semantics-text-color-primary, #1C2029);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.scenario-save-btn:hover:not(:disabled) {
+  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
+}
+.scenario-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scenario-save-success {
+  padding: 8px 16px;
+  background: #efe;
+  color: #060;
+  font-size: 13px;
+  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
 }
 
 .scenario-run-btn {

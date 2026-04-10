@@ -59,7 +59,7 @@ RUN find packages -name '*.rs' -exec touch {} + && \
 
 # Stage 5: Runtime
 FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
-RUN apk add --no-cache ca-certificates && \
+RUN apk add --no-cache ca-certificates git && \
     addgroup -S app && adduser -S app -G app
 
 COPY --from=builder /build/target/release/regelrecht-editor-api /usr/local/bin/

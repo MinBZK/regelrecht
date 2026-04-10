@@ -15,8 +15,17 @@ pub struct LoadedLaw {
     pub name: Option<String>,
     /// The raw YAML content.
     pub yaml_content: String,
-    /// Path to the source file.
+    /// Path to the source file. For local sources this is the absolute path
+    /// on disk; for fetched (e.g. GitHub) sources this is the path inside
+    /// the upstream repository.
     pub file_path: String,
+    /// Path to the source file *relative to the source root* — i.e. the
+    /// portion of [`file_path`](Self::file_path) below the source's own
+    /// root directory. This is what backends use to address the file via
+    /// [`RepoBackend::write_file`](crate::backend::RepoBackend::write_file)
+    /// and friends, and avoids the structural-depth heuristic that breaks
+    /// when a source root is configured at an unusual location.
+    pub relative_path: String,
     /// ID of the source that provided this law.
     pub source_id: String,
     /// Name of the source that provided this law.
@@ -117,11 +126,20 @@ impl SourceMap {
 
             let name = extract_law_name(&content);
 
+            // Compute the path relative to the source root so that writes
+            // can address the file via the backend without re-deriving the
+            // structural location from a depth heuristic.
+            let relative_path = path
+                .strip_prefix(dir)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| path.display().to_string());
+
             let loaded = LoadedLaw {
                 law_id: law_id.clone(),
                 name,
                 yaml_content: content,
                 file_path: path.display().to_string(),
+                relative_path,
                 source_id: source.id.clone(),
                 source_name: source.name.clone(),
                 source_priority: source.priority,
@@ -208,10 +226,16 @@ impl SourceMap {
     }
 
     /// Load a single fetched file (from GitHub or other remote) into the map.
+    ///
+    /// `file_path` is the path inside the upstream repository (e.g.
+    /// `regulation/nl/wet/my_law/2025.yaml`). `source_subpath`, when set,
+    /// is the in-repo prefix that the source is rooted at — it is stripped
+    /// to compute the source-root-relative path stored on `LoadedLaw`.
     pub fn load_fetched_file(
         &mut self,
         content: &str,
         file_path: &str,
+        source_subpath: Option<&str>,
         source_id: &str,
         source_name: &str,
         source_priority: u32,
@@ -223,11 +247,26 @@ impl SourceMap {
 
         let name = extract_law_name(content);
 
+        // Strip the source's in-repo subpath so the stored relative path is
+        // relative to the source root, matching the on-disk layout the
+        // backend writes to.
+        let relative_path = match source_subpath {
+            Some(sub) if !sub.is_empty() => {
+                let trimmed = sub.trim_end_matches('/');
+                file_path
+                    .strip_prefix(&format!("{trimmed}/"))
+                    .unwrap_or(file_path)
+                    .to_string()
+            }
+            _ => file_path.to_string(),
+        };
+
         let loaded = LoadedLaw {
             law_id: law_id.clone(),
             name,
             yaml_content: content.to_string(),
             file_path: file_path.to_string(),
+            relative_path,
             source_id: source_id.to_string(),
             source_name: source_name.to_string(),
             source_priority,

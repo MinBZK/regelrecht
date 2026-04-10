@@ -1,8 +1,10 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use regelrecht_auth::{ConfiguredClient, OidcAppState, OidcConfig};
+use regelrecht_corpus::backend::RepoBackend;
 use regelrecht_corpus::SourceMap;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::config::AppConfig;
 
@@ -37,10 +39,23 @@ impl OidcAppState for AppState {
     }
 }
 
+/// A registered backend along with its writability flag, captured at init
+/// time after [`RepoBackend::ensure_ready`] (so a local source on a
+/// read-only filesystem is recorded as `writable: false`).
+pub struct BackendEntry {
+    pub backend: Arc<Mutex<Box<dyn RepoBackend>>>,
+    pub writable: bool,
+}
+
 /// State for the corpus subsystem.
 pub struct CorpusState {
     pub registry: regelrecht_corpus::CorpusRegistry,
     pub source_map: SourceMap,
+    /// Backends keyed by source ID. Read-only backends are also registered
+    /// here so reads (`get_scenario`, `list_scenarios`) can route through
+    /// the same abstraction as writes — preventing read/write path
+    /// mismatches when a fallback writable backend is used.
+    pub backends: HashMap<String, BackendEntry>,
 }
 
 impl CorpusState {
@@ -49,6 +64,7 @@ impl CorpusState {
         Self {
             registry: regelrecht_corpus::CorpusRegistry::empty(),
             source_map: SourceMap::new(),
+            backends: HashMap::new(),
         }
     }
 }
