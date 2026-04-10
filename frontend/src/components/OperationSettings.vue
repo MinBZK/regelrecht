@@ -39,14 +39,31 @@ const isComparisonOp = computed(() => COMPARISON_OPS.has(props.operation?.operat
 
 const canAddValue = computed(() => {
   const op = props.operation?.operation;
+  if (!op) return false;
   // Structural-slot ops have no concept of "add a value"
-  return op && op !== 'NOT' && op !== 'IF' && op !== 'SWITCH';
+  if (op === 'NOT' || op === 'IF' || op === 'SWITCH') return false;
+  // Logical ops only accept nested operations as conditions; "Voeg waarde toe"
+  // would push an EQUALS predicate identical to "Voeg operatie toe", so we
+  // suppress the duplicate button.
+  if (LOGICAL_OPS.has(op)) return false;
+  return true;
 });
 
 const canAddNestedOperation = computed(() => {
   const op = props.operation?.operation;
   return op && !isComparisonOp.value && op !== 'NOT' && op !== 'IF' && op !== 'SWITCH';
 });
+
+// Required structural fields whose minus button must be hidden so the user
+// cannot delete them and silently produce an invalid node.
+function canRemoveValue(val) {
+  if (isComparisonOp.value && (val._kind === 'subject' || val._kind === 'value')) return false;
+  // IF needs when/then/else
+  if (props.operation?.operation === 'IF' && (val._kind === 'when' || val._kind === 'then' || val._kind === 'else')) return false;
+  // NOT needs value
+  if (props.operation?.operation === 'NOT' && val._kind === 'value') return false;
+  return true;
+}
 
 const operationValues = computed(() => {
   const node = props.operation?.node;
@@ -348,7 +365,7 @@ function addNestedOperation() {
                 </select>
               </ndd-dropdown>
             </template>
-            <ndd-icon-button v-if="!(isComparisonOp && (val._kind === 'subject' || val._kind === 'value'))" icon="minus" title="Verwijder waarde" @click="removeValue(val)">
+            <ndd-icon-button v-if="canRemoveValue(val)" icon="minus" title="Verwijder waarde" @click="removeValue(val)">
             </ndd-icon-button>
           </div>
           <p v-if="isNestedOperation(val._value)" class="value-help-text">
