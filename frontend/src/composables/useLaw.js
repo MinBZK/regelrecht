@@ -99,6 +99,9 @@ export function useLaw(lawParam) {
     try {
       loading.value = true;
       error.value = null;
+      // Reset save state too — a failed save on the previous law must not
+      // leak its error dialog into the new law's Machine panel.
+      saveError.value = null;
       const entry = await fetchLaw(newLawId);
       if (version !== switchVersion) return; // stale, discard
       law.value = entry.law;

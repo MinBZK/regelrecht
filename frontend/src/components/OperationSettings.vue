@@ -415,8 +415,12 @@ function addNestedOperation() {
  * only source of vertical gap. Without this the h4's default bottom margin
  * (~1em) collapses into the spacer unpredictably, which caused the
  * "textboxes falling under the title" visual in the action panel.
- * Scoped to this component's own title class so the rule can't bleed into
- * other ndd-title + h4 pairings elsewhere in the app. */
+ *
+ * Keyed off a `.op-settings-title` class added to the ndd-title element in
+ * this component. The rule is in an unscoped `<style>` block alongside the
+ * rest of the file's selectors (Vue scoped styles can't reach into NDD
+ * shadow DOM), so the class name is the only thing preventing bleed into
+ * other components — keep the class unique to this component. */
 .op-settings-title h4 {
   margin: 0;
 }

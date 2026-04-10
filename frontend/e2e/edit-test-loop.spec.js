@@ -275,10 +275,18 @@ test.describe('Edit → re-execute loop', () => {
     });
 
     // Append the age condition to the heeft_recht_op_zorgtoeslag AND.
+    // Assert the action is shaped the way we expect before mutating so a
+    // future refactor (e.g. top-level op change) produces a legible error
+    // instead of a bare `Cannot read properties of undefined` on .push.
     const heeftRecht = mr.execution.actions.find(
       (a) => a.output === 'heeft_recht_op_zorgtoeslag',
     );
     expect(heeftRecht, 'heeft_recht_op_zorgtoeslag action must exist').toBeTruthy();
+    expect(
+      heeftRecht.value?.operation,
+      'heeft_recht action must be an AND at the top level',
+    ).toBe('AND');
+    expect(Array.isArray(heeftRecht.value?.conditions)).toBe(true);
     heeftRecht.value.conditions.push({
       operation: 'GREATER_THAN_OR_EQUAL',
       subject: '$leeftijd',
