@@ -6,6 +6,7 @@ import OperationSettings from './OperationSettings.vue';
 const props = defineProps({
   action: { type: Object, default: null },
   article: { type: Object, default: null },
+  editable: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['close', 'save']);
@@ -69,17 +70,19 @@ onUnmounted(() => {
       <ndd-top-title-bar slot="header" text="Actie" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
       <ndd-simple-section>
-        <!-- Output binding -->
-        <ndd-list variant="box" class="settings-list" data-testid="action-output-binding">
-          <ndd-list-item size="md">
-            <ndd-text-cell text="Output"></ndd-text-cell>
-            <ndd-cell>
-              <ndd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></ndd-text-field>
-            </ndd-cell>
-          </ndd-list-item>
-        </ndd-list>
+        <!-- Output binding (editable view only) -->
+        <template v-if="editable">
+          <ndd-list variant="box" class="settings-list" data-testid="action-output-binding">
+            <ndd-list-item size="md">
+              <ndd-text-cell text="Output"></ndd-text-cell>
+              <ndd-cell>
+                <ndd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></ndd-text-field>
+              </ndd-cell>
+            </ndd-list-item>
+          </ndd-list>
 
-        <ndd-spacer size="8"></ndd-spacer>
+          <ndd-spacer size="8"></ndd-spacer>
+        </template>
 
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
@@ -99,11 +102,12 @@ onUnmounted(() => {
         </template>
 
         <!-- Section B: Operation Settings -->
-        <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" @select-operation="selectOperationByNode" />
+        <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" :editable="editable" @select-operation="selectOperationByNode" />
       </ndd-simple-section>
 
       <ndd-container slot="footer" padding="16">
-        <ndd-button variant="primary" size="md" full-width @click="emit('save')" text="Opslaan"></ndd-button>
+        <ndd-button v-if="editable" variant="primary" size="md" full-width @click="emit('save')" text="Opslaan"></ndd-button>
+        <ndd-button v-else variant="primary" size="md" full-width @click="emit('close')" text="Sluiten"></ndd-button>
       </ndd-container>
     </ndd-page>
   </ndd-sheet>

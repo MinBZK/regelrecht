@@ -10,6 +10,7 @@ import {
 const props = defineProps({
   operation: { type: Object, default: null },
   article: { type: Object, default: null },
+  editable: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['select-operation']);
@@ -38,6 +39,7 @@ const ARITHMETIC_OPS = new Set(['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'MIN', 
 const isComparisonOp = computed(() => COMPARISON_OPS.has(props.operation?.operation));
 
 const canAddValue = computed(() => {
+  if (!props.editable) return false;
   const op = props.operation?.operation;
   if (!op) return false;
   // Structural-slot ops have no concept of "add a value"
@@ -52,6 +54,7 @@ const canAddValue = computed(() => {
 });
 
 const canAddNestedOperation = computed(() => {
+  if (!props.editable) return false;
   const op = props.operation?.operation;
   return op && !isComparisonOp.value && op !== 'NOT' && op !== 'IF' && op !== 'SWITCH';
 });
@@ -59,6 +62,7 @@ const canAddNestedOperation = computed(() => {
 // Required structural fields whose minus button must be hidden so the user
 // cannot delete them and silently produce an invalid node.
 function canRemoveValue(val) {
+  if (!props.editable) return false;
   if (isComparisonOp.value && (val._kind === 'subject' || val._kind === 'value')) return false;
   // IF needs when/then/else
   if (props.operation?.operation === 'IF' && (val._kind === 'when' || val._kind === 'then' || val._kind === 'else')) return false;
@@ -338,7 +342,7 @@ function addNestedOperation() {
       <ndd-list-item size="md">
         <ndd-text-cell text="Titel" max-width="120"></ndd-text-cell>
         <ndd-cell>
-          <ndd-text-field size="md" :value="operation.title" @input="operation.title = $event.target?.value ?? $event.detail?.value ?? operation.title"></ndd-text-field>
+          <ndd-text-field size="md" :value="operation.title" :readonly="!editable" @input="editable && (operation.title = $event.target?.value ?? $event.detail?.value ?? operation.title)"></ndd-text-field>
         </ndd-cell>
       </ndd-list-item>
 
@@ -347,7 +351,7 @@ function addNestedOperation() {
         <ndd-text-cell text="Type" max-width="120"></ndd-text-cell>
         <ndd-cell>
           <ndd-dropdown size="md" data-testid="operation-type-dropdown">
-            <select aria-label="Operatie type" :value="operation.operation" @change="changeOperationType">
+            <select aria-label="Operatie type" :value="operation.operation" :disabled="!editable" @change="editable && changeOperationType($event)">
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </ndd-dropdown>
@@ -360,11 +364,11 @@ function addNestedOperation() {
         <ndd-cell>
           <div class="value-row">
             <template v-if="isLiteralValue(val._value)">
-              <ndd-text-field size="md" :value="String(val._value)" is-full-width @input="updateValue(val, $event)"></ndd-text-field>
+              <ndd-text-field size="md" :value="String(val._value)" is-full-width :readonly="!editable" @input="editable && updateValue(val, $event)"></ndd-text-field>
             </template>
             <template v-else>
               <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
-                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
+                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
                   <option v-for="opt in valueDropdownOptions(val._value)" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                 </select>
               </ndd-dropdown>

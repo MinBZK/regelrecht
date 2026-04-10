@@ -7,6 +7,7 @@ import { useAuth } from './composables/useAuth.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
+import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
@@ -18,6 +19,10 @@ watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) 
     window.location.href = '/auth/login';
   }
 });
+
+// All edit operations are gated behind SSO. When OIDC is configured the user
+// must be authenticated; when OIDC is disabled the editor is fully open.
+const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
 // --- Initial law load (from URL params) ---
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
@@ -391,6 +396,7 @@ function selectArticle(number) {
               <ndd-top-title-bar slot="header" text="Scenario's">
                 <ndd-segmented-control slot="toolbar" size="md" :value="middlePaneView" @change="onMiddlePaneChange">
                   <ndd-segmented-control-item value="form" text="Scenario's"></ndd-segmented-control-item>
+                  <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
                 </ndd-segmented-control>
                 <span v-if="middlePaneView === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
@@ -411,6 +417,18 @@ function selectArticle(number) {
                 :articles="articles"
                 @executed="handleScenarioExecuted"
               />
+
+              <!-- Machine view: structured editor -->
+              <ndd-simple-section v-if="middlePaneView === 'machine'">
+                <MachineReadable
+                  :article="editedArticle"
+                  :editable="canEdit"
+                  @open-action="handleOpenAction"
+                  @open-edit="activeEditItem = $event"
+                  @init-mr="handleInitMr"
+                  @add-action="handleAddAction"
+                />
+              </ndd-simple-section>
 
               <!-- YAML view -->
               <ndd-simple-section v-if="middlePaneView === 'yaml'">
@@ -448,7 +466,7 @@ function selectArticle(number) {
     </ndd-bar-split-view>
   </ndd-app-view>
 
-  <ActionSheet :action="activeAction" :article="editedArticle" @close="handleActionClose" @save="handleActionSave" />
+  <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" @save="handleSave" @close="activeEditItem = null" />
 </template>
 

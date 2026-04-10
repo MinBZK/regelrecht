@@ -386,5 +386,7 @@ loadIndex();
     </ndd-bar-split-view>
   </ndd-app-view>
 
-  <ActionSheet :action="activeAction" :article="selectedArticle" @close="activeAction = null" />
+  <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
+       so the output field is hidden and the footer button just closes the sheet. -->
+  <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" />
 </template>
