@@ -42,6 +42,8 @@ const canAddValue = computed(() => {
   if (!op) return false;
   // Structural-slot ops have no concept of "add a value"
   if (op === 'NOT' || op === 'IF' || op === 'SWITCH') return false;
+  // NOT_NULL never takes a value field (it only checks the subject is non-null)
+  if (op === 'NOT_NULL') return false;
   // Logical ops only accept nested operations as conditions; "Voeg waarde toe"
   // would push an EQUALS predicate identical to "Voeg operatie toe", so we
   // suppress the duplicate button.
@@ -295,6 +297,8 @@ function addValue() {
   // Don't inject values[] into nodes with structural value slots
   // (NOT uses single 'value', IF uses when/then/else, SWITCH uses cases/default)
   if (node.operation === 'NOT' || node.operation === 'IF' || node.operation === 'SWITCH') return;
+  // NOT_NULL is a unary check on subject only — never a value
+  if (node.operation === 'NOT_NULL') return;
 
   if (Array.isArray(node.values)) {
     node.values.push(0);
