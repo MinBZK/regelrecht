@@ -212,22 +212,28 @@ function onScenarioFileSelect(event) {
 async function onSave() {
   if (!formState.value || !selectedScenarioFile.value) return;
 
-  // Sync edited input values back to formState before serializing
-  for (let i = 0; i < (formState.value.scenarios || []).length; i++) {
-    const formRef = scenarioRefs.value[i];
-    if (!formRef?.getFormValues) continue;
-    const values = formRef.getFormValues();
-    syncEditedValues(formState.value, i, values);
-  }
-
   saveSuccess.value = false;
   try {
+    // Sync edited input values back to formState before serializing.
+    // This must be inside the try so that a throw from syncEditedValues
+    // (e.g. unexpected form shape) surfaces as a save error rather than
+    // failing silently.
+    for (let i = 0; i < (formState.value.scenarios || []).length; i++) {
+      const formRef = scenarioRefs.value[i];
+      if (!formRef?.getFormValues) continue;
+      const values = formRef.getFormValues();
+      syncEditedValues(formState.value, i, values);
+    }
+
     const gherkin = formStateToGherkin(formState.value);
     await saveScenario(selectedScenarioFile.value, gherkin);
     saveSuccess.value = true;
     setTimeout(() => { saveSuccess.value = false; }, 3000);
-  } catch {
-    // saveError is already set by the composable
+  } catch (e) {
+    // The composable sets saveError on its own failures. For sync/serialise
+    // errors that happen before saveScenario, set it manually so the user
+    // still sees the banner instead of an unexplained no-op.
+    if (!saveError.value) saveError.value = e;
   }
 }
 </script>

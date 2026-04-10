@@ -94,11 +94,18 @@ async fn main() {
     // Protected API routes — require authentication when OIDC is enabled.
     // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
     // invoked anonymously when a deployment has a git push token configured.
+    //
+    // The 1 MiB body cap is generous for a single Gherkin scenario file
+    // (real-world scenarios are a few KiB) and prevents a caller from
+    // streaming an arbitrarily large body to disk — important when OIDC
+    // is disabled in local dev and the endpoint is reachable without auth.
+    const MAX_SCENARIO_BODY: usize = 1024 * 1024;
     let protected_api_routes = Router::new()
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             axum::routing::put(corpus_handlers::save_scenario)
-                .delete(corpus_handlers::delete_scenario),
+                .delete(corpus_handlers::delete_scenario)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

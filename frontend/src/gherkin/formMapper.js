@@ -370,14 +370,19 @@ export function syncEditedValues(formState, scenarioIndex, values) {
     });
   }
 
-  // Sync calculation date (scenario-level override)
-  if (calculationDate) {
+  // Sync calculation date (scenario-level override).
+  // Treat `null`, `undefined` and `""` as "user cleared the field" so that
+  // a clear is not silently dropped — otherwise the next save would write
+  // the stale date back to the .feature file.
+  if (calculationDate !== undefined) {
+    const cleared = calculationDate === null || calculationDate === '';
     const bgDate = formState.background?.calculationDate || null;
-    if (calculationDate !== bgDate) {
-      scenario.setup.calculationDate = calculationDate;
-    } else {
-      // Match the background — drop the scenario-level override.
+    if (cleared || calculationDate === bgDate) {
+      // Either the user cleared the field, or it now matches the background:
+      // in both cases the scenario-level override should disappear.
       scenario.setup.calculationDate = null;
+    } else {
+      scenario.setup.calculationDate = calculationDate;
     }
   }
 }
