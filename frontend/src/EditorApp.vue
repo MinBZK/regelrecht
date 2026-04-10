@@ -251,9 +251,15 @@ watch(
 // Dirty state: the selected article's in-memory machine_readable differs
 // from the article's saved copy. `machineReadable.value` starts as a deep
 // JSON clone of `selectedArticle.machine_readable` (see the `watch` above),
-// so the two share the same key order until the user edits. That makes
-// `JSON.stringify` a cheap and sufficient structural comparison — we don't
-// need a canonical YAML dump here.
+// so for field-based edits the two share the same key order and
+// `JSON.stringify` is a cheap, accurate structural comparison.
+//
+// Note: the YAML-pane edit path (`onYamlInput`) replaces `machineReadable`
+// with a fresh `yaml.load(text)` object whose key order comes from the
+// textarea, so a no-op round-trip can flip this flag to `true` even when
+// the semantic content is unchanged. That's a conservative false positive
+// — the worst case is an enabled save button — so we accept it rather
+// than pay for a canonical YAML dump on every keystroke.
 const isMachineReadableDirty = computed(() => {
   if (!selectedArticle.value) return false;
   const saved = selectedArticle.value.machine_readable ?? null;

@@ -503,9 +503,7 @@ mod tests {
         let mut map = SourceMap::new();
         map.load_source(&source).unwrap();
 
-        let original_file_path = map.get_law("test_wet").unwrap().file_path.clone();
-        let original_source_id = map.get_law("test_wet").unwrap().source_id.clone();
-        let original_priority = map.get_law("test_wet").unwrap().source_priority;
+        let original = map.get_law("test_wet").unwrap().clone();
 
         let new_content =
             "$id: test_wet\nname: Updated Name\nregulatory_layer: WET\narticles: []\n".to_string();
@@ -515,10 +513,16 @@ mod tests {
         let law = map.get_law("test_wet").unwrap();
         assert_eq!(law.yaml_content, new_content);
         assert_eq!(law.name.as_deref(), Some("Updated Name"));
-        // Provenance is preserved — update_yaml_content only touches content + name.
-        assert_eq!(law.file_path, original_file_path);
-        assert_eq!(law.source_id, original_source_id);
-        assert_eq!(law.source_priority, original_priority);
+        // All provenance fields are preserved — update_yaml_content only
+        // touches content + name. `relative_path` is load-bearing because
+        // the editor-api write handler targets it; a regression that
+        // cleared it would silently send reads and writes to different
+        // files, so we assert it explicitly alongside file_path/source_*.
+        assert_eq!(law.file_path, original.file_path);
+        assert_eq!(law.relative_path, original.relative_path);
+        assert_eq!(law.source_id, original.source_id);
+        assert_eq!(law.source_name, original.source_name);
+        assert_eq!(law.source_priority, original.source_priority);
     }
 
     #[test]

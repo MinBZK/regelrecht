@@ -346,7 +346,7 @@ function addNestedOperation() {
 
 <template>
   <template v-if="operation">
-    <ndd-title size="4">
+    <ndd-title size="4" class="op-settings-title">
       <h4>Instellingen operatie {{ operation.number }}</h4>
       <ndd-icon-button slot="actions" icon="ellipsis" title="Meer opties"></ndd-icon-button>
     </ndd-title>
@@ -414,8 +414,10 @@ function addNestedOperation() {
 /* Reset browser default h4 margin so the ndd-spacer below the title is the
  * only source of vertical gap. Without this the h4's default bottom margin
  * (~1em) collapses into the spacer unpredictably, which caused the
- * "textboxes falling under the title" visual in the action panel. */
-ndd-title h4 {
+ * "textboxes falling under the title" visual in the action panel.
+ * Scoped to this component's own title class so the rule can't bleed into
+ * other ndd-title + h4 pairings elsewhere in the app. */
+.op-settings-title h4 {
   margin: 0;
 }
 
