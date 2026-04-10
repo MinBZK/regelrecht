@@ -297,8 +297,15 @@ const isMachineReadableDirty = computed(() => {
 async function handleMachineReadableSave() {
   const lawYaml = currentLawYaml.value;
   if (!lawYaml) return;
+  // Snapshot the law id before the await. saveLaw itself guards its own
+  // reactive writes with the same check, but the post-save cleanup below
+  // runs in the EditorApp scope and would happily overwrite the new law's
+  // in-progress machine_readable with its pristine article data if the
+  // user switched laws mid-flight.
+  const savedLawId = lawId.value;
   try {
     await saveLaw(lawYaml);
+    if (lawId.value !== savedLawId) return; // law switched mid-PUT
     // After save, `rawYaml` is the saved text and `selectedArticle` now
     // points at the re-parsed article. We could rely on the `watch`
     // further up to re-sync `machineReadable` from the new selectedArticle,
