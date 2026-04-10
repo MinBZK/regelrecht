@@ -272,6 +272,8 @@ function handleAddAction() {
 function handleOpenAction(action) {
   actionSnapshot = JSON.stringify(machineReadable.value);
   activeAction.value = action;
+  // Clear any stale parse error from a previous failed save
+  parseError.value = null;
 }
 
 // Restore model from snapshot when ActionSheet is cancelled
