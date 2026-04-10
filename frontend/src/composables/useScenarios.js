@@ -17,6 +17,9 @@ export function useScenarios(lawId) {
 
     loading.value = true;
     error.value = null;
+    // Drop any stale save error from a previously selected law so the
+    // banner does not linger after navigating to a different law.
+    saveError.value = null;
 
     try {
       const res = await fetch(

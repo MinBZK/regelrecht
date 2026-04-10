@@ -346,12 +346,15 @@ fn resolve_writable_backend(
     Ok(ResolvedBackend { law, backend })
 }
 
-/// Map a [`CorpusError`] from a write/delete operation to an HTTP error tuple.
+/// Map a [`CorpusError`] from a write / delete / persist operation to an
+/// HTTP error tuple.
 ///
 /// `ReadOnly` is an expected, recoverable precondition (e.g. the resolved
 /// backend is a baked-in local source on a read-only container filesystem),
 /// and must surface as `403 Forbidden` so the frontend can render a useful
-/// message instead of "Internal Server Error".
+/// message instead of "Internal Server Error". Everything else (IO, git
+/// command failures, push failures, …) is unexpected from the client's
+/// perspective and falls through to `500 Internal Server Error`.
 fn corpus_write_error(e: CorpusError) -> (StatusCode, String) {
     match e {
         CorpusError::ReadOnly(_) => (StatusCode::FORBIDDEN, e.to_string()),
@@ -403,7 +406,7 @@ pub async fn save_scenario(
             message: format!("Update scenario {} for {}", filename, law_id),
         })
         .await
-        .map_err(|e| (StatusCode::CONFLICT, format!("Failed to persist: {e}")))?;
+        .map_err(corpus_write_error)?;
 
     Ok(StatusCode::OK)
 }
@@ -427,7 +430,7 @@ pub async fn delete_scenario(
             message: format!("Delete scenario {} for {}", filename, law_id),
         })
         .await
-        .map_err(|e| (StatusCode::CONFLICT, format!("Failed to persist: {e}")))?;
+        .map_err(corpus_write_error)?;
 
     Ok(StatusCode::OK)
 }

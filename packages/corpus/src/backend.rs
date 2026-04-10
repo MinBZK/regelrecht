@@ -375,6 +375,10 @@ impl RepoBackend for GitBackend {
         self.client.ensure_repo().await
     }
 
+    /// A `GitBackend` is always considered writable: even in `local_only`
+    /// mode (no push token) edits are committed to a local session branch.
+    /// "Writable" here means "the backend will accept `write_file` calls",
+    /// not "the backend will push to a remote".
     fn is_writable(&self) -> bool {
         true
     }
