@@ -37,6 +37,17 @@ const ARITHMETIC_OPS = new Set(['ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'MIN', 
 
 const isComparisonOp = computed(() => COMPARISON_OPS.has(props.operation?.operation));
 
+const canAddValue = computed(() => {
+  const op = props.operation?.operation;
+  // Structural-slot ops have no concept of "add a value"
+  return op && op !== 'NOT' && op !== 'IF' && op !== 'SWITCH';
+});
+
+const canAddNestedOperation = computed(() => {
+  const op = props.operation?.operation;
+  return op && !isComparisonOp.value && op !== 'NOT' && op !== 'IF' && op !== 'SWITCH';
+});
+
 const operationValues = computed(() => {
   const node = props.operation?.node;
   if (!node) return [];
@@ -264,6 +275,10 @@ function addValue() {
   const node = props.operation?.node;
   if (!node) return;
 
+  // Don't inject values[] into nodes with structural value slots
+  // (NOT uses single 'value', IF uses when/then/else, SWITCH uses cases/default)
+  if (node.operation === 'NOT' || node.operation === 'IF' || node.operation === 'SWITCH') return;
+
   if (Array.isArray(node.values)) {
     node.values.push(0);
   } else if (Array.isArray(node.conditions)) {
@@ -344,10 +359,10 @@ function addNestedOperation() {
       </ndd-list-item>
 
       <!-- Add value -->
-      <ndd-list-item size="md">
+      <ndd-list-item v-if="canAddValue || canAddNestedOperation" size="md">
         <div class="add-value-buttons">
-          <ndd-button size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></ndd-button>
-          <ndd-button v-if="!isComparisonOp" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Voeg operatie toe"></ndd-button>
+          <ndd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></ndd-button>
+          <ndd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Voeg operatie toe"></ndd-button>
         </div>
       </ndd-list-item>
     </ndd-list>
