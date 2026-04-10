@@ -145,60 +145,36 @@ pub struct ScenarioEntry {
     pub filename: String,
 }
 
-/// Derive the scenarios directory from a law's file_path.
-///
-/// Given a law file at `.../wet_op_de_zorgtoeslag/2025-01-01.yaml`,
-/// the scenarios directory is `.../wet_op_de_zorgtoeslag/scenarios/`.
-fn scenarios_dir_for_law(file_path: &str) -> Option<PathBuf> {
-    let path = PathBuf::from(file_path);
-    let parent = path.parent()?;
-    Some(parent.join("scenarios"))
-}
-
 /// GET /api/corpus/laws/{law_id}/scenarios — list available scenario files.
 pub async fn list_scenarios(
     State(state): State<AppState>,
     Path(law_id): Path<String>,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    // Resolve the scenarios directory while holding the lock, then drop it before I/O.
-    let scenarios_dir = {
+    // Route reads through the same backend resolution as writes so a save
+    // followed by a list/get always sees its own writes.
+    let resolved = {
         let corpus = state.corpus.read().await;
-        let law = corpus
-            .source_map
-            .get_law(&law_id)
-            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
-        match scenarios_dir_for_law(&law.file_path) {
-            Some(dir) => dir,
-            _ => return Ok(Json(Vec::new())),
-        }
+        resolve_backend_for_law(&corpus, &law_id).await?
     };
 
-    if !scenarios_dir.is_dir() {
-        return Ok(Json(Vec::new()));
-    }
+    let scenarios_dir = match law_relative_dir(&resolved.law) {
+        Ok(dir) => dir.join("scenarios"),
+        Err(_) => return Ok(Json(Vec::new())),
+    };
 
-    let mut entries = Vec::new();
-    if let Ok(mut read_dir) = tokio::fs::read_dir(&scenarios_dir).await {
-        loop {
-            match read_dir.next_entry().await {
-                Ok(Some(entry)) => {
-                    let path = entry.path();
-                    if path.extension().is_some_and(|ext| ext == "feature") {
-                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            entries.push(ScenarioEntry {
-                                filename: name.to_string(),
-                            });
-                        }
-                    }
-                }
-                Ok(None) => break,
-                Err(_) => continue,
-            }
-        }
-    }
+    let backend = resolved.backend.lock().await;
+    let entries = backend
+        .list_files(&scenarios_dir, Some("feature"))
+        .await
+        .unwrap_or_default();
+    drop(backend);
 
-    entries.sort_by(|a, b| a.filename.cmp(&b.filename));
-    Ok(Json(entries))
+    let mut out: Vec<ScenarioEntry> = entries
+        .into_iter()
+        .map(|e| ScenarioEntry { filename: e.name })
+        .collect();
+    out.sort_by(|a, b| a.filename.cmp(&b.filename));
+    Ok(Json(out))
 }
 
 /// GET /api/corpus/laws/{law_id}/scenarios/{filename} — return raw .feature content.
@@ -215,24 +191,26 @@ pub async fn get_scenario(
 > {
     validate_scenario_filename(&filename)?;
 
-    // Resolve path while holding the lock, then drop it before I/O.
-    let file_path = {
+    let resolved = {
         let corpus = state.corpus.read().await;
-        let law = corpus
-            .source_map
-            .get_law(&law_id)
-            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
-        let scenarios_dir = scenarios_dir_for_law(&law.file_path)
-            .ok_or_else(|| (StatusCode::NOT_FOUND, "No scenarios directory".to_string()))?;
-        scenarios_dir.join(&filename)
+        resolve_backend_for_law(&corpus, &law_id).await?
     };
 
-    let content = tokio::fs::read_to_string(&file_path).await.map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            format!("Scenario '{}' not found", filename),
-        )
-    })?;
+    let scenarios_dir = law_relative_dir(&resolved.law)?.join("scenarios");
+    let relative_path = scenarios_dir.join(&filename);
+
+    let backend = resolved.backend.lock().await;
+    let content = backend
+        .read_file(&relative_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                format!("Scenario '{}' not found", filename),
+            )
+        })?;
+    drop(backend);
 
     Ok((
         StatusCode::OK,
@@ -289,23 +267,34 @@ fn law_relative_dir(law: &LoadedLaw) -> Result<PathBuf, (StatusCode, String)> {
 struct ResolvedBackend {
     law: LoadedLaw,
     backend: Arc<Mutex<Box<dyn RepoBackend>>>,
+    /// Whether the resolved backend supports writes. Read handlers ignore
+    /// this; write handlers must reject the request with 403 if `false`.
+    writable: bool,
 }
 
-/// Look up a writable backend for a law.
+/// Resolve the backend that should be used for a law's scenario files.
 ///
-/// Tries the law's *own* source backend first. If that source has no
-/// registered backend (e.g. the local source was loaded from a read-only
-/// container filesystem and skipped during init), falls back to another
-/// backend that contains the **same law file at the same source-relative
-/// path** — verified by reading `law.relative_path` from the candidate.
+/// Both read and write handlers go through this function so the editor
+/// always uses the **same** backend for `get_scenario` / `list_scenarios` /
+/// `save_scenario` / `delete_scenario` on a given law. Without this single
+/// source of truth, a read can end up at one on-disk location while a write
+/// for the same law lands at a different one — silent data loss.
 ///
-/// The verification is what makes the fallback safe: it guarantees the two
-/// sources share a structural layout under their roots, so writing a
-/// scenario at `<law_dir>/scenarios/<file>` in the fallback backend lands
-/// at the directory the reader side already addresses. Without this check
-/// the fallback could silently produce files at a path the reader never
-/// looks at.
-async fn resolve_writable_backend(
+/// Resolution order:
+///
+/// 1. **Law's own writable backend.** Happy path for normal local-only dev.
+/// 2. **Verified writable fallback.** When the law's own source is read-only
+///    (e.g. baked-in container filesystem) we look for another writable
+///    backend whose root contains the **same** law file at the same
+///    `law.relative_path`. A successful read of that path proves the two
+///    sources share their structural layout, so subsequent reads/writes of
+///    sibling scenario files land at consistent locations.
+/// 3. **Law's own read-only backend.** No writable target available. Reads
+///    still work; writes will be rejected with 403 by the caller.
+///
+/// The verification in step 2 is essential: without it the fallback could
+/// silently produce files at a path the reader never looks at.
+async fn resolve_backend_for_law(
     corpus: &crate::state::CorpusState,
     law_id: &str,
 ) -> Result<ResolvedBackend, (StatusCode, String)> {
@@ -315,25 +304,32 @@ async fn resolve_writable_backend(
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
         .clone();
 
-    // Fast path: the law's own source has a backend.
-    if let Some(backend) = corpus.backends.get(&law.source_id).cloned() {
-        return Ok(ResolvedBackend { law, backend });
+    // 1. Prefer the law's own backend if it can accept writes.
+    if let Some(entry) = corpus.backends.get(&law.source_id) {
+        if entry.writable {
+            return Ok(ResolvedBackend {
+                law,
+                backend: entry.backend.clone(),
+                writable: true,
+            });
+        }
     }
 
-    // Fallback: look for another backend that contains this exact law at
-    // the same source-relative path. Iterating in alphabetical order keeps
-    // the choice deterministic across restarts.
+    // 2. Look for another writable backend that contains the same law file
+    //    at the same source-relative path. Alphabetical iteration keeps the
+    //    choice deterministic across restarts.
     let law_rel = std::path::Path::new(&law.relative_path);
     let mut candidate_ids: Vec<&String> = corpus.backends.keys().collect();
     candidate_ids.sort();
 
     for source_id in candidate_ids {
-        let Some(backend_arc) = corpus.backends.get(source_id) else {
+        let Some(entry) = corpus.backends.get(source_id) else {
             continue;
         };
-        // Briefly lock to probe; release before returning so the caller's
-        // own lock acquisition is uncontended.
-        let backend = backend_arc.lock().await;
+        if !entry.writable || source_id == &law.source_id {
+            continue;
+        }
+        let backend = entry.backend.lock().await;
         let exists = backend.read_file(law_rel).await.ok().flatten().is_some();
         drop(backend);
         if exists {
@@ -341,20 +337,30 @@ async fn resolve_writable_backend(
                 law_id = %law_id,
                 law_source = %law.source_id,
                 fallback_source = %source_id,
-                "law's own source has no write backend; falling back to a verified-matching source"
+                "law's own source has no writable backend; routing reads and writes through verified-matching source"
             );
             return Ok(ResolvedBackend {
                 law,
-                backend: backend_arc.clone(),
+                backend: entry.backend.clone(),
+                writable: true,
             });
         }
     }
 
+    // 3. Fall through to the law's own read-only backend so reads still
+    //    work. Write handlers turn this into a 403.
+    if let Some(entry) = corpus.backends.get(&law.source_id) {
+        return Ok(ResolvedBackend {
+            law,
+            backend: entry.backend.clone(),
+            writable: entry.writable,
+        });
+    }
+
     Err((
-        StatusCode::FORBIDDEN,
+        StatusCode::NOT_FOUND,
         format!(
-            "No writable backend registered for source '{}' (the source that owns law '{}'), \
-             and no other backend contains a matching copy of the law at the same path",
+            "No backend registered for source '{}' (the source that owns law '{}')",
             law.source_id, law_id
         ),
     ))
@@ -380,8 +386,9 @@ fn corpus_write_error(e: CorpusError) -> (StatusCode, String) {
 // Save / Delete scenario endpoints
 // ---------------------------------------------------------------------------
 
-/// Resolve write target: find a writable backend, compute the scenario path,
-/// and lock the backend. Shared by save and delete handlers.
+/// Resolve write target: pick the backend, compute the scenario path, and
+/// lock the backend. Shared by save and delete handlers. Returns 403 if the
+/// resolved backend is read-only — the caller cannot recover from this.
 async fn resolve_write_target(
     state: &AppState,
     law_id: &str,
@@ -389,8 +396,19 @@ async fn resolve_write_target(
 ) -> Result<(PathBuf, tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>), (StatusCode, String)> {
     let resolved = {
         let corpus = state.corpus.read().await;
-        resolve_writable_backend(&corpus, law_id).await?
+        resolve_backend_for_law(&corpus, law_id).await?
     };
+
+    if !resolved.writable {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!(
+                "No writable backend available for law '{}' (source '{}' is read-only \
+                 and no other registered source contains a matching copy of the law)",
+                law_id, resolved.law.source_id
+            ),
+        ));
+    }
 
     let rel_dir = law_relative_dir(&resolved.law)?;
     let relative_path = rel_dir.join("scenarios").join(filename);

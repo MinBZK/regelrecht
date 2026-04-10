@@ -295,11 +295,16 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
     }
 }
 
-/// Create and initialize write backends for each registered source.
+/// Create and initialize backends for each registered source.
+///
+/// All successfully-initialised backends are registered, including read-only
+/// ones (e.g. a local source on a read-only container filesystem). Reads
+/// route through the same backends as writes so the editor never has a
+/// read/write path mismatch — see [`crate::state::BackendEntry::writable`].
 async fn init_backends(
     registry: &regelrecht_corpus::CorpusRegistry,
     auth_file: Option<&std::path::Path>,
-) -> HashMap<String, Arc<Mutex<Box<dyn regelrecht_corpus::backend::RepoBackend>>>> {
+) -> HashMap<String, crate::state::BackendEntry> {
     let mut backends = HashMap::new();
 
     for source in registry.sources() {
@@ -322,19 +327,23 @@ async fn init_backends(
                     tracing::warn!(
                         source_id = %source.id,
                         error = %e,
-                        "backend init failed, writes disabled for this source"
+                        "backend init failed, skipping registration"
                     );
                     continue;
                 }
-                if !backend.is_writable() {
-                    tracing::info!(
-                        source_id = %source.id,
-                        "backend is read-only, skipping"
-                    );
-                    continue;
-                }
-                tracing::info!(source_id = %source.id, "write backend ready");
-                backends.insert(source.id.clone(), Arc::new(Mutex::new(backend)));
+                let writable = backend.is_writable();
+                tracing::info!(
+                    source_id = %source.id,
+                    writable,
+                    "backend ready"
+                );
+                backends.insert(
+                    source.id.clone(),
+                    crate::state::BackendEntry {
+                        backend: Arc::new(Mutex::new(backend)),
+                        writable,
+                    },
+                );
             }
             Err(e) => {
                 tracing::warn!(

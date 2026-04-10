@@ -39,12 +39,23 @@ impl OidcAppState for AppState {
     }
 }
 
+/// A registered backend along with its writability flag, captured at init
+/// time after [`RepoBackend::ensure_ready`] (so a local source on a
+/// read-only filesystem is recorded as `writable: false`).
+pub struct BackendEntry {
+    pub backend: Arc<Mutex<Box<dyn RepoBackend>>>,
+    pub writable: bool,
+}
+
 /// State for the corpus subsystem.
 pub struct CorpusState {
     pub registry: regelrecht_corpus::CorpusRegistry,
     pub source_map: SourceMap,
-    /// Write backends keyed by source ID.
-    pub backends: HashMap<String, Arc<Mutex<Box<dyn RepoBackend>>>>,
+    /// Backends keyed by source ID. Read-only backends are also registered
+    /// here so reads (`get_scenario`, `list_scenarios`) can route through
+    /// the same abstraction as writes — preventing read/write path
+    /// mismatches when a fallback writable backend is used.
+    pub backends: HashMap<String, BackendEntry>,
 }
 
 impl CorpusState {
