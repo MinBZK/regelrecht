@@ -293,19 +293,19 @@ struct ResolvedBackend {
 
 /// Look up a writable backend for a law.
 ///
-/// Only the law's *own* source backend is considered. Earlier revisions of
-/// this PR fell back to "any writable backend" to support deployments where
-/// laws were baked into a read-only local source while git pushes had to go
-/// elsewhere — but the path that gets written is always
-/// `law.relative_path`, which is relative to the **law's own** source root.
-/// Writing that path through a backend rooted at a different source silently
-/// produces files at the wrong location (e.g. `wet/foo/scenarios/x.feature`
-/// in a backend whose laws actually live under `regulation/nl/`), and the
-/// reader side never sees them.
+/// Tries the law's *own* source backend first. If that source has no
+/// registered backend (e.g. the local source was loaded from a read-only
+/// container filesystem and skipped during init), falls back to another
+/// backend that contains the **same law file at the same source-relative
+/// path** — verified by reading `law.relative_path` from the candidate.
 ///
-/// Operators who need cross-source writes must configure the law's own
-/// source as writable rather than relying on an implicit fallback.
-fn resolve_writable_backend(
+/// The verification is what makes the fallback safe: it guarantees the two
+/// sources share a structural layout under their roots, so writing a
+/// scenario at `<law_dir>/scenarios/<file>` in the fallback backend lands
+/// at the directory the reader side already addresses. Without this check
+/// the fallback could silently produce files at a path the reader never
+/// looks at.
+async fn resolve_writable_backend(
     corpus: &crate::state::CorpusState,
     law_id: &str,
 ) -> Result<ResolvedBackend, (StatusCode, String)> {
@@ -315,21 +315,49 @@ fn resolve_writable_backend(
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
         .clone();
 
-    let backend = corpus
-        .backends
-        .get(&law.source_id)
-        .cloned()
-        .ok_or_else(|| {
-            (
-                StatusCode::FORBIDDEN,
-                format!(
-                "No writable backend registered for source '{}' (the source that owns law '{}')",
-                law.source_id, law_id
-            ),
-            )
-        })?;
+    // Fast path: the law's own source has a backend.
+    if let Some(backend) = corpus.backends.get(&law.source_id).cloned() {
+        return Ok(ResolvedBackend { law, backend });
+    }
 
-    Ok(ResolvedBackend { law, backend })
+    // Fallback: look for another backend that contains this exact law at
+    // the same source-relative path. Iterating in alphabetical order keeps
+    // the choice deterministic across restarts.
+    let law_rel = std::path::Path::new(&law.relative_path);
+    let mut candidate_ids: Vec<&String> = corpus.backends.keys().collect();
+    candidate_ids.sort();
+
+    for source_id in candidate_ids {
+        let Some(backend_arc) = corpus.backends.get(source_id) else {
+            continue;
+        };
+        // Briefly lock to probe; release before returning so the caller's
+        // own lock acquisition is uncontended.
+        let backend = backend_arc.lock().await;
+        let exists = backend.read_file(law_rel).await.ok().flatten().is_some();
+        drop(backend);
+        if exists {
+            tracing::warn!(
+                law_id = %law_id,
+                law_source = %law.source_id,
+                fallback_source = %source_id,
+                "law's own source has no write backend; falling back to a verified-matching source"
+            );
+            return Ok(ResolvedBackend {
+                law,
+                backend: backend_arc.clone(),
+            });
+        }
+    }
+
+    Err((
+        StatusCode::FORBIDDEN,
+        format!(
+            "No writable backend registered for source '{}' (the source that owns law '{}'), \
+             and no other backend contains a matching copy of the law at the same path",
+            law.source_id, law_id
+        ),
+    ))
 }
 
 /// Map a [`CorpusError`] from a write / delete / persist operation to an
@@ -361,7 +389,7 @@ async fn resolve_write_target(
 ) -> Result<(PathBuf, tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>), (StatusCode, String)> {
     let resolved = {
         let corpus = state.corpus.read().await;
-        resolve_writable_backend(&corpus, law_id)?
+        resolve_writable_backend(&corpus, law_id).await?
     };
 
     let rel_dir = law_relative_dir(&resolved.law)?;
