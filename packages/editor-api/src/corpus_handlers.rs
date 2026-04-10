@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use regelrecht_corpus::backend::{RepoBackend, WriteContext};
-use regelrecht_corpus::source_map::{extract_law_id, LoadedLaw};
+use regelrecht_corpus::source_map::{extract_law_id, validate_yaml_syntax, LoadedLaw};
 use regelrecht_corpus::CorpusError;
 
 use crate::state::AppState;
@@ -484,14 +484,34 @@ pub async fn save_law(
     Path(law_id): Path<String>,
     body: String,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    // Minimal validation: body must have a top-level `$id` that matches
-    // the path parameter. We do NOT run full schema validation here — the
-    // frontend already blocks incomplete operation stubs
-    // (findIncompleteOperation) and the YAML pane has a live parse check.
-    // Full JSON Schema validation is a separate follow-up (mirroring
-    // `just validate`). Using the same line-based extractor the corpus
-    // loader uses keeps the "is this a loadable law file?" check consistent
-    // with how source_map decides which files to track.
+    // Validation:
+    //   1. Body must parse as well-formed YAML. extract_law_id below is a
+    //      line-based scanner that happily accepts "$id: foo\n<garbage>",
+    //      so without this check a syntactically broken body would land on
+    //      disk and corrupt the corpus source file.
+    //   2. Body must have a top-level `$id` field.
+    //   3. That `$id` must match the path parameter. Any mismatch is either
+    //      a phantom-law attempt (new id lands on an existing file) or an
+    //      orphaning (old id becomes unfetchable); reject up-front.
+    //
+    // We do NOT run full JSON Schema validation here — the frontend blocks
+    // incomplete operation stubs (findIncompleteOperation) and the YAML
+    // pane has a live parse check. Full schema validation is a separate
+    // follow-up (mirroring `just validate`).
+    //
+    // The mismatch error body intentionally does NOT echo the user-supplied
+    // `body_id`: it flows through the frontend into ndd-inline-dialog's
+    // supporting-text and we don't want self-XSS if the dialog ever renders
+    // that attribute as markup. The path law_id is already known to the
+    // caller, so the generic message is sufficient.
+    validate_yaml_syntax(&body).map_err(|e| {
+        tracing::debug!(law_id = %law_id, error = %e, "save_law received malformed YAML body");
+        (
+            StatusCode::BAD_REQUEST,
+            "Body is not valid YAML".to_string(),
+        )
+    })?;
+
     let body_id = extract_law_id(&body).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
@@ -502,10 +522,7 @@ pub async fn save_law(
     if body_id != law_id {
         return Err((
             StatusCode::BAD_REQUEST,
-            format!(
-                "Body $id '{}' does not match path law_id '{}'",
-                body_id, law_id
-            ),
+            "Body $id does not match path law_id".to_string(),
         ));
     }
 

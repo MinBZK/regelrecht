@@ -402,6 +402,16 @@ pub(crate) fn pick_best_version(existing: Option<&str>, new: Option<&str>, today
     }
 }
 
+/// Verify that a string parses as well-formed YAML without enforcing a
+/// particular schema. Used by write handlers that want to reject garbage
+/// input before persisting to the corpus backend, without committing to
+/// the corpus library's full law-schema validation (which belongs in a
+/// separate layer).
+pub fn validate_yaml_syntax(content: &str) -> Result<()> {
+    serde_yaml_ng::from_str::<serde_yaml_ng::Value>(content)?;
+    Ok(())
+}
+
 /// Extract the top-level `$id` field from a YAML string.
 ///
 /// Uses a simple line-based approach to avoid full YAML parsing overhead.
@@ -557,6 +567,21 @@ mod tests {
         let updated = map.update_yaml_content("nonexistent_law", "$id: foo\n".to_string());
         assert!(!updated, "update should report failure for missing law");
         assert_eq!(map.len(), 0, "missing law should not be inserted");
+    }
+
+    #[test]
+    fn test_validate_yaml_syntax_accepts_well_formed() {
+        assert!(validate_yaml_syntax("$id: foo\nname: bar\narticles: []\n").is_ok());
+        assert!(validate_yaml_syntax("---\nfoo: 1\n").is_ok());
+        assert!(validate_yaml_syntax("").is_ok()); // empty doc is valid
+    }
+
+    #[test]
+    fn test_validate_yaml_syntax_rejects_garbage() {
+        // Unclosed quote.
+        assert!(validate_yaml_syntax("name: \"unterminated\nfoo: bar\n").is_err());
+        // Tab indentation inside a block mapping.
+        assert!(validate_yaml_syntax("name:\n\tfoo: bar\n").is_err());
     }
 
     #[test]
