@@ -308,7 +308,12 @@ function findIncompleteOperation(value) {
   // we must reject the stub before persisting.
   if (COMPARISON_OPS_SET.has(op)) {
     if ((value.subject ?? '') === '') return op;
-    if (op !== 'NOT_NULL' && (value.value ?? '') === '') return op;
+    if (op === 'IN' || op === 'NOT_IN') {
+      // IN/NOT_IN seed value as [] — reject if still empty
+      if (!Array.isArray(value.value) || value.value.length === 0) return op;
+    } else if (op !== 'NOT_NULL') {
+      if ((value.value ?? '') === '') return op;
+    }
   }
   // Recurse into structural slots
   for (const child of [value.subject, value.value, value.default]) {
