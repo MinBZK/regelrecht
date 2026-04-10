@@ -160,19 +160,21 @@ export function useLaw(lawParam) {
         const text = await res.text();
         throw new Error(text || `Save failed: ${res.status}`);
       }
+      // Parse once and reuse for both reactive state and the shared
+      // lawCache so they remain referentially consistent.
+      const parsed = yaml.load(yamlText);
       // Bail on the success path if the user navigated away mid-flight.
       // The write succeeded on the backend (so the cache update below is
       // still worth doing), but we must not touch the now-foreign
       // reactive refs.
       if (lawId.value === savedLawId) {
         rawYaml.value = yamlText;
-        law.value = yaml.load(yamlText);
+        law.value = parsed;
       }
       // Keep the shared cache in sync so other tabs on the same law see
       // the edited version on their next fetchLaw() call. The cache key
       // is the saved law's ID, independent of the composable's current
       // `lawId` ref, so this refresh is safe even if the user switched.
-      const parsed = yaml.load(yamlText);
       const resolvedId = parsed?.$id || savedLawId;
       lawCache.set(resolvedId, {
         law: parsed,
