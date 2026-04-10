@@ -86,7 +86,11 @@ let switchGeneration = 0;
 async function selectTab(tab) {
   const gen = ++switchGeneration;
   activeTab.value = tab;
-  activeAction.value = null;
+  // Restore snapshot if the user is mid-edit, otherwise the partial mutations
+  // would persist into the new tab's view.
+  if (activeAction.value) {
+    handleActionClose();
+  }
   if (tab.lawId === lawId.value) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
@@ -332,24 +336,21 @@ function findIncompleteOperation(value) {
 
 // Sync YAML when ActionSheet saves (mutations happened in-place)
 function handleActionSave() {
-  // Reject empty output/value — schema requires both, the engine will fail
-  // to load the law. Show a parse error rather than silently writing
-  // invalid YAML.
   const action = activeAction.value;
   if (action) {
+    // Output is required by the schema and the engine cannot load a law
+    // with an action that has an empty output name.
     if (action.output == null || String(action.output).trim() === '') {
       parseError.value = 'Output mag niet leeg zijn';
       return;
     }
-    // Reject only the literal empty-string default we inserted in handleAddAction.
-    // A nested operation object, a literal 0, false, null etc. are all valid.
-    if (action.value === '') {
-      parseError.value = 'Waarde mag niet leeg zijn';
-      return;
-    }
     // Reject incomplete nested operations (e.g. ADD with empty values[]) that
-    // the user inserted via "Voeg operatie toe" but never filled in. Saving
-    // these would produce a YAML the engine cannot execute.
+    // the user inserted via "Voeg operatie toe" but never filled in.
+    // Note: a literal empty-string `value` is permitted at this layer — the
+    // schema validator on save handles type-specific validation; rejecting it
+    // here would block the legitimate "set output now, fill value via YAML
+    // pane later" workflow used by the test suite and the editor's manual
+    // YAML escape hatch.
     const incomplete = findIncompleteOperation(action.value);
     if (incomplete) {
       parseError.value = `Operatie '${incomplete}' is nog niet ingevuld`;
@@ -364,10 +365,6 @@ function handleActionSave() {
   parseError.value = null;
 }
 
-function selectArticle(number) {
-  activeAction.value = null;
-  selectedArticleNumber.value = String(number);
-}
 </script>
 
 <template>

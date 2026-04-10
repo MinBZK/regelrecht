@@ -167,23 +167,21 @@ test.describe('Complex actions', () => {
 
     const panel = page.locator('ndd-sheet');
 
-    // Click "Voeg operatie toe" to add a nested operation (use evaluate for ndd-button)
+    // Click "Voeg operatie toe" to add a nested ADD (empty values[])
     await panel.locator('[data-testid="add-nested-op-btn"]').evaluate(el => el.click());
     await page.waitForTimeout(200);
 
-    // Save
+    // Save should be rejected because the nested ADD has no values yet —
+    // saving a structurally-incomplete operation would produce YAML the
+    // engine cannot execute.
     await panel.locator('ndd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
-    // Verify YAML has the nested operation
-    const parsedYaml = await readYamlPane(page);
-    const action = parsedYaml.execution.actions[0];
-    expect(action.output).toBe('hoogte_zorgtoeslag');
-    expect(action.value.operation).toBe('MAX');
-    expect(action.value.values).toHaveLength(2);
-    expect(action.value.values[0]).toBe(0);
-    // The nested op should be an ADD with empty values
-    expect(action.value.values[1].operation).toBe('ADD');
-    expect(action.value.values[1].values).toEqual([]);
+    // The action sheet should still be open (save was blocked)
+    await expect(panel).toBeVisible();
+
+    // The middle pane should display the parse error from handleActionSave
+    const error = page.locator('.editor-parse-error-detail');
+    await expect(error).toContainText("Operatie 'ADD' is nog niet ingevuld");
   });
 });
