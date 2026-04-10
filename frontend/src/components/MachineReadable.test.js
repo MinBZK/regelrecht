@@ -278,4 +278,72 @@ describe('MachineReadable', () => {
       expect(wrapper.emitted('open-edit')).toBeUndefined();
     });
   });
+
+  describe('save bar', () => {
+    function findSaveButton(wrapper) {
+      return wrapper.find('[data-testid="save-mr-btn"]');
+    }
+
+    it('is hidden when editable is false', () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: false },
+      });
+      expect(findSaveButton(wrapper).exists()).toBe(false);
+    });
+
+    it('shows "Opgeslagen" and is disabled when not dirty', () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: true, dirty: false },
+      });
+      const btn = findSaveButton(wrapper);
+      expect(btn.exists()).toBe(true);
+      expect(btn.attributes('text')).toBe('Opgeslagen');
+      expect(btn.attributes('disabled')).toBe('true');
+    });
+
+    it('shows "Opslaan" and reports not-disabled when dirty', () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: true, dirty: true },
+      });
+      const btn = findSaveButton(wrapper);
+      expect(btn.attributes('text')).toBe('Opslaan');
+      // Vue serializes a reactive bool binding as "true"/"false" on a custom
+      // element; the string "false" means the button is enabled.
+      expect(btn.attributes('disabled')).toBe('false');
+    });
+
+    it('shows "Opslaan…" while saving regardless of dirty state', () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: true, dirty: true, saving: true },
+      });
+      const btn = findSaveButton(wrapper);
+      expect(btn.attributes('text')).toBe('Opslaan\u2026');
+      expect(btn.attributes('disabled')).toBe('true');
+    });
+
+    it('emits save on click when dirty', async () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: true, dirty: true },
+      });
+      await findSaveButton(wrapper).trigger('click');
+      expect(wrapper.emitted('save')).toHaveLength(1);
+    });
+
+    it('renders save error dialog when saveError is set', () => {
+      const err = new Error('Forbidden: read-only backend');
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: true, saveError: err },
+      });
+      const dialog = wrapper.find('[data-testid="save-mr-error"]');
+      expect(dialog.exists()).toBe(true);
+      expect(dialog.attributes('supporting-text')).toBe('Forbidden: read-only backend');
+    });
+
+    it('does not render save error dialog when saveError is null', () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: true, saveError: null },
+      });
+      expect(wrapper.find('[data-testid="save-mr-error"]').exists()).toBe(false);
+    });
+  });
 });

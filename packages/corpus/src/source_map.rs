@@ -495,6 +495,67 @@ mod tests {
     }
 
     #[test]
+    fn test_update_yaml_content_updates_existing_law() {
+        let dir = TempDir::new().unwrap();
+        write_yaml(dir.path(), "wet/test_wet/2025-01-01.yaml", "test_wet");
+
+        let source = make_source("central", "Central", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let original_file_path = map.get_law("test_wet").unwrap().file_path.clone();
+        let original_source_id = map.get_law("test_wet").unwrap().source_id.clone();
+        let original_priority = map.get_law("test_wet").unwrap().source_priority;
+
+        let new_content =
+            "$id: test_wet\nname: Updated Name\nregulatory_layer: WET\narticles: []\n".to_string();
+        let updated = map.update_yaml_content("test_wet", new_content.clone());
+
+        assert!(updated, "update should report success for existing law");
+        let law = map.get_law("test_wet").unwrap();
+        assert_eq!(law.yaml_content, new_content);
+        assert_eq!(law.name.as_deref(), Some("Updated Name"));
+        // Provenance is preserved — update_yaml_content only touches content + name.
+        assert_eq!(law.file_path, original_file_path);
+        assert_eq!(law.source_id, original_source_id);
+        assert_eq!(law.source_priority, original_priority);
+    }
+
+    #[test]
+    fn test_update_yaml_content_recomputes_name_to_none() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("wet/test_wet/2025-01-01.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            "$id: test_wet\nname: Original\nregulatory_layer: WET\narticles: []\n",
+        )
+        .unwrap();
+
+        let source = make_source("central", "Central", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+        assert_eq!(
+            map.get_law("test_wet").unwrap().name.as_deref(),
+            Some("Original")
+        );
+
+        // Remove the `name:` field — name should recompute to None.
+        let new_content = "$id: test_wet\nregulatory_layer: WET\narticles: []\n".to_string();
+        let updated = map.update_yaml_content("test_wet", new_content);
+        assert!(updated);
+        assert_eq!(map.get_law("test_wet").unwrap().name, None);
+    }
+
+    #[test]
+    fn test_update_yaml_content_missing_law_returns_false() {
+        let mut map = SourceMap::new();
+        let updated = map.update_yaml_content("nonexistent_law", "$id: foo\n".to_string());
+        assert!(!updated, "update should report failure for missing law");
+        assert_eq!(map.len(), 0, "missing law should not be inserted");
+    }
+
+    #[test]
     fn test_load_single_source() {
         let dir = TempDir::new().unwrap();
         write_yaml(dir.path(), "wet/test_wet/2025-01-01.yaml", "test_wet");

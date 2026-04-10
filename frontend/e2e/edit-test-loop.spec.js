@@ -78,10 +78,13 @@ function loadScenario(lawPath, filename) {
  * PUT save endpoint.
  */
 async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
-  // GET /api/corpus/laws — list for dependency discovery
+  // GET /api/corpus/laws — list for dependency discovery.
+  // Playwright runs route handlers in reverse registration order (LIFO), so
+  // the more specific `/api/corpus/laws/*` routes below take precedence for
+  // single-law and scenario paths; this bare-list handler only runs when no
+  // later route claims the request.
   await page.route('**/api/corpus/laws*', (route, request) => {
     const url = new URL(request.url());
-    // /api/corpus/laws/{id}... handled below
     if (url.pathname !== '/api/corpus/laws') {
       return route.fallback();
     }
@@ -250,8 +253,14 @@ test.describe('Edit → re-execute loop', () => {
     const mr = yaml.load(originalYaml);
 
     // Inject leeftijd input (sourced from BRP with a literal peildatum).
-    // BRP art 1.2 requires both bsn and peildatum; we use 2025-01-01 so
-    // the scenario's calculation date matches.
+    // BRP art 1.2 requires both bsn and peildatum; we use the scenario's
+    // calculation date as a literal here.
+    //
+    // NOTE: a literal date is intentional for test isolation — the spec must
+    // remain stable regardless of the real calculation date at CI time. The
+    // canonical production pattern (see `kieswet`) references a parameter
+    // like `peildatum: $verkiezingsdatum` so the date tracks the runtime
+    // context; don't copy the literal form into corpus laws.
     mr.execution.input.push({
       name: 'leeftijd',
       type: 'number',

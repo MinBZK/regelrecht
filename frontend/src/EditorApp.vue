@@ -158,8 +158,8 @@ function onMiddlePaneChange(event) {
 const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
 initEngine().catch(() => {});
 
-// Engine-loading watch is set up lower, after machineReadable + currentLawYaml
-// are declared (temporal dead zone).
+// The engine-loading watch lives below, next to `currentLawYaml`, so it
+// observes in-memory edits rather than only the persisted `rawYaml`.
 
 // --- Trace state (receives trace from last executed scenario) ---
 const lastTraceText = ref(null);
@@ -249,18 +249,18 @@ watch(
 );
 
 // Dirty state: the selected article's in-memory machine_readable differs
-// from the article's saved copy. Comparing canonical YAML dumps avoids
-// false positives from trivial key-order or whitespace differences that
-// a deep JS equality check would miss.
+// from the article's saved copy. `machineReadable.value` starts as a deep
+// JSON clone of `selectedArticle.machine_readable` (see the `watch` above),
+// so the two share the same key order until the user edits. That makes
+// `JSON.stringify` a cheap and sufficient structural comparison — we don't
+// need a canonical YAML dump here.
 const isMachineReadableDirty = computed(() => {
   if (!selectedArticle.value) return false;
   const saved = selectedArticle.value.machine_readable ?? null;
   const current = machineReadable.value ?? null;
   if (saved == null && current == null) return false;
   try {
-    const savedDump = saved ? yaml.dump(saved, dumpOpts) : '';
-    const currentDump = current ? yaml.dump(current, dumpOpts) : '';
-    return savedDump !== currentDump;
+    return JSON.stringify(saved) !== JSON.stringify(current);
   } catch {
     return true;
   }

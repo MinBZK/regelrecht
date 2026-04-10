@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use regelrecht_corpus::backend::{RepoBackend, WriteContext};
-use regelrecht_corpus::source_map::LoadedLaw;
+use regelrecht_corpus::source_map::{extract_law_id, LoadedLaw};
 use regelrecht_corpus::CorpusError;
 
 use crate::state::AppState;
@@ -487,7 +487,7 @@ pub async fn save_law(
     // `just validate`). Using the same line-based extractor the corpus
     // loader uses keeps the "is this a loadable law file?" check consistent
     // with how source_map decides which files to track.
-    let body_id = regelrecht_corpus::source_map::extract_law_id(&body).ok_or_else(|| {
+    let body_id = extract_law_id(&body).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             "Body missing top-level `$id` field".to_string(),
