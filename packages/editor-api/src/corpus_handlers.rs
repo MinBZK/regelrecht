@@ -388,14 +388,19 @@ async fn resolve_backend_for_law(
 /// error — which can include git stderr, repository URLs that may carry
 /// push tokens for local-only backends, and absolute filesystem paths — is
 /// logged at warn level for operators but never returned to the client.
-fn corpus_write_error(e: CorpusError) -> (StatusCode, String) {
-    match e {
+///
+/// `kind` is the short name of the resource being written ("scenario",
+/// "law", …) so logs and the user-facing 500 body name the right thing
+/// regardless of which handler is on the stack. The `FnOnce` wrapper is a
+/// convenience for `.map_err(corpus_write_error("law"))` at call sites.
+fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (StatusCode, String) {
+    move |e| match e {
         CorpusError::ReadOnly(_) => (StatusCode::FORBIDDEN, e.to_string()),
         _ => {
-            tracing::warn!(error = %e, "scenario write/persist failed");
+            tracing::warn!(error = %e, kind = %kind, "corpus write/persist failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal error while writing scenario".to_string(),
+                format!("Internal error while writing {}", kind),
             )
         }
     }
@@ -450,14 +455,14 @@ pub async fn save_scenario(
     backend
         .write_file(&relative_path, &body)
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
 
     backend
         .persist(&WriteContext {
             message: format!("Update scenario {} for {}", filename, law_id),
         })
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
 
     Ok(StatusCode::OK)
 }
@@ -528,13 +533,13 @@ pub async fn save_law(
         backend
             .write_file(&relative_path, &body)
             .await
-            .map_err(corpus_write_error)?;
+            .map_err(corpus_write_error("law"))?;
         backend
             .persist(&WriteContext {
                 message: format!("Update law {}", law_id),
             })
             .await
-            .map_err(corpus_write_error)?;
+            .map_err(corpus_write_error("law"))?;
     }
 
     // Refresh the in-memory cache so /api/corpus/laws/{law_id} (and
@@ -565,14 +570,14 @@ pub async fn delete_scenario(
     backend
         .delete_file(&relative_path)
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
 
     backend
         .persist(&WriteContext {
             message: format!("Delete scenario {} for {}", filename, law_id),
         })
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
 
     Ok(StatusCode::OK)
 }
