@@ -6,7 +6,7 @@ const props = defineProps({
   editable: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['open-action', 'open-edit']);
+const emit = defineEmits(['open-action', 'open-edit', 'init-mr', 'add-action']);
 
 const mr = computed(() => props.article?.machine_readable ?? null);
 const execution = computed(() => mr.value?.execution ?? null);
@@ -101,11 +101,13 @@ function addOutput() {
 </script>
 
 <template>
-  <ndd-simple-section v-if="!mr" align="center">
+  <ndd-simple-section v-if="!mr" align="center" data-testid="no-machine-readable">
     <ndd-inline-dialog text="Geen machine-leesbare gegevens voor dit artikel"></ndd-inline-dialog>
+    <ndd-spacer v-if="editable" size="8"></ndd-spacer>
+    <ndd-button v-if="editable" variant="primary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Initialiseer machine_readable"></ndd-button>
   </ndd-simple-section>
 
-  <ndd-simple-section v-else>
+  <ndd-simple-section v-else data-testid="machine-readable">
     <!-- Metadata: produces -->
     <ndd-list v-if="produces" variant="box">
       <ndd-list-item v-if="produces.legal_character" size="md">
@@ -126,7 +128,7 @@ function addOutput() {
 
     <!-- Definities -->
     <template v-if="definitions.length || editable">
-      <ndd-title size="5"><h5>Definities</h5></ndd-title>
+      <ndd-title size="5" data-testid="section-definitions"><h5>Definities</h5></ndd-title>
       <ndd-spacer size="8"></ndd-spacer>
       <ndd-list variant="box">
         <ndd-list-item v-for="def in definitions" :key="def.name" size="md">
@@ -144,7 +146,7 @@ function addOutput() {
 
     <!-- Parameters -->
     <template v-if="parameters.length || editable">
-      <ndd-title size="5"><h5>Parameters</h5></ndd-title>
+      <ndd-title size="5" data-testid="section-parameters"><h5>Parameters</h5></ndd-title>
       <ndd-spacer size="8"></ndd-spacer>
       <ndd-list variant="box">
         <ndd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
@@ -162,7 +164,7 @@ function addOutput() {
 
     <!-- Inputs -->
     <template v-if="inputs.length || editable">
-      <ndd-title size="5"><h5>Inputs</h5></ndd-title>
+      <ndd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></ndd-title>
       <ndd-spacer size="8"></ndd-spacer>
       <ndd-list variant="box">
         <ndd-list-item v-for="(input, index) in inputs" :key="input.name" size="md">
@@ -180,7 +182,7 @@ function addOutput() {
 
     <!-- Outputs -->
     <template v-if="outputs.length || editable">
-      <ndd-title size="5"><h5>Outputs</h5></ndd-title>
+      <ndd-title size="5" data-testid="section-outputs"><h5>Outputs</h5></ndd-title>
       <ndd-spacer size="8"></ndd-spacer>
       <ndd-list variant="box">
         <ndd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
@@ -197,8 +199,8 @@ function addOutput() {
     </template>
 
     <!-- Acties -->
-    <template v-if="actions.length">
-      <ndd-title size="5"><h5>Acties</h5></ndd-title>
+    <template v-if="actions.length || editable">
+      <ndd-title size="5" data-testid="section-actions"><h5>Acties</h5></ndd-title>
       <ndd-spacer size="8"></ndd-spacer>
       <ndd-list variant="box">
         <ndd-list-item v-for="(action, index) in actions" :key="index" size="md">
@@ -206,6 +208,9 @@ function addOutput() {
           <ndd-cell>
             <ndd-button @click="emit('open-action', action)" :text="editable ? 'Bewerk' : 'Bekijk'"></ndd-button>
           </ndd-cell>
+        </ndd-list-item>
+        <ndd-list-item v-if="editable" size="md">
+          <ndd-button start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Voeg actie toe"></ndd-button>
         </ndd-list-item>
       </ndd-list>
       <ndd-spacer size="16"></ndd-spacer>

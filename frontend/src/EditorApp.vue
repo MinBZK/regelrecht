@@ -7,6 +7,7 @@ import { useAuth } from './composables/useAuth.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
+import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
@@ -19,10 +20,23 @@ watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) 
   }
 });
 
+// All edit operations are gated behind SSO. When OIDC is configured the user
+// must be authenticated; when OIDC is disabled the editor is fully open.
+const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
+
 // --- Initial law load (from URL params) ---
 const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
 
 const middlePaneView = ref('form');
+const rightPaneView = ref('result');
+
+const middlePaneTitle = computed(() => middlePaneView.value === 'yaml' ? 'YAML' : 'Scenario\u2019s');
+const rightPaneTitle = computed(() => rightPaneView.value === 'machine' ? 'Machine' : 'Resultaat');
+
+function onRightPaneChange(event) {
+  const value = event.target?.value ?? event.detail?.[0];
+  if (value) rightPaneView.value = value;
+}
 
 // --- Multi-law tab state (persisted in localStorage) ---
 const TABS_STORAGE_KEY = 'regelrecht-open-tabs';
@@ -81,7 +95,11 @@ let switchGeneration = 0;
 async function selectTab(tab) {
   const gen = ++switchGeneration;
   activeTab.value = tab;
-  activeAction.value = null;
+  // Restore snapshot if the user is mid-edit, otherwise the partial mutations
+  // would persist into the new tab's view.
+  if (activeAction.value) {
+    handleActionClose();
+  }
   if (tab.lawId === lawId.value) {
     selectedArticleNumber.value = tab.articleNumber;
   } else {
@@ -227,6 +245,148 @@ function handleSave({ section, key, newKey, index, data }) {
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
 }
+
+// Initialize empty machine_readable scaffold
+function handleInitMr() {
+  machineReadable.value = {
+    definitions: {},
+    execution: {
+      parameters: [],
+      input: [],
+      output: [],
+      actions: [],
+    },
+  };
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+}
+
+// Add a new action and open ActionSheet
+let actionSnapshot = null;
+
+function handleAddAction() {
+  // Snapshot BEFORE any mutations so cancel restores the exact original state
+  actionSnapshot = JSON.stringify(machineReadable.value);
+  const mr = machineReadable.value || {};
+  if (!mr.execution) mr.execution = {};
+  if (!mr.execution.actions) mr.execution.actions = [];
+  const newAction = { output: '', value: '' };
+  mr.execution.actions.push(newAction);
+  machineReadable.value = { ...mr };
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+  activeAction.value = newAction;
+}
+
+function handleOpenAction(action) {
+  actionSnapshot = JSON.stringify(machineReadable.value);
+  activeAction.value = action;
+  // Clear any stale parse error from a previous failed save
+  parseError.value = null;
+}
+
+// Restore model from snapshot when ActionSheet is cancelled
+function handleActionClose() {
+  if (actionSnapshot) {
+    machineReadable.value = JSON.parse(actionSnapshot);
+    yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+    actionSnapshot = null;
+  }
+  activeAction.value = null;
+  // Clear any stale parse error from a failed save attempt
+  parseError.value = null;
+}
+
+const COMPARISON_OPS_SET = new Set([
+  'EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL',
+  'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'NOT_NULL', 'IN', 'NOT_IN',
+]);
+
+// Walk a value tree and report the first incomplete operation (e.g. a stub
+// `{ operation: 'ADD', values: [] }` that the user inserted via "Voeg operatie
+// toe" but never filled in). Returns null when the tree is structurally valid.
+function findIncompleteOperation(value) {
+  if (value == null || typeof value !== 'object') return null;
+  if (!value.operation) return null;
+  const op = value.operation;
+  // Arithmetic / logical ops need a non-empty values or conditions array
+  if (Array.isArray(value.values) && value.values.length === 0) return op;
+  if (Array.isArray(value.conditions) && value.conditions.length === 0) return op;
+  // IF/SWITCH need at least one case
+  if ((op === 'IF' || op === 'SWITCH') && (!Array.isArray(value.cases) || value.cases.length === 0)) return op;
+  // Comparison ops need a non-empty subject (and value, except for NOT_NULL).
+  // changeOperationType / addNestedOperation seed these as empty strings, so
+  // we must reject the stub before persisting. IN/NOT_IN accept either a
+  // variable reference (e.g. "$list") or a literal non-empty array; both
+  // are non-empty by the same value !== '' / array.length > 0 check.
+  if (COMPARISON_OPS_SET.has(op)) {
+    if ((value.subject ?? '') === '') return op;
+    if (op !== 'NOT_NULL') {
+      const v = value.value;
+      if (v == null || v === '') return op;
+      if (Array.isArray(v) && v.length === 0) return op;
+    }
+  }
+  // NOT wraps a single value/operation; reject the empty-string stub created
+  // when transitioning from arithmetic ops via changeOperationType.
+  if (op === 'NOT' && (value.value ?? '') === '') return op;
+  // Recurse into structural slots
+  for (const child of [value.subject, value.value, value.default]) {
+    const inner = findIncompleteOperation(child);
+    if (inner) return inner;
+  }
+  if (Array.isArray(value.values)) {
+    for (const v of value.values) {
+      const inner = findIncompleteOperation(v);
+      if (inner) return inner;
+    }
+  }
+  if (Array.isArray(value.conditions)) {
+    for (const c of value.conditions) {
+      const inner = findIncompleteOperation(c);
+      if (inner) return inner;
+    }
+  }
+  if (Array.isArray(value.cases)) {
+    for (const c of value.cases) {
+      const inner = findIncompleteOperation(c?.when) || findIncompleteOperation(c?.then);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
+// Sync YAML when ActionSheet saves (mutations happened in-place)
+function handleActionSave() {
+  const action = activeAction.value;
+  if (action) {
+    // Output is required by the schema and the engine cannot load a law
+    // with an action that has an empty output name.
+    if (action.output == null || String(action.output).trim() === '') {
+      parseError.value = 'Output mag niet leeg zijn';
+      return;
+    }
+    // Reject incomplete nested operations (e.g. ADD with empty values[]) that
+    // the user inserted via "Voeg operatie toe" but never filled in.
+    // Note: a literal empty-string `value` is permitted at this layer — the
+    // schema validator on save handles type-specific validation; rejecting it
+    // here would block the legitimate "set output now, fill value via YAML
+    // pane later" workflow used by the test suite and the editor's manual
+    // YAML escape hatch.
+    const incomplete = findIncompleteOperation(action.value);
+    if (incomplete) {
+      parseError.value = `Operatie '${incomplete}' is nog niet ingevuld`;
+      return;
+    }
+  }
+  actionSnapshot = null;
+  activeAction.value = null;
+  // Re-assign to trigger reactivity + re-dump YAML
+  machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+}
+
 </script>
 
 <template>
@@ -318,7 +478,7 @@ function handleSave({ section, key, newKey, index, data }) {
           <!-- Middle: Form or YAML -->
           <ndd-split-view-pane slot="pane-2">
             <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" text="Scenario's">
+              <ndd-top-title-bar slot="header" :text="middlePaneTitle">
                 <ndd-segmented-control slot="toolbar" size="md" :value="middlePaneView" @change="onMiddlePaneChange">
                   <ndd-segmented-control-item value="form" text="Scenario's"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
@@ -360,17 +520,35 @@ function handleSave({ section, key, newKey, index, data }) {
             </ndd-page>
           </ndd-split-view-pane>
 
-          <!-- Right: Execution Result -->
+          <!-- Right: Execution Result or Machine Readable -->
           <ndd-split-view-pane slot="pane-3">
             <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" text="Resultaat"></ndd-top-title-bar>
+              <ndd-top-title-bar slot="header" :text="rightPaneTitle">
+                <ndd-segmented-control slot="toolbar" size="md" :value="rightPaneView" @change="onRightPaneChange">
+                  <ndd-segmented-control-item value="result" text="Resultaat"></ndd-segmented-control-item>
+                  <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
+                </ndd-segmented-control>
+              </ndd-top-title-bar>
 
               <ExecutionTraceView
+                v-if="rightPaneView === 'result'"
                 :result="lastResult"
                 :trace-text="lastTraceText"
                 :error="lastError"
                 :expectations="lastExpectations"
               />
+
+              <!-- Machine view: structured editor -->
+              <ndd-simple-section v-else-if="rightPaneView === 'machine'">
+                <MachineReadable
+                  :article="editedArticle"
+                  :editable="canEdit"
+                  @open-action="handleOpenAction"
+                  @open-edit="activeEditItem = $event"
+                  @init-mr="handleInitMr"
+                  @add-action="handleAddAction"
+                />
+              </ndd-simple-section>
             </ndd-page>
           </ndd-split-view-pane>
         </ndd-side-by-side-split-view>
@@ -378,7 +556,7 @@ function handleSave({ section, key, newKey, index, data }) {
     </ndd-bar-split-view>
   </ndd-app-view>
 
-  <ActionSheet :action="activeAction" :article="editedArticle" @close="activeAction = null" />
+  <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" @save="handleSave" @close="activeEditItem = null" />
 </template>
 
