@@ -143,6 +143,10 @@ function execute() {
     }
   } finally {
     running.value = false;
+    // Always emit so the parent's result panel reflects the latest state,
+    // including the error path: getExecutionData() returns the error and
+    // any partial trace, which the parent renders instead of stale data
+    // from a previous successful run.
     emit('executed', getExecutionData());
   }
 }

@@ -183,7 +183,16 @@ impl RepoBackend for LocalBackend {
             let probe = self.root.join(".write-probe");
             match tokio::fs::write(&probe, b"").await {
                 Ok(()) => {
-                    let _ = tokio::fs::remove_file(&probe).await;
+                    if let Err(e) = tokio::fs::remove_file(&probe).await {
+                        // The write succeeded but cleanup failed — leave a
+                        // visible warning rather than silently leaving a
+                        // .write-probe file behind in the source root.
+                        tracing::warn!(
+                            path = %probe.display(),
+                            error = %e,
+                            "failed to remove write probe file after success"
+                        );
+                    }
                 }
                 Err(_) => {
                     tracing::info!(

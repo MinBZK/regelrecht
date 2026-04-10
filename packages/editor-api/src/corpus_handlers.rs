@@ -293,10 +293,18 @@ struct ResolvedBackend {
 
 /// Look up a writable backend for a law.
 ///
-/// First tries the law's own source backend. If that backend is not writable
-/// (e.g. read-only container filesystem), falls back to any writable backend.
-/// This allows deployed editors to write to a git repo even when laws are
-/// loaded from a baked-in local source.
+/// Only the law's *own* source backend is considered. Earlier revisions of
+/// this PR fell back to "any writable backend" to support deployments where
+/// laws were baked into a read-only local source while git pushes had to go
+/// elsewhere — but the path that gets written is always
+/// `law.relative_path`, which is relative to the **law's own** source root.
+/// Writing that path through a backend rooted at a different source silently
+/// produces files at the wrong location (e.g. `wet/foo/scenarios/x.feature`
+/// in a backend whose laws actually live under `regulation/nl/`), and the
+/// reader side never sees them.
+///
+/// Operators who need cross-source writes must configure the law's own
+/// source as writable rather than relying on an implicit fallback.
 fn resolve_writable_backend(
     corpus: &crate::state::CorpusState,
     law_id: &str,
@@ -307,26 +315,19 @@ fn resolve_writable_backend(
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
         .clone();
 
-    // Try the law's own backend first, then fall back to any other backend.
-    // The fallback picks the backend with the lowest source ID (alphabetical)
-    // for deterministic behaviour across restarts.
-    let backend = if let Some(b) = corpus.backends.get(&law.source_id) {
-        b.clone()
-    } else if let Some((fallback_id, b)) = corpus.backends.iter().min_by_key(|(k, _)| (*k).clone())
-    {
-        tracing::warn!(
-            law_id = %law_id,
-            law_source = %law.source_id,
-            fallback_source = %fallback_id,
-            "law's own source has no write backend, falling back to a different source"
-        );
-        b.clone()
-    } else {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "No write backend available".to_string(),
-        ));
-    };
+    let backend = corpus
+        .backends
+        .get(&law.source_id)
+        .cloned()
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                format!(
+                "No writable backend registered for source '{}' (the source that owns law '{}')",
+                law.source_id, law_id
+            ),
+            )
+        })?;
 
     Ok(ResolvedBackend { law, backend })
 }
