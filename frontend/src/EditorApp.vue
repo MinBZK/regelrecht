@@ -287,11 +287,13 @@ function findIncompleteOperation(value) {
   if (value == null || typeof value !== 'object') return null;
   if (!value.operation) return null;
   const op = value.operation;
-  // Arithmetic / logical / set ops need a non-empty values or conditions array
+  // Arithmetic / logical ops need a non-empty values or conditions array
   if (Array.isArray(value.values) && value.values.length === 0) return op;
   if (Array.isArray(value.conditions) && value.conditions.length === 0) return op;
+  // IF/SWITCH need at least one case
+  if ((op === 'IF' || op === 'SWITCH') && (!Array.isArray(value.cases) || value.cases.length === 0)) return op;
   // Recurse into structural slots
-  for (const child of [value.subject, value.value, value.when, value.then, value.else, value.default]) {
+  for (const child of [value.subject, value.value, value.default]) {
     const inner = findIncompleteOperation(child);
     if (inner) return inner;
   }

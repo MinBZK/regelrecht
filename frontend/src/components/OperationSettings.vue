@@ -70,12 +70,16 @@ function canRemoveValue(val) {
   const node = props.operation?.node;
   const op = props.operation?.operation;
   if (isComparisonOp.value && (val._kind === 'subject' || val._kind === 'value')) return false;
-  // IF needs when/then/else
-  if (op === 'IF' && (val._kind === 'when' || val._kind === 'then' || val._kind === 'else')) return false;
   // NOT needs value
   if (op === 'NOT' && val._kind === 'value') return false;
-  // SWITCH needs a default branch
-  if (op === 'SWITCH' && val._kind === 'default') return false;
+  // IF and SWITCH share the cases[]/default schema and both need a default branch
+  if ((op === 'IF' || op === 'SWITCH') && val._kind === 'default') return false;
+  // IF must keep its single case; SWITCH must keep at least one case.
+  // Removing the case-when or case-then deletes the whole case entry.
+  if ((val._kind === 'case-when' || val._kind === 'case-then') && Array.isArray(node?.cases)) {
+    if (op === 'IF') return false;
+    if (op === 'SWITCH' && node.cases.length <= 1) return false;
+  }
   // AND/OR/arithmetic ops need at least one entry — block removal of the
   // last condition or value so the user can't drain conditions: [] / values: []
   // and produce a semantically undefined node.
@@ -97,23 +101,20 @@ const operationValues = computed(() => {
     return vals;
   }
 
-  if (node.operation === 'IF') {
+  // IF and SWITCH share the same cases[]/default schema. The only difference
+  // is semantic (IF is single-case, SWITCH is multi-case) and how the user
+  // labels each branch.
+  if (node.operation === 'IF' || node.operation === 'SWITCH') {
     const vals = [];
-    if (node.when) vals.push({ _label: 'Voorwaarde', _value: node.when, _kind: 'when' });
-    if (node.then !== undefined) vals.push({ _label: 'Dan', _value: node.then, _kind: 'then' });
-    if (node.else !== undefined) vals.push({ _label: 'Anders', _value: node.else, _kind: 'else' });
-    return vals;
-  }
-
-  if (node.operation === 'SWITCH') {
-    const vals = [];
+    const isSwitch = node.operation === 'SWITCH';
     if (Array.isArray(node.cases)) {
       node.cases.forEach((c, i) => {
-        if (c.when !== undefined) vals.push({ _label: `Geval ${i + 1} — als`, _value: c.when, _kind: 'case-when', _caseIndex: i });
-        if (c.then !== undefined) vals.push({ _label: `Geval ${i + 1} — dan`, _value: c.then, _kind: 'case-then', _caseIndex: i });
+        const prefix = isSwitch ? `Geval ${i + 1} — ` : '';
+        if (c?.when !== undefined) vals.push({ _label: `${prefix}als`, _value: c.when, _kind: 'case-when', _caseIndex: i });
+        if (c?.then !== undefined) vals.push({ _label: `${prefix}dan`, _value: c.then, _kind: 'case-then', _caseIndex: i });
       });
     }
-    if (node.default !== undefined) vals.push({ _label: 'Standaard', _value: node.default, _kind: 'default' });
+    if (node.default !== undefined) vals.push({ _label: isSwitch ? 'Standaard' : 'Anders', _value: node.default, _kind: 'default' });
     return vals;
   }
 
@@ -202,15 +203,18 @@ function changeOperationType(event) {
     delete node.then;
     delete node.else;
   } else if (newType === 'IF') {
-    if (!node.when) node.when = { operation: 'EQUALS', subject: '', value: '' };
-    if (node.then === undefined) node.then = 0;
-    if (node.else === undefined) node.else = 0;
+    // IF uses the same cases[]/default schema as SWITCH (one case for IF).
+    if (!Array.isArray(node.cases) || node.cases.length === 0) {
+      node.cases = [{ when: { operation: 'EQUALS', subject: '', value: '' }, then: 0 }];
+    }
+    if (node.default === undefined) node.default = 0;
     delete node.values;
     delete node.conditions;
-    delete node.cases;
-    delete node.default;
     delete node.subject;
     delete node.value;
+    delete node.when;
+    delete node.then;
+    delete node.else;
   } else if (newType === 'NOT') {
     if (node.value === undefined) {
       node.value = node.subject ?? '';
@@ -224,8 +228,11 @@ function changeOperationType(event) {
     delete node.then;
     delete node.else;
   } else if (newType === 'SWITCH') {
-    if (!Array.isArray(node.cases)) node.cases = [];
-    if (node.default === undefined) node.default = '';
+    // Schema requires at least one case
+    if (!Array.isArray(node.cases) || node.cases.length === 0) {
+      node.cases = [{ when: { operation: 'EQUALS', subject: '', value: '' }, then: 0 }];
+    }
+    if (node.default === undefined) node.default = 0;
     delete node.values;
     delete node.conditions;
     delete node.subject;
@@ -248,42 +255,32 @@ function changeOperationType(event) {
   }
 }
 
-function updateValue(val, event) {
+function applyValueMutation(val, newVal) {
   const node = props.operation?.node;
   if (!node) return;
-  const newVal = parseInputValue(event.target?.value ?? event.detail?.value ?? '');
-
   if (val._kind === 'subject') node.subject = newVal;
   else if (val._kind === 'value') node.value = newVal;
-  else if (val._kind === 'when') node.when = newVal;
-  else if (val._kind === 'then') node.then = newVal;
-  else if (val._kind === 'else') node.else = newVal;
   else if (val._kind === 'values' && val._index !== undefined) node.values[val._index] = newVal;
   else if (val._kind === 'conditions' && val._index !== undefined) node.conditions[val._index] = newVal;
   else if (val._kind === 'default') node.default = newVal;
-  else if (val._kind === 'case-when') node.cases[val._caseIndex].when = newVal;
-  else if (val._kind === 'case-then') node.cases[val._caseIndex].then = newVal;
+  else if (val._kind === 'case-when' && val._caseIndex !== undefined && Array.isArray(node.cases)) {
+    node.cases[val._caseIndex].when = newVal;
+  } else if (val._kind === 'case-then' && val._caseIndex !== undefined && Array.isArray(node.cases)) {
+    node.cases[val._caseIndex].then = newVal;
+  }
+}
+
+function updateValue(val, event) {
+  const newVal = parseInputValue(event.target?.value ?? event.detail?.value ?? '');
+  applyValueMutation(val, newVal);
 }
 
 function updateDropdownValue(val, event) {
-  const node = props.operation?.node;
-  if (!node) return;
   const selected = event.target.value;
   if (selected === '__nested__') return;
   if (isNestedOperation(val._value)) return;
-
   const newVal = selected.startsWith('$') ? selected : parseInputValue(selected);
-
-  if (val._kind === 'subject') node.subject = newVal;
-  else if (val._kind === 'value') node.value = newVal;
-  else if (val._kind === 'when') node.when = newVal;
-  else if (val._kind === 'then') node.then = newVal;
-  else if (val._kind === 'else') node.else = newVal;
-  else if (val._kind === 'values' && val._index !== undefined) node.values[val._index] = newVal;
-  else if (val._kind === 'conditions' && val._index !== undefined) node.conditions[val._index] = newVal;
-  else if (val._kind === 'default') node.default = newVal;
-  else if (val._kind === 'case-when') node.cases[val._caseIndex].when = newVal;
-  else if (val._kind === 'case-then') node.cases[val._caseIndex].then = newVal;
+  applyValueMutation(val, newVal);
 }
 
 function removeValue(val) {
@@ -298,16 +295,8 @@ function removeValue(val) {
     delete node.subject;
   } else if (val._kind === 'value') {
     delete node.value;
-  } else if (val._kind === 'when') {
-    delete node.when;
-  } else if (val._kind === 'then') {
-    delete node.then;
-  } else if (val._kind === 'else') {
-    delete node.else;
-  } else if (val._kind === 'case-when' && val._caseIndex !== undefined && Array.isArray(node.cases)) {
-    // Removing the predicate from a switch case removes the whole case entry
-    node.cases.splice(val._caseIndex, 1);
-  } else if (val._kind === 'case-then' && val._caseIndex !== undefined && Array.isArray(node.cases)) {
+  } else if ((val._kind === 'case-when' || val._kind === 'case-then') && val._caseIndex !== undefined && Array.isArray(node.cases)) {
+    // Removing either side of a case entry removes the whole case
     node.cases.splice(val._caseIndex, 1);
   } else if (val._kind === 'default') {
     delete node.default;
