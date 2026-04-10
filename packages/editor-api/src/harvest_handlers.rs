@@ -149,7 +149,9 @@ async fn create_harvest_job(pool: &PgPool, slug: &str, bwb_id: &str) -> HarvestS
     let result = sqlx::query_scalar::<_, uuid::Uuid>(
         "INSERT INTO jobs (id, job_type, law_id, status, priority, payload) \
          VALUES (gen_random_uuid(), 'harvest', $1, 'pending', $2, $3) \
-         ON CONFLICT DO NOTHING \
+         ON CONFLICT (law_id, job_type) \
+             WHERE job_type = 'harvest' AND status IN ('pending', 'processing') \
+             DO NOTHING \
          RETURNING id",
     )
     .bind(bwb_id)
