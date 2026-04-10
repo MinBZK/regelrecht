@@ -350,7 +350,7 @@ function addNestedOperation() {
       <h4>Instellingen operatie {{ operation.number }}</h4>
       <ndd-icon-button slot="actions" icon="ellipsis" title="Meer opties"></ndd-icon-button>
     </ndd-title>
-    <ndd-spacer size="4"></ndd-spacer>
+    <ndd-spacer size="12"></ndd-spacer>
     <ndd-list variant="box" class="settings-list">
       <!-- Titel -->
       <ndd-list-item size="md">
@@ -411,6 +411,14 @@ function addNestedOperation() {
 </template>
 
 <style>
+/* Reset browser default h4 margin so the ndd-spacer below the title is the
+ * only source of vertical gap. Without this the h4's default bottom margin
+ * (~1em) collapses into the spacer unpredictably, which caused the
+ * "textboxes falling under the title" visual in the action panel. */
+ndd-title h4 {
+  margin: 0;
+}
+
 .settings-list ndd-cell {
   flex: 1;
   min-width: 0;
