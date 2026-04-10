@@ -157,8 +157,14 @@ export function useLaw(lawParam) {
         },
       );
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `Save failed: ${res.status}`);
+        // res.text() can throw on a network drop after headers; if that
+        // happens we still want to surface the HTTP status, not whatever
+        // confusing low-level error the body read produced.
+        let text = `Save failed: ${res.status}`;
+        try {
+          text = (await res.text()) || text;
+        } catch { /* keep status fallback */ }
+        throw new Error(text);
       }
       // Parse once and reuse for both reactive state and the shared
       // lawCache so they remain referentially consistent.

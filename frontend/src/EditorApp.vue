@@ -198,6 +198,21 @@ const editedArticle = computed(() => {
   return { ...selectedArticle.value, machine_readable: machineReadable.value };
 });
 
+// Parse rawYaml once per law load into a reusable document skeleton. The
+// computed below splices in the currently edited article's
+// machine_readable on every reactive change, so without this cache each
+// keystroke in the YAML textarea would re-parse the whole ~25-200 KiB law
+// on the main thread. Hoisting the parse to a computed keyed only on
+// rawYaml drops that cost to one parse per load.
+const parsedRawLaw = computed(() => {
+  if (!rawYaml.value) return null;
+  try {
+    return yaml.load(rawYaml.value);
+  } catch {
+    return null;
+  }
+});
+
 // Reactive "edited" law YAML: rawYaml with the currently selected article's
 // machine_readable substituted in. This is what flows into the engine and
 // into ScenarioBuilder, so in-memory edits re-execute scenarios without a
@@ -211,10 +226,16 @@ const currentLawYaml = computed(() => {
   if (!selectedArticle.value || machineReadable.value == null) {
     return rawYaml.value;
   }
+  const base = parsedRawLaw.value;
+  if (!base) return rawYaml.value;
   try {
-    const doc = yaml.load(rawYaml.value);
-    const docArticles = doc?.articles;
-    if (!Array.isArray(docArticles)) return rawYaml.value;
+    // Shallow-clone the doc and the articles array so our splice doesn't
+    // mutate the memoized `parsedRawLaw` value — Vue would consider the
+    // computed still fresh but the next read would see our substituted
+    // article instead of the original.
+    const doc = { ...base };
+    const docArticles = Array.isArray(base.articles) ? [...base.articles] : null;
+    if (!docArticles) return rawYaml.value;
     const idx = docArticles.findIndex(
       (a) => String(a.number) === String(selectedArticleNumber.value),
     );
@@ -223,6 +244,7 @@ const currentLawYaml = computed(() => {
       ...docArticles[idx],
       machine_readable: machineReadable.value,
     };
+    doc.articles = docArticles;
     return yaml.dump(doc, dumpOpts);
   } catch {
     return rawYaml.value;
@@ -277,9 +299,17 @@ async function handleMachineReadableSave() {
   if (!lawYaml) return;
   try {
     await saveLaw(lawYaml);
-    // After save, `rawYaml` is the saved text; `selectedArticle` reflects
-    // the new machine_readable, so `isMachineReadableDirty` recomputes to
-    // false naturally. No extra bookkeeping needed.
+    // After save, `rawYaml` is the saved text and `selectedArticle` now
+    // points at the re-parsed article. We could rely on the `watch`
+    // further up to re-sync `machineReadable` from the new selectedArticle,
+    // but that watcher fires on the next microtask — leaving a window
+    // where `isMachineReadableDirty` still sees the pre-save object and
+    // the save button stays enabled, enabling a double-save click. Reset
+    // `machineReadable` explicitly from the freshly-parsed article so the
+    // dirty flag clears synchronously with the save.
+    const fresh = selectedArticle.value?.machine_readable ?? null;
+    machineReadable.value = fresh ? JSON.parse(JSON.stringify(fresh)) : null;
+    yamlSource.value = fresh ? yaml.dump(fresh, dumpOpts) : '';
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
     console.warn('saveLaw failed:', e);

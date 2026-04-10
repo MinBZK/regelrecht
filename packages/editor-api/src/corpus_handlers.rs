@@ -533,13 +533,18 @@ pub async fn save_law(
     };
 
     if !resolved.writable {
+        // Log the internal source id for operators but keep it out of the
+        // HTTP body — `source_id` is a registry key ("central",
+        // "local-scratch", …) and leaking it exposes internal
+        // infrastructure naming for no caller-side benefit.
+        tracing::warn!(
+            law_id = %law_id,
+            source_id = %resolved.law.source_id,
+            "save_law: no writable backend for law"
+        );
         return Err((
             StatusCode::FORBIDDEN,
-            format!(
-                "No writable backend available for law '{}' (source '{}' is read-only \
-                 and no other registered source contains a matching copy of the law)",
-                law_id, resolved.law.source_id
-            ),
+            format!("Law '{}' is stored on a read-only source", law_id),
         ));
     }
 
