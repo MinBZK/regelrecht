@@ -190,10 +190,44 @@ describe('EditSheet', () => {
         },
       });
 
-      expect(wrapper.vm.values.sourceParameters).toEqual([
+      // Each row also carries a stable `_rowId` so v-for keys survive
+      // deletion; assert key/value pairs ignoring the auxiliary id.
+      const rows = wrapper.vm.values.sourceParameters.map(
+        ({ key, value }) => ({ key, value }),
+      );
+      expect(rows).toEqual([
         { key: 'bsn', value: '$bsn' },
         { key: 'peildatum', value: '2025-01-01' },
       ]);
+    });
+
+    it('skips non-scalar source.parameter values on hydration', async () => {
+      const wrapper = mountSheet();
+      const warnings = [];
+      const origWarn = console.warn;
+      console.warn = (msg) => warnings.push(String(msg));
+
+      try {
+        await setItem(wrapper, {
+          section: 'input',
+          index: 0,
+          data: {
+            name: 'leeftijd',
+            source: {
+              parameters: {
+                bsn: '$bsn',
+                nested: { foo: 'bar' }, // unsupported in form editor
+              },
+            },
+          },
+        });
+      } finally {
+        console.warn = origWarn;
+      }
+
+      const rows = wrapper.vm.values.sourceParameters.map(({ key }) => key);
+      expect(rows).toEqual(['bsn']);
+      expect(warnings.some((m) => m.includes('nested'))).toBe(true);
     });
 
     it('skips source.parameters rows with empty key on save', async () => {

@@ -87,9 +87,10 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     await expect(minorHeader).toHaveClass(/sb-header--fail/);
 
     // --- Toggle right pane to Machine view ---
-    // Two ndd-segmented-controls live in the layout: middle (form/yaml)
-    // and right (result/machine). The right pane's is the second one.
-    await page.locator('ndd-segmented-control').nth(1).evaluate((el) => {
+    // EditorApp tags both segmented controls with data-testids so the
+    // spec doesn't have to rely on positional `.nth()` selectors that
+    // would silently break on layout reorder.
+    await page.locator('[data-testid="right-pane-toggle"]').evaluate((el) => {
       el.value = 'machine';
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
@@ -194,19 +195,27 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
       .locator('[data-testid="parent-op-1-edit-btn"]')
       .evaluate((el) => el.click());
 
+    // The AND already has 3 conditions in zorgtoeslag article 2; each
+    // surfaces as a `p.value-help-text` row with a "Bewerk" link. Snapshot
+    // the count so we can assert the next click added a fourth row before
+    // we try to interact with it (otherwise `.last()` could race against
+    // Vue's flush and target the pre-existing third condition).
+    const conditionLinks = actionSheet.locator('p.value-help-text a');
+    const initialConditionCount = await conditionLinks.count();
+
     // Now OperationSettings shows the AND. Click "Voeg operatie toe"
     // which appends a fresh EQUALS condition to the AND's conditions[].
     await actionSheet
       .locator('[data-testid="add-nested-op-btn"]')
       .click();
 
+    // Wait for the new condition's row to render before clicking it.
+    await expect(conditionLinks).toHaveCount(initialConditionCount + 1);
+
     // The new condition appears as the last value row. Its "Bewerk" link
     // is inside the value-help-text paragraph; clicking it selects the
     // new operation in OperationSettings.
-    const lastConditionLink = actionSheet
-      .locator('p.value-help-text a')
-      .last();
-    await lastConditionLink.click();
+    await conditionLinks.last().click();
 
     // --- Configure the new condition ---
     // Change operation type to GREATER_THAN_OR_EQUAL via the dropdown.

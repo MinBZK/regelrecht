@@ -75,10 +75,8 @@ test.describe('Edit → re-execute loop', () => {
     // a custom element whose click target lives in shadow DOM, so instead
     // of clicking we synthesize the change event the way EditorApp's
     // `onMiddlePaneChange` handler expects: it reads `event.target.value`
-    // first, then falls back to `event.detail[0]`. The first
-    // ndd-segmented-control in the page is the middle pane's form/yaml
-    // toggle (the right pane's result/machine toggle comes after it).
-    await page.locator('ndd-segmented-control').first().evaluate((el) => {
+    // first, then falls back to `event.detail[0]`.
+    await page.locator('[data-testid="middle-pane-toggle"]').evaluate((el) => {
       el.value = 'yaml';
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
@@ -149,7 +147,7 @@ test.describe('Edit → re-execute loop', () => {
     // again. The middle pane only shows one of the two views at a time;
     // remounting ScenarioBuilder kicks off its immediate `lawYaml` watch,
     // which reloads dependencies against the edited law and re-executes.
-    await page.locator('ndd-segmented-control').first().evaluate((el) => {
+    await page.locator('[data-testid="middle-pane-toggle"]').evaluate((el) => {
       el.value = 'form';
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });

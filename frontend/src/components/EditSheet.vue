@@ -12,6 +12,16 @@ const values = ref({});
 
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
 
+// Monotonic counter for stable v-for keys on the source.parameters rows.
+// We can't use the row index as a key because that would let Vue reuse the
+// DOM (and the per-row data-testid attributes) across deletions, which
+// confuses focus, the testid contract, and the data-testid-bound e2e
+// helpers. Each row gets a fresh _rowId when pushed onto the array.
+let nextRowId = 1;
+function makeParamRow(key = '', value = '') {
+  return { _rowId: nextRowId++, key, value };
+}
+
 // Type inference for controls
 function inferControlType(value, unit) {
   if (typeof value === 'boolean') return 'boolean';
@@ -62,10 +72,34 @@ watch(() => props.item, async (item) => {
     // user can edit existing entries and add new ones via the form. We use
     // an array (not an object) because two rows can briefly share an empty
     // key while typing, and Object.entries would silently collapse them.
+    //
+    // Each row carries a stable `_rowId` so the v-for key survives row
+    // deletions (otherwise Vue reuses DOM by index and the data-testids
+    // bound to row positions point at stale rows).
+    //
+    // Hydration is value-type aware:
+    //   - string / number / boolean → represent as a string the user can
+    //     edit. Numbers and booleans round-trip via JSON-ish parsing on
+    //     save (see `save()` below).
+    //   - object / array → unsupported in the form editor today (no UI
+    //     for nested literal values). Skip with a warning rather than
+    //     stringify them to "[object Object]" and silently corrupt the
+    //     law on the next save. The user can still edit such inputs via
+    //     the YAML pane.
     const params = item.data?.source?.parameters;
-    const paramList = params && typeof params === 'object'
-      ? Object.entries(params).map(([k, v]) => ({ key: k, value: typeof v === 'string' ? v : String(v) }))
-      : [];
+    const paramList = [];
+    if (params && typeof params === 'object') {
+      for (const [k, v] of Object.entries(params)) {
+        if (v == null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+          paramList.push(makeParamRow(k, v == null ? '' : String(v)));
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `EditSheet: skipping non-scalar source.parameter '${k}' for input '${item.data?.name}'. Edit via the YAML pane.`,
+          );
+        }
+      }
+    }
     values.value = {
       name: item.data?.name ?? '',
       type: item.data?.type ?? 'string',
@@ -262,7 +296,7 @@ const sectionLabels = {
             <ndd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
               <ndd-list-item
                 v-for="(param, idx) in values.sourceParameters"
-                :key="idx"
+                :key="param._rowId"
                 size="md"
               >
                 <ndd-cell>
@@ -297,7 +331,7 @@ const sectionLabels = {
                   start-icon="plus-small"
                   data-testid="source-param-add-btn"
                   text="Voeg parameter toe"
-                  @click="values.sourceParameters.push({ key: '', value: '' })"
+                  @click="values.sourceParameters.push(makeParamRow())"
                 ></ndd-button>
               </ndd-list-item>
             </ndd-list>
