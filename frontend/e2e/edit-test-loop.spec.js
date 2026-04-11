@@ -20,174 +20,8 @@
  * reproduces the real dependency graph.
  */
 import { test, expect } from '@playwright/test';
-import { readFileSync, readdirSync, statSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CORPUS_ROOT = resolve(__dirname, '../../corpus/regulation/nl');
-
-/**
- * Recursively walk a corpus directory and pick one YAML per `$id`,
- * preferring the latest publication date. Returns a map from law id →
- * { content: string, path: string }.
- *
- * NOTE: this picks by `publication_date` (lexicographic compare),
- * whereas the editor-api's `SourceMap::pick_best_version` selects by
- * `valid_from` against today's date. The two will agree as long as
- * each law in the test corpus has only one dated file (the case for
- * zorgtoeslagwet today). If a future test fixture introduces multiple
- * dated files for the same `$id`, align this with the server logic
- * to avoid the spec serving a different version than the editor would
- * see in production.
- */
-function loadCorpus(rootDir) {
-  const byId = new Map();
-
-  function visit(dir) {
-    for (const entry of readdirSync(dir)) {
-      const full = resolve(dir, entry);
-      if (statSync(full).isDirectory()) {
-        visit(full);
-      } else if (entry.endsWith('.yaml')) {
-        const content = readFileSync(full, 'utf-8');
-        const idMatch = content.match(/^\$id:\s*['"]?([^'"\n]+)['"]?$/m);
-        if (!idMatch) continue;
-        const lawId = idMatch[1].trim();
-        const pubMatch = content.match(/^publication_date:\s*['"]?([^'"\n]+)['"]?$/m);
-        const pubDate = pubMatch ? pubMatch[1].trim() : '';
-        const existing = byId.get(lawId);
-        if (!existing || pubDate > existing.pubDate) {
-          byId.set(lawId, { content, path: full, pubDate });
-        }
-      }
-    }
-  }
-
-  visit(rootDir);
-  return byId;
-}
-
-/**
- * Find the scenario file for a law. Returns the raw `.feature` text or null.
- */
-function loadScenario(lawPath, filename) {
-  const scenariosDir = resolve(dirname(lawPath), 'scenarios');
-  try {
-    return readFileSync(resolve(scenariosDir, filename), 'utf-8');
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Set up route intercepts so the editor can fetch any law in the corpus
- * without a running editor-api. Also stubs the scenarios list/get and the
- * PUT save endpoint.
- */
-async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
-  // GET /api/corpus/laws — list for dependency discovery.
-  // Playwright runs route handlers in reverse registration order (LIFO), so
-  // the more specific `/api/corpus/laws/*` routes below take precedence for
-  // single-law and scenario paths; this bare-list handler only runs when no
-  // later route claims the request.
-  await page.route('**/api/corpus/laws*', (route, request) => {
-    const url = new URL(request.url());
-    if (url.pathname !== '/api/corpus/laws') {
-      return route.fallback();
-    }
-    const entries = [...corpus.entries()].map(([law_id]) => ({
-      law_id,
-      name: null,
-      source_id: 'local',
-      source_name: 'Local Test Corpus',
-    }));
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(entries),
-    });
-  });
-
-  // PUT /api/corpus/laws/{law_id} — save endpoint. We no-op because the
-  // frontend's useLaw.saveLaw() already updates rawYaml locally on success.
-  // GET /api/corpus/laws/{law_id} — serve from corpus map
-  await page.route('**/api/corpus/laws/*', (route, request) => {
-    const url = new URL(request.url());
-    const pathname = url.pathname;
-    // Skip scenario sub-paths — separate handler below.
-    if (pathname.includes('/scenarios')) {
-      return route.fallback();
-    }
-    const lawId = decodeURIComponent(pathname.split('/').pop());
-    if (request.method() === 'PUT') {
-      return route.fulfill({ status: 200, body: '' });
-    }
-    const entry = corpus.get(lawId);
-    if (!entry) {
-      return route.fulfill({ status: 404, body: `Law '${lawId}' not found` });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: 'text/yaml; charset=utf-8',
-      body: entry.content,
-    });
-  });
-
-  // GET /api/corpus/laws/{law_id}/scenarios — list (only for the target law)
-  await page.route('**/api/corpus/laws/*/scenarios', (route, request) => {
-    const url = new URL(request.url());
-    const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/scenarios$/);
-    if (!match) return route.fallback();
-    const lawId = decodeURIComponent(match[1]);
-    if (lawId === scenarioLaw.id) {
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{ filename: scenarioLaw.scenarioFilename }]),
-      });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: '[]',
-    });
-  });
-
-  // GET /api/corpus/laws/{law_id}/scenarios/{filename}
-  await page.route('**/api/corpus/laws/*/scenarios/*', (route, request) => {
-    const url = new URL(request.url());
-    const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/scenarios\/([^/]+)$/);
-    if (!match) return route.fallback();
-    return route.fulfill({
-      status: 200,
-      contentType: 'text/plain; charset=utf-8',
-      body: scenarioFile,
-    });
-  });
-
-  // /api/sources — corpus source list (used by library page)
-  await page.route('**/api/sources', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify([
-        { id: 'local', name: 'Local Test Corpus', source_type: 'local', priority: 1, law_count: corpus.size },
-      ]),
-    }),
-  );
-
-  // /auth/* — OIDC is disabled in tests, return the disabled-state response
-  // the frontend's useAuth expects.
-  await page.route('**/auth/status', (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ authenticated: false, oidc_configured: false }),
-    }),
-  );
-}
+import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
 
 test.describe('Edit → re-execute loop', () => {
   test.beforeEach(async ({ page }) => {
@@ -200,7 +34,7 @@ test.describe('Edit → re-execute loop', () => {
   });
 
   test('Minderjarige scenario goes red → green after adding age check', async ({ page }) => {
-    const corpus = loadCorpus(CORPUS_ROOT);
+    const corpus = loadCorpus();
     const zorgtoeslag = corpus.get('zorgtoeslagwet');
     expect(zorgtoeslag, 'zorgtoeslagwet must exist in the test corpus').toBeTruthy();
 
@@ -241,10 +75,8 @@ test.describe('Edit → re-execute loop', () => {
     // a custom element whose click target lives in shadow DOM, so instead
     // of clicking we synthesize the change event the way EditorApp's
     // `onMiddlePaneChange` handler expects: it reads `event.target.value`
-    // first, then falls back to `event.detail[0]`. The first
-    // ndd-segmented-control in the page is the middle pane's form/yaml
-    // toggle (the right pane's result/machine toggle comes after it).
-    await page.locator('ndd-segmented-control').first().evaluate((el) => {
+    // first, then falls back to `event.detail[0]`.
+    await page.locator('[data-testid="middle-pane-toggle"]').evaluate((el) => {
       el.value = 'yaml';
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
@@ -315,7 +147,7 @@ test.describe('Edit → re-execute loop', () => {
     // again. The middle pane only shows one of the two views at a time;
     // remounting ScenarioBuilder kicks off its immediate `lawYaml` watch,
     // which reloads dependencies against the edited law and re-executes.
-    await page.locator('ndd-segmented-control').first().evaluate((el) => {
+    await page.locator('[data-testid="middle-pane-toggle"]').evaluate((el) => {
       el.value = 'form';
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });

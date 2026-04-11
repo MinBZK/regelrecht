@@ -613,7 +613,7 @@ function handleActionSave() {
           <ndd-split-view-pane slot="pane-2">
             <ndd-page sticky-header>
               <ndd-top-title-bar slot="header" :text="middlePaneTitle">
-                <ndd-segmented-control slot="toolbar" size="md" :value="middlePaneView" @change="onMiddlePaneChange">
+                <ndd-segmented-control slot="toolbar" size="md" data-testid="middle-pane-toggle" :value="middlePaneView" @change="onMiddlePaneChange">
                   <ndd-segmented-control-item value="form" text="Scenario's"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
                 </ndd-segmented-control>
@@ -658,7 +658,7 @@ function handleActionSave() {
           <ndd-split-view-pane slot="pane-3">
             <ndd-page sticky-header>
               <ndd-top-title-bar slot="header" :text="rightPaneTitle">
-                <ndd-segmented-control slot="toolbar" size="md" :value="rightPaneView" @change="onRightPaneChange">
+                <ndd-segmented-control slot="toolbar" size="md" data-testid="right-pane-toggle" :value="rightPaneView" @change="onRightPaneChange">
                   <ndd-segmented-control-item value="result" text="Resultaat"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
                 </ndd-segmented-control>

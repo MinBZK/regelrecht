@@ -168,7 +168,7 @@ function addOutput() {
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" @click="addDef" text="Nieuwe definitie"></ndd-button>
+          <ndd-button start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Nieuwe definitie"></ndd-button>
         </ndd-list-item>
       </ndd-list>
       <ndd-spacer size="16"></ndd-spacer>
@@ -186,7 +186,7 @@ function addOutput() {
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" @click="addParam" text="Nieuwe parameter"></ndd-button>
+          <ndd-button start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Nieuwe parameter"></ndd-button>
         </ndd-list-item>
       </ndd-list>
       <ndd-spacer size="16"></ndd-spacer>
@@ -197,14 +197,14 @@ function addOutput() {
       <ndd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></ndd-title>
       <ndd-spacer size="8"></ndd-spacer>
       <ndd-list variant="box">
-        <ndd-list-item v-for="(input, index) in inputs" :key="input.name" size="md">
+        <ndd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <ndd-text-cell :text="`${input.name} (${input.type})${input.source ? ` — ${input.source}` : ''}`"></ndd-text-cell>
           <ndd-cell v-if="editable">
-            <ndd-button @click="editInput(index)" text="Bewerk"></ndd-button>
+            <ndd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></ndd-button>
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" @click="addInput" text="Nieuwe input"></ndd-button>
+          <ndd-button start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Nieuwe input"></ndd-button>
         </ndd-list-item>
       </ndd-list>
       <ndd-spacer size="16"></ndd-spacer>
@@ -222,7 +222,7 @@ function addOutput() {
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" @click="addOutput" text="Nieuwe output"></ndd-button>
+          <ndd-button start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Nieuwe output"></ndd-button>
         </ndd-list-item>
       </ndd-list>
       <ndd-spacer size="16"></ndd-spacer>
@@ -236,7 +236,7 @@ function addOutput() {
         <ndd-list-item v-for="(action, index) in actions" :key="index" size="md">
           <ndd-text-cell :text="action.output"></ndd-text-cell>
           <ndd-cell>
-            <ndd-button @click="emit('open-action', action)" :text="editable ? 'Bewerk' : 'Bekijk'"></ndd-button>
+            <ndd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" :text="editable ? 'Bewerk' : 'Bekijk'"></ndd-button>
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
