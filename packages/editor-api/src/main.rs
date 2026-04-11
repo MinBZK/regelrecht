@@ -100,12 +100,21 @@ async fn main() {
     // streaming an arbitrarily large body to disk — important when OIDC
     // is disabled in local dev and the endpoint is reachable without auth.
     const MAX_SCENARIO_BODY: usize = 1024 * 1024;
+    // Law YAMLs are larger than scenarios — zorgtoeslag's ~25 KiB is typical
+    // but federated regulations can reach a few hundred KiB. A 5 MiB cap
+    // gives ample headroom while still rejecting pathological bodies.
+    const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
     let protected_api_routes = Router::new()
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             axum::routing::put(corpus_handlers::save_scenario)
                 .delete(corpus_handlers::delete_scenario)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
+        )
+        .route(
+            "/api/corpus/laws/{law_id}",
+            axum::routing::put(corpus_handlers::save_law)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

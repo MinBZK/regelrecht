@@ -4,9 +4,15 @@ import { computed } from 'vue';
 const props = defineProps({
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
+  /** True when the in-memory machine_readable differs from the saved copy */
+  dirty: { type: Boolean, default: false },
+  /** True while a save PUT is in flight */
+  saving: { type: Boolean, default: false },
+  /** Error from the most recent save attempt (Error instance or null) */
+  saveError: { type: Object, default: null },
 });
 
-const emit = defineEmits(['open-action', 'open-edit', 'init-mr', 'add-action']);
+const emit = defineEmits(['open-action', 'open-edit', 'init-mr', 'add-action', 'save']);
 
 const mr = computed(() => props.article?.machine_readable ?? null);
 const execution = computed(() => mr.value?.execution ?? null);
@@ -108,6 +114,30 @@ function addOutput() {
   </ndd-simple-section>
 
   <ndd-simple-section v-else data-testid="machine-readable">
+    <!-- Save bar: visible only when the user can edit. The button itself is
+         disabled when there's nothing to save so it still acts as a clear
+         "everything's saved" signal instead of disappearing. -->
+    <template v-if="editable">
+      <div class="mr-save-bar">
+        <ndd-button
+          variant="primary"
+          size="md"
+          data-testid="save-mr-btn"
+          :disabled="!dirty || saving"
+          :text="saving ? 'Opslaan…' : dirty ? 'Opslaan' : 'Opgeslagen'"
+          @click="emit('save')"
+        ></ndd-button>
+      </div>
+      <ndd-inline-dialog
+        v-if="saveError"
+        variant="alert"
+        text="Opslaan mislukt"
+        :supporting-text="saveError.message || String(saveError)"
+        data-testid="save-mr-error"
+      ></ndd-inline-dialog>
+      <ndd-spacer size="12"></ndd-spacer>
+    </template>
+
     <!-- Metadata: produces -->
     <ndd-list v-if="produces" variant="box">
       <ndd-list-item v-if="produces.legal_character" size="md">
@@ -217,3 +247,11 @@ function addOutput() {
     </template>
   </ndd-simple-section>
 </template>
+
+<style scoped>
+.mr-save-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+</style>

@@ -70,8 +70,13 @@ onUnmounted(() => {
       <ndd-top-title-bar slot="header" text="Actie" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
       <ndd-simple-section>
-        <!-- Output binding (editable view only) -->
-        <template v-if="editable">
+        <!-- Output binding (editable view only).
+             The `&& action` guard prevents a render-time TypeError when the
+             sheet is mounted but `action` hasn't been set yet — the parent
+             always mounts the sheet eagerly and toggles visibility via the
+             web-component's show()/hide() methods, so `action` is null
+             whenever the sheet isn't actively editing something. -->
+        <template v-if="editable && action">
           <ndd-list variant="box" class="settings-list" data-testid="action-output-binding">
             <ndd-list-item size="md">
               <ndd-text-cell text="Output"></ndd-text-cell>

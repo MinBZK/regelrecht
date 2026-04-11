@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use regelrecht_corpus::backend::{RepoBackend, WriteContext};
-use regelrecht_corpus::source_map::LoadedLaw;
+use regelrecht_corpus::source_map::{extract_law_id, validate_yaml_syntax, LoadedLaw};
 use regelrecht_corpus::CorpusError;
 
 use crate::state::AppState;
@@ -388,14 +388,19 @@ async fn resolve_backend_for_law(
 /// error — which can include git stderr, repository URLs that may carry
 /// push tokens for local-only backends, and absolute filesystem paths — is
 /// logged at warn level for operators but never returned to the client.
-fn corpus_write_error(e: CorpusError) -> (StatusCode, String) {
-    match e {
+///
+/// `kind` is the short name of the resource being written ("scenario",
+/// "law", …) so logs and the user-facing 500 body name the right thing
+/// regardless of which handler is on the stack. The `FnOnce` wrapper is a
+/// convenience for `.map_err(corpus_write_error("law"))` at call sites.
+fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (StatusCode, String) {
+    move |e| match e {
         CorpusError::ReadOnly(_) => (StatusCode::FORBIDDEN, e.to_string()),
         _ => {
-            tracing::warn!(error = %e, "scenario write/persist failed");
+            tracing::warn!(error = %e, kind = %kind, "corpus write/persist failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal error while writing scenario".to_string(),
+                format!("Internal error while writing {}", kind),
             )
         }
     }
@@ -450,14 +455,141 @@ pub async fn save_scenario(
     backend
         .write_file(&relative_path, &body)
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
 
     backend
         .persist(&WriteContext {
             message: format!("Update scenario {} for {}", filename, law_id),
         })
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
+
+    Ok(StatusCode::OK)
+}
+
+/// PUT /api/corpus/laws/{law_id} — save edited law YAML content.
+///
+/// Writes the new YAML to the backend (same RepoBackend used for scenario
+/// saves, with the same writable-fallback resolution), then refreshes the
+/// in-memory `yaml_content` on the law's `SourceMap` entry so subsequent
+/// GETs see the edited text without waiting for a full corpus reload.
+///
+/// The `$id` in the body must match the path parameter: allowing them to
+/// diverge would either create a phantom law (new `$id` lands on an
+/// existing file) or orphan the original (old `$id` can never be fetched
+/// again). We reject the mismatch up-front instead of silently corrupting
+/// the source map.
+pub async fn save_law(
+    State(state): State<AppState>,
+    Path(law_id): Path<String>,
+    body: String,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Validation:
+    //   1. Body must parse as well-formed YAML. extract_law_id below is a
+    //      line-based scanner that happily accepts "$id: foo\n<garbage>",
+    //      so without this check a syntactically broken body would land on
+    //      disk and corrupt the corpus source file.
+    //   2. Body must have a top-level `$id` field.
+    //   3. That `$id` must match the path parameter. Any mismatch is either
+    //      a phantom-law attempt (new id lands on an existing file) or an
+    //      orphaning (old id becomes unfetchable); reject up-front.
+    //
+    // We do NOT run full JSON Schema validation here — the frontend blocks
+    // incomplete operation stubs (findIncompleteOperation) and the YAML
+    // pane has a live parse check. Full schema validation is a separate
+    // follow-up (mirroring `just validate`).
+    //
+    // The mismatch error body intentionally does NOT echo the user-supplied
+    // `body_id`: it flows through the frontend into ndd-inline-dialog's
+    // supporting-text and we don't want self-XSS if the dialog ever renders
+    // that attribute as markup. The path law_id is already known to the
+    // caller, so the generic message is sufficient.
+    validate_yaml_syntax(&body).map_err(|e| {
+        tracing::debug!(law_id = %law_id, error = %e, "save_law received malformed YAML body");
+        (
+            StatusCode::BAD_REQUEST,
+            "Body is not valid YAML".to_string(),
+        )
+    })?;
+
+    let body_id = extract_law_id(&body).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Body missing top-level `$id` field".to_string(),
+        )
+    })?;
+
+    if body_id != law_id {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Body $id does not match path law_id".to_string(),
+        ));
+    }
+
+    // Resolve backend with writable fallback (same path scenarios take).
+    let resolved = {
+        let corpus = state.corpus.read().await;
+        resolve_backend_for_law(&corpus, &law_id).await?
+    };
+
+    if !resolved.writable {
+        // Log the internal source id (and the law id, even though the
+        // caller already knows it) for operators but keep both out of the
+        // HTTP body. `source_id` is a registry key ("central",
+        // "local-scratch", …) so leaking it exposes infrastructure naming;
+        // `law_id` echoed in the body would also flow through
+        // useLaw.saveError into ndd-inline-dialog's supporting-text, with
+        // the same self-XSS concern as the $id-mismatch branch above. The
+        // hard-coded message keeps both branches consistent.
+        tracing::warn!(
+            law_id = %law_id,
+            source_id = %resolved.law.source_id,
+            "save_law: no writable backend for law"
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Law is stored on a read-only source".to_string(),
+        ));
+    }
+
+    let relative_path = PathBuf::from(&resolved.law.relative_path);
+
+    {
+        // The `if !resolved.writable` early return above ensures the
+        // RepoBackend will not refuse the write under normal operation, so
+        // the only realistic path to a `CorpusError::ReadOnly` here is a
+        // TOCTOU between the writability check and the write itself
+        // (e.g. the underlying volume flips read-only mid-request). In
+        // that race the `corpus_write_error` helper falls through to its
+        // generic 500-style mapping, mirroring the existing scenario
+        // write paths; the `ReadOnly` arm of `corpus_write_error` —
+        // which echoes `e.to_string()` — is unreachable here in
+        // practice and is not in scope to harden in this PR.
+        let backend = resolved.backend.lock_owned().await;
+        backend
+            .write_file(&relative_path, &body)
+            .await
+            .map_err(corpus_write_error("law"))?;
+        backend
+            .persist(&WriteContext {
+                message: format!("Update law {}", law_id),
+            })
+            .await
+            .map_err(corpus_write_error("law"))?;
+    }
+
+    // Refresh the in-memory cache so /api/corpus/laws/{law_id} (and
+    // dependency walks) see the edit without a full corpus reload.
+    {
+        let mut corpus = state.corpus.write().await;
+        let updated = corpus.source_map.update_yaml_content(&law_id, body);
+        if !updated {
+            tracing::warn!(
+                law_id = %law_id,
+                "save_law wrote to backend but law vanished from source_map between write and cache refresh"
+            );
+        }
+    }
 
     Ok(StatusCode::OK)
 }
@@ -474,14 +606,14 @@ pub async fn delete_scenario(
     backend
         .delete_file(&relative_path)
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
 
     backend
         .persist(&WriteContext {
             message: format!("Delete scenario {} for {}", filename, law_id),
         })
         .await
-        .map_err(corpus_write_error)?;
+        .map_err(corpus_write_error("scenario"))?;
 
     Ok(StatusCode::OK)
 }

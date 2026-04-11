@@ -25,7 +25,21 @@ watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) 
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
 // --- Initial law load (from URL params) ---
-const { law, lawId, rawYaml, articles, lawName, selectedArticle, selectedArticleNumber, switchLaw, loading, error } = useLaw();
+const {
+  law,
+  lawId,
+  rawYaml,
+  articles,
+  lawName,
+  selectedArticle,
+  selectedArticleNumber,
+  switchLaw,
+  loading,
+  error,
+  saving: lawSaving,
+  saveError: lawSaveError,
+  saveLaw,
+} = useLaw();
 
 const middlePaneView = ref('form');
 const rightPaneView = ref('result');
@@ -144,23 +158,8 @@ function onMiddlePaneChange(event) {
 const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
 initEngine().catch(() => {});
 
-// Load current law into engine when YAML is available
-watch(
-  [() => rawYaml.value, engineReady],
-  ([lawYaml, isReady]) => {
-    if (!isReady || !lawYaml) return;
-    const engine = getEngine();
-    try {
-      if (engine.hasLaw(lawId.value)) {
-        engine.unloadLaw(lawId.value);
-      }
-      engine.loadLaw(lawYaml);
-    } catch (e) {
-      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
-    }
-  },
-  { immediate: true },
-);
+// The engine-loading watch lives below, next to `currentLawYaml`, so it
+// observes in-memory edits rather than only the persisted `rawYaml`.
 
 // --- Trace state (receives trace from last executed scenario) ---
 const lastTraceText = ref(null);
@@ -198,6 +197,141 @@ const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
   return { ...selectedArticle.value, machine_readable: machineReadable.value };
 });
+
+// Parse rawYaml once per law load into a reusable document skeleton. The
+// computed below splices in the currently edited article's
+// machine_readable on every reactive change, so without this cache each
+// keystroke in the YAML textarea would re-parse the whole ~25-200 KiB law
+// on the main thread. Hoisting the parse to a computed keyed only on
+// rawYaml drops that cost to one parse per load.
+const parsedRawLaw = computed(() => {
+  if (!rawYaml.value) return null;
+  try {
+    return yaml.load(rawYaml.value);
+  } catch {
+    return null;
+  }
+});
+
+// Reactive "edited" law YAML: rawYaml with the currently selected article's
+// machine_readable substituted in. This is what flows into the engine and
+// into ScenarioBuilder, so in-memory edits re-execute scenarios without a
+// round-trip through the backend.
+//
+// Only the currently selected article's machine_readable is swapped — edits
+// on other articles are not tracked across tab switches (existing behavior
+// of the editor state model).
+//
+// KNOWN LIMITATION: when this value is sent to `saveLaw` (via the Machine
+// panel save button), the body is the `yaml.dump` output of the
+// reconstructed document — which strips YAML comments and may reorder
+// top-level keys compared to `rawYaml`. The YAML-pane edit path preserves
+// the user's exact text via `yamlSource`, so it does not have this drift.
+// Today's corpus is harvester-generated and comment-free, so the impact is
+// zero in practice; revisit if hand-annotated laws are introduced (e.g.
+// keep an "as-typed" base alongside `rawYaml` and only re-dump the edited
+// article).
+const currentLawYaml = computed(() => {
+  if (!rawYaml.value) return null;
+  if (!selectedArticle.value || machineReadable.value == null) {
+    return rawYaml.value;
+  }
+  const base = parsedRawLaw.value;
+  if (!base) return rawYaml.value;
+  try {
+    // Shallow-clone the doc and the articles array so our splice doesn't
+    // mutate the memoized `parsedRawLaw` value — Vue would consider the
+    // computed still fresh but the next read would see our substituted
+    // article instead of the original.
+    const doc = { ...base };
+    const docArticles = Array.isArray(base.articles) ? [...base.articles] : null;
+    if (!docArticles) return rawYaml.value;
+    const idx = docArticles.findIndex(
+      (a) => String(a.number) === String(selectedArticleNumber.value),
+    );
+    if (idx < 0) return rawYaml.value;
+    docArticles[idx] = {
+      ...docArticles[idx],
+      machine_readable: machineReadable.value,
+    };
+    doc.articles = docArticles;
+    return yaml.dump(doc, dumpOpts);
+  } catch {
+    return rawYaml.value;
+  }
+});
+
+// Load current law into engine. Reacts to currentLawYaml so in-memory edits
+// are immediately visible to scenarios.
+watch(
+  [currentLawYaml, engineReady],
+  ([lawYaml, isReady]) => {
+    if (!isReady || !lawYaml) return;
+    const engine = getEngine();
+    try {
+      if (engine.hasLaw(lawId.value)) {
+        engine.unloadLaw(lawId.value);
+      }
+      engine.loadLaw(lawYaml);
+    } catch (e) {
+      console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
+    }
+  },
+  { immediate: true },
+);
+
+// Dirty state: the selected article's in-memory machine_readable differs
+// from the article's saved copy. `machineReadable.value` starts as a deep
+// JSON clone of `selectedArticle.machine_readable` (see the `watch` above),
+// so for field-based edits the two share the same key order and
+// `JSON.stringify` is a cheap, accurate structural comparison.
+//
+// Note: the YAML-pane edit path (`onYamlInput`) replaces `machineReadable`
+// with a fresh `yaml.load(text)` object whose key order comes from the
+// textarea, so a no-op round-trip can flip this flag to `true` even when
+// the semantic content is unchanged. That's a conservative false positive
+// — the worst case is an enabled save button — so we accept it rather
+// than pay for a canonical YAML dump on every keystroke.
+const isMachineReadableDirty = computed(() => {
+  if (!selectedArticle.value) return false;
+  const saved = selectedArticle.value.machine_readable ?? null;
+  const current = machineReadable.value ?? null;
+  if (saved == null && current == null) return false;
+  try {
+    return JSON.stringify(saved) !== JSON.stringify(current);
+  } catch {
+    return true;
+  }
+});
+
+async function handleMachineReadableSave() {
+  const lawYaml = currentLawYaml.value;
+  if (!lawYaml) return;
+  // Snapshot the law id before the await. saveLaw itself guards its own
+  // reactive writes with the same check, but the post-save cleanup below
+  // runs in the EditorApp scope and would happily overwrite the new law's
+  // in-progress machine_readable with its pristine article data if the
+  // user switched laws mid-flight.
+  const savedLawId = lawId.value;
+  try {
+    await saveLaw(lawYaml);
+    if (lawId.value !== savedLawId) return; // law switched mid-PUT
+    // After save, `rawYaml` is the saved text and `selectedArticle` now
+    // points at the re-parsed article. We could rely on the `watch`
+    // further up to re-sync `machineReadable` from the new selectedArticle,
+    // but that watcher fires on the next microtask — leaving a window
+    // where `isMachineReadableDirty` still sees the pre-save object and
+    // the save button stays enabled, enabling a double-save click. Reset
+    // `machineReadable` explicitly from the freshly-parsed article so the
+    // dirty flag clears synchronously with the save.
+    const fresh = selectedArticle.value?.machine_readable ?? null;
+    machineReadable.value = fresh ? JSON.parse(JSON.stringify(fresh)) : null;
+    yamlSource.value = fresh ? yaml.dump(fresh, dumpOpts) : '';
+  } catch (e) {
+    // saveError is surfaced via lawSaveError; log for dev visibility.
+    console.warn('saveLaw failed:', e);
+  }
+}
 
 function onYamlInput(event) {
   const text = event.target.value;
@@ -495,28 +629,28 @@ function handleActionSave() {
               <ScenarioBuilder
                 v-else-if="middlePaneView === 'form'"
                 :law-id="lawId"
-                :law-yaml="rawYaml"
+                :law-yaml="currentLawYaml"
                 :engine="getEngine()"
                 :ready="engineReady"
                 :articles="articles"
                 @executed="handleScenarioExecuted"
               />
 
-              <!-- YAML view -->
-              <ndd-simple-section v-if="middlePaneView === 'yaml'">
-                <div class="editor-yaml-wrap">
-                  <textarea
-                    :value="yamlSource"
-                    @input="onYamlInput"
-                    class="editor-yaml-textarea"
-                    spellcheck="false"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="off"
-                  ></textarea>
-                  <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
-                </div>
-              </ndd-simple-section>
+              <!-- YAML view: bypass ndd-simple-section so the textarea can
+                   stretch to fill the pane body. The wrap is a flex column
+                   that anchors the parse-error footer at the bottom. -->
+              <div v-if="middlePaneView === 'yaml'" class="editor-yaml-wrap">
+                <textarea
+                  :value="yamlSource"
+                  @input="onYamlInput"
+                  class="editor-yaml-textarea"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                ></textarea>
+                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+              </div>
             </ndd-page>
           </ndd-split-view-pane>
 
@@ -543,10 +677,14 @@ function handleActionSave() {
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
+                  :dirty="isMachineReadableDirty"
+                  :saving="lawSaving"
+                  :save-error="lawSaveError"
                   @open-action="handleOpenAction"
                   @open-edit="activeEditItem = $event"
                   @init-mr="handleInitMr"
                   @add-action="handleAddAction"
+                  @save="handleMachineReadableSave"
                 />
               </ndd-simple-section>
             </ndd-page>
@@ -583,21 +721,31 @@ function handleActionSave() {
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* Fill the pane body. ndd-page's body is the only ancestor between us
+   * and the viewport, so anchoring on viewport height minus the toolbar
+   * + tab strip height gives a stable tall area regardless of how many
+   * scenarios are loaded next door. */
+  height: calc(100vh - 180px);
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .editor-yaml-textarea {
   flex: 1;
   width: 100%;
   min-height: 0;
-  height: calc(100vh - 160px);
-  background: #1e1e2e;
-  color: #cdd6f4;
+  /* Match the library/zorgtoeslagwet/2 YamlView look: tinted background,
+   * rounded corners, monospace, comfortable padding. The library version
+   * is read-only <pre><code>; this is the editable counterpart with the
+   * same skin so the eye doesn't have to context-switch. */
+  background: var(--semantics-surfaces-tinted-background-color, #F4F6F9);
+  color: var(--semantics-text-default-color, #1F2937);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
   padding: 16px;
-  border: none;
+  border: 1px solid var(--semantics-borders-default-color, #DDE0E4);
+  border-radius: 12px;
   outline: none;
   resize: none;
   tab-size: 2;
@@ -605,8 +753,8 @@ function handleActionSave() {
   overflow: auto;
 }
 
-.editor-yaml-textarea::selection {
-  background: #45475a;
+.editor-yaml-textarea:focus {
+  border-color: var(--semantics-borders-focus-color, #007BC7);
 }
 
 .editor-parse-error {
@@ -619,11 +767,13 @@ function handleActionSave() {
 }
 
 .editor-parse-error-detail {
-  background: #2a1a1a;
-  color: #f38ba8;
+  margin-top: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
   font-family: 'SF Mono', monospace;
   font-size: 12px;
-  padding: 8px 16px;
-  border-top: 1px solid #45475a;
+  padding: 8px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
 }
 </style>

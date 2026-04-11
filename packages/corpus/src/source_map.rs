@@ -286,6 +286,26 @@ impl SourceMap {
         self.laws.get(law_id)
     }
 
+    /// Update the cached YAML content for an existing law. Used after the
+    /// editor persists an edit through [`crate::backend::RepoBackend`], so
+    /// subsequent GETs (and dependency walks) see the new text without
+    /// waiting for a full corpus reload. Returns `true` if the law was
+    /// present and updated, `false` otherwise.
+    ///
+    /// Only `yaml_content` (and the optional human-readable `name`, which is
+    /// derived from the YAML) is updated — `$id`, `file_path`, source
+    /// provenance, and priority are stable across an edit and are left
+    /// untouched. If the caller writes a new file under a different `$id`
+    /// that's a different operation (unsupported via this hook).
+    pub fn update_yaml_content(&mut self, law_id: &str, new_content: String) -> bool {
+        let Some(law) = self.laws.get_mut(law_id) else {
+            return false;
+        };
+        law.name = extract_law_name(&new_content);
+        law.yaml_content = new_content;
+        true
+    }
+
     /// Get the number of loaded laws.
     pub fn len(&self) -> usize {
         self.laws.len()
@@ -382,12 +402,22 @@ pub(crate) fn pick_best_version(existing: Option<&str>, new: Option<&str>, today
     }
 }
 
+/// Verify that a string parses as well-formed YAML without enforcing a
+/// particular schema. Used by write handlers that want to reject garbage
+/// input before persisting to the corpus backend, without committing to
+/// the corpus library's full law-schema validation (which belongs in a
+/// separate layer).
+pub fn validate_yaml_syntax(content: &str) -> Result<()> {
+    serde_yaml_ng::from_str::<serde_yaml_ng::Value>(content)?;
+    Ok(())
+}
+
 /// Extract the top-level `$id` field from a YAML string.
 ///
 /// Uses a simple line-based approach to avoid full YAML parsing overhead.
 /// Only matches `$id:` at the start of a line (no leading whitespace) to
 /// avoid matching nested `$id:` fields.
-fn extract_law_id(yaml: &str) -> Option<String> {
+pub fn extract_law_id(yaml: &str) -> Option<String> {
     for line in yaml.lines() {
         if let Some(rest) = line.strip_prefix("$id:") {
             let value = rest.trim().trim_matches('"').trim_matches('\'');
@@ -472,6 +502,86 @@ mod tests {
         // But top-level $id: should still work
         let yaml = "$id: top_level\narticles:\n  - $id: nested_id\n";
         assert_eq!(extract_law_id(yaml), Some("top_level".to_string()));
+    }
+
+    #[test]
+    fn test_update_yaml_content_updates_existing_law() {
+        let dir = TempDir::new().unwrap();
+        write_yaml(dir.path(), "wet/test_wet/2025-01-01.yaml", "test_wet");
+
+        let source = make_source("central", "Central", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let original = map.get_law("test_wet").unwrap().clone();
+
+        let new_content =
+            "$id: test_wet\nname: Updated Name\nregulatory_layer: WET\narticles: []\n".to_string();
+        let updated = map.update_yaml_content("test_wet", new_content.clone());
+
+        assert!(updated, "update should report success for existing law");
+        let law = map.get_law("test_wet").unwrap();
+        assert_eq!(law.yaml_content, new_content);
+        assert_eq!(law.name.as_deref(), Some("Updated Name"));
+        // All provenance fields are preserved — update_yaml_content only
+        // touches content + name. `relative_path` is load-bearing because
+        // the editor-api write handler targets it; a regression that
+        // cleared it would silently send reads and writes to different
+        // files, so we assert it explicitly alongside file_path/source_*.
+        assert_eq!(law.file_path, original.file_path);
+        assert_eq!(law.relative_path, original.relative_path);
+        assert_eq!(law.source_id, original.source_id);
+        assert_eq!(law.source_name, original.source_name);
+        assert_eq!(law.source_priority, original.source_priority);
+    }
+
+    #[test]
+    fn test_update_yaml_content_recomputes_name_to_none() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("wet/test_wet/2025-01-01.yaml");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            "$id: test_wet\nname: Original\nregulatory_layer: WET\narticles: []\n",
+        )
+        .unwrap();
+
+        let source = make_source("central", "Central", dir.path(), 1);
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+        assert_eq!(
+            map.get_law("test_wet").unwrap().name.as_deref(),
+            Some("Original")
+        );
+
+        // Remove the `name:` field — name should recompute to None.
+        let new_content = "$id: test_wet\nregulatory_layer: WET\narticles: []\n".to_string();
+        let updated = map.update_yaml_content("test_wet", new_content);
+        assert!(updated);
+        assert_eq!(map.get_law("test_wet").unwrap().name, None);
+    }
+
+    #[test]
+    fn test_update_yaml_content_missing_law_returns_false() {
+        let mut map = SourceMap::new();
+        let updated = map.update_yaml_content("nonexistent_law", "$id: foo\n".to_string());
+        assert!(!updated, "update should report failure for missing law");
+        assert_eq!(map.len(), 0, "missing law should not be inserted");
+    }
+
+    #[test]
+    fn test_validate_yaml_syntax_accepts_well_formed() {
+        assert!(validate_yaml_syntax("$id: foo\nname: bar\narticles: []\n").is_ok());
+        assert!(validate_yaml_syntax("---\nfoo: 1\n").is_ok());
+        assert!(validate_yaml_syntax("").is_ok()); // empty doc is valid
+    }
+
+    #[test]
+    fn test_validate_yaml_syntax_rejects_garbage() {
+        // Unclosed quote.
+        assert!(validate_yaml_syntax("name: \"unterminated\nfoo: bar\n").is_err());
+        // Tab indentation inside a block mapping.
+        assert!(validate_yaml_syntax("name:\n\tfoo: bar\n").is_err());
     }
 
     #[test]
