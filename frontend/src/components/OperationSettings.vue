@@ -189,6 +189,11 @@ function changeOperationType(event) {
 
   node.operation = newType;
 
+  // Every non-AGE branch must also strip `date_of_birth` / `reference_date`
+  // so a transition out of AGE doesn't leave the slots dangling on the
+  // node. The schema marks every operation type as
+  // `additionalProperties: false`, so a leaked field would fail
+  // validation on save and corrupt the law.
   if (COMPARISON_OPS.has(newType)) {
     if (node.subject === undefined) node.subject = '';
     if (newType === 'NOT_NULL') {
@@ -207,6 +212,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (LOGICAL_OPS.has(newType)) {
     if (!Array.isArray(node.conditions)) {
       node.conditions = [];
@@ -219,6 +226,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (newType === 'IF') {
     // IF uses the same cases[]/default schema as SWITCH but is single-case.
     // Truncate any extra cases when transitioning from SWITCH so we don't
@@ -236,6 +245,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (newType === 'NOT') {
     if (node.value === undefined) {
       node.value = node.subject ?? '';
@@ -248,6 +259,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (newType === 'SWITCH') {
     // Schema requires at least one case
     if (!Array.isArray(node.cases) || node.cases.length === 0) {
@@ -261,6 +274,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (ARITHMETIC_OPS.has(newType)) {
     if (!Array.isArray(node.values)) {
       node.values = [];
@@ -273,6 +288,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (newType === 'AGE') {
     // AGE has two fixed structural slots — seed both as empty strings so
     // the user can fill them via the form. Strip every other slot so the

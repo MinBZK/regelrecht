@@ -124,9 +124,33 @@ describe('OperationSettings — AGE op', () => {
       expect(node.operation).toBe('EQUALS');
       expect(node.subject).toBe('');
       expect(node.value).toBe('');
-      // Note: the engine's ActionOperation::Age uses these field names —
-      // the EQUALS branch doesn't explicitly delete them but the engine
-      // ignores extra YAML fields. We don't assert their absence here.
+      // The schema sets `additionalProperties: false` on every operation
+      // type, so any leaked AGE field would fail validation on save.
+      // Both must be removed by the EQUALS branch.
+      expect(node.date_of_birth).toBeUndefined();
+      expect(node.reference_date).toBeUndefined();
+    });
+
+    it.each([
+      ['AND', { conditions: [] }],
+      ['IF', { cases: expect.any(Array), default: 0 }],
+      ['NOT', { value: '' }],
+      ['SWITCH', { cases: expect.any(Array), default: 0 }],
+      ['ADD', { values: [] }],
+    ])('strips AGE fields when switching to %s', async (newType, _expected) => {
+      const node = {
+        operation: 'AGE',
+        date_of_birth: '$geboortedatum',
+        reference_date: '2025-01-01',
+      };
+      const wrapper = mountOp(node);
+
+      wrapper.vm.changeOperationType({ target: { value: newType } });
+      await nextTick();
+
+      expect(node.operation).toBe(newType);
+      expect(node.date_of_birth).toBeUndefined();
+      expect(node.reference_date).toBeUndefined();
     });
   });
 
