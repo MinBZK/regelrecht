@@ -12,7 +12,24 @@ const props = defineProps({
   saveError: { type: Object, default: null },
 });
 
-const emit = defineEmits(['open-action', 'open-edit', 'init-mr', 'add-action', 'save']);
+const emit = defineEmits([
+  'open-action',
+  'open-edit',
+  'init-mr',
+  'add-action',
+  'save',
+  /**
+   * Delete a single item from the machine_readable. Payload shape mirrors
+   * `open-edit` so the parent's `handleSave`/`handleDelete` can dispatch on
+   * `section`. Examples:
+   *   { section: 'definition', key: 'drempelinkomen_alleenstaande' }
+   *   { section: 'parameter', index: 0 }
+   *   { section: 'input', index: 2 }
+   *   { section: 'output', index: 1 }
+   *   { section: 'action', index: 0 }
+   */
+  'delete',
+]);
 
 const mr = computed(() => props.article?.machine_readable ?? null);
 const execution = computed(() => mr.value?.execution ?? null);
@@ -86,6 +103,29 @@ function editInput(index) {
 function editOutput(index) {
   const raw = execution.value?.output?.[index];
   if (raw) emit('open-edit', { section: 'output', index, data: JSON.parse(JSON.stringify(raw)) });
+}
+
+// Delete handlers — emit a delete event with the section + identity of
+// the row. The parent (EditorApp) is the source of truth for
+// machineReadable, so all mutations live there.
+function deleteDef(name) {
+  emit('delete', { section: 'definition', key: name });
+}
+
+function deleteParam(index) {
+  emit('delete', { section: 'parameter', index });
+}
+
+function deleteInput(index) {
+  emit('delete', { section: 'input', index });
+}
+
+function deleteOutput(index) {
+  emit('delete', { section: 'output', index });
+}
+
+function deleteAction(index) {
+  emit('delete', { section: 'action', index });
 }
 
 // Open edit sheet for new items
@@ -164,7 +204,15 @@ function addOutput() {
         <ndd-list-item v-for="def in definitions" :key="def.name" size="md">
           <ndd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></ndd-text-cell>
           <ndd-cell v-if="editable">
-            <ndd-button @click="editDef(def.name)" text="Bewerk"></ndd-button>
+            <div class="mr-row-actions">
+              <ndd-button @click="editDef(def.name)" text="Bewerk"></ndd-button>
+              <ndd-icon-button
+                icon="minus"
+                accessible-label="Verwijder definitie"
+                :data-testid="`def-${def.name}-delete-btn`"
+                @click="deleteDef(def.name)"
+              ></ndd-icon-button>
+            </div>
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
@@ -182,7 +230,15 @@ function addOutput() {
         <ndd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
           <ndd-text-cell :text="`${param.name} (${param.type})`"></ndd-text-cell>
           <ndd-cell v-if="editable">
-            <ndd-button @click="editParam(index)" text="Bewerk"></ndd-button>
+            <div class="mr-row-actions">
+              <ndd-button @click="editParam(index)" text="Bewerk"></ndd-button>
+              <ndd-icon-button
+                icon="minus"
+                accessible-label="Verwijder parameter"
+                :data-testid="`param-${param.name}-delete-btn`"
+                @click="deleteParam(index)"
+              ></ndd-icon-button>
+            </div>
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
@@ -200,7 +256,15 @@ function addOutput() {
         <ndd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <ndd-text-cell :text="`${input.name} (${input.type})${input.source ? ` — ${input.source}` : ''}`"></ndd-text-cell>
           <ndd-cell v-if="editable">
-            <ndd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></ndd-button>
+            <div class="mr-row-actions">
+              <ndd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></ndd-button>
+              <ndd-icon-button
+                icon="minus"
+                accessible-label="Verwijder input"
+                :data-testid="`input-${input.name}-delete-btn`"
+                @click="deleteInput(index)"
+              ></ndd-icon-button>
+            </div>
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
@@ -218,7 +282,15 @@ function addOutput() {
         <ndd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
           <ndd-text-cell :text="`${output.name} (${output.type})`"></ndd-text-cell>
           <ndd-cell v-if="editable">
-            <ndd-button @click="editOutput(index)" text="Bewerk"></ndd-button>
+            <div class="mr-row-actions">
+              <ndd-button @click="editOutput(index)" text="Bewerk"></ndd-button>
+              <ndd-icon-button
+                icon="minus"
+                accessible-label="Verwijder output"
+                :data-testid="`output-${output.name}-delete-btn`"
+                @click="deleteOutput(index)"
+              ></ndd-icon-button>
+            </div>
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
@@ -236,7 +308,16 @@ function addOutput() {
         <ndd-list-item v-for="(action, index) in actions" :key="index" size="md">
           <ndd-text-cell :text="action.output"></ndd-text-cell>
           <ndd-cell>
-            <ndd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" :text="editable ? 'Bewerk' : 'Bekijk'"></ndd-button>
+            <div class="mr-row-actions">
+              <ndd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" :text="editable ? 'Bewerk' : 'Bekijk'"></ndd-button>
+              <ndd-icon-button
+                v-if="editable"
+                icon="minus"
+                accessible-label="Verwijder actie"
+                :data-testid="`action-${action.output}-delete-btn`"
+                @click="deleteAction(index)"
+              ></ndd-icon-button>
+            </div>
           </ndd-cell>
         </ndd-list-item>
         <ndd-list-item v-if="editable" size="md">
@@ -253,5 +334,15 @@ function addOutput() {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 8px;
+}
+
+/* Row-level actions cluster: Bewerk button + minus icon button. flex-end
+ * keeps them right-aligned within the row's value cell, and the gap matches
+ * the spacing used in OperationSettings' value-row pattern. */
+.mr-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 </style>
