@@ -58,11 +58,20 @@ watch(() => props.item, async (item) => {
       required: item.data?.required ?? false,
     };
   } else if (s === 'input' || s === 'add-input') {
+    // Flatten source.parameters into an ordered key/value pair list so the
+    // user can edit existing entries and add new ones via the form. We use
+    // an array (not an object) because two rows can briefly share an empty
+    // key while typing, and Object.entries would silently collapse them.
+    const params = item.data?.source?.parameters;
+    const paramList = params && typeof params === 'object'
+      ? Object.entries(params).map(([k, v]) => ({ key: k, value: typeof v === 'string' ? v : String(v) }))
+      : [];
     values.value = {
       name: item.data?.name ?? '',
       type: item.data?.type ?? 'string',
       sourceRegulation: item.data?.source?.regulation ?? '',
       sourceOutput: item.data?.source?.output ?? '',
+      sourceParameters: paramList,
     };
   } else if (s === 'output' || s === 'add-output') {
     values.value = {
@@ -99,14 +108,25 @@ function save() {
       emit('save', { section: 'add-parameter', data: { name: name.trim(), type, required } });
     }
   } else if (s === 'input' || s === 'add-input') {
-    const { name, type, sourceRegulation, sourceOutput } = values.value;
+    const { name, type, sourceRegulation, sourceOutput, sourceParameters } = values.value;
     if (!name.trim()) return;
     const data = { name: name.trim(), type };
-    if (sourceRegulation || sourceOutput) {
+    // Reduce the form's parameter rows back into a plain object. Skip rows
+    // with an empty key — they're either still being typed or were added
+    // and abandoned. Duplicate keys: last write wins (matches what
+    // serializing an object would do anyway).
+    const paramObj = {};
+    for (const row of sourceParameters || []) {
+      const k = (row.key || '').trim();
+      if (!k) continue;
+      paramObj[k] = row.value ?? '';
+    }
+    const hasParams = Object.keys(paramObj).length > 0;
+    if (sourceRegulation || sourceOutput || hasParams) {
       data.source = {};
       if (sourceRegulation) data.source.regulation = sourceRegulation;
       if (sourceOutput) data.source.output = sourceOutput;
-      if (item.data?.source?.parameters) data.source.parameters = item.data.source.parameters;
+      if (hasParams) data.source.parameters = paramObj;
     }
     if (type === 'amount' && item.data?.type_spec) data.type_spec = item.data.type_spec;
     if (s === 'input') {
@@ -142,7 +162,7 @@ const sectionLabels = {
 </script>
 
 <template>
-  <ndd-sheet ref="sheetEl" placement="right" @close="emit('close')">
+  <ndd-sheet ref="sheetEl" placement="right" class="edit-sheet" @close="emit('close')">
     <ndd-page sticky-header>
       <ndd-top-title-bar slot="header" :text="item ? (sectionLabels[item.section] || 'Bewerk') : ''" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
@@ -151,13 +171,13 @@ const sectionLabels = {
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
             <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
-                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
-                <ndd-text-cell text="Waarde"></ndd-text-cell>
+                <ndd-text-cell text="Waarde" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <div v-if="values.controlType === 'currency'" class="edit-sheet-value-group">
                     <span class="edit-sheet-unit">&euro;</span>
@@ -179,13 +199,13 @@ const sectionLabels = {
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
             <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
-                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
-                <ndd-text-cell text="Type"></ndd-text-cell>
+                <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
@@ -195,7 +215,7 @@ const sectionLabels = {
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
-                <ndd-text-cell text="Verplicht"></ndd-text-cell>
+                <ndd-text-cell text="Verplicht" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></ndd-switch>
                 </ndd-cell>
@@ -207,13 +227,13 @@ const sectionLabels = {
           <template v-if="item.section === 'input' || item.section === 'add-input'">
             <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
-                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
-                <ndd-text-cell text="Type"></ndd-text-cell>
+                <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
@@ -223,16 +243,62 @@ const sectionLabels = {
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
-                <ndd-text-cell text="Bron regelgeving"></ndd-text-cell>
+                <ndd-text-cell text="Bron regelgeving" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-text-field size="md" :value="values.sourceRegulation" @input="values.sourceRegulation = $event.target?.value ?? $event.detail?.value ?? values.sourceRegulation"></ndd-text-field>
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
-                <ndd-text-cell text="Bron output"></ndd-text-cell>
+                <ndd-text-cell text="Bron output" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-text-field size="md" :value="values.sourceOutput" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></ndd-text-field>
                 </ndd-cell>
+              </ndd-list-item>
+            </ndd-list>
+
+            <ndd-spacer size="12"></ndd-spacer>
+            <ndd-title size="6"><h6>Bron parameters</h6></ndd-title>
+            <ndd-spacer size="8"></ndd-spacer>
+            <ndd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
+              <ndd-list-item
+                v-for="(param, idx) in values.sourceParameters"
+                :key="idx"
+                size="md"
+              >
+                <ndd-cell>
+                  <ndd-text-field
+                    size="md"
+                    placeholder="naam"
+                    :value="param.key"
+                    :data-testid="`source-param-key-${idx}`"
+                    @input="param.key = $event.target?.value ?? $event.detail?.value ?? param.key"
+                  ></ndd-text-field>
+                </ndd-cell>
+                <ndd-cell>
+                  <ndd-text-field
+                    size="md"
+                    placeholder="waarde (bijv. $bsn)"
+                    :value="param.value"
+                    :data-testid="`source-param-value-${idx}`"
+                    @input="param.value = $event.target?.value ?? $event.detail?.value ?? param.value"
+                  ></ndd-text-field>
+                </ndd-cell>
+                <ndd-cell>
+                  <ndd-icon-button
+                    icon="minus"
+                    title="Verwijder parameter"
+                    :data-testid="`source-param-remove-${idx}`"
+                    @click="values.sourceParameters.splice(idx, 1)"
+                  ></ndd-icon-button>
+                </ndd-cell>
+              </ndd-list-item>
+              <ndd-list-item size="md">
+                <ndd-button
+                  start-icon="plus-small"
+                  data-testid="source-param-add-btn"
+                  text="Voeg parameter toe"
+                  @click="values.sourceParameters.push({ key: '', value: '' })"
+                ></ndd-button>
               </ndd-list-item>
             </ndd-list>
           </template>
@@ -241,13 +307,13 @@ const sectionLabels = {
           <template v-if="item.section === 'output' || item.section === 'add-output'">
             <ndd-list variant="box" class="edit-settings-list">
               <ndd-list-item size="md">
-                <ndd-text-cell text="Naam"></ndd-text-cell>
+                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
-                <ndd-text-cell text="Type"></ndd-text-cell>
+                <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
                 <ndd-cell>
                   <ndd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
@@ -261,24 +327,43 @@ const sectionLabels = {
       </ndd-simple-section>
 
       <ndd-container slot="footer" padding="16">
-        <ndd-button variant="primary" size="md" full-width @click="save" text="Opslaan"></ndd-button>
+        <ndd-button variant="primary" size="md" full-width data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></ndd-button>
       </ndd-container>
     </ndd-page>
   </ndd-sheet>
 </template>
 
 <style>
-/* Form field layout in settings list */
-.edit-settings-list ndd-list-item {
-  display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 0 12px;
-  align-items: center;
+/* Make our EditSheet wider than the NDD default. ndd-sheet hard-codes its
+ * width via these tokens (360px md / 480px lg, see node_modules/@minbzk/
+ * storybook). Overriding the custom properties on the host scopes the
+ * change to this sheet only — other ndd-sheets in the app keep the design
+ * system defaults. */
+ndd-sheet.edit-sheet {
+  --components-sheet-side-md-width: 480px;
+  --components-sheet-side-lg-width: 640px;
 }
+
+/* Form field layout in the edit sheet's settings list.
+ *
+ * The previous attempt used `display: grid` on the host element, but
+ * `ndd-list-item` is a Lit web component whose internal shadow DOM lays
+ * out slotted children with its own flexbox — the user-side grid rule
+ * is silently ignored, so the labels collapsed and the value fields
+ * shrank to ~80px wide.
+ *
+ * The pattern that DOES work is the one OperationSettings.vue uses:
+ * pin the label cell width via the ndd-text-cell `max-width` attribute
+ * (handled inside the component's shadow DOM), and let the value cell
+ * grow with `flex: 1; min-width: 0`. The slotted children participate
+ * as flex items in ndd-list-item's shadow DOM flex container. */
 .edit-settings-list ndd-cell {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
-.edit-settings-list ndd-text-field {
+.edit-settings-list ndd-text-field,
+.edit-settings-list ndd-dropdown,
+.edit-settings-list ndd-number-field {
   width: 100%;
 }
 .edit-sheet-value-group {

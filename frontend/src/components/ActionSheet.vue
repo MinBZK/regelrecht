@@ -65,7 +65,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <ndd-sheet ref="sheetEl" placement="right" @close="emit('close')">
+  <ndd-sheet ref="sheetEl" placement="right" class="action-sheet" @close="emit('close')">
     <ndd-page sticky-header>
       <ndd-top-title-bar slot="header" text="Actie" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
@@ -79,7 +79,7 @@ onUnmounted(() => {
         <template v-if="editable && action">
           <ndd-list variant="box" class="settings-list" data-testid="action-output-binding">
             <ndd-list-item size="md">
-              <ndd-text-cell text="Output"></ndd-text-cell>
+              <ndd-text-cell text="Output" max-width="120"></ndd-text-cell>
               <ndd-cell>
                 <ndd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></ndd-text-field>
               </ndd-cell>
@@ -94,11 +94,11 @@ onUnmounted(() => {
           <ndd-title size="5"><h5>Bovenliggende operaties</h5></ndd-title>
           <ndd-spacer size="4"></ndd-spacer>
           <ndd-list variant="box">
-            <ndd-list-item v-for="op in parentOperations" :key="op.number" size="md">
+            <ndd-list-item v-for="op in parentOperations" :key="op.number" size="md" :data-testid="`parent-op-${op.number}`">
               <ndd-text-cell :text="`${op.number}. ${op.title}`" :supporting-text="op.subtitle">
               </ndd-text-cell>
               <ndd-cell>
-                <ndd-button @click="selectOperation(op)" text="Bewerk"></ndd-button>
+                <ndd-button :data-testid="`parent-op-${op.number}-edit-btn`" @click="selectOperation(op)" text="Bewerk"></ndd-button>
               </ndd-cell>
             </ndd-list-item>
           </ndd-list>
@@ -111,9 +111,21 @@ onUnmounted(() => {
       </ndd-simple-section>
 
       <ndd-container slot="footer" padding="16">
-        <ndd-button v-if="editable" variant="primary" size="md" full-width @click="emit('save')" text="Opslaan"></ndd-button>
-        <ndd-button v-else variant="primary" size="md" full-width @click="emit('close')" text="Sluiten"></ndd-button>
+        <ndd-button v-if="editable" variant="primary" size="md" full-width data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></ndd-button>
+        <ndd-button v-else variant="primary" size="md" full-width data-testid="action-sheet-close-btn" @click="emit('close')" text="Sluiten"></ndd-button>
       </ndd-container>
     </ndd-page>
   </ndd-sheet>
 </template>
+
+<style>
+/* Match the EditSheet width override so the action editor sheet is wide
+ * enough to comfortably show operation type dropdowns + variable refs.
+ * The CSS variables are read by ndd-sheet's internal styles to size the
+ * dialog; overriding them on this host scopes the change to action sheets
+ * only. */
+ndd-sheet.action-sheet {
+  --components-sheet-side-md-width: 480px;
+  --components-sheet-side-lg-width: 640px;
+}
+</style>
