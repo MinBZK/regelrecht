@@ -33,12 +33,16 @@ async function waitForSheetOpen(page, hostSelector) {
 }
 
 /**
- * Wait for an ndd-sheet to be closed (dialog.open === false).
+ * Wait for an ndd-sheet to be closed (host present + shadow `<dialog>`'s
+ * `open` no longer true). The host MUST be present — otherwise a typo in
+ * the selector or a test ordering bug would let this helper resolve
+ * immediately and silently mask the error. Pair every `waitForSheetClosed`
+ * call with an opening event so the host has been mounted at least once.
  */
 async function waitForSheetClosed(page, hostSelector) {
   await page.waitForFunction((sel) => {
     const sheet = document.querySelector(sel);
-    if (!sheet) return true;
+    if (!sheet) return false; // wait for the host to be in the DOM
     const dialog = sheet.shadowRoot?.querySelector('dialog');
     return dialog?.open !== true;
   }, hostSelector, { timeout: 5000 });
@@ -140,22 +144,28 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     await setSheetField('Bron output', 'leeftijd');
 
     // --- Add source.parameters: bsn=$bsn, peildatum=2025-01-01 ---
+    // Each row's data-testid is keyed off `_rowId` (a monotonic counter)
+    // not the array index, so the testids are stable across deletions.
+    // Walk the rendered list in DOM order (which is also row order) and
+    // fill the nth-from-the-bottom row.
     const addParamBtn = editSheet.locator('[data-testid="source-param-add-btn"]');
     await addParamBtn.click();
     await addParamBtn.click();
 
-    async function setParamRow(idx, key, value) {
-      const keyInput = editSheet
-        .locator(`[data-testid="source-param-key-${idx}"] input`)
-        .first();
-      const valInput = editSheet
-        .locator(`[data-testid="source-param-value-${idx}"] input`)
-        .first();
-      await keyInput.evaluate((el, v) => {
+    const paramRows = editSheet.locator('[data-testid="source-parameters-list"] ndd-list-item');
+    // The list ends with the "Voeg parameter toe" row, so the editable
+    // rows are the first N. Wait for both new rows to be present before
+    // filling them.
+    await expect(paramRows).toHaveCount(3); // 2 param rows + add button row
+
+    async function setParamRow(rowIdx, key, value) {
+      const row = paramRows.nth(rowIdx);
+      const inputs = row.locator('ndd-text-field input');
+      await inputs.nth(0).evaluate((el, v) => {
         el.value = v;
         el.dispatchEvent(new Event('input', { bubbles: true }));
       }, key);
-      await valInput.evaluate((el, v) => {
+      await inputs.nth(1).evaluate((el, v) => {
         el.value = v;
         el.dispatchEvent(new Event('input', { bubbles: true }));
       }, value);

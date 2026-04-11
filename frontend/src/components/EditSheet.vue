@@ -180,12 +180,18 @@ function save() {
         paramObj[k] = row.value ?? '';
       }
     }
-    const hasParams = Object.keys(paramObj).length > 0;
-    if (sourceRegulation || sourceOutput || hasParams) {
+    // Emit `source` only when at least regulation OR output is set.
+    // Parameters alone don't make a valid source block (the schema
+    // requires regulation when source is present), so if the user has
+    // cleared both regulation and output we drop the entire source —
+    // including any overflow params. This matches the user's intent
+    // ("disable the source binding") and avoids producing a malformed
+    // source: { parameters: {...} } that would fail schema validation.
+    if (sourceRegulation || sourceOutput) {
       data.source = {};
       if (sourceRegulation) data.source.regulation = sourceRegulation;
       if (sourceOutput) data.source.output = sourceOutput;
-      if (hasParams) data.source.parameters = paramObj;
+      if (Object.keys(paramObj).length > 0) data.source.parameters = paramObj;
     }
     if (type === 'amount' && item.data?.type_spec) data.type_spec = item.data.type_spec;
     if (s === 'input') {
@@ -222,7 +228,16 @@ const sectionLabels = {
 
 <template>
   <ndd-sheet ref="sheetEl" placement="right" class="edit-sheet" @close="emit('close')">
-    <ndd-page sticky-header>
+    <!-- `:key` forces ndd-page to remount whenever the section changes.
+         ndd-page captures the sticky-header height ONCE per mount via
+         requestAnimationFrame; if the header text changes after that
+         (which happens here because :text is reactive on item.section),
+         the measurement stays at the empty/initial value and the body
+         content slides up under the title bar. Remounting on section
+         change re-runs the measurement with the now-set title text,
+         which is the storybook-conventional way to handle a header
+         whose content swaps in. -->
+    <ndd-page :key="item?.section ?? 'none'" sticky-header>
       <ndd-top-title-bar slot="header" :text="item ? (sectionLabels[item.section] || 'Bewerk') : ''" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
       <ndd-simple-section v-if="item">
@@ -329,7 +344,7 @@ const sectionLabels = {
                     size="md"
                     placeholder="naam"
                     :value="param.key"
-                    :data-testid="`source-param-key-${idx}`"
+                    :data-testid="`source-param-key-${param._rowId}`"
                     @input="param.key = $event.target?.value ?? $event.detail?.value ?? param.key"
                   ></ndd-text-field>
                 </ndd-cell>
@@ -338,7 +353,7 @@ const sectionLabels = {
                     size="md"
                     placeholder="waarde (bijv. $bsn)"
                     :value="param.value"
-                    :data-testid="`source-param-value-${idx}`"
+                    :data-testid="`source-param-value-${param._rowId}`"
                     @input="param.value = $event.target?.value ?? $event.detail?.value ?? param.value"
                   ></ndd-text-field>
                 </ndd-cell>
@@ -346,7 +361,7 @@ const sectionLabels = {
                   <ndd-icon-button
                     icon="minus"
                     title="Verwijder parameter"
-                    :data-testid="`source-param-remove-${idx}`"
+                    :data-testid="`source-param-remove-${param._rowId}`"
                     @click="values.sourceParameters.splice(idx, 1)"
                   ></ndd-icon-button>
                 </ndd-cell>

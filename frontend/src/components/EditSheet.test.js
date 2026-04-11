@@ -214,6 +214,8 @@ describe('EditSheet', () => {
           data: {
             name: 'leeftijd',
             source: {
+              regulation: 'wet_basisregistratie_personen',
+              output: 'leeftijd',
               parameters: {
                 bsn: '$bsn',
                 nested: { foo: 'bar' }, // unsupported in form editor
@@ -274,7 +276,11 @@ describe('EditSheet', () => {
         index: 0,
         data: {
           name: 'leeftijd',
-          source: { parameters: { threshold: 42 } },
+          source: {
+            regulation: 'wet_basisregistratie_personen',
+            output: 'leeftijd',
+            parameters: { threshold: 42 },
+          },
         },
       });
 
@@ -298,6 +304,8 @@ describe('EditSheet', () => {
         data: {
           name: 'leeftijd',
           source: {
+            regulation: 'wet_basisregistratie_personen',
+            output: 'leeftijd',
             parameters: { complex: { foo: 'bar' } },
           },
         },
@@ -345,6 +353,35 @@ describe('EditSheet', () => {
       wrapper.vm.save();
       await nextTick();
       const events = wrapper.emitted('save');
+      expect(events[0][0].data).not.toHaveProperty('source');
+    });
+
+    it('drops the source block when the user clears regulation and output, even if overflow params remain', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, {
+        section: 'input',
+        index: 0,
+        data: {
+          name: 'leeftijd',
+          source: {
+            regulation: 'wet_basisregistratie_personen',
+            output: 'leeftijd',
+            parameters: { complex: { foo: 'bar' } },
+          },
+        },
+      });
+
+      // Hydration parked the non-scalar `complex` key in
+      // sourceParametersOverflow. The user now clears regulation and
+      // output, intending to disable the source binding entirely.
+      wrapper.vm.values.sourceRegulation = '';
+      wrapper.vm.values.sourceOutput = '';
+      wrapper.vm.save();
+      await nextTick();
+      const events = wrapper.emitted('save');
+      // No `source` should be emitted: parameters alone don't make a
+      // valid source block (the schema requires regulation), and the
+      // user explicitly cleared the binding.
       expect(events[0][0].data).not.toHaveProperty('source');
     });
   });
