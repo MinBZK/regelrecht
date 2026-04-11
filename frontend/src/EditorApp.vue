@@ -636,21 +636,21 @@ function handleActionSave() {
                 @executed="handleScenarioExecuted"
               />
 
-              <!-- YAML view -->
-              <ndd-simple-section v-if="middlePaneView === 'yaml'">
-                <div class="editor-yaml-wrap">
-                  <textarea
-                    :value="yamlSource"
-                    @input="onYamlInput"
-                    class="editor-yaml-textarea"
-                    spellcheck="false"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="off"
-                  ></textarea>
-                  <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
-                </div>
-              </ndd-simple-section>
+              <!-- YAML view: bypass ndd-simple-section so the textarea can
+                   stretch to fill the pane body. The wrap is a flex column
+                   that anchors the parse-error footer at the bottom. -->
+              <div v-if="middlePaneView === 'yaml'" class="editor-yaml-wrap">
+                <textarea
+                  :value="yamlSource"
+                  @input="onYamlInput"
+                  class="editor-yaml-textarea"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                ></textarea>
+                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+              </div>
             </ndd-page>
           </ndd-split-view-pane>
 
@@ -721,21 +721,31 @@ function handleActionSave() {
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  /* Fill the pane body. ndd-page's body is the only ancestor between us
+   * and the viewport, so anchoring on viewport height minus the toolbar
+   * + tab strip height gives a stable tall area regardless of how many
+   * scenarios are loaded next door. */
+  height: calc(100vh - 180px);
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .editor-yaml-textarea {
   flex: 1;
   width: 100%;
   min-height: 0;
-  height: calc(100vh - 160px);
-  background: #1e1e2e;
-  color: #cdd6f4;
+  /* Match the library/zorgtoeslagwet/2 YamlView look: tinted background,
+   * rounded corners, monospace, comfortable padding. The library version
+   * is read-only <pre><code>; this is the editable counterpart with the
+   * same skin so the eye doesn't have to context-switch. */
+  background: var(--semantics-surfaces-tinted-background-color, #F4F6F9);
+  color: var(--semantics-text-default-color, #1F2937);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.5;
   padding: 16px;
-  border: none;
+  border: 1px solid var(--semantics-borders-default-color, #DDE0E4);
+  border-radius: 12px;
   outline: none;
   resize: none;
   tab-size: 2;
@@ -743,8 +753,8 @@ function handleActionSave() {
   overflow: auto;
 }
 
-.editor-yaml-textarea::selection {
-  background: #45475a;
+.editor-yaml-textarea:focus {
+  border-color: var(--semantics-borders-focus-color, #007BC7);
 }
 
 .editor-parse-error {
@@ -757,11 +767,13 @@ function handleActionSave() {
 }
 
 .editor-parse-error-detail {
-  background: #2a1a1a;
-  color: #f38ba8;
+  margin-top: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
   font-family: 'SF Mono', monospace;
   font-size: 12px;
-  padding: 8px 16px;
-  border-top: 1px solid #45475a;
+  padding: 8px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
 }
 </style>
