@@ -17,9 +17,14 @@ const typeOptions = ['string', 'number', 'boolean', 'amount'];
 // DOM (and the per-row data-testid attributes) across deletions, which
 // confuses focus, the testid contract, and the data-testid-bound e2e
 // helpers. Each row gets a fresh _rowId when pushed onto the array.
+//
+// `_origValue` carries the row's original (un-stringified) value so that
+// numeric / boolean parameters round-trip back to their original type on
+// save when the user didn't touch the value field. Without it the form
+// would silently rewrite `peildatum: 2024` to `peildatum: '2024'`.
 let nextRowId = 1;
-function makeParamRow(key = '', value = '') {
-  return { _rowId: nextRowId++, key, value };
+function makeParamRow(key = '', value = '', origValue = undefined) {
+  return { _rowId: nextRowId++, key, value, _origValue: origValue };
 }
 
 // Type inference for controls
@@ -79,23 +84,27 @@ watch(() => props.item, async (item) => {
     //
     // Hydration is value-type aware:
     //   - string / number / boolean → represent as a string the user can
-    //     edit. Numbers and booleans round-trip via JSON-ish parsing on
-    //     save (see `save()` below).
+    //     edit, and stash the original on `_origValue` so save() can
+    //     emit the original primitive type if the user didn't touch the
+    //     value field.
     //   - object / array → unsupported in the form editor today (no UI
-    //     for nested literal values). Skip with a warning rather than
-    //     stringify them to "[object Object]" and silently corrupt the
-    //     law on the next save. The user can still edit such inputs via
-    //     the YAML pane.
+    //     for nested literal values). The original value is stashed in
+    //     `_overflowParams` (separate from the editable rows) so save()
+    //     can merge it back into the output untouched. Without that
+    //     overflow, an unrelated edit on the input would silently drop
+    //     the entire non-scalar parameter from the law on the next save.
     const params = item.data?.source?.parameters;
     const paramList = [];
+    const overflowParams = {};
     if (params && typeof params === 'object') {
       for (const [k, v] of Object.entries(params)) {
         if (v == null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-          paramList.push(makeParamRow(k, v == null ? '' : String(v)));
+          paramList.push(makeParamRow(k, v == null ? '' : String(v), v));
         } else {
+          overflowParams[k] = v;
           // eslint-disable-next-line no-console
           console.warn(
-            `EditSheet: skipping non-scalar source.parameter '${k}' for input '${item.data?.name}'. Edit via the YAML pane.`,
+            `EditSheet: source.parameter '${k}' on input '${item.data?.name}' has a non-scalar value; preserved untouched (edit via the YAML pane).`,
           );
         }
       }
@@ -106,6 +115,7 @@ watch(() => props.item, async (item) => {
       sourceRegulation: item.data?.source?.regulation ?? '',
       sourceOutput: item.data?.source?.output ?? '',
       sourceParameters: paramList,
+      sourceParametersOverflow: overflowParams,
     };
   } else if (s === 'output' || s === 'add-output') {
     values.value = {
@@ -142,18 +152,33 @@ function save() {
       emit('save', { section: 'add-parameter', data: { name: name.trim(), type, required } });
     }
   } else if (s === 'input' || s === 'add-input') {
-    const { name, type, sourceRegulation, sourceOutput, sourceParameters } = values.value;
+    const { name, type, sourceRegulation, sourceOutput, sourceParameters, sourceParametersOverflow } = values.value;
     if (!name.trim()) return;
     const data = { name: name.trim(), type };
-    // Reduce the form's parameter rows back into a plain object. Skip rows
-    // with an empty key — they're either still being typed or were added
-    // and abandoned. Duplicate keys: last write wins (matches what
+    // Reduce the form's parameter rows back into a plain object. Skip
+    // rows with an empty key — they're either still being typed or were
+    // added and abandoned. Duplicate keys: last write wins (matches what
     // serializing an object would do anyway).
-    const paramObj = {};
+    //
+    // Two correctness rules from iteration 2 review:
+    //   1. If the row's value string still equals String(_origValue), the
+    //      user didn't touch the value field; emit the original (which
+    //      preserves number/boolean types). Otherwise emit the typed
+    //      string verbatim.
+    //   2. Overflow parameters (object/array values that the form
+    //      doesn't render) get merged back BEFORE the user-edited rows
+    //      so the user can override them by adding a row with the same
+    //      key, but un-overridden overflow keys survive.
+    const paramObj = { ...(sourceParametersOverflow || {}) };
     for (const row of sourceParameters || []) {
       const k = (row.key || '').trim();
       if (!k) continue;
-      paramObj[k] = row.value ?? '';
+      const origStringForm = row._origValue == null ? '' : String(row._origValue);
+      if (row._origValue !== undefined && row.value === origStringForm) {
+        paramObj[k] = row._origValue;
+      } else {
+        paramObj[k] = row.value ?? '';
+      }
     }
     const hasParams = Object.keys(paramObj).length > 0;
     if (sourceRegulation || sourceOutput || hasParams) {

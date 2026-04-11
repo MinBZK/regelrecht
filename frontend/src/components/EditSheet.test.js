@@ -201,7 +201,7 @@ describe('EditSheet', () => {
       ]);
     });
 
-    it('skips non-scalar source.parameter values on hydration', async () => {
+    it('skips non-scalar source.parameter values from the editable rows but preserves them on save', async () => {
       const wrapper = mountSheet();
       const warnings = [];
       const origWarn = console.warn;
@@ -228,6 +228,87 @@ describe('EditSheet', () => {
       const rows = wrapper.vm.values.sourceParameters.map(({ key }) => key);
       expect(rows).toEqual(['bsn']);
       expect(warnings.some((m) => m.includes('nested'))).toBe(true);
+
+      // The non-scalar key must round-trip on save: the form doesn't
+      // render it, but it should still appear in the emitted payload
+      // unchanged.
+      wrapper.vm.save();
+      await nextTick();
+      const events = wrapper.emitted('save');
+      expect(events[0][0].data.source.parameters).toEqual({
+        bsn: '$bsn',
+        nested: { foo: 'bar' },
+      });
+    });
+
+    it('round-trips numeric source.parameter values without stringifying them', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, {
+        section: 'input',
+        index: 0,
+        data: {
+          name: 'leeftijd',
+          source: {
+            regulation: 'wet_basisregistratie_personen',
+            output: 'leeftijd',
+            parameters: { threshold: 42, enabled: true, bsn: '$bsn' },
+          },
+        },
+      });
+
+      // No edits to value cells; save should preserve original types.
+      wrapper.vm.save();
+      await nextTick();
+      const events = wrapper.emitted('save');
+      expect(events[0][0].data.source.parameters).toEqual({
+        threshold: 42,
+        enabled: true,
+        bsn: '$bsn',
+      });
+    });
+
+    it('emits user-typed source.parameter value as a string when the user touches the row', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, {
+        section: 'input',
+        index: 0,
+        data: {
+          name: 'leeftijd',
+          source: { parameters: { threshold: 42 } },
+        },
+      });
+
+      // Simulate the user editing the value field.
+      wrapper.vm.values.sourceParameters[0].value = '99';
+
+      wrapper.vm.save();
+      await nextTick();
+      const events = wrapper.emitted('save');
+      // User-typed value emits as a string — we don't second-guess what
+      // they meant, and the save path treats explicit edits as opaque
+      // text.
+      expect(events[0][0].data.source.parameters).toEqual({ threshold: '99' });
+    });
+
+    it('lets a user-added row override an overflow key with the same name', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, {
+        section: 'input',
+        index: 0,
+        data: {
+          name: 'leeftijd',
+          source: {
+            parameters: { complex: { foo: 'bar' } },
+          },
+        },
+      });
+
+      // Hydration skipped `complex`; user adds a new row with the same key.
+      wrapper.vm.values.sourceParameters.push({ _rowId: 999, key: 'complex', value: 'replaced' });
+      wrapper.vm.save();
+      await nextTick();
+      const events = wrapper.emitted('save');
+      expect(events[0][0].data.source.parameters).toEqual({ complex: 'replaced' });
     });
 
     it('skips source.parameters rows with empty key on save', async () => {
