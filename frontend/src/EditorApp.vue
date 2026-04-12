@@ -380,6 +380,44 @@ function handleSave({ section, key, newKey, index, data }) {
   parseError.value = null;
 }
 
+// Delete an item from the machine_readable. Mirrors handleSave's section
+// dispatch but removes the entry instead of replacing it. Definitions are
+// keyed by name; parameters / inputs / outputs / actions are keyed by
+// array index. Out-of-range indices and missing keys are no-ops so a
+// stale event from the UI can never crash.
+function handleDelete({ section, key, index }) {
+  const mr = machineReadable.value
+    ? JSON.parse(JSON.stringify(machineReadable.value))
+    : null;
+  if (!mr) return;
+
+  if (section === 'definition') {
+    if (mr.definitions && key != null && key in mr.definitions) {
+      delete mr.definitions[key];
+    }
+  } else if (section === 'parameter') {
+    if (mr.execution?.parameters && index >= 0 && index < mr.execution.parameters.length) {
+      mr.execution.parameters.splice(index, 1);
+    }
+  } else if (section === 'input') {
+    if (mr.execution?.input && index >= 0 && index < mr.execution.input.length) {
+      mr.execution.input.splice(index, 1);
+    }
+  } else if (section === 'output') {
+    if (mr.execution?.output && index >= 0 && index < mr.execution.output.length) {
+      mr.execution.output.splice(index, 1);
+    }
+  } else if (section === 'action') {
+    if (mr.execution?.actions && index >= 0 && index < mr.execution.actions.length) {
+      mr.execution.actions.splice(index, 1);
+    }
+  }
+
+  machineReadable.value = mr;
+  yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
+  parseError.value = null;
+}
+
 // Initialize empty machine_readable scaffold
 function handleInitMr() {
   machineReadable.value = {
@@ -404,7 +442,15 @@ function handleAddAction() {
   const mr = machineReadable.value || {};
   if (!mr.execution) mr.execution = {};
   if (!mr.execution.actions) mr.execution.actions = [];
-  const newAction = { output: '', value: '' };
+  // Seed the new action with an EQUALS stub instead of an empty literal so
+  // OperationSettings has an operation tree to render and the user can
+  // immediately reach the type dropdown to switch to AGE / AND / etc.
+  // The findIncompleteOperation guard rejects unfilled stubs on save, so
+  // a half-configured action still can't be persisted.
+  const newAction = {
+    output: '',
+    value: { operation: 'EQUALS', subject: '', value: '' },
+  };
   mr.execution.actions.push(newAction);
   machineReadable.value = { ...mr };
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
@@ -464,8 +510,15 @@ function findIncompleteOperation(value) {
   // NOT wraps a single value/operation; reject the empty-string stub created
   // when transitioning from arithmetic ops via changeOperationType.
   if (op === 'NOT' && (value.value ?? '') === '') return op;
+  // AGE has two structural slots — both must be filled. Empty strings are
+  // the seed values from changeOperationType('AGE'); reject them so the
+  // user can't save a stub.
+  if (op === 'AGE') {
+    if ((value.date_of_birth ?? '') === '') return op;
+    if ((value.reference_date ?? '') === '') return op;
+  }
   // Recurse into structural slots
-  for (const child of [value.subject, value.value, value.default]) {
+  for (const child of [value.subject, value.value, value.default, value.date_of_birth, value.reference_date]) {
     const inner = findIncompleteOperation(child);
     if (inner) return inner;
   }
@@ -685,6 +738,7 @@ function handleActionSave() {
                   @init-mr="handleInitMr"
                   @add-action="handleAddAction"
                   @save="handleMachineReadableSave"
+                  @delete="handleDelete"
                 />
               </ndd-simple-section>
             </ndd-page>

@@ -46,6 +46,8 @@ const canAddValue = computed(() => {
   if (op === 'NOT' || op === 'IF' || op === 'SWITCH') return false;
   // NOT_NULL never takes a value field (it only checks the subject is non-null)
   if (op === 'NOT_NULL') return false;
+  // AGE has a fixed shape (date_of_birth + reference_date) — no add slot.
+  if (op === 'AGE') return false;
   // Comparison ops always have exactly subject + value (or just subject for
   // NOT_NULL); operationValues pushes both unconditionally, so addValue() has
   // nothing to do. Hide the button to avoid a no-op click.
@@ -60,7 +62,10 @@ const canAddValue = computed(() => {
 const canAddNestedOperation = computed(() => {
   if (!props.editable) return false;
   const op = props.operation?.operation;
-  return op && !isComparisonOp.value && op !== 'NOT' && op !== 'IF' && op !== 'SWITCH';
+  if (!op) return false;
+  // Same fixed-shape rule as canAddValue: structural-slot ops don't grow.
+  if (op === 'NOT' || op === 'IF' || op === 'SWITCH' || op === 'AGE') return false;
+  return !isComparisonOp.value;
 });
 
 // Required structural fields whose minus button must be hidden so the user
@@ -72,6 +77,8 @@ function canRemoveValue(val) {
   if (isComparisonOp.value && (val._kind === 'subject' || val._kind === 'value')) return false;
   // NOT needs value
   if (op === 'NOT' && val._kind === 'value') return false;
+  // AGE has two fixed structural slots — neither can be deleted.
+  if (op === 'AGE' && (val._kind === 'date_of_birth' || val._kind === 'reference_date')) return false;
   // IF and SWITCH share the cases[]/default schema and both need a default branch
   if ((op === 'IF' || op === 'SWITCH') && val._kind === 'default') return false;
   // IF must keep its single case; SWITCH must keep at least one case.
@@ -99,6 +106,15 @@ const operationValues = computed(() => {
       vals.push({ _label: 'Waarde', _value: node.value ?? '', _kind: 'value' });
     }
     return vals;
+  }
+
+  // AGE: two structural slots, similar in shape to a comparison op (fixed,
+  // named) but with date semantics. Returns the age in whole years.
+  if (node.operation === 'AGE') {
+    return [
+      { _label: 'Geboortedatum', _value: node.date_of_birth ?? '', _kind: 'date_of_birth' },
+      { _label: 'Peildatum', _value: node.reference_date ?? '', _kind: 'reference_date' },
+    ];
   }
 
   // IF and SWITCH share the same cases[]/default schema. The only difference
@@ -173,6 +189,11 @@ function changeOperationType(event) {
 
   node.operation = newType;
 
+  // Every non-AGE branch must also strip `date_of_birth` / `reference_date`
+  // so a transition out of AGE doesn't leave the slots dangling on the
+  // node. The schema marks every operation type as
+  // `additionalProperties: false`, so a leaked field would fail
+  // validation on save and corrupt the law.
   if (COMPARISON_OPS.has(newType)) {
     if (node.subject === undefined) node.subject = '';
     if (newType === 'NOT_NULL') {
@@ -191,6 +212,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (LOGICAL_OPS.has(newType)) {
     if (!Array.isArray(node.conditions)) {
       node.conditions = [];
@@ -203,6 +226,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (newType === 'IF') {
     // IF uses the same cases[]/default schema as SWITCH but is single-case.
     // Truncate any extra cases when transitioning from SWITCH so we don't
@@ -220,6 +245,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (newType === 'NOT') {
     if (node.value === undefined) {
       node.value = node.subject ?? '';
@@ -232,6 +259,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (newType === 'SWITCH') {
     // Schema requires at least one case
     if (!Array.isArray(node.cases) || node.cases.length === 0) {
@@ -245,6 +274,8 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
   } else if (ARITHMETIC_OPS.has(newType)) {
     if (!Array.isArray(node.values)) {
       node.values = [];
@@ -257,6 +288,23 @@ function changeOperationType(event) {
     delete node.when;
     delete node.then;
     delete node.else;
+    delete node.date_of_birth;
+    delete node.reference_date;
+  } else if (newType === 'AGE') {
+    // AGE has two fixed structural slots — seed both as empty strings so
+    // the user can fill them via the form. Strip every other slot so the
+    // node is shaped exactly like the engine's `ActionOperation::Age`.
+    if (node.date_of_birth === undefined) node.date_of_birth = '';
+    if (node.reference_date === undefined) node.reference_date = '';
+    delete node.subject;
+    delete node.value;
+    delete node.values;
+    delete node.conditions;
+    delete node.cases;
+    delete node.default;
+    delete node.when;
+    delete node.then;
+    delete node.else;
   }
 }
 
@@ -265,6 +313,8 @@ function applyValueMutation(val, newVal) {
   if (!node) return;
   if (val._kind === 'subject') node.subject = newVal;
   else if (val._kind === 'value') node.value = newVal;
+  else if (val._kind === 'date_of_birth') node.date_of_birth = newVal;
+  else if (val._kind === 'reference_date') node.reference_date = newVal;
   else if (val._kind === 'values' && val._index !== undefined) node.values[val._index] = newVal;
   else if (val._kind === 'conditions' && val._index !== undefined) node.conditions[val._index] = newVal;
   else if (val._kind === 'default') node.default = newVal;

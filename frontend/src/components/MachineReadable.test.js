@@ -346,4 +346,59 @@ describe('MachineReadable', () => {
       expect(wrapper.find('[data-testid="save-mr-error"]').exists()).toBe(false);
     });
   });
+
+  describe('delete row buttons', () => {
+    function findDeleteByTestId(wrapper, testid) {
+      return wrapper.find(`[data-testid="${testid}"]`);
+    }
+
+    it('renders a minus icon button next to every editable row when editable', () => {
+      const wrapper = mountEditable();
+      // 3 definitions + 1 parameter + 2 inputs + 2 outputs + 1 action = 9
+      expect(wrapper.findAll('[data-testid$="-delete-btn"]')).toHaveLength(9);
+    });
+
+    it('does not render delete buttons in read-only mode', () => {
+      const wrapper = mount(MachineReadable, {
+        props: { article: createArticle(), editable: false },
+      });
+      expect(wrapper.findAll('[data-testid$="-delete-btn"]')).toHaveLength(0);
+    });
+
+    it('emits delete with definition payload when the def minus is clicked', async () => {
+      const wrapper = mountEditable();
+      await findDeleteByTestId(wrapper, 'def-drempelinkomen-delete-btn').trigger('click');
+      const events = wrapper.emitted('delete');
+      expect(events).toHaveLength(1);
+      expect(events[0][0]).toEqual({ section: 'definition', key: 'drempelinkomen' });
+    });
+
+    it('emits delete with parameter index payload', async () => {
+      const wrapper = mountEditable();
+      await findDeleteByTestId(wrapper, 'param-bsn-delete-btn').trigger('click');
+      const events = wrapper.emitted('delete');
+      expect(events[0][0]).toEqual({ section: 'parameter', index: 0 });
+    });
+
+    it('emits delete with input index payload', async () => {
+      const wrapper = mountEditable();
+      await findDeleteByTestId(wrapper, 'input-leeftijd-delete-btn').trigger('click');
+      const events = wrapper.emitted('delete');
+      expect(events[0][0]).toEqual({ section: 'input', index: 0 });
+    });
+
+    it('emits delete with output index payload', async () => {
+      const wrapper = mountEditable();
+      await findDeleteByTestId(wrapper, 'output-heeft_recht-delete-btn').trigger('click');
+      const events = wrapper.emitted('delete');
+      expect(events[0][0]).toEqual({ section: 'output', index: 0 });
+    });
+
+    it('emits delete with action index payload', async () => {
+      const wrapper = mountEditable();
+      await findDeleteByTestId(wrapper, 'action-hoogte-delete-btn').trigger('click');
+      const events = wrapper.emitted('delete');
+      expect(events[0][0]).toEqual({ section: 'action', index: 0 });
+    });
+  });
 });
