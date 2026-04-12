@@ -255,7 +255,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       :key-field="ds.keyField"
       :fields="ds.fields"
       :model-value="ds.rows"
-      :default-expanded="true"
+      :default-expanded="false"
       @update:model-value="updateDataSourceRows(i, $event)"
     />
 
