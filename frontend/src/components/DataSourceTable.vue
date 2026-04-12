@@ -100,8 +100,8 @@ const rowCount = computed(() => rows.value.length);
     <!-- Header -->
     <button class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
       <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
-      <ndd-title size="5">
-        <h5>{{ title }}</h5>
+      <ndd-title size="5" style="flex: 1; text-align: left;">
+        <span>{{ title }}</span>
       </ndd-title>
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
@@ -123,7 +123,7 @@ const rowCount = computed(() => rows.value.length);
           ></ndd-icon-button>
         </div>
 
-        <ndd-list variant="box" class="ds-settings-list">
+        <ndd-list variant="box" class="ds-datasource-list">
           <ndd-list-item v-for="col in allColumns" :key="col.name" size="md">
             <ndd-text-cell :text="col.name" max-width="140" :class="{ 'ds-key-label': col.isKey }"></ndd-text-cell>
             <ndd-cell>
@@ -240,19 +240,19 @@ const rowCount = computed(() => rows.value.length);
 
 <style>
 /* Unscoped: ndd web components need global selectors */
-.ds-settings-list ndd-text-cell {
+.ds-datasource-list ndd-text-cell {
   width: 140px;
   min-width: 140px;
   flex-shrink: 0;
 }
 
-.ds-settings-list ndd-cell {
+.ds-datasource-list ndd-cell {
   flex: 1;
   min-width: 0;
 }
 
-.ds-settings-list ndd-text-field,
-.ds-settings-list ndd-dropdown {
+.ds-datasource-list ndd-text-field,
+.ds-datasource-list ndd-dropdown {
   width: 100%;
 }
 </style>
