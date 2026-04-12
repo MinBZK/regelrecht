@@ -102,7 +102,7 @@ const rowCount = computed(() => rows.value.length);
       </div>
 
       <!-- One card per data row -->
-      <div v-for="(row, ri) in rows" :key="row._id ?? ri" class="ds-row-card">
+      <div v-for="(row, ri) in rows" :key="row._id ?? ri">
         <div v-if="rows.length > 1" class="ds-row-card-header">
           <span class="ds-row-card-label">Rij {{ ri + 1 }}</span>
           <ndd-icon-button
@@ -136,7 +136,7 @@ const rowCount = computed(() => rows.value.length);
               <template v-else>
                 <ndd-text-field
                   size="md"
-                  :value="row[col.name] ?? ''"
+                  :value="String(row[col.name] ?? '')"
                   :placeholder="col.name"
                   @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
                 ></ndd-text-field>
