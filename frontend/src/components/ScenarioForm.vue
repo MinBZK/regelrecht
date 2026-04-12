@@ -207,19 +207,27 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 <template>
   <div class="sf-form">
     <!-- Expected outputs at top -->
-    <ndd-list v-if="hasExpectations" variant="simple">
-      <ndd-list-item
-        v-for="(exp, name) in expectations"
-        :key="name"
-        size="sm"
-        class="sf-expectation"
-        :class="result ? `sf-expectation--${matchStatus(name, result.outputs?.[name])}` : (error ? 'sf-expectation--failed' : '')"
-      >
-        <ndd-text-cell size="sm" :text="articleMap?.outputToArticle?.get(name) ? `${name} (Art. ${articleMap.outputToArticle.get(name)})` : name"></ndd-text-cell>
-        <ndd-text-cell size="sm" class="sf-expectation-value" :text="`verwacht: ${formatValue(normalizeForCompare(exp))}`"></ndd-text-cell>
-        <ndd-text-cell v-if="result && result.outputs" size="sm" class="sf-expectation-actual" :text="`→ ${formatOutputValue(result.outputs[name], name)}`"></ndd-text-cell>
-      </ndd-list-item>
-    </ndd-list>
+    <template v-if="hasExpectations">
+      <ndd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></ndd-title>
+      <ndd-list variant="box" class="sf-expectations-list">
+        <ndd-list-item
+          v-for="(exp, name) in expectations"
+          :key="name"
+          size="md"
+          class="sf-expectation"
+          :class="result ? `sf-expectation--${matchStatus(name, result.outputs?.[name])}` : (error ? 'sf-expectation--failed' : '')"
+        >
+          <ndd-text-cell :text="articleMap?.outputToArticle?.get(name) ? `${name} (Art. ${articleMap.outputToArticle.get(name)})` : name" max-width="140"></ndd-text-cell>
+          <ndd-cell>
+            <div class="sf-expectation-values">
+              <ndd-text-field size="md" :value="formatValue(normalizeForCompare(exp))" readonly></ndd-text-field>
+              <span v-if="result && result.outputs" class="sf-expectation-arrow">&rarr;</span>
+              <ndd-text-field v-if="result && result.outputs" size="md" :value="formatOutputValue(result.outputs[name], name)" readonly class="sf-expectation-actual"></ndd-text-field>
+            </div>
+          </ndd-cell>
+        </ndd-list-item>
+      </ndd-list>
+    </template>
 
     <!-- Error -->
     <div v-if="error && !running" class="sf-error">{{ error }}</div>
@@ -228,21 +236,23 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <div v-if="running" class="sf-running">Uitvoeren...</div>
 
     <!-- Input: date + parameters -->
-    <ndd-list variant="simple" class="sf-input-list">
-      <ndd-list-item size="sm">
-        <ndd-text-cell size="sm" text="Datum"></ndd-text-cell>
+    <ndd-title size="5" class="sf-section-title"><span>Invoer</span></ndd-title>
+    <ndd-list variant="box" class="sf-input-list">
+      <ndd-list-item size="md">
+        <ndd-text-cell text="Datum" max-width="140"></ndd-text-cell>
         <ndd-cell>
-          <input type="date" class="sf-date" v-model="calculationDate" />
+          <ndd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate"></ndd-text-field>
         </ndd-cell>
       </ndd-list-item>
-      <ndd-list-item v-for="(value, name) in parameterValues" :key="name" size="sm">
-        <ndd-text-cell size="sm" :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name"></ndd-text-cell>
+      <ndd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
+        <ndd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140"></ndd-text-cell>
         <ndd-cell>
-          <input
-            class="sf-input"
+          <ndd-text-field
+            size="md"
             :value="value"
-            @input="parameterValues = { ...parameterValues, [name]: $event.target.value }"
-          />
+            :placeholder="name"
+            @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }"
+          ></ndd-text-field>
         </ndd-cell>
       </ndd-list-item>
     </ndd-list>
@@ -275,6 +285,11 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
+/* Section titles */
+.sf-section-title {
+  margin-bottom: 4px;
+}
+
 /* Expected outputs */
 .sf-expectation {
   border-left: 3px solid transparent;
@@ -288,49 +303,16 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   border-left-color: #c62828;
 }
 
-.sf-expectation-value {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  color: var(--semantics-text-color-secondary, #555);
-}
-
-.sf-expectation-actual {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-weight: 600;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-/* Input list */
-.sf-input-list ndd-text-cell {
-  width: 80px;
-  min-width: 80px;
-  flex-shrink: 0;
-}
-
-.sf-input-list ndd-cell {
-  flex: 1;
-  min-width: 0;
-}
-
-.sf-date {
-  padding: 4px 6px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
-.sf-input {
+.sf-expectation-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  padding: 4px 6px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
-.sf-date:focus, .sf-input:focus {
-  outline: none;
-  border-color: #154273;
+.sf-expectation-arrow {
+  flex-shrink: 0;
+  color: var(--semantics-text-color-secondary, #666);
 }
 
 /* Actions row */
@@ -350,5 +332,31 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   color: #c00;
   word-break: break-word;
   padding: 4px 0;
+}
+</style>
+
+<style>
+/* Unscoped: ndd web components need global selectors */
+.sf-expectations-list ndd-text-cell,
+.sf-input-list ndd-text-cell {
+  width: 140px;
+  min-width: 140px;
+  flex-shrink: 0;
+}
+
+.sf-expectations-list ndd-cell,
+.sf-input-list ndd-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.sf-expectations-list ndd-text-field,
+.sf-input-list ndd-text-field {
+  width: 100%;
+}
+
+.sf-expectation-values ndd-text-field {
+  flex: 1;
+  min-width: 0;
 }
 </style>
