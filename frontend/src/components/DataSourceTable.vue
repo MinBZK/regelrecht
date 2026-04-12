@@ -27,7 +27,6 @@ function toggleExpand() {
 
 function addRow() {
   const newRow = { _id: ++nextRowId };
-  // Pre-fill key field if there's a common value from existing rows
   newRow[props.keyField] = rows.value.length > 0
     ? rows.value[0][props.keyField] || ''
     : '';
@@ -80,7 +79,6 @@ const allColumns = computed(() => {
   const cols = [];
   const seen = new Set();
 
-  // Key field first
   seen.add(props.keyField);
   cols.push({ name: props.keyField, type: 'string', isKey: true });
 
@@ -98,37 +96,44 @@ const rowCount = computed(() => rows.value.length);
 </script>
 
 <template>
-  <div class="ds-table">
-    <button class="ds-table-header" @click="toggleExpand" type="button">
-      <span class="ds-table-toggle">{{ expanded ? '\u25BE' : '\u25B8' }}</span>
-      <span class="ds-table-title">{{ title }}</span>
-      <span class="ds-table-badge" v-if="rowCount > 0">{{ rowCount }}</span>
+  <div class="ds-block">
+    <!-- Header -->
+    <button class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
+      <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
+      <ndd-title size="5" style="flex: 1; text-align: left;">
+        <span>{{ title }}</span>
+      </ndd-title>
+      <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
 
-    <div v-if="expanded" class="ds-table-body">
-      <div v-if="rows.length === 0" class="ds-table-empty">
+    <div v-if="expanded" class="ds-block-body">
+      <div v-if="rows.length === 0" class="ds-block-empty">
         Geen gegevens &mdash; vul in indien relevant
       </div>
 
-      <div v-else class="ds-table-scroll">
-        <table class="ds-table-grid">
-          <thead>
-            <tr>
-              <th v-for="col in allColumns" :key="col.name" :class="{ 'ds-key-col': col.isKey }">
-                {{ col.name }}
-              </th>
-              <th v-if="!readonly" class="ds-action-col"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, ri) in rows" :key="row._id ?? ri">
-              <td v-for="col in allColumns" :key="col.name">
-                <template v-if="readonly">
-                  <span class="ds-cell-readonly" :class="{ 'ds-key-col': col.isKey }">{{ row[col.name] ?? '' }}</span>
-                </template>
-                <template v-else-if="col.type === 'boolean'">
+      <!-- One card per data row -->
+      <div v-for="(row, ri) in rows" :key="row._id ?? ri">
+        <div v-if="rows.length > 1" class="ds-row-card-header">
+          <span class="ds-row-card-label">Rij {{ ri + 1 }}</span>
+          <ndd-icon-button
+            v-if="!readonly"
+            icon="minus"
+            title="Rij verwijderen"
+            @click="removeRow(ri)"
+          ></ndd-icon-button>
+        </div>
+
+        <ndd-list variant="box" class="ds-datasource-list">
+          <ndd-list-item v-for="col in allColumns" :key="col.name" size="md">
+            <ndd-text-cell :text="col.name" max-width="140" :class="{ 'ds-key-label': col.isKey }"></ndd-text-cell>
+            <ndd-cell>
+              <template v-if="readonly">
+                <ndd-text-field size="md" :value="String(row[col.name] ?? '')" readonly></ndd-text-field>
+              </template>
+              <template v-else-if="col.type === 'boolean'">
+                <ndd-dropdown size="md">
                   <select
-                    class="ds-cell-input ds-cell-select"
+                    :aria-label="col.name"
                     :value="String(row[col.name] || 'null')"
                     @change="updateCell(ri, col.name, $event.target.value)"
                   >
@@ -136,190 +141,118 @@ const rowCount = computed(() => rows.value.length);
                     <option value="false">false</option>
                     <option value="null">null</option>
                   </select>
-                </template>
-                <template v-else>
-                  <input
-                    class="ds-cell-input"
-                    :type="inputType(col.type)"
-                    :value="row[col.name] ?? ''"
-                    @input="updateCell(ri, col.name, $event.target.value)"
-                    :placeholder="col.name"
-                  />
-                </template>
-              </td>
-              <td v-if="!readonly" class="ds-action-col">
-                <button class="ds-remove-btn" @click="removeRow(ri)" type="button" title="Rij verwijderen">&times;</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                </ndd-dropdown>
+              </template>
+              <template v-else>
+                <ndd-text-field
+                  size="md"
+                  :type="inputType(col.type)"
+                  :value="String(row[col.name] ?? '')"
+                  :placeholder="col.name"
+                  @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
+                ></ndd-text-field>
+              </template>
+            </ndd-cell>
+          </ndd-list-item>
+
+          <!-- Single-row inline delete -->
+          <ndd-list-item v-if="!readonly && rows.length === 1" size="md">
+            <ndd-button size="md" full-width start-icon="minus" @click="removeRow(ri)" text="Rij verwijderen"></ndd-button>
+          </ndd-list-item>
+        </ndd-list>
       </div>
 
-      <button v-if="!readonly" class="ds-add-btn" @click="addRow" type="button">
-        + Rij toevoegen
-      </button>
+      <ndd-button v-if="!readonly" size="md" full-width start-icon="plus-small" @click="addRow" text="Rij toevoegen"></ndd-button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.ds-table {
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 8px;
-  overflow: hidden;
+.ds-block + .ds-block {
+  margin-top: 12px;
 }
 
-.ds-table + .ds-table {
-  margin-top: 8px;
-}
-
-.ds-table-header {
+.ds-block-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
+  background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  text-align: left;
-  color: var(--semantics-text-color-primary, #1C2029);
+  padding: 0;
+  width: 100%;
+  margin-bottom: 4px;
 }
 
-.ds-table-header:hover {
-  background: var(--semantics-surfaces-color-tertiary, #F0F1F3);
-}
-
-.ds-table-toggle {
+.ds-block-chevron {
+  display: inline-block;
+  font-size: 12px;
+  transition: transform 0.15s ease;
   flex-shrink: 0;
-  width: 12px;
-  font-size: 11px;
-  color: var(--semantics-text-color-secondary, #666);
 }
 
-.ds-table-title {
-  flex: 1;
+.ds-block-chevron--open {
+  transform: rotate(90deg);
 }
 
-.ds-table-badge {
+.ds-block-badge {
   font-size: 11px;
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 4px;
   background: #154273;
   color: white;
+  flex-shrink: 0;
 }
 
-.ds-table-body {
-  border-top: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  padding: 8px;
+.ds-block-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.ds-table-empty {
+.ds-block-empty {
   padding: 12px;
   text-align: center;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--semantics-text-color-secondary, #999);
   font-style: italic;
 }
 
-.ds-table-scroll {
-  overflow-x: auto;
+.ds-row-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
 }
 
-.ds-table-grid {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-
-.ds-table-grid th {
-  padding: 4px 6px;
-  text-align: left;
-  font-weight: 600;
-  font-size: 11px;
-  color: var(--semantics-text-color-secondary, #666);
-  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  white-space: nowrap;
-}
-
-.ds-table-grid td {
-  padding: 2px 4px;
-}
-
-.ds-key-col {
-  color: #154273 !important;
-}
-
-.ds-cell-input {
-  width: 100%;
-  min-width: 60px;
-  padding: 4px 6px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  background: white;
-}
-
-.ds-cell-input:focus {
-  outline: none;
-  border-color: #154273;
-  box-shadow: 0 0 0 1px #154273;
-}
-
-.ds-cell-select {
-  min-width: 70px;
-}
-
-.ds-cell-readonly {
-  display: block;
-  padding: 4px 6px;
-  font-size: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  color: var(--semantics-text-color-primary, #1C2029);
-  white-space: nowrap;
-}
-
-.ds-action-col {
-  width: 28px;
-  text-align: center;
-}
-
-.ds-remove-btn {
-  background: none;
-  border: none;
-  color: #c00;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  opacity: 0.5;
-}
-
-.ds-remove-btn:hover {
-  opacity: 1;
-}
-
-.ds-add-btn {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 6px;
-  background: none;
-  border: 1px dashed var(--semantics-dividers-color, #D0D3D8);
-  border-radius: 4px;
-  font-size: 12px;
-  color: #154273;
-  cursor: pointer;
+.ds-row-card-label {
   font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--semantics-text-color-secondary, #545D68);
 }
 
-.ds-add-btn:hover {
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
-  border-color: #154273;
+.ds-key-label {
+  font-weight: 700;
+}
+</style>
+
+<style>
+/* Unscoped: ndd web components need global selectors */
+.ds-datasource-list ndd-text-cell {
+  width: 140px;
+  min-width: 140px;
+  flex-shrink: 0;
+}
+
+.ds-datasource-list ndd-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.ds-datasource-list ndd-text-field,
+.ds-datasource-list ndd-dropdown {
+  width: 100%;
 }
 </style>
