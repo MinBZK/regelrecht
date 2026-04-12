@@ -9,11 +9,13 @@ const router = createRouter({
       path: '/library/:lawId?/:articleNumber?',
       name: 'library',
       component: LibraryApp,
+      meta: { title: 'Bibliotheek' },
     },
     {
       path: '/editor/:lawId?',
       name: 'editor',
       component: () => import('./EditorApp.vue'),
+      meta: { title: 'Editor' },
     },
     {
       path: '/editor.html',
@@ -24,6 +26,12 @@ const router = createRouter({
       }),
     },
   ],
+});
+
+router.afterEach((to) => {
+  document.title = to.meta.title
+    ? `${to.meta.title} \u00b7 RegelRecht`
+    : 'RegelRecht';
 });
 
 export default router;

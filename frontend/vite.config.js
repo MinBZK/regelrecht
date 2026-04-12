@@ -18,6 +18,7 @@ export default defineConfig({
           const url = req.url.split('?')[0];
           if (
             url === '/' ||
+            url === '/editor.html' ||
             (url.startsWith('/library') && !url.includes('.')) ||
             (url.startsWith('/editor') && !url.includes('.'))
           ) {
