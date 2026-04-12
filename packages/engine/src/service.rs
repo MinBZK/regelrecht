@@ -1789,10 +1789,10 @@ impl LawExecutionService {
         // precision during calculation; rounding happens here at the output edge.
         //
         // Rules:
-        // - `unit: eurocent` rounds floats to integer (half-to-even).
-        // - `precision: 0` floors floats to integer for eurocent units, rounds
-        //   half-to-even otherwise. The eurocent floor matches the historic
-        //   Python rounding behaviour for monetary outputs.
+        // - `unit: eurocent` always rounds floats to integer (half-even),
+        //   matching the historic monetary-output behaviour. This wins over
+        //   `precision: 0` so eurocent stays bankers-rounded.
+        // - `precision: 0` (without eurocent) floors floats to integer.
         // - `precision: N` (N > 0) rounds floats to N decimal places.
         if let Some(exec) = article.get_execution_spec() {
             if let Some(outputs) = &exec.output {
@@ -1805,9 +1805,9 @@ impl LawExecutionService {
                     let precision = ts.precision;
                     let is_eurocent = unit == Some("eurocent");
 
-                    // Eurocent without explicit precision: keep historic
-                    // half-even rounding to integer.
-                    if is_eurocent && precision.is_none() {
+                    // Eurocent: always half-even round to integer,
+                    // regardless of any precision annotation.
+                    if is_eurocent {
                         if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
                             let rounded = crate::operations::f64_to_i64_safe(f.round())?;
                             result
@@ -1823,10 +1823,7 @@ impl LawExecutionService {
 
                     if prec == 0 {
                         if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
-                            // Eurocent floors (matches Python `_round_to_output_precision`),
-                            // other units use half-even rounding.
-                            let truncated = if is_eurocent { f.floor() } else { f.round() };
-                            let rounded = crate::operations::f64_to_i64_safe(truncated)?;
+                            let rounded = crate::operations::f64_to_i64_safe(f.floor())?;
                             result
                                 .outputs
                                 .insert(output_spec.name.clone(), Value::Int(rounded));
@@ -3893,25 +3890,30 @@ articles:
     }
 
     #[test]
-    fn precision_zero_rounds_float_to_int() {
+    fn precision_zero_floors_float_to_int() {
+        // precision: 0 without an eurocent unit truncates the float, matching
+        // the Python `_round_to_output_precision` helper that previously did
+        // the same as a post-processing step.
         let mut service = LawExecutionService::new();
         service.load_law(&precision_law("0", "13.74", None)).unwrap();
         let result = service
             .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
             .unwrap();
-        assert_eq!(result.outputs.get("result"), Some(&Value::Int(14)));
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(13)));
     }
 
     #[test]
-    fn precision_zero_with_eurocent_floors() {
+    fn precision_zero_with_eurocent_rounds() {
+        // eurocent always uses half-even rounding regardless of precision
+        // because monetary outputs are bankers-rounded, not truncated.
         let mut service = LawExecutionService::new();
         service
-            .load_law(&precision_law("0", "13.99", Some("eurocent")))
+            .load_law(&precision_law("0", "13.6", Some("eurocent")))
             .unwrap();
         let result = service
             .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
             .unwrap();
-        assert_eq!(result.outputs.get("result"), Some(&Value::Int(13)));
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(14)));
     }
 
     #[test]
