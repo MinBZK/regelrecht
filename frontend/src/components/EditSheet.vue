@@ -88,7 +88,7 @@ function onOutputSelected(outputName) {
     if (!values.value.name) {
       values.value.name = outputName;
     }
-    if (values.value.type === 'string' && match.output_type !== 'string') {
+    if (values.value.type === 'string' && match.output_type !== 'string' && typeOptions.includes(match.output_type)) {
       values.value.type = match.output_type;
     }
   }
