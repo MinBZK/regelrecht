@@ -21,7 +21,7 @@ async function fetchLawsList() {
     if (!res.ok) return [];
     lawsCache = await res.json();
   } catch {
-    lawsCache = [];
+    return [];
   }
   return lawsCache;
 }
