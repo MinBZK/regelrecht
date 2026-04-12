@@ -183,6 +183,11 @@ pub struct Input {
     pub type_spec: Option<TypeSpec>,
     #[serde(default)]
     pub description: Option<String>,
+    /// Whether the input is mandatory. Required inputs that cannot be
+    /// resolved are NOT type-defaulted; the engine surfaces a missing-input
+    /// signal so callers can collect a claim from the citizen.
+    #[serde(default)]
+    pub required: Option<bool>,
     /// Optional temporal qualifier. When the reference resolves to a date
     /// different from the calculation date, cross-law lookups for this input
     /// are evaluated against the shifted date.

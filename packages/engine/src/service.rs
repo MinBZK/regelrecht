@@ -40,8 +40,8 @@ use crate::priority;
 use crate::resolver::RuleResolver;
 use crate::trace::TraceBuilder;
 use crate::types::{
-    Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
-    Value,
+    Connectivity, LegalStatus, ParameterType, PathNodeType, RegulatoryLayer, ResolveType,
+    UntranslatableMode, Value,
 };
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
@@ -279,6 +279,24 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
             article.hash(hasher);
             construct.hash(hasher);
         }
+    }
+}
+
+/// Type-appropriate default value for an unresolved input.
+///
+/// Mirrors the historic Python `_TYPE_DEFAULTS` table: missing numeric inputs
+/// fall back to zero, booleans to `false`, dates to a sentinel that pre-dates
+/// every realistic calculation, and arrays/objects to empty containers. The
+/// returned value lets downstream arithmetic and comparisons proceed instead
+/// of erroring out with a TypeMismatch on null.
+fn type_default(input_type: ParameterType) -> Value {
+    match input_type {
+        ParameterType::Number | ParameterType::Amount => Value::Int(0),
+        ParameterType::Boolean => Value::Bool(false),
+        ParameterType::String => Value::String(String::new()),
+        ParameterType::Date => Value::String("2000-01-01".to_string()),
+        ParameterType::Array => Value::Array(Vec::new()),
+        ParameterType::Object => Value::Object(BTreeMap::new()),
     }
 }
 
@@ -2139,7 +2157,9 @@ impl LawExecutionService {
             // `source.{table, field/fields, select_on}`, the engine reads
             // those directly and queries the matching registered source
             // without any external orchestration.
+            let mut data_source_attempted = false;
             if let Some(table) = source.table.as_deref() {
+                data_source_attempted = true;
                 if self.data_registry.source_count() > 0 {
                     let resolved_inputs = context.resolved_inputs().clone();
                     let select_on: Vec<SelectOn> = source
@@ -2226,7 +2246,9 @@ impl LawExecutionService {
                     .as_ref()
                     .map(|t| t.resolved_date(&res_ctx.calculation_date));
 
-                let value = if let Some(shifted) = shifted_date.filter(|d| d != &res_ctx.calculation_date) {
+                let resolution = if let Some(shifted) =
+                    shifted_date.filter(|d| d != &res_ctx.calculation_date)
+                {
                     res_ctx.with_shifted_date(&shifted, |ctx| {
                         self.resolve_external_input_internal(
                             regulation,
@@ -2235,7 +2257,7 @@ impl LawExecutionService {
                             context,
                             ctx,
                         )
-                    })?
+                    })
                 } else {
                     // External reference
                     self.resolve_external_input_internal(
@@ -2244,10 +2266,75 @@ impl LawExecutionService {
                         source.parameters.as_ref(),
                         context,
                         res_ctx,
-                    )?
+                    )
                 };
 
-                context.set_resolved_input(&input.name, value);
+                match resolution {
+                    Ok(value) if value.is_null() => {
+                        // Cross-law produced a null value (e.g., no matching
+                        // data row in the target law). Substitute a type
+                        // default for non-required numeric/boolean/array
+                        // inputs so downstream arithmetic stays well-defined.
+                        // String/date inputs are kept null so `IS_NULL` guards
+                        // can still detect "no value supplied".
+                        let is_required = input.required.unwrap_or(false);
+                        let supports_default = !matches!(
+                            input.input_type,
+                            ParameterType::String | ParameterType::Date
+                        );
+                        if !is_required && supports_default {
+                            let default = type_default(input.input_type);
+                            tracing::debug!(
+                                input = %input.name,
+                                regulation = %regulation,
+                                "Cross-law returned null, defaulting to {}",
+                                default
+                            );
+                            context.set_resolved_input(&input.name, default);
+                        } else {
+                            context.set_resolved_input(&input.name, Value::Null);
+                        }
+                    }
+                    Ok(value) => {
+                        context.set_resolved_input(&input.name, value);
+                    }
+                    Err(EngineError::OutputNotFound { .. })
+                    | Err(EngineError::ArticleNotFound { .. }) => {
+                        // The target law was reachable but did not produce the
+                        // requested output (typically because its own inputs
+                        // were missing). Treat the same as a null cross-law
+                        // result and apply a type default for optional
+                        // numeric/boolean/array inputs.
+                        let is_required = input.required.unwrap_or(false);
+                        let supports_default = !matches!(
+                            input.input_type,
+                            ParameterType::String | ParameterType::Date
+                        );
+                        if !is_required && supports_default {
+                            let default = type_default(input.input_type);
+                            tracing::debug!(
+                                input = %input.name,
+                                regulation = %regulation,
+                                "Cross-law output unavailable, defaulting to {}",
+                                default
+                            );
+                            let _guard =
+                                res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                            res_ctx.trace_set_message(format!(
+                                "Cross-law {} → {} unavailable, defaulting",
+                                regulation, output_name
+                            ));
+                            res_ctx.trace_set_result(default.clone());
+                            context.set_resolved_input(&input.name, default);
+                        } else {
+                            // Leave unresolved (engine will treat as null);
+                            // hard-error variants like LawNotFound and
+                            // CircularReference still bubble up.
+                            context.set_resolved_input(&input.name, Value::Null);
+                        }
+                    }
+                    Err(err) => return Err(err),
+                }
             } else if source.output.is_some() {
                 // Internal reference (same-law) with output specified.
                 // Resolve through the service layer so cross-law inputs of the
@@ -2298,13 +2385,29 @@ impl LawExecutionService {
                     ));
                 }
             } else {
-                // Empty source (source: {}) — resolved from DataSourceRegistry only.
-                // If DataSourceRegistry didn't match above, leave unresolved.
-                let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
-                res_ctx.trace_set_message(format!(
-                    "Input '{}' has empty source and no data source match, left unresolved",
-                    input.name
-                ));
+                // Empty source (source: {}) or native YAML source that did not
+                // match any registered data — type-default optional inputs so
+                // downstream arithmetic and comparisons proceed. Required
+                // inputs remain unresolved so the caller can collect a claim.
+                let is_required = input.required.unwrap_or(false);
+                let _ = data_source_attempted; // suppress dead-let warning when no defaulting fires
+                if !is_required {
+                    let default = type_default(input.input_type);
+                    let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                    res_ctx.trace_set_result(default.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Input '{}' has no data source match, defaulting to {}",
+                        input.name, default
+                    ));
+                    context.set_resolved_input(&input.name, default);
+                } else {
+                    let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                    res_ctx.trace_set_message(format!(
+                        "Input '{}' is required but unresolved",
+                        input.name
+                    ));
+                }
             }
         }
 
@@ -3729,6 +3832,123 @@ articles:
             ),
             other => panic!("Expected Value::Float(13.00), got {:?}", other),
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // type-default unresolved input tests (Fix 3)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn unresolved_empty_source_number_input_defaults_to_zero() {
+        // Input with `source: {}` and no matching data registry record
+        // should default to 0 instead of leaving downstream arithmetic broken.
+        let yaml = r#"
+$id: defaults_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Adds five to a missing input
+    machine_readable:
+      execution:
+        input:
+          - name: missing_amount
+            type: number
+            source: {}
+        output:
+          - name: total
+            type: number
+        actions:
+          - output: total
+            operation: ADD
+            values:
+              - $missing_amount
+              - 5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output("defaults_law", "total", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("total"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn unresolved_empty_source_boolean_defaults_to_false() {
+        let yaml = r#"
+$id: defaults_law_bool
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bool default
+    machine_readable:
+      execution:
+        input:
+          - name: is_x
+            type: boolean
+            source: {}
+        output:
+          - name: ok
+            type: boolean
+        actions:
+          - output: ok
+            operation: NOT
+            value: $is_x
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output("defaults_law_bool", "ok", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("ok"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn required_empty_source_input_is_not_defaulted() {
+        // A required input with `source: {}` must remain unresolved so the
+        // evaluation surfaces the missing data via resolved_inputs instead of
+        // silently inserting a type default.
+        let yaml = r#"
+$id: defaults_law_required
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Required missing input
+    machine_readable:
+      execution:
+        input:
+          - name: must_have
+            type: number
+            required: true
+            source: {}
+        output:
+          - name: echo
+            type: number
+        actions:
+          - output: echo
+            value: $must_have
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "defaults_law_required",
+                "echo",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        // The engine treats unresolved variables as null when read, so the
+        // echoed output is null. Critically, the resolved_inputs map must NOT
+        // contain a defaulted zero for `must_have`.
+        assert!(
+            result.resolved_inputs.get("must_have").is_none()
+                || matches!(result.resolved_inputs.get("must_have"), Some(Value::Null)),
+            "required input must remain unresolved, got {:?}",
+            result.resolved_inputs.get("must_have")
+        );
     }
 
     #[test]
