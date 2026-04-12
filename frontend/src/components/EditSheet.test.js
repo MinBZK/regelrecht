@@ -431,8 +431,8 @@ describe('EditSheet', () => {
       { law_id: 'kieswet', name: 'Kieswet', display_name: 'Kieswet', source_id: 'local', source_name: 'Local' },
     ];
     const mockOutputs = [
-      { name: 'leeftijd', output_type: 'number', article_number: '2.7' },
-      { name: 'heeft_partner', output_type: 'boolean', article_number: '2.8' },
+      { name: 'leeftijd', output_type: 'number', article_number: '2.7', parameters: [{ name: 'bsn', param_type: 'string' }, { name: 'peildatum', param_type: 'date' }] },
+      { name: 'heeft_partner', output_type: 'boolean', article_number: '2.8', parameters: [{ name: 'bsn', param_type: 'string' }] },
     ];
     let fetchSpy;
 
@@ -470,7 +470,7 @@ describe('EditSheet', () => {
       expect(wrapper.vm.availableOutputs).toEqual(mockOutputs);
     });
 
-    it('onOutputSelected auto-populates name and type when empty', async () => {
+    it('onOutputSelected auto-populates name, type, and parameters', async () => {
       const wrapper = mountSheet();
       await setItem(wrapper, { section: 'add-input', isNew: true });
       await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
@@ -484,6 +484,9 @@ describe('EditSheet', () => {
       wrapper.vm.onOutputSelected('leeftijd');
       expect(wrapper.vm.values.name).toBe('leeftijd');
       expect(wrapper.vm.values.type).toBe('number');
+      // Parameters pre-populated from the output's article
+      const paramKeys = wrapper.vm.values.sourceParameters.map(p => p.key);
+      expect(paramKeys).toEqual(['bsn', 'peildatum']);
     });
 
     it('onOutputSelected does NOT overwrite user-edited name', async () => {

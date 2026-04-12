@@ -488,6 +488,17 @@ struct LawExec {
     actions: Vec<LawAction>,
     #[serde(default)]
     output: Vec<LawOutput>,
+    #[serde(default)]
+    parameters: Vec<LawParam>,
+}
+
+/// A parameter entry from `execution.parameters`.
+#[derive(Deserialize, Default, Clone)]
+struct LawParam {
+    #[serde(default)]
+    name: String,
+    #[serde(default, rename = "type")]
+    param_type: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -544,11 +555,22 @@ pub fn resolve_display_name(yaml: &str) -> Option<String> {
     None
 }
 
+/// A collected output with the parameters required by its article's execution block.
+pub struct CollectedOutput {
+    pub name: String,
+    pub output_type: String,
+    pub article_number: String,
+    /// Parameters declared on the execution block that contains this output.
+    /// The caller needs to supply these when referencing this output as a source.
+    pub parameters: Vec<(String, String)>, // (name, type)
+}
+
 /// Collect all outputs declared across all articles in a law.
 ///
-/// Returns `(name, type, article_number)` tuples, deduplicated by name
-/// (first occurrence wins).
-pub fn collect_law_outputs(yaml: &str) -> Vec<(String, String, String)> {
+/// Each output includes the parameters required by its article's execution
+/// block, so the UI can pre-populate source.parameters when the user selects
+/// an output.
+pub fn collect_law_outputs(yaml: &str) -> Vec<CollectedOutput> {
     let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
         Ok(d) => d,
         Err(_) => return Vec::new(),
@@ -565,22 +587,34 @@ pub fn collect_law_outputs(yaml: &str) -> Vec<(String, String, String)> {
         let Some(exec) = &mr.execution else {
             continue;
         };
+        let params: Vec<(String, String)> = exec
+            .parameters
+            .iter()
+            .map(|p| {
+                (
+                    p.name.clone(),
+                    p.param_type.clone().unwrap_or_else(|| "string".to_string()),
+                )
+            })
+            .collect();
+
         for output in &exec.output {
             if !output.name.is_empty() && !seen.contains(&output.name) {
                 seen.insert(output.name.clone());
-                results.push((
-                    output.name.clone(),
-                    output
+                results.push(CollectedOutput {
+                    name: output.name.clone(),
+                    output_type: output
                         .output_type
                         .clone()
                         .unwrap_or_else(|| "string".to_string()),
-                    article_number.clone(),
-                ));
+                    article_number: article_number.clone(),
+                    parameters: params.clone(),
+                });
             }
         }
     }
 
-    results.sort_by(|a, b| a.0.cmp(&b.0));
+    results.sort_by(|a, b| a.name.cmp(&b.name));
     results
 }
 
@@ -926,6 +960,11 @@ articles:
   - number: '2.7'
     machine_readable:
       execution:
+        parameters:
+          - name: bsn
+            type: string
+          - name: peildatum
+            type: date
         output:
           - name: leeftijd
             type: number
@@ -933,6 +972,9 @@ articles:
   - number: '2.8'
     machine_readable:
       execution:
+        parameters:
+          - name: bsn
+            type: string
         output:
           - name: heeft_partner
             type: boolean
@@ -940,21 +982,23 @@ articles:
 "#;
         let outputs = collect_law_outputs(yaml);
         assert_eq!(outputs.len(), 2);
+        assert_eq!(outputs[0].name, "heeft_partner");
+        assert_eq!(outputs[0].output_type, "boolean");
+        assert_eq!(outputs[0].article_number, "2.8");
         assert_eq!(
-            outputs[0],
-            (
-                "heeft_partner".to_string(),
-                "boolean".to_string(),
-                "2.8".to_string()
-            )
+            outputs[0].parameters,
+            vec![("bsn".to_string(), "string".to_string())]
         );
+
+        assert_eq!(outputs[1].name, "leeftijd");
+        assert_eq!(outputs[1].output_type, "number");
+        assert_eq!(outputs[1].article_number, "2.7");
         assert_eq!(
-            outputs[1],
-            (
-                "leeftijd".to_string(),
-                "number".to_string(),
-                "2.7".to_string()
-            )
+            outputs[1].parameters,
+            vec![
+                ("bsn".to_string(), "string".to_string()),
+                ("peildatum".to_string(), "date".to_string()),
+            ]
         );
     }
 
@@ -980,7 +1024,7 @@ articles:
         let outputs = collect_law_outputs(yaml);
         assert_eq!(outputs.len(), 1);
         // First occurrence wins
-        assert_eq!(outputs[0].1, "string");
+        assert_eq!(outputs[0].output_type, "string");
     }
 
     #[test]

@@ -52,12 +52,22 @@ pub struct CorpusLawEntry {
     pub source_name: String,
 }
 
+/// A parameter required by the execution block that declares an output.
+#[derive(Debug, Serialize)]
+pub struct LawParamEntry {
+    pub name: String,
+    pub param_type: String,
+}
+
 /// An output entry from a law's machine_readable.execution.output.
 #[derive(Debug, Serialize)]
 pub struct LawOutputEntry {
     pub name: String,
     pub output_type: String,
     pub article_number: String,
+    /// Parameters required by the article's execution block. The caller
+    /// must supply these via `source.parameters` when referencing this output.
+    pub parameters: Vec<LawParamEntry>,
 }
 
 /// GET /api/sources — list all registered corpus sources with law counts.
@@ -172,10 +182,15 @@ pub async fn list_law_outputs(
 
     let outputs: Vec<LawOutputEntry> = collect_law_outputs(&law.yaml_content)
         .into_iter()
-        .map(|(name, output_type, article_number)| LawOutputEntry {
-            name,
-            output_type,
-            article_number,
+        .map(|out| LawOutputEntry {
+            name: out.name,
+            output_type: out.output_type,
+            article_number: out.article_number,
+            parameters: out
+                .parameters
+                .into_iter()
+                .map(|(name, param_type)| LawParamEntry { name, param_type })
+                .collect(),
         })
         .collect();
 

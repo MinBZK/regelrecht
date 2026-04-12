@@ -91,8 +91,13 @@ function onOutputSelected(outputName) {
     if (!values.value.name) {
       values.value.name = outputName;
     }
-    if (values.value.type === 'string' && match.output_type !== 'string' && typeOptions.includes(match.output_type)) {
-      values.value.type = match.output_type;
+    // Always set type from the source output — it's determined by the external law
+    values.value.type = match.output_type || 'string';
+    // Pre-populate source parameters from the selected output's article
+    if (match.parameters?.length > 0) {
+      values.value.sourceParameters = match.parameters.map(p =>
+        makeParamRow(p.name, ''),
+      );
     }
   }
 }
@@ -417,7 +422,7 @@ const sectionLabels = {
                     <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
                   </ndd-cell>
                 </ndd-list-item>
-                <ndd-list-item size="md">
+                <ndd-list-item v-if="!values.sourceOutput" size="md">
                   <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
                   <ndd-cell>
                     <ndd-dropdown size="md">

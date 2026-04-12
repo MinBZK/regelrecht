@@ -247,14 +247,20 @@ function collectOutputs(yamlContent) {
     const seen = new Set();
     const results = [];
     for (const article of doc.articles) {
-      const outputs = article.machine_readable?.execution?.output || [];
-      for (const out of outputs) {
+      const exec = article.machine_readable?.execution;
+      if (!exec) continue;
+      const params = (exec.parameters || []).map(p => ({
+        name: p.name,
+        param_type: p.type || 'string',
+      }));
+      for (const out of exec.output || []) {
         if (out.name && !seen.has(out.name)) {
           seen.add(out.name);
           results.push({
             name: out.name,
             output_type: out.type || 'string',
             article_number: String(article.number || ''),
+            parameters: params,
           });
         }
       }
