@@ -41,13 +41,27 @@ pub struct LegalBasis {
 
 /// Type specification for input/output fields.
 ///
-/// Currently only contains unit specification, but may be extended
-/// with additional type metadata (precision, range, format) as the schema evolves.
+/// Carries optional metadata about a field's domain: unit of measurement,
+/// numeric precision, and inclusive value range. The engine reads `unit`
+/// for cosmetic rounding (eurocent → integer at the article boundary) and
+/// `precision` to enforce a fixed number of decimals on numeric outputs.
+/// `min` / `max` are accepted but not enforced; downstream tools may use them.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TypeSpec {
     /// Unit of measurement (e.g., "eurocent", "days", "percentage")
     #[serde(default)]
     pub unit: Option<String>,
+    /// Number of decimal places to round to. `0` rounds to an integer
+    /// (floor for eurocent, half-to-even otherwise). `None` leaves the
+    /// numeric value untouched.
+    #[serde(default)]
+    pub precision: Option<i64>,
+    /// Optional inclusive lower bound. Accepted but not enforced by the engine.
+    #[serde(default)]
+    pub min: Option<f64>,
+    /// Optional inclusive upper bound. Accepted but not enforced by the engine.
+    #[serde(default)]
+    pub max: Option<f64>,
 }
 
 /// A single `select_on` filter criterion as declared in YAML.

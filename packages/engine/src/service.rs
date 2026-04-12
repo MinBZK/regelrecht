@@ -1766,24 +1766,60 @@ impl LawExecutionService {
         // Apply lex specialis overrides
         self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
 
-        // Enforce TypeSpec: round eurocent outputs to integer.
-        // This applies only to top-level article outputs (the API boundary).
+        // Enforce TypeSpec on outputs at the article boundary.
         // Intermediate values within article logic remain as Float to preserve
         // precision during calculation; rounding happens here at the output edge.
+        //
+        // Rules:
+        // - `unit: eurocent` rounds floats to integer (half-to-even).
+        // - `precision: 0` floors floats to integer for eurocent units, rounds
+        //   half-to-even otherwise. The eurocent floor matches the historic
+        //   Python rounding behaviour for monetary outputs.
+        // - `precision: N` (N > 0) rounds floats to N decimal places.
         if let Some(exec) = article.get_execution_spec() {
             if let Some(outputs) = &exec.output {
                 for output_spec in outputs {
-                    let is_eurocent = output_spec
-                        .type_spec
-                        .as_ref()
-                        .and_then(|ts| ts.unit.as_deref())
-                        == Some("eurocent");
-                    if is_eurocent {
+                    let ts = match output_spec.type_spec.as_ref() {
+                        Some(ts) => ts,
+                        None => continue,
+                    };
+                    let unit = ts.unit.as_deref();
+                    let precision = ts.precision;
+                    let is_eurocent = unit == Some("eurocent");
+
+                    // Eurocent without explicit precision: keep historic
+                    // half-even rounding to integer.
+                    if is_eurocent && precision.is_none() {
                         if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
                             let rounded = crate::operations::f64_to_i64_safe(f.round())?;
                             result
                                 .outputs
                                 .insert(output_spec.name.clone(), Value::Int(rounded));
+                        }
+                        continue;
+                    }
+
+                    let Some(prec) = precision else {
+                        continue;
+                    };
+
+                    if prec == 0 {
+                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
+                            // Eurocent floors (matches Python `_round_to_output_precision`),
+                            // other units use half-even rounding.
+                            let truncated = if is_eurocent { f.floor() } else { f.round() };
+                            let rounded = crate::operations::f64_to_i64_safe(truncated)?;
+                            result
+                                .outputs
+                                .insert(output_spec.name.clone(), Value::Int(rounded));
+                        }
+                    } else if prec > 0 {
+                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
+                            let factor = 10f64.powi(prec as i32);
+                            let rounded = (f * factor).round() / factor;
+                            result
+                                .outputs
+                                .insert(output_spec.name.clone(), Value::Float(rounded));
                         }
                     }
                 }
@@ -3621,5 +3657,106 @@ articles:
             Some(&Value::Int(220000)),
             "2026 calculation should use 2026 version"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // type_spec.precision tests (Fix 4)
+    // -------------------------------------------------------------------------
+
+    fn precision_law(precision: &str, value: &str, unit: Option<&str>) -> String {
+        let unit_line = unit
+            .map(|u| format!("              unit: {}\n", u))
+            .unwrap_or_default();
+        format!(
+            r#"
+$id: precision_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Tests precision rounding
+    machine_readable:
+      execution:
+        output:
+          - name: result
+            type: number
+            type_spec:
+{unit_line}              precision: {precision}
+        actions:
+          - output: result
+            value: {value}
+"#,
+            unit_line = unit_line,
+            precision = precision,
+            value = value
+        )
+    }
+
+    #[test]
+    fn precision_zero_rounds_float_to_int() {
+        let mut service = LawExecutionService::new();
+        service.load_law(&precision_law("0", "13.74", None)).unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(14)));
+    }
+
+    #[test]
+    fn precision_zero_with_eurocent_floors() {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&precision_law("0", "13.99", Some("eurocent")))
+            .unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(13)));
+    }
+
+    #[test]
+    fn precision_two_rounds_to_two_decimals() {
+        let mut service = LawExecutionService::new();
+        service.load_law(&precision_law("2", "13.00205", None)).unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        match result.outputs.get("result") {
+            Some(Value::Float(f)) => assert!(
+                (f - 13.00).abs() < 1e-9,
+                "Expected ~13.00, got {}",
+                f
+            ),
+            other => panic!("Expected Value::Float(13.00), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn precision_absent_leaves_value_untouched() {
+        let yaml = r#"
+$id: precision_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: No precision spec
+    machine_readable:
+      execution:
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: 13.74
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        match result.outputs.get("result") {
+            Some(Value::Float(f)) => assert!((f - 13.74).abs() < 1e-9),
+            other => panic!("Expected unrounded float, got {:?}", other),
+        }
     }
 }
