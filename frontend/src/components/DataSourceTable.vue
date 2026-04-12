@@ -88,7 +88,8 @@ const rowCount = computed(() => rows.value.length);
 <template>
   <div class="ds-block">
     <!-- Header -->
-    <button class="ds-block-toggle" @click="toggleExpand" type="button">
+    <button class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
+      <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
       <ndd-title size="5">
         <h5>{{ title }}</h5>
       </ndd-title>
@@ -137,7 +138,7 @@ const rowCount = computed(() => rows.value.length);
                   size="md"
                   :value="row[col.name] ?? ''"
                   :placeholder="col.name"
-                  @input="updateCell(ri, col.name, $event.target.value)"
+                  @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
                 ></ndd-text-field>
               </template>
             </ndd-cell>
@@ -150,7 +151,7 @@ const rowCount = computed(() => rows.value.length);
         </ndd-list>
       </div>
 
-      <ndd-button v-if="!readonly" size="md" full-width start-icon="plus-small" class="ds-add-btn" @click="addRow" text="Rij toevoegen"></ndd-button>
+      <ndd-button v-if="!readonly" size="md" full-width start-icon="plus-small" @click="addRow" text="Rij toevoegen"></ndd-button>
     </div>
   </div>
 </template>
@@ -170,6 +171,17 @@ const rowCount = computed(() => rows.value.length);
   padding: 0;
   width: 100%;
   margin-bottom: 4px;
+}
+
+.ds-block-chevron {
+  display: inline-block;
+  font-size: 12px;
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.ds-block-chevron--open {
+  transform: rotate(90deg);
 }
 
 .ds-block-badge {
