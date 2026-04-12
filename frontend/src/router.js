@@ -10,6 +10,19 @@ const router = createRouter({
       name: 'library',
       component: LibraryApp,
     },
+    {
+      path: '/editor/:lawId?',
+      name: 'editor',
+      component: () => import('./EditorApp.vue'),
+    },
+    {
+      path: '/editor.html',
+      redirect: (to) => ({
+        name: 'editor',
+        params: { lawId: to.query.law || undefined },
+        query: to.query.article ? { article: to.query.article } : undefined,
+      }),
+    },
   ],
 });
 

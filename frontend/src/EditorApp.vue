@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
@@ -24,7 +25,10 @@ watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) 
 // must be authenticated; when OIDC is disabled the editor is fully open.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
-// --- Initial law load (from URL params) ---
+const route = useRoute();
+const router = useRouter();
+
+// --- Initial law load (from route params) ---
 const {
   law,
   lawId,
@@ -39,7 +43,7 @@ const {
   saving: lawSaving,
   saveError: lawSaveError,
   saveLaw,
-} = useLaw();
+} = useLaw(route.params.lawId, route.query.article);
 
 const middlePaneView = ref('form');
 const rightPaneView = ref('result');
@@ -585,7 +589,7 @@ function handleActionSave() {
           <ndd-toolbar size="md">
             <ndd-toolbar-item slot="start">
               <ndd-tab-bar size="md">
-                <ndd-tab-bar-item href="/library" text="Bibliotheek"></ndd-tab-bar-item>
+                <ndd-tab-bar-item href="/library" @click.prevent="router.push('/library')" text="Bibliotheek"></ndd-tab-bar-item>
                 <ndd-tab-bar-item selected text="Editor"></ndd-tab-bar-item>
               </ndd-tab-bar>
             </ndd-toolbar-item>

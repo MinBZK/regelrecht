@@ -31,12 +31,12 @@ export async function fetchLaw(lawId) {
   return entry;
 }
 
-export function useLaw(lawParam) {
-  const params = new URLSearchParams(window.location.search);
+export function useLaw(lawParam, articleParam) {
   if (!lawParam) {
+    const params = new URLSearchParams(window.location.search);
     lawParam = params.get('law') || 'zorgtoeslagwet';
   }
-  const initialArticle = params.get('article') || null;
+  const initialArticle = articleParam || null;
   // If the parameter looks like a URL, fetch directly; otherwise use the API.
   const yamlUrl = (lawParam.startsWith('/') || lawParam.startsWith('http'))
     ? lawParam

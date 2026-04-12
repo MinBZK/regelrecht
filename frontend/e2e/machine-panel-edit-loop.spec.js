@@ -75,7 +75,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
 
     // Open article 2 directly via the URL param (avoids the
     // selectArticle helper bug noted in the previous PR).
-    await page.goto('/editor.html?law=zorgtoeslagwet&article=2');
+    await page.goto('/editor/zorgtoeslagwet?article=2');
     await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 15_000 });
 
     // --- Initial state: Minderjarige scenario is red ---

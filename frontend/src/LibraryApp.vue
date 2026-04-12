@@ -224,7 +224,7 @@ loadIndex();
             <ndd-toolbar-item slot="start">
               <ndd-tab-bar size="md">
                 <ndd-tab-bar-item selected text="Bibliotheek"></ndd-tab-bar-item>
-                <ndd-tab-bar-item href="/editor.html" text="Editor"></ndd-tab-bar-item>
+                <ndd-tab-bar-item href="/editor" @click.prevent="router.push('/editor')" text="Editor"></ndd-tab-bar-item>
               </ndd-tab-bar>
             </ndd-toolbar-item>
             <ndd-toolbar-item slot="center" min-width="240px" width="40%">
@@ -359,9 +359,7 @@ loadIndex();
                       </ndd-tab-bar>
                     </ndd-toolbar-item>
                     <ndd-toolbar-item slot="end">
-                      <a v-if="selectedLawId" :href="`/editor.html?law=${encodeURIComponent(selectedLawId)}&article=${encodeURIComponent(selectedArticleNumber)}`">
-                        <ndd-button variant="primary" text="Bewerk"></ndd-button>
-                      </a>
+                      <ndd-button v-if="selectedLawId" variant="primary" text="Bewerk" @click="router.push(`/editor/${encodeURIComponent(selectedLawId)}`)"></ndd-button>
                       <ndd-button v-else variant="primary" disabled text="Bewerk"></ndd-button>
                     </ndd-toolbar-item>
                   </ndd-toolbar>
