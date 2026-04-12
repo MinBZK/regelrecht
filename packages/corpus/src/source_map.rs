@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use serde::Deserialize;
 use walkdir::WalkDir;
 
 use crate::error::{CorpusError, Result};
@@ -445,6 +446,144 @@ fn extract_law_name(yaml: &str) -> Option<String> {
     None
 }
 
+/// Extract the raw `name:` value including `#` references.
+fn extract_raw_name(yaml: &str) -> Option<String> {
+    for line in yaml.lines() {
+        if let Some(rest) = line.strip_prefix("name:") {
+            let value = rest.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+            return None;
+        }
+    }
+    None
+}
+
+// --- Minimal deserialization types for display-name and output resolution ---
+
+#[derive(Deserialize, Default)]
+struct LawDoc {
+    #[serde(default)]
+    articles: Vec<LawArticle>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawArticle {
+    #[serde(default)]
+    number: Option<String>,
+    #[serde(default)]
+    machine_readable: Option<LawMr>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawMr {
+    #[serde(default)]
+    execution: Option<LawExec>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawExec {
+    #[serde(default)]
+    actions: Vec<LawAction>,
+    #[serde(default)]
+    output: Vec<LawOutput>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawAction {
+    #[serde(default)]
+    output: Option<String>,
+    #[serde(default)]
+    value: Option<serde_yaml_ng::Value>,
+}
+
+/// An output entry from `execution.output`.
+#[derive(Deserialize, Default)]
+struct LawOutput {
+    #[serde(default)]
+    name: String,
+    #[serde(default, rename = "type")]
+    output_type: Option<String>,
+}
+
+/// Resolve a law's human-readable display name.
+///
+/// If the YAML has a literal `name:` field (e.g. `name: Kieswet`), returns
+/// that. If the name is an output reference (e.g. `name: '#wet_naam'`),
+/// parses the YAML to find the action whose output matches the reference
+/// and returns its scalar value. Returns `None` when no name can be resolved.
+pub fn resolve_display_name(yaml: &str) -> Option<String> {
+    // Fast path: literal name
+    if let Some(name) = extract_law_name(yaml) {
+        return Some(name);
+    }
+
+    // Check for # reference
+    let raw = extract_raw_name(yaml)?;
+    let reference = raw.strip_prefix('#')?;
+
+    // Parse YAML to find the action that resolves this reference
+    let doc: LawDoc = serde_yaml_ng::from_str(yaml).ok()?;
+    for article in &doc.articles {
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        let Some(exec) = &mr.execution else {
+            continue;
+        };
+        for action in &exec.actions {
+            if action.output.as_deref() == Some(reference) {
+                if let Some(serde_yaml_ng::Value::String(s)) = &action.value {
+                    return Some(s.clone());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Collect all outputs declared across all articles in a law.
+///
+/// Returns `(name, type, article_number)` tuples, deduplicated by name
+/// (first occurrence wins).
+pub fn collect_law_outputs(yaml: &str) -> Vec<(String, String, String)> {
+    let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut seen = HashMap::new();
+    let mut results = Vec::new();
+
+    for article in &doc.articles {
+        let article_number = article.number.as_deref().unwrap_or("").to_string();
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        let Some(exec) = &mr.execution else {
+            continue;
+        };
+        for output in &exec.output {
+            if !output.name.is_empty() && !seen.contains_key(&output.name) {
+                seen.insert(output.name.clone(), ());
+                results.push((
+                    output.name.clone(),
+                    output
+                        .output_type
+                        .clone()
+                        .unwrap_or_else(|| "string".to_string()),
+                    article_number.clone(),
+                ));
+            }
+        }
+    }
+
+    results.sort_by(|a, b| a.0.cmp(&b.0));
+    results
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -742,5 +881,112 @@ mod tests {
         map.load_source(&source_high).unwrap();
 
         assert_eq!(map.get_law("contested_law").unwrap().source_id, "high");
+    }
+
+    #[test]
+    fn test_resolve_display_name_literal() {
+        let yaml = "$id: kieswet\nname: Kieswet\narticles: []\n";
+        assert_eq!(resolve_display_name(yaml), Some("Kieswet".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_display_name_output_reference() {
+        let yaml = r#"$id: zorgtoeslagwet
+name: '#wet_naam'
+articles:
+  - number: '8'
+    machine_readable:
+      execution:
+        actions:
+          - output: wet_naam
+            value: Wet op de zorgtoeslag
+"#;
+        assert_eq!(
+            resolve_display_name(yaml),
+            Some("Wet op de zorgtoeslag".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_display_name_unresolvable_reference() {
+        let yaml = "$id: test\nname: '#missing_output'\narticles: []\n";
+        assert_eq!(resolve_display_name(yaml), None);
+    }
+
+    #[test]
+    fn test_resolve_display_name_no_name_field() {
+        let yaml = "$id: test\narticles: []\n";
+        assert_eq!(resolve_display_name(yaml), None);
+    }
+
+    #[test]
+    fn test_collect_law_outputs() {
+        let yaml = r#"$id: brp
+articles:
+  - number: '2.7'
+    machine_readable:
+      execution:
+        output:
+          - name: leeftijd
+            type: number
+        actions: []
+  - number: '2.8'
+    machine_readable:
+      execution:
+        output:
+          - name: heeft_partner
+            type: boolean
+        actions: []
+"#;
+        let outputs = collect_law_outputs(yaml);
+        assert_eq!(outputs.len(), 2);
+        assert_eq!(
+            outputs[0],
+            (
+                "heeft_partner".to_string(),
+                "boolean".to_string(),
+                "2.8".to_string()
+            )
+        );
+        assert_eq!(
+            outputs[1],
+            (
+                "leeftijd".to_string(),
+                "number".to_string(),
+                "2.7".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_collect_law_outputs_deduplicates() {
+        let yaml = r#"$id: test
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        output:
+          - name: foo
+            type: string
+        actions: []
+  - number: '2'
+    machine_readable:
+      execution:
+        output:
+          - name: foo
+            type: number
+        actions: []
+"#;
+        let outputs = collect_law_outputs(yaml);
+        assert_eq!(outputs.len(), 1);
+        // First occurrence wins
+        assert_eq!(outputs[0].1, "string");
+    }
+
+    #[test]
+    fn test_collect_law_outputs_empty() {
+        let yaml = "$id: test\narticles: []\n";
+        let outputs = collect_law_outputs(yaml);
+        assert!(outputs.is_empty());
     }
 }

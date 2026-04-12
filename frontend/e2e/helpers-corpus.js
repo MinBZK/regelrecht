@@ -11,6 +11,7 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import yaml from 'js-yaml';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -95,16 +96,38 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
     if (url.pathname !== '/api/corpus/laws') {
       return route.fallback();
     }
-    const entries = [...corpus.entries()].map(([law_id]) => ({
-      law_id,
-      name: null,
-      source_id: 'local',
-      source_name: 'Local Test Corpus',
-    }));
+    const entries = [...corpus.entries()].map(([law_id, entry]) => {
+      const displayName = resolveDisplayName(entry.content);
+      return {
+        law_id,
+        name: null,
+        display_name: displayName,
+        source_id: 'local',
+        source_name: 'Local Test Corpus',
+      };
+    });
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(entries),
+    });
+  });
+
+  // GET /api/corpus/laws/{law_id}/outputs — list outputs from all articles.
+  await page.route('**/api/corpus/laws/*/outputs', (route, request) => {
+    const url = new URL(request.url());
+    const match = url.pathname.match(/\/api\/corpus\/laws\/([^/]+)\/outputs$/);
+    if (!match) return route.fallback();
+    const lawId = decodeURIComponent(match[1]);
+    const entry = corpus.get(lawId);
+    if (!entry) {
+      return route.fulfill({ status: 404, body: `Law '${lawId}' not found` });
+    }
+    const outputs = collectOutputs(entry.content);
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(outputs),
     });
   });
 
@@ -114,7 +137,7 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
   await page.route('**/api/corpus/laws/*', (route, request) => {
     const url = new URL(request.url());
     const pathname = url.pathname;
-    if (pathname.includes('/scenarios')) {
+    if (pathname.includes('/scenarios') || pathname.includes('/outputs')) {
       return route.fallback();
     }
     const lawId = decodeURIComponent(pathname.split('/').pop());
@@ -186,4 +209,57 @@ export async function mockCorpusApi(page, corpus, scenarioLaw, scenarioFile) {
       body: JSON.stringify({ authenticated: false, oidc_configured: false }),
     }),
   );
+}
+
+/**
+ * Resolve a law's display name from its YAML content. Mirrors the backend's
+ * `resolve_display_name` logic: literal name → return it; `#ref` → find the
+ * matching action output value.
+ */
+function resolveDisplayName(yamlContent) {
+  try {
+    const doc = yaml.load(yamlContent);
+    if (!doc) return null;
+    const name = doc.name;
+    if (typeof name === 'string' && !name.startsWith('#')) return name;
+    if (typeof name === 'string' && name.startsWith('#')) {
+      const ref = name.slice(1);
+      for (const article of doc.articles || []) {
+        for (const action of article.machine_readable?.execution?.actions || []) {
+          if (action.output === ref && typeof action.value === 'string') {
+            return action.value;
+          }
+        }
+      }
+    }
+  } catch { /* ignore parse errors */ }
+  return null;
+}
+
+/**
+ * Collect all outputs declared across all articles in a law's YAML.
+ * Returns `[{ name, output_type, article_number }]`, deduplicated by name.
+ */
+function collectOutputs(yamlContent) {
+  try {
+    const doc = yaml.load(yamlContent);
+    if (!doc?.articles) return [];
+    const seen = new Set();
+    const results = [];
+    for (const article of doc.articles) {
+      const outputs = article.machine_readable?.execution?.output || [];
+      for (const out of outputs) {
+        if (out.name && !seen.has(out.name)) {
+          seen.add(out.name);
+          results.push({
+            name: out.name,
+            output_type: out.type || 'string',
+            article_number: String(article.number || ''),
+          });
+        }
+      }
+    }
+    results.sort((a, b) => a.name.localeCompare(b.name));
+    return results;
+  } catch { return []; }
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import EditSheet from './EditSheet.vue';
@@ -421,6 +421,138 @@ describe('EditSheet', () => {
       await nextTick();
       const events = wrapper.emitted('save');
       expect(events[0][0].data.type_spec).toEqual({ unit: 'eurocent' });
+    });
+  });
+
+  describe('input — law search/select', () => {
+    const mockLaws = [
+      { law_id: 'wet_basisregistratie_personen', name: null, display_name: 'Wet basisregistratie personen', source_id: 'local', source_name: 'Local' },
+      { law_id: 'zorgtoeslagwet', name: null, display_name: 'Wet op de zorgtoeslag', source_id: 'local', source_name: 'Local' },
+      { law_id: 'kieswet', name: 'Kieswet', display_name: 'Kieswet', source_id: 'local', source_name: 'Local' },
+    ];
+    const mockOutputs = [
+      { name: 'leeftijd', output_type: 'number', article_number: '2.7' },
+      { name: 'heeft_partner', output_type: 'boolean', article_number: '2.8' },
+    ];
+    let fetchSpy;
+
+    beforeEach(() => {
+      fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+        const urlStr = typeof url === 'string' ? url : url.toString();
+        if (urlStr.includes('/api/corpus/laws') && urlStr.includes('/outputs')) {
+          return { ok: true, json: async () => mockOutputs };
+        }
+        if (urlStr.includes('/api/corpus/laws')) {
+          return { ok: true, json: async () => mockLaws };
+        }
+        return { ok: false, json: async () => ({}) };
+      });
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
+    it('selectLaw sets sourceRegulation and fetches outputs', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      // Wait for fetchLawsList to complete
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      await wrapper.vm.selectLaw(mockLaws[0]);
+      await nextTick();
+
+      expect(wrapper.vm.values.sourceRegulation).toBe('wet_basisregistratie_personen');
+      expect(wrapper.vm.lawSearchQuery).toBe('Wet basisregistratie personen');
+      expect(wrapper.vm.showLawResults).toBe(false);
+      // Outputs should be fetched
+      await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
+      expect(wrapper.vm.availableOutputs).toEqual(mockOutputs);
+    });
+
+    it('onOutputSelected auto-populates name and type when empty', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      // Set up outputs
+      await wrapper.vm.selectLaw(mockLaws[0]);
+      await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
+
+      // Name is empty, type is default 'string'
+      expect(wrapper.vm.values.name).toBe('');
+      wrapper.vm.onOutputSelected('leeftijd');
+      expect(wrapper.vm.values.name).toBe('leeftijd');
+      expect(wrapper.vm.values.type).toBe('number');
+    });
+
+    it('onOutputSelected does NOT overwrite user-edited name', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      await wrapper.vm.selectLaw(mockLaws[0]);
+      await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
+
+      // User already set a custom name
+      wrapper.vm.values.name = 'custom_input';
+      wrapper.vm.onOutputSelected('leeftijd');
+      expect(wrapper.vm.values.name).toBe('custom_input');
+    });
+
+    it('filteredLaws filters by display name', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      wrapper.vm.lawSearchQuery = 'zorgtoeslag';
+      await nextTick();
+      expect(wrapper.vm.filteredLaws.length).toBe(1);
+      expect(wrapper.vm.filteredLaws[0].law_id).toBe('zorgtoeslagwet');
+    });
+
+    it('filteredLaws also matches on law_id', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      wrapper.vm.lawSearchQuery = 'kieswet';
+      await nextTick();
+      expect(wrapper.vm.filteredLaws.length).toBe(1);
+      expect(wrapper.vm.filteredLaws[0].law_id).toBe('kieswet');
+    });
+
+    it('save emits correct data after search/select flow', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      await wrapper.vm.selectLaw(mockLaws[0]);
+      await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
+      wrapper.vm.onOutputSelected('leeftijd');
+
+      wrapper.vm.save();
+      await nextTick();
+      const events = wrapper.emitted('save');
+      expect(events[0][0]).toMatchObject({
+        section: 'add-input',
+        data: {
+          name: 'leeftijd',
+          type: 'number',
+          source: {
+            regulation: 'wet_basisregistratie_personen',
+            output: 'leeftijd',
+          },
+        },
+      });
+    });
+
+    it('displayName resolves display_name, then name, then title-cased law_id', () => {
+      const wrapper = mountSheet();
+      const dn = wrapper.vm.displayName;
+      expect(dn({ display_name: 'Foo', name: 'Bar', law_id: 'baz' })).toBe('Foo');
+      expect(dn({ display_name: null, name: 'Bar', law_id: 'baz' })).toBe('Bar');
+      expect(dn({ display_name: null, name: null, law_id: 'wet_brp' })).toBe('Wet Brp');
     });
   });
 });

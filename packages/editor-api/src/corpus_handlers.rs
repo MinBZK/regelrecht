@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use regelrecht_corpus::backend::{RepoBackend, WriteContext};
-use regelrecht_corpus::source_map::{extract_law_id, validate_yaml_syntax, LoadedLaw};
+use regelrecht_corpus::source_map::{
+    collect_law_outputs, extract_law_id, resolve_display_name, validate_yaml_syntax, LoadedLaw,
+};
 use regelrecht_corpus::CorpusError;
 
 use crate::state::AppState;
@@ -41,8 +43,22 @@ pub struct SourceSummary {
 pub struct CorpusLawEntry {
     pub law_id: String,
     pub name: Option<String>,
+    /// Resolved human-readable name. For laws with a literal `name:` field
+    /// this equals `name`. For laws with `name: '#output_ref'` this is the
+    /// resolved value from the matching action output. Falls back to `None`
+    /// when the reference cannot be resolved.
+    pub display_name: Option<String>,
     pub source_id: String,
     pub source_name: String,
+}
+
+/// An output entry from a law's machine_readable.execution.output.
+#[derive(Debug, Serialize)]
+pub struct LawOutputEntry {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub output_type: String,
+    pub article_number: String,
 }
 
 /// GET /api/sources — list all registered corpus sources with law counts.
@@ -94,11 +110,15 @@ pub async fn list_corpus_laws(
     let mut entries: Vec<CorpusLawEntry> = corpus
         .source_map
         .laws()
-        .map(|law| CorpusLawEntry {
-            law_id: law.law_id.clone(),
-            name: law.name.clone(),
-            source_id: law.source_id.clone(),
-            source_name: law.source_name.clone(),
+        .map(|law| {
+            let display_name = resolve_display_name(&law.yaml_content);
+            CorpusLawEntry {
+                law_id: law.law_id.clone(),
+                name: law.name.clone(),
+                display_name,
+                source_id: law.source_id.clone(),
+                source_name: law.source_name.clone(),
+            }
         })
         .collect();
 
@@ -137,6 +157,30 @@ pub async fn get_corpus_law(
         [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
         law.yaml_content.clone(),
     ))
+}
+
+/// GET /api/corpus/laws/{law_id}/outputs — list all outputs declared across articles.
+pub async fn list_law_outputs(
+    State(state): State<AppState>,
+    Path(law_id): Path<String>,
+) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
+    let corpus = state.corpus.read().await;
+
+    let law = corpus
+        .source_map
+        .get_law(&law_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+
+    let outputs: Vec<LawOutputEntry> = collect_law_outputs(&law.yaml_content)
+        .into_iter()
+        .map(|(name, output_type, article_number)| LawOutputEntry {
+            name,
+            output_type,
+            article_number,
+        })
+        .collect();
+
+    Ok(Json(outputs))
 }
 
 /// A scenario file entry.

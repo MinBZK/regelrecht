@@ -83,6 +83,10 @@ async fn main() {
             get(corpus_handlers::get_corpus_law),
         )
         .route(
+            "/api/corpus/laws/{law_id}/outputs",
+            get(corpus_handlers::list_law_outputs),
+        )
+        .route(
             "/api/corpus/laws/{law_id}/scenarios",
             get(corpus_handlers::list_scenarios),
         )
