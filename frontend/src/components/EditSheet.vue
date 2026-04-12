@@ -417,28 +417,15 @@ const sectionLabels = {
               <ndd-list-item size="md">
                 <ndd-text-cell text="Bron regelgeving" max-width="140"></ndd-text-cell>
                 <ndd-cell>
-                  <div class="law-search-container" @focusout="closeLawResults">
-                    <ndd-search-field
-                      size="md"
-                      placeholder="Zoek regelgeving..."
-                      :value="lawSearchQuery"
-                      data-testid="law-search-field"
-                      @input="onLawSearchInput($event)"
-                      @focus="showLawResults = true"
-                    ></ndd-search-field>
-                    <ndd-list v-if="showLawResults && filteredLaws.length > 0" variant="box" class="law-search-results" data-testid="law-search-results">
-                      <ndd-list-item
-                        v-for="law in filteredLaws"
-                        :key="law.law_id"
-                        size="sm"
-                        class="law-search-result-item"
-                        :data-testid="`law-result-${law.law_id}`"
-                        @mousedown.prevent="selectLaw(law)"
-                      >
-                        <ndd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></ndd-text-cell>
-                      </ndd-list-item>
-                    </ndd-list>
-                  </div>
+                  <ndd-search-field
+                    size="md"
+                    placeholder="Zoek regelgeving..."
+                    :value="lawSearchQuery"
+                    data-testid="law-search-field"
+                    @input="onLawSearchInput($event)"
+                    @focus="showLawResults = true"
+                    @focusout="closeLawResults"
+                  ></ndd-search-field>
                 </ndd-cell>
               </ndd-list-item>
               <ndd-list-item size="md">
@@ -454,6 +441,23 @@ const sectionLabels = {
                 </ndd-cell>
               </ndd-list-item>
             </ndd-list>
+
+            <!-- Law search results rendered outside the ndd-list to avoid
+                 shadow DOM overflow clipping from ndd-list-item. -->
+            <div v-if="showLawResults && filteredLaws.length > 0" class="law-search-results" data-testid="law-search-results">
+              <ndd-list variant="box">
+                <ndd-list-item
+                  v-for="law in filteredLaws"
+                  :key="law.law_id"
+                  size="sm"
+                  class="law-search-result-item"
+                  :data-testid="`law-result-${law.law_id}`"
+                  @mousedown.prevent="selectLaw(law)"
+                >
+                  <ndd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></ndd-text-cell>
+                </ndd-list-item>
+              </ndd-list>
+            </div>
 
             <ndd-spacer size="12"></ndd-spacer>
             <ndd-title size="6"><h6>Bron parameters</h6></ndd-title>
@@ -581,26 +585,13 @@ ndd-sheet.edit-sheet {
   color: var(--semantics-text-secondary-color, #6B7280);
   flex-shrink: 0;
 }
-.law-search-container {
-  position: relative;
-  z-index: 10;
-  width: 100%;
-}
-.law-search-container ndd-search-field {
-  width: 100%;
-}
 .law-search-results {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  max-height: 240px;
+  max-height: 200px;
   overflow-y: auto;
-  background: var(--semantics-surface-primary-color, #fff);
   border: 1px solid var(--semantics-border-primary-color, #d1d5db);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  margin-top: -1px;
 }
 .law-search-result-item {
   cursor: pointer;
