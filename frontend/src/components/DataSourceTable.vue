@@ -64,6 +64,16 @@ function defaultForType(type) {
   }
 }
 
+function inputType(fieldType) {
+  switch (fieldType) {
+    case 'number':
+    case 'amount':
+      return 'number';
+    default:
+      return 'text';
+  }
+}
+
 // All columns: key field + declared fields (deduplicated)
 const allColumns = computed(() => {
   const cols = [];
@@ -136,6 +146,7 @@ const rowCount = computed(() => rows.value.length);
               <template v-else>
                 <ndd-text-field
                   size="md"
+                  :type="inputType(col.type)"
                   :value="String(row[col.name] ?? '')"
                   :placeholder="col.name"
                   @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
@@ -221,6 +232,10 @@ const rowCount = computed(() => rows.value.length);
   font-weight: 600;
   color: var(--semantics-text-color-secondary, #545D68);
 }
+
+.ds-key-label {
+  font-weight: 700;
+}
 </style>
 
 <style>
@@ -239,9 +254,5 @@ const rowCount = computed(() => rows.value.length);
 .ds-settings-list ndd-text-field,
 .ds-settings-list ndd-dropdown {
   width: 100%;
-}
-
-.ds-key-label {
-  font-weight: 700;
 }
 </style>
