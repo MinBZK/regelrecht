@@ -8,6 +8,8 @@ const props = defineProps({
 const emit = defineEmits(['save', 'close']);
 
 const sheetEl = ref(null);
+const searchFieldEl = ref(null);
+const inputWrapperEl = ref(null);
 const values = ref({});
 
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
@@ -50,6 +52,7 @@ const filteredLaws = computed(() => {
 function onLawSearchInput(event) {
   lawSearchQuery.value = event.target?.value ?? event.detail?.value ?? '';
   showLawResults.value = true;
+  nextTick(() => updateResultsPosition());
 }
 
 async function fetchOutputsForLaw(lawId) {
@@ -97,6 +100,15 @@ function onOutputSelected(outputName) {
 function closeLawResults() {
   // Delay to allow click on results to register before closing
   setTimeout(() => { showLawResults.value = false; }, 200);
+}
+
+const resultsTopPx = ref(0);
+
+function updateResultsPosition() {
+  if (!searchFieldEl.value || !inputWrapperEl.value) return;
+  const fieldRect = searchFieldEl.value.getBoundingClientRect();
+  const wrapperRect = inputWrapperEl.value.getBoundingClientRect();
+  resultsTopPx.value = fieldRect.bottom - wrapperRect.top;
 }
 
 // Monotonic counter for stable v-for keys on the source.parameters rows.
@@ -397,66 +409,70 @@ const sectionLabels = {
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
-            <ndd-list variant="box" class="edit-settings-list">
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-dropdown size="md">
-                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
-                      <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
-                    </select>
-                  </ndd-dropdown>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Bron regelgeving" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-search-field
-                    size="md"
-                    placeholder="Zoek regelgeving..."
-                    :value="lawSearchQuery"
-                    data-testid="law-search-field"
-                    @input="onLawSearchInput($event)"
-                    @focus="showLawResults = true"
-                    @focusout="closeLawResults"
-                  ></ndd-search-field>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Bron output" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-dropdown v-if="availableOutputs.length > 0" size="md" data-testid="output-dropdown">
-                    <select :value="values.sourceOutput" @change="onOutputSelected($event.target.value)" aria-label="Bron output">
-                      <option value="">Selecteer output...</option>
-                      <option v-for="out in availableOutputs" :key="out.name" :value="out.name">{{ out.name }} ({{ out.output_type }})</option>
-                    </select>
-                  </ndd-dropdown>
-                  <ndd-text-field v-else size="md" :value="values.sourceOutput" data-testid="output-text-field" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-            </ndd-list>
-
-            <!-- Law search results rendered outside the ndd-list to avoid
-                 shadow DOM overflow clipping from ndd-list-item. -->
-            <div v-if="showLawResults && filteredLaws.length > 0" class="law-search-results" data-testid="law-search-results">
-              <ndd-list variant="box">
-                <ndd-list-item
-                  v-for="law in filteredLaws"
-                  :key="law.law_id"
-                  size="sm"
-                  class="law-search-result-item"
-                  :data-testid="`law-result-${law.law_id}`"
-                  @mousedown.prevent="selectLaw(law)"
-                >
-                  <ndd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></ndd-text-cell>
+            <div class="input-fields-wrapper" ref="inputWrapperEl">
+              <ndd-list variant="box" class="edit-settings-list">
+                <ndd-list-item size="md">
+                  <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
+                  </ndd-cell>
+                </ndd-list-item>
+                <ndd-list-item size="md">
+                  <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-dropdown size="md">
+                      <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
+                        <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+                      </select>
+                    </ndd-dropdown>
+                  </ndd-cell>
+                </ndd-list-item>
+                <ndd-list-item size="md">
+                  <ndd-text-cell text="Bron regelgeving" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-search-field
+                      ref="searchFieldEl"
+                      size="md"
+                      placeholder="Zoek regelgeving..."
+                      :value="lawSearchQuery"
+                      data-testid="law-search-field"
+                      @input="onLawSearchInput($event)"
+                      @focus="showLawResults = true; nextTick(() => updateResultsPosition())"
+                      @focusout="closeLawResults"
+                    ></ndd-search-field>
+                  </ndd-cell>
+                </ndd-list-item>
+                <ndd-list-item size="md">
+                  <ndd-text-cell text="Bron output" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-dropdown v-if="availableOutputs.length > 0" size="md" data-testid="output-dropdown">
+                      <select :value="values.sourceOutput" @change="onOutputSelected($event.target.value)" aria-label="Bron output">
+                        <option value="">Selecteer output...</option>
+                        <option v-for="out in availableOutputs" :key="out.name" :value="out.name">{{ out.name }} ({{ out.output_type }})</option>
+                      </select>
+                    </ndd-dropdown>
+                    <ndd-text-field v-else size="md" :value="values.sourceOutput" data-testid="output-text-field" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></ndd-text-field>
+                  </ndd-cell>
                 </ndd-list-item>
               </ndd-list>
+
+              <!-- Absolute overlay: rendered outside the ndd-list to escape
+                   shadow DOM overflow clipping, but positioned over the
+                   controls below (Bron output, parameters) via z-index. -->
+              <div v-if="showLawResults && filteredLaws.length > 0" class="law-search-results" :style="{ top: resultsTopPx + 'px' }" data-testid="law-search-results">
+                <ndd-list variant="box">
+                  <ndd-list-item
+                    v-for="law in filteredLaws"
+                    :key="law.law_id"
+                    size="sm"
+                    class="law-search-result-item"
+                    :data-testid="`law-result-${law.law_id}`"
+                    @mousedown.prevent="selectLaw(law)"
+                  >
+                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></ndd-text-cell>
+                  </ndd-list-item>
+                </ndd-list>
+              </div>
             </div>
 
             <ndd-spacer size="12"></ndd-spacer>
@@ -585,13 +601,20 @@ ndd-sheet.edit-sheet {
   color: var(--semantics-text-secondary-color, #6B7280);
   flex-shrink: 0;
 }
+.input-fields-wrapper {
+  position: relative;
+}
 .law-search-results {
-  max-height: 200px;
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  max-height: 240px;
   overflow-y: auto;
+  background: var(--semantics-surface-primary-color, #fff);
   border: 1px solid var(--semantics-border-primary-color, #d1d5db);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  margin-top: -1px;
 }
 .law-search-result-item {
   cursor: pointer;
