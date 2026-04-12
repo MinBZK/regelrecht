@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 
 const props = defineProps({
   item: { type: Object, default: null },
@@ -8,9 +8,113 @@ const props = defineProps({
 const emit = defineEmits(['save', 'close']);
 
 const sheetEl = ref(null);
+const searchFieldEl = ref(null);
+const inputWrapperEl = ref(null);
 const values = ref({});
 
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
+
+// --- Law search / output selection ---
+let lawsCache = null;
+async function fetchLawsList() {
+  if (lawsCache) return lawsCache;
+  try {
+    const res = await fetch('/api/corpus/laws?limit=1000');
+    if (!res.ok) return [];
+    lawsCache = await res.json();
+  } catch {
+    return [];
+  }
+  return lawsCache;
+}
+
+const allLaws = ref([]);
+const lawSearchQuery = ref('');
+const showLawResults = ref(false);
+const availableOutputs = ref([]);
+const outputsLoading = ref(false);
+
+function displayName(law) {
+  if (law.display_name) return law.display_name;
+  if (law.name) return law.name;
+  return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+const filteredLaws = computed(() => {
+  const q = lawSearchQuery.value.toLowerCase().trim();
+  if (!q) return allLaws.value.slice(0, 20);
+  return allLaws.value.filter(law =>
+    displayName(law).toLowerCase().includes(q) ||
+    law.law_id.toLowerCase().includes(q),
+  ).slice(0, 20);
+});
+
+function onLawSearchInput(event) {
+  lawSearchQuery.value = event.target?.value ?? event.detail?.value ?? '';
+  showLawResults.value = true;
+  nextTick(() => updateResultsPosition());
+}
+
+async function fetchOutputsForLaw(lawId) {
+  if (!lawId) {
+    availableOutputs.value = [];
+    return;
+  }
+  outputsLoading.value = true;
+  try {
+    const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}/outputs`);
+    if (res.ok) {
+      availableOutputs.value = await res.json();
+    } else {
+      availableOutputs.value = [];
+    }
+  } catch {
+    availableOutputs.value = [];
+  } finally {
+    outputsLoading.value = false;
+  }
+}
+
+async function selectLaw(law) {
+  values.value.sourceRegulation = law.law_id;
+  lawSearchQuery.value = displayName(law);
+  showLawResults.value = false;
+  values.value.sourceOutput = '';
+  await fetchOutputsForLaw(law.law_id);
+}
+
+function onOutputSelected(outputName) {
+  values.value.sourceOutput = outputName;
+  if (!outputName) return;
+  const match = availableOutputs.value.find(o => o.name === outputName);
+  if (match) {
+    if (!values.value.name) {
+      values.value.name = outputName;
+    }
+    // Always set type from the source output — it's determined by the external law
+    values.value.type = match.output_type || 'string';
+    // Pre-populate source parameters from the selected output's article
+    if (match.parameters?.length > 0) {
+      values.value.sourceParameters = match.parameters.map(p =>
+        makeParamRow(p.name, ''),
+      );
+    }
+  }
+}
+
+function closeLawResults() {
+  // Delay to allow click on results to register before closing
+  setTimeout(() => { showLawResults.value = false; }, 200);
+}
+
+const resultsTopPx = ref(0);
+
+function updateResultsPosition() {
+  if (!searchFieldEl.value || !inputWrapperEl.value) return;
+  const fieldRect = searchFieldEl.value.getBoundingClientRect();
+  const wrapperRect = inputWrapperEl.value.getBoundingClientRect();
+  resultsTopPx.value = fieldRect.bottom - wrapperRect.top;
+}
 
 // Monotonic counter for stable v-for keys on the source.parameters rows.
 // We can't use the row index as a key because that would let Vue reuse the
@@ -74,25 +178,21 @@ watch(() => props.item, async (item) => {
     };
   } else if (s === 'input' || s === 'add-input') {
     // Flatten source.parameters into an ordered key/value pair list so the
-    // user can edit existing entries and add new ones via the form. We use
-    // an array (not an object) because two rows can briefly share an empty
-    // key while typing, and Object.entries would silently collapse them.
+    // user can edit existing entries and add new ones via the form.
     //
-    // Each row carries a stable `_rowId` so the v-for key survives row
-    // deletions (otherwise Vue reuses DOM by index and the data-testids
-    // bound to row positions point at stale rows).
-    //
-    // Hydration is value-type aware:
-    //   - string / number / boolean → represent as a string the user can
-    //     edit, and stash the original on `_origValue` so save() can
-    //     emit the original primitive type if the user didn't touch the
-    //     value field.
-    //   - object / array → unsupported in the form editor today (no UI
-    //     for nested literal values). The original value is stashed in
-    //     `_overflowParams` (separate from the editable rows) so save()
-    //     can merge it back into the output untouched. Without that
-    //     overflow, an unrelated edit on the input would silently drop
-    //     the entire non-scalar parameter from the law on the next save.
+    // Design decisions:
+    //   - Each row gets a stable `_rowId` (monotonic counter) so Vue's
+    //     v-for keying survives deletions without confusing focus or
+    //     data-testid attributes.
+    //   - `_origValue` preserves the original (un-stringified) value so
+    //     numeric/boolean parameters round-trip correctly when the user
+    //     doesn't touch the value field (avoids `peildatum: 2024` becoming
+    //     `peildatum: '2024'`). On save, if the stringified form hasn't
+    //     changed we emit the original typed value.
+    //   - Non-scalar parameter values (objects/arrays) are stashed in
+    //     `sourceParametersOverflow` and merged back on save so they
+    //     survive untouched — the user can only edit those via the YAML
+    //     pane.
     const params = item.data?.source?.parameters;
     const paramList = [];
     const overflowParams = {};
@@ -117,6 +217,21 @@ watch(() => props.item, async (item) => {
       sourceParameters: paramList,
       sourceParametersOverflow: overflowParams,
     };
+
+    // Load law list for search and pre-populate outputs if editing existing input
+    showLawResults.value = false;
+    availableOutputs.value = [];
+    fetchLawsList().then(laws => {
+      allLaws.value = laws;
+      const reg = item.data?.source?.regulation;
+      if (reg) {
+        const match = laws.find(l => l.law_id === reg);
+        lawSearchQuery.value = match ? displayName(match) : reg;
+        fetchOutputsForLaw(reg);
+      } else {
+        lawSearchQuery.value = '';
+      }
+    });
   } else if (s === 'output' || s === 'add-output') {
     values.value = {
       name: item.data?.name ?? '',
@@ -299,36 +414,71 @@ const sectionLabels = {
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
-            <ndd-list variant="box" class="edit-settings-list">
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-dropdown size="md">
-                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
-                      <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
-                    </select>
-                  </ndd-dropdown>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Bron regelgeving" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-text-field size="md" :value="values.sourceRegulation" @input="values.sourceRegulation = $event.target?.value ?? $event.detail?.value ?? values.sourceRegulation"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Bron output" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-text-field size="md" :value="values.sourceOutput" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-            </ndd-list>
+            <div class="input-fields-wrapper" ref="inputWrapperEl">
+              <ndd-list variant="box" class="edit-settings-list">
+                <ndd-list-item size="md">
+                  <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
+                  </ndd-cell>
+                </ndd-list-item>
+                <ndd-list-item v-if="!values.sourceOutput" size="md">
+                  <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-dropdown size="md">
+                      <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
+                        <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+                      </select>
+                    </ndd-dropdown>
+                  </ndd-cell>
+                </ndd-list-item>
+                <ndd-list-item size="md">
+                  <ndd-text-cell text="Bron regelgeving" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-search-field
+                      ref="searchFieldEl"
+                      size="md"
+                      placeholder="Zoek regelgeving..."
+                      :value="lawSearchQuery"
+                      data-testid="law-search-field"
+                      @input="onLawSearchInput($event)"
+                      @focus="showLawResults = true; nextTick(() => updateResultsPosition())"
+                      @focusout="closeLawResults"
+                    ></ndd-search-field>
+                  </ndd-cell>
+                </ndd-list-item>
+                <ndd-list-item size="md">
+                  <ndd-text-cell text="Bron output" max-width="140"></ndd-text-cell>
+                  <ndd-cell>
+                    <ndd-dropdown v-if="availableOutputs.length > 0" size="md" data-testid="output-dropdown">
+                      <select :value="values.sourceOutput" @change="onOutputSelected($event.target.value)" aria-label="Bron output">
+                        <option value="">Selecteer output...</option>
+                        <option v-for="out in availableOutputs" :key="out.name" :value="out.name">{{ out.name }} ({{ out.output_type }})</option>
+                      </select>
+                    </ndd-dropdown>
+                    <ndd-text-field v-else size="md" :value="values.sourceOutput" data-testid="output-text-field" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></ndd-text-field>
+                  </ndd-cell>
+                </ndd-list-item>
+              </ndd-list>
+
+              <!-- Absolute overlay: rendered outside the ndd-list to escape
+                   shadow DOM overflow clipping, but positioned over the
+                   controls below (Bron output, parameters) via z-index. -->
+              <div v-if="showLawResults && filteredLaws.length > 0" class="law-search-results" :style="{ top: resultsTopPx + 'px' }" data-testid="law-search-results">
+                <ndd-list variant="box">
+                  <ndd-list-item
+                    v-for="law in filteredLaws"
+                    :key="law.law_id"
+                    size="sm"
+                    class="law-search-result-item"
+                    :data-testid="`law-result-${law.law_id}`"
+                    @mousedown.prevent="selectLaw(law)"
+                  >
+                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></ndd-text-cell>
+                  </ndd-list-item>
+                </ndd-list>
+              </div>
+            </div>
 
             <ndd-spacer size="12"></ndd-spacer>
             <ndd-title size="6"><h6>Bron parameters</h6></ndd-title>
@@ -455,5 +605,23 @@ ndd-sheet.edit-sheet {
   font-weight: 500;
   color: var(--semantics-text-secondary-color, #6B7280);
   flex-shrink: 0;
+}
+.input-fields-wrapper {
+  position: relative;
+}
+.law-search-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--semantics-surface-primary-color, #fff);
+  border: 1px solid var(--semantics-border-primary-color, #d1d5db);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+.law-search-result-item {
+  cursor: pointer;
 }
 </style>

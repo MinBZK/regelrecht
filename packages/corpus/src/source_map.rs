@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use serde::Deserialize;
 use walkdir::WalkDir;
 
 use crate::error::{CorpusError, Result};
@@ -445,6 +446,178 @@ fn extract_law_name(yaml: &str) -> Option<String> {
     None
 }
 
+/// Extract the raw `name:` value including `#` references.
+fn extract_raw_name(yaml: &str) -> Option<String> {
+    for line in yaml.lines() {
+        if let Some(rest) = line.strip_prefix("name:") {
+            let value = rest.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+            return None;
+        }
+    }
+    None
+}
+
+// --- Minimal deserialization types for display-name and output resolution ---
+
+#[derive(Deserialize, Default)]
+struct LawDoc {
+    #[serde(default)]
+    articles: Vec<LawArticle>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawArticle {
+    #[serde(default)]
+    number: Option<String>,
+    #[serde(default)]
+    machine_readable: Option<LawMr>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawMr {
+    #[serde(default)]
+    execution: Option<LawExec>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawExec {
+    #[serde(default)]
+    actions: Vec<LawAction>,
+    #[serde(default)]
+    output: Vec<LawOutput>,
+    #[serde(default)]
+    parameters: Vec<LawParam>,
+}
+
+/// A parameter entry from `execution.parameters`.
+#[derive(Deserialize, Default, Clone)]
+struct LawParam {
+    #[serde(default)]
+    name: String,
+    #[serde(default, rename = "type")]
+    param_type: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct LawAction {
+    #[serde(default)]
+    output: Option<String>,
+    #[serde(default)]
+    value: Option<serde_yaml_ng::Value>,
+}
+
+/// An output entry from `execution.output`.
+#[derive(Deserialize, Default)]
+struct LawOutput {
+    #[serde(default)]
+    name: String,
+    #[serde(default, rename = "type")]
+    output_type: Option<String>,
+}
+
+/// Resolve a law's human-readable display name.
+///
+/// If the YAML has a literal `name:` field (e.g. `name: Kieswet`), returns
+/// that. If the name is an output reference (e.g. `name: '#wet_naam'`),
+/// parses the YAML to find the action whose output matches the reference
+/// and returns its scalar value. Returns `None` when no name can be resolved.
+pub fn resolve_display_name(yaml: &str) -> Option<String> {
+    // Fast path: literal name
+    if let Some(name) = extract_law_name(yaml) {
+        return Some(name);
+    }
+
+    // Check for # reference
+    let raw = extract_raw_name(yaml)?;
+    let reference = raw.strip_prefix('#')?;
+
+    // Parse YAML to find the action that resolves this reference
+    let doc: LawDoc = serde_yaml_ng::from_str(yaml).ok()?;
+    for article in &doc.articles {
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        let Some(exec) = &mr.execution else {
+            continue;
+        };
+        for action in &exec.actions {
+            if action.output.as_deref() == Some(reference) {
+                if let Some(serde_yaml_ng::Value::String(s)) = &action.value {
+                    return Some(s.clone());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// A collected output with the parameters required by its article's execution block.
+pub struct CollectedOutput {
+    pub name: String,
+    pub output_type: String,
+    pub article_number: String,
+    /// Parameters declared on the execution block that contains this output.
+    /// The caller needs to supply these when referencing this output as a source.
+    pub parameters: Vec<(String, String)>, // (name, type)
+}
+
+/// Collect all outputs declared across all articles in a law.
+///
+/// Each output includes the parameters required by its article's execution
+/// block, so the UI can pre-populate source.parameters when the user selects
+/// an output.
+pub fn collect_law_outputs(yaml: &str) -> Vec<CollectedOutput> {
+    let doc: LawDoc = match serde_yaml_ng::from_str(yaml) {
+        Ok(d) => d,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut seen = HashSet::new();
+    let mut results = Vec::new();
+
+    for article in &doc.articles {
+        let article_number = article.number.as_deref().unwrap_or("").to_string();
+        let Some(mr) = &article.machine_readable else {
+            continue;
+        };
+        let Some(exec) = &mr.execution else {
+            continue;
+        };
+        let params: Vec<(String, String)> = exec
+            .parameters
+            .iter()
+            .map(|p| {
+                (
+                    p.name.clone(),
+                    p.param_type.clone().unwrap_or_else(|| "string".to_string()),
+                )
+            })
+            .collect();
+
+        for output in &exec.output {
+            if !output.name.is_empty() && !seen.contains(&output.name) {
+                seen.insert(output.name.clone());
+                results.push(CollectedOutput {
+                    name: output.name.clone(),
+                    output_type: output
+                        .output_type
+                        .clone()
+                        .unwrap_or_else(|| "string".to_string()),
+                    article_number: article_number.clone(),
+                    parameters: params.clone(),
+                });
+            }
+        }
+    }
+
+    results.sort_by(|a, b| a.name.cmp(&b.name));
+    results
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -742,5 +915,122 @@ mod tests {
         map.load_source(&source_high).unwrap();
 
         assert_eq!(map.get_law("contested_law").unwrap().source_id, "high");
+    }
+
+    #[test]
+    fn test_resolve_display_name_literal() {
+        let yaml = "$id: kieswet\nname: Kieswet\narticles: []\n";
+        assert_eq!(resolve_display_name(yaml), Some("Kieswet".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_display_name_output_reference() {
+        let yaml = r#"$id: zorgtoeslagwet
+name: '#wet_naam'
+articles:
+  - number: '8'
+    machine_readable:
+      execution:
+        actions:
+          - output: wet_naam
+            value: Wet op de zorgtoeslag
+"#;
+        assert_eq!(
+            resolve_display_name(yaml),
+            Some("Wet op de zorgtoeslag".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_display_name_unresolvable_reference() {
+        let yaml = "$id: test\nname: '#missing_output'\narticles: []\n";
+        assert_eq!(resolve_display_name(yaml), None);
+    }
+
+    #[test]
+    fn test_resolve_display_name_no_name_field() {
+        let yaml = "$id: test\narticles: []\n";
+        assert_eq!(resolve_display_name(yaml), None);
+    }
+
+    #[test]
+    fn test_collect_law_outputs() {
+        let yaml = r#"$id: brp
+articles:
+  - number: '2.7'
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+          - name: peildatum
+            type: date
+        output:
+          - name: leeftijd
+            type: number
+        actions: []
+  - number: '2.8'
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        output:
+          - name: heeft_partner
+            type: boolean
+        actions: []
+"#;
+        let outputs = collect_law_outputs(yaml);
+        assert_eq!(outputs.len(), 2);
+        assert_eq!(outputs[0].name, "heeft_partner");
+        assert_eq!(outputs[0].output_type, "boolean");
+        assert_eq!(outputs[0].article_number, "2.8");
+        assert_eq!(
+            outputs[0].parameters,
+            vec![("bsn".to_string(), "string".to_string())]
+        );
+
+        assert_eq!(outputs[1].name, "leeftijd");
+        assert_eq!(outputs[1].output_type, "number");
+        assert_eq!(outputs[1].article_number, "2.7");
+        assert_eq!(
+            outputs[1].parameters,
+            vec![
+                ("bsn".to_string(), "string".to_string()),
+                ("peildatum".to_string(), "date".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_collect_law_outputs_deduplicates() {
+        let yaml = r#"$id: test
+articles:
+  - number: '1'
+    machine_readable:
+      execution:
+        output:
+          - name: foo
+            type: string
+        actions: []
+  - number: '2'
+    machine_readable:
+      execution:
+        output:
+          - name: foo
+            type: number
+        actions: []
+"#;
+        let outputs = collect_law_outputs(yaml);
+        assert_eq!(outputs.len(), 1);
+        // First occurrence wins
+        assert_eq!(outputs[0].output_type, "string");
+    }
+
+    #[test]
+    fn test_collect_law_outputs_empty() {
+        let yaml = "$id: test\narticles: []\n";
+        let outputs = collect_law_outputs(yaml);
+        assert!(outputs.is_empty());
     }
 }
