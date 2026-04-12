@@ -188,34 +188,30 @@ impl RuleContext {
 
     /// Create a child context for nested evaluation (e.g., FOREACH).
     ///
-    /// The child inherits definitions, parameters, resolved_inputs, and outputs,
-    /// but starts with an **empty local scope**. This ensures that FOREACH loop
-    /// variables from a parent context don't leak into child iterations.
+    /// The child inherits definitions, parameters, resolved_inputs, outputs,
+    /// **and the parent's local scope** (so nested FOREACH bodies can still
+    /// reach outer iteration variables). The child can shadow inherited
+    /// locals via `set_local`, since the new entry overwrites the inherited
+    /// one in its own `BTreeMap`.
     ///
     /// # Design Note
     ///
-    /// This behavior differs from the Python implementation, which copies the
-    /// local scope to child contexts. The Rust implementation intentionally
-    /// clears local scope to:
-    ///
-    /// 1. **Prevent variable pollution**: Loop variables shouldn't accidentally
-    ///    affect nested operations
-    /// 2. **Explicit is better**: If you need values in a child context, pass
-    ///    them explicitly via parameters or outputs
-    /// 3. **Safety**: Reduces the risk of subtle bugs from shared mutable state
-    ///
-    /// If Python compatibility is required for specific use cases, pass the
-    /// needed values explicitly via parameters before evaluation.
+    /// Earlier revisions cleared the local scope on every child to prevent
+    /// variable pollution. That broke law specifications where a FOREACH
+    /// body uses an outer-scope variable (post-processed in Python by
+    /// `_postprocess_outputs`). Inheriting the parent's locals matches the
+    /// Python implementation while still allowing each iteration to override
+    /// the binding via `set_local`.
     pub fn create_child(&self) -> Self {
         Self {
             definitions: Rc::clone(&self.definitions),
             parameters: Rc::clone(&self.parameters),
             outputs: Rc::clone(&self.outputs),
-            local: BTreeMap::new(), // Child starts with empty local scope
+            local: self.local.clone(),
             resolved_inputs: Rc::clone(&self.resolved_inputs),
             reference_date: self.reference_date,
             reference_date_value: self.reference_date_value.clone(),
-            trace: self.trace.clone(), // Share the same trace builder
+            trace: self.trace.clone(),
         }
     }
 
@@ -482,12 +478,22 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
         Value::Null => Ok(Value::Null),
         Value::Object(obj) => Ok(obj.get(property_path).cloned().unwrap_or(Value::Null)),
         Value::Array(arr) => {
-            // Support numeric indexing for arrays
+            // Numeric paths index into the array (e.g. arr.0, arr.1).
             if let Ok(index) = property_path.parse::<usize>() {
-                Ok(arr.get(index).cloned().unwrap_or(Value::Null))
-            } else {
-                Ok(Value::Null)
+                return Ok(arr.get(index).cloned().unwrap_or(Value::Null));
             }
+            // Field projection: `$people.name` returns the array of `name`
+            // values for each element. Mirrors the Python `_resolve_value`
+            // helper that flattens `$array.field` patterns. Non-object
+            // elements project to Null so the array length is preserved.
+            let projected: Vec<Value> = arr
+                .iter()
+                .map(|item| match item {
+                    Value::Object(obj) => obj.get(property_path).cloned().unwrap_or(Value::Null),
+                    _ => Value::Null,
+                })
+                .collect();
+            Ok(Value::Array(projected))
         }
         _ => Err(EngineError::TypeMismatch {
             expected: "object".to_string(),
@@ -794,20 +800,21 @@ mod tests {
     }
 
     #[test]
-    fn test_child_context_empty_local_scope() {
+    fn test_child_context_inherits_local_scope() {
         let mut ctx = make_context();
         ctx.set_local("parent_loop_var", Value::Int(999));
         ctx.set_local("index", Value::Int(5));
 
-        // Create child - should NOT inherit parent's local variables
-        let child = ctx.create_child();
+        // Child inherits the parent's locals so nested FOREACH bodies can
+        // still reach outer iteration variables.
+        let mut child = ctx.create_child();
 
-        // Child should NOT see parent's loop variables (resolves to Null)
-        assert_eq!(child.resolve("parent_loop_var").unwrap(), Value::Null);
-        assert_eq!(child.resolve("index").unwrap(), Value::Null);
+        assert_eq!(child.resolve("parent_loop_var").unwrap(), Value::Int(999));
+        assert_eq!(child.resolve("index").unwrap(), Value::Int(5));
 
-        // But parent should still have them
-        assert_eq!(ctx.resolve("parent_loop_var").unwrap(), Value::Int(999));
+        // Child can shadow inherited locals without affecting the parent.
+        child.set_local("index", Value::Int(42));
+        assert_eq!(child.resolve("index").unwrap(), Value::Int(42));
         assert_eq!(ctx.resolve("index").unwrap(), Value::Int(5));
     }
 

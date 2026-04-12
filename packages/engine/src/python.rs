@@ -255,6 +255,69 @@ impl RegelrechtEngine {
         Ok(dict.into_any().unbind())
     }
 
+    /// Evaluate with full execution trace.
+    ///
+    /// Same as evaluate() but also returns a JSON-serialized execution trace
+    /// that shows every step of the evaluation: variable resolution, operations,
+    /// requirement checks, data source lookups, etc.
+    ///
+    /// Args:
+    ///     law_id: ID of the loaded law
+    ///     output_names: list of output names to calculate
+    ///     parameters: dict of input parameters
+    ///     calculation_date: date string (YYYY-MM-DD)
+    ///
+    /// Returns:
+    ///     dict with same keys as evaluate() plus 'trace' (JSON string of the
+    ///     execution trace tree)
+    fn evaluate_with_trace(
+        &self,
+        py: Python<'_>,
+        law_id: &str,
+        output_names: Vec<String>,
+        parameters: &Bound<'_, PyDict>,
+        calculation_date: &str,
+    ) -> PyResult<PyObject> {
+        let params = pydict_to_btreemap(parameters)?;
+        let name_refs: Vec<&str> = output_names.iter().map(|s| s.as_str()).collect();
+
+        let result = self
+            .service
+            .evaluate_law_with_trace(law_id, &name_refs, params, calculation_date)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        let dict = PyDict::new(py);
+        dict.set_item("outputs", btreemap_to_pydict(py, &result.outputs)?)?;
+        dict.set_item(
+            "resolved_inputs",
+            btreemap_to_pydict(py, &result.resolved_inputs)?,
+        )?;
+        dict.set_item("article_number", &result.article_number)?;
+        dict.set_item("law_id", &result.law_id)?;
+        dict.set_item("engine_version", &result.engine_version)?;
+        if let Some(ref v) = result.schema_version {
+            dict.set_item("schema_version", v)?;
+        }
+        if let Some(ref h) = result.regulation_hash {
+            dict.set_item("regulation_hash", h)?;
+        }
+        if let Some(ref d) = result.regulation_valid_from {
+            dict.set_item("regulation_valid_from", d)?;
+        }
+        if let Some(ref u) = result.law_uuid {
+            dict.set_item("law_uuid", u)?;
+        }
+
+        // Serialize the trace tree as JSON string
+        if let Some(ref trace) = result.trace {
+            let trace_json = serde_json::to_string(trace)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            dict.set_item("trace", trace_json)?;
+        }
+
+        Ok(dict.into_any().unbind())
+    }
+
     /// Register a tabular data source from flat records.
     ///
     /// Args:
@@ -277,6 +340,75 @@ impl RegelrechtEngine {
 
         self.service
             .register_dict_source(name, key_field, parsed)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// Register a record-set data source with rich options.
+    ///
+    /// Use this when a single key-field lookup is not enough — when you need
+    /// multi-criteria filtering, field aliases (input name differs from
+    /// column name), or array-of-records output for FOREACH iteration.
+    ///
+    /// Args:
+    ///     name: data source name
+    ///     records: list of dicts (each row is a column → value map)
+    ///     key_field: optional single-key field for fast lookup
+    ///     select_on: optional list of criterion field names (multi-key filter)
+    ///     aliases: optional dict mapping input_name → column_name
+    ///     array_field: optional input name that returns the entire matched
+    ///         set as an array of records (for FOREACH). Use array_field_projection
+    ///         to limit which columns are included in each record.
+    ///     array_field_projection: optional list of column names; only these
+    ///         columns are kept in each record returned via array_field. Empty
+    ///         or omitted means "include the whole record".
+    #[pyo3(signature = (name, records, key_field=None, select_on=None, aliases=None, array_field=None, array_field_projection=None))]
+    fn register_record_set_source(
+        &mut self,
+        name: &str,
+        records: &Bound<'_, PyList>,
+        key_field: Option<&str>,
+        select_on: Option<Vec<String>>,
+        aliases: Option<&Bound<'_, PyDict>>,
+        array_field: Option<&str>,
+        array_field_projection: Option<Vec<String>>,
+    ) -> PyResult<()> {
+        // Parse records
+        let mut parsed: Vec<BTreeMap<String, Value>> = Vec::with_capacity(records.len());
+        for item in records.iter() {
+            let dict = item.downcast::<PyDict>().map_err(|_| {
+                PyErr::new::<pyo3::exceptions::PyTypeError, _>("Each record must be a dict")
+            })?;
+            parsed.push(pydict_to_btreemap(dict)?);
+        }
+
+        // Parse aliases
+        let aliases_map = if let Some(d) = aliases {
+            let mut m = BTreeMap::new();
+            for (k, v) in d.iter() {
+                let key: String = k.extract()?;
+                let val: String = v.extract()?;
+                m.insert(key, val);
+            }
+            Some(m)
+        } else {
+            None
+        };
+
+        // Build array_field tuple
+        let array_field_opt = array_field.map(|f| {
+            let proj = array_field_projection.unwrap_or_default();
+            (f.to_string(), proj)
+        });
+
+        self.service
+            .register_record_set_source(
+                name,
+                parsed,
+                key_field,
+                select_on,
+                aliases_map,
+                array_field_opt,
+            )
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
     }
 

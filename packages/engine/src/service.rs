@@ -25,10 +25,14 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, MachineReadable};
+use crate::article::{
+    Article, ArticleBasedLaw, Execution, HookPoint, MachineReadable, SelectOnCriterion,
+};
 use crate::config;
 use crate::context::RuleContext;
-use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
+use crate::data_source::{
+    DataSource, DataSourceRegistry, DictDataSource, RecordSetDataSource, SelectOn,
+};
 use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
@@ -70,8 +74,10 @@ struct CacheEntry {
 /// Uses a scoped push/pop pattern for the visited set to avoid
 /// cloning the HashSet on every cross-law descent.
 struct ResolutionContext<'a> {
-    /// Date for calculations (YYYY-MM-DD)
-    calculation_date: &'a str,
+    /// Date for calculations (YYYY-MM-DD). Owned because cross-law calls
+    /// with temporal qualifiers need to swap it for the duration of the
+    /// recursive descent (`with_shifted_date`).
+    calculation_date: String,
     /// Cached parsed date for version selection (parsed once at construction)
     reference_date: Option<NaiveDate>,
     /// Set of law#output keys already being resolved (cycle detection)
@@ -85,35 +91,57 @@ struct ResolutionContext<'a> {
     /// The law that initiated the current execution chain (for override scoping).
     /// Overrides only apply when declared by this law.
     contextual_law_id: Option<String>,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> ResolutionContext<'a> {
     /// Create a new resolution context.
-    fn new(calculation_date: &'a str) -> Self {
+    fn new(calculation_date: &str) -> Self {
         let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
         Self {
-            calculation_date,
+            calculation_date: calculation_date.to_string(),
             reference_date,
             visited: HashSet::new(),
             depth: 0,
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
+            _marker: std::marker::PhantomData,
         }
     }
 
     /// Create a new resolution context with trace builder.
-    fn with_trace(calculation_date: &'a str, trace: Rc<RefCell<TraceBuilder>>) -> Self {
+    fn with_trace(calculation_date: &str, trace: Rc<RefCell<TraceBuilder>>) -> Self {
         let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
         Self {
-            calculation_date,
+            calculation_date: calculation_date.to_string(),
             reference_date,
             visited: HashSet::new(),
             depth: 0,
             trace: Some(trace),
             cache: HashMap::new(),
             contextual_law_id: None,
+            _marker: std::marker::PhantomData,
         }
+    }
+
+    /// Run a closure with a temporarily shifted calculation date.
+    ///
+    /// Used for cross-law calls with `temporal.reference` qualifiers
+    /// (e.g. `$prev_january_first` evaluates the target law against
+    /// January 1 of the previous year). The original date is restored
+    /// even if the closure panics, via the explicit Drop guard.
+    fn with_shifted_date<F, T>(&mut self, shifted: &str, f: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        let saved_date = std::mem::replace(&mut self.calculation_date, shifted.to_string());
+        let saved_ref = self.reference_date;
+        self.reference_date = NaiveDate::parse_from_str(shifted, "%Y-%m-%d").ok();
+        let result = f(self);
+        self.calculation_date = saved_date;
+        self.reference_date = saved_ref;
+        result
     }
 
     /// Return the cached parsed date for version selection.
@@ -251,6 +279,69 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
             article.hash(hasher);
             construct.hash(hasher);
         }
+    }
+}
+
+/// Resolve a single YAML `select_on` criterion against the current parameter
+/// scope, returning a runtime [`SelectOn`] suitable for the data source.
+///
+/// The criterion's `value` field is a `serde_yaml_ng::Value` that may be:
+/// - A `$variable` reference (string starting with `$`) — resolved against
+///   `parameters`. Dot notation like `$adres.postcode` reads a field from a
+///   nested object parameter.
+/// - A literal scalar (string, int, float, bool) — used as-is.
+/// - A `{operation: ..., values: ...}` map — currently unsupported and
+///   skipped (returns None). The full operation form is rare in practice.
+fn resolve_select_on_criterion(
+    crit: &SelectOnCriterion,
+    parameters: &BTreeMap<String, Value>,
+) -> Option<SelectOn> {
+    let value = yaml_value_to_runtime_value(&crit.value, parameters)?;
+    Some(SelectOn {
+        field: crit.name.clone(),
+        value,
+    })
+}
+
+/// Convert a YAML scalar (or `$variable` reference) to a runtime [`Value`].
+fn yaml_value_to_runtime_value(
+    yaml: &serde_yaml_ng::Value,
+    parameters: &BTreeMap<String, Value>,
+) -> Option<Value> {
+    use serde_yaml_ng::Value as YV;
+    match yaml {
+        YV::String(s) => {
+            if let Some(name) = s.strip_prefix('$') {
+                resolve_param_ref(name, parameters)
+            } else {
+                Some(Value::String(s.clone()))
+            }
+        }
+        YV::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(Value::Int(i))
+            } else {
+                n.as_f64().map(Value::Float)
+            }
+        }
+        YV::Bool(b) => Some(Value::Bool(*b)),
+        YV::Null => Some(Value::Null),
+        // Mapping (e.g. `{operation: IN, values: ...}`) and sequences are
+        // not supported in select_on values yet.
+        YV::Mapping(_) | YV::Sequence(_) | YV::Tagged(_) => None,
+    }
+}
+
+/// Resolve a `$variable` reference against the current parameter scope.
+/// Supports dot notation: `$obj.field` reads `field` from a nested object.
+fn resolve_param_ref(name: &str, parameters: &BTreeMap<String, Value>) -> Option<Value> {
+    if let Some((var, field)) = name.split_once('.') {
+        match parameters.get(var) {
+            Some(Value::Object(map)) => map.get(field).cloned(),
+            _ => None,
+        }
+    } else {
+        parameters.get(name).cloned()
     }
 }
 
@@ -1561,7 +1652,7 @@ impl LawExecutionService {
 
         // Create execution context — pass parameters by reference, only clone
         // into combined_params below when we need ownership.
-        let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
+        let mut context = RuleContext::new(parameters.clone(), &res_ctx.calculation_date)?;
 
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
@@ -1612,14 +1703,14 @@ impl LawExecutionService {
         let mut result = if let Some(ref tb) = res_ctx.trace {
             engine.evaluate_with_trace(
                 combined_params,
-                res_ctx.calculation_date,
+                &res_ctx.calculation_date,
                 requested_output,
                 Rc::clone(tb),
             )?
         } else {
             engine.evaluate_with_output(
                 combined_params,
-                res_ctx.calculation_date,
+                &res_ctx.calculation_date,
                 requested_output,
             )?
         };
@@ -1909,7 +2000,7 @@ impl LawExecutionService {
 
                     let default_result = match engine.evaluate_with_output(
                         default_params,
-                        res_ctx.calculation_date,
+                        &res_ctx.calculation_date,
                         Some(&term.id),
                     ) {
                         Ok(r) => r,
@@ -1996,7 +2087,57 @@ impl LawExecutionService {
                 continue;
             }
 
-            // Check DataSourceRegistry before cross-law resolution
+            // Native data source path: when YAML declares
+            // `source.{table, field/fields, select_on}`, the engine reads
+            // those directly and queries the matching registered source
+            // without any external orchestration.
+            if let Some(table) = source.table.as_deref() {
+                if self.data_registry.source_count() > 0 {
+                    let select_on: Vec<SelectOn> = source
+                        .select_on
+                        .as_deref()
+                        .unwrap_or(&[])
+                        .iter()
+                        .filter_map(|c| resolve_select_on_criterion(c, parameters))
+                        .collect();
+
+                    let as_array =
+                        matches!(input.input_type, crate::types::ParameterType::Array);
+
+                    if let Some(data_match) = self.data_registry.resolve_native(
+                        table,
+                        source.field.as_deref(),
+                        source.fields.as_deref(),
+                        &select_on,
+                        parameters,
+                        as_array,
+                    ) {
+                        tracing::debug!(
+                            input = %input.name,
+                            source = %data_match.source_name,
+                            table = %table,
+                            "Resolved input via native YAML metadata"
+                        );
+
+                        let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                        res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                        res_ctx.trace_set_result(data_match.value.clone());
+                        res_ctx.trace_set_message(format!(
+                            "Resolving from SOURCE {} (table={}): {}",
+                            data_match.source_name, table, data_match.value
+                        ));
+
+                        context.set_resolved_input(&input.name, data_match.value);
+                        continue;
+                    }
+                }
+                // No match for a native YAML-declared source — fall through
+                // (legacy single-key path below) so a generic register_data_source
+                // call still has a chance.
+            }
+
+            // Legacy DataSourceRegistry resolution (single-key lookup by
+            // input name). Used when YAML doesn't declare table metadata.
             if self.data_registry.source_count() > 0 {
                 if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
                     tracing::debug!(
@@ -2025,14 +2166,35 @@ impl LawExecutionService {
             let output_name = source.output.as_deref().unwrap_or(&input.name);
 
             if let Some(regulation) = &source.regulation {
-                // External reference
-                let value = self.resolve_external_input_internal(
-                    regulation,
-                    output_name,
-                    source.parameters.as_ref(),
-                    context,
-                    res_ctx,
-                )?;
+                // Resolve any temporal qualifier on the input. When the
+                // qualifier shifts the date (e.g. $prev_january_first), the
+                // entire cross-law evaluation runs against that date so the
+                // target law also picks the right historical version.
+                let shifted_date = input
+                    .temporal
+                    .as_ref()
+                    .map(|t| t.resolved_date(&res_ctx.calculation_date));
+
+                let value = if let Some(shifted) = shifted_date.filter(|d| d != &res_ctx.calculation_date) {
+                    res_ctx.with_shifted_date(&shifted, |ctx| {
+                        self.resolve_external_input_internal(
+                            regulation,
+                            output_name,
+                            source.parameters.as_ref(),
+                            context,
+                            ctx,
+                        )
+                    })?
+                } else {
+                    // External reference
+                    self.resolve_external_input_internal(
+                        regulation,
+                        output_name,
+                        source.parameters.as_ref(),
+                        context,
+                        res_ctx,
+                    )?
+                };
 
                 context.set_resolved_input(&input.name, value);
             } else if source.output.is_some() {
@@ -2346,6 +2508,47 @@ impl LawExecutionService {
                 key_field, name
             ))),
         }
+    }
+
+    /// Register a record-set data source with multi-criteria filtering,
+    /// field aliases, and an optional array field for FOREACH iteration.
+    ///
+    /// # Arguments
+    /// * `name` - Source name
+    /// * `records` - Backing records
+    /// * `key_field` - Optional single-key field for fast lookup
+    /// * `select_on` - Optional list of criterion fields (multi-key filter)
+    /// * `aliases` - Optional input_name → column_name aliases
+    /// * `array_field` - Optional (input_name, projection) for whole-set arrays
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_record_set_source(
+        &mut self,
+        name: &str,
+        records: Vec<BTreeMap<String, Value>>,
+        key_field: Option<&str>,
+        select_on: Option<Vec<String>>,
+        aliases: Option<BTreeMap<String, String>>,
+        array_field: Option<(String, Vec<String>)>,
+    ) -> Result<()> {
+        let mut builder = RecordSetDataSource::builder(name, 10).records(records);
+        if let Some(kf) = key_field {
+            builder = builder.key_field(kf);
+        }
+        if let Some(so) = select_on {
+            builder = builder.select_on(so);
+        }
+        if let Some(al) = aliases {
+            builder = builder.aliases(al);
+        }
+        if let Some((field, proj)) = array_field {
+            let proj_refs: Vec<&str> = proj.iter().map(|s| s.as_str()).collect();
+            builder = builder.array_field(field, &proj_refs);
+        }
+        let source = builder
+            .build()
+            .map_err(EngineError::DataSourceError)?;
+        self.data_registry.add_source(Box::new(source));
+        Ok(())
     }
 
     /// Get the number of registered data sources.

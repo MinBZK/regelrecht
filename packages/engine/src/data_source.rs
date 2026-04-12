@@ -46,6 +46,16 @@ pub struct DataSourceMatch {
     pub source_type: String,
 }
 
+/// A YAML-declared `select_on` filter criterion as understood by data sources.
+///
+/// `field` is the column name to filter on, `value` is the resolved literal
+/// value (after `$variable` substitution by the resolution layer).
+#[derive(Debug, Clone)]
+pub struct SelectOn {
+    pub field: String,
+    pub value: Value,
+}
+
 /// Trait for data source implementations.
 ///
 /// Data sources provide external data that can be queried during law execution.
@@ -78,6 +88,43 @@ pub trait DataSource: Send + Sync {
 
     /// Get all available fields in this data source.
     fn fields(&self) -> Vec<&str>;
+
+    /// Native query using YAML-declared metadata.
+    ///
+    /// This is the rich-query path that the engine uses when an input has
+    /// `source.{table, field, fields, select_on}` set in YAML. The default
+    /// implementation falls back to `get(field, criteria)` (ignoring
+    /// `fields`, `select_on`, `as_array`) for sources that don't natively
+    /// understand the richer model.
+    ///
+    /// # Arguments
+    /// * `field` - Optional column name to project as the result. Used for
+    ///   scalar inputs.
+    /// * `fields` - Optional column projection list. Used for object inputs:
+    ///   the result is a `Value::Object` with these columns.
+    /// * `select_on` - Filter criteria from YAML; values have already been
+    ///   resolved against the law parameters by the caller.
+    /// * `criteria` - The current evaluation parameters; passed for sources
+    ///   that need them as fallback (e.g. simple key-field lookups).
+    /// * `as_array` - When true, return the entire matched record set as
+    ///   `Value::Array(Object)` for FOREACH iteration. `field`/`fields`
+    ///   control per-record projection.
+    fn query_native(
+        &self,
+        field: Option<&str>,
+        fields: Option<&[String]>,
+        select_on: &[SelectOn],
+        criteria: &BTreeMap<String, Value>,
+        as_array: bool,
+    ) -> Option<Value> {
+        // Default impl ignores the rich metadata and falls back to get().
+        let _ = (fields, select_on, as_array);
+        if let Some(f) = field {
+            self.get(f, criteria)
+        } else {
+            None
+        }
+    }
 }
 
 /// Dictionary-based data source with key-based lookup.
@@ -266,6 +313,398 @@ impl DataSource for DictDataSource {
     }
 }
 
+/// Record-set data source with multi-criteria filtering, field aliases, and
+/// optional array-of-records output.
+///
+/// Unlike `DictDataSource` which collapses records into a single key→record map,
+/// `RecordSetDataSource` keeps the full record list and filters at query time.
+/// This supports the orchestration patterns the Python wrapper used to do:
+///
+/// - **Multi-criteria filtering**: filter records by multiple criteria fields
+///   (e.g. both `bsn` and `year`) before reading the requested field.
+/// - **Field aliases**: expose a record column under a different input name
+///   (e.g. column `mate_van_gevaar` is exposed as `advies_mate_van_gevaar`).
+/// - **Array fields**: a synthetic input name that returns the entire matched
+///   list of records as `Value::Array(Object)`, ready for FOREACH iteration.
+#[derive(Debug, Clone)]
+pub struct RecordSetDataSource {
+    name: String,
+    priority: i32,
+    /// Records (each is a column → value map). Column names are normalized
+    /// to lowercase at construction time.
+    records: Vec<BTreeMap<String, Value>>,
+    /// Index of all column names available in the records (lowercase).
+    field_index: HashSet<String>,
+    /// Single key field for fast lookup. When set, `get()` filters records
+    /// where this column equals the value of the same-named criterion.
+    key_field: Option<String>,
+    /// Multi-criteria filter fields (lowercase). When set, `get()` filters
+    /// records where each of these columns equals the value of the same-named
+    /// criterion. Mutually exclusive with `key_field` semantically (both can
+    /// be set but `select_on` takes precedence).
+    select_on: Vec<String>,
+    /// Field aliases: input_name (lowercase) → record column (lowercase).
+    /// When `get()` is called with an aliased input name, the column is read
+    /// from the matched record under the underlying name.
+    aliases: BTreeMap<String, String>,
+    /// Array field configuration: when set, requests for `array_field.0`
+    /// (the input name) return the entire list of matched records as
+    /// `Value::Array(Object)`. The optional projection (`array_field.1`)
+    /// limits which columns are included in each object; an empty projection
+    /// means "include the whole record".
+    array_field: Option<(String, Vec<String>)>,
+}
+
+impl RecordSetDataSource {
+    /// Start building a record-set data source.
+    pub fn builder(name: impl Into<String>, priority: i32) -> RecordSetDataSourceBuilder {
+        RecordSetDataSourceBuilder {
+            name: name.into(),
+            priority,
+            records: None,
+            key_field: None,
+            select_on: Vec::new(),
+            aliases: BTreeMap::new(),
+            array_field: None,
+        }
+    }
+
+    /// Number of records in this source.
+    pub fn record_count(&self) -> usize {
+        self.records.len()
+    }
+
+    /// Build a list of indices of records that match `criteria`.
+    fn matching_indices(&self, criteria: &BTreeMap<String, Value>) -> Vec<usize> {
+        // Determine which criterion fields to use as filters.
+        let filter_fields: Vec<String> = if !self.select_on.is_empty() {
+            self.select_on.clone()
+        } else if let Some(kf) = &self.key_field {
+            vec![kf.clone()]
+        } else {
+            // No filter fields configured: every record matches (callers will
+            // typically take the first one).
+            return (0..self.records.len()).collect();
+        };
+
+        // Lowercase criterion keys for comparison.
+        let lc_criteria: BTreeMap<String, &Value> = criteria
+            .iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+
+        let mut indices = Vec::new();
+        for (idx, record) in self.records.iter().enumerate() {
+            let mut all_match = true;
+            for field in &filter_fields {
+                let crit_val = match lc_criteria.get(field) {
+                    Some(v) => *v,
+                    None => {
+                        // Criterion not provided — record cannot match.
+                        all_match = false;
+                        break;
+                    }
+                };
+                let rec_val = match record.get(field) {
+                    Some(v) => v,
+                    None => {
+                        all_match = false;
+                        break;
+                    }
+                };
+                if !values_match(rec_val, crit_val) {
+                    all_match = false;
+                    break;
+                }
+            }
+            if all_match {
+                indices.push(idx);
+            }
+        }
+        indices
+    }
+
+    /// Project a record onto a list of fields. An empty list returns a clone
+    /// of the entire record.
+    fn project_record(record: &BTreeMap<String, Value>, fields: &[String]) -> Value {
+        if fields.is_empty() {
+            return Value::Object(record.clone());
+        }
+        let mut obj = BTreeMap::new();
+        for f in fields {
+            let lc = f.to_lowercase();
+            if let Some(v) = record.get(&lc) {
+                obj.insert(lc, v.clone());
+            }
+        }
+        Value::Object(obj)
+    }
+}
+
+impl DataSource for RecordSetDataSource {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn priority(&self) -> i32 {
+        self.priority
+    }
+
+    fn source_type(&self) -> &str {
+        "record_set"
+    }
+
+    fn has_field(&self, field: &str) -> bool {
+        let lc = field.to_lowercase();
+        if self.field_index.contains(&lc) {
+            return true;
+        }
+        if self.aliases.contains_key(&lc) {
+            return true;
+        }
+        if let Some((array_input, _)) = &self.array_field {
+            if array_input == &lc {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn get(&self, field: &str, criteria: &BTreeMap<String, Value>) -> Option<Value> {
+        let lc_field = field.to_lowercase();
+
+        // Array-field input: return the full set of matched records as
+        // an array of (optionally projected) objects.
+        if let Some((array_input, projection)) = &self.array_field {
+            if &lc_field == array_input {
+                let indices = self.matching_indices(criteria);
+                if indices.is_empty() {
+                    return None;
+                }
+                let items: Vec<Value> = indices
+                    .iter()
+                    .map(|i| Self::project_record(&self.records[*i], projection))
+                    .collect();
+                return Some(Value::Array(items));
+            }
+        }
+
+        // Field-alias input: rewrite to the underlying column name.
+        let lookup_field = self
+            .aliases
+            .get(&lc_field)
+            .cloned()
+            .unwrap_or(lc_field);
+
+        // Take the first matching record and read the requested column.
+        let indices = self.matching_indices(criteria);
+        for idx in indices {
+            if let Some(v) = self.records[idx].get(&lookup_field) {
+                return Some(v.clone());
+            }
+        }
+        None
+    }
+
+    fn fields(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = self.field_index.iter().map(|s| s.as_str()).collect();
+        for alias in self.aliases.keys() {
+            out.push(alias.as_str());
+        }
+        if let Some((af, _)) = &self.array_field {
+            out.push(af.as_str());
+        }
+        out
+    }
+
+    fn query_native(
+        &self,
+        field: Option<&str>,
+        fields: Option<&[String]>,
+        select_on: &[SelectOn],
+        _criteria: &BTreeMap<String, Value>,
+        as_array: bool,
+    ) -> Option<Value> {
+        // Find matching record indices using the YAML-supplied select_on
+        // criteria. Each criterion's column must equal the criterion's value
+        // (loose numeric/string compare via values_match).
+        let mut indices: Vec<usize> = Vec::new();
+        for (idx, record) in self.records.iter().enumerate() {
+            let mut all_match = true;
+            for c in select_on {
+                let col = c.field.to_lowercase();
+                let rec_val = match record.get(&col) {
+                    Some(v) => v,
+                    None => {
+                        all_match = false;
+                        break;
+                    }
+                };
+                if !values_match(rec_val, &c.value) {
+                    all_match = false;
+                    break;
+                }
+            }
+            if all_match {
+                indices.push(idx);
+            }
+        }
+
+        if indices.is_empty() {
+            return None;
+        }
+
+        // Array mode: return the whole list of matched records, projected.
+        if as_array {
+            let items: Vec<Value> = indices
+                .iter()
+                .map(|i| project_record_value(&self.records[*i], field, fields))
+                .collect();
+            return Some(Value::Array(items));
+        }
+
+        // Scalar/object mode: take the first matching record.
+        let record = &self.records[indices[0]];
+        Some(project_record_value(record, field, fields))
+    }
+}
+
+/// Project a single record into a `Value` according to the requested field
+/// or fields:
+///
+/// - If `fields` is set: build an object with those columns.
+/// - Else if `field` is set: extract that single column (or `Null` if absent).
+/// - Else: return the entire record as an object.
+fn project_record_value(
+    record: &BTreeMap<String, Value>,
+    field: Option<&str>,
+    fields: Option<&[String]>,
+) -> Value {
+    if let Some(field_list) = fields {
+        let mut obj = BTreeMap::new();
+        for f in field_list {
+            let lc = f.to_lowercase();
+            if let Some(v) = record.get(&lc) {
+                obj.insert(lc, v.clone());
+            }
+        }
+        return Value::Object(obj);
+    }
+    if let Some(f) = field {
+        let lc = f.to_lowercase();
+        return record.get(&lc).cloned().unwrap_or(Value::Null);
+    }
+    Value::Object(record.clone())
+}
+
+/// Builder for `RecordSetDataSource`.
+pub struct RecordSetDataSourceBuilder {
+    name: String,
+    priority: i32,
+    records: Option<Vec<BTreeMap<String, Value>>>,
+    key_field: Option<String>,
+    select_on: Vec<String>,
+    aliases: BTreeMap<String, String>,
+    array_field: Option<(String, Vec<String>)>,
+}
+
+impl RecordSetDataSourceBuilder {
+    /// Provide the records to back this source. Required.
+    pub fn records(mut self, records: Vec<BTreeMap<String, Value>>) -> Self {
+        self.records = Some(records);
+        self
+    }
+
+    /// Set a single key field for fast lookup. The criterion of the same name
+    /// (case-insensitive) is used to filter records.
+    pub fn key_field(mut self, field: impl Into<String>) -> Self {
+        self.key_field = Some(field.into().to_lowercase());
+        self
+    }
+
+    /// Set multiple criteria fields. Records are matched only when ALL of
+    /// these fields equal the corresponding criteria.
+    pub fn select_on(mut self, fields: Vec<String>) -> Self {
+        self.select_on = fields.into_iter().map(|f| f.to_lowercase()).collect();
+        self
+    }
+
+    /// Add a single field alias: requesting `input_name` returns the value of
+    /// the `column_name` field from the matched record.
+    pub fn alias(mut self, input_name: impl Into<String>, column_name: impl Into<String>) -> Self {
+        self.aliases
+            .insert(input_name.into().to_lowercase(), column_name.into().to_lowercase());
+        self
+    }
+
+    /// Add many field aliases at once. See [`alias`].
+    pub fn aliases(mut self, map: BTreeMap<String, String>) -> Self {
+        for (k, v) in map {
+            self.aliases.insert(k.to_lowercase(), v.to_lowercase());
+        }
+        self
+    }
+
+    /// Configure an array field: requesting `input_name` returns the entire
+    /// list of matched records as `Value::Array(Object)`. The `projection`
+    /// limits which columns are included in each object; pass an empty slice
+    /// to include the whole record.
+    pub fn array_field(mut self, input_name: impl Into<String>, projection: &[&str]) -> Self {
+        let proj = projection.iter().map(|s| s.to_lowercase()).collect();
+        self.array_field = Some((input_name.into().to_lowercase(), proj));
+        self
+    }
+
+    /// Build the `RecordSetDataSource`.
+    pub fn build(self) -> std::result::Result<RecordSetDataSource, String> {
+        let records = self
+            .records
+            .ok_or_else(|| "RecordSetDataSource requires records".to_string())?;
+
+        // Normalize record column names to lowercase.
+        let normalized: Vec<BTreeMap<String, Value>> = records
+            .into_iter()
+            .map(|r| {
+                r.into_iter()
+                    .map(|(k, v)| (k.to_lowercase(), v))
+                    .collect()
+            })
+            .collect();
+
+        // Build field index from all observed columns.
+        let field_index: HashSet<String> = normalized
+            .iter()
+            .flat_map(|r| r.keys())
+            .cloned()
+            .collect();
+
+        Ok(RecordSetDataSource {
+            name: self.name,
+            priority: self.priority,
+            records: normalized,
+            field_index,
+            key_field: self.key_field,
+            select_on: self.select_on,
+            aliases: self.aliases,
+            array_field: self.array_field,
+        })
+    }
+}
+
+/// Compare two values for equality, treating numeric types loosely so that
+/// `Int(2025)` matches `String("2025")` and `Float(35.0)` matches `Int(35)`.
+/// This mirrors the Python pre-resolution logic which compared stringified
+/// values across DataFrame columns.
+fn values_match(a: &Value, b: &Value) -> bool {
+    if a == b {
+        return true;
+    }
+    // Numeric / string cross-comparison via string representation.
+    let sa = value_to_key(a);
+    let sb = value_to_key(b);
+    sa == sb
+}
+
 /// Registry for data sources with priority-based resolution.
 ///
 /// When resolving a value, data sources are queried in priority order
@@ -344,6 +783,35 @@ impl DataSourceRegistry {
             }
         }
         None
+    }
+
+    /// Find a registered data source by exact name (case-sensitive).
+    pub fn find_source_by_name(&self, name: &str) -> Option<&dyn DataSource> {
+        self.sources
+            .iter()
+            .find(|s| s.name() == name)
+            .map(|s| s.as_ref())
+    }
+
+    /// Native query: look up a source by table name and run a rich query
+    /// against it using YAML-declared metadata. Returns `None` when the
+    /// table is not registered or no record matches.
+    pub fn resolve_native(
+        &self,
+        table: &str,
+        field: Option<&str>,
+        fields: Option<&[String]>,
+        select_on: &[SelectOn],
+        criteria: &BTreeMap<String, Value>,
+        as_array: bool,
+    ) -> Option<DataSourceMatch> {
+        let source = self.find_source_by_name(table)?;
+        let value = source.query_native(field, fields, select_on, criteria, as_array)?;
+        Some(DataSourceMatch {
+            value,
+            source_name: source.name().to_string(),
+            source_type: source.source_type().to_string(),
+        })
     }
 
     /// Get the number of registered data sources.
@@ -780,6 +1248,479 @@ mod tests {
         assert_eq!(value_to_key(&Value::Float(3.14)), "3.14");
         assert_eq!(value_to_key(&Value::Bool(true)), "true");
         assert_eq!(value_to_key(&Value::Null), "null");
+    }
+
+    // -------------------------------------------------------------------------
+    // RecordSetDataSource Tests
+    // -------------------------------------------------------------------------
+
+    fn make_records() -> Vec<BTreeMap<String, Value>> {
+        vec![
+            {
+                let mut r = BTreeMap::new();
+                r.insert("bsn".to_string(), Value::String("123".to_string()));
+                r.insert("year".to_string(), Value::Int(2024));
+                r.insert("income".to_string(), Value::Int(50000));
+                r.insert("mate_van_gevaar".to_string(), Value::String("hoog".to_string()));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("bsn".to_string(), Value::String("123".to_string()));
+                r.insert("year".to_string(), Value::Int(2025));
+                r.insert("income".to_string(), Value::Int(55000));
+                r.insert("mate_van_gevaar".to_string(), Value::String("middel".to_string()));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("bsn".to_string(), Value::String("456".to_string()));
+                r.insert("year".to_string(), Value::Int(2025));
+                r.insert("income".to_string(), Value::Int(40000));
+                r.insert("mate_van_gevaar".to_string(), Value::String("laag".to_string()));
+                r
+            },
+        ]
+    }
+
+    #[test]
+    fn test_record_set_simple_lookup() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .key_field("bsn")
+            .records(make_records())
+            .build()
+            .unwrap();
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("456".to_string()));
+        assert_eq!(source.get("income", &criteria), Some(Value::Int(40000)));
+    }
+
+    #[test]
+    fn test_record_set_multi_criteria() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .select_on(vec!["bsn".to_string(), "year".to_string()])
+            .records(make_records())
+            .build()
+            .unwrap();
+
+        // BSN 123 has two records (2024, 2025) — multi-criteria narrows it down
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("123".to_string()));
+        criteria.insert("year".to_string(), Value::Int(2024));
+        assert_eq!(source.get("income", &criteria), Some(Value::Int(50000)));
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("123".to_string()));
+        criteria.insert("year".to_string(), Value::Int(2025));
+        assert_eq!(source.get("income", &criteria), Some(Value::Int(55000)));
+    }
+
+    #[test]
+    fn test_record_set_field_alias() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .key_field("bsn")
+            .alias("advies_mate_van_gevaar", "mate_van_gevaar")
+            .records(make_records())
+            .build()
+            .unwrap();
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("456".to_string()));
+        // Looked up via alias, returns the column value
+        assert_eq!(
+            source.get("advies_mate_van_gevaar", &criteria),
+            Some(Value::String("laag".to_string()))
+        );
+        // Original field still works
+        assert_eq!(
+            source.get("mate_van_gevaar", &criteria),
+            Some(Value::String("laag".to_string()))
+        );
+        assert!(source.has_field("advies_mate_van_gevaar"));
+    }
+
+    #[test]
+    fn test_record_set_array_field() {
+        // Record set returning a list of all matching records under a single
+        // input name, for FOREACH iteration.
+        let records = vec![
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+                r.insert("kind_naam".to_string(), Value::String("Anna".to_string()));
+                r.insert("leeftijd".to_string(), Value::Int(8));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+                r.insert("kind_naam".to_string(), Value::String("Bram".to_string()));
+                r.insert("leeftijd".to_string(), Value::Int(11));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("456".to_string()));
+                r.insert("kind_naam".to_string(), Value::String("Cees".to_string()));
+                r.insert("leeftijd".to_string(), Value::Int(4));
+                r
+            },
+        ];
+
+        let source = RecordSetDataSource::builder("kinderen", 10)
+            .select_on(vec!["ouder_bsn".to_string()])
+            .array_field("kinderen_data", &["kind_naam", "leeftijd"])
+            .records(records)
+            .build()
+            .unwrap();
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+
+        let result = source.get("kinderen_data", &criteria);
+        match result {
+            Some(Value::Array(items)) => {
+                assert_eq!(items.len(), 2);
+                if let Value::Object(o) = &items[0] {
+                    assert_eq!(o.get("kind_naam"), Some(&Value::String("Anna".to_string())));
+                    assert_eq!(o.get("leeftijd"), Some(&Value::Int(8)));
+                    assert_eq!(o.len(), 2, "Only projected fields should be present");
+                } else {
+                    panic!("Expected object item");
+                }
+            }
+            other => panic!("Expected array, got {:?}", other),
+        }
+
+        // Field index should advertise the array field
+        assert!(source.has_field("kinderen_data"));
+    }
+
+    #[test]
+    fn test_record_set_array_field_no_projection() {
+        // No projection: include the whole record
+        let records = vec![{
+            let mut r = BTreeMap::new();
+            r.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+            r.insert("kind_naam".to_string(), Value::String("Anna".to_string()));
+            r
+        }];
+
+        let source = RecordSetDataSource::builder("kinderen", 10)
+            .select_on(vec!["ouder_bsn".to_string()])
+            .array_field("kinderen", &[])
+            .records(records)
+            .build()
+            .unwrap();
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+        match source.get("kinderen", &criteria) {
+            Some(Value::Array(items)) => {
+                assert_eq!(items.len(), 1);
+                if let Value::Object(o) = &items[0] {
+                    assert_eq!(o.len(), 2, "Whole record should be present");
+                }
+            }
+            other => panic!("Expected array, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_record_set_no_match_returns_none() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .key_field("bsn")
+            .records(make_records())
+            .build()
+            .unwrap();
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("999".to_string()));
+        assert_eq!(source.get("income", &criteria), None);
+    }
+
+    #[test]
+    fn test_record_set_extra_criteria_ignored_with_key_field() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .key_field("bsn")
+            .records(make_records())
+            .build()
+            .unwrap();
+
+        // year is irrelevant when only bsn is the key — should still match the
+        // first record with bsn 123 (selecting the first matching row).
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("123".to_string()));
+        criteria.insert("unrelated".to_string(), Value::Int(9999));
+        assert!(source.get("income", &criteria).is_some());
+    }
+
+    #[test]
+    fn test_record_set_via_registry_priority() {
+        let mut registry = DataSourceRegistry::new();
+        registry.add_source(Box::new(
+            RecordSetDataSource::builder("persons", 10)
+                .key_field("bsn")
+                .records(make_records())
+                .build()
+                .unwrap(),
+        ));
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("456".to_string()));
+        let result = registry.resolve("income", &criteria).unwrap();
+        assert_eq!(result.value, Value::Int(40000));
+        assert_eq!(result.source_type, "record_set");
+    }
+
+    #[test]
+    fn test_record_set_builder_requires_records() {
+        let result = RecordSetDataSource::builder("persons", 10).build();
+        assert!(result.is_err());
+    }
+
+    // -------------------------------------------------------------------------
+    // query_native (YAML-driven) tests
+    // -------------------------------------------------------------------------
+
+    fn make_yaml_records() -> Vec<BTreeMap<String, Value>> {
+        vec![
+            {
+                let mut r = BTreeMap::new();
+                r.insert("bsn".to_string(), Value::String("123".to_string()));
+                r.insert("year".to_string(), Value::Int(2024));
+                r.insert("income".to_string(), Value::Int(50000));
+                r.insert("partner_bsn".to_string(), Value::String("999".to_string()));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("bsn".to_string(), Value::String("123".to_string()));
+                r.insert("year".to_string(), Value::Int(2025));
+                r.insert("income".to_string(), Value::Int(55000));
+                r.insert("partner_bsn".to_string(), Value::String("888".to_string()));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("bsn".to_string(), Value::String("456".to_string()));
+                r.insert("year".to_string(), Value::Int(2025));
+                r.insert("income".to_string(), Value::Int(40000));
+                r
+            },
+        ]
+    }
+
+    #[test]
+    fn test_query_native_scalar_field_with_select_on() {
+        // Engine reads YAML metadata: table=persons, field=income, select_on=[bsn,year]
+        let source = RecordSetDataSource::builder("persons", 10)
+            .records(make_yaml_records())
+            .build()
+            .unwrap();
+
+        let select = vec![
+            SelectOn {
+                field: "bsn".to_string(),
+                value: Value::String("123".to_string()),
+            },
+            SelectOn {
+                field: "year".to_string(),
+                value: Value::Int(2025),
+            },
+        ];
+        let result = source.query_native(Some("income"), None, &select, &BTreeMap::new(), false);
+        assert_eq!(result, Some(Value::Int(55000)));
+    }
+
+    #[test]
+    fn test_query_native_object_fields_projection() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .records(make_yaml_records())
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "bsn".to_string(),
+            value: Value::String("123".to_string()),
+        }];
+        let result = source.query_native(
+            None,
+            Some(&["bsn".to_string(), "income".to_string()]),
+            &select,
+            &BTreeMap::new(),
+            false,
+        );
+        match result {
+            Some(Value::Object(obj)) => {
+                assert_eq!(obj.len(), 2, "Only projected fields should be present");
+                assert_eq!(obj.get("bsn"), Some(&Value::String("123".to_string())));
+                assert!(obj.get("income").is_some());
+            }
+            other => panic!("Expected object, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_query_native_array_mode() {
+        // Array input: return all matching rows for FOREACH
+        let records = vec![
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+                r.insert("naam".to_string(), Value::String("Anna".to_string()));
+                r.insert("leeftijd".to_string(), Value::Int(8));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+                r.insert("naam".to_string(), Value::String("Bram".to_string()));
+                r.insert("leeftijd".to_string(), Value::Int(11));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("999".to_string()));
+                r.insert("naam".to_string(), Value::String("Cees".to_string()));
+                r.insert("leeftijd".to_string(), Value::Int(4));
+                r
+            },
+        ];
+
+        let source = RecordSetDataSource::builder("kinderen", 10)
+            .records(records)
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "ouder_bsn".to_string(),
+            value: Value::String("123".to_string()),
+        }];
+
+        let result = source.query_native(
+            None,
+            Some(&["naam".to_string(), "leeftijd".to_string()]),
+            &select,
+            &BTreeMap::new(),
+            true,
+        );
+
+        match result {
+            Some(Value::Array(items)) => {
+                assert_eq!(items.len(), 2);
+                if let Value::Object(o) = &items[0] {
+                    assert_eq!(o.get("naam"), Some(&Value::String("Anna".to_string())));
+                    assert_eq!(o.get("leeftijd"), Some(&Value::Int(8)));
+                }
+            }
+            other => panic!("Expected array, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_query_native_no_match() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .records(make_yaml_records())
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "bsn".to_string(),
+            value: Value::String("nonexistent".to_string()),
+        }];
+        let result = source.query_native(Some("income"), None, &select, &BTreeMap::new(), false);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_query_native_loose_numeric_compare() {
+        // year is stored as Int(2025); criterion is String("2025") — should match
+        let source = RecordSetDataSource::builder("persons", 10)
+            .records(make_yaml_records())
+            .build()
+            .unwrap();
+
+        let select = vec![
+            SelectOn {
+                field: "bsn".to_string(),
+                value: Value::String("123".to_string()),
+            },
+            SelectOn {
+                field: "year".to_string(),
+                value: Value::String("2025".to_string()),
+            },
+        ];
+        let result = source.query_native(Some("income"), None, &select, &BTreeMap::new(), false);
+        assert_eq!(result, Some(Value::Int(55000)));
+    }
+
+    #[test]
+    fn test_registry_resolve_native() {
+        let mut registry = DataSourceRegistry::new();
+        registry.add_source(Box::new(
+            RecordSetDataSource::builder("persons", 10)
+                .records(make_yaml_records())
+                .build()
+                .unwrap(),
+        ));
+
+        let select = vec![
+            SelectOn {
+                field: "bsn".to_string(),
+                value: Value::String("456".to_string()),
+            },
+            SelectOn {
+                field: "year".to_string(),
+                value: Value::Int(2025),
+            },
+        ];
+        let result = registry
+            .resolve_native(
+                "persons",
+                Some("income"),
+                None,
+                &select,
+                &BTreeMap::new(),
+                false,
+            )
+            .unwrap();
+        assert_eq!(result.value, Value::Int(40000));
+        assert_eq!(result.source_name, "persons");
+        assert_eq!(result.source_type, "record_set");
+    }
+
+    #[test]
+    fn test_registry_resolve_native_unknown_table() {
+        let registry = DataSourceRegistry::new();
+        let result = registry.resolve_native(
+            "missing",
+            Some("foo"),
+            None,
+            &[],
+            &BTreeMap::new(),
+            false,
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_record_set_alias_and_select_on_combined() {
+        let source = RecordSetDataSource::builder("persons", 10)
+            .select_on(vec!["bsn".to_string(), "year".to_string()])
+            .alias("advies_mate_van_gevaar", "mate_van_gevaar")
+            .records(make_records())
+            .build()
+            .unwrap();
+
+        let mut criteria = BTreeMap::new();
+        criteria.insert("bsn".to_string(), Value::String("123".to_string()));
+        criteria.insert("year".to_string(), Value::Int(2025));
+        assert_eq!(
+            source.get("advies_mate_van_gevaar", &criteria),
+            Some(Value::String("middel".to_string()))
+        );
     }
 
     #[test]

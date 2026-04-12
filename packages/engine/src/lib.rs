@@ -58,14 +58,17 @@ pub mod telemetry;
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
     HookDeclaration, HookFilter, HookPoint, MachineReadable, OverrideDeclaration,
-    ProcedureDefinition, Source, Stage, UntranslatableEntry,
+    ProcedureDefinition, SelectOnCriterion, Source, Stage, UntranslatableEntry,
 };
 pub use config::{
     MAX_ARRAY_SIZE, MAX_CROSS_LAW_DEPTH, MAX_LOADED_LAWS, MAX_OPERATION_DEPTH, MAX_PROPERTY_DEPTH,
     MAX_RESOLUTION_DEPTH, MAX_YAML_SIZE,
 };
 pub use context::RuleContext;
-pub use data_source::{DataSource, DataSourceMatch, DataSourceRegistry, DictDataSource};
+pub use data_source::{
+    DataSource, DataSourceMatch, DataSourceRegistry, DictDataSource, RecordSetDataSource,
+    RecordSetDataSourceBuilder,
+};
 pub use engine::{ArticleEngine, ArticleResult, OutputProvenance};
 pub use error::{EngineError, ExternalError, Result};
 pub use operations::{evaluate_value, execute_operation, ValueResolver};
