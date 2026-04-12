@@ -3932,6 +3932,176 @@ articles:
     }
 
     // -------------------------------------------------------------------------
+    // FOREACH body CONCAT / outer-scope tests (Fix 2)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn foreach_body_concat_resolves_inside_iteration() {
+        // FOREACH body that builds a string per item via CONCAT must produce
+        // a fully-resolved Vec<String>, not raw operation dicts.
+        let yaml = r#"
+$id: foreach_concat_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Build labels for each registration
+    machine_readable:
+      definitions:
+        REGISTRATIONS:
+          value:
+            - naam: Alice
+            - naam: Bob
+      execution:
+        output:
+          - name: labels
+            type: array
+        actions:
+          - output: labels
+            value:
+              operation: FOREACH
+              collection: $REGISTRATIONS
+              as: current
+              body:
+                operation: CONCAT
+                values:
+                  - 'Boedel '
+                  - $current.naam
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "foreach_concat_law",
+                "labels",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        let labels = result.outputs.get("labels").expect("labels output");
+        match labels {
+            Value::Array(items) => {
+                assert_eq!(items.len(), 2, "expected 2 items, got {:?}", items);
+                assert_eq!(items[0], Value::String("Boedel Alice".to_string()));
+                assert_eq!(items[1], Value::String("Boedel Bob".to_string()));
+            }
+            other => panic!("expected Value::Array, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn foreach_body_resolves_outer_scope_variable() {
+        // FOREACH body that is just `$outer_var` (no per-item references) must
+        // produce one copy of the outer value per iteration. The outer value
+        // is a definition declared at the article level.
+        let yaml = r#"
+$id: foreach_outer_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Repeat outer-scope value for each item
+    machine_readable:
+      definitions:
+        ROLE:
+          value: CURATOR_BOEDEL
+        REGISTRATIONS:
+          value:
+            - id: 1
+            - id: 2
+            - id: 3
+      execution:
+        output:
+          - name: roles
+            type: array
+        actions:
+          - output: roles
+            value:
+              operation: FOREACH
+              collection: $REGISTRATIONS
+              as: current
+              body: $ROLE
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "foreach_outer_law",
+                "roles",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        let roles = result.outputs.get("roles").expect("roles output");
+        match roles {
+            Value::Array(items) => {
+                assert_eq!(items.len(), 3);
+                for item in items {
+                    assert_eq!(item, &Value::String("CURATOR_BOEDEL".to_string()));
+                }
+            }
+            other => panic!("expected Value::Array, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn foreach_body_concat_with_outer_parameter() {
+        // FOREACH body referring to a top-level parameter via CONCAT.
+        // Verifies that outer parameters survive into the per-item scope.
+        let yaml = r#"
+$id: foreach_param_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Prefix each id with the bsn parameter
+    machine_readable:
+      definitions:
+        IDS:
+          value:
+            - id: A
+            - id: B
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        output:
+          - name: tagged
+            type: array
+        actions:
+          - output: tagged
+            value:
+              operation: FOREACH
+              collection: $IDS
+              as: row
+              body:
+                operation: CONCAT
+                values:
+                  - $bsn
+                  - '-'
+                  - $row.id
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("123".to_string()));
+        let result = service
+            .evaluate_law_output("foreach_param_law", "tagged", params, "2025-01-01")
+            .unwrap();
+        let tagged = result.outputs.get("tagged").expect("tagged output");
+        match tagged {
+            Value::Array(items) => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0], Value::String("123-A".to_string()));
+                assert_eq!(items[1], Value::String("123-B".to_string()));
+            }
+            other => panic!("expected array, got {:?}", other),
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // type-default unresolved input tests (Fix 3)
     // -------------------------------------------------------------------------
 
