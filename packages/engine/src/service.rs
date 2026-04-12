@@ -295,8 +295,9 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
 fn resolve_select_on_criterion(
     crit: &SelectOnCriterion,
     parameters: &BTreeMap<String, Value>,
+    resolved_inputs: &BTreeMap<String, Value>,
 ) -> Option<SelectOn> {
-    let value = yaml_value_to_runtime_value(&crit.value, parameters)?;
+    let value = yaml_value_to_runtime_value(&crit.value, parameters, resolved_inputs)?;
     Some(SelectOn {
         field: crit.name.clone(),
         value,
@@ -307,12 +308,13 @@ fn resolve_select_on_criterion(
 fn yaml_value_to_runtime_value(
     yaml: &serde_yaml_ng::Value,
     parameters: &BTreeMap<String, Value>,
+    resolved_inputs: &BTreeMap<String, Value>,
 ) -> Option<Value> {
     use serde_yaml_ng::Value as YV;
     match yaml {
         YV::String(s) => {
             if let Some(name) = s.strip_prefix('$') {
-                resolve_param_ref(name, parameters)
+                resolve_param_ref(name, parameters, resolved_inputs)
             } else {
                 Some(Value::String(s.clone()))
             }
@@ -334,14 +336,24 @@ fn yaml_value_to_runtime_value(
 
 /// Resolve a `$variable` reference against the current parameter scope.
 /// Supports dot notation: `$obj.field` reads `field` from a nested object.
-fn resolve_param_ref(name: &str, parameters: &BTreeMap<String, Value>) -> Option<Value> {
+/// Falls back to already-resolved inputs when the name is not a parameter —
+/// this allows later inputs to filter on earlier inputs via `select_on`.
+fn resolve_param_ref(
+    name: &str,
+    parameters: &BTreeMap<String, Value>,
+    resolved_inputs: &BTreeMap<String, Value>,
+) -> Option<Value> {
     if let Some((var, field)) = name.split_once('.') {
-        match parameters.get(var) {
+        let obj = parameters.get(var).or_else(|| resolved_inputs.get(var));
+        match obj {
             Some(Value::Object(map)) => map.get(field).cloned(),
             _ => None,
         }
     } else {
-        parameters.get(name).cloned()
+        parameters
+            .get(name)
+            .cloned()
+            .or_else(|| resolved_inputs.get(name).cloned())
     }
 }
 
@@ -2093,12 +2105,15 @@ impl LawExecutionService {
             // without any external orchestration.
             if let Some(table) = source.table.as_deref() {
                 if self.data_registry.source_count() > 0 {
+                    let resolved_inputs = context.resolved_inputs().clone();
                     let select_on: Vec<SelectOn> = source
                         .select_on
                         .as_deref()
                         .unwrap_or(&[])
                         .iter()
-                        .filter_map(|c| resolve_select_on_criterion(c, parameters))
+                        .filter_map(|c| {
+                            resolve_select_on_criterion(c, parameters, &resolved_inputs)
+                        })
                         .collect();
 
                     let as_array =

@@ -1057,22 +1057,32 @@ fn execute_membership<R: ValueResolver>(
         return Ok(Value::Null);
     }
 
+    // Helper: when subject is an array (e.g. from `$inschrijvingen.rechtsvorm`
+    // dot-notation projection), the IN check applies element-wise: true if ANY
+    // element of subject_val is in the candidate list.
+    let subject_elements: Vec<Value> = match &subject_val {
+        Value::Array(items) => items.clone(),
+        other => vec![other.clone()],
+    };
+
     if let Some(values) = values {
         let check_values = evaluate_values(values, resolver, depth)?;
-        let found = check_values
+        let found = subject_elements
             .iter()
-            .any(|val| values_equal(&subject_val, val));
+            .any(|s| check_values.iter().any(|v| values_equal(s, v)));
         return Ok(Value::Bool(if negate { !found } else { found }));
     }
 
     if let Some(value) = value {
         let resolved = evaluate_value(value, resolver, depth)?;
         let found = match &resolved {
-            Value::Array(items) => items.iter().any(|val| values_equal(&subject_val, val)),
-            // Object/map: check if subject is a key in the map.
-            // Coerce subject to string for key lookup (keys are always strings).
-            Value::Object(map) => {
-                let key = match &subject_val {
+            Value::Array(items) => subject_elements
+                .iter()
+                .any(|s| items.iter().any(|v| values_equal(s, v))),
+            // Object/map: check if any subject element is a key in the map.
+            // Coerce element to string for key lookup (keys are always strings).
+            Value::Object(map) => subject_elements.iter().any(|s| {
+                let key = match s {
                     Value::String(s) => s.clone(),
                     Value::Int(i) => i.to_string(),
                     Value::Float(f) => {
@@ -1082,11 +1092,11 @@ fn execute_membership<R: ValueResolver>(
                             f.to_string()
                         }
                     }
-                    _ => format!("{}", subject_val),
+                    _ => format!("{}", s),
                 };
                 map.contains_key(&key)
-            }
-            other => values_equal(&subject_val, other),
+            }),
+            other => subject_elements.iter().any(|s| values_equal(s, other)),
         };
         return Ok(Value::Bool(if negate { !found } else { found }));
     }
@@ -2942,6 +2952,66 @@ mod tests {
 
             let result = execute_operation(&op, &resolver, 0);
             assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
+        }
+
+        #[test]
+        fn test_in_array_subject_any_match_in_values() {
+            // When subject is an array (e.g. from $arr.field projection), the
+            // membership check should match if ANY element of subject is in
+            // the candidate list.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::In {
+                subject: lit(Value::Array(vec![
+                    Value::String("EENMANSZAAK".to_string()),
+                ])),
+                value: None,
+                values: Some(vec![
+                    lit("EENMANSZAAK"),
+                    lit("VOF"),
+                    lit("MAATSCHAP"),
+                ]),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_in_array_subject_no_match_in_values() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::In {
+                subject: lit(Value::Array(vec![
+                    Value::String("BV".to_string()),
+                    Value::String("NV".to_string()),
+                ])),
+                value: None,
+                values: Some(vec![lit("EENMANSZAAK"), lit("VOF")]),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(false));
+        }
+
+        #[test]
+        fn test_in_array_subject_any_match_in_value_ref() {
+            // Same as above but using `value: $ref` instead of inline `values`.
+            let resolver = TestResolver::new().with_var(
+                "ondernemersvormen",
+                Value::Array(vec![
+                    Value::String("EENMANSZAAK".to_string()),
+                    Value::String("VOF".to_string()),
+                ]),
+            );
+            let op = ActionOperation::In {
+                subject: lit(Value::Array(vec![
+                    Value::String("EENMANSZAAK".to_string()),
+                ])),
+                value: Some(var("ondernemersvormen")),
+                values: None,
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
         }
 
         #[test]
