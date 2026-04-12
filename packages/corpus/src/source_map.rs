@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use serde::Deserialize;
@@ -554,7 +554,7 @@ pub fn collect_law_outputs(yaml: &str) -> Vec<(String, String, String)> {
         Err(_) => return Vec::new(),
     };
 
-    let mut seen = HashMap::new();
+    let mut seen = HashSet::new();
     let mut results = Vec::new();
 
     for article in &doc.articles {
@@ -566,8 +566,8 @@ pub fn collect_law_outputs(yaml: &str) -> Vec<(String, String, String)> {
             continue;
         };
         for output in &exec.output {
-            if !output.name.is_empty() && !seen.contains_key(&output.name) {
-                seen.insert(output.name.clone(), ());
+            if !output.name.is_empty() && !seen.contains(&output.name) {
+                seen.insert(output.name.clone());
                 results.push((
                     output.name.clone(),
                     output

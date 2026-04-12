@@ -162,6 +162,20 @@ watch(() => props.item, async (item) => {
   } else if (s === 'input' || s === 'add-input') {
     // Flatten source.parameters into an ordered key/value pair list so the
     // user can edit existing entries and add new ones via the form.
+    //
+    // Design decisions:
+    //   - Each row gets a stable `_rowId` (monotonic counter) so Vue's
+    //     v-for keying survives deletions without confusing focus or
+    //     data-testid attributes.
+    //   - `_origValue` preserves the original (un-stringified) value so
+    //     numeric/boolean parameters round-trip correctly when the user
+    //     doesn't touch the value field (avoids `peildatum: 2024` becoming
+    //     `peildatum: '2024'`). On save, if the stringified form hasn't
+    //     changed we emit the original typed value.
+    //   - Non-scalar parameter values (objects/arrays) are stashed in
+    //     `sourceParametersOverflow` and merged back on save so they
+    //     survive untouched — the user can only edit those via the YAML
+    //     pane.
     const params = item.data?.source?.parameters;
     const paramList = [];
     const overflowParams = {};
@@ -569,6 +583,7 @@ ndd-sheet.edit-sheet {
 }
 .law-search-container {
   position: relative;
+  z-index: 10;
   width: 100%;
 }
 .law-search-container ndd-search-field {
@@ -579,13 +594,13 @@ ndd-sheet.edit-sheet {
   top: 100%;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 1000;
   max-height: 240px;
   overflow-y: auto;
   background: var(--semantics-surface-primary-color, #fff);
   border: 1px solid var(--semantics-border-primary-color, #d1d5db);
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 .law-search-result-item {
   cursor: pointer;

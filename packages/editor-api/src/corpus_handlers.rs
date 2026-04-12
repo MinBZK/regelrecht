@@ -56,7 +56,6 @@ pub struct CorpusLawEntry {
 #[derive(Debug, Serialize)]
 pub struct LawOutputEntry {
     pub name: String,
-    #[serde(rename = "type")]
     pub output_type: String,
     pub article_number: String,
 }
