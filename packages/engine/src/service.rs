@@ -3763,6 +3763,103 @@ articles:
     }
 
     // -------------------------------------------------------------------------
+    // temporal.reference cross-law shift test (Fix 1)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn cross_law_temporal_prev_january_first_picks_previous_version() {
+        // Two versions of the same law: v1 valid from 2024-01-01 (value=100),
+        // v2 valid from 2025-01-01 (value=200). A consumer with
+        // `temporal.reference: $prev_january_first` evaluating on 2025-06-15
+        // should look up the cross-law value as of 2024-01-01 → v1 (100).
+        let base_v1 = r#"
+$id: temporal_base
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Base value v1
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: 100
+      execution:
+        output:
+          - name: base_value
+            type: number
+        actions:
+          - output: base_value
+            value: $BASE_VALUE
+"#;
+        let base_v2 = r#"
+$id: temporal_base
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Base value v2
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: 200
+      execution:
+        output:
+          - name: base_value
+            type: number
+        actions:
+          - output: base_value
+            value: $BASE_VALUE
+"#;
+        let consumer = r#"
+$id: temporal_consumer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References base via prev_january_first
+    machine_readable:
+      execution:
+        input:
+          - name: base_prev
+            type: number
+            source:
+              regulation: temporal_base
+              output: base_value
+            temporal:
+              type: point_in_time
+              reference: $prev_january_first
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $base_prev
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(base_v1).unwrap();
+        service.load_law(base_v2).unwrap();
+        service.load_law(consumer).unwrap();
+
+        // Evaluating on 2025-06-15 with prev_january_first should resolve to
+        // 2024-01-01 → v1 → 100. Without the shift it would pick v2 → 200.
+        let result = service
+            .evaluate_law_output(
+                "temporal_consumer",
+                "result",
+                BTreeMap::new(),
+                "2025-06-15",
+            )
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(100)),
+            "prev_january_first must select the law version active on Jan 1 of the previous year"
+        );
+    }
+
+    // -------------------------------------------------------------------------
     // type_spec.precision tests (Fix 4)
     // -------------------------------------------------------------------------
 
