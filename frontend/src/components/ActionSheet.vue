@@ -17,15 +17,15 @@ const operationTree = computed(() => props.action ? buildOperationTree(props.act
 
 const selectedOpIndex = ref(0);
 
-// Stable key for the ndd-page element. Captured once when the action
-// changes (via the watcher below) so that editing the output text field
-// — which mutates action.output — does NOT change the :key and trigger
-// a full remount on every keystroke.
+// Monotonic counter used as :key for the ndd-page element so it remounts
+// every time a new action opens (fixing the sticky-header height
+// measurement) without remounting on every keystroke in the output field.
+let actionSeq = 0;
 const actionKey = ref('none');
 
 watch(() => props.action, async (action) => {
   selectedOpIndex.value = 0;
-  actionKey.value = action?.output ?? 'none';
+  actionKey.value = action ? String(++actionSeq) : 'none';
 
   if (!action) {
     sheetEl.value?.hide();
