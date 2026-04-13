@@ -16,7 +16,7 @@ export const LAW_ENTRY_COLUMNS = [
   { key: 'status', label: 'Status', sortable: true, filter: { options: LAW_STATUSES }, width: 140 },
   { key: 'coverage_score', label: 'Coverage', sortable: true, width: 90 },
   { key: 'updated_at', label: 'Updated', sortable: true, width: 160 },
-  { key: '_actions', label: 'Actions', sortable: false, width: 160 },
+  { key: '_actions', label: 'Actions', sortable: false, width: 'fit-content' },
 ];
 
 export const JOB_COLUMNS = [
