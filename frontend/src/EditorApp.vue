@@ -15,11 +15,13 @@ import ExecutionTraceView from './components/ExecutionTraceView.vue';
 const { authenticated, loading: authLoading, oidcConfigured, person, logout } = useAuth();
 
 // Redirect to login when OIDC is configured but user is not authenticated.
+// { immediate: true } is needed because in SPA navigation the auth state may
+// already be resolved by the time EditorApp mounts (useAuth is a singleton).
 watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) => {
   if (!isLoading && oidc && !authed) {
     window.location.href = '/auth/login';
   }
-});
+}, { immediate: true });
 
 // All edit operations are gated behind SSO. When OIDC is configured the user
 // must be authenticated; when OIDC is disabled the editor is fully open.
