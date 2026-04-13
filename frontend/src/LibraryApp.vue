@@ -27,6 +27,11 @@ const selectedArticleNumber = ref(null);
 const detailView = ref('machine');
 const activeAction = ref(null);
 
+function onDetailViewChange(event) {
+  const value = event.target?.value ?? event.detail?.[0];
+  if (value) detailView.value = value;
+}
+
 const filteredLaws = computed(() => {
   let list = laws.value;
   if (favorites.value) {
@@ -343,30 +348,22 @@ loadIndex();
 
           <!-- Main: Artikel Detail -->
           <ndd-split-view-pane slot="main" has-content>
-            <ndd-page sticky-header background="default">
-              <div slot="header" class="library-detail-header">
-                <ndd-top-title-bar
-                  :text="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
-                  :back-text="lawName || 'Terug'"
-                ></ndd-top-title-bar>
-                <ndd-container padding-inline="16">
-                  <ndd-toolbar>
-                    <ndd-toolbar-item slot="start">
-                      <ndd-tab-bar>
-                        <ndd-tab-bar-item :selected="detailView === 'tekst' || undefined" @click="detailView = 'tekst'" text="Tekst"></ndd-tab-bar-item>
-                        <ndd-tab-bar-item :selected="detailView === 'machine' || undefined" @click="detailView = 'machine'" text="Machine"></ndd-tab-bar-item>
-                        <ndd-tab-bar-item :selected="detailView === 'yaml' || undefined" @click="detailView = 'yaml'" text="YAML"></ndd-tab-bar-item>
-                      </ndd-tab-bar>
-                    </ndd-toolbar-item>
-                    <ndd-toolbar-item slot="end">
-                      <a v-if="selectedLawId" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
-                        <ndd-button variant="primary" text="Bewerk"></ndd-button>
-                      </a>
-                      <ndd-button v-else variant="primary" disabled text="Bewerk"></ndd-button>
-                    </ndd-toolbar-item>
-                  </ndd-toolbar>
-                </ndd-container>
-              </div>
+            <ndd-page sticky-header>
+              <ndd-top-title-bar
+                slot="header"
+                :text="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
+                :back-text="lawName || 'Terug'"
+              >
+                <ndd-segmented-control slot="toolbar" size="md" :value="detailView" @change="onDetailViewChange">
+                  <ndd-segmented-control-item value="tekst" text="Tekst"></ndd-segmented-control-item>
+                  <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
+                  <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
+                </ndd-segmented-control>
+                <a v-if="selectedLawId" slot="toolbar" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
+                  <ndd-button variant="primary" text="Bewerk"></ndd-button>
+                </a>
+                <ndd-button v-else slot="toolbar" variant="primary" disabled text="Bewerk"></ndd-button>
+              </ndd-top-title-bar>
 
               <ndd-simple-section v-if="!selectedArticle" align="center">
                 <ndd-inline-dialog text="Selecteer een artikel"></ndd-inline-dialog>
@@ -392,10 +389,6 @@ loadIndex();
 </template>
 
 <style scoped>
-.library-detail-header {
-  background: var(--semantics-surfaces-background-color, white);
-}
-
 .library-detail-content {
   flex: 1;
   min-height: 0;
