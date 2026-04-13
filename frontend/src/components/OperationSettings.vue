@@ -21,10 +21,29 @@ const typeOptions = computed(() =>
   Object.entries(OPERATION_LABELS).map(([key, label]) => ({ value: key, label }))
 );
 
+// Group variables by category with alphabetical sorting within each group,
+// matching the optgroup pattern used in EditSheet's source parameter dropdown.
+const variableGroups = computed(() => {
+  const groups = new Map();
+  for (const v of availableVariables.value) {
+    if (!groups.has(v.category)) groups.set(v.category, []);
+    groups.get(v.category).push({
+      value: v.ref,
+      label: v.name.replace(/_/g, ' '),
+    });
+  }
+  for (const opts of groups.values()) {
+    opts.sort((a, b) => a.label.localeCompare(b.label, 'nl'));
+  }
+  return groups;
+});
+
+// Flat list kept for valueDropdownOptions which prepends a nested-op entry.
 const variableOptions = computed(() =>
   availableVariables.value.map(v => ({
     value: v.ref,
-    label: `${v.name.replace(/_/g, ' ')} (${v.category.toLowerCase()})`,
+    label: v.name.replace(/_/g, ' '),
+    category: v.category,
   }))
 );
 
@@ -155,13 +174,9 @@ function isLiteralValue(val) {
   return val === null || typeof val === 'number' || typeof val === 'boolean' || (typeof val === 'string' && !val.startsWith('$'));
 }
 
-function valueDropdownOptions(val) {
-  const opts = [...variableOptions.value];
-  if (isNestedOperation(val)) {
-    const label = formatValueLabel(val) + ' (operatie)';
-    opts.unshift({ value: '__nested__', label });
-  }
-  return opts;
+function valueDropdownNestedOption(val) {
+  if (!isNestedOperation(val)) return null;
+  return { value: '__nested__', label: formatValueLabel(val) + ' (operatie)' };
 }
 
 function currentDropdownValue(val) {
@@ -438,7 +453,9 @@ function addNestedOperation() {
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
                   <option value="">Selecteer...</option>
                   <option v-if="isLiteralValue(val._value) && val._value !== '' && val._value !== null" :value="String(val._value)" :selected="true">{{ String(val._value) }}</option>
-                  <option v-for="opt in variableOptions" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
+                  <optgroup v-for="[category, opts] in variableGroups" :key="category" :label="category">
+                    <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
+                  </optgroup>
                 </select>
               </ndd-dropdown>
             </template>
@@ -450,7 +467,10 @@ function addNestedOperation() {
             <template v-else>
               <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
-                  <option v-for="opt in valueDropdownOptions(val._value)" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
+                  <option v-if="valueDropdownNestedOption(val._value)" :value="valueDropdownNestedOption(val._value).value" :selected="currentDropdownValue(val._value) === '__nested__'">{{ valueDropdownNestedOption(val._value).label }}</option>
+                  <optgroup v-for="[category, opts] in variableGroups" :key="category" :label="category">
+                    <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
+                  </optgroup>
                 </select>
               </ndd-dropdown>
             </template>

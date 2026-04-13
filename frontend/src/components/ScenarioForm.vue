@@ -285,9 +285,14 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
 }
 
-/* Section titles */
+/* Section titles — extra top margin separates each block visually.
+ * The first section title doesn't need top margin (handled by :first-child). */
 .sf-section-title {
+  margin-top: 16px;
   margin-bottom: 4px;
+}
+.sf-section-title:first-child {
+  margin-top: 0;
 }
 
 /* Expected outputs */
@@ -313,6 +318,11 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 .sf-expectation-arrow {
   flex-shrink: 0;
   color: var(--semantics-text-color-secondary, #666);
+}
+
+/* DataSourceTable blocks get the same top spacing as section titles */
+.sf-form :deep(.ds-block) {
+  margin-top: 16px;
 }
 
 /* Actions row */
