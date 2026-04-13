@@ -1,3 +1,15 @@
+const OPERATION_SYMBOLS = {
+  EQUALS: '=',
+  NOT_EQUALS: '≠',
+  GREATER_THAN: '>',
+  GREATER_THAN_OR_EQUAL: '>=',
+  LESS_THAN: '<',
+  LESS_THAN_OR_EQUAL: '<=',
+  IN: 'in',
+  NOT_IN: 'niet in',
+  NOT_NULL: '≠ null',
+};
+
 export const OPERATION_LABELS = {
   // Rekenkundig
   ADD: 'optellen',
@@ -183,6 +195,16 @@ function formatArgName(v) {
 }
 
 export function humanizeTitle(node) {
+  const symbol = OPERATION_SYMBOLS[node.operation];
+  if (symbol && node.subject != null) {
+    const subject = getReadableName(node.subject) || formatArgName(node.subject);
+    if (node.value !== undefined && !isOperationNode(node.value)) {
+      const value = getReadableName(node.value) ?? formatArgName(node.value);
+      return `${subject} ${symbol} ${value}`;
+    }
+    return `${subject} ${symbol}`;
+  }
+
   const names = [];
 
   if (Array.isArray(node.values)) {
