@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue';
+import { redirectToLogin } from './useAuth.js';
 
 export function usePollingFetch(buildUrl, options = {}) {
   const { interval = 20_000 } = options;
@@ -22,7 +23,7 @@ export function usePollingFetch(buildUrl, options = {}) {
       const response = await fetch(url);
 
       if (response.status === 401) {
-        window.location.href = '/auth/login';
+        redirectToLogin();
         return;
       }
 

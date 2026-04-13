@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { RE_HARVESTABLE_STATUSES, ENRICHABLE_STATUSES } from '../constants.js';
+import { redirectToLogin } from '../composables/useAuth.js';
 
 const props = defineProps({
   row: { type: Object, required: true },
@@ -26,7 +27,7 @@ async function onHarvest() {
       body: JSON.stringify({ bwb_id: props.row.law_id }),
     });
     if (response.status === 401) {
-      window.location.href = '/auth/login';
+      redirectToLogin();
       return;
     }
     if (response.status === 409) {
@@ -60,7 +61,7 @@ async function onEnrich() {
       body: JSON.stringify({ law_id: props.row.law_id }),
     });
     if (response.status === 401) {
-      window.location.href = '/auth/login';
+      redirectToLogin();
       return;
     }
     if (response.status === 409) {
@@ -92,7 +93,7 @@ async function onResetExhausted() {
       method: 'POST',
     });
     if (response.status === 401) {
-      window.location.href = '/auth/login';
+      redirectToLogin();
       return;
     }
     if (!response.ok) {

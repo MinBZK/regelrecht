@@ -27,6 +27,7 @@ pub const SESSION_KEY_EMAIL: &str = "person_email";
 pub const SESSION_KEY_NAME: &str = "person_name";
 pub const SESSION_KEY_ID_TOKEN: &str = "id_token_hint";
 const SESSION_KEY_BASE_URL: &str = "oidc_base_url";
+const SESSION_KEY_RETURN_URL: &str = "oidc_return_url";
 
 /// Derive the base URL from `BASE_URL` env or request headers.
 ///
@@ -73,10 +74,38 @@ struct RealmAccess {
     roles: Vec<String>,
 }
 
+#[derive(Deserialize)]
+pub struct LoginQuery {
+    pub return_url: Option<String>,
+}
+
+/// Validate that a return URL is a safe relative path (starts with `/`,
+/// no protocol or host). Returns `None` for invalid or missing values.
+fn validate_return_url(url: Option<&str>) -> Option<String> {
+    let url = url?.trim();
+    if url.is_empty() || url == "/" {
+        return None;
+    }
+    // Must be a relative path — reject absolute URLs and protocol-relative URLs.
+    // Also reject backslashes: some browsers normalise `\` to `/`, so `/\evil.com`
+    // could be interpreted as the protocol-relative `//evil.com`.
+    // Reject control characters (CR, LF, etc.) — Axum's Redirect::temporary panics
+    // on header values containing them, which would DoS the OIDC callback.
+    if !url.starts_with('/')
+        || url.starts_with("//")
+        || url.contains('\\')
+        || url.bytes().any(|b| b < 0x20 || b == 0x7f)
+    {
+        return None;
+    }
+    Some(url.to_string())
+}
+
 pub async fn login<S: OidcAppState>(
     State(state): State<S>,
     headers: HeaderMap,
     session: Session,
+    axum::extract::Query(params): axum::extract::Query<LoginQuery>,
 ) -> Result<Response, StatusCode> {
     let client = state.oidc_client().ok_or(StatusCode::NOT_IMPLEMENTED)?;
 
@@ -115,6 +144,10 @@ pub async fn login<S: OidcAppState>(
     )
     .await?;
     session_insert(&session, SESSION_KEY_BASE_URL, base_url).await?;
+
+    if let Some(return_url) = validate_return_url(params.return_url.as_deref()) {
+        session_insert(&session, SESSION_KEY_RETURN_URL, return_url).await?;
+    }
 
     Ok(Redirect::temporary(auth_url.as_str()).into_response())
 }
@@ -297,7 +330,15 @@ pub async fn callback<S: OidcAppState>(
 
     tracing::debug!(email = %email, "OIDC login successful");
 
-    Ok(Redirect::temporary(&format!("{base_url}/")).into_response())
+    let return_url: Option<String> = session.get(SESSION_KEY_RETURN_URL).await.ok().flatten();
+    let _ = session.remove::<String>(SESSION_KEY_RETURN_URL).await;
+
+    let redirect_target = match validate_return_url(return_url.as_deref()) {
+        Some(path) => format!("{base_url}{path}"),
+        None => format!("{base_url}/"),
+    };
+
+    Ok(Redirect::temporary(&redirect_target).into_response())
 }
 
 pub async fn logout<S: OidcAppState>(
@@ -486,5 +527,78 @@ mod tests {
         let roles = extract_realm_roles(&jwt).unwrap();
         assert!(roles.contains(&"allowed-user".to_string()));
         assert!(!roles.contains(&"admin".to_string()));
+    }
+
+    // --- validate_return_url ---
+
+    #[test]
+    fn return_url_valid_path() {
+        assert_eq!(
+            validate_return_url(Some("/library/some-law/article-5")),
+            Some("/library/some-law/article-5".to_string())
+        );
+    }
+
+    #[test]
+    fn return_url_with_query() {
+        assert_eq!(
+            validate_return_url(Some("/library?tab=jobs")),
+            Some("/library?tab=jobs".to_string())
+        );
+    }
+
+    #[test]
+    fn return_url_rejects_root() {
+        assert_eq!(validate_return_url(Some("/")), None);
+    }
+
+    #[test]
+    fn return_url_rejects_empty() {
+        assert_eq!(validate_return_url(Some("")), None);
+        assert_eq!(validate_return_url(None), None);
+    }
+
+    #[test]
+    fn return_url_rejects_absolute_url() {
+        assert_eq!(validate_return_url(Some("https://evil.com/steal")), None);
+    }
+
+    #[test]
+    fn return_url_rejects_protocol_relative() {
+        assert_eq!(validate_return_url(Some("//evil.com/steal")), None);
+    }
+
+    #[test]
+    fn return_url_rejects_backslash() {
+        assert_eq!(validate_return_url(Some("/\\evil.com")), None);
+        assert_eq!(validate_return_url(Some("/path\\segment")), None);
+    }
+
+    #[test]
+    fn return_url_rejects_whitespace_only() {
+        assert_eq!(validate_return_url(Some("   ")), None);
+        assert_eq!(validate_return_url(Some("  /  ")), None);
+    }
+
+    #[test]
+    fn return_url_allows_fragment() {
+        assert_eq!(
+            validate_return_url(Some("/library#section")),
+            Some("/library#section".to_string())
+        );
+    }
+
+    #[test]
+    fn return_url_rejects_control_characters() {
+        // CRLF injection — would panic in Axum's Redirect::temporary
+        assert_eq!(
+            validate_return_url(Some("/library\r\nX-Injected: header")),
+            None
+        );
+        assert_eq!(validate_return_url(Some("/library\nheader")), None);
+        // DEL character
+        assert_eq!(validate_return_url(Some("/library\x7f")), None);
+        // Null byte
+        assert_eq!(validate_return_url(Some("/library\0")), None);
     }
 }

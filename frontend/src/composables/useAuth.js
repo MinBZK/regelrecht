@@ -29,7 +29,8 @@ export function useAuth() {
   }
 
   function login() {
-    window.location.href = '/auth/login';
+    const returnUrl = window.location.pathname + window.location.search + window.location.hash;
+    window.location.href = '/auth/login?return_url=' + encodeURIComponent(returnUrl);
   }
 
   function logout() {
