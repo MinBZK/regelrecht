@@ -11,6 +11,8 @@ const props = defineProps({
   expectations: { type: Object, default: () => ({}) },
   /** Error message if execution failed */
   error: { type: String, default: null },
+  /** Name of the scenario being displayed */
+  scenarioName: { type: String, default: '' },
 });
 
 function matchStatus(outputName, actualValue) {
@@ -34,37 +36,37 @@ const hasContent = computed(() =>
   </ndd-simple-section>
 
   <template v-if="result">
-    <!-- Output summary — styled to match ScenarioForm's "Verwachte uitkomsten" -->
+    <!-- Scenario title -->
+    <ndd-simple-section v-if="scenarioName">
+      <ndd-title size="4"><span>{{ scenarioName }}</span></ndd-title>
+    </ndd-simple-section>
+
+    <!-- Output summary — only outputs with expectations -->
     <ndd-simple-section>
       <ndd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></ndd-title>
-      <ndd-list variant="box" class="etv-outputs-list">
-        <ndd-list-item
-          v-for="(value, name) in result.outputs"
+      <div class="etv-outputs">
+        <div
+          v-for="name in Object.keys(expectations)"
           :key="name"
-          size="md"
-          class="etv-output-item"
-          :class="`etv-output-item--${matchStatus(name, value)}`"
+          class="etv-output-row"
+          :class="`etv-output-row--${matchStatus(name, result.outputs[name])}`"
         >
-          <ndd-text-cell :text="name" max-width="140"></ndd-text-cell>
-          <ndd-cell>
-            <div class="etv-output-values">
-              <template v-if="name in expectations">
-                <ndd-text-field size="md" :value="formatValue(normalizeForCompare(expectations[name]))" readonly></ndd-text-field>
-                <span class="etv-output-arrow">&rarr;</span>
-              </template>
-              <ndd-text-field size="md" :value="formatOutputValue(value, name)" readonly></ndd-text-field>
-              <span
-                v-if="matchStatus(name, value) === 'passed'"
-                class="etv-badge etv-badge--pass"
-              >GESLAAGD</span>
-              <span
-                v-if="matchStatus(name, value) === 'failed'"
-                class="etv-badge etv-badge--fail"
-              >MISLUKT</span>
-            </div>
-          </ndd-cell>
-        </ndd-list-item>
-      </ndd-list>
+          <div class="etv-output-name">{{ name }}</div>
+          <div class="etv-output-detail">
+            <span class="etv-output-expected">{{ formatValue(normalizeForCompare(expectations[name])) }}</span>
+            <span class="etv-output-arrow">&rarr;</span>
+            <span class="etv-output-actual">{{ formatOutputValue(result.outputs[name], name) }}</span>
+            <span
+              v-if="matchStatus(name, result.outputs[name]) === 'passed'"
+              class="etv-badge etv-badge--pass"
+            >GESLAAGD</span>
+            <span
+              v-if="matchStatus(name, result.outputs[name]) === 'failed'"
+              class="etv-badge etv-badge--fail"
+            >MISLUKT</span>
+          </div>
+        </div>
+      </div>
     </ndd-simple-section>
 
     <!-- Trace text -->
@@ -86,23 +88,46 @@ const hasContent = computed(() =>
   margin-bottom: 4px;
 }
 
-.etv-output-item {
-  border-left: 3px solid transparent;
+.etv-outputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.etv-output-item--passed {
+.etv-output-row {
+  border-left: 3px solid transparent;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--semantics-surface-color-secondary, #f5f5f5);
+}
+
+.etv-output-row--passed {
   border-left-color: #2e7d32;
 }
 
-.etv-output-item--failed {
+.etv-output-row--failed {
   border-left-color: #c62828;
 }
 
-.etv-output-values {
+.etv-output-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+  color: var(--semantics-text-color-primary, #1C2029);
+}
+
+.etv-output-detail {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.etv-output-expected,
+.etv-output-actual {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
 }
 
 .etv-output-arrow {
@@ -133,24 +158,5 @@ const hasContent = computed(() =>
   overflow-x: auto;
   white-space: pre;
   margin: 0;
-}
-</style>
-
-<style>
-/* Unscoped: ndd web components need global selectors */
-.etv-outputs-list ndd-text-cell {
-  width: 140px;
-  min-width: 140px;
-  flex-shrink: 0;
-}
-
-.etv-outputs-list ndd-cell {
-  flex: 1;
-  min-width: 0;
-}
-
-.etv-outputs-list ndd-text-field {
-  flex: 1;
-  min-width: 0;
 }
 </style>
