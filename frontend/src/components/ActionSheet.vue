@@ -17,9 +17,15 @@ const operationTree = computed(() => props.action ? buildOperationTree(props.act
 
 const selectedOpIndex = ref(0);
 
+// Monotonic counter used as :key for the ndd-page element so it remounts
+// every time a new action opens (fixing the sticky-header height
+// measurement) without remounting on every keystroke in the output field.
+let actionSeq = 0;
+const actionKey = ref('none');
+
 watch(() => props.action, async (action) => {
-  const tree = operationTree.value;
-  selectedOpIndex.value = tree.length > 0 ? tree.length - 1 : 0;
+  selectedOpIndex.value = 0;
+  actionKey.value = action ? String(++actionSeq) : 'none';
 
   if (!action) {
     sheetEl.value?.hide();
@@ -66,7 +72,18 @@ onUnmounted(() => {
 
 <template>
   <ndd-sheet ref="sheetEl" placement="right" class="action-sheet" @close="emit('close')">
-    <ndd-page sticky-header>
+    <!-- :key forces ndd-page to remount whenever a NEW action opens.
+         ndd-page captures the sticky-header height ONCE per mount via
+         requestAnimationFrame; when the sheet opens with a new action the
+         header may already be rendered but the measurement happened while
+         the sheet was still hidden, producing a zero-height offset that
+         lets the body content slide up under the title bar (visible as a
+         fade). Remounting fixes the measurement.
+
+         actionKey is captured once when the action changes (in the
+         watcher), NOT reactively bound to action.output, so editing the
+         output text field does not trigger a remount on every keystroke. -->
+    <ndd-page :key="actionKey" sticky-header>
       <ndd-top-title-bar slot="header" text="Actie" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
       <ndd-simple-section>
