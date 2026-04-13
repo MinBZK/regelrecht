@@ -362,7 +362,7 @@ loadIndex();
               <template v-else>
                 <ndd-simple-section>
                   <ndd-title id="article-titel" size="3"><h3>Artikel {{ selectedArticle.number }}</h3></ndd-title>
-                  <ndd-spacer size="8"></ndd-spacer>
+                  <ndd-spacer size="16"></ndd-spacer>
                   <ndd-toolbar>
                     <ndd-toolbar-item slot="start">
                       <ndd-segmented-control size="md" :value="detailView" @change="onDetailViewChange">
