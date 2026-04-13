@@ -359,10 +359,6 @@ loadIndex();
                   <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
                 </ndd-segmented-control>
-                <a v-if="selectedLawId" slot="toolbar" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
-                  <ndd-button variant="primary" text="Bewerk"></ndd-button>
-                </a>
-                <ndd-button v-else slot="toolbar" variant="primary" disabled text="Bewerk"></ndd-button>
               </ndd-top-title-bar>
 
               <ndd-simple-section v-if="!selectedArticle" align="center">
@@ -371,7 +367,14 @@ loadIndex();
               <div v-else class="library-detail-content" :class="`library-detail-content--${detailView}`">
                 <KeepAlive>
                   <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" />
-                  <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
+                  <div v-else-if="detailView === 'machine'">
+                    <ndd-simple-section>
+                      <a v-if="selectedLawId" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
+                        <ndd-button variant="primary" text="Bewerk in editor"></ndd-button>
+                      </a>
+                    </ndd-simple-section>
+                    <MachineReadable :article="selectedArticle" @open-action="activeAction = $event" />
+                  </div>
                   <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
                 </KeepAlive>
               </div>
