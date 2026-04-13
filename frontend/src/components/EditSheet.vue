@@ -31,7 +31,7 @@ const paramValueGroups = computed(() => {
     });
   }
   for (const opts of groups.values()) {
-    opts.sort((a, b) => a.label.localeCompare(b.label));
+    opts.sort((a, b) => a.label.localeCompare(b.label, 'nl'));
   }
   return groups;
 });
