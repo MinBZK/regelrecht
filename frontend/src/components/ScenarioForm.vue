@@ -202,6 +202,16 @@ function matchStatus(outputName, actualValue) {
 }
 
 const hasExpectations = computed(() => Object.keys(expectations.value).length > 0);
+
+const overallStatus = computed(() => {
+  if (!result.value) return null;
+  const keys = Object.keys(expectations.value);
+  if (keys.length === 0) return null;
+  for (const name of keys) {
+    if (matchStatus(name, result.value.outputs?.[name]) === 'failed') return 'failed';
+  }
+  return 'passed';
+});
 </script>
 
 <template>
@@ -209,24 +219,26 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <!-- Expected outputs at top -->
     <template v-if="hasExpectations">
       <ndd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></ndd-title>
-      <ndd-list variant="box" class="sf-expectations-list">
-        <ndd-list-item
+      <div
+        class="sf-expectations-block"
+        :class="result ? `sf-expectations-block--${overallStatus}` : (error ? 'sf-expectations-block--failed' : '')"
+      >
+        <div
           v-for="(exp, name) in expectations"
           :key="name"
-          size="md"
-          class="sf-expectation"
-          :class="result ? `sf-expectation--${matchStatus(name, result.outputs?.[name])}` : (error ? 'sf-expectation--failed' : '')"
+          class="sf-expectation-item"
         >
-          <ndd-text-cell :text="articleMap?.outputToArticle?.get(name) ? `${name} (Art. ${articleMap.outputToArticle.get(name)})` : name" max-width="140"></ndd-text-cell>
-          <ndd-cell>
-            <div class="sf-expectation-values">
-              <ndd-text-field size="md" :value="formatValue(normalizeForCompare(exp))" readonly></ndd-text-field>
-              <span v-if="result && result.outputs" class="sf-expectation-arrow">&rarr;</span>
-              <ndd-text-field v-if="result && result.outputs" size="md" :value="formatOutputValue(result.outputs[name], name)" readonly class="sf-expectation-actual"></ndd-text-field>
-            </div>
-          </ndd-cell>
-        </ndd-list-item>
-      </ndd-list>
+          <span class="sf-expectation-name">{{ name }}</span>
+          <span v-if="articleMap?.outputToArticle?.get(name)" class="sf-article-tag">Art. {{ articleMap.outputToArticle.get(name) }}</span>
+          <span class="sf-expectation-detail">
+            <span>{{ formatValue(normalizeForCompare(exp)) }}</span>
+            <template v-if="result && result.outputs">
+              <span class="sf-expectation-arrow">&rarr;</span>
+              <span>{{ formatOutputValue(result.outputs[name], name) }}</span>
+            </template>
+          </span>
+        </div>
+      </div>
     </template>
 
     <!-- Error -->
@@ -295,24 +307,53 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   margin-top: 0;
 }
 
-/* Expected outputs */
-.sf-expectation {
+/* Expected outputs — single continuous block with left border */
+.sf-expectations-block {
   border-left: 3px solid transparent;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.sf-expectation--passed {
+.sf-expectations-block--passed {
   border-left-color: #2e7d32;
 }
 
-.sf-expectation--failed {
+.sf-expectations-block--failed {
   border-left-color: #c62828;
 }
 
-.sf-expectation-values {
+.sf-expectation-item {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.sf-expectation-name {
+  font-weight: 400;
+  color: var(--semantics-text-color-primary, #1C2029);
+}
+
+.sf-article-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #666;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.sf-expectation-detail {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--semantics-text-color-primary, #1C2029);
 }
 
 .sf-expectation-arrow {
@@ -347,26 +388,18 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 
 <style>
 /* Unscoped: ndd web components need global selectors */
-.sf-expectations-list ndd-text-cell,
 .sf-input-list ndd-text-cell {
   width: 140px;
   min-width: 140px;
   flex-shrink: 0;
 }
 
-.sf-expectations-list ndd-cell,
 .sf-input-list ndd-cell {
   flex: 1;
   min-width: 0;
 }
 
-.sf-expectations-list ndd-text-field,
 .sf-input-list ndd-text-field {
   width: 100%;
-}
-
-.sf-expectation-values ndd-text-field {
-  flex: 1;
-  min-width: 0;
 }
 </style>
