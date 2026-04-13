@@ -418,7 +418,7 @@ function addNestedOperation() {
         <ndd-cell>
           <ndd-dropdown size="md" data-testid="operation-type-dropdown">
             <select aria-label="Operatie type" :value="operation.operation" :disabled="!editable" @change="editable && changeOperationType($event)">
-              <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value" :selected="opt.value === operation.operation">{{ opt.label }}</option>
             </select>
           </ndd-dropdown>
         </ndd-cell>
@@ -429,9 +429,20 @@ function addNestedOperation() {
         <ndd-text-cell :text="val._label" max-width="120"></ndd-text-cell>
         <ndd-cell>
           <div class="value-row">
-            <template v-if="isLiteralValue(val._value)">
+            <!-- Subject fields always show a dropdown of available variables -->
+            <template v-if="val._kind === 'subject' || val._kind === 'date_of_birth' || val._kind === 'reference_date'">
+              <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
+                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
+                  <option value="">Selecteer...</option>
+                  <option v-for="opt in variableOptions" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
+                </select>
+              </ndd-dropdown>
+            </template>
+            <!-- Literal values show a text field -->
+            <template v-else-if="isLiteralValue(val._value)">
               <ndd-text-field size="md" :value="String(val._value)" is-full-width :readonly="!editable" @input="editable && updateValue(val, $event)"></ndd-text-field>
             </template>
+            <!-- Variable references and nested operations show a full dropdown -->
             <template v-else>
               <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
