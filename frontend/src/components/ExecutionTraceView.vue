@@ -123,14 +123,10 @@ const hasContent = computed(() =>
 .etv-badge--fail { background: #fee; color: #c00; }
 
 .etv-trace-text {
-  /* Use a monospace font where box-drawing pipes (│├└─) connect
-   * vertically into continuous lines. line-height: 1.0 ensures no
-   * gap between rows; letter-spacing: 0 prevents horizontal gaps. */
-  font-family: 'Cascadia Mono', 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
-  font-size: 12px;
-  line-height: 1.0;
-  letter-spacing: 0;
-  padding: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 8px;
   background: #1e1e2e;
   color: #cdd6f4;
   border-radius: 6px;
