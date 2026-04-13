@@ -87,7 +87,9 @@ fn validate_return_url(url: Option<&str>) -> Option<String> {
         return None;
     }
     // Must be a relative path — reject absolute URLs and protocol-relative URLs.
-    if !url.starts_with('/') || url.starts_with("//") {
+    // Also reject backslashes: some browsers normalise `\` to `/`, so `/\evil.com`
+    // could be interpreted as the protocol-relative `//evil.com`.
+    if !url.starts_with('/') || url.starts_with("//") || url.contains('\\') {
         return None;
     }
     Some(url.to_string())
@@ -558,5 +560,25 @@ mod tests {
     #[test]
     fn return_url_rejects_protocol_relative() {
         assert_eq!(validate_return_url(Some("//evil.com/steal")), None);
+    }
+
+    #[test]
+    fn return_url_rejects_backslash() {
+        assert_eq!(validate_return_url(Some("/\\evil.com")), None);
+        assert_eq!(validate_return_url(Some("/path\\segment")), None);
+    }
+
+    #[test]
+    fn return_url_rejects_whitespace_only() {
+        assert_eq!(validate_return_url(Some("   ")), None);
+        assert_eq!(validate_return_url(Some("  /  ")), None);
+    }
+
+    #[test]
+    fn return_url_allows_fragment() {
+        assert_eq!(
+            validate_return_url(Some("/library#section")),
+            Some("/library#section".to_string())
+        );
     }
 }
