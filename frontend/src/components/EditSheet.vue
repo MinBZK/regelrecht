@@ -515,6 +515,7 @@ const sectionLabels = {
                   <ndd-dropdown v-if="paramValueOptions.length > 0" size="md" :data-testid="`source-param-value-${param._rowId}`">
                     <select :value="param.value" :aria-label="`Waarde voor ${param.key}`" @change="param.value = $event.target.value">
                       <option value="">Selecteer...</option>
+                      <option v-if="param.value && !param.value.startsWith('$')" :value="param.value" :selected="true">{{ param.value }}</option>
                       <option v-for="opt in paramValueOptions" :key="opt.value" :value="opt.value" :selected="opt.value === param.value">{{ opt.label }}</option>
                     </select>
                   </ndd-dropdown>
