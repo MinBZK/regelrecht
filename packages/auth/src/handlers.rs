@@ -89,7 +89,13 @@ fn validate_return_url(url: Option<&str>) -> Option<String> {
     // Must be a relative path — reject absolute URLs and protocol-relative URLs.
     // Also reject backslashes: some browsers normalise `\` to `/`, so `/\evil.com`
     // could be interpreted as the protocol-relative `//evil.com`.
-    if !url.starts_with('/') || url.starts_with("//") || url.contains('\\') {
+    // Reject control characters (CR, LF, etc.) — Axum's Redirect::temporary panics
+    // on header values containing them, which would DoS the OIDC callback.
+    if !url.starts_with('/')
+        || url.starts_with("//")
+        || url.contains('\\')
+        || url.bytes().any(|b| b < 0x20 || b == 0x7f)
+    {
         return None;
     }
     Some(url.to_string())
@@ -580,5 +586,19 @@ mod tests {
             validate_return_url(Some("/library#section")),
             Some("/library#section".to_string())
         );
+    }
+
+    #[test]
+    fn return_url_rejects_control_characters() {
+        // CRLF injection — would panic in Axum's Redirect::temporary
+        assert_eq!(
+            validate_return_url(Some("/library\r\nX-Injected: header")),
+            None
+        );
+        assert_eq!(validate_return_url(Some("/library\nheader")), None);
+        // DEL character
+        assert_eq!(validate_return_url(Some("/library\x7f")), None);
+        // Null byte
+        assert_eq!(validate_return_url(Some("/library\0")), None);
     }
 }
