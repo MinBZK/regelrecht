@@ -321,11 +321,6 @@ loadIndex();
                   <ndd-toolbar-item slot="start">
                     <ndd-button text="Filter"></ndd-button>
                   </ndd-toolbar-item>
-                  <ndd-toolbar-item slot="start">
-                    <a v-if="selectedLawId && selectedArticleNumber" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
-                      <ndd-icon-button icon="pencil" title="Bewerk in editor"></ndd-icon-button>
-                    </a>
-                  </ndd-toolbar-item>
                 </ndd-toolbar>
                 <ndd-spacer size="16"></ndd-spacer>
                 <ndd-inline-dialog v-if="selectedLawLoading" text="Laden..."></ndd-inline-dialog>
@@ -358,24 +353,40 @@ loadIndex();
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
                 :back-text="lawName || 'Terug'"
-              >
-                <ndd-segmented-control slot="toolbar" size="md" :value="detailView" @change="onDetailViewChange">
-                  <ndd-segmented-control-item value="tekst" text="Tekst"></ndd-segmented-control-item>
-                  <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
-                  <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
-                </ndd-segmented-control>
-              </ndd-top-title-bar>
+                collapse-anchor="article-titel"
+              ></ndd-top-title-bar>
 
               <ndd-simple-section v-if="!selectedArticle" align="center">
                 <ndd-inline-dialog text="Selecteer een artikel"></ndd-inline-dialog>
               </ndd-simple-section>
-              <div v-else class="library-detail-content" :class="`library-detail-content--${detailView}`">
-                <KeepAlive>
-                  <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" />
-                  <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
-                  <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
-                </KeepAlive>
-              </div>
+              <template v-else>
+                <ndd-simple-section>
+                  <ndd-title id="article-titel" size="3"><h3>Artikel {{ selectedArticle.number }}</h3></ndd-title>
+                  <ndd-spacer size="8"></ndd-spacer>
+                  <ndd-toolbar>
+                    <ndd-toolbar-item slot="start">
+                      <ndd-segmented-control size="md" :value="detailView" @change="onDetailViewChange">
+                        <ndd-segmented-control-item value="tekst" text="Tekst"></ndd-segmented-control-item>
+                        <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
+                        <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
+                      </ndd-segmented-control>
+                    </ndd-toolbar-item>
+                    <ndd-toolbar-item slot="end">
+                      <a v-if="selectedLawId" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
+                        <ndd-button variant="primary" text="Bewerk"></ndd-button>
+                      </a>
+                    </ndd-toolbar-item>
+                  </ndd-toolbar>
+                  <ndd-spacer size="16"></ndd-spacer>
+                </ndd-simple-section>
+                <div class="library-detail-content" :class="`library-detail-content--${detailView}`">
+                  <KeepAlive>
+                    <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" />
+                    <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
+                    <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
+                  </KeepAlive>
+                </div>
+              </template>
             </ndd-page>
           </ndd-split-view-pane>
 
