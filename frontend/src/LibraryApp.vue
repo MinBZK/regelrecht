@@ -359,7 +359,7 @@ loadIndex();
                       </ndd-tab-bar>
                     </ndd-toolbar-item>
                     <ndd-toolbar-item slot="end">
-                      <a v-if="selectedLawId" :href="`/editor/${encodeURIComponent(selectedLawId)}?article=${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}?article=${encodeURIComponent(selectedArticleNumber)}`)">
+                      <a v-if="selectedLawId" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
                         <ndd-button variant="primary" text="Bewerk"></ndd-button>
                       </a>
                       <ndd-button v-else variant="primary" disabled text="Bewerk"></ndd-button>

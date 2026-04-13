@@ -12,7 +12,7 @@ const router = createRouter({
       meta: { title: 'Bibliotheek' },
     },
     {
-      path: '/editor/:lawId?',
+      path: '/editor/:lawId?/:articleNumber?',
       name: 'editor',
       component: () => import('./EditorApp.vue'),
       meta: { title: 'Editor' },
@@ -21,8 +21,10 @@ const router = createRouter({
       path: '/editor.html',
       redirect: (to) => ({
         name: 'editor',
-        params: { lawId: to.query.law || undefined },
-        query: to.query.article ? { article: to.query.article } : undefined,
+        params: {
+          lawId: to.query.law || undefined,
+          articleNumber: to.query.article || undefined,
+        },
       }),
     },
   ],

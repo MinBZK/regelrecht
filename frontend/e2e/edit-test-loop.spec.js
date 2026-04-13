@@ -49,9 +49,9 @@ test.describe('Edit → re-execute loop', () => {
       scenarioText,
     );
 
-    // Navigate directly to article 2 via the query param — that's where
+    // Navigate directly to article 2 via the route param — that's where
     // heeft_recht_op_zorgtoeslag lives and where we need to edit.
-    await page.goto('/editor/zorgtoeslagwet?article=2');
+    await page.goto('/editor/zorgtoeslagwet/2');
 
     // Wait for the document tab bar to render — articles loaded.
     await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 15_000 });

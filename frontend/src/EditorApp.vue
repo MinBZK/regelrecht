@@ -43,7 +43,7 @@ const {
   saving: lawSaving,
   saveError: lawSaveError,
   saveLaw,
-} = useLaw(route.params.lawId, route.query.article);
+} = useLaw(route.params.lawId, route.params.articleNumber);
 
 const middlePaneView = ref('form');
 const rightPaneView = ref('result');
