@@ -335,7 +335,7 @@ const overallStatus = computed(() => {
 }
 
 .sf-expectation-name {
-  font-weight: 600;
+  font-weight: 400;
   color: var(--semantics-text-color-primary, #1C2029);
 }
 
