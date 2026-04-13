@@ -38,15 +38,6 @@ const variableGroups = computed(() => {
   return groups;
 });
 
-// Flat list kept for valueDropdownOptions which prepends a nested-op entry.
-const variableOptions = computed(() =>
-  availableVariables.value.map(v => ({
-    value: v.ref,
-    label: v.name.replace(/_/g, ' '),
-    category: v.category,
-  }))
-);
-
 const COMPARISON_OPS = new Set([
   'EQUALS', 'NOT_EQUALS', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL',
   'LESS_THAN', 'LESS_THAN_OR_EQUAL', 'NOT_NULL', 'IN', 'NOT_IN',
@@ -467,7 +458,9 @@ function addNestedOperation() {
             <template v-else>
               <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
-                  <option v-if="valueDropdownNestedOption(val._value)" :value="valueDropdownNestedOption(val._value).value" :selected="currentDropdownValue(val._value) === '__nested__'">{{ valueDropdownNestedOption(val._value).label }}</option>
+                  <template v-for="nestedOpt in [valueDropdownNestedOption(val._value)]" :key="'nested'">
+                    <option v-if="nestedOpt" :value="nestedOpt.value" :selected="currentDropdownValue(val._value) === '__nested__'">{{ nestedOpt.label }}</option>
+                  </template>
                   <optgroup v-for="[category, opts] in variableGroups" :key="category" :label="category">
                     <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                   </optgroup>

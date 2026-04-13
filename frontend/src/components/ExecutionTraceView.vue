@@ -48,8 +48,10 @@ const hasContent = computed(() =>
           <ndd-text-cell :text="name" max-width="140"></ndd-text-cell>
           <ndd-cell>
             <div class="etv-output-values">
-              <ndd-text-field size="md" :value="(name in expectations) ? formatValue(normalizeForCompare(expectations[name])) : ''" readonly></ndd-text-field>
-              <span class="etv-output-arrow">&rarr;</span>
+              <template v-if="name in expectations">
+                <ndd-text-field size="md" :value="formatValue(normalizeForCompare(expectations[name]))" readonly></ndd-text-field>
+                <span class="etv-output-arrow">&rarr;</span>
+              </template>
               <ndd-text-field size="md" :value="formatOutputValue(value, name)" readonly></ndd-text-field>
               <span
                 v-if="matchStatus(name, value) === 'passed'"
