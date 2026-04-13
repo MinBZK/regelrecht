@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use regelrecht_auth::{ConfiguredClient, OidcAppState, OidcConfig};
@@ -59,6 +60,10 @@ pub struct CorpusState {
     /// the same abstraction as writes — preventing read/write path
     /// mismatches when a fallback writable backend is used.
     pub backends: HashMap<String, BackendEntry>,
+    /// Path to the corpus-auth.yaml file for GitHub source authentication.
+    /// Stored here so that `reload_corpus` can refetch from GitHub sources
+    /// without restarting the server.
+    pub auth_file: Option<PathBuf>,
 }
 
 impl CorpusState {
@@ -68,6 +73,7 @@ impl CorpusState {
             registry: regelrecht_corpus::CorpusRegistry::empty(),
             source_map: SourceMap::new(),
             backends: HashMap::new(),
+            auth_file: None,
         }
     }
 }

@@ -375,6 +375,7 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
         registry,
         source_map,
         backends,
+        auth_file: auth_file.map(|p| p.to_path_buf()),
     }
 }
 

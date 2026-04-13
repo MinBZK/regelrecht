@@ -652,25 +652,53 @@ pub async fn save_law(
     Ok(StatusCode::OK)
 }
 
-/// POST /api/corpus/reload — re-scan local corpus sources.
+/// POST /api/corpus/reload — reload corpus including GitHub sources.
 ///
-/// Picks up newly harvested YAML files without restarting the server. Only
-/// reloads local sources (fast, ~ms) — GitHub-backed sources are unchanged.
+/// Picks up newly harvested YAML files by refetching from all configured
+/// sources (local + GitHub). An optional JSON body can specify additional
+/// `law_ids` to pull from GitHub (e.g. after a harvest completes).
+///
+/// All law IDs currently in the SourceMap are preserved plus any extras.
 pub async fn reload_corpus(
     State(state): State<AppState>,
+    body: Option<Json<ReloadRequest>>,
 ) -> Result<Json<ReloadResponse>, (StatusCode, String)> {
     let mut corpus = state.corpus.write().await;
-    let new_map = corpus.registry.load_local_sources().map_err(|e| {
-        tracing::error!(error = %e, "corpus reload failed");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to reload corpus".to_string(),
-        )
-    })?;
+
+    // Collect law IDs to fetch from GitHub: everything already loaded + any
+    // extras the caller explicitly requests (e.g. a freshly harvested law).
+    let mut law_ids: std::collections::HashSet<String> =
+        corpus.source_map.laws().map(|l| l.law_id.clone()).collect();
+
+    if let Some(Json(req)) = &body {
+        for id in &req.law_ids {
+            law_ids.insert(id.clone());
+        }
+    }
+
+    let auth_file = corpus.auth_file.as_deref();
+    let new_map = corpus
+        .registry
+        .load_favorites_async(&law_ids, auth_file)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "corpus reload failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to reload corpus".to_string(),
+            )
+        })?;
+
     let law_count = new_map.len();
     corpus.source_map = new_map;
-    tracing::info!(law_count, "corpus reloaded from local sources");
+    tracing::info!(law_count, "corpus reloaded (local + GitHub)");
     Ok(Json(ReloadResponse { law_count }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReloadRequest {
+    #[serde(default)]
+    pub law_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]

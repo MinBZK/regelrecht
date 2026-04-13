@@ -124,8 +124,17 @@ async function pollHarvestStatus() {
     bwbHarvestSlugs.value = updatedSlugs;
 
     if (needsReload) {
-      // Trigger corpus reload and refresh law index
-      await fetch('/api/corpus/reload', { method: 'POST' }).catch(() => {});
+      // Trigger corpus reload with the newly harvested law slugs so the
+      // editor pulls them from the GitHub corpus repo.
+      const newSlugs = Object.entries(updatedSlugs)
+        .filter(([bwbId]) => AVAILABLE_STATUSES.has(updatedStatus[bwbId]))
+        .map(([, slug]) => slug)
+        .filter(Boolean);
+      await fetch('/api/corpus/reload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ law_ids: newSlugs }),
+      }).catch(() => {});
       await loadIndex();
     }
 
