@@ -199,6 +199,9 @@ export function humanizeTitle(node) {
       const value = getReadableName(node.value) ?? formatArgName(node.value);
       return `${subject} ${symbol} ${value}`;
     }
+    if (isOperationNode(node.value)) {
+      return `${subject} ${symbol} (...)`;
+    }
     if (Array.isArray(node.values)) {
       const items = node.values.map((v) => getReadableName(v) ?? formatArgName(v));
       return `${subject} ${symbol} [${items.join(', ')}]`;
