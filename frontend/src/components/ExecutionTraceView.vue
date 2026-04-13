@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValue, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 
 const props = defineProps({
   /** Execution result with outputs */
@@ -11,6 +11,8 @@ const props = defineProps({
   expectations: { type: Object, default: () => ({}) },
   /** Error message if execution failed */
   error: { type: String, default: null },
+  /** Name of the scenario being displayed */
+  scenarioName: { type: String, default: '' },
 });
 
 function matchStatus(outputName, actualValue) {
@@ -34,86 +36,112 @@ const hasContent = computed(() =>
   </ndd-simple-section>
 
   <template v-if="result">
-    <!-- Output summary -->
-    <ndd-simple-section>
-      <div class="etv-section-title">Resultaat</div>
-      <div
-        v-for="(value, name) in result.outputs"
-        :key="name"
-        class="etv-output"
-        :class="`etv-output--${matchStatus(name, value)}`"
-      >
-        <span class="etv-output-icon">
-          <template v-if="matchStatus(name, value) === 'passed'">&#x2713;</template>
-          <template v-else-if="matchStatus(name, value) === 'failed'">&#x2717;</template>
-          <template v-else>&#x25CF;</template>
-        </span>
-        <span class="etv-output-name">{{ name }}:</span>
-        <span class="etv-output-value">{{ formatOutputValue(value, name) }}</span>
-        <span
-          v-if="matchStatus(name, value) === 'passed'"
-          class="etv-badge etv-badge--pass"
-        >GESLAAGD</span>
-        <span
-          v-if="matchStatus(name, value) === 'failed'"
-          class="etv-badge etv-badge--fail"
-        >MISLUKT (verwacht: {{ formatValue(expectations[name]) }})</span>
+    <!-- Scenario title -->
+    <ndd-simple-section v-if="scenarioName">
+      <ndd-title size="4"><span>{{ scenarioName }}</span></ndd-title>
+    </ndd-simple-section>
+
+    <!-- Output summary — only outputs with expectations -->
+    <ndd-simple-section v-if="Object.keys(expectations).length">
+      <ndd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></ndd-title>
+      <div class="etv-outputs">
+        <template
+          v-for="name in Object.keys(expectations)"
+          :key="name"
+        >
+          <div
+            v-for="status in [matchStatus(name, result.outputs?.[name])]"
+            :key="name"
+            class="etv-output-row"
+            :class="`etv-output-row--${status}`"
+          >
+            <div class="etv-output-name">{{ name }}</div>
+            <div class="etv-output-detail">
+              <span class="etv-output-expected">{{ formatValue(normalizeForCompare(expectations[name])) }}</span>
+              <span class="etv-output-arrow">&rarr;</span>
+              <span class="etv-output-actual">{{ formatOutputValue(result.outputs?.[name], name) }}</span>
+              <span
+                v-if="status === 'passed'"
+                class="etv-badge etv-badge--pass"
+              >GESLAAGD</span>
+              <span
+                v-if="status === 'failed'"
+                class="etv-badge etv-badge--fail"
+              >MISLUKT</span>
+            </div>
+          </div>
+        </template>
       </div>
     </ndd-simple-section>
 
     <!-- Trace text -->
     <ndd-simple-section v-if="traceText">
-      <div class="etv-section-title">Execution trace</div>
+      <ndd-title size="5" class="etv-section-title"><span>Execution trace</span></ndd-title>
       <pre class="etv-trace-text">{{ traceText }}</pre>
     </ndd-simple-section>
   </template>
 
   <!-- Partial trace on error -->
-  <ndd-simple-section v-if="error && traceText">
-    <div class="etv-section-title">Partial trace (tot fout)</div>
+  <ndd-simple-section v-if="error && traceText && !result">
+    <ndd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></ndd-title>
     <pre class="etv-trace-text">{{ traceText }}</pre>
   </ndd-simple-section>
 </template>
 
 <style scoped>
 .etv-section-title {
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 8px;
-  color: var(--semantics-text-color-primary, #1C2029);
+  margin-bottom: 4px;
 }
 
-.etv-output {
+.etv-outputs {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
   gap: 6px;
-  padding: 4px 0;
-  font-size: 13px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
-.etv-output-icon {
-  flex-shrink: 0;
-  width: 14px;
-  text-align: center;
-  font-weight: bold;
+.etv-output-row {
+  border-left: 3px solid transparent;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--semantics-surface-color-secondary, #f5f5f5);
 }
 
-.etv-output--passed .etv-output-icon { color: #060; }
-.etv-output--failed .etv-output-icon { color: #c00; }
-.etv-output--neutral .etv-output-icon { color: #666; }
+.etv-output-row--passed {
+  border-left-color: #2e7d32;
+}
+
+.etv-output-row--failed {
+  border-left-color: #c62828;
+}
 
 .etv-output-name {
   font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
   color: var(--semantics-text-color-primary, #1C2029);
 }
 
-.etv-output-value {
-  color: var(--semantics-text-color-secondary, #555);
+.etv-output-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.etv-output-expected,
+.etv-output-actual {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+.etv-output-arrow {
+  flex-shrink: 0;
+  color: var(--semantics-text-color-secondary, #666);
 }
 
 .etv-badge {
-  margin-left: auto;
+  flex-shrink: 0;
   font-size: 10px;
   font-weight: 700;
   padding: 1px 6px;

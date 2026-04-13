@@ -189,11 +189,13 @@ function onShowDetails(index) {
   const formRef = scenarioRefs.value[index];
   const data = formRef?.getExecutionData?.() || scenarioResults.value.get(index);
   if (data) {
+    const scenarioName = formState.value?.scenarios[index]?.name || '';
     emit('executed', {
       result: data.result,
       traceText: data.traceText,
       error: data.error,
       expectations: data.expectations || {},
+      scenarioName,
     });
   }
 }

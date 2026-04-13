@@ -172,12 +172,14 @@ const lastTraceText = ref(null);
 const lastResult = ref(null);
 const lastError = ref(null);
 const lastExpectations = ref({});
+const lastScenarioName = ref('');
 
-function handleScenarioExecuted({ result, traceText, error, expectations }) {
+function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
+  lastScenarioName.value = scenarioName || '';
 }
 
 // --- Editor state ---
@@ -729,6 +731,7 @@ function handleActionSave() {
                 :trace-text="lastTraceText"
                 :error="lastError"
                 :expectations="lastExpectations"
+                :scenario-name="lastScenarioName"
               />
 
               <!-- Machine view: structured editor -->
