@@ -429,11 +429,15 @@ function addNestedOperation() {
         <ndd-text-cell :text="val._label" max-width="120"></ndd-text-cell>
         <ndd-cell>
           <div class="value-row">
-            <!-- Subject fields always show a dropdown of available variables -->
+            <!-- Subject/date fields show a dropdown of available variables.
+                 If the field already holds a literal value (e.g. "2025-01-01"),
+                 it's included as the first option so it stays visible and
+                 selectable. -->
             <template v-if="val._kind === 'subject' || val._kind === 'date_of_birth' || val._kind === 'reference_date'">
               <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
                   <option value="">Selecteer...</option>
+                  <option v-if="isLiteralValue(val._value) && val._value !== '' && val._value !== null" :value="String(val._value)" :selected="true">{{ String(val._value) }}</option>
                   <option v-for="opt in variableOptions" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                 </select>
               </ndd-dropdown>

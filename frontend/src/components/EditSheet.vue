@@ -498,7 +498,7 @@ const sectionLabels = {
             <ndd-spacer size="8"></ndd-spacer>
             <ndd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
               <ndd-list-item
-                v-for="(param, idx) in values.sourceParameters"
+                v-for="param in values.sourceParameters"
                 :key="param._rowId"
                 size="md"
               >
