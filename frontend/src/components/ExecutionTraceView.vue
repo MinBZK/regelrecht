@@ -42,30 +42,35 @@ const hasContent = computed(() =>
     </ndd-simple-section>
 
     <!-- Output summary — only outputs with expectations -->
-    <ndd-simple-section>
+    <ndd-simple-section v-if="Object.keys(expectations).length">
       <ndd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></ndd-title>
       <div class="etv-outputs">
-        <div
+        <template
           v-for="name in Object.keys(expectations)"
           :key="name"
-          class="etv-output-row"
-          :class="`etv-output-row--${matchStatus(name, result.outputs[name])}`"
         >
-          <div class="etv-output-name">{{ name }}</div>
-          <div class="etv-output-detail">
-            <span class="etv-output-expected">{{ formatValue(normalizeForCompare(expectations[name])) }}</span>
-            <span class="etv-output-arrow">&rarr;</span>
-            <span class="etv-output-actual">{{ formatOutputValue(result.outputs[name], name) }}</span>
-            <span
-              v-if="matchStatus(name, result.outputs[name]) === 'passed'"
-              class="etv-badge etv-badge--pass"
-            >GESLAAGD</span>
-            <span
-              v-if="matchStatus(name, result.outputs[name]) === 'failed'"
-              class="etv-badge etv-badge--fail"
-            >MISLUKT</span>
+          <div
+            v-for="status in [matchStatus(name, result.outputs?.[name])]"
+            :key="name"
+            class="etv-output-row"
+            :class="`etv-output-row--${status}`"
+          >
+            <div class="etv-output-name">{{ name }}</div>
+            <div class="etv-output-detail">
+              <span class="etv-output-expected">{{ formatValue(normalizeForCompare(expectations[name])) }}</span>
+              <span class="etv-output-arrow">&rarr;</span>
+              <span class="etv-output-actual">{{ formatOutputValue(result.outputs?.[name], name) }}</span>
+              <span
+                v-if="status === 'passed'"
+                class="etv-badge etv-badge--pass"
+              >GESLAAGD</span>
+              <span
+                v-if="status === 'failed'"
+                class="etv-badge etv-badge--fail"
+              >MISLUKT</span>
+            </div>
           </div>
-        </div>
+        </template>
       </div>
     </ndd-simple-section>
 
@@ -77,7 +82,7 @@ const hasContent = computed(() =>
   </template>
 
   <!-- Partial trace on error -->
-  <ndd-simple-section v-if="error && traceText">
+  <ndd-simple-section v-if="error && traceText && !result">
     <ndd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></ndd-title>
     <pre class="etv-trace-text">{{ traceText }}</pre>
   </ndd-simple-section>
