@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,9 @@ const EDITOR_HARVEST_PRIORITY: i32 = 80;
 
 /// Maximum number of law IDs per harvest request.
 const MAX_LAW_IDS: usize = 100;
+
+/// Maximum number of BWB IDs per status query.
+const MAX_STATUS_IDS: usize = 20;
 
 #[derive(Deserialize)]
 pub struct HarvestRequest {
@@ -263,4 +266,86 @@ async fn create_harvest_job(pool: &PgPool, slug: &str, bwb_id: &str) -> HarvestS
             }
         }
     }
+}
+
+// --- Harvest status polling (used by BWB search UI after requesting harvest) ---
+
+#[derive(Deserialize)]
+pub struct HarvestStatusQuery {
+    pub bwb_ids: String,
+}
+
+#[derive(Serialize)]
+pub struct HarvestStatusResponse {
+    pub results: Vec<HarvestStatusEntry>,
+}
+
+#[derive(Serialize)]
+pub struct HarvestStatusEntry {
+    pub bwb_id: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
+}
+
+/// GET /api/harvest-status?bwb_ids=BWBR0001234,BWBR0005678
+///
+/// Returns the current pipeline status and slug (if known) for each BWB ID.
+/// The frontend polls this endpoint after requesting a harvest to track progress.
+pub async fn harvest_status(
+    State(state): State<AppState>,
+    Query(query): Query<HarvestStatusQuery>,
+) -> Result<Json<HarvestStatusResponse>, (StatusCode, String)> {
+    let pool = match &state.pipeline_pool {
+        Some(pool) => pool,
+        None => {
+            return Err((
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Pipeline database not configured".to_string(),
+            ));
+        }
+    };
+
+    let bwb_ids: Vec<String> = query
+        .bwb_ids
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if bwb_ids.is_empty() {
+        return Ok(Json(HarvestStatusResponse {
+            results: Vec::new(),
+        }));
+    }
+    if bwb_ids.len() > MAX_STATUS_IDS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("too many bwb_ids: maximum is {MAX_STATUS_IDS}"),
+        ));
+    }
+
+    let rows: Vec<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT law_id, status::text, slug FROM law_entries WHERE law_id = ANY($1)")
+            .bind(&bwb_ids)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to query harvest status");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to query harvest status".to_string(),
+                )
+            })?;
+
+    let results = rows
+        .into_iter()
+        .map(|(law_id, status, slug)| HarvestStatusEntry {
+            bwb_id: law_id,
+            status,
+            slug,
+        })
+        .collect();
+
+    Ok(Json(HarvestStatusResponse { results }))
 }

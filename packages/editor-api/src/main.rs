@@ -142,7 +142,9 @@ async fn main() {
             .route(
                 "/api/bwb/harvest",
                 post(harvest_handlers::harvest_by_bwb_id),
-            );
+            )
+            .route("/api/harvest-status", get(harvest_handlers::harvest_status))
+            .route("/api/corpus/reload", post(corpus_handlers::reload_corpus));
     }
 
     let protected_api_routes =

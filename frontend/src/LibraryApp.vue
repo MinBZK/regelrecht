@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, watch } from 'vue';
+import { ref, computed, shallowRef, watch, onUnmounted } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -49,13 +49,100 @@ const filteredLaws = computed(() => {
 // --- BWB external search (fallback when local search has no results) ---
 const bwbResults = ref([]);
 const bwbLoading = ref(false);
-const bwbHarvestStatus = ref({}); // { [bwb_id]: 'queued' | 'error' | ... }
+const bwbHarvestStatus = ref({}); // { [bwb_id]: 'queued' | 'harvesting' | ... }
+const bwbHarvestSlugs = ref({}); // { [bwb_id]: 'slug_name' } — resolved after harvest
+
+const TERMINAL_STATUSES = new Set([
+  'harvest_failed', 'harvest_exhausted', 'enrich_failed', 'enrich_exhausted', 'error', 'timeout',
+]);
+const AVAILABLE_STATUSES = new Set(['harvested', 'enriched']);
+const POLLING_STATUSES = new Set(['queued', 'already_queued', 'harvesting', 'enriching']);
 
 let bwbSearchTimeout = null;
+let harvestPollInterval = null;
+let harvestPollStart = null;
+const POLL_INTERVAL_MS = 5000;
+const POLL_MAX_MS = 10 * 60 * 1000; // 10 minutes
+
+function startHarvestPoll() {
+  if (harvestPollInterval) return;
+  harvestPollStart = Date.now();
+  harvestPollInterval = setInterval(pollHarvestStatus, POLL_INTERVAL_MS);
+}
+
+function stopHarvestPoll() {
+  if (harvestPollInterval) {
+    clearInterval(harvestPollInterval);
+    harvestPollInterval = null;
+    harvestPollStart = null;
+  }
+}
+
+const hasActiveHarvests = computed(() => {
+  return Object.values(bwbHarvestStatus.value).some(
+    s => POLLING_STATUSES.has(s) || AVAILABLE_STATUSES.has(s)
+  );
+});
+
+async function pollHarvestStatus() {
+  // Timeout check
+  if (harvestPollStart && Date.now() - harvestPollStart > POLL_MAX_MS) {
+    const updated = { ...bwbHarvestStatus.value };
+    for (const [id, status] of Object.entries(updated)) {
+      if (POLLING_STATUSES.has(status)) updated[id] = 'timeout';
+    }
+    bwbHarvestStatus.value = updated;
+    stopHarvestPoll();
+    return;
+  }
+
+  const activeIds = Object.entries(bwbHarvestStatus.value)
+    .filter(([, status]) => POLLING_STATUSES.has(status))
+    .map(([id]) => id);
+
+  if (activeIds.length === 0) {
+    stopHarvestPoll();
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/harvest-status?bwb_ids=${activeIds.join(',')}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const updatedStatus = { ...bwbHarvestStatus.value };
+    const updatedSlugs = { ...bwbHarvestSlugs.value };
+    let needsReload = false;
+
+    for (const entry of data.results) {
+      updatedStatus[entry.bwb_id] = entry.status;
+      if (entry.slug) updatedSlugs[entry.bwb_id] = entry.slug;
+      if (AVAILABLE_STATUSES.has(entry.status) && entry.slug) needsReload = true;
+    }
+
+    bwbHarvestStatus.value = updatedStatus;
+    bwbHarvestSlugs.value = updatedSlugs;
+
+    if (needsReload) {
+      // Trigger corpus reload and refresh law index
+      await fetch('/api/corpus/reload', { method: 'POST' }).catch(() => {});
+      await loadIndex();
+    }
+
+    // Stop polling if no active IDs remain
+    const stillActive = Object.values(updatedStatus).some(s => POLLING_STATUSES.has(s));
+    if (!stillActive) stopHarvestPoll();
+  } catch {
+    // Poll is best-effort
+  }
+}
+
+onUnmounted(stopHarvestPoll);
 
 watch([search, filteredLaws], ([q, filtered]) => {
   clearTimeout(bwbSearchTimeout);
-  bwbResults.value = [];
+  // Only clear results when there's no active/completed harvest to show
+  if (!hasActiveHarvests.value) bwbResults.value = [];
 
   if (!q || q.length < 3 || filtered.length > 0) return;
 
@@ -74,6 +161,16 @@ watch([search, filteredLaws], ([q, filtered]) => {
   }, 400);
 });
 
+function bwbItemClick(result) {
+  const status = bwbHarvestStatus.value[result.bwb_id];
+  const slug = bwbHarvestSlugs.value[result.bwb_id];
+  if (AVAILABLE_STATUSES.has(status) && slug) {
+    selectLaw(slug);
+  } else if (!status || status === 'error' || TERMINAL_STATUSES.has(status)) {
+    requestBwbHarvest(result.bwb_id);
+  }
+}
+
 async function requestBwbHarvest(bwbId) {
   bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: 'loading' };
   try {
@@ -85,12 +182,45 @@ async function requestBwbHarvest(bwbId) {
     if (res.ok) {
       const data = await res.json();
       bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: data.status };
+      if (data.status === 'queued' || data.status === 'already_queued') {
+        startHarvestPoll();
+      }
     } else {
       bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: 'error' };
     }
   } catch {
     bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: 'error' };
   }
+}
+
+function bwbStatusText(result) {
+  const s = bwbHarvestStatus.value[result.bwb_id];
+  if (!s) return `${result.type} \u2014 ${result.bwb_id}`;
+  switch (s) {
+    case 'loading': return 'Aanvragen...';
+    case 'queued':
+    case 'already_queued': return 'Harvest aangevraagd';
+    case 'harvesting': return 'Wordt opgehaald...';
+    case 'enriching': return 'Wordt verwerkt...';
+    case 'harvested':
+    case 'enriched': return 'Beschikbaar \u2014 klik om te openen';
+    case 'harvest_failed':
+    case 'harvest_exhausted':
+    case 'enrich_failed':
+    case 'enrich_exhausted': return 'Ophalen mislukt';
+    case 'timeout': return 'Timeout \u2014 probeer later opnieuw';
+    case 'error': return 'Fout bij aanvragen';
+    default: return `${result.type} \u2014 ${result.bwb_id}`;
+  }
+}
+
+function bwbStatusIcon(result) {
+  const s = bwbHarvestStatus.value[result.bwb_id];
+  if (!s) return 'arrow-down-to-line';
+  if (AVAILABLE_STATUSES.has(s)) return 'arrow-right';
+  if (POLLING_STATUSES.has(s)) return 'arrow-clockwise';
+  if (TERMINAL_STATUSES.has(s)) return 'x-circle';
+  return 'arrow-down-to-line';
 }
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
@@ -346,8 +476,8 @@ loadIndex();
                     </ndd-list-item>
                   </ndd-list>
 
-                  <!-- BWB search results when local search has no matches -->
-                  <template v-if="search && filteredLaws.length === 0">
+                  <!-- BWB search results / harvest tracker -->
+                  <template v-if="(search && filteredLaws.length === 0) || (bwbResults.length > 0 && hasActiveHarvests)">
                     <ndd-inline-dialog v-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
                     <template v-else-if="bwbResults.length > 0">
                       <ndd-spacer size="8"></ndd-spacer>
@@ -359,25 +489,24 @@ loadIndex();
                           :key="result.bwb_id"
                           size="md"
                           type="button"
-                          :disabled="bwbHarvestStatus[result.bwb_id] === 'queued' || bwbHarvestStatus[result.bwb_id] === 'already_queued' || bwbHarvestStatus[result.bwb_id] === 'loading' || undefined"
-                          @click="requestBwbHarvest(result.bwb_id)"
+                          :disabled="bwbHarvestStatus[result.bwb_id] === 'loading'
+                            || (POLLING_STATUSES.has(bwbHarvestStatus[result.bwb_id])
+                                && !AVAILABLE_STATUSES.has(bwbHarvestStatus[result.bwb_id]))
+                            || undefined"
+                          @click="bwbItemClick(result)"
                         >
                           <ndd-text-cell
                             :text="result.title"
-                            :supporting-text="bwbHarvestStatus[result.bwb_id] === 'queued' ? 'Harvest aangevraagd'
-                              : bwbHarvestStatus[result.bwb_id] === 'already_queued' ? 'Harvest al aangevraagd'
-                              : bwbHarvestStatus[result.bwb_id] === 'error' ? 'Fout bij aanvragen'
-                              : bwbHarvestStatus[result.bwb_id] === 'loading' ? 'Aanvragen...'
-                              : `${result.type} \u2014 ${result.bwb_id}`"
+                            :supporting-text="bwbStatusText(result)"
                           >
                           </ndd-text-cell>
                           <ndd-icon-cell slot="end" size="20">
-                            <ndd-icon :name="bwbHarvestStatus[result.bwb_id] === 'queued' || bwbHarvestStatus[result.bwb_id] === 'already_queued' ? 'checkmark' : 'arrow-down-to-line'"></ndd-icon>
+                            <ndd-icon :name="bwbStatusIcon(result)"></ndd-icon>
                           </ndd-icon-cell>
                         </ndd-list-item>
                       </ndd-list>
                     </template>
-                    <ndd-inline-dialog v-else-if="search.length >= 3 && !bwbLoading" text="Geen resultaten gevonden"></ndd-inline-dialog>
+                    <ndd-inline-dialog v-else-if="search && search.length >= 3 && !bwbLoading" text="Geen resultaten gevonden"></ndd-inline-dialog>
                   </template>
                 </template>
               </ndd-simple-section>

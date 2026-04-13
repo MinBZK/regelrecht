@@ -652,6 +652,32 @@ pub async fn save_law(
     Ok(StatusCode::OK)
 }
 
+/// POST /api/corpus/reload — re-scan local corpus sources.
+///
+/// Picks up newly harvested YAML files without restarting the server. Only
+/// reloads local sources (fast, ~ms) — GitHub-backed sources are unchanged.
+pub async fn reload_corpus(
+    State(state): State<AppState>,
+) -> Result<Json<ReloadResponse>, (StatusCode, String)> {
+    let mut corpus = state.corpus.write().await;
+    let new_map = corpus.registry.load_local_sources().map_err(|e| {
+        tracing::error!(error = %e, "corpus reload failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to reload corpus".to_string(),
+        )
+    })?;
+    let law_count = new_map.len();
+    corpus.source_map = new_map;
+    tracing::info!(law_count, "corpus reloaded from local sources");
+    Ok(Json(ReloadResponse { law_count }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReloadResponse {
+    pub law_count: usize,
+}
+
 /// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
 pub async fn delete_scenario(
     State(state): State<AppState>,
