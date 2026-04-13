@@ -391,7 +391,7 @@ loadIndex();
   <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" />
 </template>
 
-<style>
+<style scoped>
 .library-detail-header {
   background: var(--semantics-surfaces-background-color, white);
 }
@@ -409,7 +409,7 @@ loadIndex();
   margin-inline: 4px;
 }
 
-.library-detail-content--yaml .yaml-source {
+.library-detail-content--yaml :deep(.yaml-source) {
   border-radius: 0;
   background: transparent;
 }
