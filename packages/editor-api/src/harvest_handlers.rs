@@ -58,8 +58,9 @@ pub async fn request_harvest(
             format!("too many law_ids: maximum is {MAX_LAW_IDS}"),
         ));
     }
-    for law_id in &body.law_ids {
-        if law_id.trim().is_empty() || law_id.len() > 256 {
+    let law_ids: Vec<String> = body.law_ids.iter().map(|s| s.trim().to_string()).collect();
+    for law_id in &law_ids {
+        if law_id.is_empty() || law_id.len() > 256 {
             return Err((
                 StatusCode::BAD_REQUEST,
                 "law_ids must be non-empty and at most 256 characters".to_string(),
@@ -70,8 +71,7 @@ pub async fn request_harvest(
     let pool = match &state.pipeline_pool {
         Some(pool) => pool,
         None => {
-            let results = body
-                .law_ids
+            let results = law_ids
                 .into_iter()
                 .map(|law_id| HarvestSlugResult {
                     law_id,
@@ -87,17 +87,17 @@ pub async fn request_harvest(
     // the read lock before doing any DB work.
     let already_available: std::collections::HashSet<String> = {
         let corpus = state.corpus.read().await;
-        body.law_ids
+        law_ids
             .iter()
             .filter(|slug| corpus.source_map.get_law(slug).is_some())
             .cloned()
             .collect()
     };
 
-    let mut results = Vec::with_capacity(body.law_ids.len());
+    let mut results = Vec::with_capacity(law_ids.len());
     let mut seen = std::collections::HashSet::new();
 
-    for slug in &body.law_ids {
+    for slug in &law_ids {
         if !seen.insert(slug) {
             continue; // skip duplicate slugs
         }

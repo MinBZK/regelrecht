@@ -103,8 +103,7 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
-        )
-        .route("/api/bwb/search", get(bwb_search::search_bwb));
+        );
 
     // Protected API routes — require authentication when OIDC is enabled.
     // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
@@ -130,7 +129,8 @@ async fn main() {
             "/api/corpus/laws/{law_id}",
             axum::routing::put(corpus_handlers::save_law)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
-        );
+        )
+        .route("/api/bwb/search", get(bwb_search::search_bwb));
 
     #[cfg(feature = "pipeline")]
     {
@@ -296,7 +296,7 @@ async fn init_pipeline_pool() -> Option<sqlx::PgPool> {
     };
 
     match sqlx::postgres::PgPoolOptions::new()
-        .max_connections(3)
+        .max_connections(5)
         .acquire_timeout(std::time::Duration::from_secs(10))
         .connect(&database_url)
         .await

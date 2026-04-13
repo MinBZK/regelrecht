@@ -201,11 +201,11 @@ export function useDependencies() {
 
       if (missingDeps.length > 0) {
         const harvestResult = await requestHarvest(missingDeps);
-        const queued = harvestResult?.results?.filter(
-          (r) => r.status === 'queued',
+        const requested = harvestResult?.results?.filter(
+          (r) => r.status === 'queued' || r.status === 'already_queued',
         ) ?? [];
-        progress.value = queued.length > 0
-          ? `${defaultProgress} \u2014 ${queued.length} ontbrekende wet(ten) aangevraagd`
+        progress.value = requested.length > 0
+          ? `${defaultProgress} \u2014 ${requested.length} ontbrekende wet(ten) aangevraagd`
           : defaultProgress;
       } else {
         progress.value = defaultProgress;

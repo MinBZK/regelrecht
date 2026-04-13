@@ -27,7 +27,7 @@ pub async fn search_bwb(
     Query(params): Query<SearchParams>,
 ) -> Result<Json<Vec<BwbSearchResult>>, (StatusCode, String)> {
     let q = params.q.trim();
-    if q.is_empty() || q.len() < 2 {
+    if q.is_empty() || q.len() < 3 {
         return Ok(Json(vec![]));
     }
 
