@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { redirectToLogin } from '../composables/useAuth.js';
 
 const emit = defineEmits(['job-created']);
 const inputRef = ref(null);
@@ -39,7 +40,7 @@ async function onSubmit() {
       body: JSON.stringify({ bwb_id: bwbId }),
     });
     if (response.status === 401) {
-      window.location.href = '/auth/login';
+      redirectToLogin();
       return;
     }
     if (response.status === 409) {

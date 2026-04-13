@@ -12,14 +12,14 @@ import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
-const { authenticated, loading: authLoading, oidcConfigured, person, logout } = useAuth();
+const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 
 // Redirect to login when OIDC is configured but user is not authenticated.
 // { immediate: true } is needed because in SPA navigation the auth state may
 // already be resolved by the time EditorApp mounts (useAuth is a singleton).
 watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) => {
   if (!isLoading && oidc && !authed) {
-    window.location.href = '/auth/login';
+    login();
   }
 }, { immediate: true });
 
@@ -616,7 +616,7 @@ function handleActionSave() {
                     <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
                   </template>
                   <template v-else-if="!authLoading && oidcConfigured">
-                    <ndd-menu-item text="Inloggen" @click="() => window.location.href = '/auth/login'"></ndd-menu-item>
+                    <ndd-menu-item text="Inloggen" @click="login"></ndd-menu-item>
                   </template>
                 </ndd-menu>
               </ndd-button-bar>
