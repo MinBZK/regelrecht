@@ -18,8 +18,7 @@ const operationTree = computed(() => props.action ? buildOperationTree(props.act
 const selectedOpIndex = ref(0);
 
 watch(() => props.action, async (action) => {
-  const tree = operationTree.value;
-  selectedOpIndex.value = tree.length > 0 ? tree.length - 1 : 0;
+  selectedOpIndex.value = 0;
 
   if (!action) {
     sheetEl.value?.hide();
@@ -66,7 +65,14 @@ onUnmounted(() => {
 
 <template>
   <ndd-sheet ref="sheetEl" placement="right" class="action-sheet" @close="emit('close')">
-    <ndd-page sticky-header>
+    <!-- :key forces ndd-page to remount whenever the action changes.
+         ndd-page captures the sticky-header height ONCE per mount via
+         requestAnimationFrame; when the sheet opens with a new action the
+         header may already be rendered but the measurement happened while
+         the sheet was still hidden, producing a zero-height offset that
+         lets the body content slide up under the title bar (visible as a
+         fade). Remounting fixes the measurement. -->
+    <ndd-page :key="action?.output ?? 'none'" sticky-header>
       <ndd-top-title-bar slot="header" text="Actie" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
 
       <ndd-simple-section>

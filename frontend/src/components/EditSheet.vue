@@ -17,14 +17,24 @@ const values = ref({});
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
 
 // Available variables from the article's machine_readable for parameter
-// value dropdowns. Reuses the same collectAvailableVariables utility that
+// value dropdowns, grouped by category with alphabetical sorting within
+// each group. Reuses the same collectAvailableVariables utility that
 // OperationSettings uses for subject dropdowns.
-const paramValueOptions = computed(() =>
-  collectAvailableVariables(props.article).map(v => ({
-    value: v.ref,
-    label: `${v.name.replace(/_/g, ' ')} (${v.category.toLowerCase()})`,
-  })),
-);
+const paramValueGroups = computed(() => {
+  const vars = collectAvailableVariables(props.article);
+  const groups = new Map();
+  for (const v of vars) {
+    if (!groups.has(v.category)) groups.set(v.category, []);
+    groups.get(v.category).push({
+      value: v.ref,
+      label: v.name.replace(/_/g, ' '),
+    });
+  }
+  for (const opts of groups.values()) {
+    opts.sort((a, b) => a.label.localeCompare(b.label));
+  }
+  return groups;
+});
 
 // --- Law search / output selection ---
 let lawsCache = null;
@@ -512,21 +522,15 @@ const sectionLabels = {
                   ></ndd-text-field>
                 </ndd-cell>
                 <ndd-cell>
-                  <ndd-dropdown v-if="paramValueOptions.length > 0" size="md" :data-testid="`source-param-value-${param._rowId}`">
+                  <ndd-dropdown size="md" :data-testid="`source-param-value-${param._rowId}`">
                     <select :value="param.value" :aria-label="`Waarde voor ${param.key}`" @change="param.value = $event.target.value">
                       <option value="">Selecteer...</option>
                       <option v-if="param.value && !param.value.startsWith('$')" :value="param.value" :selected="true">{{ param.value }}</option>
-                      <option v-for="opt in paramValueOptions" :key="opt.value" :value="opt.value" :selected="opt.value === param.value">{{ opt.label }}</option>
+                      <optgroup v-for="[category, opts] in paramValueGroups" :key="category" :label="category">
+                        <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === param.value">{{ opt.label }}</option>
+                      </optgroup>
                     </select>
                   </ndd-dropdown>
-                  <ndd-text-field
-                    v-else
-                    size="md"
-                    placeholder="waarde (bijv. $bsn)"
-                    :value="param.value"
-                    :data-testid="`source-param-value-${param._rowId}`"
-                    @input="param.value = $event.target?.value ?? $event.detail?.value ?? param.value"
-                  ></ndd-text-field>
                 </ndd-cell>
               </ndd-list-item>
             </ndd-list>
