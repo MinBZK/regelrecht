@@ -183,6 +183,13 @@ function formatArgName(v) {
 }
 
 export function humanizeTitle(node) {
+  const label = OPERATION_LABELS[node.operation] || node.operation;
+
+  if (node.subject != null) {
+    const subject = getReadableName(node.subject) ?? formatArgName(node.subject);
+    return `${subject} (${label})`;
+  }
+
   const names = [];
 
   if (Array.isArray(node.values)) {
