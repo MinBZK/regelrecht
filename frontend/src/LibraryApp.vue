@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef } from 'vue';
+import { ref, computed, shallowRef, watch } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -45,6 +45,53 @@ const filteredLaws = computed(() => {
     displayName(law).toLowerCase().includes(q)
   );
 });
+
+// --- BWB external search (fallback when local search has no results) ---
+const bwbResults = ref([]);
+const bwbLoading = ref(false);
+const bwbHarvestStatus = ref({}); // { [bwb_id]: 'queued' | 'error' | ... }
+
+let bwbSearchTimeout = null;
+
+watch([search, filteredLaws], ([q, filtered]) => {
+  clearTimeout(bwbSearchTimeout);
+  bwbResults.value = [];
+
+  if (!q || q.length < 3 || filtered.length > 0) return;
+
+  bwbSearchTimeout = setTimeout(async () => {
+    bwbLoading.value = true;
+    try {
+      const res = await fetch(`/api/bwb/search?q=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        bwbResults.value = await res.json();
+      }
+    } catch {
+      // BWB search is best-effort
+    } finally {
+      bwbLoading.value = false;
+    }
+  }, 400);
+});
+
+async function requestBwbHarvest(bwbId) {
+  bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: 'loading' };
+  try {
+    const res = await fetch('/api/bwb/harvest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bwb_id: bwbId }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: data.status };
+    } else {
+      bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: 'error' };
+    }
+  } catch {
+    bwbHarvestStatus.value = { ...bwbHarvestStatus.value, [bwbId]: 'error' };
+  }
+}
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
 
@@ -281,22 +328,58 @@ loadIndex();
                 <ndd-spacer size="16"></ndd-spacer>
                 <ndd-inline-dialog v-if="loading" text="Laden..."></ndd-inline-dialog>
                 <ndd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></ndd-inline-dialog>
-                <ndd-list v-else variant="simple">
-                  <ndd-list-item
-                    v-for="law in filteredLaws"
-                    :key="law.law_id"
-                    size="md"
-                    type="button"
-                    :selected="law.law_id === selectedLawId || undefined"
-                    @click="selectLaw(law.law_id)"
-                  >
-                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-                    </ndd-text-cell>
-                    <ndd-icon-cell slot="end" size="20">
-                      <ndd-icon name="chevron-right"></ndd-icon>
-                    </ndd-icon-cell>
-                  </ndd-list-item>
-                </ndd-list>
+                <template v-else>
+                  <ndd-list v-if="filteredLaws.length > 0" variant="simple">
+                    <ndd-list-item
+                      v-for="law in filteredLaws"
+                      :key="law.law_id"
+                      size="md"
+                      type="button"
+                      :selected="law.law_id === selectedLawId || undefined"
+                      @click="selectLaw(law.law_id)"
+                    >
+                      <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+                      </ndd-text-cell>
+                      <ndd-icon-cell slot="end" size="20">
+                        <ndd-icon name="chevron-right"></ndd-icon>
+                      </ndd-icon-cell>
+                    </ndd-list-item>
+                  </ndd-list>
+
+                  <!-- BWB search results when local search has no matches -->
+                  <template v-if="search && filteredLaws.length === 0">
+                    <ndd-inline-dialog v-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
+                    <template v-else-if="bwbResults.length > 0">
+                      <ndd-spacer size="8"></ndd-spacer>
+                      <ndd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></ndd-title>
+                      <ndd-spacer size="8"></ndd-spacer>
+                      <ndd-list variant="simple">
+                        <ndd-list-item
+                          v-for="result in bwbResults"
+                          :key="result.bwb_id"
+                          size="md"
+                          type="button"
+                          :disabled="bwbHarvestStatus[result.bwb_id] === 'queued' || bwbHarvestStatus[result.bwb_id] === 'already_queued' || bwbHarvestStatus[result.bwb_id] === 'loading' || undefined"
+                          @click="requestBwbHarvest(result.bwb_id)"
+                        >
+                          <ndd-text-cell
+                            :text="result.title"
+                            :supporting-text="bwbHarvestStatus[result.bwb_id] === 'queued' ? 'Harvest aangevraagd'
+                              : bwbHarvestStatus[result.bwb_id] === 'already_queued' ? 'Harvest al aangevraagd'
+                              : bwbHarvestStatus[result.bwb_id] === 'error' ? 'Fout bij aanvragen'
+                              : bwbHarvestStatus[result.bwb_id] === 'loading' ? 'Aanvragen...'
+                              : `${result.type} \u2014 ${result.bwb_id}`"
+                          >
+                          </ndd-text-cell>
+                          <ndd-icon-cell slot="end" size="20">
+                            <ndd-icon :name="bwbHarvestStatus[result.bwb_id] === 'queued' || bwbHarvestStatus[result.bwb_id] === 'already_queued' ? 'checkmark' : 'arrow-down-to-line'"></ndd-icon>
+                          </ndd-icon-cell>
+                        </ndd-list-item>
+                      </ndd-list>
+                    </template>
+                    <ndd-inline-dialog v-else-if="search.length >= 3 && !bwbLoading" text="Geen resultaten gevonden"></ndd-inline-dialog>
+                  </template>
+                </template>
               </ndd-simple-section>
             </ndd-page>
           </ndd-split-view-pane>

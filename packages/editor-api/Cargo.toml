@@ -29,6 +29,7 @@ uuid = { version = "1", features = ["serde"] }
 time = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+roxmltree = "0.21"
 url = "2"
 
 [features]

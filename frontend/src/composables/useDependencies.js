@@ -114,8 +114,6 @@ export function useDependencies() {
   const loadedDeps = ref([]);
   const progress = ref('');
   const error = ref(null);
-  const harvestRequested = ref([]);
-
   /**
    * Load all dependencies for a law, recursively.
    *
@@ -127,7 +125,6 @@ export function useDependencies() {
     loading.value = true;
     error.value = null;
     loadedDeps.value = [];
-    harvestRequested.value = [];
     progress.value = 'Afhankelijkheden analyseren...';
 
     try {
@@ -198,29 +195,20 @@ export function useDependencies() {
       }
 
       // Phase 4: Request harvest for missing dependencies
+      const defaultProgress = total > 0
+        ? `${loadedDeps.value.length}/${total} wetten geladen`
+        : 'Geen afhankelijkheden';
+
       if (missingDeps.length > 0) {
         const harvestResult = await requestHarvest(missingDeps);
-        if (harvestResult?.results) {
-          const queued = harvestResult.results.filter(
-            (r) => r.status === 'queued',
-          );
-          harvestRequested.value = queued.map((r) => r.law_id);
-
-          if (queued.length > 0) {
-            progress.value =
-              `${loadedDeps.value.length}/${total} wetten geladen \u2014 ${queued.length} ontbrekende wet(ten) aangevraagd`;
-          } else {
-            progress.value = `${loadedDeps.value.length}/${total} wetten geladen`;
-          }
-        } else {
-          progress.value = total > 0
-            ? `${loadedDeps.value.length}/${total} wetten geladen`
-            : 'Geen afhankelijkheden';
-        }
+        const queued = harvestResult?.results?.filter(
+          (r) => r.status === 'queued',
+        ) ?? [];
+        progress.value = queued.length > 0
+          ? `${defaultProgress} \u2014 ${queued.length} ontbrekende wet(ten) aangevraagd`
+          : defaultProgress;
       } else {
-        progress.value = total > 0
-          ? `${loadedDeps.value.length}/${total} wetten geladen`
-          : 'Geen afhankelijkheden';
+        progress.value = defaultProgress;
       }
     } catch (e) {
       error.value = e.message || String(e);
@@ -229,7 +217,7 @@ export function useDependencies() {
     }
   }
 
-  return { loading, loadedDeps, progress, error, harvestRequested, loadAllDependencies };
+  return { loading, loadedDeps, progress, error, loadAllDependencies };
 }
 
 /**

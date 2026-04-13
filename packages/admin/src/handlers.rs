@@ -125,7 +125,7 @@ pub async fn list_law_entries(
     // interpolating it into the query string is safe.
     let query_str = if params.status.is_some() {
         format!(
-            "SELECT law_id, law_name, status, coverage_score, \
+            "SELECT law_id, law_name, slug, status, coverage_score, \
              harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
              created_at, updated_at \
              FROM law_entries WHERE status::text = $1 \
@@ -133,7 +133,7 @@ pub async fn list_law_entries(
         )
     } else {
         format!(
-            "SELECT law_id, law_name, status, coverage_score, \
+            "SELECT law_id, law_name, slug, status, coverage_score, \
              harvest_job_id, enrich_job_id, harvest_fail_count, enrich_fail_count, \
              created_at, updated_at \
              FROM law_entries \

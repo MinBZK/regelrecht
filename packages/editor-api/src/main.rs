@@ -19,6 +19,7 @@ use tower_sessions_memory_store::MemoryStore;
 use tower_sessions_sqlx_store::PostgresStore;
 use tracing_subscriber::EnvFilter;
 
+mod bwb_search;
 mod config;
 mod corpus_handlers;
 #[cfg(feature = "pipeline")]
@@ -102,7 +103,8 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
-        );
+        )
+        .route("/api/bwb/search", get(bwb_search::search_bwb));
 
     // Protected API routes — require authentication when OIDC is enabled.
     // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
@@ -132,10 +134,15 @@ async fn main() {
 
     #[cfg(feature = "pipeline")]
     {
-        protected_api_routes = protected_api_routes.route(
-            "/api/corpus/request-harvest",
-            post(harvest_handlers::request_harvest),
-        );
+        protected_api_routes = protected_api_routes
+            .route(
+                "/api/corpus/request-harvest",
+                post(harvest_handlers::request_harvest),
+            )
+            .route(
+                "/api/bwb/harvest",
+                post(harvest_handlers::harvest_by_bwb_id),
+            );
     }
 
     let protected_api_routes =
@@ -279,7 +286,8 @@ async fn serve(
 /// Returns `None` if `DATABASE_URL` is not set.
 #[cfg(feature = "pipeline")]
 async fn init_pipeline_pool() -> Option<sqlx::PgPool> {
-    let database_url = match env::var("DATABASE_URL") {
+    let database_url = match env::var("DATABASE_URL").or_else(|_| env::var("DATABASE_SERVER_FULL"))
+    {
         Ok(url) => url,
         Err(_) => {
             tracing::info!("DATABASE_URL not set — harvest request endpoint disabled");

@@ -58,6 +58,14 @@ pub async fn request_harvest(
             format!("too many law_ids: maximum is {MAX_LAW_IDS}"),
         ));
     }
+    for law_id in &body.law_ids {
+        if law_id.trim().is_empty() || law_id.len() > 256 {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "law_ids must be non-empty and at most 256 characters".to_string(),
+            ));
+        }
+    }
 
     let pool = match &state.pipeline_pool {
         Some(pool) => pool,
@@ -131,6 +139,47 @@ async fn find_bwb_id_by_slug(pool: &PgPool, slug: &str) -> Result<Option<String>
             .await?;
 
     Ok(row.map(|(law_id,)| law_id))
+}
+
+// --- BWB-ID-based harvest (used by the BWB search UI) ---
+
+#[derive(Deserialize)]
+pub struct BwbHarvestRequest {
+    pub bwb_id: String,
+}
+
+#[derive(Serialize)]
+pub struct BwbHarvestResponse {
+    pub bwb_id: String,
+    pub status: HarvestStatus,
+}
+
+pub async fn harvest_by_bwb_id(
+    State(state): State<AppState>,
+    Json(body): Json<BwbHarvestRequest>,
+) -> Result<Json<BwbHarvestResponse>, (StatusCode, String)> {
+    if !body.bwb_id.starts_with("BWBR") || body.bwb_id.len() > 20 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "bwb_id must start with BWBR and be at most 20 characters".to_string(),
+        ));
+    }
+
+    let pool = match &state.pipeline_pool {
+        Some(pool) => pool,
+        None => {
+            return Ok(Json(BwbHarvestResponse {
+                bwb_id: body.bwb_id,
+                status: HarvestStatus::HarvestDisabled,
+            }));
+        }
+    };
+
+    let result = create_harvest_job(pool, &body.bwb_id, &body.bwb_id).await;
+    Ok(Json(BwbHarvestResponse {
+        bwb_id: result.bwb_id.unwrap_or(body.bwb_id),
+        status: result.status,
+    }))
 }
 
 /// Create a high-priority harvest job for a law, with deduplication.

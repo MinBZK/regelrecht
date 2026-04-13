@@ -41,6 +41,28 @@ async fn test_upsert_law_without_name() {
 }
 
 #[tokio::test]
+async fn test_upsert_law_slug_preserved() {
+    let db = common::TestDb::new().await;
+
+    let entry = law_status::upsert_law(&db.pool, "slug_law", Some("Slug Law"), Some("slug_law"))
+        .await
+        .unwrap();
+    assert_eq!(entry.slug, Some("slug_law".to_string()));
+
+    // Upserting with None slug should preserve the original
+    let entry = law_status::upsert_law(&db.pool, "slug_law", None, None)
+        .await
+        .unwrap();
+    assert_eq!(entry.slug, Some("slug_law".to_string()));
+
+    // Upserting with a new slug should update it
+    let entry = law_status::upsert_law(&db.pool, "slug_law", None, Some("new_slug"))
+        .await
+        .unwrap();
+    assert_eq!(entry.slug, Some("new_slug".to_string()));
+}
+
+#[tokio::test]
 async fn test_update_status() {
     let db = common::TestDb::new().await;
 
