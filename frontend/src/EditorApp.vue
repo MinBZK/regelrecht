@@ -749,7 +749,7 @@ function handleActionSave() {
   </ndd-app-view>
 
   <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
-  <EditSheet :item="activeEditItem" @save="handleSave" @close="activeEditItem = null" />
+  <EditSheet :item="activeEditItem" :article="editedArticle" @save="handleSave" @close="activeEditItem = null" />
 </template>
 
 <style>

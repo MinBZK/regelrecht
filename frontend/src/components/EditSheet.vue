@@ -1,8 +1,10 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+import { collectAvailableVariables } from '../utils/operationTree.js';
 
 const props = defineProps({
   item: { type: Object, default: null },
+  article: { type: Object, default: null },
 });
 
 const emit = defineEmits(['save', 'close']);
@@ -13,6 +15,16 @@ const inputWrapperEl = ref(null);
 const values = ref({});
 
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
+
+// Available variables from the article's machine_readable for parameter
+// value dropdowns. Reuses the same collectAvailableVariables utility that
+// OperationSettings uses for subject dropdowns.
+const paramValueOptions = computed(() =>
+  collectAvailableVariables(props.article).map(v => ({
+    value: v.ref,
+    label: `${v.name.replace(/_/g, ' ')} (${v.category.toLowerCase()})`,
+  })),
+);
 
 // --- Law search / output selection ---
 let lawsCache = null;
@@ -93,12 +105,13 @@ function onOutputSelected(outputName) {
     }
     // Always set type from the source output — it's determined by the external law
     values.value.type = match.output_type || 'string';
-    // Pre-populate source parameters from the selected output's article
-    if (match.parameters?.length > 0) {
-      values.value.sourceParameters = match.parameters.map(p =>
-        makeParamRow(p.name, ''),
-      );
-    }
+    // Always reset and pre-populate source parameters from the selected
+    // output's article. Without the unconditional reset, switching to an
+    // output with fewer (or no) parameters would leave stale rows that
+    // produce invalid source.parameters on save.
+    values.value.sourceParameters = (match.parameters ?? []).map(p =>
+      makeParamRow(p.name, ''),
+    );
   }
 }
 
@@ -485,7 +498,7 @@ const sectionLabels = {
             <ndd-spacer size="8"></ndd-spacer>
             <ndd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
               <ndd-list-item
-                v-for="(param, idx) in values.sourceParameters"
+                v-for="param in values.sourceParameters"
                 :key="param._rowId"
                 size="md"
               >
@@ -494,12 +507,20 @@ const sectionLabels = {
                     size="md"
                     placeholder="naam"
                     :value="param.key"
+                    readonly
                     :data-testid="`source-param-key-${param._rowId}`"
-                    @input="param.key = $event.target?.value ?? $event.detail?.value ?? param.key"
                   ></ndd-text-field>
                 </ndd-cell>
                 <ndd-cell>
+                  <ndd-dropdown v-if="paramValueOptions.length > 0" size="md" :data-testid="`source-param-value-${param._rowId}`">
+                    <select :value="param.value" :aria-label="`Waarde voor ${param.key}`" @change="param.value = $event.target.value">
+                      <option value="">Selecteer...</option>
+                      <option v-if="param.value && !param.value.startsWith('$')" :value="param.value" :selected="true">{{ param.value }}</option>
+                      <option v-for="opt in paramValueOptions" :key="opt.value" :value="opt.value" :selected="opt.value === param.value">{{ opt.label }}</option>
+                    </select>
+                  </ndd-dropdown>
                   <ndd-text-field
+                    v-else
                     size="md"
                     placeholder="waarde (bijv. $bsn)"
                     :value="param.value"
@@ -507,22 +528,6 @@ const sectionLabels = {
                     @input="param.value = $event.target?.value ?? $event.detail?.value ?? param.value"
                   ></ndd-text-field>
                 </ndd-cell>
-                <ndd-cell>
-                  <ndd-icon-button
-                    icon="minus"
-                    title="Verwijder parameter"
-                    :data-testid="`source-param-remove-${param._rowId}`"
-                    @click="values.sourceParameters.splice(idx, 1)"
-                  ></ndd-icon-button>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-button
-                  start-icon="plus-small"
-                  data-testid="source-param-add-btn"
-                  text="Voeg parameter toe"
-                  @click="values.sourceParameters.push(makeParamRow())"
-                ></ndd-button>
               </ndd-list-item>
             </ndd-list>
           </template>

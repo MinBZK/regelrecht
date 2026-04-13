@@ -29,9 +29,15 @@ export const OPERATION_LABELS = {
 };
 
 export function collectAvailableVariables(article) {
-  if (!article?.machine_readable) return [];
+  // Engine built-in context variables — always available regardless of
+  // article content. `referencedate` is the calculation date injected by
+  // the engine from the scenario's "Given the calculation date is ..."
+  const vars = [
+    { name: 'referencedate', ref: '$referencedate', category: 'Context' },
+  ];
+
+  if (!article?.machine_readable) return vars;
   const mr = article.machine_readable;
-  const vars = [];
 
   if (mr.definitions) {
     for (const name of Object.keys(mr.definitions)) {
