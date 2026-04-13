@@ -25,7 +25,9 @@ const hasContent = computed(() =>
 
 const overallStatus = computed(() => {
   if (!props.result) return null;
-  for (const name of Object.keys(props.expectations)) {
+  const keys = Object.keys(props.expectations);
+  if (keys.length === 0) return null;
+  for (const name of keys) {
     if (matchStatus(name, props.result.outputs?.[name]) === 'failed') return 'failed';
   }
   return 'passed';
@@ -52,7 +54,7 @@ const overallStatus = computed(() => {
     <!-- Output summary — only outputs with expectations -->
     <ndd-simple-section v-if="Object.keys(expectations).length">
       <ndd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></ndd-title>
-      <div class="etv-expectations-block" :class="`etv-expectations-block--${overallStatus}`">
+      <div class="etv-expectations-block" :class="overallStatus ? `etv-expectations-block--${overallStatus}` : ''">
         <div
           v-for="name in Object.keys(expectations)"
           :key="name"

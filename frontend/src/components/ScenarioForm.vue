@@ -205,7 +205,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 
 const overallStatus = computed(() => {
   if (!result.value) return null;
-  for (const name of Object.keys(expectations.value)) {
+  const keys = Object.keys(expectations.value);
+  if (keys.length === 0) return null;
+  for (const name of keys) {
     if (matchStatus(name, result.value.outputs?.[name]) === 'failed') return 'failed';
   }
   return 'passed';
