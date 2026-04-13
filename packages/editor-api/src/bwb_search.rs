@@ -32,7 +32,8 @@ pub async fn search_bwb(
     }
 
     // Build CQL query: search by title, optionally filter to active laws
-    let cql = format!("overheidbwb.titel any \"{}\"", q.replace('"', ""));
+    let sanitized = q.replace(['\\', '"'], "");
+    let cql = format!("overheidbwb.titel any \"{sanitized}\"");
 
     let url = url::Url::parse_with_params(
         SRU_BASE,

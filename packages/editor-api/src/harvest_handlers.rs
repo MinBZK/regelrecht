@@ -95,8 +95,12 @@ pub async fn request_harvest(
     };
 
     let mut results = Vec::with_capacity(body.law_ids.len());
+    let mut seen = std::collections::HashSet::new();
 
     for slug in &body.law_ids {
+        if !seen.insert(slug) {
+            continue; // skip duplicate slugs
+        }
         if already_available.contains(slug) {
             results.push(HarvestSlugResult {
                 law_id: slug.clone(),
