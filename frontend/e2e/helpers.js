@@ -44,7 +44,7 @@ export async function interceptLaw(page, lawId, fixtureName) {
  * @param {string} [lawId] - law query param
  */
 export async function gotoEditor(page, lawId = 'zorgtoeslagwet') {
-  await page.goto(`/editor.html?law=${lawId}`);
+  await page.goto(`/editor/${lawId}`);
   // Wait for the document tab bar to appear (articles loaded)
   await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
 }

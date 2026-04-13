@@ -19,7 +19,7 @@ test.describe('Full round-trip', () => {
     await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fullYaml })
     );
-    await page.goto('/editor.html?law=zorgtoeslagwet');
+    await page.goto('/editor/zorgtoeslagwet');
     await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
 
     // Article 1a: simple definition

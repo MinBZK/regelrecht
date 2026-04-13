@@ -41,7 +41,7 @@ test.describe('Complex actions', () => {
     await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor.html?law=zorgtoeslagwet');
+    await page.goto('/editor/zorgtoeslagwet');
     await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
@@ -133,7 +133,7 @@ test.describe('Complex actions', () => {
     await page.route('**/api/corpus/laws/zorgtoeslagwet', route =>
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
-    await page.goto('/editor.html?law=zorgtoeslagwet');
+    await page.goto('/editor/zorgtoeslagwet');
     await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');

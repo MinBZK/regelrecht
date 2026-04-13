@@ -62,9 +62,12 @@ frontend/
 │   ├── reset.css       # CSS reset
 │   └── variables.css   # Design tokens
 ├── fonts/              # Rijksoverheid fonts
-├── index.html          # Browser view
-├── editor.html         # Editor view
-└── main.js             # JavaScript entry point
+├── index.html          # Single-page app entry point
+└── src/
+    ├── main.js         # Vue app bootstrap + router
+    ├── router.js       # Vue Router (Library + Editor routes)
+    ├── LibraryApp.vue  # Library view (/library)
+    └── EditorApp.vue   # Editor view (/editor/:lawId?)
 ```
 
 ## Components
