@@ -22,6 +22,14 @@ function matchStatus(outputName, actualValue) {
 const hasContent = computed(() =>
   props.result || props.traceText || props.error,
 );
+
+const overallStatus = computed(() => {
+  if (!props.result) return null;
+  for (const name of Object.keys(props.expectations)) {
+    if (matchStatus(name, props.result.outputs?.[name]) === 'failed') return 'failed';
+  }
+  return 'passed';
+});
 </script>
 
 <template>
@@ -44,33 +52,27 @@ const hasContent = computed(() =>
     <!-- Output summary — only outputs with expectations -->
     <ndd-simple-section v-if="Object.keys(expectations).length">
       <ndd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></ndd-title>
-      <div class="etv-outputs">
-        <template
+      <div class="etv-expectations-block" :class="`etv-expectations-block--${overallStatus}`">
+        <div
           v-for="name in Object.keys(expectations)"
           :key="name"
+          class="etv-expectation-item"
         >
-          <div
-            v-for="status in [matchStatus(name, result.outputs?.[name])]"
-            :key="name"
-            class="etv-output-row"
-            :class="`etv-output-row--${status}`"
-          >
-            <div class="etv-output-name">{{ name }}</div>
-            <div class="etv-output-detail">
-              <span class="etv-output-expected">{{ formatValue(normalizeForCompare(expectations[name])) }}</span>
-              <span class="etv-output-arrow">&rarr;</span>
-              <span class="etv-output-actual">{{ formatOutputValue(result.outputs?.[name], name) }}</span>
-              <span
-                v-if="status === 'passed'"
-                class="etv-badge etv-badge--pass"
-              >GESLAAGD</span>
-              <span
-                v-if="status === 'failed'"
-                class="etv-badge etv-badge--fail"
-              >MISLUKT</span>
-            </div>
-          </div>
-        </template>
+          <span class="etv-expectation-name">{{ name }}</span>
+          <span class="etv-expectation-detail">
+            <span>{{ formatValue(normalizeForCompare(expectations[name])) }}</span>
+            <span class="etv-expectation-arrow">&rarr;</span>
+            <span>{{ formatOutputValue(result.outputs?.[name], name) }}</span>
+            <span
+              v-if="matchStatus(name, result.outputs?.[name]) === 'passed'"
+              class="etv-badge etv-badge--pass"
+            >GESLAAGD</span>
+            <span
+              v-if="matchStatus(name, result.outputs?.[name]) === 'failed'"
+              class="etv-badge etv-badge--fail"
+            >MISLUKT</span>
+          </span>
+        </div>
       </div>
     </ndd-simple-section>
 
@@ -93,49 +95,47 @@ const hasContent = computed(() =>
   margin-bottom: 4px;
 }
 
-.etv-outputs {
+/* Single continuous block with left border */
+.etv-expectations-block {
+  border-left: 3px solid transparent;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.etv-output-row {
-  border-left: 3px solid transparent;
-  padding: 6px 10px;
-  border-radius: 4px;
-  background: var(--semantics-surface-color-secondary, #f5f5f5);
-}
-
-.etv-output-row--passed {
+.etv-expectations-block--passed {
   border-left-color: #2e7d32;
 }
 
-.etv-output-row--failed {
+.etv-expectations-block--failed {
   border-left-color: #c62828;
 }
 
-.etv-output-name {
-  font-weight: 600;
-  font-size: 13px;
-  margin-bottom: 2px;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.etv-output-detail {
+.etv-expectation-item {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
   font-size: 13px;
 }
 
-.etv-output-expected,
-.etv-output-actual {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
+.etv-expectation-name {
+  font-weight: 600;
+  color: var(--semantics-text-color-primary, #1C2029);
 }
 
-.etv-output-arrow {
+.etv-expectation-detail {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--semantics-text-color-primary, #1C2029);
+}
+
+.etv-expectation-arrow {
   flex-shrink: 0;
   color: var(--semantics-text-color-secondary, #666);
 }
