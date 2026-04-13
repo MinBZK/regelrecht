@@ -200,6 +200,12 @@ function onShowDetails(index) {
   }
 }
 
+function onAccordionToggle(event, index) {
+  if (event.target.open) {
+    onShowDetails(index);
+  }
+}
+
 // Memoized setup per scenario (avoids new object on every render)
 const scenarioSetups = computed(() => {
   if (!formState.value) return [];
@@ -290,6 +296,7 @@ async function onSave() {
           v-for="(scenario, i) in formState.scenarios"
           :key="i"
           class="sb-accordion"
+          @toggle="onAccordionToggle($event, i)"
         >
           <summary
             class="sb-accordion-header"

@@ -180,6 +180,7 @@ function handleScenarioExecuted({ result, traceText, error, expectations, scenar
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
+  rightPaneView.value = 'result';
 }
 
 // --- Editor state ---
