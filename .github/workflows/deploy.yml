@@ -27,6 +27,7 @@ jobs:
       admin: ${{ steps.filter.outputs.admin }}
       harvester-worker: ${{ steps.filter.outputs.harvester-worker }}
       enrich-worker: ${{ steps.filter.outputs.enrich-worker }}
+      pipeline-api: ${{ steps.filter.outputs.pipeline-api }}
       grafana: ${{ steps.filter.outputs.grafana }}
       lawmaking: ${{ steps.filter.outputs.lawmaking }}
       landing: ${{ steps.filter.outputs.landing }}
@@ -67,6 +68,12 @@ jobs:
               - 'packages/shared/**'
               - 'packages/Cargo.lock'
               - '.claude/skills/law-*/**'
+            pipeline-api:
+              - 'packages/pipeline/**'
+              - 'packages/corpus/**'
+              - 'packages/harvester/**'
+              - 'packages/shared/**'
+              - 'packages/Cargo.lock'
             grafana:
               - 'packages/grafana/**'
             lawmaking:
@@ -138,6 +145,18 @@ jobs:
       cache-scope: enrich-worker
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
+  build-pipeline-api:
+    needs: changes
+    if: github.event.action != 'closed' && needs.changes.outputs.pipeline-api == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image-name: minbzk/regelrecht-pipeline-api
+      dockerfile: packages/pipeline/Dockerfile.pipeline-api
+      cache-scope: pipeline-api
+
   build-grafana:
     needs: changes
     if: >-
@@ -197,7 +216,7 @@ jobs:
   deploy-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-lawmaking, build-landing, build-docs, changes]
+    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-lawmaking, build-landing, build-docs, changes]
     if: >-
       always() &&
       github.event_name == 'pull_request' && github.event.action != 'closed' &&
@@ -207,6 +226,7 @@ jobs:
         needs.build-admin.result == 'success' ||
         needs.build-harvester-worker.result == 'success' ||
         needs.build-enrich-worker.result == 'success' ||
+        needs.build-pipeline-api.result == 'success' ||
         needs.build-lawmaking.result == 'success' ||
         needs.build-landing.result == 'success' ||
         needs.build-docs.result == 'success'
@@ -263,6 +283,22 @@ jobs:
           deployment-name: pr${{ github.event.pull_request.number }}
           component: enrichworker
           image: ${{ env.REGISTRY }}/minbzk/regelrecht-enrich-worker:sha-${{ steps.sha.outputs.short }}
+          domain-format: component-deployment-project
+          clone-from: regelrecht
+          force-clone: false
+          comment-on-pr: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-header: '## Preview Deployment'
+
+      - name: Deploy pipeline-api to ZAD (Preview)
+        if: needs.build-pipeline-api.result == 'success'
+        uses: RijksICTGilde/zad-actions/deploy@v4
+        with:
+          api-key: ${{ secrets.RIG_API_KEY }}
+          project-id: ${{ env.ZAD_PROJECT }}
+          deployment-name: pr${{ github.event.pull_request.number }}
+          component: pipeline-api
+          image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
           domain-format: component-deployment-project
           clone-from: regelrecht
           force-clone: false
@@ -339,7 +375,7 @@ jobs:
   deploy-production:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-grafana, build-lawmaking, build-landing, build-docs]
+    needs: [build, build-admin, build-harvester-worker, build-enrich-worker, build-pipeline-api, build-grafana, build-lawmaking, build-landing, build-docs]
     if: >-
       always() &&
       github.ref == 'refs/heads/main' && github.event_name == 'push' &&
@@ -349,6 +385,7 @@ jobs:
         needs.build-admin.result == 'success' ||
         needs.build-harvester-worker.result == 'success' ||
         needs.build-enrich-worker.result == 'success' ||
+        needs.build-pipeline-api.result == 'success' ||
         needs.build-grafana.result == 'success' ||
         needs.build-lawmaking.result == 'success' ||
         needs.build-landing.result == 'success' ||
@@ -373,6 +410,16 @@ jobs:
           deployment-name: regelrecht
           component: harvester-admin
           image: ${{ env.REGISTRY }}/minbzk/regelrecht-admin:sha-${{ steps.sha.outputs.short }}
+
+      - name: Deploy pipeline-api to ZAD (Production)
+        if: needs.build-pipeline-api.result == 'success'
+        uses: RijksICTGilde/zad-actions/deploy@v4
+        with:
+          api-key: ${{ secrets.RIG_API_KEY }}
+          project-id: ${{ env.ZAD_PROJECT }}
+          deployment-name: regelrecht
+          component: pipeline-api
+          image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
 
       - name: Deploy editor to ZAD (Production)
         if: needs.build.result == 'success'
@@ -471,6 +518,7 @@ jobs:
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-admin", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-harvester-worker", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-enrich-worker", "tag": "pr-${{ github.event.pull_request.number }}"},
+              {"org": "${{ github.repository_owner }}", "name": "regelrecht-pipeline-api", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-lawmaking", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-landing", "tag": "pr-${{ github.event.pull_request.number }}"},
               {"org": "${{ github.repository_owner }}", "name": "regelrecht-docs", "tag": "pr-${{ github.event.pull_request.number }}"}
@@ -483,7 +531,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
-          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-grafana regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
+          for PACKAGE in regelrecht-editor regelrecht-admin regelrecht-harvester-worker regelrecht-enrich-worker regelrecht-pipeline-api regelrecht-grafana regelrecht-lawmaking regelrecht-landing regelrecht-docs; do
             echo "Pruning sha-only images for $PACKAGE..."
             gh api --paginate \
               "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE}/versions" \
