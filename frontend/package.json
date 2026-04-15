@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@cucumber/gherkin": "^39.0.0",
-    "@cucumber/messages": "^32.2.0",
+    "@cucumber/messages": "^32.3.1",
     "@minbzk/storybook": "^0.8.24"
   },
   "overrides": {
@@ -23,13 +23,13 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
-    "@vitejs/plugin-vue": "^6.0.5",
+    "@vitejs/plugin-vue": "^6.0.6",
     "@vue/test-utils": "^2.4.6",
-    "happy-dom": "^20.8.8",
+    "happy-dom": "^20.9.0",
     "js-yaml": "^4.1.1",
-    "vite": "^8.0.3",
-    "vitest": "^4.1.2",
-    "vue": "^3.5.31",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4",
+    "vue": "^3.5.32",
     "vue-router": "^5.0.4"
   }
 }
