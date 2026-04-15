@@ -6,7 +6,7 @@
 //! - Type of regulation (soort-regeling)
 //! - Publication date
 
-use reqwest::blocking::Client;
+use reqwest::Client;
 use roxmltree::Document;
 
 use crate::config::wti_url;
@@ -22,9 +22,9 @@ use crate::types::{LawMetadata, RegulatoryLayer};
 ///
 /// # Returns
 /// Raw XML content as a string
-pub fn download_wti_xml(client: &Client, bwb_id: &str) -> Result<String> {
+pub async fn download_wti_xml(client: &Client, bwb_id: &str) -> Result<String> {
     let url = wti_url(bwb_id);
-    let bytes = download_bytes_default(client, &url).map_err(|e| {
+    let bytes = download_bytes_default(client, &url).await.map_err(|e| {
         if let HarvesterError::Http(source) = e {
             HarvesterError::WtiDownload {
                 bwb_id: bwb_id.to_string(),
@@ -52,8 +52,8 @@ pub fn download_wti_xml(client: &Client, bwb_id: &str) -> Result<String> {
 ///
 /// # Returns
 /// `WtiParseResult` with extracted metadata and any warnings
-pub fn download_wti(client: &Client, bwb_id: &str) -> Result<WtiParseResult> {
-    let xml = download_wti_xml(client, bwb_id)?;
+pub async fn download_wti(client: &Client, bwb_id: &str) -> Result<WtiParseResult> {
+    let xml = download_wti_xml(client, bwb_id).await?;
     let doc = Document::parse(&xml)?;
     Ok(parse_wti_metadata(&doc))
 }

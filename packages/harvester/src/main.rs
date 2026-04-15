@@ -3,7 +3,8 @@
 use regelrecht_harvester::cli;
 use tracing_subscriber::EnvFilter;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Initialize tracing with WARN level by default, respecting RUST_LOG
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -12,7 +13,7 @@ fn main() {
         .with_target(false)
         .init();
 
-    if let Err(e) = cli::run() {
+    if let Err(e) = cli::run().await {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }

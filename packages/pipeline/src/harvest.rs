@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
@@ -65,28 +65,23 @@ pub async fn execute_harvest(
     output_base: &str,
     http_client: &Client,
 ) -> Result<(HarvestResult, Vec<PathBuf>)> {
-    let bwb_id_for_manifest = payload.bwb_id.clone();
-    let date_for_manifest = payload.date.clone();
-    let client_for_manifest = http_client.clone();
-    let effective_date = tokio::task::spawn_blocking(move || {
-        let bwb_manifest = manifest::download_manifest(&client_for_manifest, &bwb_id_for_manifest)?;
-        manifest::resolve_consolidation_date(&bwb_manifest, date_for_manifest.as_deref())
-    })
-    .await??;
+    let bwb_manifest = manifest::download_manifest(http_client, &payload.bwb_id).await?;
+    let effective_date =
+        manifest::resolve_consolidation_date(&bwb_manifest, payload.date.as_deref())?;
     tracing::info!(bwb_id = %payload.bwb_id, resolved_date = %effective_date, "resolved consolidation date from manifest");
-    let bwb_id = payload.bwb_id.clone();
-    let date_for_download = effective_date.clone();
-    let max_size_mb = payload.max_size_mb;
 
     tracing::info!(bwb_id = %payload.bwb_id, date = %effective_date, "downloading law XML from BWB");
-    let law = tokio::task::spawn_blocking(move || {
-        if let Some(max_mb) = max_size_mb {
-            regelrecht_harvester::download_law_with_max_size(&bwb_id, &date_for_download, max_mb)
-        } else {
-            regelrecht_harvester::download_law(&bwb_id, &date_for_download)
-        }
-    })
-    .await??;
+    let law = if let Some(max_mb) = payload.max_size_mb {
+        regelrecht_harvester::download_law_with_max_size(
+            http_client,
+            &payload.bwb_id,
+            &effective_date,
+            max_mb,
+        )
+        .await?
+    } else {
+        regelrecht_harvester::download_law(http_client, &payload.bwb_id, &effective_date).await?
+    };
 
     tracing::info!(bwb_id = %payload.bwb_id, title = %law.metadata.title, "law XML downloaded successfully");
     let law_name = law.metadata.title.clone();

@@ -1,9 +1,8 @@
 //! HTTP client wrapper for downloading from BWB repository.
 
-use std::thread;
 use std::time::Duration;
 
-use reqwest::blocking::Client;
+use reqwest::Client;
 
 use crate::config::{DEFAULT_MAX_RESPONSE_SIZE, HTTP_TIMEOUT_SECS};
 use crate::error::{HarvesterError, Result};
@@ -20,7 +19,7 @@ const RETRY_BASE_DELAY_MS: u64 = 500;
 /// Create a configured HTTP client.
 ///
 /// # Returns
-/// A `reqwest::blocking::Client` configured with appropriate timeout and user agent.
+/// A `reqwest::Client` configured with appropriate timeout and user agent.
 pub fn create_client() -> Result<Client> {
     let client = Client::builder()
         .timeout(Duration::from_secs(HTTP_TIMEOUT_SECS))
@@ -40,7 +39,7 @@ pub fn create_client() -> Result<Client> {
 ///
 /// # Returns
 /// Raw bytes of the response body
-pub fn download_bytes(client: &Client, url: &str, max_size: u64) -> Result<Vec<u8>> {
+pub async fn download_bytes(client: &Client, url: &str, max_size: u64) -> Result<Vec<u8>> {
     let mut last_error: Option<String> = None;
 
     for attempt in 0..MAX_RETRIES {
@@ -48,10 +47,10 @@ pub fn download_bytes(client: &Client, url: &str, max_size: u64) -> Result<Vec<u
             // Exponential backoff: 500ms, 1000ms, 2000ms
             let delay = RETRY_BASE_DELAY_MS * (1 << (attempt - 1));
             tracing::debug!(attempt, delay_ms = delay, "Retrying after delay");
-            thread::sleep(Duration::from_millis(delay));
+            tokio::time::sleep(Duration::from_millis(delay)).await;
         }
 
-        match client.get(url).send() {
+        match client.get(url).send().await {
             Ok(response) => {
                 let status = response.status();
 
@@ -80,7 +79,7 @@ pub fn download_bytes(client: &Client, url: &str, max_size: u64) -> Result<Vec<u
                     }
                 }
 
-                let bytes = response.bytes()?;
+                let bytes = response.bytes().await?;
 
                 // Also check actual size (Content-Length may be missing or wrong)
                 if bytes.len() as u64 > max_size {
@@ -127,8 +126,8 @@ pub fn download_bytes(client: &Client, url: &str, max_size: u64) -> Result<Vec<u
 ///
 /// # Returns
 /// Raw bytes of the response body
-pub fn download_bytes_default(client: &Client, url: &str) -> Result<Vec<u8>> {
-    download_bytes(client, url, DEFAULT_MAX_RESPONSE_SIZE)
+pub async fn download_bytes_default(client: &Client, url: &str) -> Result<Vec<u8>> {
+    download_bytes(client, url, DEFAULT_MAX_RESPONSE_SIZE).await
 }
 
 /// Convert bytes to a string, preferring strict UTF-8 but falling back to lossy conversion.

@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use sqlx::PgPool;
 use tokio::signal::unix::{signal, SignalKind};
 
