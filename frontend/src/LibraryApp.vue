@@ -6,6 +6,7 @@ import ArticleText from './components/ArticleText.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
+import SearchWindow from './components/SearchWindow.vue';
 import { useAuth } from './composables/useAuth.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
@@ -17,7 +18,21 @@ const laws = ref([]);
 const favorites = ref(null);
 const loading = ref(true);
 const indexError = ref(null);
-const search = ref('');
+const searchOpen = ref(false);
+const searchAnchorRef = ref(null);
+const searchAnchorRect = ref(null);
+
+function openSearch() {
+  if (searchOpen.value) return;
+  const el = searchAnchorRef.value;
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    const pad = 13;
+    const maxWidth = Math.min(800, window.innerWidth - rect.left + pad - 16);
+    searchAnchorRect.value = { top: rect.top - pad, left: rect.left - pad, width: maxWidth };
+  }
+  searchOpen.value = true;
+}
 
 const selectedLawId = ref(null);
 const selectedLaw = shallowRef(null);
@@ -32,18 +47,13 @@ function onDetailViewChange(event) {
   if (value) detailView.value = value;
 }
 
-const filteredLaws = computed(() => {
-  let list = laws.value;
+const sidebarLaws = computed(() => {
+  const list = laws.value;
   if (favorites.value) {
     const favList = list.filter(law => favorites.value.has(law.law_id));
-    if (favList.length > 0) list = favList;
+    if (favList.length > 0) return favList;
   }
-  const q = search.value.toLowerCase();
-  if (!q) return list;
-  return list.filter(law =>
-    law.law_id.toLowerCase().includes(q) ||
-    displayName(law).toLowerCase().includes(q)
-  );
+  return list;
 });
 
 const articles = computed(() => selectedLaw.value?.articles ?? []);
@@ -184,7 +194,7 @@ onBeforeRouteUpdate((to) => {
     selectedArticleNumber.value = null;
     activeAction.value = null;
     lawError.value = null;
-    const list = filteredLaws.value;
+    const list = sidebarLaws.value;
     if (list.length > 0) {
       const firstLawId = list[0].law_id;
       selectedLawId.value = firstLawId;
@@ -234,9 +244,11 @@ loadIndex();
             </ndd-toolbar-item>
             <ndd-toolbar-item slot="center" min-width="240px" width="40%">
               <ndd-search-field
+                ref="searchAnchorRef"
                 size="md"
                 placeholder="Zoeken"
-                @input="search = $event.target.value"
+                @focus="openSearch"
+                @click="openSearch"
               ></ndd-search-field>
             </ndd-toolbar-item>
             <ndd-toolbar-item slot="end">
@@ -283,7 +295,7 @@ loadIndex();
                 <ndd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></ndd-inline-dialog>
                 <ndd-list v-else variant="simple">
                   <ndd-list-item
-                    v-for="law in filteredLaws"
+                    v-for="law in sidebarLaws"
                     :key="law.law_id"
                     size="md"
                     type="button"
@@ -398,6 +410,12 @@ loadIndex();
   <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
        so the output field is hidden and the footer button just closes the sheet. -->
   <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" />
+  <SearchWindow
+    v-model="searchOpen"
+    :laws="laws"
+    :anchor-rect="searchAnchorRect"
+    @select-law="selectLaw"
+  />
 </template>
 
 <style scoped>
