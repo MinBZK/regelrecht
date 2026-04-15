@@ -131,6 +131,12 @@ async function toggleFavorite(lawId) {
       else reverted.delete(lawId);
       favorites.value = reverted;
     }
+  } catch {
+    // Revert on network error
+    const reverted = new Set(favorites.value);
+    if (isFav) reverted.add(lawId);
+    else reverted.delete(lawId);
+    favorites.value = reverted;
   } finally {
     togglingFavorites.value.delete(lawId);
   }
