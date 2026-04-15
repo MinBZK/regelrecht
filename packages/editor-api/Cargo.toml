@@ -15,6 +15,7 @@ path = "src/main.rs"
 axum = "0.8"
 regelrecht-auth = { path = "../auth" }
 regelrecht-corpus = { path = "../corpus", features = ["github"] }
+regelrecht-pipeline = { path = "../pipeline" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 tower-sessions = "0.14"
