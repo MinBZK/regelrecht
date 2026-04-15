@@ -388,39 +388,43 @@ async fn process_next_job(
                             threshold = config.exhausted_threshold,
                             "scheduling auto-retry harvest job"
                         );
-                        let retry_payload = HarvestPayload {
-                            bwb_id: payload.bwb_id.clone(),
-                            date: payload.date.clone(),
-                            max_size_mb: payload.max_size_mb,
-                            depth: payload.depth,
-                        };
-                        if let Ok(payload_json) = serde_json::to_value(&retry_payload) {
-                            let date = payload.date.as_deref().unwrap_or("");
-                            let req = CreateJobRequest::new(JobType::Harvest, &job.law_id)
-                                .with_priority(Priority::new(job.priority))
-                                .with_payload(payload_json);
-                            match job_queue::create_harvest_job_if_not_exists(pool, req, date).await
-                            {
-                                Ok(Some(new_job)) => {
-                                    tracing::info!(
-                                        new_job_id = %new_job.id,
-                                        law_id = %job.law_id,
-                                        "auto-retry harvest job created"
-                                    );
+                        match serde_json::to_value(&payload) {
+                            Ok(payload_json) => {
+                                let date = payload.date.as_deref().unwrap_or("");
+                                let req = CreateJobRequest::new(JobType::Harvest, &job.law_id)
+                                    .with_priority(Priority::new(job.priority))
+                                    .with_payload(payload_json);
+                                match job_queue::create_harvest_job_if_not_exists(pool, req, date)
+                                    .await
+                                {
+                                    Ok(Some(new_job)) => {
+                                        tracing::info!(
+                                            new_job_id = %new_job.id,
+                                            law_id = %job.law_id,
+                                            "auto-retry harvest job created"
+                                        );
+                                    }
+                                    Ok(None) => {
+                                        tracing::debug!(
+                                            law_id = %job.law_id,
+                                            "auto-retry harvest job skipped: active job already exists"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            law_id = %job.law_id,
+                                            "failed to create auto-retry harvest job"
+                                        );
+                                    }
                                 }
-                                Ok(None) => {
-                                    tracing::debug!(
-                                        law_id = %job.law_id,
-                                        "auto-retry harvest job skipped: active job already exists"
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        error = %e,
-                                        law_id = %job.law_id,
-                                        "failed to create auto-retry harvest job"
-                                    );
-                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    law_id = %job.law_id,
+                                    "failed to serialize retry payload, skipping auto-retry harvest job"
+                                );
                             }
                         }
                     }
@@ -1035,31 +1039,40 @@ async fn handle_enrich_exhausted_or_retry(
                 threshold = exhausted_threshold,
                 "scheduling auto-retry enrich job"
             );
-            if let Ok(payload_json) = serde_json::to_value(payload) {
-                let req = CreateJobRequest::new(JobType::Enrich, law_id)
-                    .with_priority(Priority::new(priority))
-                    .with_payload(payload_json);
-                match job_queue::create_enrich_job_if_not_exists(pool, req).await {
-                    Ok(Some(new_job)) => {
-                        tracing::info!(
-                            new_job_id = %new_job.id,
-                            law_id = %law_id,
-                            "auto-retry enrich job created"
-                        );
+            match serde_json::to_value(payload) {
+                Ok(payload_json) => {
+                    let req = CreateJobRequest::new(JobType::Enrich, law_id)
+                        .with_priority(Priority::new(priority))
+                        .with_payload(payload_json);
+                    match job_queue::create_enrich_job_if_not_exists(pool, req).await {
+                        Ok(Some(new_job)) => {
+                            tracing::info!(
+                                new_job_id = %new_job.id,
+                                law_id = %law_id,
+                                "auto-retry enrich job created"
+                            );
+                        }
+                        Ok(None) => {
+                            tracing::debug!(
+                                law_id = %law_id,
+                                "auto-retry enrich job skipped: active job already exists"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                law_id = %law_id,
+                                "failed to create auto-retry enrich job"
+                            );
+                        }
                     }
-                    Ok(None) => {
-                        tracing::debug!(
-                            law_id = %law_id,
-                            "auto-retry enrich job skipped: active job already exists"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            law_id = %law_id,
-                            "failed to create auto-retry enrich job"
-                        );
-                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        law_id = %law_id,
+                        "failed to serialize retry payload, skipping auto-retry enrich job"
+                    );
                 }
             }
         }
