@@ -41,12 +41,20 @@ pub async fn list(
     Ok(Json(rows.into_iter().map(|(id,)| id).collect()))
 }
 
+fn validate_law_id(law_id: &str) -> Result<(), StatusCode> {
+    if law_id.is_empty() || law_id.len() > 256 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    Ok(())
+}
+
 /// PUT /api/favorites/{law_id} — add a law to the user's favorites.
 pub async fn add(
     State(state): State<AppState>,
     session: Session,
     Path(law_id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    validate_law_id(&law_id)?;
     let person_sub = get_person_sub(&session).await?;
     let pool = get_pool(&state)?;
 
@@ -71,6 +79,7 @@ pub async fn remove(
     session: Session,
     Path(law_id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
+    validate_law_id(&law_id)?;
     let person_sub = get_person_sub(&session).await?;
     let pool = get_pool(&state)?;
 

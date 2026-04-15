@@ -98,14 +98,21 @@ async function loadFavorites() {
     if (res.ok) {
       const favIds = await res.json();
       favorites.value = new Set(favIds);
+    } else if (res.status >= 500) {
+      console.warn(`Failed to load favorites: ${res.status}`);
     }
   } catch {
     // Not authenticated or endpoint unavailable — no favorites
   }
 }
 
+const togglingFavorites = ref(new Set());
+
 async function toggleFavorite(lawId) {
   if (!authenticated.value || !lawId) return;
+  if (togglingFavorites.value.has(lawId)) return;
+
+  togglingFavorites.value.add(lawId);
   const isFav = favorites.value?.has(lawId);
 
   // Optimistic update
@@ -114,24 +121,29 @@ async function toggleFavorite(lawId) {
   else updated.add(lawId);
   favorites.value = updated;
 
-  const method = isFav ? 'DELETE' : 'PUT';
-  const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
-  if (!res.ok) {
-    // Revert on failure
-    const reverted = new Set(favorites.value);
-    if (isFav) reverted.add(lawId);
-    else reverted.delete(lawId);
-    favorites.value = reverted;
+  try {
+    const method = isFav ? 'DELETE' : 'PUT';
+    const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
+    if (!res.ok) {
+      // Revert on failure
+      const reverted = new Set(favorites.value);
+      if (isFav) reverted.add(lawId);
+      else reverted.delete(lawId);
+      favorites.value = reverted;
+    }
+  } finally {
+    togglingFavorites.value.delete(lawId);
   }
 }
 
 async function loadIndex() {
   try {
-    const corpusRes = await fetch('/api/corpus/laws?limit=1000');
+    const [corpusRes] = await Promise.all([
+      fetch('/api/corpus/laws?limit=1000'),
+      loadFavorites(),
+    ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
     const corpusLaws = await corpusRes.json();
-
-    await loadFavorites();
 
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
 
