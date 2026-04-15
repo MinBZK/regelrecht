@@ -121,22 +121,19 @@ async function toggleFavorite(lawId) {
   else updated.add(lawId);
   favorites.value = updated;
 
-  try {
-    const method = isFav ? 'DELETE' : 'PUT';
-    const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
-    if (!res.ok) {
-      // Revert on failure
-      const reverted = new Set(favorites.value);
-      if (isFav) reverted.add(lawId);
-      else reverted.delete(lawId);
-      favorites.value = reverted;
-    }
-  } catch {
-    // Revert on network error
+  const revert = () => {
     const reverted = new Set(favorites.value);
     if (isFav) reverted.add(lawId);
     else reverted.delete(lawId);
     favorites.value = reverted;
+  };
+
+  try {
+    const method = isFav ? 'DELETE' : 'PUT';
+    const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
+    if (!res.ok) revert();
+  } catch {
+    revert();
   } finally {
     togglingFavorites.value.delete(lawId);
   }
@@ -146,7 +143,7 @@ async function loadIndex() {
   try {
     const [corpusRes] = await Promise.all([
       fetch('/api/corpus/laws?limit=1000'),
-      loadFavorites(),
+      authenticated.value ? loadFavorites() : Promise.resolve(),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
     const corpusLaws = await corpusRes.json();

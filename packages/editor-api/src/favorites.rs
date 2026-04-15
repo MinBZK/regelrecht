@@ -58,7 +58,7 @@ pub async fn add(
     let person_sub = get_person_sub(&session).await?;
     let pool = get_pool(&state)?;
 
-    sqlx::query(
+    let result = sqlx::query(
         "INSERT INTO user_favorites (person_sub, law_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )
     .bind(&person_sub)
@@ -70,7 +70,11 @@ pub async fn add(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok(StatusCode::CREATED)
+    if result.rows_affected() > 0 {
+        Ok(StatusCode::CREATED)
+    } else {
+        Ok(StatusCode::NO_CONTENT)
+    }
 }
 
 /// DELETE /api/favorites/{law_id} — remove a law from the user's favorites.
