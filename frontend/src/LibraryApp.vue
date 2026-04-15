@@ -23,6 +23,7 @@ const searchAnchorRef = ref(null);
 const searchAnchorRect = ref(null);
 
 function openSearch() {
+  if (searchOpen.value) return;
   const el = searchAnchorRef.value;
   if (el) {
     const rect = el.getBoundingClientRect();
@@ -412,7 +413,6 @@ loadIndex();
   <SearchWindow
     v-model="searchOpen"
     :laws="laws"
-    :favorites="favorites"
     :anchor-rect="searchAnchorRect"
     @select-law="selectLaw"
   />

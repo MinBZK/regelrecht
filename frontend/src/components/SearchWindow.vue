@@ -3,7 +3,6 @@ import { ref, computed, watch, nextTick } from 'vue';
 
 const props = defineProps({
   laws: { type: Array, default: () => [] },
-  favorites: { type: Object, default: null },
   modelValue: { type: Boolean, default: false },
   anchorRect: { type: Object, default: null },
 });
