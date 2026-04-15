@@ -243,7 +243,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo registry (shared)
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
             ~/.cargo/registry
@@ -252,7 +252,7 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-registry-
 
       - name: Cache cargo target
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: packages/target
           key: ${{ runner.os }}-cargo-target-precommit-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
@@ -279,7 +279,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
             ~/.cargo/registry
@@ -289,7 +289,7 @@ jobs:
 
       - name: Cache cargo target
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: packages/target
           key: ${{ runner.os }}-cargo-target-test-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
@@ -320,7 +320,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
             ~/.cargo/registry
@@ -330,7 +330,7 @@ jobs:
 
       - name: Cache cargo target
         if: needs.changes.outputs.ci == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: packages/target
           key: ${{ runner.os }}-cargo-target-wasm-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
@@ -359,7 +359,7 @@ jobs:
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7  # stable
 
       - name: Cache cargo registry (shared)
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
             ~/.cargo/registry
@@ -426,7 +426,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.admin == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
             ~/.cargo/registry
@@ -436,7 +436,7 @@ jobs:
 
       - name: Cache cargo target
         if: needs.changes.outputs.admin == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: packages/target
           key: ${{ runner.os }}-cargo-target-admin-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
@@ -504,7 +504,7 @@ jobs:
 
       - name: Cache cargo registry (shared)
         if: needs.changes.outputs.editor-api == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
             ~/.cargo/registry
@@ -514,7 +514,7 @@ jobs:
 
       - name: Cache cargo target
         if: needs.changes.outputs.editor-api == 'true'
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7  # v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: packages/target
           key: ${{ runner.os }}-cargo-target-editor-api-${{ hashFiles('packages/**/Cargo.toml', 'packages/Cargo.lock') }}
