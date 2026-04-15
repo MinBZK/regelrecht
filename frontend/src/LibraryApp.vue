@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef } from 'vue';
+import { ref, computed, shallowRef, watch } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -8,8 +8,16 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchWindow from './components/SearchWindow.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useBwbSearch } from './composables/useBwbSearch.js';
+import { useBwbHarvest } from './composables/useBwbHarvest.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
+const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
+const {
+  harvestStatus, harvestSlugs, hasActiveHarvests,
+  requestHarvest, isAvailable, isPolling, isTerminal,
+  statusText, statusIcon,
+} = useBwbHarvest();
 
 const route = useRoute();
 const router = useRouter();
@@ -263,6 +271,46 @@ onBeforeRouteUpdate((to) => {
   }
 });
 
+// --- BWB external search (fallback when local search has no results) ---
+watch([search, filteredLaws], ([q, filtered]) => {
+  if (!hasActiveHarvests.value) clearBwb();
+  if (!q || q.length < 3 || filtered.length > 0) return;
+  searchBwb(q);
+});
+
+function bwbItemClick(result) {
+  const status = harvestStatus.value[result.bwb_id];
+  const slug = harvestSlugs.value[result.bwb_id];
+  if (isAvailable(status) && slug) {
+    selectLaw(slug);
+  } else if (!status || status === 'error' || isTerminal(status)) {
+    requestHarvest(result.bwb_id);
+  }
+}
+
+// Watch for harvested laws becoming available and reload corpus.
+// Track which BWB IDs have already triggered a reload to avoid repeated fetches.
+const reloadedBwbIds = new Set();
+
+watch(harvestStatus, async (statuses) => {
+  const readySlugs = Object.entries(harvestSlugs.value)
+    .filter(([bwbId]) => isAvailable(statuses[bwbId]) && !reloadedBwbIds.has(bwbId))
+    .map(([bwbId, slug]) => {
+      reloadedBwbIds.add(bwbId);
+      return slug;
+    })
+    .filter(Boolean);
+
+  if (readySlugs.length > 0) {
+    await fetch('/api/corpus/reload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ law_ids: readySlugs }),
+    }).catch(() => {});
+    await loadIndex();
+  }
+}, { deep: true });
+
 // Initial load from route
 if (route.params.lawId) {
   selectedLawId.value = route.params.lawId;
@@ -335,22 +383,57 @@ loadIndex();
                 <ndd-spacer size="16"></ndd-spacer>
                 <ndd-inline-dialog v-if="loading" text="Laden..."></ndd-inline-dialog>
                 <ndd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></ndd-inline-dialog>
-                <ndd-list v-else variant="simple">
-                  <ndd-list-item
-                    v-for="law in sidebarLaws"
-                    :key="law.law_id"
-                    size="md"
-                    type="button"
-                    :selected="law.law_id === selectedLawId || undefined"
-                    @click="selectLaw(law.law_id)"
-                  >
-                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-                    </ndd-text-cell>
-                    <ndd-icon-cell slot="end" size="20">
-                      <ndd-icon name="chevron-right"></ndd-icon>
-                    </ndd-icon-cell>
-                  </ndd-list-item>
-                </ndd-list>
+                <template v-else>
+                  <ndd-list v-if="filteredLaws.length > 0" variant="simple">
+                    <ndd-list-item
+                      v-for="law in filteredLaws"
+                      :key="law.law_id"
+                      size="md"
+                      type="button"
+                      :selected="law.law_id === selectedLawId || undefined"
+                      @click="selectLaw(law.law_id)"
+                    >
+                      <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+                      </ndd-text-cell>
+                      <ndd-icon-cell slot="end" size="20">
+                        <ndd-icon name="chevron-right"></ndd-icon>
+                      </ndd-icon-cell>
+                    </ndd-list-item>
+                  </ndd-list>
+
+                  <!-- BWB search results / harvest tracker -->
+                  <template v-if="(search && filteredLaws.length === 0) || (bwbResults.length > 0 && hasActiveHarvests)">
+                    <ndd-inline-dialog v-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
+                    <template v-else-if="bwbResults.length > 0">
+                      <ndd-spacer size="8"></ndd-spacer>
+                      <ndd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></ndd-title>
+                      <ndd-spacer size="8"></ndd-spacer>
+                      <ndd-list variant="simple">
+                        <ndd-list-item
+                          v-for="result in bwbResults"
+                          :key="result.bwb_id"
+                          size="md"
+                          type="button"
+                          :disabled="harvestStatus[result.bwb_id] === 'loading'
+                            || (isPolling(harvestStatus[result.bwb_id])
+                                && !isAvailable(harvestStatus[result.bwb_id]))
+                            || undefined"
+                          @click="bwbItemClick(result)"
+                        >
+                          <ndd-text-cell
+                            :text="result.title"
+                            :supporting-text="statusText(result.bwb_id, `${result.type} \u2014 ${result.bwb_id}`)"
+                          >
+                          </ndd-text-cell>
+                          <ndd-icon-cell slot="end" size="20">
+                            <ndd-icon :name="statusIcon(result.bwb_id)"></ndd-icon>
+                          </ndd-icon-cell>
+                        </ndd-list-item>
+                      </ndd-list>
+                    </template>
+                    <ndd-inline-dialog v-else-if="search && search.length >= 3 && !bwbLoading" text="Geen resultaten gevonden"></ndd-inline-dialog>
+                  </template>
+                </template>
               </ndd-simple-section>
             </ndd-page>
           </ndd-split-view-pane>

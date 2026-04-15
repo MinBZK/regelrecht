@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+# Stage 1: Chef base
+FROM rust:1.94-alpine@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 AS chef
+RUN apk add --no-cache musl-dev
+RUN cargo install cargo-chef --locked
+WORKDIR /build
+
+# Stage 2: Plan dependencies
+FROM chef AS planner
+COPY packages/Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/engine",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY packages/corpus/ packages/corpus/
+COPY packages/engine/ packages/engine/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
+COPY packages/shared/ packages/shared/
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 3: Build (deps cached separately from source)
+FROM chef AS builder
+COPY packages/Cargo.lock ./
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY --from=planner /build/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+COPY packages/corpus/ packages/corpus/
+COPY packages/pipeline/ packages/pipeline/
+COPY packages/harvester/ packages/harvester/
+COPY packages/shared/ packages/shared/
+# Invalidate cargo's fingerprint cache so it recompiles with real source
+# instead of using the stub binary from cargo-chef cook.
+RUN find packages -name '*.rs' -exec touch {} + && \
+    cargo build --release --bin regelrecht-pipeline-api
+
+# Stage 4: Runtime
+FROM alpine:3.23@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+RUN apk add --no-cache ca-certificates && \
+    addgroup -S app && adduser -S app -G app
+
+COPY --from=builder /build/target/release/regelrecht-pipeline-api /usr/local/bin/
+
+USER app
+EXPOSE 8001
+
+CMD ["regelrecht-pipeline-api"]

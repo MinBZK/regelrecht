@@ -20,6 +20,7 @@ use tracing_subscriber::EnvFilter;
 mod config;
 mod corpus_handlers;
 mod favorites;
+mod harvest_proxy;
 mod middleware;
 mod state;
 
@@ -62,6 +63,13 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
+    let pipeline_api_url = env::var("PIPELINE_API_URL").ok();
+    if let Some(ref url) = pipeline_api_url {
+        tracing::info!(url = %url, "pipeline-api proxy enabled");
+    } else {
+        tracing::info!("PIPELINE_API_URL not set — harvest proxy disabled");
+    }
+
     let mut app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
         oidc_client,
@@ -69,6 +77,7 @@ async fn main() {
         config: Arc::new(app_config),
         http_client,
         pool: None, // set below when auth is enabled
+        pipeline_api_url,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -95,7 +104,10 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
-        );
+        )
+        // Harvest proxy — forwarded to pipeline-api
+        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        .route("/api/harvest/status", get(harvest_proxy::proxy_harvest));
 
     // Protected API routes — require authentication when OIDC is enabled.
     // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
@@ -126,6 +138,19 @@ async fn main() {
         .route(
             "/api/favorites/{law_id}",
             axum::routing::put(favorites::add).delete(favorites::remove),
+        )
+        // Harvest proxy — write operations behind auth
+        .route(
+            "/api/harvest",
+            axum::routing::post(harvest_proxy::proxy_harvest),
+        )
+        .route(
+            "/api/harvest/batch",
+            axum::routing::post(harvest_proxy::proxy_harvest),
+        )
+        .route(
+            "/api/corpus/reload",
+            axum::routing::post(corpus_handlers::reload_corpus),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -323,6 +348,7 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
         registry,
         source_map,
         backends,
+        auth_file: auth_file.map(|p| p.to_path_buf()),
     }
 }
 

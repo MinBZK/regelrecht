@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use regelrecht_auth::{ConfiguredClient, OidcAppState, OidcConfig};
@@ -19,6 +20,9 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     /// Database connection pool (available when auth is enabled).
     pub pool: Option<PgPool>,
+    /// Base URL of the pipeline-api service (e.g. "http://pipeline-api:8001").
+    /// When set, `/api/harvest/*` requests are proxied to this service.
+    pub pipeline_api_url: Option<String>,
 }
 
 impl OidcAppState for AppState {
@@ -59,6 +63,8 @@ pub struct CorpusState {
     /// the same abstraction as writes — preventing read/write path
     /// mismatches when a fallback writable backend is used.
     pub backends: HashMap<String, BackendEntry>,
+    /// Path to corpus-auth.yaml for GitHub authentication during reload.
+    pub auth_file: Option<PathBuf>,
 }
 
 impl CorpusState {
@@ -68,6 +74,7 @@ impl CorpusState {
             registry: regelrecht_corpus::CorpusRegistry::empty(),
             source_map: SourceMap::new(),
             backends: HashMap::new(),
+            auth_file: None,
         }
     }
 }

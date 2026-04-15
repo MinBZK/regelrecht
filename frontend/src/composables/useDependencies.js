@@ -7,6 +7,7 @@
  */
 import { ref } from 'vue';
 import yaml from 'js-yaml';
+import { useBwbHarvest } from './useBwbHarvest.js';
 
 /**
  * Extract all unique `source.regulation` references from a parsed law object.
@@ -88,6 +89,7 @@ export function useDependencies() {
   const loadedDeps = ref([]);
   const progress = ref('');
   const error = ref(null);
+  const { requestHarvestBatch } = useBwbHarvest();
 
   /**
    * Load all dependencies for a law, recursively.
@@ -136,6 +138,7 @@ export function useDependencies() {
       // Phase 3: Load all collected dependencies
       let total = toLoad.length;
       let loaded = 0;
+      const missingDeps = [];
 
       for (const lawId of toLoad) {
         if (engine.hasLaw(lawId)) {
@@ -162,14 +165,28 @@ export function useDependencies() {
           }
         } catch (e) {
           console.warn(`Failed to load dependency '${lawId}':`, e);
+          missingDeps.push(lawId);
           loaded++;
           progress.value = `${loaded}/${total} wetten geladen (${lawId} mislukt)`;
         }
       }
 
-      progress.value = total > 0
+      // Phase 4: Request harvest for missing dependencies
+      const defaultProgress = total > 0
         ? `${loadedDeps.value.length}/${total} wetten geladen`
         : 'Geen afhankelijkheden';
+
+      if (missingDeps.length > 0) {
+        const harvestResult = await requestHarvestBatch(missingDeps);
+        const requested = harvestResult?.results?.filter(
+          (r) => r.status === 'queued' || r.status === 'already_queued',
+        ) ?? [];
+        progress.value = requested.length > 0
+          ? `${defaultProgress} \u2014 ${requested.length} ontbrekende wet(ten) aangevraagd`
+          : defaultProgress;
+      } else {
+        progress.value = defaultProgress;
+      }
     } catch (e) {
       error.value = e.message || String(e);
     } finally {

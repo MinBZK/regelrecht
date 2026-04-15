@@ -3,26 +3,30 @@ use uuid::Uuid;
 use crate::error::{PipelineError, Result};
 use crate::models::{LawEntry, LawStatusValue};
 
-/// Upsert a law entry. Creates it if it doesn't exist, updates name if it does.
+/// Upsert a law entry. Creates it if it doesn't exist, updates name/slug if it does.
 #[tracing::instrument(skip(executor))]
 pub async fn upsert_law<'e, E>(
     executor: E,
     law_id: &str,
     law_name: Option<&str>,
+    slug: Option<&str>,
 ) -> Result<LawEntry>
 where
     E: sqlx::PgExecutor<'e>,
 {
     let entry = sqlx::query_as::<_, LawEntry>(
         r#"
-        INSERT INTO law_entries (law_id, law_name)
-        VALUES ($1, $2)
-        ON CONFLICT (law_id) DO UPDATE SET law_name = COALESCE($2, law_entries.law_name)
+        INSERT INTO law_entries (law_id, law_name, slug)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (law_id) DO UPDATE SET
+            law_name = COALESCE($2, law_entries.law_name),
+            slug = COALESCE($3, law_entries.slug)
         RETURNING *
         "#,
     )
     .bind(law_id)
     .bind(law_name)
+    .bind(slug)
     .fetch_one(executor)
     .await?;
 

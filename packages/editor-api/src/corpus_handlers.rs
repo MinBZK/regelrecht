@@ -675,3 +675,55 @@ pub async fn delete_scenario(
 
     Ok(StatusCode::OK)
 }
+
+/// POST /api/corpus/reload — refetch corpus from all sources.
+///
+/// Reloads the in-memory SourceMap from the registry (local + GitHub).
+/// Accepts an optional JSON body with `law_ids` to include specific laws
+/// that may not yet be in the corpus (e.g. freshly harvested laws).
+pub async fn reload_corpus(
+    State(state): State<AppState>,
+    body: Option<Json<ReloadRequest>>,
+) -> Result<Json<ReloadResponse>, (StatusCode, String)> {
+    let mut corpus = state.corpus.write().await;
+
+    // Collect law IDs to fetch: everything already loaded + any
+    // extras the caller explicitly requests (e.g. a freshly harvested law).
+    let mut law_ids: std::collections::HashSet<String> =
+        corpus.source_map.laws().map(|l| l.law_id.clone()).collect();
+
+    if let Some(Json(req)) = &body {
+        for id in &req.law_ids {
+            law_ids.insert(id.clone());
+        }
+    }
+
+    let auth_file = corpus.auth_file.as_deref();
+    let new_map = corpus
+        .registry
+        .load_favorites_async(&law_ids, auth_file)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "corpus reload failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to reload corpus".to_string(),
+            )
+        })?;
+
+    let law_count = new_map.len();
+    corpus.source_map = new_map;
+    tracing::info!(law_count, "corpus reloaded (local + GitHub)");
+    Ok(Json(ReloadResponse { law_count }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReloadRequest {
+    #[serde(default)]
+    pub law_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReloadResponse {
+    pub law_count: usize,
+}
