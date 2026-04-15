@@ -297,7 +297,7 @@ jobs:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: pr${{ github.event.pull_request.number }}
-          component: pipeline-api
+          component: pipelineapi
           image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
           domain-format: component-deployment-project
           clone-from: regelrecht
@@ -418,7 +418,7 @@ jobs:
           api-key: ${{ secrets.RIG_API_KEY }}
           project-id: ${{ env.ZAD_PROJECT }}
           deployment-name: regelrecht
-          component: pipeline-api
+          component: pipelineapi
           image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
 
       - name: Deploy editor to ZAD (Production)

@@ -46,7 +46,7 @@ services:
     volumes:
       - regulation-repo-harvester:/tmp/regulation-repo
 
-  pipeline-api:
+  pipelineapi:
     build:
       context: .
       dockerfile: packages/pipeline/Dockerfile.pipeline-api
@@ -92,7 +92,7 @@ services:
       secrets:
         - GITHUB_TOKEN
     environment:
-      PIPELINE_API_URL: http://pipeline-api:8001
+      PIPELINE_API_URL: http://pipelineapi:8001
     ports:
       - ${FRONTEND_PORT:-3000}:8000
 

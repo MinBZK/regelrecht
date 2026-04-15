@@ -64,7 +64,7 @@ async fn main() {
     let corpus_state = init_corpus(&static_dir).await;
 
     let pipeline_api_url = Some(
-        env::var("PIPELINE_API_URL").unwrap_or_else(|_| "http://pipeline-api:8001".to_string()),
+        env::var("PIPELINE_API_URL").unwrap_or_else(|_| "http://pipelineapi:8001".to_string()),
     );
     tracing::info!(url = %pipeline_api_url.as_deref().unwrap_or("-"), "pipeline-api proxy target");
 
