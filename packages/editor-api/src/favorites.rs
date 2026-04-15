@@ -3,9 +3,9 @@ use axum::http::StatusCode;
 use axum::Json;
 use tower_sessions::Session;
 
-use crate::state::AppState;
+use regelrecht_auth::SESSION_KEY_SUB;
 
-const SESSION_KEY_SUB: &str = "person_sub";
+use crate::state::AppState;
 
 async fn get_person_sub(session: &Session) -> Result<String, StatusCode> {
     session

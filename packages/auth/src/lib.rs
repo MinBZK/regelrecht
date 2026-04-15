@@ -11,7 +11,7 @@ pub mod middleware;
 pub mod oidc;
 
 pub use config::{parse_base_url, parse_oidc_from_env, OidcConfig};
-pub use handlers::{AuthStatus, PersonInfo, SESSION_KEY_AUTHENTICATED};
+pub use handlers::{AuthStatus, PersonInfo, SESSION_KEY_AUTHENTICATED, SESSION_KEY_SUB};
 pub use middleware::{require_session_auth, security_headers};
 pub use oidc::{discover_client, ConfiguredClient, DiscoveryResult};
 
