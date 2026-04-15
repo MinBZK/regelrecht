@@ -63,12 +63,10 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
-    let pipeline_api_url = env::var("PIPELINE_API_URL").ok();
-    if let Some(ref url) = pipeline_api_url {
-        tracing::info!(url = %url, "pipeline-api proxy enabled");
-    } else {
-        tracing::info!("PIPELINE_API_URL not set — harvest proxy disabled");
-    }
+    let pipeline_api_url = Some(
+        env::var("PIPELINE_API_URL").unwrap_or_else(|_| "http://pipeline-api:8001".to_string()),
+    );
+    tracing::info!(url = %pipeline_api_url.as_deref().unwrap_or("-"), "pipeline-api proxy target");
 
     let mut app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
