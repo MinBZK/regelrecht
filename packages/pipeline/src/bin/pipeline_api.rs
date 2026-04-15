@@ -15,13 +15,12 @@ async fn main() {
         )
         .init();
 
-    let database_url = match std::env::var("DATABASE_URL") {
-        Ok(url) => url,
-        Err(_) => {
-            tracing::error!("DATABASE_URL environment variable is required");
+    let database_url = std::env::var("DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_SERVER_FULL"))
+        .unwrap_or_else(|_| {
+            tracing::error!("DATABASE_URL or DATABASE_SERVER_FULL must be set");
             std::process::exit(1);
-        }
-    };
+        });
 
     let pool = match sqlx::PgPool::connect(&database_url).await {
         Ok(pool) => {
