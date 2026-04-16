@@ -4,7 +4,7 @@
 //! file contains all available consolidation dates with their validity periods.
 //! This module downloads and parses the manifest to find the correct consolidation date.
 
-use reqwest::blocking::Client;
+use reqwest::Client;
 use roxmltree::Document;
 
 use crate::config::{manifest_url, DEFAULT_MAX_RESPONSE_SIZE};
@@ -39,18 +39,20 @@ pub struct Consolidation {
 /// # Arguments
 /// * `client` - HTTP client to use
 /// * `bwb_id` - The BWB identifier (e.g., "BWBR0015703")
-pub fn download_manifest(client: &Client, bwb_id: &str) -> Result<BwbManifest> {
+pub async fn download_manifest(client: &Client, bwb_id: &str) -> Result<BwbManifest> {
     let url = manifest_url(bwb_id);
-    let bytes = download_bytes(client, &url, DEFAULT_MAX_RESPONSE_SIZE).map_err(|e| {
-        if let HarvesterError::Http(source) = e {
-            HarvesterError::ManifestDownload {
-                bwb_id: bwb_id.to_string(),
-                source,
+    let bytes = download_bytes(client, &url, DEFAULT_MAX_RESPONSE_SIZE)
+        .await
+        .map_err(|e| {
+            if let HarvesterError::Http(source) = e {
+                HarvesterError::ManifestDownload {
+                    bwb_id: bwb_id.to_string(),
+                    source,
+                }
+            } else {
+                e
             }
-        } else {
-            e
-        }
-    })?;
+        })?;
 
     let xml = bytes_to_string(bytes, &format!("manifest for {bwb_id}"));
     parse_manifest(&xml, bwb_id)

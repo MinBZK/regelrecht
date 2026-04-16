@@ -2,7 +2,7 @@
 //!
 //! Content files contain the actual legal text of Dutch laws in XML format.
 
-use reqwest::blocking::Client;
+use reqwest::Client;
 
 use crate::config::content_url;
 use crate::error::{HarvesterError, Result};
@@ -21,14 +21,14 @@ use crate::http::{bytes_to_string, download_bytes};
 ///
 /// # Returns
 /// Raw XML content as a string
-pub fn download_content_xml(
+pub async fn download_content_xml(
     client: &Client,
     bwb_id: &str,
     date: &str,
     max_size: u64,
 ) -> Result<String> {
     let url = content_url(bwb_id, date);
-    let bytes = download_bytes(client, &url, max_size).map_err(|e| {
+    let bytes = download_bytes(client, &url, max_size).await.map_err(|e| {
         if let HarvesterError::Http(source) = e {
             HarvesterError::ContentDownload {
                 bwb_id: bwb_id.to_string(),

@@ -9,6 +9,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use crate::config::DEFAULT_MAX_RESPONSE_SIZE;
 use crate::error::{HarvesterError, Result};
 use crate::harvester::download_law_with_max_size;
+use crate::http::create_client;
 use crate::yaml::save_yaml;
 
 /// RegelRecht Harvester - Download Dutch legislation from BWB repository.
@@ -45,7 +46,7 @@ pub enum Commands {
 }
 
 /// Run the CLI.
-pub fn run() -> Result<()> {
+pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -54,12 +55,12 @@ pub fn run() -> Result<()> {
             date,
             output,
             max_size,
-        } => download_command(&bwb_id, date.as_deref(), output.as_deref(), max_size),
+        } => download_command(&bwb_id, date.as_deref(), output.as_deref(), max_size).await,
     }
 }
 
 /// Execute the download command.
-fn download_command(
+async fn download_command(
     bwb_id: &str,
     date: Option<&str>,
     output: Option<&std::path::Path>,
@@ -103,11 +104,15 @@ fn download_command(
             .expect("valid template"),
     );
 
+    // Create HTTP client
+    let client = create_client()?;
+
     // Download and parse
     pb.set_message("Downloading WTI metadata...");
     pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
-    let law = match download_law_with_max_size(bwb_id, &effective_date, max_size_mb) {
+    let law = match download_law_with_max_size(&client, bwb_id, &effective_date, max_size_mb).await
+    {
         Ok(law) => law,
         Err(e) => {
             pb.finish_and_clear();

@@ -2,10 +2,11 @@
 
 use roxmltree::Document;
 
+use reqwest::Client;
+
 use crate::config::{validate_bwb_id, validate_date, wetten_url, DEFAULT_MAX_RESPONSE_SIZE};
 use crate::content::download_content_xml;
 use crate::error::Result;
-use crate::http::create_client;
 use crate::splitting::{create_dutch_law_hierarchy, LeafSplitStrategy, SplitContext, SplitEngine};
 use crate::types::{Law, Preamble};
 use crate::wti::download_wti;
@@ -14,39 +15,49 @@ use crate::xml::{find_bijlage_context, find_by_path, find_children, get_tag_name
 /// Download and parse a Dutch law.
 ///
 /// # Arguments
+/// * `client` - HTTP client to use
 /// * `bwb_id` - The BWB identifier (e.g., "BWBR0018451")
 /// * `date` - The effective date in YYYY-MM-DD format
 ///
 /// # Returns
 /// A `Law` object containing metadata, articles, and any warnings encountered during parsing
-pub fn download_law(bwb_id: &str, date: &str) -> Result<Law> {
-    download_law_with_max_size(bwb_id, date, DEFAULT_MAX_RESPONSE_SIZE / (1024 * 1024))
+pub async fn download_law(client: &Client, bwb_id: &str, date: &str) -> Result<Law> {
+    download_law_with_max_size(
+        client,
+        bwb_id,
+        date,
+        DEFAULT_MAX_RESPONSE_SIZE / (1024 * 1024),
+    )
+    .await
 }
 
 /// Download and parse a Dutch law with configurable max response size.
 ///
 /// # Arguments
+/// * `client` - HTTP client to use
 /// * `bwb_id` - The BWB identifier (e.g., "BWBR0018451")
 /// * `date` - The effective date in YYYY-MM-DD format
 /// * `max_size_mb` - Maximum response size in megabytes
 ///
 /// # Returns
 /// A `Law` object containing metadata, articles, and any warnings encountered during parsing
-pub fn download_law_with_max_size(bwb_id: &str, date: &str, max_size_mb: u64) -> Result<Law> {
+pub async fn download_law_with_max_size(
+    client: &Client,
+    bwb_id: &str,
+    date: &str,
+    max_size_mb: u64,
+) -> Result<Law> {
     // Validate inputs
     validate_bwb_id(bwb_id)?;
     validate_date(date)?;
 
     let max_size_bytes = max_size_mb * 1024 * 1024;
 
-    // Create HTTP client
-    let client = create_client()?;
-
     // Download and parse WTI metadata
-    let wti_result = download_wti(&client, bwb_id)?;
+    let wti_result = download_wti(client, bwb_id).await?;
 
     // Download content XML
-    let content_xml = download_content_xml(&client, bwb_id, date, max_size_bytes)?;
+    let content_xml = download_content_xml(client, bwb_id, date, max_size_bytes).await?;
 
     // Parse articles from content
     let parsed = parse_articles(&content_xml, bwb_id, date)?;
