@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Setup
 
 ### Prerequisites
-- [Rust](https://rustup.rs/) (version pinned in `rust-toolchain.toml`)
+- [Rust](https://rustup.rs/) (stable toolchain)
 - [just](https://github.com/casey/just) command runner
 
 ### Just Commands
@@ -74,7 +74,7 @@ git worktree add .worktrees/feature-branch feature-branch
 ### Law Format
 
 Laws are stored as article-based YAML files conforming to the official JSON schema:
-- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.1/schema/v0.5.1/schema.json`
+- Schema: `https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.4.0/schema.json`
 
 ### Cross-Law References
 
@@ -144,6 +144,15 @@ CI runs via `.github/workflows/ci.yml`.
 1. **PR opened/updated**: Builds changed Docker images, pushes to GHCR, deploys `prN` to ZAD
 2. **PR closed**: Deletes ZAD deployment and GHCR images
 3. **Push to main**: Deploys `regelrecht` (production) to ZAD
+
+### Debugging deploy-preview failures
+
+ZAD deploy timeouts ("Task did not complete within 300s") almost always indicate an **application error**, not a platform issue. When `deploy-preview` fails:
+
+1. Check container logs: `zad logs <deployment>` (e.g. `zad logs pr429`)
+2. Look for ERROR lines — common causes: migration conflicts, missing env vars, startup panics
+3. If the DB is in a bad state (e.g. migration checksum mismatch after renumbering), delete the preview deployment (`zad deployment delete <deployment>`) and re-trigger CI to get a fresh DB
+4. Do **not** blindly retry — diagnose the root cause first
 
 ### Required Secrets
 
