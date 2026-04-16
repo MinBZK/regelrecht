@@ -184,6 +184,14 @@ mod tests {
             layer_rank(&RegulatoryLayer::MinisterieleRegeling)
                 < layer_rank(&RegulatoryLayer::Beleidsregel)
         );
+        assert!(
+            layer_rank(&RegulatoryLayer::ProvincialeVerordening)
+                < layer_rank(&RegulatoryLayer::WaterschapsVerordening)
+        );
+        assert!(
+            layer_rank(&RegulatoryLayer::WaterschapsVerordening)
+                < layer_rank(&RegulatoryLayer::GemeentelijkeVerordening)
+        );
     }
 
     #[test]

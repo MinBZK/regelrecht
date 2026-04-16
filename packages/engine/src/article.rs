@@ -1255,6 +1255,32 @@ articles:
     }
 
     #[test]
+    fn test_parse_waterschaps_verordening() {
+        let yaml = r#"
+$id: keur_waterschap_test
+uuid: b1b1b1b1-0000-0000-0000-000000000653
+regulatory_layer: WATERSCHAPS_VERORDENING
+publication_date: '2024-01-01'
+waterschap_code: WS0653
+officiele_titel: Keur Waterschap Test
+articles:
+  - number: '1'
+    text: Test
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        assert_eq!(law.id, "keur_waterschap_test");
+        assert_eq!(
+            law.regulatory_layer,
+            RegulatoryLayer::WaterschapsVerordening
+        );
+        assert_eq!(law.waterschap_code, Some("WS0653".to_string()));
+        assert_eq!(
+            law.uuid,
+            Some("b1b1b1b1-0000-0000-0000-000000000653".to_string())
+        );
+    }
+
+    #[test]
     fn test_parse_ministeriele_regeling() {
         let yaml = r#"
 $id: regeling_test

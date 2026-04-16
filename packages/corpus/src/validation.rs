@@ -8,7 +8,7 @@ pub struct ScopeWarning {
     pub source_id: String,
     pub source_name: String,
     pub expected_scopes: Vec<String>,
-    pub actual_gemeente_code: Option<String>,
+    pub actual_scope_code: Option<String>,
     pub message: String,
 }
 
@@ -45,7 +45,7 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
                         .iter()
                         .map(|s| format!("{}:{}", s.scope_type, s.value))
                         .collect(),
-                    actual_gemeente_code: gemeente_code.clone(),
+                    actual_scope_code: gemeente_code.clone(),
                     message: format!(
                         "Law '{}' from source '{}' has gemeente_code '{}' which is outside declared scopes {:?}",
                         law.law_id,
@@ -68,7 +68,7 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
                         .iter()
                         .map(|s| format!("{}:{}", s.scope_type, s.value))
                         .collect(),
-                    actual_gemeente_code: waterschap_code.clone(),
+                    actual_scope_code: waterschap_code.clone(),
                     message: format!(
                         "Law '{}' from source '{}' has waterschap_code '{}' which is outside declared scopes {:?}",
                         law.law_id,
@@ -186,6 +186,19 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_waterschap_code() {
+        assert_eq!(
+            extract_waterschap_code("waterschap_code: WS0653\nfoo: bar"),
+            Some("WS0653".to_string())
+        );
+        assert_eq!(
+            extract_waterschap_code("waterschap_code: 'WS0653'\nfoo: bar"),
+            Some("WS0653".to_string())
+        );
+        assert_eq!(extract_waterschap_code("foo: bar\nbaz: qux"), None);
+    }
+
+    #[test]
     fn test_scope_valid_no_warnings() {
         let dir = TempDir::new().unwrap();
         write_law(dir.path(), "verordening", "test_v", Some("GM0363"));
@@ -229,7 +242,7 @@ mod tests {
         let warnings = validate_scopes(&map, &[source]);
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].law_id, "wrong_v");
-        assert_eq!(warnings[0].actual_gemeente_code, Some("GM0518".to_string()));
+        assert_eq!(warnings[0].actual_scope_code, Some("GM0518".to_string()));
     }
 
     #[test]
@@ -267,5 +280,38 @@ mod tests {
 
         let warnings = validate_scopes(&map, &[source]);
         assert!(warnings.is_empty());
+    }
+
+    fn write_waterschap_law(dir: &std::path::Path, name: &str, id: &str, code: &str) {
+        let path = dir.join(format!("{}.yaml", name));
+        std::fs::write(
+            &path,
+            format!("$id: {id}\nregulatory_layer: WATERSCHAPS_VERORDENING\npublication_date: '2025-01-01'\nwaterschap_code: '{code}'\narticles: []\n"),
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_waterschap_scope_violation_warning() {
+        let dir = TempDir::new().unwrap();
+        // Source declares WS0653, but law has WS0999
+        write_waterschap_law(dir.path(), "keur", "keur_test", "WS0999");
+
+        let source = make_scoped_source(
+            "waterschap_test",
+            dir.path(),
+            vec![Scope {
+                scope_type: "waterschap_code".to_string(),
+                value: "WS0653".to_string(),
+            }],
+            10,
+        );
+
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let warnings = validate_scopes(&map, &[source]);
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].law_id, "keur_test");
+        assert_eq!(warnings[0].actual_scope_code, Some("WS0999".to_string()));
     }
 }

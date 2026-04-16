@@ -91,7 +91,7 @@ def parse_wti_metadata(wti_tree):
         if layer not in VALID_LAYERS:
             raise ValueError(
                 f"'{soort_text}' maps to '{layer}' which is not a valid "
-                f"schema v0.5.0 regulatory_layer. Map manually to e.g. AMVB."
+                f"a valid regulatory_layer. Map manually to e.g. AMVB."
             )
         metadata["regulatory_layer"] = layer
 

@@ -17,10 +17,13 @@ fn make_law(id: &str, layer: RegulatoryLayer, valid_from: &str) -> ArticleBasedL
         url: None,
         identifiers: None,
         gemeente_code: None,
+        waterschap_code: None,
         officiele_titel: None,
         jaar: None,
         legal_basis: None,
+        procedure: None,
         articles: vec![],
+        content_hash: None,
     }
 }
 
