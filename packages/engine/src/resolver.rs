@@ -297,12 +297,10 @@ impl RuleResolver {
     /// Check if a law's scope fields match the execution scope.
     ///
     /// Scope fields are law-level metadata that limit territorial applicability
-    /// (e.g., `gemeente_code`, `provincie_code`). A law with no scope fields
+    /// (e.g., `gemeente_code`, `waterschap_code`). A law with no scope fields
     /// is considered national and always matches. A law with scope fields only
     /// matches if every scope field has a matching value in the execution scope.
     fn matches_scope(law: &ArticleBasedLaw, scope: &HashMap<String, Value>) -> bool {
-        // Currently gemeente_code is the only scope field on ArticleBasedLaw.
-        // When we add provincie_code etc., add them here.
         if let Some(ref law_gemeente) = law.gemeente_code {
             let scope_value = scope.get("gemeente_code").and_then(|v| match v {
                 Value::String(s) => Some(s.as_str()),
@@ -310,7 +308,17 @@ impl RuleResolver {
             });
             match scope_value {
                 Some(sg) if sg == law_gemeente => {}
-                _ => return false, // No match or no scope provided
+                _ => return false,
+            }
+        }
+        if let Some(ref law_waterschap) = law.waterschap_code {
+            let scope_value = scope.get("waterschap_code").and_then(|v| match v {
+                Value::String(s) => Some(s.as_str()),
+                _ => None,
+            });
+            match scope_value {
+                Some(sw) if sw == law_waterschap => {}
+                _ => return false,
             }
         }
         true

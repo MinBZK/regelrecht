@@ -725,6 +725,9 @@ pub struct ArticleBasedLaw {
     /// Municipality code for gemeentelijke verordeningen
     #[serde(default)]
     pub gemeente_code: Option<String>,
+    /// Water board code for waterschapsverordeningen
+    #[serde(default)]
+    pub waterschap_code: Option<String>,
     /// Official title for local regulations
     #[serde(default)]
     pub officiele_titel: Option<String>,
@@ -1248,6 +1251,32 @@ articles:
         assert_eq!(
             law.uuid,
             Some("a0a0a0a0-0000-0000-0000-000000000363".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_waterschaps_verordening() {
+        let yaml = r#"
+$id: keur_waterschap_test
+uuid: b1b1b1b1-0000-0000-0000-000000000653
+regulatory_layer: WATERSCHAPS_VERORDENING
+publication_date: '2024-01-01'
+waterschap_code: WS0653
+officiele_titel: Keur Waterschap Test
+articles:
+  - number: '1'
+    text: Test
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        assert_eq!(law.id, "keur_waterschap_test");
+        assert_eq!(
+            law.regulatory_layer,
+            RegulatoryLayer::WaterschapsVerordening
+        );
+        assert_eq!(law.waterschap_code, Some("WS0653".to_string()));
+        assert_eq!(
+            law.uuid,
+            Some("b1b1b1b1-0000-0000-0000-000000000653".to_string())
         );
     }
 

@@ -8,7 +8,7 @@ pub struct ScopeWarning {
     pub source_id: String,
     pub source_name: String,
     pub expected_scopes: Vec<String>,
-    pub actual_gemeente_code: Option<String>,
+    pub actual_scope_code: Option<String>,
     pub message: String,
 }
 
@@ -30,11 +30,12 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
             continue;
         }
 
-        // Extract gemeente_code from the YAML content
+        // Extract scope codes from the YAML content
         let gemeente_code = extract_gemeente_code(&law.yaml_content);
+        let waterschap_code = extract_waterschap_code(&law.yaml_content);
 
         if let Some(code) = &gemeente_code {
-            if !scope_matches(&source.scopes, code) {
+            if !scope_matches(&source.scopes, "gemeente_code", code) {
                 warnings.push(ScopeWarning {
                     law_id: law.law_id.clone(),
                     source_id: law.source_id.clone(),
@@ -44,9 +45,32 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
                         .iter()
                         .map(|s| format!("{}:{}", s.scope_type, s.value))
                         .collect(),
-                    actual_gemeente_code: gemeente_code.clone(),
+                    actual_scope_code: gemeente_code.clone(),
                     message: format!(
                         "Law '{}' from source '{}' has gemeente_code '{}' which is outside declared scopes {:?}",
+                        law.law_id,
+                        source.id,
+                        code,
+                        source.scopes.iter().map(|s| &s.value).collect::<Vec<_>>()
+                    ),
+                });
+            }
+        }
+
+        if let Some(code) = &waterschap_code {
+            if !scope_matches(&source.scopes, "waterschap_code", code) {
+                warnings.push(ScopeWarning {
+                    law_id: law.law_id.clone(),
+                    source_id: law.source_id.clone(),
+                    source_name: law.source_name.clone(),
+                    expected_scopes: source
+                        .scopes
+                        .iter()
+                        .map(|s| format!("{}:{}", s.scope_type, s.value))
+                        .collect(),
+                    actual_scope_code: waterschap_code.clone(),
+                    message: format!(
+                        "Law '{}' from source '{}' has waterschap_code '{}' which is outside declared scopes {:?}",
                         law.law_id,
                         source.id,
                         code,
@@ -60,26 +84,22 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
     warnings
 }
 
-/// Check if a gemeente_code matches any of the source's gemeente scopes.
+/// Check if a scope code matches any of the source's scopes for the given type.
 ///
-/// Only `gemeente` scope types are matched against `gemeente_code`.
-/// Other scope types (e.g., `provincie`, `waterschap`) are not yet
-/// supported for validation and are ignored.
-fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
-    let gemeente_scopes: Vec<_> = scopes
+/// Supports `gemeente_code` and `waterschap_code` scope types.
+fn scope_matches(scopes: &[Scope], scope_type: &str, code: &str) -> bool {
+    let matching_scopes: Vec<_> = scopes
         .iter()
-        .filter(|s| s.scope_type == "gemeente_code")
+        .filter(|s| s.scope_type == scope_type)
         .collect();
 
-    // If the source has no gemeente scopes, we cannot validate by
-    // gemeente_code — treat as matching (no warning).
-    if gemeente_scopes.is_empty() {
+    // If the source has no scopes of this type, we cannot validate —
+    // treat as matching (no warning).
+    if matching_scopes.is_empty() {
         return true;
     }
 
-    gemeente_scopes
-        .iter()
-        .any(|scope| scope.value == gemeente_code)
+    matching_scopes.iter().any(|scope| scope.value == code)
 }
 
 /// Extract top-level gemeente_code from YAML content using line-based parsing.
@@ -89,6 +109,22 @@ fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
 fn extract_gemeente_code(yaml: &str) -> Option<String> {
     for line in yaml.lines() {
         if let Some(rest) = line.strip_prefix("gemeente_code:") {
+            let value = rest.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract top-level waterschap_code from YAML content using line-based parsing.
+///
+/// Only matches `waterschap_code:` at the start of a line (no leading whitespace)
+/// to avoid matching nested fields, consistent with `extract_gemeente_code`.
+fn extract_waterschap_code(yaml: &str) -> Option<String> {
+    for line in yaml.lines() {
+        if let Some(rest) = line.strip_prefix("waterschap_code:") {
             let value = rest.trim().trim_matches('"').trim_matches('\'');
             if !value.is_empty() {
                 return Some(value.to_string());
@@ -150,6 +186,19 @@ mod tests {
     }
 
     #[test]
+    fn test_extract_waterschap_code() {
+        assert_eq!(
+            extract_waterschap_code("waterschap_code: WS0653\nfoo: bar"),
+            Some("WS0653".to_string())
+        );
+        assert_eq!(
+            extract_waterschap_code("waterschap_code: 'WS0653'\nfoo: bar"),
+            Some("WS0653".to_string())
+        );
+        assert_eq!(extract_waterschap_code("foo: bar\nbaz: qux"), None);
+    }
+
+    #[test]
     fn test_scope_valid_no_warnings() {
         let dir = TempDir::new().unwrap();
         write_law(dir.path(), "verordening", "test_v", Some("GM0363"));
@@ -193,7 +242,7 @@ mod tests {
         let warnings = validate_scopes(&map, &[source]);
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].law_id, "wrong_v");
-        assert_eq!(warnings[0].actual_gemeente_code, Some("GM0518".to_string()));
+        assert_eq!(warnings[0].actual_scope_code, Some("GM0518".to_string()));
     }
 
     #[test]
@@ -231,5 +280,60 @@ mod tests {
 
         let warnings = validate_scopes(&map, &[source]);
         assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn test_waterschap_scope_valid_no_warnings() {
+        let dir = TempDir::new().unwrap();
+        write_waterschap_law(dir.path(), "keur", "keur_valid", "WS0653");
+
+        let source = make_scoped_source(
+            "waterschap_hhnk",
+            dir.path(),
+            vec![Scope {
+                scope_type: "waterschap_code".to_string(),
+                value: "WS0653".to_string(),
+            }],
+            10,
+        );
+
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let warnings = validate_scopes(&map, &[source]);
+        assert!(warnings.is_empty());
+    }
+
+    fn write_waterschap_law(dir: &std::path::Path, name: &str, id: &str, code: &str) {
+        let path = dir.join(format!("{}.yaml", name));
+        std::fs::write(
+            &path,
+            format!("$id: {id}\nregulatory_layer: WATERSCHAPS_VERORDENING\npublication_date: '2025-01-01'\nwaterschap_code: '{code}'\narticles: []\n"),
+        ).unwrap();
+    }
+
+    #[test]
+    fn test_waterschap_scope_violation_warning() {
+        let dir = TempDir::new().unwrap();
+        // Source declares WS0653, but law has WS0999
+        write_waterschap_law(dir.path(), "keur", "keur_test", "WS0999");
+
+        let source = make_scoped_source(
+            "waterschap_test",
+            dir.path(),
+            vec![Scope {
+                scope_type: "waterschap_code".to_string(),
+                value: "WS0653".to_string(),
+            }],
+            10,
+        );
+
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let warnings = validate_scopes(&map, &[source]);
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].law_id, "keur_test");
+        assert_eq!(warnings[0].actual_scope_code, Some("WS0999".to_string()));
     }
 }
