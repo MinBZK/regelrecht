@@ -271,12 +271,7 @@ onBeforeRouteUpdate((to) => {
   }
 });
 
-// --- BWB external search (fallback when local search has no results) ---
-watch([search, filteredLaws], ([q, filtered]) => {
-  if (!hasActiveHarvests.value) clearBwb();
-  if (!q || q.length < 3 || filtered.length > 0) return;
-  searchBwb(q);
-});
+// --- BWB external search is triggered from SearchWindow via @search event ---
 
 function bwbItemClick(result) {
   const status = harvestStatus.value[result.bwb_id];
@@ -383,57 +378,22 @@ loadIndex();
                 <ndd-spacer size="16"></ndd-spacer>
                 <ndd-inline-dialog v-if="loading" text="Laden..."></ndd-inline-dialog>
                 <ndd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></ndd-inline-dialog>
-                <template v-else>
-                  <ndd-list v-if="filteredLaws.length > 0" variant="simple">
-                    <ndd-list-item
-                      v-for="law in filteredLaws"
-                      :key="law.law_id"
-                      size="md"
-                      type="button"
-                      :selected="law.law_id === selectedLawId || undefined"
-                      @click="selectLaw(law.law_id)"
-                    >
-                      <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-                      </ndd-text-cell>
-                      <ndd-icon-cell slot="end" size="20">
-                        <ndd-icon name="chevron-right"></ndd-icon>
-                      </ndd-icon-cell>
-                    </ndd-list-item>
-                  </ndd-list>
-
-                  <!-- BWB search results / harvest tracker -->
-                  <template v-if="(search && filteredLaws.length === 0) || (bwbResults.length > 0 && hasActiveHarvests)">
-                    <ndd-inline-dialog v-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
-                    <template v-else-if="bwbResults.length > 0">
-                      <ndd-spacer size="8"></ndd-spacer>
-                      <ndd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></ndd-title>
-                      <ndd-spacer size="8"></ndd-spacer>
-                      <ndd-list variant="simple">
-                        <ndd-list-item
-                          v-for="result in bwbResults"
-                          :key="result.bwb_id"
-                          size="md"
-                          type="button"
-                          :disabled="harvestStatus[result.bwb_id] === 'loading'
-                            || (isPolling(harvestStatus[result.bwb_id])
-                                && !isAvailable(harvestStatus[result.bwb_id]))
-                            || undefined"
-                          @click="bwbItemClick(result)"
-                        >
-                          <ndd-text-cell
-                            :text="result.title"
-                            :supporting-text="statusText(result.bwb_id, `${result.type} \u2014 ${result.bwb_id}`)"
-                          >
-                          </ndd-text-cell>
-                          <ndd-icon-cell slot="end" size="20">
-                            <ndd-icon :name="statusIcon(result.bwb_id)"></ndd-icon>
-                          </ndd-icon-cell>
-                        </ndd-list-item>
-                      </ndd-list>
-                    </template>
-                    <ndd-inline-dialog v-else-if="search && search.length >= 3 && !bwbLoading" text="Geen resultaten gevonden"></ndd-inline-dialog>
-                  </template>
-                </template>
+                <ndd-list v-else variant="simple">
+                  <ndd-list-item
+                    v-for="law in sidebarLaws"
+                    :key="law.law_id"
+                    size="md"
+                    type="button"
+                    :selected="law.law_id === selectedLawId || undefined"
+                    @click="selectLaw(law.law_id)"
+                  >
+                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+                    </ndd-text-cell>
+                    <ndd-icon-cell slot="end" size="20">
+                      <ndd-icon name="chevron-right"></ndd-icon>
+                    </ndd-icon-cell>
+                  </ndd-list-item>
+                </ndd-list>
               </ndd-simple-section>
             </ndd-page>
           </ndd-split-view-pane>
