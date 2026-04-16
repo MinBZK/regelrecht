@@ -14,7 +14,5 @@ __pycache__
 .github
 # Exclude packages not needed for editor-api build
 packages/admin
-packages/harvester
-packages/pipeline
 packages/tui
-# Keep: packages/editor-api, packages/corpus, packages/engine, packages/shared, packages/Cargo.*
+# Keep: packages/editor-api, packages/corpus, packages/engine, packages/harvester, packages/pipeline, packages/shared, packages/Cargo.*

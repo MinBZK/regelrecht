@@ -92,19 +92,61 @@ function articleDescription(article) {
   return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
 }
 
+async function loadFavorites() {
+  try {
+    const res = await fetch('/api/favorites');
+    if (res.ok) {
+      const favIds = await res.json();
+      favorites.value = new Set(favIds);
+    } else if (res.status >= 500) {
+      console.warn(`Failed to load favorites: ${res.status}`);
+    }
+  } catch {
+    // Not authenticated or endpoint unavailable — no favorites
+  }
+}
+
+const togglingFavorites = ref(new Set());
+
+async function toggleFavorite(lawId) {
+  if (!authenticated.value || !lawId) return;
+  if (togglingFavorites.value.has(lawId)) return;
+
+  togglingFavorites.value.add(lawId);
+  const isFav = favorites.value?.has(lawId);
+
+  // Optimistic update
+  const updated = new Set(favorites.value || []);
+  if (isFav) updated.delete(lawId);
+  else updated.add(lawId);
+  favorites.value = updated;
+
+  const revert = () => {
+    const reverted = new Set(favorites.value);
+    if (isFav) reverted.add(lawId);
+    else reverted.delete(lawId);
+    favorites.value = reverted;
+  };
+
+  try {
+    const method = isFav ? 'DELETE' : 'PUT';
+    const res = await fetch(`/api/favorites/${encodeURIComponent(lawId)}`, { method });
+    if (!res.ok) revert();
+  } catch {
+    revert();
+  } finally {
+    togglingFavorites.value.delete(lawId);
+  }
+}
+
 async function loadIndex() {
   try {
-    const [corpusRes, favRes] = await Promise.all([
+    const [corpusRes] = await Promise.all([
       fetch('/api/corpus/laws?limit=1000'),
-      fetch('/favorites.json'),
+      loadFavorites(),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
     const corpusLaws = await corpusRes.json();
-
-    if (favRes.ok) {
-      const favIds = await favRes.json();
-      favorites.value = new Set(favIds);
-    }
 
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
 
@@ -327,8 +369,12 @@ loadIndex();
                 <ndd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></ndd-title>
                 <ndd-spacer size="16"></ndd-spacer>
                 <ndd-toolbar>
-                  <ndd-toolbar-item slot="start">
-                    <ndd-icon-button icon="heart" title="Favoriet"></ndd-icon-button>
+                  <ndd-toolbar-item v-if="authenticated" slot="start">
+                    <ndd-icon-button
+                      :icon="favorites?.has(selectedLawId) ? 'heart-fill' : 'heart'"
+                      :title="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
+                      @click="toggleFavorite(selectedLawId)"
+                    ></ndd-icon-button>
                   </ndd-toolbar-item>
                   <ndd-toolbar-item slot="start">
                     <ndd-button text="Filter"></ndd-button>

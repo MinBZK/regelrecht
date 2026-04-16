@@ -19,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 
 mod config;
 mod corpus_handlers;
+mod favorites;
 mod middleware;
 mod state;
 
@@ -61,12 +62,13 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
-    let app_state = AppState {
+    let mut app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
         http_client,
+        pool: None, // set below when auth is enabled
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -120,6 +122,11 @@ async fn main() {
             axum::routing::put(corpus_handlers::save_law)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
         )
+        .route("/api/favorites", get(favorites::list))
+        .route(
+            "/api/favorites/{law_id}",
+            axum::routing::put(favorites::add).delete(favorites::remove),
+        )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_session_auth::<AppState>,
@@ -146,6 +153,17 @@ async fn main() {
                 tracing::error!(error = %e, "failed to connect to database");
                 std::process::exit(1);
             });
+
+        // The editor shares a database with the pipeline; ensure_schema runs
+        // all pipeline migrations (including 0008_user_favorites). If the
+        // services are ever split to separate databases this should be replaced
+        // with an editor-specific migration runner.
+        if let Err(e) = regelrecht_pipeline::ensure_schema(&pool).await {
+            tracing::error!(error = %e, "database migration failed");
+            std::process::exit(1);
+        }
+
+        app_state.pool = Some(pool.clone());
 
         let session_store = PostgresStore::new(pool);
         if let Err(e) = session_store.migrate().await {

@@ -3675,6 +3675,7 @@ dependencies = [
  "axum",
  "regelrecht-auth",
  "regelrecht-corpus",
+ "regelrecht-pipeline",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

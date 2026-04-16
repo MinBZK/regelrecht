@@ -4,6 +4,7 @@ use std::sync::Arc;
 use regelrecht_auth::{ConfiguredClient, OidcAppState, OidcConfig};
 use regelrecht_corpus::backend::RepoBackend;
 use regelrecht_corpus::SourceMap;
+use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::config::AppConfig;
@@ -16,6 +17,8 @@ pub struct AppState {
     pub end_session_url: Option<String>,
     pub config: Arc<AppConfig>,
     pub http_client: reqwest::Client,
+    /// Database connection pool (available when auth is enabled).
+    pub pool: Option<PgPool>,
 }
 
 impl OidcAppState for AppState {

@@ -32,18 +32,20 @@ WORKDIR /build
 # Stage 3: Plan dependencies
 FROM chef AS planner
 COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/auth",\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/auth",\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
 COPY packages/auth/ packages/auth/
 COPY packages/editor-api/ packages/editor-api/
 COPY packages/corpus/ packages/corpus/
 COPY packages/engine/ packages/engine/
+COPY packages/harvester/ packages/harvester/
+COPY packages/pipeline/ packages/pipeline/
 COPY packages/shared/ packages/shared/
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 4: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
 COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/auth",\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
+RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/auth",\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
@@ -51,6 +53,8 @@ COPY packages/auth/ packages/auth/
 COPY packages/editor-api/ packages/editor-api/
 COPY packages/corpus/ packages/corpus/
 COPY packages/engine/ packages/engine/
+COPY packages/harvester/ packages/harvester/
+COPY packages/pipeline/ packages/pipeline/
 COPY packages/shared/ packages/shared/
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
