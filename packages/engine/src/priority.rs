@@ -40,6 +40,9 @@ pub fn layer_rank(layer: &RegulatoryLayer) -> u8 {
         RegulatoryLayer::Amvb => 6,
         RegulatoryLayer::MinisterieleRegeling => 7,
         RegulatoryLayer::ProvincialeVerordening => 8,
+        // Waterschappen and gemeenten have coequal constitutional status (Grondwet ch. 7)
+        // but govern non-overlapping domains. Scope filtering (waterschap_code vs
+        // gemeente_code) prevents lex superior conflicts between them in practice.
         RegulatoryLayer::WaterschapsVerordening => 9,
         RegulatoryLayer::GemeentelijkeVerordening => 10,
         RegulatoryLayer::Beleidsregel => 11,

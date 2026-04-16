@@ -282,6 +282,28 @@ mod tests {
         assert!(warnings.is_empty());
     }
 
+    #[test]
+    fn test_waterschap_scope_valid_no_warnings() {
+        let dir = TempDir::new().unwrap();
+        write_waterschap_law(dir.path(), "keur", "keur_valid", "WS0653");
+
+        let source = make_scoped_source(
+            "waterschap_hhnk",
+            dir.path(),
+            vec![Scope {
+                scope_type: "waterschap_code".to_string(),
+                value: "WS0653".to_string(),
+            }],
+            10,
+        );
+
+        let mut map = SourceMap::new();
+        map.load_source(&source).unwrap();
+
+        let warnings = validate_scopes(&map, &[source]);
+        assert!(warnings.is_empty());
+    }
+
     fn write_waterschap_law(dir: &std::path::Path, name: &str, id: &str, code: &str) {
         let path = dir.join(format!("{}.yaml", name));
         std::fs::write(
