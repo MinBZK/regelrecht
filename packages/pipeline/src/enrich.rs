@@ -408,8 +408,14 @@ pub async fn create_enrich_corpus(
     let mut config = base_config.clone();
     config.branch = branch.into();
 
+    // Normalize the yaml_path to strip legacy absolute prefixes (e.g.
+    // `/tmp/corpus-repo/regulation/…`) before deriving the law directory
+    // for sparse checkout. Without this, git sparse-checkout would receive
+    // an absolute path it cannot handle.
+    let normalized = normalize_yaml_path(yaml_path)?;
+
     // Sparse checkout: only the law directory + features/
-    if let Some(law_dir) = Path::new(yaml_path).parent() {
+    if let Some(law_dir) = Path::new(&normalized).parent() {
         let law_dir_str = law_dir.to_string_lossy().to_string();
         if !law_dir_str.is_empty() {
             config.sparse_paths = Some(vec![law_dir_str, "features".to_string()]);
