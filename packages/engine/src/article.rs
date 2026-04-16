@@ -725,6 +725,9 @@ pub struct ArticleBasedLaw {
     /// Municipality code for gemeentelijke verordeningen
     #[serde(default)]
     pub gemeente_code: Option<String>,
+    /// Water board code for waterschapsverordeningen
+    #[serde(default)]
+    pub waterschap_code: Option<String>,
     /// Official title for local regulations
     #[serde(default)]
     pub officiele_titel: Option<String>,

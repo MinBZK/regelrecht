@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Types of regulatory documents in Dutch law.
 ///
-/// Aligned with schema v0.3.1 regulatory_layer enum.
+/// Aligned with schema v0.5.2 regulatory_layer enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RegulatoryLayer {
     /// Constitutional law (Grondwet).
@@ -58,6 +58,10 @@ pub enum RegulatoryLayer {
     /// Provincial ordinance (Provinciale verordening).
     #[serde(rename = "PROVINCIALE_VERORDENING")]
     ProvincialeVerordening,
+
+    /// Water board ordinance (Waterschapsverordening).
+    #[serde(rename = "WATERSCHAPS_VERORDENING")]
+    WaterschapsVerordening,
 }
 
 impl RegulatoryLayer {
@@ -77,6 +81,7 @@ impl RegulatoryLayer {
             Self::Uitvoeringsbeleid => "UITVOERINGSBELEID",
             Self::GemeentelijkeVerordening => "GEMEENTELIJKE_VERORDENING",
             Self::ProvincialeVerordening => "PROVINCIALE_VERORDENING",
+            Self::WaterschapsVerordening => "WATERSCHAPS_VERORDENING",
         }
     }
 
@@ -96,6 +101,7 @@ impl RegulatoryLayer {
             Self::Uitvoeringsbeleid => "uitvoeringsbeleid",
             Self::GemeentelijkeVerordening => "gemeentelijke_verordening",
             Self::ProvincialeVerordening => "provinciale_verordening",
+            Self::WaterschapsVerordening => "waterschaps_verordening",
         }
     }
 }
@@ -162,6 +168,24 @@ mod tests {
         assert_eq!(
             RegulatoryLayer::KoninklijkBesluit.as_dir_name(),
             "koninklijk_besluit"
+        );
+    }
+
+    #[test]
+    fn test_waterschaps_verordening_serialization() {
+        assert_eq!(
+            serde_json::to_string(&RegulatoryLayer::WaterschapsVerordening).unwrap(),
+            "\"WATERSCHAPS_VERORDENING\""
+        );
+        let layer: RegulatoryLayer = serde_json::from_str("\"WATERSCHAPS_VERORDENING\"").unwrap();
+        assert_eq!(layer, RegulatoryLayer::WaterschapsVerordening);
+        assert_eq!(
+            RegulatoryLayer::WaterschapsVerordening.as_str(),
+            "WATERSCHAPS_VERORDENING"
+        );
+        assert_eq!(
+            RegulatoryLayer::WaterschapsVerordening.as_dir_name(),
+            "waterschaps_verordening"
         );
     }
 

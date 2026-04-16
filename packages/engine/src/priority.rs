@@ -40,9 +40,10 @@ pub fn layer_rank(layer: &RegulatoryLayer) -> u8 {
         RegulatoryLayer::Amvb => 6,
         RegulatoryLayer::MinisterieleRegeling => 7,
         RegulatoryLayer::ProvincialeVerordening => 8,
-        RegulatoryLayer::GemeentelijkeVerordening => 9,
-        RegulatoryLayer::Beleidsregel => 10,
-        RegulatoryLayer::Uitvoeringsbeleid => 11,
+        RegulatoryLayer::WaterschapsVerordening => 9,
+        RegulatoryLayer::GemeentelijkeVerordening => 10,
+        RegulatoryLayer::Beleidsregel => 11,
+        RegulatoryLayer::Uitvoeringsbeleid => 12,
     }
 }
 

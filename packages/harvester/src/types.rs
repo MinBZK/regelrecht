@@ -33,6 +33,7 @@ pub fn regulatory_layer_from_soort_regeling(text: &str) -> (RegulatoryLayer, Opt
         "uitvoeringsbeleid" => (RegulatoryLayer::Uitvoeringsbeleid, None),
         "gemeentelijke verordening" => (RegulatoryLayer::GemeentelijkeVerordening, None),
         "provinciale verordening" => (RegulatoryLayer::ProvincialeVerordening, None),
+        "waterschapsverordening" => (RegulatoryLayer::WaterschapsVerordening, None),
         // Ambiguous mappings - produce warnings
         "koninklijk besluit" | "kb" => (
             RegulatoryLayer::Amvb,

@@ -73,6 +73,7 @@ def parse_wti_metadata(wti_tree):
         "GRONDWET", "WET", "AMVB", "KONINKLIJK_BESLUIT", "MINISTERIELE_REGELING",
         "BELEIDSREGEL", "EU_VERORDENING", "EU_RICHTLIJN", "VERDRAG",
         "UITVOERINGSBELEID", "GEMEENTELIJKE_VERORDENING", "PROVINCIALE_VERORDENING",
+        "WATERSCHAPS_VERORDENING",
     }
     soort = wti_tree.find(f".//{{{NS}}}soort-regeling")
     if soort is not None:

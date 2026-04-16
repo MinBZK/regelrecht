@@ -30,11 +30,12 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
             continue;
         }
 
-        // Extract gemeente_code from the YAML content
+        // Extract scope codes from the YAML content
         let gemeente_code = extract_gemeente_code(&law.yaml_content);
+        let waterschap_code = extract_waterschap_code(&law.yaml_content);
 
         if let Some(code) = &gemeente_code {
-            if !scope_matches(&source.scopes, code) {
+            if !scope_matches(&source.scopes, "gemeente_code", code) {
                 warnings.push(ScopeWarning {
                     law_id: law.law_id.clone(),
                     source_id: law.source_id.clone(),
@@ -55,31 +56,50 @@ pub fn validate_scopes(source_map: &SourceMap, sources: &[Source]) -> Vec<ScopeW
                 });
             }
         }
+
+        if let Some(code) = &waterschap_code {
+            if !scope_matches(&source.scopes, "waterschap_code", code) {
+                warnings.push(ScopeWarning {
+                    law_id: law.law_id.clone(),
+                    source_id: law.source_id.clone(),
+                    source_name: law.source_name.clone(),
+                    expected_scopes: source
+                        .scopes
+                        .iter()
+                        .map(|s| format!("{}:{}", s.scope_type, s.value))
+                        .collect(),
+                    actual_gemeente_code: waterschap_code.clone(),
+                    message: format!(
+                        "Law '{}' from source '{}' has waterschap_code '{}' which is outside declared scopes {:?}",
+                        law.law_id,
+                        source.id,
+                        code,
+                        source.scopes.iter().map(|s| &s.value).collect::<Vec<_>>()
+                    ),
+                });
+            }
+        }
     }
 
     warnings
 }
 
-/// Check if a gemeente_code matches any of the source's gemeente scopes.
+/// Check if a scope code matches any of the source's scopes for the given type.
 ///
-/// Only `gemeente` scope types are matched against `gemeente_code`.
-/// Other scope types (e.g., `provincie`, `waterschap`) are not yet
-/// supported for validation and are ignored.
-fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
-    let gemeente_scopes: Vec<_> = scopes
+/// Supports `gemeente_code` and `waterschap_code` scope types.
+fn scope_matches(scopes: &[Scope], scope_type: &str, code: &str) -> bool {
+    let matching_scopes: Vec<_> = scopes
         .iter()
-        .filter(|s| s.scope_type == "gemeente_code")
+        .filter(|s| s.scope_type == scope_type)
         .collect();
 
-    // If the source has no gemeente scopes, we cannot validate by
-    // gemeente_code — treat as matching (no warning).
-    if gemeente_scopes.is_empty() {
+    // If the source has no scopes of this type, we cannot validate —
+    // treat as matching (no warning).
+    if matching_scopes.is_empty() {
         return true;
     }
 
-    gemeente_scopes
-        .iter()
-        .any(|scope| scope.value == gemeente_code)
+    matching_scopes.iter().any(|scope| scope.value == code)
 }
 
 /// Extract top-level gemeente_code from YAML content using line-based parsing.
@@ -89,6 +109,22 @@ fn scope_matches(scopes: &[Scope], gemeente_code: &str) -> bool {
 fn extract_gemeente_code(yaml: &str) -> Option<String> {
     for line in yaml.lines() {
         if let Some(rest) = line.strip_prefix("gemeente_code:") {
+            let value = rest.trim().trim_matches('"').trim_matches('\'');
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Extract top-level waterschap_code from YAML content using line-based parsing.
+///
+/// Only matches `waterschap_code:` at the start of a line (no leading whitespace)
+/// to avoid matching nested fields, consistent with `extract_gemeente_code`.
+fn extract_waterschap_code(yaml: &str) -> Option<String> {
+    for line in yaml.lines() {
+        if let Some(rest) = line.strip_prefix("waterschap_code:") {
             let value = rest.trim().trim_matches('"').trim_matches('\'');
             if !value.is_empty() {
                 return Some(value.to_string());
