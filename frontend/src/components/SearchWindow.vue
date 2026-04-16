@@ -46,6 +46,7 @@ watch([search, filteredLaws], ([q, filtered]) => {
 
 function bwbItemClick(result) {
   const status = harvestStatus.value[result.bwb_id];
+  if (status === 'loading') return;
   const slug = harvestSlugs.value[result.bwb_id];
   if (isAvailable(status) && slug) {
     emit('harvest-available', slug);
@@ -140,8 +141,7 @@ watch(() => props.modelValue, async (open) => {
                 size="md"
                 type="button"
                 :disabled="harvestStatus[result.bwb_id] === 'loading'
-                  || (isPolling(harvestStatus[result.bwb_id])
-                      && !isAvailable(harvestStatus[result.bwb_id]))
+                  || isPolling(harvestStatus[result.bwb_id])
                   || undefined"
                 @click="bwbItemClick(result)"
               >

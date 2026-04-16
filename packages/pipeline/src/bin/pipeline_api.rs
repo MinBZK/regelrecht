@@ -1,6 +1,5 @@
 use axum::routing::{get, post};
 use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -51,18 +50,12 @@ async fn main() {
 
     let state = ApiState { pool, http_client };
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     let app = Router::new()
         .route("/harvest/search", get(bwb_search::search_bwb))
         .route("/harvest", post(harvest::request_harvest))
         .route("/harvest/batch", post(harvest::request_harvest_batch))
         .route("/harvest/status", get(status::harvest_status))
         .route("/health", get(health))
-        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

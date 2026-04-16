@@ -38,7 +38,8 @@ export function useBwbSearch() {
           results.value = [];
         }
       } catch {
-        // BWB search is best-effort
+        // BWB search is best-effort — clear stale results on failure
+        results.value = [];
       } finally {
         loading.value = false;
       }
