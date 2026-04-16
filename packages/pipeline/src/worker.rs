@@ -616,7 +616,7 @@ async fn process_next_enrich_job(
     // Pass the job ID to get a unique checkout directory per worker.
     let branch = enrich_branch_name(effective_config.provider.name());
     let enrich_corpus = if let Some(base_config) = corpus_config {
-        match create_enrich_corpus(base_config, &branch, job.id).await {
+        match create_enrich_corpus(base_config, &branch, job.id, &payload.yaml_path).await {
             Ok(client) => {
                 tracing::info!(branch = %branch, "created enrichment branch corpus");
                 Some(client)
