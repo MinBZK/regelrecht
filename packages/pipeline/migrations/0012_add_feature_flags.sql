@@ -18,4 +18,5 @@ INSERT INTO feature_flags (key, enabled, description) VALUES
     ('panel.scenario_form', true, 'Scenario formulier (midden paneel)'),
     ('panel.yaml_editor', true, 'YAML editor (midden paneel)'),
     ('panel.execution_trace', true, 'Resultaat (rechter paneel)'),
-    ('panel.machine_readable', false, 'Machine readable weergave');
+    ('panel.machine_readable', false, 'Machine readable weergave')
+ON CONFLICT (key) DO NOTHING;
