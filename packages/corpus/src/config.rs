@@ -10,6 +10,9 @@ pub struct CorpusConfig {
     pub git_author_name: String,
     pub git_author_email: String,
     git_token: Option<String>,
+    /// Optional sparse-checkout paths (cone mode). When set, only these
+    /// directory trees are materialized in the working copy after clone.
+    pub sparse_paths: Option<Vec<String>>,
 }
 
 impl std::fmt::Debug for CorpusConfig {
@@ -21,6 +24,7 @@ impl std::fmt::Debug for CorpusConfig {
             .field("git_author_name", &self.git_author_name)
             .field("git_author_email", &self.git_author_email)
             .field("git_token", &self.git_token.as_ref().map(|_| "***"))
+            .field("sparse_paths", &self.sparse_paths)
             .finish()
     }
 }
@@ -50,6 +54,7 @@ impl CorpusConfig {
             git_author_name: "regelrecht-harvester".into(),
             git_author_email: "noreply@minbzk.nl".into(),
             git_token: None,
+            sparse_paths: None,
         }
     }
 
@@ -89,6 +94,7 @@ impl CorpusConfig {
             git_author_name,
             git_author_email,
             git_token,
+            sparse_paths: None,
         })
     }
 
@@ -147,6 +153,7 @@ mod tests {
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
+            sparse_paths: None,
         };
         // Token should NOT appear in the URL — only the username
         let url = config.clone_url();
@@ -163,6 +170,7 @@ mod tests {
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: None,
+            sparse_paths: None,
         };
         assert_eq!(
             config.clone_url(),
@@ -179,6 +187,7 @@ mod tests {
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
+            sparse_paths: None,
         };
         // SSH URLs should not be modified
         assert_eq!(
@@ -235,6 +244,7 @@ mod tests {
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
+            sparse_paths: None,
         };
         let debug_output = format!("{:?}", config);
         assert!(!debug_output.contains("ghp_abc123"));

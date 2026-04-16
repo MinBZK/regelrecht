@@ -394,13 +394,27 @@ fn build_command(
 ///
 /// Each invocation uses a unique checkout directory (keyed by branch + job ID)
 /// to prevent concurrent workers from clobbering each other's checkouts.
+///
+/// Uses sparse checkout to only materialize the law directory being enriched
+/// plus the `features/` directory. This prevents the LLM subprocess from
+/// indexing the entire corpus (thousands of files), which would exceed context
+/// limits and cause excessive memory usage.
 pub async fn create_enrich_corpus(
     base_config: &CorpusConfig,
     branch: &str,
     job_id: Uuid,
+    yaml_path: &str,
 ) -> Result<CorpusClient> {
     let mut config = base_config.clone();
     config.branch = branch.into();
+
+    // Sparse checkout: only the law directory + features/
+    if let Some(law_dir) = Path::new(yaml_path).parent() {
+        let law_dir_str = law_dir.to_string_lossy().to_string();
+        if !law_dir_str.is_empty() {
+            config.sparse_paths = Some(vec![law_dir_str, "features".to_string()]);
+        }
+    }
 
     // Use a separate checkout directory per branch + job to avoid conflicts
     // between concurrent workers processing different laws on the same branch.

@@ -206,19 +206,25 @@ impl CorpusClient {
     async fn git_clone(&self) -> Result<()> {
         let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
+        let sparse = self.config.sparse_paths.is_some();
+
+        let mut args = vec![
+            "clone",
+            "--depth",
+            "1",
+            "--quiet",
+            "--branch",
+            &self.config.branch,
+            "--single-branch",
+        ];
+        if sparse {
+            args.push("--no-checkout");
+        }
+        args.push(&url);
+        args.push(&path_str);
 
         let output = Command::new("git")
-            .args([
-                "clone",
-                "--depth",
-                "1",
-                "--quiet",
-                "--branch",
-                &self.config.branch,
-                "--single-branch",
-                &url,
-                &path_str,
-            ])
+            .args(&args)
             .envs(self.git_env())
             .output()
             .await?;
@@ -240,6 +246,7 @@ impl CorpusClient {
         }
 
         self.configure_git_user().await?;
+        self.setup_sparse_checkout().await?;
         Ok(())
     }
 
@@ -247,19 +254,25 @@ impl CorpusClient {
     async fn git_clone_and_create_branch(&self) -> Result<()> {
         let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
+        let sparse = self.config.sparse_paths.is_some();
+
+        let mut args = vec![
+            "clone",
+            "--depth",
+            "1",
+            "--quiet",
+            "--branch",
+            "development",
+            "--single-branch",
+        ];
+        if sparse {
+            args.push("--no-checkout");
+        }
+        args.push(&url);
+        args.push(&path_str);
 
         let output = Command::new("git")
-            .args([
-                "clone",
-                "--depth",
-                "1",
-                "--quiet",
-                "--branch",
-                "development",
-                "--single-branch",
-                &url,
-                &path_str,
-            ])
+            .args(&args)
             .envs(self.git_env())
             .output()
             .await?;
@@ -273,6 +286,7 @@ impl CorpusClient {
         }
 
         self.configure_git_user().await?;
+        self.setup_sparse_checkout().await?;
 
         // Create the target branch and push it
         self.run_git(&["checkout", "-b", &self.config.branch])
@@ -281,6 +295,30 @@ impl CorpusClient {
             .await?;
 
         tracing::info!(branch = %self.config.branch, "created and pushed new branch");
+        Ok(())
+    }
+
+    /// Configure sparse-checkout if `sparse_paths` is set on the config.
+    ///
+    /// Uses cone mode so only the listed directory trees are materialized.
+    /// No-op when `sparse_paths` is `None` (full checkout).
+    async fn setup_sparse_checkout(&self) -> Result<()> {
+        let paths = match self.config.sparse_paths {
+            Some(ref p) if !p.is_empty() => p,
+            _ => return Ok(()),
+        };
+
+        self.run_git(&["sparse-checkout", "init", "--cone"]).await?;
+
+        let mut args = vec!["sparse-checkout", "set"];
+        let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+        args.extend(refs);
+        self.run_git(&args).await?;
+
+        // Materialize the working tree (only the sparse paths)
+        self.run_git(&["checkout"]).await?;
+
+        tracing::info!(paths = ?paths, "sparse checkout configured");
         Ok(())
     }
 
@@ -655,6 +693,99 @@ mod tests {
             .unwrap();
         let branch_str = String::from_utf8_lossy(&branch.stdout);
         assert_eq!(branch_str.trim(), "editor/test-session");
+    }
+
+    /// Create a bare repo with files in multiple directories for sparse checkout testing.
+    async fn setup_bare_repo_with_files(dir: &Path) -> PathBuf {
+        let bare_path = dir.join("bare.git");
+        Command::new("git")
+            .args(["init", "--bare", "--initial-branch=development"])
+            .arg(&bare_path)
+            .output()
+            .await
+            .unwrap();
+
+        let tmp_clone = dir.join("tmp-clone");
+        let bare_url = format!("file://{}", bare_path.display());
+        Command::new("git")
+            .args(["clone", &bare_url])
+            .arg(&tmp_clone)
+            .output()
+            .await
+            .unwrap();
+
+        for args in [
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp_clone)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Create files in multiple directories
+        let law_a = tmp_clone.join("regulation/nl/wet/law_a");
+        let law_b = tmp_clone.join("regulation/nl/wet/law_b");
+        let features = tmp_clone.join("features");
+        tokio::fs::create_dir_all(&law_a).await.unwrap();
+        tokio::fs::create_dir_all(&law_b).await.unwrap();
+        tokio::fs::create_dir_all(&features).await.unwrap();
+
+        tokio::fs::write(law_a.join("2025-01-01.yaml"), "law_a content")
+            .await
+            .unwrap();
+        tokio::fs::write(law_b.join("2025-01-01.yaml"), "law_b content")
+            .await
+            .unwrap();
+        tokio::fs::write(features.join("law_a.feature"), "feature content")
+            .await
+            .unwrap();
+
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "add test files"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp_clone)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        bare_path
+    }
+
+    #[tokio::test]
+    async fn test_sparse_checkout_only_materializes_requested_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo_with_files(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("sparse-corpus");
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.sparse_paths = Some(vec![
+            "regulation/nl/wet/law_a".to_string(),
+            "features".to_string(),
+        ]);
+
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // law_a should be present
+        assert!(repo_path
+            .join("regulation/nl/wet/law_a/2025-01-01.yaml")
+            .exists());
+        // features should be present
+        assert!(repo_path.join("features/law_a.feature").exists());
+        // law_b should NOT be present (excluded by sparse checkout)
+        assert!(!repo_path
+            .join("regulation/nl/wet/law_b/2025-01-01.yaml")
+            .exists());
     }
 
     #[tokio::test]
