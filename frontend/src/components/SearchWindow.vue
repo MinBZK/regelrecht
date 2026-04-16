@@ -1,5 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+import { useBwbSearch } from '../composables/useBwbSearch.js';
+import { useBwbHarvest } from '../composables/useBwbHarvest.js';
 
 const props = defineProps({
   laws: { type: Array, default: () => [] },
@@ -7,7 +9,14 @@ const props = defineProps({
   anchorRect: { type: Object, default: null },
 });
 
-const emit = defineEmits(['update:modelValue', 'select-law']);
+const emit = defineEmits(['update:modelValue', 'select-law', 'harvest-available']);
+
+const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
+const {
+  harvestStatus, harvestSlugs, hasActiveHarvests,
+  requestHarvest, isAvailable, isPolling, isTerminal,
+  statusText, statusIcon,
+} = useBwbHarvest();
 
 const search = ref('');
 const searchFieldRef = ref(null);
@@ -28,8 +37,27 @@ const filteredLaws = computed(() => {
 
 const hasSearch = computed(() => search.value.length > 0);
 
+// Trigger BWB search when local results are empty
+watch([search, filteredLaws], ([q, filtered]) => {
+  if (!hasActiveHarvests.value) clearBwb();
+  if (!q || q.length < 3 || filtered.length > 0) return;
+  searchBwb(q);
+});
+
+function bwbItemClick(result) {
+  const status = harvestStatus.value[result.bwb_id];
+  const slug = harvestSlugs.value[result.bwb_id];
+  if (isAvailable(status) && slug) {
+    emit('harvest-available', slug);
+    close();
+  } else if (!status || status === 'error' || isTerminal(status)) {
+    requestHarvest(result.bwb_id);
+  }
+}
+
 function close() {
   search.value = '';
+  clearBwb();
   emit('update:modelValue', false);
 }
 
@@ -85,11 +113,7 @@ watch(() => props.modelValue, async (open) => {
       </div>
 
       <div v-if="hasSearch" class="search-window-results">
-        <div v-if="filteredLaws.length === 0" class="search-window-empty">
-          <div class="search-window-empty-title">Geen resultaten gevonden</div>
-          <div class="search-window-empty-subtitle">Pas je zoektermen of voorkeuren aan</div>
-        </div>
-        <ndd-list v-else variant="simple">
+        <ndd-list v-if="filteredLaws.length > 0" variant="simple">
           <ndd-list-item
             v-for="law in filteredLaws"
             :key="law.law_id"
@@ -101,6 +125,42 @@ watch(() => props.modelValue, async (open) => {
             </ndd-text-cell>
           </ndd-list-item>
         </ndd-list>
+
+        <!-- BWB external search results -->
+        <template v-if="filteredLaws.length === 0 || (bwbResults.length > 0 && hasActiveHarvests)">
+          <ndd-inline-dialog v-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
+          <template v-else-if="bwbResults.length > 0">
+            <ndd-spacer size="8"></ndd-spacer>
+            <ndd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></ndd-title>
+            <ndd-spacer size="8"></ndd-spacer>
+            <ndd-list variant="simple">
+              <ndd-list-item
+                v-for="result in bwbResults"
+                :key="result.bwb_id"
+                size="md"
+                type="button"
+                :disabled="harvestStatus[result.bwb_id] === 'loading'
+                  || (isPolling(harvestStatus[result.bwb_id])
+                      && !isAvailable(harvestStatus[result.bwb_id]))
+                  || undefined"
+                @click="bwbItemClick(result)"
+              >
+                <ndd-text-cell
+                  :text="result.title"
+                  :supporting-text="statusText(result.bwb_id, `${result.type} \u2014 ${result.bwb_id}`)"
+                >
+                </ndd-text-cell>
+                <ndd-icon-cell slot="end" size="20">
+                  <ndd-icon :name="statusIcon(result.bwb_id)"></ndd-icon>
+                </ndd-icon-cell>
+              </ndd-list-item>
+            </ndd-list>
+          </template>
+          <div v-else-if="search.length >= 3 && !bwbLoading && filteredLaws.length === 0" class="search-window-empty">
+            <div class="search-window-empty-title">Geen resultaten gevonden</div>
+            <div class="search-window-empty-subtitle">Pas je zoektermen of voorkeuren aan</div>
+          </div>
+        </template>
       </div>
     </div>
   </Teleport>

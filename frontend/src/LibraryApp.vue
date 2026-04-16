@@ -8,16 +8,8 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchWindow from './components/SearchWindow.vue';
 import { useAuth } from './composables/useAuth.js';
-import { useBwbSearch } from './composables/useBwbSearch.js';
-import { useBwbHarvest } from './composables/useBwbHarvest.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
-const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
-const {
-  harvestStatus, harvestSlugs, hasActiveHarvests,
-  requestHarvest, isAvailable, isPolling, isTerminal,
-  statusText, statusIcon,
-} = useBwbHarvest();
 
 const route = useRoute();
 const router = useRouter();
@@ -271,40 +263,16 @@ onBeforeRouteUpdate((to) => {
   }
 });
 
-// --- BWB external search is triggered from SearchWindow via @search event ---
-
-function bwbItemClick(result) {
-  const status = harvestStatus.value[result.bwb_id];
-  const slug = harvestSlugs.value[result.bwb_id];
-  if (isAvailable(status) && slug) {
-    selectLaw(slug);
-  } else if (!status || status === 'error' || isTerminal(status)) {
-    requestHarvest(result.bwb_id);
-  }
+// When a harvested law becomes available, reload the corpus and select it.
+async function onHarvestAvailable(slug) {
+  await fetch('/api/corpus/reload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ law_ids: [slug] }),
+  }).catch(() => {});
+  await loadIndex();
+  selectLaw(slug);
 }
-
-// Watch for harvested laws becoming available and reload corpus.
-// Track which BWB IDs have already triggered a reload to avoid repeated fetches.
-const reloadedBwbIds = new Set();
-
-watch(harvestStatus, async (statuses) => {
-  const readySlugs = Object.entries(harvestSlugs.value)
-    .filter(([bwbId]) => isAvailable(statuses[bwbId]) && !reloadedBwbIds.has(bwbId))
-    .map(([bwbId, slug]) => {
-      reloadedBwbIds.add(bwbId);
-      return slug;
-    })
-    .filter(Boolean);
-
-  if (readySlugs.length > 0) {
-    await fetch('/api/corpus/reload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ law_ids: readySlugs }),
-    }).catch(() => {});
-    await loadIndex();
-  }
-}, { deep: true });
 
 // Initial load from route
 if (route.params.lawId) {
@@ -504,6 +472,7 @@ loadIndex();
     :laws="laws"
     :anchor-rect="searchAnchorRect"
     @select-law="selectLaw"
+    @harvest-available="onHarvestAvailable"
   />
 </template>
 
