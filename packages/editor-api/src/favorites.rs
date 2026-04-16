@@ -28,7 +28,7 @@ pub async fn list(
     let pool = get_pool(&state)?;
 
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT law_id FROM user_favorites WHERE person_sub = $1 ORDER BY created_at",
+        "SELECT law_id FROM user_favorites WHERE person_sub = $1 ORDER BY created_at LIMIT 1000",
     )
     .bind(&person_sub)
     .fetch_all(pool)
@@ -42,6 +42,7 @@ pub async fn list(
 }
 
 fn validate_law_id(law_id: &str) -> Result<(), StatusCode> {
+    // .len() returns bytes, which equals character count for ASCII-only law IDs.
     if law_id.is_empty() || law_id.len() > 256 {
         return Err(StatusCode::BAD_REQUEST);
     }

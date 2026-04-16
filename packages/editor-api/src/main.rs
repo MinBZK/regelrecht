@@ -154,6 +154,10 @@ async fn main() {
                 std::process::exit(1);
             });
 
+        // The editor shares a database with the pipeline; ensure_schema runs
+        // all pipeline migrations (including 0008_user_favorites). If the
+        // services are ever split to separate databases this should be replaced
+        // with an editor-specific migration runner.
         if let Err(e) = regelrecht_pipeline::ensure_schema(&pool).await {
             tracing::error!(error = %e, "database migration failed");
             std::process::exit(1);
