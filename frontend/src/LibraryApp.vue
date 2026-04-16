@@ -143,7 +143,7 @@ async function loadIndex() {
   try {
     const [corpusRes] = await Promise.all([
       fetch('/api/corpus/laws?limit=1000'),
-      authenticated.value ? loadFavorites() : Promise.resolve(),
+      loadFavorites(),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
     const corpusLaws = await corpusRes.json();
