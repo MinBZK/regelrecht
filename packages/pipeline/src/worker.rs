@@ -379,10 +379,58 @@ async fn process_next_job(
                             tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as harvest_exhausted");
                         }
                     }
+                    Ok(count) => {
+                        // Not yet exhausted — queue a new harvest job so the
+                        // fail_count can accumulate toward the threshold.
+                        tracing::info!(
+                            law_id = %job.law_id,
+                            fail_count = count,
+                            threshold = config.exhausted_threshold,
+                            "scheduling auto-retry harvest job"
+                        );
+                        match serde_json::to_value(&payload) {
+                            Ok(payload_json) => {
+                                let date = payload.date.as_deref().unwrap_or("");
+                                let req = CreateJobRequest::new(JobType::Harvest, &job.law_id)
+                                    .with_priority(Priority::new(job.priority))
+                                    .with_payload(payload_json);
+                                match job_queue::create_harvest_job_if_not_exists(pool, req, date)
+                                    .await
+                                {
+                                    Ok(Some(new_job)) => {
+                                        tracing::info!(
+                                            new_job_id = %new_job.id,
+                                            law_id = %job.law_id,
+                                            "auto-retry harvest job created"
+                                        );
+                                    }
+                                    Ok(None) => {
+                                        tracing::debug!(
+                                            law_id = %job.law_id,
+                                            "auto-retry harvest job skipped: active job already exists"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            law_id = %job.law_id,
+                                            "failed to create auto-retry harvest job"
+                                        );
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    law_id = %job.law_id,
+                                    "failed to serialize retry payload, skipping auto-retry harvest job"
+                                );
+                            }
+                        }
+                    }
                     Err(e) => {
                         tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment harvest fail count");
                     }
-                    _ => {}
                 }
             } else {
                 // Job will be retried — reset law status to queued
@@ -667,23 +715,14 @@ async fn process_next_enrich_job(
                             tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
                         }
 
-                        // Check exhausted threshold
-                        match law_status::increment_fail_count(pool, &job.law_id, JobType::Enrich)
-                            .await
-                        {
-                            Ok(count) if count >= exhausted_threshold => {
-                                if let Err(e) =
-                                    law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
-                                        .await
-                                {
-                                    tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as enrich_exhausted");
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment enrich fail count");
-                            }
-                            _ => {}
-                        }
+                        handle_enrich_exhausted_or_retry(
+                            pool,
+                            &job.law_id,
+                            &payload,
+                            job.priority,
+                            exhausted_threshold,
+                        )
+                        .await;
                     } else if let Err(e) = law_status::update_status_if(
                         pool,
                         &job.law_id,
@@ -766,27 +805,14 @@ async fn process_next_enrich_job(
                                 tracing::warn!(error = %e, law_id = %job.law_id, "failed to update law status to enrich_failed");
                             }
 
-                            // Check exhausted threshold
-                            match law_status::increment_fail_count(
+                            handle_enrich_exhausted_or_retry(
                                 pool,
                                 &job.law_id,
-                                JobType::Enrich,
+                                &payload,
+                                job.priority,
+                                exhausted_threshold,
                             )
-                            .await
-                            {
-                                Ok(count) if count >= exhausted_threshold => {
-                                    if let Err(e) =
-                                        law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
-                                            .await
-                                    {
-                                        tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as enrich_exhausted");
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment enrich fail count");
-                                }
-                                _ => {}
-                            }
+                            .await;
                         }
                         Ok(_) => {
                             if let Err(e) = law_status::update_status_if(
@@ -856,23 +882,14 @@ async fn process_next_enrich_job(
                             tracing::warn!(error = %status_err, law_id = %job.law_id, "failed to set status to enrich_failed");
                         }
 
-                        // Check exhausted threshold
-                        match law_status::increment_fail_count(pool, &job.law_id, JobType::Enrich)
-                            .await
-                        {
-                            Ok(count) if count >= exhausted_threshold => {
-                                if let Err(e) =
-                                    law_status::exhaust_law(pool, &job.law_id, JobType::Enrich)
-                                        .await
-                                {
-                                    tracing::warn!(error = %e, law_id = %job.law_id, "failed to mark law as enrich_exhausted");
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!(error = %e, law_id = %job.law_id, "failed to increment enrich fail count");
-                            }
-                            _ => {}
-                        }
+                        handle_enrich_exhausted_or_retry(
+                            pool,
+                            &job.law_id,
+                            &payload,
+                            job.priority,
+                            exhausted_threshold,
+                        )
+                        .await;
                     } else {
                         // Job will be retried — atomically reset to Harvested only if
                         // status is currently Enriching. Cannot regress from Enriched.
@@ -996,4 +1013,71 @@ async fn execute_harvest_job(
     }
 
     Ok(result)
+}
+
+/// Increment the enrich fail count and either mark the law as exhausted
+/// or schedule a new enrich job for retry.
+async fn handle_enrich_exhausted_or_retry(
+    pool: &PgPool,
+    law_id: &str,
+    payload: &EnrichPayload,
+    priority: i32,
+    exhausted_threshold: i32,
+) {
+    match law_status::increment_fail_count(pool, law_id, JobType::Enrich).await {
+        Ok(count) if count >= exhausted_threshold => {
+            if let Err(e) = law_status::exhaust_law(pool, law_id, JobType::Enrich).await {
+                tracing::warn!(error = %e, law_id = %law_id, "failed to mark law as enrich_exhausted");
+            }
+        }
+        Ok(count) => {
+            // Not yet exhausted — queue a new enrich job so the
+            // fail_count can accumulate toward the threshold.
+            tracing::info!(
+                law_id = %law_id,
+                fail_count = count,
+                threshold = exhausted_threshold,
+                "scheduling auto-retry enrich job"
+            );
+            match serde_json::to_value(payload) {
+                Ok(payload_json) => {
+                    let req = CreateJobRequest::new(JobType::Enrich, law_id)
+                        .with_priority(Priority::new(priority))
+                        .with_payload(payload_json);
+                    match job_queue::create_enrich_job_if_not_exists(pool, req).await {
+                        Ok(Some(new_job)) => {
+                            tracing::info!(
+                                new_job_id = %new_job.id,
+                                law_id = %law_id,
+                                "auto-retry enrich job created"
+                            );
+                        }
+                        Ok(None) => {
+                            tracing::debug!(
+                                law_id = %law_id,
+                                "auto-retry enrich job skipped: active job already exists"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                error = %e,
+                                law_id = %law_id,
+                                "failed to create auto-retry enrich job"
+                            );
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        law_id = %law_id,
+                        "failed to serialize retry payload, skipping auto-retry enrich job"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, law_id = %law_id, "failed to increment enrich fail count");
+        }
+    }
 }
