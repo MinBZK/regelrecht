@@ -30,37 +30,33 @@ watch(() => props.open, (val) => {
 </script>
 
 <template>
-  <rr-sheet ref="sheetEl" placement="right" @close="emit('close')">
+  <ndd-sheet ref="sheetEl" placement="right" @close="emit('close')">
     <div class="settings-content">
-      <rr-toolbar size="md">
-        <rr-toolbar-start-area>
-          <rr-toolbar-item>
-            <rr-title-bar size="4">Instellingen</rr-title-bar>
-          </rr-toolbar-item>
-        </rr-toolbar-start-area>
-        <rr-toolbar-end-area>
-          <rr-toolbar-item>
-            <rr-icon-button variant="neutral-plain" size="m" icon="dismiss" @click="emit('close')"></rr-icon-button>
-          </rr-toolbar-item>
-        </rr-toolbar-end-area>
-      </rr-toolbar>
+      <ndd-toolbar size="md">
+        <ndd-toolbar-item slot="start">
+          <ndd-title-bar size="4" text="Instellingen"></ndd-title-bar>
+        </ndd-toolbar-item>
+        <ndd-toolbar-item slot="end">
+          <ndd-icon-button variant="neutral-plain" size="md" icon="dismiss" @click="emit('close')"></ndd-icon-button>
+        </ndd-toolbar-item>
+      </ndd-toolbar>
 
-      <rr-simple-section>
-        <rr-title-bar size="5" style="margin-bottom: 8px;">Panelen</rr-title-bar>
-        <rr-list variant="box">
-          <rr-list-item v-for="[key, label] in panelFlags" :key="key" size="md">
-            <rr-text-cell>{{ label }}</rr-text-cell>
-            <rr-cell>
-              <rr-switch
+      <ndd-simple-section>
+        <ndd-title-bar size="5" text="Panelen" style="margin-bottom: 8px;"></ndd-title-bar>
+        <ndd-list variant="box">
+          <ndd-list-item v-for="[key, label] in panelFlags" :key="key" size="md">
+            <ndd-text-cell :text="label"></ndd-text-cell>
+            <ndd-cell>
+              <ndd-switch
                 :checked="flags[key] ? true : undefined"
                 @change="toggle(key)"
-              ></rr-switch>
-            </rr-cell>
-          </rr-list-item>
-        </rr-list>
-      </rr-simple-section>
+              ></ndd-switch>
+            </ndd-cell>
+          </ndd-list-item>
+        </ndd-list>
+      </ndd-simple-section>
     </div>
-  </rr-sheet>
+  </ndd-sheet>
 </template>
 
 <style scoped>
