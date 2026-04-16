@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::middleware as axum_middleware;
-use axum::routing::{get, put};
+use axum::routing::get;
 use axum::Router;
 use tokio::sync::{Mutex, RwLock};
 use tower_http::services::{ServeDir, ServeFile};
@@ -109,10 +109,6 @@ async fn main() {
             get(corpus_handlers::get_scenario),
         )
         .route("/api/feature-flags", get(feature_flags::list_feature_flags))
-        .route(
-            "/api/feature-flags/{key}",
-            put(feature_flags::update_feature_flag),
-        )
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
         // auth because it triggers outbound requests to zoekservice.overheid.nl
@@ -163,6 +159,10 @@ async fn main() {
         .route(
             "/api/corpus/reload",
             axum::routing::post(corpus_handlers::reload_corpus),
+        )
+        .route(
+            "/api/feature-flags/{key}",
+            axum::routing::put(feature_flags::update_feature_flag),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

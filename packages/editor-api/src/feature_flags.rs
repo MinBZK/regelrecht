@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -8,7 +9,7 @@ use serde::Deserialize;
 
 use crate::state::AppState;
 
-fn defaults() -> HashMap<String, bool> {
+static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
     HashMap::from([
         ("panel.article_text".into(), true),
         ("panel.scenario_form".into(), true),
@@ -16,6 +17,10 @@ fn defaults() -> HashMap<String, bool> {
         ("panel.execution_trace".into(), true),
         ("panel.machine_readable".into(), false),
     ])
+});
+
+fn defaults() -> HashMap<String, bool> {
+    DEFAULTS.clone()
 }
 
 pub async fn list_feature_flags(State(state): State<AppState>) -> Json<HashMap<String, bool>> {
@@ -48,7 +53,7 @@ pub async fn update_feature_flag(
     Path(key): Path<String>,
     Json(body): Json<UpdateFlag>,
 ) -> impl IntoResponse {
-    if !defaults().contains_key(&key) {
+    if !DEFAULTS.contains_key(&key) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": format!("unknown flag key '{}'", key)})),
@@ -64,8 +69,8 @@ pub async fn update_feature_flag(
             .into_response();
     };
 
-    match regelrecht_pipeline::feature_flags::set_flag(pool, &key, body.enabled).await {
-        Ok(Some(_)) => {
+    match regelrecht_pipeline::feature_flags::upsert_flag(pool, &key, body.enabled, None).await {
+        Ok(_) => {
             // Return the full flag map after update
             match regelrecht_pipeline::feature_flags::list_flags(pool).await {
                 Ok(rows) => {
@@ -81,11 +86,6 @@ pub async fn update_feature_flag(
                 }
             }
         }
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": format!("flag '{}' not found", key)})),
-        )
-            .into_response(),
         Err(e) => {
             tracing::error!(error = %e, "failed to update feature flag");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
