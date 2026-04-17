@@ -13,6 +13,8 @@ pub struct AppConfig {
     pub api_key_hash: Option<[u8; 32]>,
     /// Pre-computed SHA-256 hash of the metrics auth token (sent by Prometheus).
     pub metrics_token_hash: Option<[u8; 32]>,
+    /// Enable test SSO for PR deployments. Blocked in production.
+    pub test_sso: bool,
 }
 
 impl std::fmt::Debug for AppConfig {
@@ -26,6 +28,7 @@ impl std::fmt::Debug for AppConfig {
                 "metrics_token_hash",
                 &self.metrics_token_hash.map(|_| "[REDACTED]"),
             )
+            .field("test_sso", &self.test_sso)
             .finish()
     }
 }
@@ -84,12 +87,48 @@ impl AppConfig {
             .as_ref()
             .map(|k| Sha256::digest(k.as_bytes()).into());
 
+        let deployment = env::var("DEPLOYMENT_NAME").unwrap_or_default();
+        let is_preview = deployment.starts_with("pr")
+            && deployment.len() > 2
+            && deployment[2..].bytes().all(|b| b.is_ascii_digit());
+
+        let test_sso_explicit = env::var("TEST_SSO")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|v| match v.to_ascii_lowercase().as_str() {
+                "true" | "1" | "yes" => Ok(true),
+                "false" | "0" | "no" => Ok(false),
+                _ => Err(format!(
+                    "Invalid TEST_SSO value '{v}'. Use 'true' or 'false'."
+                )),
+            })
+            .transpose()?;
+
+        // Auto-enable for PR deployments, allow explicit override via TEST_SSO=false.
+        let test_sso = match test_sso_explicit {
+            Some(val) => val,
+            None => is_preview,
+        };
+
+        // Allowlist: test SSO may only be enabled for confirmed PR deployments (pr<N>).
+        if test_sso && !is_preview {
+            return Err(format!(
+                "TEST_SSO may only be enabled for PR deployments (DEPLOYMENT_NAME=pr<N>). \
+                 Current DEPLOYMENT_NAME is '{deployment}'."
+            ));
+        }
+
+        if test_sso {
+            tracing::warn!("TEST SSO is enabled — for test/PR deployments only");
+        }
+
         Ok(Self {
             oidc,
             base_url,
             api_key,
             api_key_hash,
             metrics_token_hash,
+            test_sso,
         })
     }
 
@@ -122,6 +161,8 @@ mod tests {
         env::remove_var("ADMIN_API_KEY");
         env::remove_var("BASE_URL");
         env::remove_var("METRICS_AUTH_TOKEN");
+        env::remove_var("TEST_SSO");
+        env::remove_var("DEPLOYMENT_NAME");
     }
 
     fn set_complete_oidc_env() {
@@ -211,6 +252,170 @@ mod tests {
 
         let config = AppConfig::try_from_env().expect("should succeed");
         assert!(config.metrics_token_hash.is_none());
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_enabled_from_env() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "true");
+        env::set_var("DEPLOYMENT_NAME", "pr42");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_disabled_by_default() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(!config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_blocks_production() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "true");
+        env::set_var("DEPLOYMENT_NAME", "regelrecht");
+
+        let result = AppConfig::try_from_env();
+        assert!(result.is_err());
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_blocks_non_pr_deployment() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "true");
+        env::set_var("DEPLOYMENT_NAME", "staging");
+
+        let result = AppConfig::try_from_env();
+        assert!(result.is_err());
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_blocks_when_deployment_unset() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "true");
+
+        let result = AppConfig::try_from_env();
+        assert!(result.is_err());
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_case_insensitive() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "True");
+        env::set_var("DEPLOYMENT_NAME", "pr99");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_accepts_1_as_true() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "1");
+        env::set_var("DEPLOYMENT_NAME", "pr10");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_rejects_invalid_value() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "banana");
+        env::set_var("DEPLOYMENT_NAME", "pr10");
+
+        let result = AppConfig::try_from_env();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Invalid TEST_SSO value"));
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_false_string() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("TEST_SSO", "false");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(!config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_auto_enabled_for_pr_deployment() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("DEPLOYMENT_NAME", "pr42");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_not_auto_enabled_for_preview_deployment() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("DEPLOYMENT_NAME", "preview");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(!config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_not_auto_enabled_for_production() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("DEPLOYMENT_NAME", "regelrecht");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(!config.test_sso);
+
+        clear_env();
+    }
+
+    #[test]
+    fn test_sso_explicit_false_overrides_pr_auto() {
+        let _lock = ENV_LOCK.lock();
+        clear_env();
+        env::set_var("DEPLOYMENT_NAME", "pr42");
+        env::set_var("TEST_SSO", "false");
+
+        let config = AppConfig::try_from_env().expect("should succeed");
+        assert!(!config.test_sso);
 
         clear_env();
     }

@@ -24,6 +24,12 @@ pub trait OidcAppState: Clone + Send + Sync + 'static {
     fn is_auth_enabled(&self) -> bool;
     fn base_url(&self) -> Option<&str>;
     fn http_client(&self) -> &reqwest::Client;
+
+    /// Whether test SSO is available (for PR/test deployments).
+    /// Defaults to `false`; override in services that support it.
+    fn is_test_sso_enabled(&self) -> bool {
+        false
+    }
 }
 
 /// Build the standard auth routes (login, callback, logout, status)
@@ -34,4 +40,5 @@ pub fn auth_routes<S: OidcAppState>() -> Router<S> {
         .route("/auth/callback", get(handlers::callback::<S>))
         .route("/auth/logout", get(handlers::logout::<S>))
         .route("/auth/status", get(handlers::status::<S>))
+        .route("/auth/test-login", get(handlers::test_login::<S>))
 }

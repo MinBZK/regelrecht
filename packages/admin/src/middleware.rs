@@ -141,6 +141,7 @@ mod tests {
                 Sha256::digest(k.as_bytes()).into()
             }),
             metrics_token_hash: None,
+            test_sso: false,
         };
 
         #[allow(clippy::expect_used)]
@@ -450,6 +451,7 @@ mod tests {
                 use sha2::{Digest, Sha256};
                 Sha256::digest(k.as_bytes()).into()
             }),
+            test_sso: false,
         };
 
         #[allow(clippy::expect_used)]

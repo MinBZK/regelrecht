@@ -58,6 +58,7 @@ fn base_url_from_config_or_request<S: OidcAppState>(state: &S, headers: &HeaderM
 pub struct AuthStatus {
     pub authenticated: bool,
     pub oidc_configured: bool,
+    pub test_sso_available: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub person: Option<PersonInfo>,
 }
@@ -427,8 +428,67 @@ pub async fn status<S: OidcAppState>(State(state): State<S>, session: Session) -
     Json(AuthStatus {
         authenticated,
         oidc_configured,
+        test_sso_available: state.is_test_sso_enabled(),
         person,
     })
+}
+
+#[derive(Deserialize)]
+pub struct TestLoginQuery {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+pub async fn test_login<S: OidcAppState>(
+    State(state): State<S>,
+    headers: HeaderMap,
+    session: Session,
+    axum::extract::Query(params): axum::extract::Query<TestLoginQuery>,
+) -> Result<Response, StatusCode> {
+    if !state.is_test_sso_enabled() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let name = params
+        .name
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Test User".to_string());
+    let email = params
+        .email
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "test-user@regelrecht.test".to_string());
+
+    // Generate a deterministic sub based on the name (lowercase, trimmed).
+    let sub = format!(
+        "test-sso-{}",
+        name.to_lowercase()
+            .replace(|c: char| !c.is_alphanumeric(), "-")
+    );
+
+    session.cycle_id().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to cycle session ID");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    session
+        .insert(SESSION_KEY_AUTHENTICATED, true)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to insert authenticated flag into session");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    session_insert(&session, SESSION_KEY_SUB, sub).await?;
+    session_insert(&session, SESSION_KEY_EMAIL, email.clone()).await?;
+    session_insert(&session, SESSION_KEY_NAME, name.clone()).await?;
+
+    // Store base_url in session for logout redirect (same as real OIDC flow).
+    let base_url = base_url_from_config_or_request(&state, &headers);
+    session_insert(&session, SESSION_KEY_BASE_URL, base_url).await?;
+
+    tracing::info!(name = %name, email = %email, "test SSO login");
+
+    // Use relative redirect to avoid open-redirect via Host header manipulation.
+    Ok(Redirect::temporary("/").into_response())
 }
 
 #[derive(Deserialize)]
@@ -600,5 +660,48 @@ mod tests {
         assert_eq!(validate_return_url(Some("/library\x7f")), None);
         // Null byte
         assert_eq!(validate_return_url(Some("/library\0")), None);
+    }
+
+    // --- TestLoginQuery deserialization ---
+
+    #[test]
+    fn test_login_query_defaults() {
+        let q: TestLoginQuery = serde_json::from_str("{}").unwrap();
+        assert!(q.name.is_none());
+        assert!(q.email.is_none());
+    }
+
+    #[test]
+    fn test_login_query_with_params() {
+        let q: TestLoginQuery =
+            serde_json::from_str(r#"{"name":"Test","email":"test@example.com"}"#).unwrap();
+        assert_eq!(q.name.unwrap(), "Test");
+        assert_eq!(q.email.unwrap(), "test@example.com");
+    }
+
+    // --- AuthStatus serialization ---
+
+    #[test]
+    fn auth_status_includes_test_sso_field() {
+        let status = AuthStatus {
+            authenticated: false,
+            oidc_configured: true,
+            test_sso_available: true,
+            person: None,
+        };
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["test_sso_available"], true);
+    }
+
+    #[test]
+    fn auth_status_test_sso_false() {
+        let status = AuthStatus {
+            authenticated: false,
+            oidc_configured: true,
+            test_sso_available: false,
+            person: None,
+        };
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json["test_sso_available"], false);
     }
 }

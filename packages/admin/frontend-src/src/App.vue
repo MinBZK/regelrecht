@@ -26,9 +26,11 @@ const tabs = [
 
 const activeTab = computed(() => route.name);
 
-// Redirect to login if OIDC configured but not authenticated
-watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
-  if (!loading && oidc && !auth) {
+// Redirect to OIDC login if configured but not authenticated.
+// The ?test-sso param is handled in main.js before Vue loads.
+watch(authLoading, (loading) => {
+  if (loading || authenticated.value) return;
+  if (oidcConfigured.value) {
     redirectToLogin();
   }
 });
