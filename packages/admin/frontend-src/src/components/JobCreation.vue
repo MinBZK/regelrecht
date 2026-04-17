@@ -23,10 +23,10 @@ async function onSubmit() {
   if (submitting.value) return;
   const el = inputRef.value;
   if (!el) return;
-  const bwbId = getFieldValue(el).trim();
-  if (!bwbId) return;
-  if (!/^BWBR\d{7}$/.test(bwbId)) {
-    alert('BWB ID format: BWBR followed by 7 digits (e.g. BWBR0018451)');
+  const lawId = getFieldValue(el).trim();
+  if (!lawId) return;
+  if (!/^BWBR\d{7}$/.test(lawId) && !/^CVDR\d{3,}$/.test(lawId)) {
+    alert('Expected a BWB ID (e.g. BWBR0018451) or CVDR ID (e.g. CVDR681386)');
     return;
   }
 
@@ -37,7 +37,7 @@ async function onSubmit() {
     const response = await fetch('api/harvest-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bwb_id: bwbId }),
+      body: JSON.stringify({ law_id: lawId }),
     });
     if (response.status === 401) {
       redirectToLogin();
@@ -75,7 +75,7 @@ function onKeydown(e) {
     <ndd-text-field
       ref="inputRef"
       size="md"
-      placeholder="BWB ID (e.g. BWBR0018451)"
+      placeholder="BWB or CVDR ID (e.g. BWBR0018451, CVDR681386)"
       @keydown="onKeydown"
     />
     <ndd-button

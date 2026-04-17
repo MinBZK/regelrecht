@@ -33,6 +33,11 @@ pub const TEXT_WRAP_WIDTH: usize = 115;
 static BWB_ID_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));
 
+/// CVDR ID pattern: CVDR followed by 3 or more digits.
+#[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid
+static CVDR_ID_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^CVDR\d{3,}$").expect("valid regex"));
+
 /// Date pattern: YYYY-MM-DD.
 #[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid
 static DATE_PATTERN: LazyLock<Regex> =
@@ -228,6 +233,58 @@ pub fn wetten_url(
     url
 }
 
+/// Base URL for CVDR SRU search service.
+pub const CVDR_SRU_URL: &str = "https://zoekservice.overheid.nl/sru/Search";
+
+/// Validate CVDR ID format.
+///
+/// # Arguments
+/// * `cvdr_id` - The CVDR identifier to validate
+///
+/// # Returns
+/// * `Ok(())` if valid
+/// * `Err(HarvesterError::InvalidCvdrId)` if invalid
+///
+/// # Examples
+/// ```
+/// use regelrecht_harvester::config::validate_cvdr_id;
+///
+/// assert!(validate_cvdr_id("CVDR681386").is_ok());
+/// assert!(validate_cvdr_id("INVALID").is_err());
+/// ```
+pub fn validate_cvdr_id(cvdr_id: &str) -> Result<()> {
+    if CVDR_ID_PATTERN.is_match(cvdr_id) {
+        Ok(())
+    } else {
+        Err(HarvesterError::InvalidCvdrId(cvdr_id.to_string()))
+    }
+}
+
+/// Build SRU search URL for a CVDR regulation.
+///
+/// # Arguments
+/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386")
+///
+/// # Returns
+/// URL for the SRU search query
+pub fn cvdr_sru_search_url(cvdr_id: &str) -> String {
+    format!(
+        "{}?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=dcterms.identifier%3D%3D{}",
+        CVDR_SRU_URL, cvdr_id
+    )
+}
+
+/// Build lokaleregelgeving.overheid.nl URL for a CVDR regulation.
+///
+/// # Arguments
+/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386")
+///
+/// # Returns
+/// Public URL to lokaleregelgeving.overheid.nl
+pub fn lokaleregelgeving_url(cvdr_id: &str) -> String {
+    format!("https://lokaleregelgeving.overheid.nl/{cvdr_id}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -407,6 +464,38 @@ mod tests {
                 None
             ),
             "https://wetten.overheid.nl/BWBR0009950#Artikel1scriptalertxssscript"
+        );
+    }
+
+    #[test]
+    fn test_validate_cvdr_id_valid() {
+        assert!(validate_cvdr_id("CVDR681386").is_ok());
+        assert!(validate_cvdr_id("CVDR123").is_ok());
+        assert!(validate_cvdr_id("CVDR1234567890").is_ok());
+    }
+
+    #[test]
+    fn test_validate_cvdr_id_invalid() {
+        assert!(validate_cvdr_id("").is_err());
+        assert!(validate_cvdr_id("CVDR").is_err()); // No digits
+        assert!(validate_cvdr_id("CVDR12").is_err()); // Only 2 digits
+        assert!(validate_cvdr_id("BWBR0018451").is_err()); // BWB, not CVDR
+        assert!(validate_cvdr_id("cvdr681386").is_err()); // Lowercase
+    }
+
+    #[test]
+    fn test_cvdr_sru_search_url() {
+        assert_eq!(
+            cvdr_sru_search_url("CVDR681386"),
+            "https://zoekservice.overheid.nl/sru/Search?operation=searchRetrieve&version=1.2&x-connection=CVDR&query=dcterms.identifier%3D%3DCVDR681386"
+        );
+    }
+
+    #[test]
+    fn test_lokaleregelgeving_url() {
+        assert_eq!(
+            lokaleregelgeving_url("CVDR681386"),
+            "https://lokaleregelgeving.overheid.nl/CVDR681386"
         );
     }
 }

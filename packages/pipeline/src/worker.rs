@@ -144,12 +144,21 @@ async fn process_next_job(
                 return Ok(true);
             }
         },
-        None => HarvestPayload {
-            bwb_id: job.law_id.clone(),
-            date: None,
-            max_size_mb: None,
-            depth: None,
-        },
+        None => {
+            // Infer source type from law_id prefix when no payload is stored.
+            let (bwb_id, cvdr_id) = if job.law_id.starts_with("CVDR") {
+                (None, Some(job.law_id.clone()))
+            } else {
+                (Some(job.law_id.clone()), None)
+            };
+            HarvestPayload {
+                bwb_id,
+                cvdr_id,
+                date: None,
+                max_size_mb: None,
+                depth: None,
+            }
+        }
     };
 
     if let Err(e) = law_status::upsert_law(pool, &job.law_id, None).await {
@@ -300,8 +309,10 @@ async fn process_next_job(
                     // When None (no date specified), each law independently resolves
                     // its own latest consolidation from BWB — this ensures we always
                     // harvest the version that is valid today.
+                    // Follow-up jobs from referenced_bwb_ids are always BWB laws.
                     let follow_up_payload = HarvestPayload {
-                        bwb_id: bwb_id.clone(),
+                        bwb_id: Some(bwb_id.clone()),
+                        cvdr_id: None,
                         date: payload.date.clone(),
                         max_size_mb: payload.max_size_mb,
                         depth: Some(next_depth),

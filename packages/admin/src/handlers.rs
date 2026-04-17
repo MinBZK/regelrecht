@@ -34,6 +34,27 @@ pub async fn platform_info() -> Json<PlatformInfo> {
 static BWB_ID_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));
 
+#[allow(clippy::expect_used)]
+static CVDR_ID_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^CVDR\d{3,}$").expect("valid regex"));
+
+/// Identifies the source type of a law identifier.
+enum LawIdType {
+    Bwb(String),
+    Cvdr(String),
+}
+
+/// Validate and classify a law identifier as BWB or CVDR.
+fn classify_law_id(id: &str) -> Option<LawIdType> {
+    if BWB_ID_PATTERN.is_match(id) {
+        Some(LawIdType::Bwb(id.to_string()))
+    } else if CVDR_ID_PATTERN.is_match(id) {
+        Some(LawIdType::Cvdr(id.to_string()))
+    } else {
+        None
+    }
+}
+
 /// Validate a sort column against an allowlist. Returns `None` if not allowed.
 fn validated_sort_column<'a>(
     sort: Option<&'a str>,
@@ -414,7 +435,11 @@ pub async fn list_jobs_summary(
 
 #[derive(Deserialize)]
 pub struct CreateJobBody {
-    pub bwb_id: String,
+    /// Law identifier — BWB (e.g. "BWBR0018451") or CVDR (e.g. "CVDR681386").
+    /// Also accepts the legacy `bwb_id` field for backward compatibility.
+    pub law_id: Option<String>,
+    /// Legacy field — use `law_id` instead. If both are set, `law_id` takes precedence.
+    pub bwb_id: Option<String>,
     pub priority: Option<i32>,
     pub date: Option<String>,
 }
@@ -429,17 +454,29 @@ pub async fn create_harvest_job(
     State(state): State<AppState>,
     Json(body): Json<CreateJobBody>,
 ) -> Result<(StatusCode, Json<CreateJobResponse>), ApiError> {
-    let bwb_id = body.bwb_id.trim().to_string();
-    if bwb_id.is_empty() {
-        return Err(ApiError::BadRequest("bwb_id must not be empty".to_string()));
-    }
+    // Accept `law_id` with `bwb_id` as fallback for backward compatibility.
+    let raw_id = body
+        .law_id
+        .or(body.bwb_id)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
 
-    if !BWB_ID_PATTERN.is_match(&bwb_id) {
-        tracing::debug!(bwb_id, "rejected invalid BWB ID");
+    if raw_id.is_empty() {
         return Err(ApiError::BadRequest(
-            "invalid BWB ID format: expected BWBR followed by 7 digits".to_string(),
+            "law_id must not be empty (BWB or CVDR identifier)".to_string(),
         ));
     }
+
+    let law_id_type = classify_law_id(&raw_id).ok_or_else(|| {
+        tracing::debug!(law_id = %raw_id, "rejected invalid law ID");
+        ApiError::BadRequest(
+            "invalid law ID format: expected BWBR followed by 7 digits, or CVDR followed by 3+ digits".to_string(),
+        )
+    })?;
+
+    let law_id = match &law_id_type {
+        LawIdType::Bwb(id) | LawIdType::Cvdr(id) => id.clone(),
+    };
 
     if let Some(ref date) = body.date {
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
@@ -457,16 +494,16 @@ pub async fn create_harvest_job(
         ApiError::Internal("internal server error".to_string())
     })?;
 
-    // Acquire an advisory lock keyed on the bwb_id to serialize concurrent requests
+    // Acquire an advisory lock keyed on the law_id to serialize concurrent requests
     // for the same law. This prevents the TOCTOU race where two requests both see
     // no existing job and both create one. The lock is released when the transaction
     // commits or rolls back.
     sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
-        .bind(&bwb_id)
+        .bind(&law_id)
         .execute(&mut *tx)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, law_id = %bwb_id, "failed to acquire advisory lock");
+            tracing::error!(error = %e, law_id = %law_id, "failed to acquire advisory lock");
             ApiError::Internal("internal server error".to_string())
         })?;
 
@@ -476,11 +513,11 @@ pub async fn create_harvest_job(
          WHERE law_id = $1 AND job_type = 'harvest' AND status IN ('pending', 'processing') \
          LIMIT 1",
     )
-    .bind(&bwb_id)
+    .bind(&law_id)
     .fetch_optional(&mut *tx)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, law_id = %bwb_id, "failed to check for existing jobs");
+        tracing::error!(error = %e, law_id = %law_id, "failed to check for existing jobs");
         ApiError::Internal("failed to check for existing jobs".to_string())
     })?;
 
@@ -492,9 +529,9 @@ pub async fn create_harvest_job(
 
     // Check if law is exhausted for harvest.
     // RowNotFound is fine (new law, can't be exhausted); other errors should propagate.
-    match regelrecht_pipeline::law_status::get_law(&mut *tx, &bwb_id).await {
+    match regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {
         Ok(law) if law.status == regelrecht_pipeline::LawStatusValue::HarvestExhausted => {
-            return Err(ApiError::Conflict(format!("{bwb_id} is harvest_exhausted — reset via /api/law_entries/{bwb_id}/reset-exhausted first")));
+            return Err(ApiError::Conflict(format!("{law_id} is harvest_exhausted — reset via /api/law_entries/{law_id}/reset-exhausted first")));
         }
         Err(regelrecht_pipeline::PipelineError::LawNotFound(_)) => {}
         Err(e) => {
@@ -512,24 +549,34 @@ pub async fn create_harvest_job(
          ON CONFLICT (law_id) DO UPDATE SET status = 'queued', updated_at = NOW() \
          WHERE law_entries.status NOT IN ('harvesting', 'enriching')",
     )
-    .bind(&bwb_id)
+    .bind(&law_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, law_id = %bwb_id, "failed to upsert law entry");
+        tracing::error!(error = %e, law_id = %law_id, "failed to upsert law entry");
         ApiError::Internal("failed to upsert law entry".to_string())
     })?;
 
-    let payload = HarvestPayload {
-        bwb_id: bwb_id.clone(),
-        date: body.date,
-        max_size_mb: None,
-        depth: None,
+    let payload = match law_id_type {
+        LawIdType::Bwb(ref id) => HarvestPayload {
+            bwb_id: Some(id.clone()),
+            cvdr_id: None,
+            date: body.date,
+            max_size_mb: None,
+            depth: None,
+        },
+        LawIdType::Cvdr(ref id) => HarvestPayload {
+            bwb_id: None,
+            cvdr_id: Some(id.clone()),
+            date: body.date,
+            max_size_mb: None,
+            depth: None,
+        },
     };
 
     let priority = Priority::new(body.priority.unwrap_or(50));
 
-    let req = CreateJobRequest::new(JobType::Harvest, &bwb_id)
+    let req = CreateJobRequest::new(JobType::Harvest, &law_id)
         .with_priority(priority)
         .with_payload(serde_json::to_value(&payload).map_err(|e| {
             tracing::error!(error = %e, "failed to serialize payload");
@@ -537,13 +584,13 @@ pub async fn create_harvest_job(
         })?);
 
     let job = create_job(&mut *tx, req).await.map_err(|e| {
-        tracing::error!(error = %e, law_id = %bwb_id, "failed to create harvest job");
+        tracing::error!(error = %e, law_id = %law_id, "failed to create harvest job");
         ApiError::Internal("failed to create harvest job".to_string())
     })?;
 
     // Link the harvest job to the law entry.
-    set_harvest_job(&mut *tx, &bwb_id, job.id).await.map_err(|e| {
-        tracing::error!(error = %e, law_id = %bwb_id, job_id = %job.id, "failed to link harvest job to law entry");
+    set_harvest_job(&mut *tx, &law_id, job.id).await.map_err(|e| {
+        tracing::error!(error = %e, law_id = %law_id, job_id = %job.id, "failed to link harvest job to law entry");
         ApiError::Internal("failed to link harvest job to law entry".to_string())
     })?;
 
@@ -552,13 +599,13 @@ pub async fn create_harvest_job(
         ApiError::Internal("internal server error".to_string())
     })?;
 
-    tracing::info!(job_id = %job.id, law_id = %bwb_id, "created harvest job");
+    tracing::info!(job_id = %job.id, law_id = %law_id, "created harvest job");
 
     Ok((
         StatusCode::CREATED,
         Json(CreateJobResponse {
             job_id: job.id.to_string(),
-            law_id: bwb_id,
+            law_id,
         }),
     ))
 }
@@ -1003,28 +1050,64 @@ mod tests {
     // --- CreateJobBody deserialization ---
 
     #[test]
-    fn create_job_body_full() {
-        let json = r#"{"bwb_id": "BWBR0018451", "priority": 80, "date": "2026-01-01"}"#;
+    fn create_job_body_with_law_id() {
+        let json = r#"{"law_id": "BWBR0018451", "priority": 80, "date": "2026-01-01"}"#;
         let body: CreateJobBody = serde_json::from_str(json).unwrap();
-        assert_eq!(body.bwb_id, "BWBR0018451");
+        assert_eq!(body.law_id.as_deref(), Some("BWBR0018451"));
         assert_eq!(body.priority, Some(80));
         assert_eq!(body.date.as_deref(), Some("2026-01-01"));
     }
 
     #[test]
-    fn create_job_body_minimal() {
-        let json = r#"{"bwb_id": "BWBR0018451"}"#;
+    fn create_job_body_with_cvdr_id() {
+        let json = r#"{"law_id": "CVDR681386"}"#;
         let body: CreateJobBody = serde_json::from_str(json).unwrap();
-        assert_eq!(body.bwb_id, "BWBR0018451");
-        assert_eq!(body.priority, None);
-        assert_eq!(body.date, None);
+        assert_eq!(body.law_id.as_deref(), Some("CVDR681386"));
     }
 
     #[test]
-    fn create_job_body_missing_bwb_id() {
-        let json = r#"{"priority": 50}"#;
-        let result = serde_json::from_str::<CreateJobBody>(json);
-        assert!(result.is_err());
+    fn create_job_body_legacy_bwb_id() {
+        // Backward compatibility: old clients sending bwb_id
+        let json = r#"{"bwb_id": "BWBR0018451"}"#;
+        let body: CreateJobBody = serde_json::from_str(json).unwrap();
+        assert!(body.law_id.is_none());
+        assert_eq!(body.bwb_id.as_deref(), Some("BWBR0018451"));
+    }
+
+    #[test]
+    fn create_job_body_minimal_empty() {
+        let json = r#"{}"#;
+        let body: CreateJobBody = serde_json::from_str(json).unwrap();
+        assert!(body.law_id.is_none());
+        assert!(body.bwb_id.is_none());
+        assert!(body.priority.is_none());
+        assert!(body.date.is_none());
+    }
+
+    // --- classify_law_id ---
+
+    #[test]
+    fn classify_bwb_id() {
+        assert!(matches!(
+            classify_law_id("BWBR0018451"),
+            Some(LawIdType::Bwb(_))
+        ));
+    }
+
+    #[test]
+    fn classify_cvdr_id() {
+        assert!(matches!(
+            classify_law_id("CVDR681386"),
+            Some(LawIdType::Cvdr(_))
+        ));
+    }
+
+    #[test]
+    fn classify_invalid_id() {
+        assert!(classify_law_id("INVALID").is_none());
+        assert!(classify_law_id("").is_none());
+        assert!(classify_law_id("BWBR123").is_none()); // too few digits
+        assert!(classify_law_id("CVDR12").is_none()); // too few digits
     }
 
     #[test]

@@ -96,10 +96,13 @@ pub fn parse_wti_metadata(doc: &Document<'_>) -> WtiParseResult {
     WtiParseResult {
         metadata: LawMetadata {
             bwb_id,
+            cvdr_id: None,
             title,
             regulatory_layer,
             publication_date,
             effective_date: None,
+            creator: None,
+            scope_code: None,
         },
         warnings,
     }
