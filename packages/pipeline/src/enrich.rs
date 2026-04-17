@@ -444,7 +444,7 @@ pub async fn create_enrich_corpus(
     let law_dir = Path::new(&normalized)
         .parent()
         .map(|p| p.to_string_lossy().to_string());
-    if let Some(ref dir) = law_dir {
+    if let Some(ref dir) = law_dir.filter(|d| !d.is_empty()) {
         client.checkout_from_branch("development", &[dir]).await?;
     }
 
