@@ -20,6 +20,7 @@ axum = "0.8"
 regelrecht-auth = { path = "../auth" }
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono"] }
 regelrecht-corpus = { path = "../corpus", default-features = false }
+regelrecht-harvester = { path = "../harvester" }
 regelrecht-pipeline = { path = "../pipeline" }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["serde"] }
@@ -27,7 +28,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-regex = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 openidconnect = "4.0"

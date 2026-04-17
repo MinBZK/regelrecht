@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use regelrecht_harvester::manifest;
+use regelrecht_harvester::LawSource;
 
 /// Maximum recursion depth for follow-up harvest jobs.
 /// Prevents unbounded job creation from circular or deeply nested law references.
@@ -86,10 +87,13 @@ pub struct LawStatusFile {
 
 /// Execute a harvest: download, parse, and save a law as YAML.
 ///
-/// Routes to BWB or CVDR download based on the payload fields:
-/// - `cvdr_id` set → CVDR (decentral regulations)
-/// - `bwb_id` set → BWB (national laws)
-/// - neither set → error
+/// Uses the `LawSource` trait to detect the source from the payload's law ID
+/// and delegates downloading to the appropriate strategy (BWB or CVDR).
+///
+/// For BWB laws, the manifest is consulted to resolve the consolidation date
+/// before downloading. This BWB-specific step is handled here because it
+/// depends on pipeline-level logic (manifest resolution) that lives outside
+/// the harvester crate.
 ///
 /// Returns the harvest result and a list of file paths that were written
 /// (for git staging).
@@ -99,133 +103,45 @@ pub async fn execute_harvest(
     output_base: &str,
     http_client: &Client,
 ) -> Result<(HarvestResult, Vec<PathBuf>)> {
-    if let Some(ref cvdr_id) = payload.cvdr_id {
-        execute_harvest_cvdr(cvdr_id, payload, repo_path, output_base, http_client).await
-    } else if let Some(ref bwb_id) = payload.bwb_id {
-        execute_harvest_bwb(bwb_id, payload, repo_path, output_base, http_client).await
-    } else {
-        Err(crate::error::PipelineError::InvalidInput(
+    let law_id = payload.law_id().ok_or_else(|| {
+        crate::error::PipelineError::InvalidInput(
             "harvest payload must have either bwb_id or cvdr_id".into(),
-        ))
-    }
-}
-
-/// Execute a BWB harvest (national laws).
-async fn execute_harvest_bwb(
-    bwb_id: &str,
-    payload: &HarvestPayload,
-    repo_path: &Path,
-    output_base: &str,
-    http_client: &Client,
-) -> Result<(HarvestResult, Vec<PathBuf>)> {
-    let bwb_manifest = manifest::download_manifest(http_client, bwb_id).await?;
-    let effective_date =
-        manifest::resolve_consolidation_date(&bwb_manifest, payload.date.as_deref())?;
-    tracing::info!(bwb_id = %bwb_id, resolved_date = %effective_date, "resolved consolidation date from manifest");
-
-    tracing::info!(bwb_id = %bwb_id, date = %effective_date, "downloading law XML from BWB");
-    let law = if let Some(max_mb) = payload.max_size_mb {
-        regelrecht_harvester::download_law_with_max_size(
-            http_client,
-            bwb_id,
-            &effective_date,
-            max_mb,
         )
-        .await?
-    } else {
-        regelrecht_harvester::download_law(http_client, bwb_id, &effective_date).await?
-    };
+    })?;
 
-    tracing::info!(bwb_id = %bwb_id, title = %law.metadata.title, "law XML downloaded successfully");
-    let law_name = law.metadata.title.clone();
-    let slug = law.metadata.to_slug();
-    let layer = law.metadata.regulatory_layer.as_str().to_string();
-    let article_count = law.articles.len();
-    let warning_count = law.warning_count();
-    let warnings = law.warnings.clone();
+    let source = regelrecht_harvester::detect_source(law_id)?;
+    let source_type = source.name().to_lowercase();
 
-    let mut referenced_bwb_ids: Vec<String> = law
-        .articles
-        .iter()
-        .flat_map(|a| a.references.iter())
-        .map(|r| r.bwb_id.clone())
-        .filter(|id| id != bwb_id)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    referenced_bwb_ids.sort();
+    // For BWB, resolve the effective date from the manifest.
+    // For CVDR, use the requested date, the law's metadata date, or today.
+    let (law, effective_date) = if source.name() == "BWB" {
+        let bwb_manifest = manifest::download_manifest(http_client, law_id).await?;
+        let resolved_date =
+            manifest::resolve_consolidation_date(&bwb_manifest, payload.date.as_deref())?;
+        tracing::info!(law_id = %law_id, resolved_date = %resolved_date, "resolved consolidation date from manifest");
 
-    let output_base_path = repo_path.join(output_base);
-    let law_for_save = law;
-    let date_for_save = effective_date.clone();
-    let yaml_path = tokio::task::spawn_blocking(move || {
-        regelrecht_harvester::yaml::save_yaml(
-            &law_for_save,
-            &date_for_save,
-            Some(&output_base_path),
-        )
-    })
-    .await??;
-
-    let status_file_path = yaml_path
-        .parent()
-        .map(|p| p.join("status.yaml"))
-        .unwrap_or_else(|| PathBuf::from("status.yaml"));
-
-    let status = LawStatusFile {
-        law_id: bwb_id.to_string(),
-        law_name: law_name.clone(),
-        slug: slug.clone(),
-        status: "harvested".to_string(),
-        last_harvested: Utc::now().to_rfc3339(),
-        harvest_date: effective_date.clone(),
-        article_count,
-        warning_count,
-        warnings: warnings.clone(),
-    };
-
-    let status_yaml = serde_yaml_ng::to_string(&status)?;
-    let status_content = format!("---\n{status_yaml}");
-    tokio::fs::write(&status_file_path, status_content).await?;
-
-    let relative_path = yaml_path
-        .strip_prefix(repo_path)
-        .unwrap_or(&yaml_path)
-        .to_string_lossy()
-        .to_string();
-
-    let result = HarvestResult {
-        law_name,
-        slug,
-        layer,
-        file_path: relative_path,
-        article_count,
-        warning_count,
-        warnings,
-        referenced_bwb_ids,
-        harvest_date: effective_date,
-        source_type: "bwb".to_string(),
-    };
-
-    let written_files = vec![yaml_path, status_file_path];
-    Ok((result, written_files))
-}
-
-/// Execute a CVDR harvest (decentral regulations).
-async fn execute_harvest_cvdr(
-    cvdr_id: &str,
-    payload: &HarvestPayload,
-    repo_path: &Path,
-    output_base: &str,
-    http_client: &Client,
-) -> Result<(HarvestResult, Vec<PathBuf>)> {
-    tracing::info!(cvdr_id = %cvdr_id, "downloading law from CVDR");
-
-    let law =
-        regelrecht_harvester::download_cvdr_law(http_client, cvdr_id, payload.date.as_deref())
+        tracing::info!(law_id = %law_id, date = %resolved_date, "downloading law XML from BWB");
+        let bwb_source = regelrecht_harvester::BwbSource {
+            max_size_mb: payload.max_size_mb,
+        };
+        let law = bwb_source
+            .download(http_client, law_id, Some(&resolved_date))
             .await?;
+        (law, resolved_date)
+    } else {
+        tracing::info!(law_id = %law_id, source = source.name(), "downloading law from {}", source.name());
+        let law = source
+            .download(http_client, law_id, payload.date.as_deref())
+            .await?;
+        let effective_date = payload
+            .date
+            .clone()
+            .or_else(|| law.metadata.effective_date.clone())
+            .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+        (law, effective_date)
+    };
 
-    tracing::info!(cvdr_id = %cvdr_id, title = %law.metadata.title, "CVDR law downloaded successfully");
+    tracing::info!(law_id = %law_id, title = %law.metadata.title, "law downloaded successfully");
     let law_name = law.metadata.title.clone();
     let slug = law.metadata.to_slug();
     let layer = law.metadata.regulatory_layer.as_str().to_string();
@@ -233,25 +149,16 @@ async fn execute_harvest_cvdr(
     let warning_count = law.warning_count();
     let warnings = law.warnings.clone();
 
-    // CVDR laws typically don't have cross-references to BWB laws in the same way,
-    // but we still collect any references that exist.
     let mut referenced_bwb_ids: Vec<String> = law
         .articles
         .iter()
         .flat_map(|a| a.references.iter())
         .map(|r| r.bwb_id.clone())
-        .filter(|id| id != cvdr_id)
+        .filter(|id| id != law_id)
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
     referenced_bwb_ids.sort();
-
-    // Determine effective date — use the requested date, metadata date, or today
-    let effective_date = payload
-        .date
-        .clone()
-        .or_else(|| law.metadata.effective_date.clone())
-        .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
 
     let output_base_path = repo_path.join(output_base);
     let law_for_save = law;
@@ -271,7 +178,7 @@ async fn execute_harvest_cvdr(
         .unwrap_or_else(|| PathBuf::from("status.yaml"));
 
     let status = LawStatusFile {
-        law_id: cvdr_id.to_string(),
+        law_id: law_id.to_string(),
         law_name: law_name.clone(),
         slug: slug.clone(),
         status: "harvested".to_string(),
@@ -302,7 +209,7 @@ async fn execute_harvest_cvdr(
         warnings,
         referenced_bwb_ids,
         harvest_date: effective_date,
-        source_type: "cvdr".to_string(),
+        source_type,
     };
 
     let written_files = vec![yaml_path, status_file_path];

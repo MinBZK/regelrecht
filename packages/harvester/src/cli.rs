@@ -7,10 +7,9 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::DEFAULT_MAX_RESPONSE_SIZE;
-use crate::cvdr::download_cvdr_law;
 use crate::error::{HarvesterError, Result};
-use crate::harvester::download_law_with_max_size;
 use crate::http::create_client;
+use crate::source::{self, BwbSource};
 use crate::yaml::save_yaml;
 
 /// RegelRecht Harvester - Download Dutch legislation from BWB and CVDR repositories.
@@ -46,25 +45,6 @@ pub enum Commands {
     },
 }
 
-/// Detected law source based on the ID prefix.
-enum LawSource {
-    /// National law from BWB (Basiswettenbestand).
-    Bwb,
-    /// Decentrale regelgeving from CVDR.
-    Cvdr,
-}
-
-/// Detect whether a law ID is BWB or CVDR based on its prefix.
-fn detect_law_source(law_id: &str) -> Result<LawSource> {
-    if law_id.starts_with("BWBR") {
-        Ok(LawSource::Bwb)
-    } else if law_id.starts_with("CVDR") {
-        Ok(LawSource::Cvdr)
-    } else {
-        Err(HarvesterError::InvalidLawId(law_id.to_string()))
-    }
-}
-
 /// Run the CLI.
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -79,6 +59,21 @@ pub async fn run() -> Result<()> {
     }
 }
 
+/// Build the appropriate `LawSource` for a CLI download.
+///
+/// Uses `detect_source` as the base, but applies the CLI-specific
+/// `max_size_mb` override for BWB sources.
+fn build_cli_source(law_id: &str, max_size_mb: u64) -> Result<Box<dyn source::LawSource>> {
+    let law_source = source::detect_source(law_id)?;
+    if law_source.name() == "BWB" {
+        Ok(Box::new(BwbSource {
+            max_size_mb: Some(max_size_mb),
+        }))
+    } else {
+        Ok(law_source)
+    }
+}
+
 /// Execute the download command.
 async fn download_command(
     law_id: &str,
@@ -86,8 +81,9 @@ async fn download_command(
     output: Option<&std::path::Path>,
     max_size_mb: u64,
 ) -> Result<()> {
-    // Detect source type
-    let source = detect_law_source(law_id)?;
+    // Build source with CLI-specific max_size override
+    let law_source = build_cli_source(law_id, max_size_mb)?;
+    law_source.validate_id(law_id)?;
 
     // Use today if no date provided
     let effective_date = date
@@ -110,16 +106,11 @@ async fn download_command(
         }
     }
 
-    let source_label = match source {
-        LawSource::Bwb => "BWB",
-        LawSource::Cvdr => "CVDR",
-    };
-
     println!(
         "{} {} ({}) for date {}",
         style("Downloading").bold(),
         style(law_id).cyan(),
-        source_label,
+        law_source.name(),
         style(&effective_date).green()
     );
     println!();
@@ -138,26 +129,12 @@ async fn download_command(
 
     pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
-    let law = match source {
-        LawSource::Bwb => {
-            pb.set_message("Downloading WTI metadata...");
-            match download_law_with_max_size(&client, law_id, &effective_date, max_size_mb).await {
-                Ok(law) => law,
-                Err(e) => {
-                    pb.finish_and_clear();
-                    return Err(e);
-                }
-            }
-        }
-        LawSource::Cvdr => {
-            pb.set_message("Searching CVDR via SRU...");
-            match download_cvdr_law(&client, law_id, date).await {
-                Ok(law) => law,
-                Err(e) => {
-                    pb.finish_and_clear();
-                    return Err(e);
-                }
-            }
+    pb.set_message(format!("Downloading from {}...", law_source.name()));
+    let law = match law_source.download(&client, law_id, date).await {
+        Ok(law) => law,
+        Err(e) => {
+            pb.finish_and_clear();
+            return Err(e);
         }
     };
 
@@ -254,24 +231,20 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_law_source_bwb() {
-        assert!(matches!(
-            detect_law_source("BWBR0018451"),
-            Ok(LawSource::Bwb)
-        ));
+    fn test_build_cli_source_bwb() {
+        let src = build_cli_source("BWBR0018451", 100).unwrap();
+        assert_eq!(src.name(), "BWB");
     }
 
     #[test]
-    fn test_detect_law_source_cvdr() {
-        assert!(matches!(
-            detect_law_source("CVDR681386"),
-            Ok(LawSource::Cvdr)
-        ));
+    fn test_build_cli_source_cvdr() {
+        let src = build_cli_source("CVDR681386", 100).unwrap();
+        assert_eq!(src.name(), "CVDR");
     }
 
     #[test]
-    fn test_detect_law_source_invalid() {
-        assert!(detect_law_source("INVALID").is_err());
-        assert!(detect_law_source("").is_err());
+    fn test_build_cli_source_invalid() {
+        assert!(build_cli_source("INVALID", 100).is_err());
+        assert!(build_cli_source("", 100).is_err());
     }
 }

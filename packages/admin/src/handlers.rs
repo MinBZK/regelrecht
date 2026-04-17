@@ -1,5 +1,3 @@
-use std::sync::LazyLock;
-
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -8,7 +6,6 @@ use regelrecht_pipeline::job_queue::{
 };
 use regelrecht_pipeline::law_status::{set_enrich_job, set_harvest_job};
 use regelrecht_pipeline::{EnrichPayload, HarvestPayload, JobType, Priority, ENRICH_PROVIDERS};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
@@ -28,31 +25,6 @@ pub async fn platform_info() -> Json<PlatformInfo> {
         deployment_name: std::env::var("DEPLOYMENT_NAME").unwrap_or_default(),
         component_name: std::env::var("COMPONENT_NAME").unwrap_or_default(),
     })
-}
-
-#[allow(clippy::expect_used)]
-static BWB_ID_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));
-
-#[allow(clippy::expect_used)]
-static CVDR_ID_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^CVDR\d{3,}$").expect("valid regex"));
-
-/// Identifies the source type of a law identifier.
-enum LawIdType {
-    Bwb(String),
-    Cvdr(String),
-}
-
-/// Validate and classify a law identifier as BWB or CVDR.
-fn classify_law_id(id: &str) -> Option<LawIdType> {
-    if BWB_ID_PATTERN.is_match(id) {
-        Some(LawIdType::Bwb(id.to_string()))
-    } else if CVDR_ID_PATTERN.is_match(id) {
-        Some(LawIdType::Cvdr(id.to_string()))
-    } else {
-        None
-    }
 }
 
 /// Validate a sort column against an allowlist. Returns `None` if not allowed.
@@ -467,16 +439,18 @@ pub async fn create_harvest_job(
         ));
     }
 
-    let law_id_type = classify_law_id(&raw_id).ok_or_else(|| {
-        tracing::debug!(law_id = %raw_id, "rejected invalid law ID");
-        ApiError::BadRequest(
-            "invalid law ID format: expected BWBR followed by 7 digits, or CVDR followed by 3+ digits".to_string(),
-        )
+    let source = regelrecht_harvester::detect_source(&raw_id).map_err(|e| {
+        tracing::debug!(law_id = %raw_id, error = %e, "rejected invalid law ID");
+        ApiError::BadRequest(format!("invalid law ID format: {e}"))
     })?;
 
-    let law_id = match &law_id_type {
-        LawIdType::Bwb(id) | LawIdType::Cvdr(id) => id.clone(),
-    };
+    // Validate the ID against the source-specific rules (e.g. exact digit count for BWB).
+    source.validate_id(&raw_id).map_err(|e| {
+        tracing::debug!(law_id = %raw_id, error = %e, "law ID validation failed");
+        ApiError::BadRequest(format!("invalid law ID: {e}"))
+    })?;
+
+    let law_id = raw_id;
 
     if let Some(ref date) = body.date {
         if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
@@ -557,21 +531,22 @@ pub async fn create_harvest_job(
         ApiError::Internal("failed to upsert law entry".to_string())
     })?;
 
-    let payload = match law_id_type {
-        LawIdType::Bwb(ref id) => HarvestPayload {
-            bwb_id: Some(id.clone()),
+    let payload = if source.name() == "BWB" {
+        HarvestPayload {
+            bwb_id: Some(law_id.clone()),
             cvdr_id: None,
             date: body.date,
             max_size_mb: None,
             depth: None,
-        },
-        LawIdType::Cvdr(ref id) => HarvestPayload {
+        }
+    } else {
+        HarvestPayload {
             bwb_id: None,
-            cvdr_id: Some(id.clone()),
+            cvdr_id: Some(law_id.clone()),
             date: body.date,
             max_size_mb: None,
             depth: None,
-        },
+        }
     };
 
     let priority = Priority::new(body.priority.unwrap_or(50));
@@ -1084,30 +1059,37 @@ mod tests {
         assert!(body.date.is_none());
     }
 
-    // --- classify_law_id ---
+    // --- detect_source (via harvester crate) ---
 
     #[test]
-    fn classify_bwb_id() {
-        assert!(matches!(
-            classify_law_id("BWBR0018451"),
-            Some(LawIdType::Bwb(_))
-        ));
+    fn detect_bwb_source() {
+        let source = regelrecht_harvester::detect_source("BWBR0018451").unwrap();
+        assert_eq!(source.name(), "BWB");
     }
 
     #[test]
-    fn classify_cvdr_id() {
-        assert!(matches!(
-            classify_law_id("CVDR681386"),
-            Some(LawIdType::Cvdr(_))
-        ));
+    fn detect_cvdr_source() {
+        let source = regelrecht_harvester::detect_source("CVDR681386").unwrap();
+        assert_eq!(source.name(), "CVDR");
     }
 
     #[test]
-    fn classify_invalid_id() {
-        assert!(classify_law_id("INVALID").is_none());
-        assert!(classify_law_id("").is_none());
-        assert!(classify_law_id("BWBR123").is_none()); // too few digits
-        assert!(classify_law_id("CVDR12").is_none()); // too few digits
+    fn detect_invalid_source() {
+        assert!(regelrecht_harvester::detect_source("INVALID").is_err());
+        assert!(regelrecht_harvester::detect_source("").is_err());
+    }
+
+    #[test]
+    fn validate_bwb_id_too_few_digits() {
+        // detect_source succeeds on prefix, but validate_id rejects bad format
+        let source = regelrecht_harvester::detect_source("BWBR123").unwrap();
+        assert!(source.validate_id("BWBR123").is_err());
+    }
+
+    #[test]
+    fn validate_cvdr_id_too_few_digits() {
+        let source = regelrecht_harvester::detect_source("CVDR12").unwrap();
+        assert!(source.validate_id("CVDR12").is_err());
     }
 
     #[test]

@@ -36,6 +36,7 @@
 //! - [`yaml`]: YAML output generation
 //! - [`cli`]: Command-line interface
 //! - [`harvester`]: Main harvester service
+//! - [`source`]: Strategy trait for law sources (BWB, CVDR)
 
 pub mod cli;
 pub mod config;
@@ -46,6 +47,7 @@ pub mod harvester;
 pub mod http;
 pub mod manifest;
 pub mod registry;
+pub mod source;
 pub mod splitting;
 pub mod types;
 pub mod wti;
@@ -55,6 +57,9 @@ pub mod yaml;
 // Re-export main functions
 pub use cvdr::download_cvdr_law;
 pub use harvester::{download_law, download_law_with_max_size};
+
+// Re-export source trait and detection
+pub use source::{detect_source, BwbSource, CvdrSource, LawSource};
 
 // Re-export commonly used items
 pub use config::{validate_bwb_id, validate_cvdr_id, validate_date};
