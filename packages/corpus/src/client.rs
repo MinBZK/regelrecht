@@ -830,6 +830,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_merge_base_branch_incorporates_new_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // ensure_repo with a non-existent branch creates it from development
+        // (mirrors production: enrichment branches are born from development)
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // Push a new file to development (simulating a harvested law)
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let new_law = tmp.join("regulation/nl/wet/new_law");
+        tokio::fs::create_dir_all(&new_law).await.unwrap();
+        tokio::fs::write(new_law.join("2025-01-01.yaml"), "new law content")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest new law"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // The new law should NOT be present on the enrichment branch yet
+        assert!(!repo_path
+            .join("regulation/nl/wet/new_law/2025-01-01.yaml")
+            .exists());
+
+        // Merge development — new law should now be present
+        client.merge_base_branch("development").await.unwrap();
+        assert!(repo_path
+            .join("regulation/nl/wet/new_law/2025-01-01.yaml")
+            .exists());
+    }
+
+    #[tokio::test]
     async fn test_ensure_repo_creates_branch_if_missing() {
         let dir = tempfile::tempdir().unwrap();
         let repo_path = dir.path().join("corpus");
