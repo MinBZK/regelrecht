@@ -65,7 +65,7 @@ pub async fn run() -> Result<()> {
 /// `max_size_mb` override for BWB sources.
 fn build_cli_source(law_id: &str, max_size_mb: u64) -> Result<Box<dyn source::LawSource>> {
     let law_source = source::detect_source(law_id)?;
-    if law_source.name() == "BWB" {
+    if law_source.source_type() == source::LawSourceType::Bwb {
         Ok(Box::new(BwbSource {
             max_size_mb: Some(max_size_mb),
         }))
@@ -81,9 +81,8 @@ async fn download_command(
     output: Option<&std::path::Path>,
     max_size_mb: u64,
 ) -> Result<()> {
-    // Build source with CLI-specific max_size override
+    // Build source with CLI-specific max_size override (detect_source validates the ID)
     let law_source = build_cli_source(law_id, max_size_mb)?;
-    law_source.validate_id(law_id)?;
 
     // Use today if no date provided
     let effective_date = date

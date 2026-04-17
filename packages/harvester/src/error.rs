@@ -103,10 +103,6 @@ pub enum HarvesterError {
         #[source]
         source: reqwest::Error,
     },
-
-    /// CVDR XML parsing failed.
-    #[error("Failed to parse CVDR XML for {cvdr_id}: {message}")]
-    CvdrParseFailed { cvdr_id: String, message: String },
 }
 
 /// Result type alias for harvester operations.

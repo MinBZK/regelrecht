@@ -92,12 +92,13 @@ struct YamlLaw {
     valid_from: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     bwb_id: Option<String>,
+    // NOTE: cvdr_id is not yet in the schema; emitted as an extension for traceability.
     #[serde(skip_serializing_if = "Option::is_none")]
     cvdr_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     officiele_titel: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    creator: Option<String>,
+    organisation: Option<String>,
     url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     preamble: Option<YamlPreamble>,
@@ -148,7 +149,7 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
         .collect();
 
     // Build URL and IDs based on source type
-    let (bwb_id, cvdr_id, officiele_titel, creator, url) = if is_cvdr {
+    let (bwb_id, cvdr_id, officiele_titel, organisation, url) = if is_cvdr {
         let cvdr_id_str = law.metadata.cvdr_id.as_deref().unwrap_or_default();
         let url = format!("https://lokaleregelgeving.overheid.nl/{cvdr_id_str}");
         (
@@ -184,7 +185,7 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
         bwb_id,
         cvdr_id,
         officiele_titel,
-        creator,
+        organisation,
         url,
         preamble,
         articles,

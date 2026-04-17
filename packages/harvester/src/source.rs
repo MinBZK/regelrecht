@@ -13,6 +13,15 @@ use crate::config::{
 use crate::error::{HarvesterError, Result};
 use crate::types::Law;
 
+/// Enum identifying the law source type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LawSourceType {
+    /// National law from BWB (Basiswettenbestand).
+    Bwb,
+    /// Decentral regulation from CVDR.
+    Cvdr,
+}
+
 /// Strategy trait for downloading laws from different sources.
 #[async_trait]
 pub trait LawSource: Send + Sync {
@@ -27,6 +36,9 @@ pub trait LawSource: Send + Sync {
 
     /// Source name for logging/display.
     fn name(&self) -> &'static str;
+
+    /// Source type enum for type-safe dispatch.
+    fn source_type(&self) -> LawSourceType;
 }
 
 /// BWB (Basiswettenbestand) source for national laws.
@@ -62,6 +74,10 @@ impl LawSource for BwbSource {
     fn name(&self) -> &'static str {
         "BWB"
     }
+
+    fn source_type(&self) -> LawSourceType {
+        LawSourceType::Bwb
+    }
 }
 
 /// CVDR (Centrale Voorziening Decentrale Regelgeving) source for decentral regulations.
@@ -85,6 +101,10 @@ impl LawSource for CvdrSource {
     fn name(&self) -> &'static str {
         "CVDR"
     }
+
+    fn source_type(&self) -> LawSourceType {
+        LawSourceType::Cvdr
+    }
 }
 
 /// Detect the law source from an ID and return the appropriate strategy.
@@ -105,13 +125,15 @@ impl LawSource for CvdrSource {
 /// assert!(detect_source("INVALID").is_err());
 /// ```
 pub fn detect_source(law_id: &str) -> Result<Box<dyn LawSource>> {
-    if law_id.starts_with("BWBR") {
-        Ok(Box::new(BwbSource::default()))
+    let source: Box<dyn LawSource> = if law_id.starts_with("BWBR") {
+        Box::new(BwbSource::default())
     } else if law_id.starts_with("CVDR") {
-        Ok(Box::new(CvdrSource))
+        Box::new(CvdrSource)
     } else {
-        Err(HarvesterError::InvalidLawId(law_id.to_string()))
-    }
+        return Err(HarvesterError::InvalidLawId(law_id.to_string()));
+    };
+    source.validate_id(law_id)?;
+    Ok(source)
 }
 
 #[cfg(test)]

@@ -22,7 +22,7 @@ pub const DEFAULT_MAX_RESPONSE_SIZE: u64 = 100 * 1024 * 1024;
 
 /// Schema URL for regelrecht YAML files.
 pub const SCHEMA_URL: &str =
-    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.3.1/schema.json";
+    "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/schema.json";
 
 /// Text wrap width for YAML output.
 /// Accounts for up to 6 spaces of YAML block scalar indent (125 - 6 = 119, with margin).

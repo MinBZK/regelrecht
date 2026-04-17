@@ -51,7 +51,7 @@ impl CvdrMetadata {
     #[must_use]
     pub fn to_law_metadata(&self, effective_date: &str) -> LawMetadata {
         LawMetadata {
-            bwb_id: self.cvdr_id.clone(),
+            bwb_id: String::new(),
             cvdr_id: Some(self.cvdr_id.clone()),
             title: self.title.clone(),
             regulatory_layer: self.regulatory_layer,
@@ -134,13 +134,13 @@ fn parse_sru_response(xml: &str, cvdr_id: &str) -> Result<CvdrMetadata> {
         .unwrap_or(record);
 
     // Extract title from dcterms.title or dc.title
-    let title = find_dc_element(&gzd, "title").unwrap_or_default();
+    let title = find_element_text(&gzd, "title").unwrap_or_default();
 
     // Extract creator (organisation name)
-    let creator = find_dc_element(&gzd, "creator").unwrap_or_default();
+    let creator = find_element_text(&gzd, "creator").unwrap_or_default();
 
     // Extract organisation type from overheid.organisatietype
-    let organisation_type = find_overheidsbm_element(&gzd, "organisatietype").unwrap_or_default();
+    let organisation_type = find_element_text(&gzd, "organisatietype").unwrap_or_default();
 
     // Map organisation type to regulatory layer
     let (regulatory_layer, layer_warning) =
@@ -151,10 +151,10 @@ fn parse_sru_response(xml: &str, cvdr_id: &str) -> Result<CvdrMetadata> {
 
     // Extract publication date (dcterms.available or dcterms.issued)
     let publication_date =
-        find_dc_element(&gzd, "issued").or_else(|| find_dc_element(&gzd, "available"));
+        find_element_text(&gzd, "issued").or_else(|| find_element_text(&gzd, "available"));
 
     // Extract effective date (overheidproduct:inwerkingtredingDatum)
-    let effective_date = find_overheidproduct_element(&gzd, "inwerkingtredingDatum");
+    let effective_date = find_element_text(&gzd, "inwerkingtredingDatum");
 
     // Find the XML content URL from enrichedData or meta
     let xml_url = find_xml_content_url(&doc, cvdr_id)?;
@@ -177,29 +177,11 @@ fn local_name<'a>(node: &roxmltree::Node<'a, '_>) -> &'a str {
     node.tag_name().name()
 }
 
-/// Find a Dublin Core (dc/dcterms) element value in the metadata.
-fn find_dc_element(parent: &roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
-    parent
-        .descendants()
-        .find(|n| n.is_element() && local_name(n) == name)
-        .and_then(|n| n.text())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
-/// Find an overheid-specific (overheidsbm) element value.
-fn find_overheidsbm_element(parent: &roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
-    // The element may appear as overheidXX:name or just name in the tree
-    parent
-        .descendants()
-        .find(|n| n.is_element() && local_name(n) == name)
-        .and_then(|n| n.text())
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
-/// Find an overheidproduct-specific element value.
-fn find_overheidproduct_element(parent: &roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
+/// Find a descendant element by local name and return its trimmed text content.
+///
+/// Works for any namespace (Dublin Core, overheid, overheidproduct, etc.)
+/// because it matches on local name only.
+fn find_element_text(parent: &roxmltree::Node<'_, '_>, name: &str) -> Option<String> {
     parent
         .descendants()
         .find(|n| n.is_element() && local_name(n) == name)
@@ -261,7 +243,7 @@ fn find_xml_content_url(doc: &Document<'_>, cvdr_id: &str) -> Result<String> {
     // Try the direct XML download pattern
     Ok(format!(
         "https://repository.overheid.nl/frbr/cvdr/{}/1/xml/{}_1.xml",
-        &cvdr_id[4..], // Strip "CVDR" prefix to get numeric part
+        cvdr_id.get(4..).unwrap_or_default(), // Strip "CVDR" prefix to get numeric part
         cvdr_id
     ))
 }
@@ -375,7 +357,7 @@ mod tests {
         };
 
         let law_meta = metadata.to_law_metadata("2025-01-01");
-        assert_eq!(law_meta.bwb_id, "CVDR681386");
+        assert_eq!(law_meta.bwb_id, "");
         assert_eq!(law_meta.cvdr_id, Some("CVDR681386".to_string()));
         assert_eq!(law_meta.title, "Test Verordening");
         assert_eq!(

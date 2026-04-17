@@ -26,7 +26,7 @@ pub const MAX_HARVEST_DEPTH: u32 = 1000;
 pub struct HarvestPayload {
     /// BWB identifier for national laws (e.g. "BWBR0018451").
     /// Previously a required `String`; now optional to support CVDR sources.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bwb_id: Option<String>,
     /// CVDR identifier for decentral regulations (e.g. "CVDR681386").
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -44,6 +44,28 @@ impl HarvestPayload {
     /// Returns the law identifier (BWB or CVDR) for this payload.
     pub fn law_id(&self) -> Option<&str> {
         self.bwb_id.as_deref().or(self.cvdr_id.as_deref())
+    }
+
+    /// Create a harvest payload for a law, auto-detecting BWB vs CVDR from the ID prefix.
+    #[must_use]
+    pub fn for_law(law_id: &str, date: Option<String>) -> Self {
+        if law_id.starts_with("BWBR") {
+            Self {
+                bwb_id: Some(law_id.to_string()),
+                cvdr_id: None,
+                date,
+                max_size_mb: None,
+                depth: None,
+            }
+        } else {
+            Self {
+                bwb_id: None,
+                cvdr_id: Some(law_id.to_string()),
+                date,
+                max_size_mb: None,
+                depth: None,
+            }
+        }
     }
 }
 
@@ -74,6 +96,7 @@ fn default_source_type() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LawStatusFile {
     /// Law identifier (BWB or CVDR).
+    #[serde(alias = "bwb_id")]
     pub law_id: String,
     pub law_name: String,
     pub slug: String,
@@ -114,7 +137,8 @@ pub async fn execute_harvest(
 
     // For BWB, resolve the effective date from the manifest.
     // For CVDR, use the requested date, the law's metadata date, or today.
-    let (law, effective_date) = if source.name() == "BWB" {
+    let (law, effective_date) = if source.source_type() == regelrecht_harvester::LawSourceType::Bwb
+    {
         let bwb_manifest = manifest::download_manifest(http_client, law_id).await?;
         let resolved_date =
             manifest::resolve_consolidation_date(&bwb_manifest, payload.date.as_deref())?;

@@ -73,7 +73,6 @@ def parse_wti_metadata(wti_tree):
         "GRONDWET", "WET", "AMVB", "KONINKLIJK_BESLUIT", "MINISTERIELE_REGELING",
         "BELEIDSREGEL", "EU_VERORDENING", "EU_RICHTLIJN", "VERDRAG",
         "UITVOERINGSBELEID", "GEMEENTELIJKE_VERORDENING", "PROVINCIALE_VERORDENING",
-        "WATERSCHAPS_VERORDENING",
     }
     soort = wti_tree.find(f".//{{{NS}}}soort-regeling")
     if soort is not None:
@@ -91,7 +90,7 @@ def parse_wti_metadata(wti_tree):
         if layer not in VALID_LAYERS:
             raise ValueError(
                 f"'{soort_text}' maps to '{layer}' which is not a valid "
-                f"a valid regulatory_layer. Map manually to e.g. AMVB."
+                f"schema v0.5.0 regulatory_layer. Map manually to e.g. AMVB."
             )
         metadata["regulatory_layer"] = layer
 

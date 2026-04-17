@@ -59,7 +59,7 @@ pub use cvdr::download_cvdr_law;
 pub use harvester::{download_law, download_law_with_max_size};
 
 // Re-export source trait and detection
-pub use source::{detect_source, BwbSource, CvdrSource, LawSource};
+pub use source::{detect_source, BwbSource, CvdrSource, LawSource, LawSourceType};
 
 // Re-export commonly used items
 pub use config::{validate_bwb_id, validate_cvdr_id, validate_date};

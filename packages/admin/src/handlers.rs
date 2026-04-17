@@ -439,14 +439,9 @@ pub async fn create_harvest_job(
         ));
     }
 
-    let source = regelrecht_harvester::detect_source(&raw_id).map_err(|e| {
+    // detect_source validates the ID format (prefix + digit count)
+    regelrecht_harvester::detect_source(&raw_id).map_err(|e| {
         tracing::debug!(law_id = %raw_id, error = %e, "rejected invalid law ID");
-        ApiError::BadRequest(format!("invalid law ID format: {e}"))
-    })?;
-
-    // Validate the ID against the source-specific rules (e.g. exact digit count for BWB).
-    source.validate_id(&raw_id).map_err(|e| {
-        tracing::debug!(law_id = %raw_id, error = %e, "law ID validation failed");
         ApiError::BadRequest(format!("invalid law ID: {e}"))
     })?;
 
@@ -531,23 +526,7 @@ pub async fn create_harvest_job(
         ApiError::Internal("failed to upsert law entry".to_string())
     })?;
 
-    let payload = if source.name() == "BWB" {
-        HarvestPayload {
-            bwb_id: Some(law_id.clone()),
-            cvdr_id: None,
-            date: body.date,
-            max_size_mb: None,
-            depth: None,
-        }
-    } else {
-        HarvestPayload {
-            bwb_id: None,
-            cvdr_id: Some(law_id.clone()),
-            date: body.date,
-            max_size_mb: None,
-            depth: None,
-        }
-    };
+    let payload = HarvestPayload::for_law(&law_id, body.date);
 
     let priority = Priority::new(body.priority.unwrap_or(50));
 
@@ -1081,15 +1060,14 @@ mod tests {
 
     #[test]
     fn validate_bwb_id_too_few_digits() {
-        // detect_source succeeds on prefix, but validate_id rejects bad format
-        let source = regelrecht_harvester::detect_source("BWBR123").unwrap();
-        assert!(source.validate_id("BWBR123").is_err());
+        // detect_source validates internally — short BWB IDs are rejected
+        assert!(regelrecht_harvester::detect_source("BWBR123").is_err());
     }
 
     #[test]
     fn validate_cvdr_id_too_few_digits() {
-        let source = regelrecht_harvester::detect_source("CVDR12").unwrap();
-        assert!(source.validate_id("CVDR12").is_err());
+        // detect_source validates internally — short CVDR IDs are rejected
+        assert!(regelrecht_harvester::detect_source("CVDR12").is_err());
     }
 
     #[test]
