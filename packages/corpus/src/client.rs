@@ -322,6 +322,47 @@ impl CorpusClient {
         Ok(())
     }
 
+    /// Fetch a base branch and merge it into the current branch.
+    ///
+    /// Used by the enricher to pull in newly harvested laws from `development`
+    /// into long-lived enrichment branches (`enrich/opencode`, `enrich/claude`).
+    /// Without this, laws harvested after the enrichment branch was created
+    /// would be missing from the checkout.
+    ///
+    /// Uses `--allow-unrelated-histories` because shallow clones lack a common
+    /// ancestor. Merge conflicts are not expected (enrichment only adds
+    /// `machine_readable` sections while harvesting adds new law files).
+    pub async fn merge_base_branch(&self, base_branch: &str) -> Result<()> {
+        self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
+            .await?;
+
+        let remote_ref = format!("origin/{base_branch}");
+        let result = self
+            .run_git(&[
+                "merge",
+                &remote_ref,
+                "--allow-unrelated-histories",
+                "--no-edit",
+            ])
+            .await;
+
+        match result {
+            Ok(()) => {
+                tracing::info!(
+                    base = %base_branch,
+                    branch = %self.config.branch,
+                    "merged base branch into enrichment branch"
+                );
+                Ok(())
+            }
+            Err(e) => {
+                // Abort the merge to leave the working tree clean for the next attempt.
+                let _ = self.run_git(&["merge", "--abort"]).await;
+                Err(e)
+            }
+        }
+    }
+
     async fn configure_git_user(&self) -> Result<()> {
         self.run_git(&["config", "user.name", &self.config.git_author_name])
             .await?;

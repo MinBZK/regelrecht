@@ -434,6 +434,12 @@ pub async fn create_enrich_corpus(
 
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
+
+    // Merge development into the enrichment branch so newly harvested laws
+    // are available. Without this, laws harvested after the enrichment branch
+    // was created would be missing and cause "file not found" errors.
+    client.merge_base_branch("development").await?;
+
     Ok(client)
 }
 
