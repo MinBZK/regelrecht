@@ -83,6 +83,26 @@ pub enum HarvesterError {
     /// No consolidation found for the given date.
     #[error("No consolidation found for {bwb_id} at date {date}")]
     NoConsolidation { bwb_id: String, date: String },
+
+    /// Invalid CVDR ID format.
+    #[error("Invalid CVDR ID format: '{0}'. Expected CVDR followed by 3 or more digits (e.g., CVDR681386)")]
+    InvalidCvdrId(String),
+
+    /// Invalid law ID format (neither BWB nor CVDR).
+    #[error("Invalid law ID format: '{0}'. Expected BWB ID (BWBRXXXXXXX) or CVDR ID (CVDRXXX...)")]
+    InvalidLawId(String),
+
+    /// CVDR SRU search failed.
+    #[error("CVDR SRU search failed for {cvdr_id}: {message}")]
+    CvdrSearchFailed { cvdr_id: String, message: String },
+
+    /// CVDR content download failed.
+    #[error("Failed to download CVDR content for {cvdr_id}: {source}")]
+    CvdrContentDownload {
+        cvdr_id: String,
+        #[source]
+        source: reqwest::Error,
+    },
 }
 
 /// Result type alias for harvester operations.

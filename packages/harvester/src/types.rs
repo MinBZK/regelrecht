@@ -68,11 +68,15 @@ pub fn regulatory_layer_from_soort_regeling(text: &str) -> (RegulatoryLayer, Opt
     }
 }
 
-/// Metadata extracted from WTI file.
+/// Metadata extracted from WTI file or CVDR SRU search.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LawMetadata {
     /// BWB identifier (e.g., "BWBR0018451").
+    /// For CVDR laws, this is set to the CVDR ID.
     pub bwb_id: String,
+
+    /// CVDR identifier (e.g., "CVDR681386"), if this law came from CVDR.
+    pub cvdr_id: Option<String>,
 
     /// Official title (citeertitel).
     pub title: String,
@@ -85,6 +89,12 @@ pub struct LawMetadata {
 
     /// Effective date (optional, usually set from request).
     pub effective_date: Option<String>,
+
+    /// Organisation name (e.g., "Gemeente Amsterdam"), for CVDR laws.
+    pub creator: Option<String>,
+
+    /// Scope code (e.g., "GM0363", "WS0155", "PV27"), for CVDR laws.
+    pub scope_code: Option<String>,
 }
 
 /// Regex for slug generation - matches non-word characters.
@@ -109,10 +119,13 @@ impl LawMetadata {
     ///
     /// let metadata = LawMetadata {
     ///     bwb_id: "BWBR0018451".to_string(),
+    ///     cvdr_id: None,
     ///     title: "Wet op de zorgtoeslag".to_string(),
     ///     regulatory_layer: RegulatoryLayer::Wet,
     ///     publication_date: None,
     ///     effective_date: None,
+    ///     creator: None,
+    ///     scope_code: None,
     /// };
     /// assert_eq!(metadata.to_slug(), "wet_op_de_zorgtoeslag");
     /// ```
@@ -399,10 +412,13 @@ mod tests {
     fn test_law_metadata_to_slug() {
         let metadata = LawMetadata {
             bwb_id: "BWBR0018451".to_string(),
+            cvdr_id: None,
             title: "Wet op de zorgtoeslag".to_string(),
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            creator: None,
+            scope_code: None,
         };
         assert_eq!(metadata.to_slug(), "wet_op_de_zorgtoeslag");
     }
@@ -411,10 +427,13 @@ mod tests {
     fn test_law_metadata_to_slug_special_chars() {
         let metadata = LawMetadata {
             bwb_id: "BWBR0000000".to_string(),
+            cvdr_id: None,
             title: "Wet (test) - special!".to_string(),
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            creator: None,
+            scope_code: None,
         };
         assert_eq!(metadata.to_slug(), "wet_test_special");
     }
@@ -423,10 +442,13 @@ mod tests {
     fn test_law_metadata_to_slug_diacritics() {
         let metadata = LawMetadata {
             bwb_id: "BWBR0000000".to_string(),
+            cvdr_id: None,
             title: "Ministeriële regeling".to_string(),
             regulatory_layer: RegulatoryLayer::MinisterieleRegeling,
             publication_date: None,
             effective_date: None,
+            creator: None,
+            scope_code: None,
         };
         // ë should be normalized to e
         assert_eq!(metadata.to_slug(), "ministeriele_regeling");
@@ -436,10 +458,13 @@ mod tests {
     fn test_law_metadata_to_slug_various_diacritics() {
         let metadata = LawMetadata {
             bwb_id: "BWBR0000000".to_string(),
+            cvdr_id: None,
             title: "Café résumé naïve".to_string(),
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            creator: None,
+            scope_code: None,
         };
         // é, é, ï should all be normalized to their ASCII equivalents
         assert_eq!(metadata.to_slug(), "cafe_resume_naive");
@@ -576,10 +601,13 @@ mod tests {
     fn test_law_add_article() {
         let metadata = LawMetadata {
             bwb_id: "BWBR0018451".to_string(),
+            cvdr_id: None,
             title: "Test Law".to_string(),
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: None,
             effective_date: None,
+            creator: None,
+            scope_code: None,
         };
 
         let mut law = Law::new(metadata);

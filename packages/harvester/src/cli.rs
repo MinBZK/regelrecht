@@ -8,11 +8,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::DEFAULT_MAX_RESPONSE_SIZE;
 use crate::error::{HarvesterError, Result};
-use crate::harvester::download_law_with_max_size;
 use crate::http::create_client;
+use crate::source::{self, BwbSource};
 use crate::yaml::save_yaml;
 
-/// RegelRecht Harvester - Download Dutch legislation from BWB repository.
+/// RegelRecht Harvester - Download Dutch legislation from BWB and CVDR repositories.
 #[derive(Parser)]
 #[command(name = "regelrecht-harvester")]
 #[command(version, about, long_about = None)]
@@ -23,10 +23,10 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Download a law by BWB ID and convert to YAML.
+    /// Download a law by BWB or CVDR ID and convert to YAML.
     Download {
-        /// BWB identifier (e.g., BWBR0018451)
-        bwb_id: String,
+        /// Law identifier: BWB ID (e.g., BWBR0018451) or CVDR ID (e.g., CVDR681386)
+        law_id: String,
 
         /// Effective date in YYYY-MM-DD format (default: today)
         #[arg(short, long)]
@@ -51,21 +51,39 @@ pub async fn run() -> Result<()> {
 
     match cli.command {
         Commands::Download {
-            bwb_id,
+            law_id,
             date,
             output,
             max_size,
-        } => download_command(&bwb_id, date.as_deref(), output.as_deref(), max_size).await,
+        } => download_command(&law_id, date.as_deref(), output.as_deref(), max_size).await,
+    }
+}
+
+/// Build the appropriate `LawSource` for a CLI download.
+///
+/// Uses `detect_source` as the base, but applies the CLI-specific
+/// `max_size_mb` override for BWB sources.
+fn build_cli_source(law_id: &str, max_size_mb: u64) -> Result<Box<dyn source::LawSource>> {
+    let law_source = source::detect_source(law_id)?;
+    if law_source.source_type() == source::LawSourceType::Bwb {
+        Ok(Box::new(BwbSource {
+            max_size_mb: Some(max_size_mb),
+        }))
+    } else {
+        Ok(law_source)
     }
 }
 
 /// Execute the download command.
 async fn download_command(
-    bwb_id: &str,
+    law_id: &str,
     date: Option<&str>,
     output: Option<&std::path::Path>,
     max_size_mb: u64,
 ) -> Result<()> {
+    // Build source with CLI-specific max_size override (detect_source validates the ID)
+    let law_source = build_cli_source(law_id, max_size_mb)?;
+
     // Use today if no date provided
     let effective_date = date
         .map(String::from)
@@ -88,9 +106,10 @@ async fn download_command(
     }
 
     println!(
-        "{} {} for date {}",
+        "{} {} ({}) for date {}",
         style("Downloading").bold(),
-        style(bwb_id).cyan(),
+        style(law_id).cyan(),
+        law_source.name(),
         style(&effective_date).green()
     );
     println!();
@@ -107,12 +126,10 @@ async fn download_command(
     // Create HTTP client
     let client = create_client()?;
 
-    // Download and parse
-    pb.set_message("Downloading WTI metadata...");
     pb.enable_steady_tick(std::time::Duration::from_millis(100));
 
-    let law = match download_law_with_max_size(&client, bwb_id, &effective_date, max_size_mb).await
-    {
+    pb.set_message(format!("Downloading from {}...", law_source.name()));
+    let law = match law_source.download(&client, law_id, date).await {
         Ok(law) => law,
         Err(e) => {
             pb.finish_and_clear();
@@ -124,6 +141,9 @@ async fn download_command(
 
     println!("  Title: {}", style(&law.metadata.title).green());
     println!("  Type: {}", law.metadata.regulatory_layer.as_str());
+    if let Some(creator) = &law.metadata.creator {
+        println!("  Creator: {}", style(creator).cyan());
+    }
     println!("  Articles: {}", law.articles.len());
     if !law.warnings.is_empty() {
         println!("  Warnings: {}", style(law.warnings.len()).yellow().bold());
@@ -157,19 +177,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_cli_parse_download() {
+    fn test_cli_parse_download_bwb() {
         let cli = Cli::parse_from(["regelrecht-harvester", "download", "BWBR0018451"]);
 
         let Commands::Download {
-            bwb_id,
+            law_id,
             date,
             output,
             max_size,
         } = cli.command;
-        assert_eq!(bwb_id, "BWBR0018451");
+        assert_eq!(law_id, "BWBR0018451");
         assert!(date.is_none());
         assert!(output.is_none());
         assert_eq!(max_size, 100); // Default 100 MB
+    }
+
+    #[test]
+    fn test_cli_parse_download_cvdr() {
+        let cli = Cli::parse_from(["regelrecht-harvester", "download", "CVDR681386"]);
+
+        let Commands::Download { law_id, .. } = cli.command;
+        assert_eq!(law_id, "CVDR681386");
     }
 
     #[test]
@@ -182,8 +210,8 @@ mod tests {
             "2025-01-01",
         ]);
 
-        let Commands::Download { bwb_id, date, .. } = cli.command;
-        assert_eq!(bwb_id, "BWBR0018451");
+        let Commands::Download { law_id, date, .. } = cli.command;
+        assert_eq!(law_id, "BWBR0018451");
         assert_eq!(date, Some("2025-01-01".to_string()));
     }
 
@@ -199,5 +227,23 @@ mod tests {
 
         let Commands::Download { max_size, .. } = cli.command;
         assert_eq!(max_size, 200);
+    }
+
+    #[test]
+    fn test_build_cli_source_bwb() {
+        let src = build_cli_source("BWBR0018451", 100).unwrap();
+        assert_eq!(src.name(), "BWB");
+    }
+
+    #[test]
+    fn test_build_cli_source_cvdr() {
+        let src = build_cli_source("CVDR681386", 100).unwrap();
+        assert_eq!(src.name(), "CVDR");
+    }
+
+    #[test]
+    fn test_build_cli_source_invalid() {
+        assert!(build_cli_source("INVALID", 100).is_err());
+        assert!(build_cli_source("", 100).is_err());
     }
 }

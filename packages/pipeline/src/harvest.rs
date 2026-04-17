@@ -7,15 +7,30 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
 use regelrecht_harvester::manifest;
+use regelrecht_harvester::LawSource;
 
 /// Maximum recursion depth for follow-up harvest jobs.
 /// Prevents unbounded job creation from circular or deeply nested law references.
 pub const MAX_HARVEST_DEPTH: u32 = 1000;
 
 /// Payload for a harvest job, stored as JSON in the job queue.
+///
+/// Supports both BWB (national) and CVDR (decentral) law sources.
+/// Exactly one of `bwb_id` or `cvdr_id` should be set.
+///
+/// The `bwb_id` field uses `#[serde(default)]` for backward compatibility:
+/// existing queued jobs serialized as `{"bwb_id": "BWBR..."}` (a plain String)
+/// will deserialize correctly because serde treats a present string value as
+/// `Some(...)`, while new payloads omit it entirely when only `cvdr_id` is set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarvestPayload {
-    pub bwb_id: String,
+    /// BWB identifier for national laws (e.g. "BWBR0018451").
+    /// Previously a required `String`; now optional to support CVDR sources.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bwb_id: Option<String>,
+    /// CVDR identifier for decentral regulations (e.g. "CVDR681386").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cvdr_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub date: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -23,6 +38,35 @@ pub struct HarvestPayload {
     /// Current recursion depth for follow-up harvests. `None` or `0` means this is a root job.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+}
+
+impl HarvestPayload {
+    /// Returns the law identifier (BWB or CVDR) for this payload.
+    pub fn law_id(&self) -> Option<&str> {
+        self.bwb_id.as_deref().or(self.cvdr_id.as_deref())
+    }
+
+    /// Create a harvest payload for a law, auto-detecting BWB vs CVDR from the ID prefix.
+    #[must_use]
+    pub fn for_law(law_id: &str, date: Option<String>) -> Self {
+        if law_id.starts_with("BWBR") {
+            Self {
+                bwb_id: Some(law_id.to_string()),
+                cvdr_id: None,
+                date,
+                max_size_mb: None,
+                depth: None,
+            }
+        } else {
+            Self {
+                bwb_id: None,
+                cvdr_id: Some(law_id.to_string()),
+                date,
+                max_size_mb: None,
+                depth: None,
+            }
+        }
+    }
 }
 
 /// Result of a successful harvest execution.
@@ -39,12 +83,21 @@ pub struct HarvestResult {
     pub referenced_bwb_ids: Vec<String>,
     /// The resolved effective date used for this harvest.
     pub harvest_date: String,
+    /// Source type: "bwb" or "cvdr".
+    #[serde(default = "default_source_type")]
+    pub source_type: String,
+}
+
+fn default_source_type() -> String {
+    "bwb".to_string()
 }
 
 /// Status file written alongside the law YAML.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LawStatusFile {
-    pub bwb_id: String,
+    /// Law identifier (BWB or CVDR).
+    #[serde(alias = "bwb_id")]
+    pub law_id: String,
     pub law_name: String,
     pub slug: String,
     pub status: String,
@@ -57,6 +110,14 @@ pub struct LawStatusFile {
 
 /// Execute a harvest: download, parse, and save a law as YAML.
 ///
+/// Uses the `LawSource` trait to detect the source from the payload's law ID
+/// and delegates downloading to the appropriate strategy (BWB or CVDR).
+///
+/// For BWB laws, the manifest is consulted to resolve the consolidation date
+/// before downloading. This BWB-specific step is handled here because it
+/// depends on pipeline-level logic (manifest resolution) that lives outside
+/// the harvester crate.
+///
 /// Returns the harvest result and a list of file paths that were written
 /// (for git staging).
 pub async fn execute_harvest(
@@ -65,25 +126,46 @@ pub async fn execute_harvest(
     output_base: &str,
     http_client: &Client,
 ) -> Result<(HarvestResult, Vec<PathBuf>)> {
-    let bwb_manifest = manifest::download_manifest(http_client, &payload.bwb_id).await?;
-    let effective_date =
-        manifest::resolve_consolidation_date(&bwb_manifest, payload.date.as_deref())?;
-    tracing::info!(bwb_id = %payload.bwb_id, resolved_date = %effective_date, "resolved consolidation date from manifest");
-
-    tracing::info!(bwb_id = %payload.bwb_id, date = %effective_date, "downloading law XML from BWB");
-    let law = if let Some(max_mb) = payload.max_size_mb {
-        regelrecht_harvester::download_law_with_max_size(
-            http_client,
-            &payload.bwb_id,
-            &effective_date,
-            max_mb,
+    let law_id = payload.law_id().ok_or_else(|| {
+        crate::error::PipelineError::InvalidInput(
+            "harvest payload must have either bwb_id or cvdr_id".into(),
         )
-        .await?
+    })?;
+
+    let source = regelrecht_harvester::detect_source(law_id)?;
+    let source_type = source.name().to_lowercase();
+
+    // For BWB, resolve the effective date from the manifest.
+    // For CVDR, use the requested date, the law's metadata date, or today.
+    let (law, effective_date) = if source.source_type() == regelrecht_harvester::LawSourceType::Bwb
+    {
+        let bwb_manifest = manifest::download_manifest(http_client, law_id).await?;
+        let resolved_date =
+            manifest::resolve_consolidation_date(&bwb_manifest, payload.date.as_deref())?;
+        tracing::info!(law_id = %law_id, resolved_date = %resolved_date, "resolved consolidation date from manifest");
+
+        tracing::info!(law_id = %law_id, date = %resolved_date, "downloading law XML from BWB");
+        let bwb_source = regelrecht_harvester::BwbSource {
+            max_size_mb: payload.max_size_mb,
+        };
+        let law = bwb_source
+            .download(http_client, law_id, Some(&resolved_date))
+            .await?;
+        (law, resolved_date)
     } else {
-        regelrecht_harvester::download_law(http_client, &payload.bwb_id, &effective_date).await?
+        tracing::info!(law_id = %law_id, source = source.name(), "downloading law from {}", source.name());
+        let law = source
+            .download(http_client, law_id, payload.date.as_deref())
+            .await?;
+        let effective_date = payload
+            .date
+            .clone()
+            .or_else(|| law.metadata.effective_date.clone())
+            .unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string());
+        (law, effective_date)
     };
 
-    tracing::info!(bwb_id = %payload.bwb_id, title = %law.metadata.title, "law XML downloaded successfully");
+    tracing::info!(law_id = %law_id, title = %law.metadata.title, "law downloaded successfully");
     let law_name = law.metadata.title.clone();
     let slug = law.metadata.to_slug();
     let layer = law.metadata.regulatory_layer.as_str().to_string();
@@ -96,7 +178,7 @@ pub async fn execute_harvest(
         .iter()
         .flat_map(|a| a.references.iter())
         .map(|r| r.bwb_id.clone())
-        .filter(|id| id != &payload.bwb_id)
+        .filter(|id| id != law_id)
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
@@ -120,7 +202,7 @@ pub async fn execute_harvest(
         .unwrap_or_else(|| PathBuf::from("status.yaml"));
 
     let status = LawStatusFile {
-        bwb_id: payload.bwb_id.clone(),
+        law_id: law_id.to_string(),
         law_name: law_name.clone(),
         slug: slug.clone(),
         status: "harvested".to_string(),
@@ -151,6 +233,7 @@ pub async fn execute_harvest(
         warnings,
         referenced_bwb_ids,
         harvest_date: effective_date,
+        source_type,
     };
 
     let written_files = vec![yaml_path, status_file_path];
@@ -164,7 +247,8 @@ mod tests {
     #[test]
     fn test_harvest_payload_serde_roundtrip() {
         let payload = HarvestPayload {
-            bwb_id: "BWBR0018451".to_string(),
+            bwb_id: Some("BWBR0018451".to_string()),
+            cvdr_id: None,
             date: Some("2025-01-01".to_string()),
             max_size_mb: Some(100),
             depth: Some(2),
@@ -173,21 +257,71 @@ mod tests {
         let json = serde_json::to_string(&payload).unwrap();
         let deserialized: HarvestPayload = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(deserialized.bwb_id, "BWBR0018451");
+        assert_eq!(deserialized.bwb_id.as_deref(), Some("BWBR0018451"));
         assert_eq!(deserialized.date.as_deref(), Some("2025-01-01"));
         assert_eq!(deserialized.max_size_mb, Some(100));
         assert_eq!(deserialized.depth, Some(2));
     }
 
     #[test]
-    fn test_harvest_payload_minimal() {
+    fn test_harvest_payload_minimal_bwb() {
         let json = r#"{"bwb_id":"BWBR0018451"}"#;
         let payload: HarvestPayload = serde_json::from_str(json).unwrap();
 
-        assert_eq!(payload.bwb_id, "BWBR0018451");
+        assert_eq!(payload.bwb_id.as_deref(), Some("BWBR0018451"));
+        assert!(payload.cvdr_id.is_none());
         assert!(payload.date.is_none());
         assert!(payload.max_size_mb.is_none());
         assert!(payload.depth.is_none());
+    }
+
+    #[test]
+    fn test_harvest_payload_cvdr() {
+        let json = r#"{"cvdr_id":"CVDR681386"}"#;
+        let payload: HarvestPayload = serde_json::from_str(json).unwrap();
+
+        assert!(payload.bwb_id.is_none());
+        assert_eq!(payload.cvdr_id.as_deref(), Some("CVDR681386"));
+    }
+
+    #[test]
+    fn test_harvest_payload_law_id_helper() {
+        let bwb_payload = HarvestPayload {
+            bwb_id: Some("BWBR0018451".to_string()),
+            cvdr_id: None,
+            date: None,
+            max_size_mb: None,
+            depth: None,
+        };
+        assert_eq!(bwb_payload.law_id(), Some("BWBR0018451"));
+
+        let cvdr_payload = HarvestPayload {
+            bwb_id: None,
+            cvdr_id: Some("CVDR681386".to_string()),
+            date: None,
+            max_size_mb: None,
+            depth: None,
+        };
+        assert_eq!(cvdr_payload.law_id(), Some("CVDR681386"));
+
+        let empty_payload = HarvestPayload {
+            bwb_id: None,
+            cvdr_id: None,
+            date: None,
+            max_size_mb: None,
+            depth: None,
+        };
+        assert_eq!(empty_payload.law_id(), None);
+    }
+
+    /// Backward compatibility: existing queued jobs with `bwb_id` as a plain String
+    /// must still deserialize correctly.
+    #[test]
+    fn test_harvest_payload_backward_compat_plain_string() {
+        let json = r#"{"bwb_id":"BWBR0018451","date":"2025-01-01"}"#;
+        let payload: HarvestPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.bwb_id.as_deref(), Some("BWBR0018451"));
+        assert!(payload.cvdr_id.is_none());
     }
 
     #[test]
@@ -202,12 +336,14 @@ mod tests {
             warnings: vec!["warning1".to_string(), "warning2".to_string()],
             referenced_bwb_ids: vec!["BWBR0002629".to_string(), "BWBR0018450".to_string()],
             harvest_date: "2025-01-01".to_string(),
+            source_type: "bwb".to_string(),
         };
 
         let json = serde_json::to_value(&result).unwrap();
         assert_eq!(json["law_name"], "Wet op de zorgtoeslag");
         assert_eq!(json["article_count"], 10);
         assert_eq!(json["harvest_date"], "2025-01-01");
+        assert_eq!(json["source_type"], "bwb");
 
         let refs = json["referenced_bwb_ids"].as_array().unwrap();
         assert_eq!(refs.len(), 2);
@@ -215,10 +351,18 @@ mod tests {
         assert_eq!(refs[1], "BWBR0018450");
     }
 
+    /// Backward compatibility: HarvestResult without source_type defaults to "bwb".
+    #[test]
+    fn test_harvest_result_default_source_type() {
+        let json = r#"{"law_name":"test","slug":"test","layer":"WET","file_path":"test.yaml","article_count":0,"warning_count":0,"warnings":[],"referenced_bwb_ids":[],"harvest_date":"2025-01-01"}"#;
+        let result: HarvestResult = serde_json::from_str(json).unwrap();
+        assert_eq!(result.source_type, "bwb");
+    }
+
     #[test]
     fn test_law_status_file_serde() {
         let status = LawStatusFile {
-            bwb_id: "BWBR0018451".to_string(),
+            law_id: "BWBR0018451".to_string(),
             law_name: "Wet op de zorgtoeslag".to_string(),
             slug: "wet_op_de_zorgtoeslag".to_string(),
             status: "harvested".to_string(),
@@ -230,7 +374,25 @@ mod tests {
         };
 
         let yaml = serde_yaml_ng::to_string(&status).unwrap();
-        assert!(yaml.contains("bwb_id: BWBR0018451"));
+        assert!(yaml.contains("law_id: BWBR0018451"));
         assert!(yaml.contains("status: harvested"));
+    }
+
+    #[test]
+    fn test_law_status_file_cvdr() {
+        let status = LawStatusFile {
+            law_id: "CVDR681386".to_string(),
+            law_name: "Verordening test".to_string(),
+            slug: "verordening_test".to_string(),
+            status: "harvested".to_string(),
+            last_harvested: "2025-01-01T00:00:00Z".to_string(),
+            harvest_date: "2025-01-01".to_string(),
+            article_count: 5,
+            warning_count: 0,
+            warnings: vec![],
+        };
+
+        let yaml = serde_yaml_ng::to_string(&status).unwrap();
+        assert!(yaml.contains("law_id: CVDR681386"));
     }
 }

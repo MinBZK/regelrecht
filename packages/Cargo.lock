@@ -3598,8 +3598,8 @@ dependencies = [
  "prometheus-client",
  "regelrecht-auth",
  "regelrecht-corpus",
+ "regelrecht-harvester",
  "regelrecht-pipeline",
- "regex",
  "reqwest 0.12.28",
  "rsa",
  "serde",
@@ -3722,6 +3722,7 @@ dependencies = [
 name = "regelrecht-harvester"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
  "clap",
  "console",

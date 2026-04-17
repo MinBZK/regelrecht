@@ -90,7 +90,15 @@ struct YamlLaw {
     regulatory_layer: String,
     publication_date: String,
     valid_from: String,
-    bwb_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bwb_id: Option<String>,
+    // NOTE: cvdr_id is not yet in the schema; emitted as an extension for traceability.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cvdr_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    officiele_titel: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    organisation: Option<String>,
     url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     preamble: Option<YamlPreamble>,
@@ -100,6 +108,7 @@ struct YamlLaw {
 /// Generate a schema-compliant YAML structure from a Law object.
 fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
     let law_id = law.metadata.to_slug();
+    let is_cvdr = law.metadata.cvdr_id.is_some();
 
     // Convert preamble if present
     let preamble = law.preamble.as_ref().map(|p| {
@@ -139,6 +148,30 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
         })
         .collect();
 
+    // Build URL and IDs based on source type
+    let (bwb_id, cvdr_id, officiele_titel, organisation, url) = if is_cvdr {
+        let cvdr_id_str = law.metadata.cvdr_id.as_deref().unwrap_or_default();
+        let url = format!("https://lokaleregelgeving.overheid.nl/{cvdr_id_str}");
+        (
+            None,
+            law.metadata.cvdr_id.clone(),
+            Some(law.metadata.title.clone()),
+            law.metadata.creator.clone(),
+            url,
+        )
+    } else {
+        (
+            Some(law.metadata.bwb_id.clone()),
+            None,
+            None,
+            None,
+            format!(
+                "https://wetten.overheid.nl/{}/{}",
+                law.metadata.bwb_id, effective_date
+            ),
+        )
+    };
+
     YamlLaw {
         schema: SCHEMA_URL.to_string(),
         id: law_id,
@@ -149,11 +182,11 @@ fn generate_yaml_struct(law: &Law, effective_date: &str) -> YamlLaw {
             .clone()
             .unwrap_or_else(|| effective_date.to_string()),
         valid_from: effective_date.to_string(),
-        bwb_id: law.metadata.bwb_id.clone(),
-        url: format!(
-            "https://wetten.overheid.nl/{}/{}",
-            law.metadata.bwb_id, effective_date
-        ),
+        bwb_id,
+        cvdr_id,
+        officiele_titel,
+        organisation,
+        url,
         preamble,
         articles,
     }
@@ -388,10 +421,13 @@ mod tests {
     fn create_test_law() -> Law {
         let metadata = LawMetadata {
             bwb_id: "BWBR0018451".to_string(),
+            cvdr_id: None,
             title: "Wet op de zorgtoeslag".to_string(),
             regulatory_layer: RegulatoryLayer::Wet,
             publication_date: Some("2005-12-29".to_string()),
             effective_date: None,
+            creator: None,
+            scope_code: None,
         };
 
         let mut law = Law::new(metadata);
