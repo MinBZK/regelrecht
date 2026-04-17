@@ -54,7 +54,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: [CMD, wget, --spider, -q, http://localhost:8001/health]
+      test: [CMD, wget, --spider, -q, http://localhost:8000/health]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -92,7 +92,7 @@ services:
       secrets:
         - GITHUB_TOKEN
     environment:
-      PIPELINE_API_URL: http://pipelineapi:8001
+      PIPELINE_API_URL: http://pipelineapi:8000
     ports:
       - ${FRONTEND_PORT:-3000}:8000
 

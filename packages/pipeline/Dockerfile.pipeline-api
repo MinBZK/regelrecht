@@ -41,6 +41,6 @@ RUN apk add --no-cache ca-certificates && \
 COPY --from=builder /build/target/release/regelrecht-pipeline-api /usr/local/bin/
 
 USER app
-EXPOSE 8001
+EXPOSE 8000
 
 CMD ["regelrecht-pipeline-api"]

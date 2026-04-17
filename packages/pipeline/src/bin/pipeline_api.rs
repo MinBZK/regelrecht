@@ -59,7 +59,7 @@ async fn main() {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    let port = std::env::var("PORT").unwrap_or_else(|_| "8001".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8000".to_string());
     let addr = format!("0.0.0.0:{port}");
 
     let listener = match tokio::net::TcpListener::bind(&addr).await {
