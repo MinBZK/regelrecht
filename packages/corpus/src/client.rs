@@ -331,7 +331,7 @@ impl CorpusClient {
     /// would be missing from the checkout.
     ///
     /// Unlike a merge, this does **not** create a merge commit. The checked-out
-    /// files become staged changes on the current branch. When the enrichment
+    /// files are left as unstaged working-tree changes. When the enrichment
     /// later commits, the new law file and its `machine_readable` additions
     /// appear together in a single commit — which survives `git rebase` cleanly.
     pub async fn checkout_from_branch(&self, base_branch: &str, paths: &[&str]) -> Result<()> {
@@ -903,6 +903,83 @@ mod tests {
             !status_str.contains("A "),
             "file should not be staged: {status_str}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_checkout_from_branch_fetches_new_version_when_old_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Push an old version of a law to development
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let law_dir = tmp.join("regulation/nl/wet/some_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        tokio::fs::write(law_dir.join("2024-01-01.yaml"), "old version")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest old version"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Create enrichment branch (inherits old version from development)
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+        assert!(repo_path
+            .join("regulation/nl/wet/some_law/2024-01-01.yaml")
+            .exists());
+
+        // Push a NEW version to development
+        tokio::fs::write(law_dir.join("2025-01-01.yaml"), "new version")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest new version"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // New version should NOT be on the enrichment branch yet
+        assert!(!repo_path
+            .join("regulation/nl/wet/some_law/2025-01-01.yaml")
+            .exists());
+
+        // Checkout the specific new file (not the directory!)
+        client
+            .checkout_from_branch(
+                "development",
+                &["regulation/nl/wet/some_law/2025-01-01.yaml"],
+            )
+            .await
+            .unwrap();
+
+        // New version present, old version still intact
+        assert!(repo_path
+            .join("regulation/nl/wet/some_law/2025-01-01.yaml")
+            .exists());
+        assert!(repo_path
+            .join("regulation/nl/wet/some_law/2024-01-01.yaml")
+            .exists());
     }
 
     #[tokio::test]
