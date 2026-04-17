@@ -322,45 +322,39 @@ impl CorpusClient {
         Ok(())
     }
 
-    /// Fetch a base branch and merge it into the current branch.
+    /// Fetch a base branch and check out specific paths from it into the
+    /// current working tree.
     ///
     /// Used by the enricher to pull in newly harvested laws from `development`
     /// into long-lived enrichment branches (`enrich/opencode`, `enrich/claude`).
     /// Without this, laws harvested after the enrichment branch was created
     /// would be missing from the checkout.
     ///
-    /// Uses `--allow-unrelated-histories` because shallow clones lack a common
-    /// ancestor. Merge conflicts are not expected (enrichment only adds
-    /// `machine_readable` sections while harvesting adds new law files).
-    pub async fn merge_base_branch(&self, base_branch: &str) -> Result<()> {
+    /// Unlike a merge, this does **not** create a merge commit. The checked-out
+    /// files become staged changes on the current branch. When the enrichment
+    /// later commits, the new law file and its `machine_readable` additions
+    /// appear together in a single commit — which survives `git rebase` cleanly.
+    pub async fn checkout_from_branch(&self, base_branch: &str, paths: &[&str]) -> Result<()> {
         self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
             .await?;
 
         let remote_ref = format!("origin/{base_branch}");
-        let result = self
-            .run_git(&[
-                "merge",
-                &remote_ref,
-                "--allow-unrelated-histories",
-                "--no-edit",
-            ])
-            .await;
+        let mut args = vec!["checkout", &remote_ref, "--"];
+        args.extend(paths);
+        self.run_git(&args).await?;
 
-        match result {
-            Ok(()) => {
-                tracing::info!(
-                    base = %base_branch,
-                    branch = %self.config.branch,
-                    "merged base branch into enrichment branch"
-                );
-                Ok(())
-            }
-            Err(e) => {
-                // Abort the merge to leave the working tree clean for the next attempt.
-                let _ = self.run_git(&["merge", "--abort"]).await;
-                Err(e)
-            }
-        }
+        // Unstage the checked-out files so they don't pollute an empty
+        // `git status --porcelain` check before the enrichment commits.
+        let mut reset_args = vec!["reset", "HEAD", "--"];
+        reset_args.extend(paths);
+        self.run_git(&reset_args).await?;
+
+        tracing::info!(
+            base = %base_branch,
+            paths = ?paths,
+            "checked out paths from base branch"
+        );
+        Ok(())
     }
 
     async fn configure_git_user(&self) -> Result<()> {
@@ -830,7 +824,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_merge_base_branch_incorporates_new_files() {
+    async fn test_checkout_from_branch_incorporates_new_files() {
         let dir = tempfile::tempdir().unwrap();
         let bare_path = setup_bare_repo(dir.path()).await;
         let bare_url = format!("file://{}", bare_path.display());
@@ -869,8 +863,11 @@ mod tests {
             .join("regulation/nl/wet/new_law/2025-01-01.yaml")
             .exists());
 
-        // Merge development — new law should now be present
-        client.merge_base_branch("development").await.unwrap();
+        // Checkout the law dir from development — file should now be present
+        client
+            .checkout_from_branch("development", &["regulation/nl/wet/new_law"])
+            .await
+            .unwrap();
         assert!(repo_path
             .join("regulation/nl/wet/new_law/2025-01-01.yaml")
             .exists());

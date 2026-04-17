@@ -435,10 +435,18 @@ pub async fn create_enrich_corpus(
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
 
-    // Merge development into the enrichment branch so newly harvested laws
+    // Check out the law directory from development so newly harvested laws
     // are available. Without this, laws harvested after the enrichment branch
     // was created would be missing and cause "file not found" errors.
-    client.merge_base_branch("development").await?;
+    //
+    // Uses checkout (not merge) so the file addition ends up in the same
+    // commit as the enrichment — which survives `git rebase` in commit_and_push.
+    let law_dir = Path::new(&normalized)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string());
+    if let Some(ref dir) = law_dir {
+        client.checkout_from_branch("development", &[dir]).await?;
+    }
 
     Ok(client)
 }
