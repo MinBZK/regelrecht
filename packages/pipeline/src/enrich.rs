@@ -414,12 +414,16 @@ pub async fn create_enrich_corpus(
     // an absolute path it cannot handle.
     let normalized = normalize_yaml_path(yaml_path)?;
 
+    // Derive the law directory once — used for both sparse checkout and
+    // checking out missing files from development.
+    let law_dir = Path::new(&normalized)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .filter(|d| !d.is_empty());
+
     // Sparse checkout: only the law directory + features/
-    if let Some(law_dir) = Path::new(&normalized).parent() {
-        let law_dir_str = law_dir.to_string_lossy().to_string();
-        if !law_dir_str.is_empty() {
-            config.sparse_paths = Some(vec![law_dir_str, "features".to_string()]);
-        }
+    if let Some(ref dir) = law_dir {
+        config.sparse_paths = Some(vec![dir.clone(), "features".to_string()]);
     }
 
     // Use a separate checkout directory per branch + job to avoid conflicts
@@ -441,10 +445,7 @@ pub async fn create_enrich_corpus(
     //
     // Uses checkout (not merge) so the file addition ends up in the same
     // commit as the enrichment — which survives `git rebase` in commit_and_push.
-    let law_dir = Path::new(&normalized)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string());
-    if let Some(ref dir) = law_dir.filter(|d| !d.is_empty()) {
+    if let Some(ref dir) = law_dir {
         client.checkout_from_branch("development", &[dir]).await?;
     }
 

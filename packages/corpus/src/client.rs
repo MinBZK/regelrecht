@@ -335,23 +335,41 @@ impl CorpusClient {
     /// later commits, the new law file and its `machine_readable` additions
     /// appear together in a single commit — which survives `git rebase` cleanly.
     pub async fn checkout_from_branch(&self, base_branch: &str, paths: &[&str]) -> Result<()> {
+        // Skip paths already tracked on this branch to avoid overwriting
+        // enrichment-branch content (e.g. prior machine_readable additions)
+        // with the raw development version.
+        let mut missing: Vec<&str> = Vec::new();
+        for path in paths {
+            if self
+                .run_git(&["ls-files", "--error-unmatch", "--", path])
+                .await
+                .is_err()
+            {
+                missing.push(path);
+            }
+        }
+        if missing.is_empty() {
+            tracing::debug!(paths = ?paths, "all paths already tracked, skipping checkout from base");
+            return Ok(());
+        }
+
         self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
             .await?;
 
         let remote_ref = format!("origin/{base_branch}");
         let mut args = vec!["checkout", &remote_ref, "--"];
-        args.extend(paths);
+        args.extend(&missing);
         self.run_git(&args).await?;
 
         // Unstage the checked-out files so they don't pollute an empty
         // `git status --porcelain` check before the enrichment commits.
         let mut reset_args = vec!["reset", "HEAD", "--"];
-        reset_args.extend(paths);
+        reset_args.extend(&missing);
         self.run_git(&reset_args).await?;
 
         tracing::info!(
             base = %base_branch,
-            paths = ?paths,
+            paths = ?missing,
             "checked out paths from base branch"
         );
         Ok(())
@@ -871,6 +889,20 @@ mod tests {
         assert!(repo_path
             .join("regulation/nl/wet/new_law/2025-01-01.yaml")
             .exists());
+
+        // The file should be unstaged (reset HEAD) so git status is clean.
+        // This prevents commit_and_push from seeing spurious staged changes.
+        let status = Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let status_str = String::from_utf8_lossy(&status.stdout);
+        assert!(
+            !status_str.contains("A "),
+            "file should not be staged: {status_str}"
+        );
     }
 
     #[tokio::test]
