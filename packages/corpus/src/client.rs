@@ -881,17 +881,22 @@ mod tests {
             .join("regulation/nl/wet/new_law/2025-01-01.yaml")
             .exists());
 
-        // Checkout the law dir from development — file should now be present
+        // Checkout the specific file from development (matches production code path)
         client
-            .checkout_from_branch("development", &["regulation/nl/wet/new_law"])
+            .checkout_from_branch(
+                "development",
+                &["regulation/nl/wet/new_law/2025-01-01.yaml"],
+            )
             .await
             .unwrap();
         assert!(repo_path
             .join("regulation/nl/wet/new_law/2025-01-01.yaml")
             .exists());
 
-        // The file should be unstaged (reset HEAD) so git status is clean.
-        // This prevents commit_and_push from seeing spurious staged changes.
+        // Unstaged so the file appears as `??` (untracked) rather than `A`
+        // (staged-new). commit_and_push uses explicit `git add -- <paths>`
+        // which picks up untracked files, so the machine_readable additions
+        // and new file land in the same commit.
         let status = Command::new("git")
             .args(["status", "--porcelain"])
             .current_dir(&repo_path)
@@ -902,6 +907,68 @@ mod tests {
         assert!(
             !status_str.contains("A "),
             "file should not be staged: {status_str}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_checkout_from_branch_skips_already_tracked_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Push a law file to development
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let law_dir = tmp.join("regulation/nl/wet/enriched_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        tokio::fs::write(law_dir.join("2025-01-01.yaml"), "raw content")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest law"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Create enrichment branch (inherits the law from development)
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // Simulate enrichment: modify the file with machine_readable content
+        let yaml_path = repo_path.join("regulation/nl/wet/enriched_law/2025-01-01.yaml");
+        tokio::fs::write(&yaml_path, "enriched content with machine_readable")
+            .await
+            .unwrap();
+        client
+            .commit_and_push(&[yaml_path.clone()], "enrich: add machine_readable")
+            .await
+            .unwrap();
+
+        // Now call checkout_from_branch — it should SKIP the file because
+        // it's already tracked on the enrichment branch
+        client
+            .checkout_from_branch(
+                "development",
+                &["regulation/nl/wet/enriched_law/2025-01-01.yaml"],
+            )
+            .await
+            .unwrap();
+
+        // File content should still be the enriched version, NOT overwritten
+        let content = tokio::fs::read_to_string(&yaml_path).await.unwrap();
+        assert_eq!(
+            content, "enriched content with machine_readable",
+            "already-tracked file should not be overwritten by development version"
         );
     }
 
