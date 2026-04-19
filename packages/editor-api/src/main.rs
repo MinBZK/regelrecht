@@ -445,13 +445,11 @@ fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
 /// Fallback when `PIPELINE_API_URL` is not set: discover pipelineapi from the
 /// pod's own HOSTNAME. ZAD's alias-based env injection is resolved at
 /// component-creation time, so it gets stuck with stale ports when the
-/// pipelineapi component is recreated. ZAD pod names have the form
-/// `<deployment>-<component>-<replicaset>-<pod>` and ZAD's cluster-internal
-/// Service for pipelineapi is `pipelineapi-<deployment>`, so we can rebuild
-/// the URL from HOSTNAME without relying on K8s service env injection (which
-/// is disabled in ZAD pods via `enableServiceLinks: false`).
+/// pipelineapi component is recreated. ZAD pod/Service names follow the
+/// convention `<deployment>-<component>`, so we derive the deployment from
+/// HOSTNAME's first segment and reach pipelineapi via cluster-internal DNS.
 fn discover_pipeline_api_url_from_k8s() -> Option<String> {
     let hostname = env::var("HOSTNAME").ok()?;
     let deployment = hostname.split('-').next().filter(|s| !s.is_empty())?;
-    Some(format!("http://pipelineapi-{deployment}:8000"))
+    Some(format!("http://{deployment}-pipelineapi:8000"))
 }
