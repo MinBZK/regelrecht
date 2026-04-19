@@ -93,18 +93,11 @@ fn regulatory_layer_from_organisation_type(org_type: &str) -> (RegulatoryLayer, 
 ///
 /// # Arguments
 /// * `client` - HTTP client to use
-/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386" or "CVDR681386_1")
-/// * `pre_resolved_xml_url` - Optional XML URL from manifest resolution.
-///   If provided, this URL is used instead of the one extracted from SRU enrichedData,
-///   which is more reliable.
+/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386_1")
 ///
 /// # Returns
 /// `CvdrMetadata` with extracted metadata
-pub async fn search_cvdr(
-    client: &Client,
-    cvdr_id: &str,
-    pre_resolved_xml_url: Option<&str>,
-) -> Result<CvdrMetadata> {
+pub async fn search_cvdr(client: &Client, cvdr_id: &str) -> Result<CvdrMetadata> {
     let url = cvdr_sru_search_url(cvdr_id);
 
     let bytes = download_bytes_default(client, &url).await.map_err(|e| {
@@ -119,14 +112,7 @@ pub async fn search_cvdr(
     })?;
 
     let xml_string = bytes_to_string(bytes, &format!("SRU search for {cvdr_id}"));
-    let mut metadata = parse_sru_response(&xml_string, cvdr_id)?;
-
-    // Override the XML URL with the pre-resolved one from the manifest if available
-    if let Some(resolved_url) = pre_resolved_xml_url {
-        metadata.xml_url = resolved_url.to_string();
-    }
-
-    Ok(metadata)
+    parse_sru_response(&xml_string, cvdr_id)
 }
 
 /// Parse SRU XML response to extract CVDR metadata.

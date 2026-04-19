@@ -183,9 +183,8 @@ fn extract_version_from_path(path: &str, cvdr_id: &str) -> Option<CvdrVersion> {
 
 /// Build the direct XML download URL for a CVDR version.
 fn cvdr_xml_url(cvdr_id: &str, version: u32) -> String {
-    format!(
-        "https://repository.officiele-overheidspublicaties.nl/cvdr/{cvdr_id}/{version}/xml/{cvdr_id}_{version}.xml"
-    )
+    use crate::config::CVDR_REPOSITORY_URL;
+    format!("{CVDR_REPOSITORY_URL}/{cvdr_id}/{version}/xml/{cvdr_id}_{version}.xml")
 }
 
 #[cfg(test)]

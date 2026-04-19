@@ -33,10 +33,10 @@ pub const TEXT_WRAP_WIDTH: usize = 115;
 static BWB_ID_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));
 
-/// CVDR ID pattern: CVDR followed by 3 or more digits.
+/// CVDR ID pattern: CVDR followed by 3+ digits, with optional version suffix (e.g., _1).
 #[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid
 static CVDR_ID_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^CVDR\d{3,}$").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"^CVDR\d{3,}(_\d+)?$").expect("valid regex"));
 
 /// Date pattern: YYYY-MM-DD.
 #[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid

@@ -65,7 +65,7 @@ pub async fn download_cvdr_law(client: &Client, cvdr_id: &str, date: Option<&str
     };
 
     // Step 2: SRU search to get metadata (using versioned ID)
-    let metadata_result = search_cvdr(client, &versioned_id, manifest_xml_url.as_deref()).await?;
+    let metadata_result = search_cvdr(client, &versioned_id).await?;
 
     // Step 3: Download XML content
     // Prefer the manifest-resolved XML URL (more reliable than SRU enrichedData)
