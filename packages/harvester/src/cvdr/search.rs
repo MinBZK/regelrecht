@@ -65,12 +65,15 @@ impl CvdrMetadata {
 
 /// Map CVDR organisation type to `RegulatoryLayer`.
 ///
+/// Accepts both plural forms (from SRU metadata, e.g., "gemeenten") and
+/// singular forms (e.g., "gemeente") for robustness.
+///
 /// Returns `(layer, warning)` where warning is present for unknown types.
 fn regulatory_layer_from_organisation_type(org_type: &str) -> (RegulatoryLayer, Option<String>) {
     match org_type.to_lowercase().as_str() {
-        "gemeenten" => (RegulatoryLayer::GemeentelijkeVerordening, None),
-        "provincies" => (RegulatoryLayer::ProvincialeVerordening, None),
-        "waterschappen" => (RegulatoryLayer::WaterschapsVerordening, None),
+        "gemeenten" | "gemeente" => (RegulatoryLayer::GemeentelijkeVerordening, None),
+        "provincies" | "provincie" => (RegulatoryLayer::ProvincialeVerordening, None),
+        "waterschappen" | "waterschap" => (RegulatoryLayer::WaterschapsVerordening, None),
         unknown => {
             tracing::warn!(
                 organisation_type = %unknown,
@@ -90,11 +93,18 @@ fn regulatory_layer_from_organisation_type(org_type: &str) -> (RegulatoryLayer, 
 ///
 /// # Arguments
 /// * `client` - HTTP client to use
-/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386")
+/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386" or "CVDR681386_1")
+/// * `pre_resolved_xml_url` - Optional XML URL from manifest resolution.
+///   If provided, this URL is used instead of the one extracted from SRU enrichedData,
+///   which is more reliable.
 ///
 /// # Returns
 /// `CvdrMetadata` with extracted metadata
-pub async fn search_cvdr(client: &Client, cvdr_id: &str) -> Result<CvdrMetadata> {
+pub async fn search_cvdr(
+    client: &Client,
+    cvdr_id: &str,
+    pre_resolved_xml_url: Option<&str>,
+) -> Result<CvdrMetadata> {
     let url = cvdr_sru_search_url(cvdr_id);
 
     let bytes = download_bytes_default(client, &url).await.map_err(|e| {
@@ -109,7 +119,14 @@ pub async fn search_cvdr(client: &Client, cvdr_id: &str) -> Result<CvdrMetadata>
     })?;
 
     let xml_string = bytes_to_string(bytes, &format!("SRU search for {cvdr_id}"));
-    parse_sru_response(&xml_string, cvdr_id)
+    let mut metadata = parse_sru_response(&xml_string, cvdr_id)?;
+
+    // Override the XML URL with the pre-resolved one from the manifest if available
+    if let Some(resolved_url) = pre_resolved_xml_url {
+        metadata.xml_url = resolved_url.to_string();
+    }
+
+    Ok(metadata)
 }
 
 /// Parse SRU XML response to extract CVDR metadata.
@@ -278,6 +295,21 @@ mod tests {
 
         let (layer, _) = regulatory_layer_from_organisation_type("WATERSCHAPPEN");
         assert_eq!(layer, RegulatoryLayer::WaterschapsVerordening);
+    }
+
+    #[test]
+    fn test_regulatory_layer_from_organisation_type_singular() {
+        let (layer, warning) = regulatory_layer_from_organisation_type("gemeente");
+        assert_eq!(layer, RegulatoryLayer::GemeentelijkeVerordening);
+        assert!(warning.is_none());
+
+        let (layer, warning) = regulatory_layer_from_organisation_type("provincie");
+        assert_eq!(layer, RegulatoryLayer::ProvincialeVerordening);
+        assert!(warning.is_none());
+
+        let (layer, warning) = regulatory_layer_from_organisation_type("waterschap");
+        assert_eq!(layer, RegulatoryLayer::WaterschapsVerordening);
+        assert!(warning.is_none());
     }
 
     #[test]
