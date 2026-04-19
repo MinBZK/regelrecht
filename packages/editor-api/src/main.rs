@@ -63,10 +63,12 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
-    let pipeline_api_url = env::var("PIPELINE_API_URL").ok();
+    let pipeline_api_url = env::var("PIPELINE_API_URL")
+        .ok()
+        .or_else(discover_pipeline_api_url_from_k8s);
     match &pipeline_api_url {
         Some(url) => tracing::info!(url = %url, "pipeline-api proxy target"),
-        None => tracing::info!("PIPELINE_API_URL not set, harvest proxy disabled"),
+        None => tracing::info!("no pipeline-api URL configured, harvest proxy disabled"),
     }
 
     let mut app_state = AppState {
@@ -438,4 +440,22 @@ fn load_favorites(static_dir: &str) -> HashSet<String> {
 fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
     regelrecht_corpus::CorpusRegistry::from_yaml("schema_version: '1.0'\nsources: []\n")
         .unwrap_or_else(|_| unreachable!())
+}
+
+/// Fallback when `PIPELINE_API_URL` is not set: scan Kubernetes' auto-injected
+/// `<SVC>_SERVICE_HOST/_SERVICE_PORT` env vars for a pipelineapi Service.
+/// ZAD's alias-based env injection is resolved at component-creation time, so
+/// it gets stuck with the port the pipelineapi component had when editor was
+/// first created — this fallback rebuilds the URL from live Service state.
+fn discover_pipeline_api_url_from_k8s() -> Option<String> {
+    for (key, host) in env::vars() {
+        if let Some(prefix) = key.strip_suffix("_SERVICE_HOST") {
+            if prefix.starts_with("PIPELINEAPI") {
+                if let Ok(port) = env::var(format!("{prefix}_SERVICE_PORT")) {
+                    return Some(format!("http://{host}:{port}"));
+                }
+            }
+        }
+    }
+    None
 }
