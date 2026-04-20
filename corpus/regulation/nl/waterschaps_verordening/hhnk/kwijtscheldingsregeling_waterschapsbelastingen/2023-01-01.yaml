@@ -123,6 +123,27 @@ articles:
           - name: belasting_zakelijk
             type: boolean
             required: true
+          - name: gegevens_onvolledig_of_onjuist
+            type: boolean
+            required: false
+          - name: bezwaar_of_beroep_aanhangig
+            type: boolean
+            required: false
+          - name: zekerheid_gesteld
+            type: boolean
+            required: false
+          - name: meerdere_belastingschuldigen
+            type: boolean
+            required: false
+          - name: derde_aansprakelijk_gesteld
+            type: boolean
+            required: false
+          - name: verwijtbaarheid_belastingschuld
+            type: boolean
+            required: false
+          - name: in_faillissement_of_surseance_zonder_akkoord
+            type: boolean
+            required: false
         input:
           - name: ondernemer_komt_in_aanmerking
             type: boolean
@@ -131,6 +152,19 @@ articles:
               parameters:
                 is_ondernemer: $is_ondernemer
                 belasting_zakelijk: $belasting_zakelijk
+          - name: uitgesloten_van_kwijtschelding
+            type: boolean
+            source:
+              regulation: leidraad_invordering_2008
+              output: uitgesloten_van_kwijtschelding
+              parameters:
+                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
+                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
+                zekerheid_gesteld: $zekerheid_gesteld
+                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
+                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
+                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
+                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
           - name: vermogen_bedrag
             type: amount
             type_spec:
@@ -207,6 +241,9 @@ articles:
                 - operation: EQUALS
                   subject: $ondernemer_komt_in_aanmerking
                   value: true
+                - operation: EQUALS
+                  subject: $uitgesloten_van_kwijtschelding
+                  value: false
                 - operation: EQUALS
                   subject: $kan_kwijtschelding_verleend_uri
                   value: true

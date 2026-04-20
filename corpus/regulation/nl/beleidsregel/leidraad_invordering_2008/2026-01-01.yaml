@@ -1,5 +1,5 @@
 ---
-$schema: v0.5.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
 $id: leidraad_invordering_2008
 regulatory_layer: BELEIDSREGEL
 publication_date: '2026-01-01'
@@ -179,6 +179,73 @@ articles:
       aanwezige financiële middelen worden aangesproken. Dit houdt in dat geen kwijtschelding kan worden verleend als de
       belastingaanslag binnen een jaar door middel van verrekening kan worden aangezuiverd.
     url: https://wetten.overheid.nl/BWBR0024096/2026-01-01#Circulaire.divisie26.1.9
+    machine_readable:
+      execution:
+        parameters:
+          - name: gegevens_onvolledig_of_onjuist
+            type: boolean
+            required: false
+            description: Gevraagde gegevens niet/onvolledig/onjuist verstrekt (punt 1 van 26.1.9).
+          - name: bezwaar_of_beroep_aanhangig
+            type: boolean
+            required: false
+            description: Bezwaarschrift of beroepschrift tegen aanslag in behandeling (punt 4).
+          - name: zekerheid_gesteld
+            type: boolean
+            required: false
+            description: Voor deze aanslag is zekerheid gesteld (punt 5).
+          - name: meerdere_belastingschuldigen
+            type: boolean
+            required: false
+            description: Er is sprake van meer dan een belastingschuldige (punt 6).
+          - name: derde_aansprakelijk_gesteld
+            type: boolean
+            required: false
+            description: Een derde kan nog voor deze belastingschuld aansprakelijk worden gesteld (punt 7).
+          - name: verwijtbaarheid_belastingschuld
+            type: boolean
+            required: false
+            description: |
+              Het kan belastingschuldige worden toegerekend dat aanslag niet voldaan kan worden
+              (punt 8, sub a-h; opzet, teruggaaf niet aangewend, voldoende middelen aanwezig,
+              kon vermoeden aanslag, onjuiste loonbelastingverklaring, onjuiste voorlopige
+              teruggaaf, negatieve voorlopige aanslag).
+          - name: in_faillissement_of_surseance_zonder_akkoord
+            type: boolean
+            required: false
+            description: Belastingschuldige is in surseance/faillissement zonder akkoord artikel 138/252 FW
+              (punt 9).
+        output:
+          - name: uitgesloten_van_kwijtschelding
+            type: boolean
+            description: True als een van de weigergronden van artikel 26.1.9 van toepassing is; kwijtschelding
+              wordt dan geweigerd onafhankelijk van de financiele beoordeling.
+        actions:
+          - output: uitgesloten_van_kwijtschelding
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $gegevens_onvolledig_of_onjuist
+                  value: true
+                - operation: EQUALS
+                  subject: $bezwaar_of_beroep_aanhangig
+                  value: true
+                - operation: EQUALS
+                  subject: $zekerheid_gesteld
+                  value: true
+                - operation: EQUALS
+                  subject: $meerdere_belastingschuldigen
+                  value: true
+                - operation: EQUALS
+                  subject: $derde_aansprakelijk_gesteld
+                  value: true
+                - operation: EQUALS
+                  subject: $verwijtbaarheid_belastingschuld
+                  value: true
+                - operation: EQUALS
+                  subject: $in_faillissement_of_surseance_zonder_akkoord
+                  value: true
   - number: 26.1.10
     text: |
       Als een ex-ondernemer om kwijtschelding vraagt, past de ontvanger het kwijtscheldingsbeleid voor particulieren toe.
