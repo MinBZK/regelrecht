@@ -74,6 +74,11 @@ articles:
             type_spec:
               unit: eurocent
             required: true
+          - name: extra_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
           - name: aanslagbedrag
             type: amount
             type_spec:
@@ -94,6 +99,7 @@ articles:
                 netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
+                extra_uitgaven_maand: $extra_uitgaven_maand
         output:
           - name: aanwendbare_betalingscapaciteit
             type: amount
@@ -381,6 +387,15 @@ articles:
           - name: is_pensioengerechtigd
             type: boolean
             required: true
+          - name: extra_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Aanvullende maandelijkse uitgaven die niet al zijn verwerkt in netto_besteedbaar_inkomen,
+              maar wel op grond van artikel 15 (eventueel via een verordening zoals artikel 3 van HHNK
+              Kwijtscheldingsregeling + artikel 28 lid 3 URI 1990 voor netto kinderopvangkosten) in aanmerking worden
+              genomen. Verlaagt betalingscapaciteit. Default 0.
         input:
           - name: kostennorm_bedrag
             type: amount
@@ -410,10 +425,13 @@ articles:
                     - 12
                     - operation: SUBTRACT
                       values:
-                        - operation: ADD
+                        - operation: SUBTRACT
                           values:
-                            - $netto_besteedbaar_inkomen_maand
-                            - $netto_besteedbaar_inkomen_partner_maand
+                            - operation: ADD
+                              values:
+                                - $netto_besteedbaar_inkomen_maand
+                                - $netto_besteedbaar_inkomen_partner_maand
+                            - $extra_uitgaven_maand
                         - $kostennorm_bedrag
   - number: '14'
     url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel14
