@@ -414,12 +414,14 @@ pub async fn create_enrich_corpus(
     // an absolute path it cannot handle.
     let normalized = normalize_yaml_path(yaml_path)?;
 
+    let law_dir = Path::new(&normalized)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .filter(|d| !d.is_empty());
+
     // Sparse checkout: only the law directory + features/
-    if let Some(law_dir) = Path::new(&normalized).parent() {
-        let law_dir_str = law_dir.to_string_lossy().to_string();
-        if !law_dir_str.is_empty() {
-            config.sparse_paths = Some(vec![law_dir_str, "features".to_string()]);
-        }
+    if let Some(ref dir) = law_dir {
+        config.sparse_paths = Some(vec![dir.clone(), "features".to_string()]);
     }
 
     // Use a separate checkout directory per branch + job to avoid conflicts
@@ -434,6 +436,14 @@ pub async fn create_enrich_corpus(
 
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
+
+    // Pass the exact file path (not the directory) so the `ls-files` guard
+    // inside `checkout_from_branch` doesn't match sibling files and skip
+    // fetching a newly harvested version of an already-known law.
+    client
+        .checkout_from_branch("development", &[&normalized])
+        .await?;
+
     Ok(client)
 }
 

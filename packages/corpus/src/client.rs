@@ -322,6 +322,44 @@ impl CorpusClient {
         Ok(())
     }
 
+    /// Pull `paths` from `base_branch` into the working tree without a merge commit, leaving them unstaged so the next `commit_and_push` absorbs them.
+    pub async fn checkout_from_branch(&self, base_branch: &str, paths: &[&str]) -> Result<()> {
+        // Skip already-tracked paths so prior machine_readable additions
+        // aren't overwritten by the raw base-branch version.
+        let mut missing: Vec<&str> = Vec::new();
+        for path in paths {
+            let listed = self.run_git_output(&["ls-files", "--", path]).await?;
+            if listed.trim().is_empty() {
+                missing.push(path);
+            }
+        }
+        if missing.is_empty() {
+            tracing::debug!(paths = ?paths, "all paths already tracked, skipping checkout from base");
+            return Ok(());
+        }
+
+        self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
+            .await?;
+
+        let remote_ref = format!("origin/{base_branch}");
+        let mut args = vec!["checkout", &remote_ref, "--"];
+        args.extend(&missing);
+        self.run_git(&args).await?;
+
+        // Unstage the checked-out files so they don't pollute an empty
+        // `git status --porcelain` check before the enrichment commits.
+        let mut reset_args = vec!["reset", "HEAD", "--"];
+        reset_args.extend(&missing);
+        self.run_git(&reset_args).await?;
+
+        tracing::info!(
+            base = %base_branch,
+            paths = ?missing,
+            "checked out paths from base branch"
+        );
+        Ok(())
+    }
+
     async fn configure_git_user(&self) -> Result<()> {
         self.run_git(&["config", "user.name", &self.config.git_author_name])
             .await?;
@@ -785,6 +823,218 @@ mod tests {
         // law_b should NOT be present (excluded by sparse checkout)
         assert!(!repo_path
             .join("regulation/nl/wet/law_b/2025-01-01.yaml")
+            .exists());
+    }
+
+    #[tokio::test]
+    async fn test_checkout_from_branch_incorporates_new_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // ensure_repo with a non-existent branch creates it from development
+        // (mirrors production: enrichment branches are born from development)
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // Push a new file to development (simulating a harvested law)
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let new_law = tmp.join("regulation/nl/wet/new_law");
+        tokio::fs::create_dir_all(&new_law).await.unwrap();
+        tokio::fs::write(new_law.join("2025-01-01.yaml"), "new law content")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest new law"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // The new law should NOT be present on the enrichment branch yet
+        assert!(!repo_path
+            .join("regulation/nl/wet/new_law/2025-01-01.yaml")
+            .exists());
+
+        // Checkout the specific file from development (matches production code path)
+        client
+            .checkout_from_branch(
+                "development",
+                &["regulation/nl/wet/new_law/2025-01-01.yaml"],
+            )
+            .await
+            .unwrap();
+        assert!(repo_path
+            .join("regulation/nl/wet/new_law/2025-01-01.yaml")
+            .exists());
+
+        // Unstaged so the file appears as `??` (untracked) rather than `A`
+        // (staged-new). commit_and_push uses explicit `git add -- <paths>`
+        // which picks up untracked files, so the machine_readable additions
+        // and new file land in the same commit.
+        let status = Command::new("git")
+            .args(["status", "--porcelain", "--untracked-files=all"])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let status_str = String::from_utf8_lossy(&status.stdout);
+        assert!(
+            !status_str.contains("A "),
+            "file should not be staged: {status_str}"
+        );
+        assert!(
+            status_str.contains("?? regulation/nl/wet/new_law/2025-01-01.yaml"),
+            "file should be untracked: {status_str}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_checkout_from_branch_skips_already_tracked_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Push a law file to development
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let law_dir = tmp.join("regulation/nl/wet/enriched_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        tokio::fs::write(law_dir.join("2025-01-01.yaml"), "raw content")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest law"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Create enrichment branch (inherits the law from development)
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // Simulate enrichment: modify the file with machine_readable content
+        let yaml_path = repo_path.join("regulation/nl/wet/enriched_law/2025-01-01.yaml");
+        tokio::fs::write(&yaml_path, "enriched content with machine_readable")
+            .await
+            .unwrap();
+        client
+            .commit_and_push(&[yaml_path.clone()], "enrich: add machine_readable")
+            .await
+            .unwrap();
+
+        // Now call checkout_from_branch — it should SKIP the file because
+        // it's already tracked on the enrichment branch
+        client
+            .checkout_from_branch(
+                "development",
+                &["regulation/nl/wet/enriched_law/2025-01-01.yaml"],
+            )
+            .await
+            .unwrap();
+
+        // File content should still be the enriched version, NOT overwritten
+        let content = tokio::fs::read_to_string(&yaml_path).await.unwrap();
+        assert_eq!(
+            content, "enriched content with machine_readable",
+            "already-tracked file should not be overwritten by development version"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_checkout_from_branch_fetches_new_version_when_old_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Push an old version of a law to development
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        let law_dir = tmp.join("regulation/nl/wet/some_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        tokio::fs::write(law_dir.join("2024-01-01.yaml"), "old version")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest old version"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Create enrichment branch (inherits old version from development)
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+        assert!(repo_path
+            .join("regulation/nl/wet/some_law/2024-01-01.yaml")
+            .exists());
+
+        // Push a NEW version to development
+        tokio::fs::write(law_dir.join("2025-01-01.yaml"), "new version")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest new version"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // New version should NOT be on the enrichment branch yet
+        assert!(!repo_path
+            .join("regulation/nl/wet/some_law/2025-01-01.yaml")
+            .exists());
+
+        // Checkout the specific new file (not the directory!)
+        client
+            .checkout_from_branch(
+                "development",
+                &["regulation/nl/wet/some_law/2025-01-01.yaml"],
+            )
+            .await
+            .unwrap();
+
+        // New version present, old version still intact
+        assert!(repo_path
+            .join("regulation/nl/wet/some_law/2025-01-01.yaml")
+            .exists());
+        assert!(repo_path
+            .join("regulation/nl/wet/some_law/2024-01-01.yaml")
             .exists());
     }
 
