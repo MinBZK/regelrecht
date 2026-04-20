@@ -337,14 +337,14 @@ impl CorpusClient {
     pub async fn checkout_from_branch(&self, base_branch: &str, paths: &[&str]) -> Result<()> {
         // Skip paths already tracked on this branch to avoid overwriting
         // enrichment-branch content (e.g. prior machine_readable additions)
-        // with the raw development version.
+        // with the raw development version. `ls-files` without
+        // `--error-unmatch` returns empty stdout for untracked paths and
+        // exits non-zero only on genuine git failures, so transient errors
+        // propagate instead of being silently treated as "file missing".
         let mut missing: Vec<&str> = Vec::new();
         for path in paths {
-            if self
-                .run_git(&["ls-files", "--error-unmatch", "--", path])
-                .await
-                .is_err()
-            {
+            let listed = self.run_git_output(&["ls-files", "--", path]).await?;
+            if listed.trim().is_empty() {
                 missing.push(path);
             }
         }
