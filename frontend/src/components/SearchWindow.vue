@@ -51,7 +51,7 @@ function bwbItemClick(result) {
   if (isAvailable(status) && slug) {
     emit('harvest-available', slug);
     close();
-  } else if (!status || status === 'error' || isTerminal(status)) {
+  } else if (!status || isTerminal(status)) {
     requestHarvest(result.bwb_id);
   }
 }

@@ -685,23 +685,26 @@ pub async fn reload_corpus(
     State(state): State<AppState>,
     body: Option<Json<ReloadRequest>>,
 ) -> Result<Json<ReloadResponse>, (StatusCode, String)> {
-    let mut corpus = state.corpus.write().await;
+    // Gather everything we need under a read lock so concurrent readers
+    // (law fetches, scenario loads, dependency resolution) are not blocked
+    // for the duration of the GitHub round-trip.
+    let (registry, auth_file, mut law_ids) = {
+        let corpus = state.corpus.read().await;
+        let law_ids: std::collections::HashSet<String> =
+            corpus.source_map.laws().map(|l| l.law_id.clone()).collect();
+        (corpus.registry.clone(), corpus.auth_file.clone(), law_ids)
+    };
 
-    // Collect law IDs to fetch: everything already loaded + any
-    // extras the caller explicitly requests (e.g. a freshly harvested law).
-    let mut law_ids: std::collections::HashSet<String> =
-        corpus.source_map.laws().map(|l| l.law_id.clone()).collect();
-
+    // Include any extras the caller explicitly requests (e.g. a freshly
+    // harvested law not yet in the corpus).
     if let Some(Json(req)) = &body {
         for id in &req.law_ids {
             law_ids.insert(id.clone());
         }
     }
 
-    let auth_file = corpus.auth_file.as_deref();
-    let new_map = corpus
-        .registry
-        .load_favorites_async(&law_ids, auth_file)
+    let new_map = registry
+        .load_favorites_async(&law_ids, auth_file.as_deref())
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "corpus reload failed");
@@ -712,7 +715,10 @@ pub async fn reload_corpus(
         })?;
 
     let law_count = new_map.len();
-    corpus.source_map = new_map;
+    {
+        let mut corpus = state.corpus.write().await;
+        corpus.source_map = new_map;
+    }
     tracing::info!(law_count, "corpus reloaded (local + GitHub)");
     Ok(Json(ReloadResponse { law_count }))
 }

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, watch } from 'vue';
+import { ref, computed, shallowRef } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
