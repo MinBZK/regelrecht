@@ -2,6 +2,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useBwbSearch } from '../composables/useBwbSearch.js';
 import { useBwbHarvest } from '../composables/useBwbHarvest.js';
+import { useAuth } from '../composables/useAuth.js';
 
 const props = defineProps({
   laws: { type: Array, default: () => [] },
@@ -17,6 +18,9 @@ const {
   requestHarvest, isAvailable, isPolling, isTerminal,
   statusText, statusIcon,
 } = useBwbHarvest();
+const { authenticated, oidcConfigured, login } = useAuth();
+
+const needsLogin = computed(() => oidcConfigured.value && !authenticated.value);
 
 const search = ref('');
 const searchFieldRef = ref(null);
@@ -41,10 +45,15 @@ const hasSearch = computed(() => search.value.length > 0);
 watch([search, filteredLaws], ([q, filtered]) => {
   if (!hasActiveHarvests.value) clearBwb();
   if (!q || q.length < 3 || filtered.length > 0) return;
+  if (needsLogin.value) return;
   searchBwb(q);
 });
 
 function bwbItemClick(result) {
+  if (needsLogin.value) {
+    login();
+    return;
+  }
   const status = harvestStatus.value[result.bwb_id];
   if (status === 'loading') return;
   const slug = harvestSlugs.value[result.bwb_id];
@@ -129,7 +138,13 @@ watch(() => props.modelValue, async (open) => {
 
         <!-- BWB external search results -->
         <template v-if="filteredLaws.length === 0 || (bwbResults.length > 0 && hasActiveHarvests)">
-          <ndd-inline-dialog v-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
+          <div v-if="needsLogin && search.length >= 3" class="search-window-login-prompt">
+            <div class="search-window-empty-title">Log in om externe bronnen te doorzoeken</div>
+            <div class="search-window-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
+            <ndd-spacer size="12"></ndd-spacer>
+            <ndd-button size="md" text="Inloggen" @click="login"></ndd-button>
+          </div>
+          <ndd-inline-dialog v-else-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
           <template v-else-if="bwbResults.length > 0">
             <ndd-spacer size="8"></ndd-spacer>
             <ndd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></ndd-title>
@@ -156,7 +171,7 @@ watch(() => props.modelValue, async (open) => {
               </ndd-list-item>
             </ndd-list>
           </template>
-          <div v-else-if="search.length >= 3 && !bwbLoading && filteredLaws.length === 0" class="search-window-empty">
+          <div v-else-if="!needsLogin && search.length >= 3 && !bwbLoading && filteredLaws.length === 0" class="search-window-empty">
             <div class="search-window-empty-title">Geen resultaten gevonden</div>
             <div class="search-window-empty-subtitle">Pas je zoektermen of voorkeuren aan</div>
           </div>
@@ -225,7 +240,8 @@ watch(() => props.modelValue, async (open) => {
   padding: 0 var(--primitives-space-12, 12px) var(--primitives-space-12, 12px);
 }
 
-.search-window-empty {
+.search-window-empty,
+.search-window-login-prompt {
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -10,7 +10,7 @@
 import { ref, computed } from 'vue';
 
 const TERMINAL_STATUSES = new Set([
-  'harvest_failed', 'harvest_exhausted', 'enrich_failed', 'enrich_exhausted', 'error', 'timeout',
+  'harvest_failed', 'harvest_exhausted', 'enrich_failed', 'enrich_exhausted', 'error', 'timeout', 'unauthorized',
 ]);
 const AVAILABLE_STATUSES = new Set(['harvested', 'enriched']);
 const POLLING_STATUSES = new Set(['queued', 'already_queued', 'harvesting', 'enriching']);
@@ -113,6 +113,8 @@ export function useBwbHarvest() {
         if (data.status === 'queued' || data.status === 'already_queued') {
           startPolling();
         }
+      } else if (res.status === 401) {
+        harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'unauthorized' };
       } else {
         harvestStatus.value = { ...harvestStatus.value, [bwbId]: 'error' };
       }
@@ -164,6 +166,7 @@ export function useBwbHarvest() {
       case 'enrich_failed':
       case 'enrich_exhausted': return 'Ophalen mislukt';
       case 'timeout': return 'Timeout \u2014 probeer later opnieuw';
+      case 'unauthorized': return 'Log in om te harvesten';
       case 'error': return 'Fout bij aanvragen';
       default: return fallback || '';
     }
