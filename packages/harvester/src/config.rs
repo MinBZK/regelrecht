@@ -33,10 +33,10 @@ pub const TEXT_WRAP_WIDTH: usize = 115;
 static BWB_ID_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^BWBR\d{7}$").expect("valid regex"));
 
-/// CVDR ID pattern: CVDR followed by 3 or more digits.
+/// CVDR ID pattern: CVDR followed by 3+ digits, with optional version suffix (e.g., _1).
 #[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid
 static CVDR_ID_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^CVDR\d{3,}$").expect("valid regex"));
+    LazyLock::new(|| Regex::new(r"^CVDR\d{3,}(_\d+)?$").expect("valid regex"));
 
 /// Date pattern: YYYY-MM-DD.
 #[allow(clippy::expect_used)] // Static regex that is guaranteed to be valid
@@ -233,6 +233,9 @@ pub fn wetten_url(
     url
 }
 
+/// Base URL for CVDR repository (manifest and XML files).
+pub const CVDR_REPOSITORY_URL: &str = "https://repository.officiele-overheidspublicaties.nl/cvdr";
+
 /// Base URL for CVDR SRU search service.
 pub const CVDR_SRU_URL: &str = "https://zoekservice.overheid.nl/sru/Search";
 
@@ -283,6 +286,17 @@ pub fn cvdr_sru_search_url(cvdr_id: &str) -> String {
 /// Public URL to lokaleregelgeving.overheid.nl
 pub fn lokaleregelgeving_url(cvdr_id: &str) -> String {
     format!("https://lokaleregelgeving.overheid.nl/{cvdr_id}")
+}
+
+/// Build manifest URL for a CVDR regulation.
+///
+/// # Arguments
+/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR691525")
+///
+/// # Returns
+/// URL to the manifest.xml file in the CVDR repository
+pub fn cvdr_manifest_url(cvdr_id: &str) -> String {
+    format!("{CVDR_REPOSITORY_URL}/{cvdr_id}/manifest.xml")
 }
 
 #[cfg(test)]
@@ -496,6 +510,14 @@ mod tests {
         assert_eq!(
             lokaleregelgeving_url("CVDR681386"),
             "https://lokaleregelgeving.overheid.nl/CVDR681386"
+        );
+    }
+
+    #[test]
+    fn test_cvdr_manifest_url() {
+        assert_eq!(
+            cvdr_manifest_url("CVDR691525"),
+            "https://repository.officiele-overheidspublicaties.nl/cvdr/CVDR691525/manifest.xml"
         );
     }
 }

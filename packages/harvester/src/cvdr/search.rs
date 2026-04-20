@@ -65,12 +65,15 @@ impl CvdrMetadata {
 
 /// Map CVDR organisation type to `RegulatoryLayer`.
 ///
+/// Accepts both plural forms (from SRU metadata, e.g., "gemeenten") and
+/// singular forms (e.g., "gemeente") for robustness.
+///
 /// Returns `(layer, warning)` where warning is present for unknown types.
 fn regulatory_layer_from_organisation_type(org_type: &str) -> (RegulatoryLayer, Option<String>) {
     match org_type.to_lowercase().as_str() {
-        "gemeenten" => (RegulatoryLayer::GemeentelijkeVerordening, None),
-        "provincies" => (RegulatoryLayer::ProvincialeVerordening, None),
-        "waterschappen" => (RegulatoryLayer::WaterschapsVerordening, None),
+        "gemeenten" | "gemeente" => (RegulatoryLayer::GemeentelijkeVerordening, None),
+        "provincies" | "provincie" => (RegulatoryLayer::ProvincialeVerordening, None),
+        "waterschappen" | "waterschap" => (RegulatoryLayer::WaterschapsVerordening, None),
         unknown => {
             tracing::warn!(
                 organisation_type = %unknown,
@@ -90,7 +93,7 @@ fn regulatory_layer_from_organisation_type(org_type: &str) -> (RegulatoryLayer, 
 ///
 /// # Arguments
 /// * `client` - HTTP client to use
-/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386")
+/// * `cvdr_id` - The CVDR identifier (e.g., "CVDR681386_1")
 ///
 /// # Returns
 /// `CvdrMetadata` with extracted metadata
@@ -278,6 +281,21 @@ mod tests {
 
         let (layer, _) = regulatory_layer_from_organisation_type("WATERSCHAPPEN");
         assert_eq!(layer, RegulatoryLayer::WaterschapsVerordening);
+    }
+
+    #[test]
+    fn test_regulatory_layer_from_organisation_type_singular() {
+        let (layer, warning) = regulatory_layer_from_organisation_type("gemeente");
+        assert_eq!(layer, RegulatoryLayer::GemeentelijkeVerordening);
+        assert!(warning.is_none());
+
+        let (layer, warning) = regulatory_layer_from_organisation_type("provincie");
+        assert_eq!(layer, RegulatoryLayer::ProvincialeVerordening);
+        assert!(warning.is_none());
+
+        let (layer, warning) = regulatory_layer_from_organisation_type("waterschap");
+        assert_eq!(layer, RegulatoryLayer::WaterschapsVerordening);
+        assert!(warning.is_none());
     }
 
     #[test]
