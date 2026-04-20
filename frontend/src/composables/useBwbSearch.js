@@ -7,7 +7,7 @@
 import { ref } from 'vue';
 
 const DEBOUNCE_MS = 400;
-const MIN_QUERY_LENGTH = 3;
+export const MIN_QUERY_LENGTH = 3;
 
 export function useBwbSearch() {
   const results = ref([]);

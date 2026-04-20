@@ -211,8 +211,14 @@ where
 /// Atomically update status only if the current status is NOT in `not_statuses`.
 ///
 /// Used when a caller wants to "downgrade" a status to e.g. `Queued` while
-/// protecting multiple in-progress states (e.g. `Harvesting`, `Enriching`) from
-/// being overwritten by a concurrent request.
+/// protecting multiple in-progress / terminal states (e.g. `Harvesting`,
+/// `Enriching`, `Harvested`, `Enriched`) from being overwritten by a
+/// concurrent request.
+///
+/// The protected set is serialised via `strum::Display` and compared against
+/// `status::text` — this avoids needing `PgHasArrayType` on `LawStatusValue`
+/// (sqlx's `Type` derive does not implement it) while still giving a single
+/// atomic SQL statement.
 #[tracing::instrument(skip(executor))]
 pub async fn update_status_unless_any<'e, E>(
     executor: E,
@@ -223,15 +229,16 @@ pub async fn update_status_unless_any<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
+    let not_status_names: Vec<String> = not_statuses.iter().map(|s| s.to_string()).collect();
     let entry = sqlx::query_as::<_, LawEntry>(
         r#"
         UPDATE law_entries SET status = $3
-        WHERE law_id = $1 AND status != ALL($2)
+        WHERE law_id = $1 AND status::text <> ALL($2)
         RETURNING *
         "#,
     )
     .bind(law_id)
-    .bind(not_statuses)
+    .bind(&not_status_names)
     .bind(new_status)
     .fetch_optional(executor)
     .await?;

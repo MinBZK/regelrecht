@@ -187,8 +187,6 @@ export function useBwbHarvest() {
     hasActiveHarvests,
     requestHarvest,
     requestHarvestBatch,
-    startPolling,
-    stopPolling,
     isTerminal,
     isAvailable,
     isPolling,

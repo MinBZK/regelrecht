@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
-import { useBwbSearch } from '../composables/useBwbSearch.js';
+import { useBwbSearch, MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
 import { useBwbHarvest } from '../composables/useBwbHarvest.js';
 import { useAuth } from '../composables/useAuth.js';
 
@@ -142,7 +142,7 @@ watch(() => props.modelValue, async (open) => {
 
         <!-- BWB external search results -->
         <template v-if="filteredLaws.length === 0">
-          <div v-if="needsLogin && search.length >= 3" class="search-window-login-prompt">
+          <div v-if="needsLogin && search.length >= MIN_QUERY_LENGTH" class="search-window-login-prompt">
             <div class="search-window-empty-title">Log in om externe bronnen te doorzoeken</div>
             <div class="search-window-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
             <ndd-spacer size="12"></ndd-spacer>
@@ -175,7 +175,7 @@ watch(() => props.modelValue, async (open) => {
               </ndd-list-item>
             </ndd-list>
           </template>
-          <div v-else-if="!needsLogin && search.length >= 3 && !bwbLoading && filteredLaws.length === 0" class="search-window-empty">
+          <div v-else-if="!needsLogin && search.length >= MIN_QUERY_LENGTH && !bwbLoading && filteredLaws.length === 0" class="search-window-empty">
             <div class="search-window-empty-title">Geen resultaten gevonden</div>
             <div class="search-window-empty-subtitle">Pas je zoektermen of voorkeuren aan</div>
           </div>
