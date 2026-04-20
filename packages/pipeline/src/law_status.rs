@@ -208,6 +208,42 @@ where
     Ok(entry)
 }
 
+/// Atomically update status only if the current status is NOT in `not_statuses`.
+///
+/// Used when a caller wants to "downgrade" a status to e.g. `Queued` while
+/// protecting multiple in-progress states (e.g. `Harvesting`, `Enriching`) from
+/// being overwritten by a concurrent request.
+#[tracing::instrument(skip(executor))]
+pub async fn update_status_unless_any<'e, E>(
+    executor: E,
+    law_id: &str,
+    not_statuses: &[LawStatusValue],
+    new_status: LawStatusValue,
+) -> Result<Option<LawEntry>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let entry = sqlx::query_as::<_, LawEntry>(
+        r#"
+        UPDATE law_entries SET status = $3
+        WHERE law_id = $1 AND status != ALL($2)
+        RETURNING *
+        "#,
+    )
+    .bind(law_id)
+    .bind(not_statuses)
+    .bind(new_status)
+    .fetch_optional(executor)
+    .await?;
+
+    if let Some(ref e) = entry {
+        tracing::info!(law_id = %e.law_id, to = ?new_status, "law status updated (protected set: {:?})", not_statuses);
+    } else {
+        tracing::debug!(law_id = %law_id, to = ?new_status, "status update skipped (current status is in protected set {:?})", not_statuses);
+    }
+    Ok(entry)
+}
+
 /// Get a law entry by ID.
 pub async fn get_law<'e, E>(executor: E, law_id: &str) -> Result<LawEntry>
 where

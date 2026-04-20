@@ -41,9 +41,13 @@ const filteredLaws = computed(() => {
 
 const hasSearch = computed(() => search.value.length > 0);
 
-// Trigger BWB search when local results are empty
+// Trigger BWB search when local results are empty. Always clear prior BWB
+// results on any query change — the harvest status for in-flight jobs is
+// tracked in module-level `harvestStatus`, so clearing `bwbResults` does
+// not lose the background poll; it just hides the stale list from a
+// different query.
 watch([search, filteredLaws], ([q, filtered]) => {
-  if (!hasActiveHarvests.value) clearBwb();
+  clearBwb();
   if (!q || q.length < 3 || filtered.length > 0) return;
   if (needsLogin.value) return;
   searchBwb(q);
@@ -137,7 +141,7 @@ watch(() => props.modelValue, async (open) => {
         </ndd-list>
 
         <!-- BWB external search results -->
-        <template v-if="filteredLaws.length === 0 || (bwbResults.length > 0 && hasActiveHarvests)">
+        <template v-if="filteredLaws.length === 0">
           <div v-if="needsLogin && search.length >= 3" class="search-window-login-prompt">
             <div class="search-window-empty-title">Log in om externe bronnen te doorzoeken</div>
             <div class="search-window-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>

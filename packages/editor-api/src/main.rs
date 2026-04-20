@@ -456,6 +456,13 @@ fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
 /// Gated on `KUBERNETES_SERVICE_HOST` so dev machines (where HOSTNAME is also
 /// set but maps to the machine name) fall through to `None` and harvest calls
 /// cleanly return 503 "not configured" instead of 502 network errors.
+///
+/// Assumption: ZAD deployment names do not contain hyphens. If they did,
+/// splitting on `-` would pick up only the first segment (e.g. "mijn" from
+/// `mijn-regelrecht-editor-...`) and the resulting URL would silently point at
+/// the wrong service. Today all regel-k4c deployments follow single-word
+/// (`regelrecht`) or `pr<N>` naming. Set `PIPELINE_API_URL` explicitly if a
+/// multi-hyphen deployment ever lands.
 fn discover_pipeline_api_url_from_k8s() -> Option<String> {
     env::var("KUBERNETES_SERVICE_HOST").ok()?;
     let hostname = env::var("HOSTNAME").ok()?;

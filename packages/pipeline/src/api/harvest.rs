@@ -192,10 +192,13 @@ async fn create_harvest_job(state: &ApiState, bwb_id: &str, slug: Option<&str>) 
 
             // Best-effort: upsert law_entry to 'queued' status and link job
             let _ = law_status::upsert_law(&state.pool, bwb_id, None, slug).await;
-            let _ = law_status::update_status_unless(
+            // Don't downgrade a law that's currently progressing — protect
+            // both Harvesting (this job will soon update to Harvesting anyway)
+            // and Enriching (an enrich worker is already running downstream).
+            let _ = law_status::update_status_unless_any(
                 &state.pool,
                 bwb_id,
-                LawStatusValue::Harvesting,
+                &[LawStatusValue::Harvesting, LawStatusValue::Enriching],
                 LawStatusValue::Queued,
             )
             .await;

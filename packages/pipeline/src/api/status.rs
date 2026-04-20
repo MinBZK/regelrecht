@@ -46,10 +46,13 @@ pub async fn harvest_status(
             results: Vec::new(),
         }));
     }
-    if ids.iter().any(|id| id.len() > 20) {
+    if ids
+        .iter()
+        .any(|id| !id.starts_with("BWBR") || id.len() > 20)
+    {
         return Err((
             StatusCode::BAD_REQUEST,
-            "each id must be at most 20 characters".to_string(),
+            "each id must start with 'BWBR' and be at most 20 characters".to_string(),
         ));
     }
     if ids.len() > MAX_STATUS_IDS {
