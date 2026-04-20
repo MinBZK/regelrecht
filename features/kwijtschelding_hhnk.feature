@@ -23,6 +23,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
@@ -52,6 +59,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                          |
       | is_ondernemer                           | false                      |
       | belasting_zakelijk                      | false                      |
+      | gegevens_onvolledig_of_onjuist                | false                      |
+      | bezwaar_of_beroep_aanhangig                   | false                      |
+      | zekerheid_gesteld                             | false                      |
+      | meerdere_belastingschuldigen                  | false                      |
+      | derde_aansprakelijk_gesteld                   | false                      |
+      | verwijtbaarheid_belastingschuld               | false                      |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                      |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
@@ -79,6 +93,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | true                            |
       | belasting_zakelijk                      | true                            |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
@@ -108,6 +129,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                             |
       | is_ondernemer                           | false                         |
       | belasting_zakelijk                      | false                         |
+      | gegevens_onvolledig_of_onjuist                | false                         |
+      | bezwaar_of_beroep_aanhangig                   | false                         |
+      | zekerheid_gesteld                             | false                         |
+      | meerdere_belastingschuldigen                  | false                         |
+      | derde_aansprakelijk_gesteld                   | false                         |
+      | verwijtbaarheid_belastingschuld               | false                         |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                         |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
@@ -136,6 +164,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
@@ -167,10 +202,52 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 60000                           |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "45000"
+
+  # Lopend bezwaar of beroep tegen de aanslag (Leidraad 26.1.9, 4e punt) sluit kwijtschelding
+  # uit tot na de uitspraak — ongeacht de financiele beoordeling.
+  Scenario: Lopend bezwaar tegen aanslag blokkeert kwijtschelding
+    Given the calculation date is "2026-06-01"
+    And a citizen with the following data:
+      | bsn                                     | 999993653                       |
+      | waterschap_code                         | WS0155                          |
+      | belastingsoort                          | watersysteemheffing_ingezetenen |
+      | netto_besteedbaar_inkomen_maand         | 140150                          |
+      | netto_besteedbaar_inkomen_partner_maand | 0                               |
+      | huishoudtype                            | alleenstaande                   |
+      | is_pensioengerechtigd                   | false                           |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
+      | aanslagbedrag                           | 15000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
+      | is_ondernemer                           | false                           |
+      | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | true                            |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
+    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+    Then the execution succeeds
+    And the output "kan_kwijtschelding_worden_verleend" is "false"
+    And the output "hoogte_kwijtschelding" is "0"
 
   # Auto boven drempelwaarde van EUR 2269 (226900 eurocent) die absoluut onmisbaar is voor werk
   # of vanwege invaliditeit wordt niet als vermogen beschouwd (URI art 12 lid 2 onderdeel c).
@@ -196,6 +273,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
@@ -225,6 +309,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
@@ -252,6 +343,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                                     |
       | is_ondernemer                           | false                                 |
       | belasting_zakelijk                      | false                                 |
+      | gegevens_onvolledig_of_onjuist                | false                                 |
+      | bezwaar_of_beroep_aanhangig                   | false                                 |
+      | zekerheid_gesteld                             | false                                 |
+      | meerdere_belastingschuldigen                  | false                                 |
+      | derde_aansprakelijk_gesteld                   | false                                 |
+      | verwijtbaarheid_belastingschuld               | false                                 |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                                 |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
@@ -282,6 +380,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
@@ -311,6 +416,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | true                            |
       | belasting_zakelijk                      | false                           |
+      | gegevens_onvolledig_of_onjuist                | false                           |
+      | bezwaar_of_beroep_aanhangig                   | false                           |
+      | zekerheid_gesteld                             | false                           |
+      | meerdere_belastingschuldigen                  | false                           |
+      | derde_aansprakelijk_gesteld                   | false                           |
+      | verwijtbaarheid_belastingschuld               | false                           |
+      | in_faillissement_of_surseance_zonder_akkoord  | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
