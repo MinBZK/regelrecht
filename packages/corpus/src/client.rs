@@ -322,9 +322,7 @@ impl CorpusClient {
         Ok(())
     }
 
-    /// Fetch `base_branch` and check out `paths` from it without a merge commit,
-    /// leaving the files unstaged so they land in the enrichment's own commit
-    /// and survive `commit_and_push`'s `pull --rebase`.
+    /// Pull `paths` from `base_branch` into the working tree without a merge commit, leaving them unstaged so the next `commit_and_push` absorbs them.
     pub async fn checkout_from_branch(&self, base_branch: &str, paths: &[&str]) -> Result<()> {
         // Skip already-tracked paths so prior machine_readable additions
         // aren't overwritten by the raw base-branch version.

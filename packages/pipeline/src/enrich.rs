@@ -437,9 +437,9 @@ pub async fn create_enrich_corpus(
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
 
-    // Pull the exact file (not the directory) from development so a newly
-    // harvested version of an already-known law isn't mistaken for "tracked"
-    // by the directory-level check inside checkout_from_branch.
+    // Pass the exact file path (not the directory) so the `ls-files` guard
+    // inside `checkout_from_branch` doesn't match sibling files and skip
+    // fetching a newly harvested version of an already-known law.
     client
         .checkout_from_branch("development", &[&normalized])
         .await?;
