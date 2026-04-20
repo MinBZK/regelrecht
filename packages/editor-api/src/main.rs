@@ -452,7 +452,12 @@ fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
 /// pipelineapi component is recreated. ZAD pod/Service names follow the
 /// convention `<deployment>-<component>`, so we derive the deployment from
 /// HOSTNAME's first segment and reach pipelineapi via cluster-internal DNS.
+///
+/// Gated on `KUBERNETES_SERVICE_HOST` so dev machines (where HOSTNAME is also
+/// set but maps to the machine name) fall through to `None` and harvest calls
+/// cleanly return 503 "not configured" instead of 502 network errors.
 fn discover_pipeline_api_url_from_k8s() -> Option<String> {
+    env::var("KUBERNETES_SERVICE_HOST").ok()?;
     let hostname = env::var("HOSTNAME").ok()?;
     let deployment = hostname.split('-').next().filter(|s| !s.is_empty())?;
     Some(format!("http://{deployment}-pipelineapi:8000"))
