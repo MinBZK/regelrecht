@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
 $id: regeling_kwijtschelding_belastingen_medeoverheden
 regulatory_layer: MINISTERIELE_REGELING
 publication_date: '2022-09-16'
