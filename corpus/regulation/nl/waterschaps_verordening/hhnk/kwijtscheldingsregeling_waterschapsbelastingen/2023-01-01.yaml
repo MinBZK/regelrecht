@@ -109,6 +109,14 @@ articles:
             type_spec:
               unit: eurocent
             required: true
+          - name: kinderopvang_nettokosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Nettokosten van kinderopvang per maand. Per HHNK art 3 jo URI art 28 lid 3 worden
+              deze als uitgaven meegenomen in de berekening van netto-besteedbaar inkomen (artikel 14-15 URI).
+              Verlaagt de betalingscapaciteit. Default 0.
           - name: is_ondernemer
             type: boolean
             required: true
@@ -155,6 +163,7 @@ articles:
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
                 vermogen: $vermogen_bedrag
+                extra_uitgaven_maand: $kinderopvang_nettokosten_maand
                 aanslagbedrag: $aanslagbedrag
           - name: hoogte_kwijtschelding_uri
             type: amount
@@ -171,6 +180,7 @@ articles:
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
                 vermogen: $vermogen_bedrag
+                extra_uitgaven_maand: $kinderopvang_nettokosten_maand
                 aanslagbedrag: $aanslagbedrag
         output:
           - name: belastingsoort_in_scope
@@ -251,6 +261,20 @@ articles:
       28, lid 3, van de Uitvoeringsregeling Invorderingswet 1990 als uitgaven mede in aanmerking genomen de nettokosten van
       kinderopvang.
     url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_3
+    machine_readable:
+      execution:
+        output:
+          - name: kinderopvang_in_aanmerking
+            type: boolean
+            description: |
+              Documenteert dat HHNK artikel 28 lid 3 URI 1990 activeert voor deze kwijtscheldingsregeling:
+              nettokosten kinderopvang zijn uitgaven in de zin van artikel 15 URI en verlagen dus het
+              netto-besteedbaar inkomen (artikel 14 URI). Operationeel verwerkt via de parameter
+              'kinderopvang_nettokosten_maand' op HHNK art 1, die als extra_uitgaven_maand wordt doorgegeven
+              aan URI art 13.
+        actions:
+          - output: kinderopvang_in_aanmerking
+            value: true
 
   - number: '4'
     text: |-

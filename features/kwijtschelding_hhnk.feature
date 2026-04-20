@@ -20,6 +20,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                               |
       | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -48,6 +49,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                          |
       | liquide_middelen                        | 0                          |
       | aanslagbedrag                           | 60000                      |
+      | kinderopvang_nettokosten_maand          | 0                          |
       | is_ondernemer                           | false                      |
       | belasting_zakelijk                      | false                      |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -74,6 +76,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                               |
       | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | true                            |
       | belasting_zakelijk                      | true                            |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -102,6 +105,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                             |
       | liquide_middelen                        | 0                             |
       | aanslagbedrag                           | 20000                         |
+      | kinderopvang_nettokosten_maand          | 0                             |
       | is_ondernemer                           | false                         |
       | belasting_zakelijk                      | false                         |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -129,12 +133,44 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                               |
       | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 25000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "25000"
+
+  # Kinderopvangkosten (HHNK art 3 jo URI art 28 lid 3) verlagen netto-besteedbaar-inkomen.
+  # Tweepersoons met inkomen 250000 + 60000 eurocent kinderopvang/maand:
+  # effectief inkomen = 250000-60000=190000 vs kostennorm 200213 -> betalingscap = 0 (clamped).
+  # Zonder kinderopvang zou betalingscap = 12 x (250000-200213) = 597444, dus dit scenario
+  # demonstreert dat kinderopvang de volledige aanslag kwijtschelding mogelijk maakt.
+  Scenario: Kinderopvangkosten activeren volledige kwijtschelding (HHNK art 3)
+    Given the calculation date is "2026-06-01"
+    And a citizen with the following data:
+      | bsn                                     | 999993653                       |
+      | waterschap_code                         | WS0155                          |
+      | belastingsoort                          | watersysteemheffing_ingezetenen |
+      | netto_besteedbaar_inkomen_maand         | 250000                          |
+      | netto_besteedbaar_inkomen_partner_maand | 0                               |
+      | huishoudtype                            | echtgenoten                     |
+      | is_pensioengerechtigd                   | false                           |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
+      | aanslagbedrag                           | 45000                           |
+      | kinderopvang_nettokosten_maand          | 60000                           |
+      | is_ondernemer                           | false                           |
+      | belasting_zakelijk                      | false                           |
+    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+    Then the execution succeeds
+    And the output "kan_kwijtschelding_worden_verleend" is "true"
+    And the output "hoogte_kwijtschelding" is "45000"
 
   # Auto boven drempelwaarde van EUR 2269 (226900 eurocent) die absoluut onmisbaar is voor werk
   # of vanwege invaliditeit wordt niet als vermogen beschouwd (URI art 12 lid 2 onderdeel c).
@@ -157,6 +193,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                               |
       | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -185,6 +222,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                               |
       | liquide_middelen                        | 400000                          |
       | aanslagbedrag                           | 80000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -211,6 +249,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                                     |
       | liquide_middelen                        | 0                                     |
       | aanslagbedrag                           | 15000                                 |
+      | kinderopvang_nettokosten_maand          | 0                                     |
       | is_ondernemer                           | false                                 |
       | belasting_zakelijk                      | false                                 |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -240,6 +279,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                               |
       | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
@@ -268,6 +308,7 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | hoger_bevoorrechte_schulden             | 0                               |
       | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
+      | kinderopvang_nettokosten_maand          | 0                               |
       | is_ondernemer                           | true                            |
       | belasting_zakelijk                      | false                           |
     When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
