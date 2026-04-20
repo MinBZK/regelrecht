@@ -185,6 +185,13 @@ articles:
         output:
           - name: kostennorm_percentage
             type: number
+            description: |
+              Implementeert lid 1: 100% van de bijstandsnorm (afwijking van federale 90% per art 2 Regeling
+              kwijtschelding belastingen medeoverheden). Lid 2 (pensioengerechtigden: 100% van
+              netto-ouderdomspensioen per Regeling medeoverheden art 3) is hier vereenvoudigd: de caller zet
+              is_pensioengerechtigd=true, waarop URI 1990 art 16 de bijstandsnorm_aow_* (art 30 lid 2 Abw) gebruikt.
+              Voor een precieze implementatie van lid 2 moet het netto-ouderdomspensioen als aparte open_term op
+              de Regeling medeoverheden worden gemodelleerd.
         actions:
           - output: kostennorm_percentage
             value: 1.0
