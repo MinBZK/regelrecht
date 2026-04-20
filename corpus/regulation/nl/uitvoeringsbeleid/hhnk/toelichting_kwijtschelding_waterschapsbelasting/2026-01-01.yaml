@@ -1,0 +1,285 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.1/schema.json
+$id: toelichting_kwijtschelding_waterschapsbelasting_hhnk
+regulatory_layer: UITVOERINGSBELEID
+publication_date: '2026-01-30'
+valid_from: '2026-01-01'
+officiele_titel: Toelichting kwijtschelding waterschapsbelasting
+url: >-
+  https://cuatro.sim-cdn.nl/hhnk/uploads/toelichting_kwijtschelding_waterschapsbelasting_januari_2026.pdf
+name: >-
+  Toelichting kwijtschelding waterschapsbelasting
+  HHNK 2026
+organisation: Hoogheemraadschap Hollands Noorderkwartier
+
+legal_basis:
+  - law_id: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+    article: '1'
+    description: >-
+      Kwijtscheldingsregeling waterschapsbelastingen
+      HHNK 2023
+
+articles:
+  - number: '2.3'
+    text: |-
+      **Kan ik kwijtschelding aanvragen voor al betaalde
+      bedragen?**
+
+      U kunt tot 3 maanden nadat u (een deel van) de
+      aanslag heeft betaald kwijtschelding aanvragen. Als
+      uw kwijtscheldingsverzoek wordt toegewezen, krijgt u
+      het betaalde bedrag terug, voor zover de betaling
+      niet langer dan 3 maanden voor ontvangst van het
+      verzoek is gedaan.
+    url: >-
+      https://cuatro.sim-cdn.nl/hhnk/uploads/toelichting_kwijtschelding_waterschapsbelasting_januari_2026.pdf
+    machine_readable:
+      definitions:
+        TERMIJN_TERUGVRAGEN_MAANDEN:
+          value: 3
+          description: >-
+            Maximaal 3 maanden na betaling kan
+            kwijtschelding worden aangevraagd
+      execution:
+        parameters:
+          - name: datum_betaling
+            type: date
+            required: true
+            description: >-
+              Datum waarop de (laatste) betaling heeft
+              plaatsgevonden
+          - name: datum_verzoek
+            type: date
+            required: true
+            description: >-
+              Datum waarop het kwijtscheldingsverzoek is
+              ingediend
+        output:
+          - name: terugvraag_binnen_termijn
+            type: boolean
+            description: >-
+              Of het verzoek binnen 3 maanden na betaling
+              is ingediend
+          - name: uiterste_datum_terugvraag
+            type: date
+            description: >-
+              Uiterste datum om kwijtschelding aan te
+              vragen na betaling
+        actions:
+          - output: uiterste_datum_terugvraag
+            value:
+              operation: DATE_ADD
+              date: $datum_betaling
+              months: $TERMIJN_TERUGVRAGEN_MAANDEN
+          - output: terugvraag_binnen_termijn
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $datum_verzoek
+              value: $uiterste_datum_terugvraag
+
+  - number: '4.4'
+    text: |-
+      **Wanneer is het verwijtbaar dat ik de aanslag niet
+      kan betalen?**
+
+      In sommige gevallen wordt geen kwijtschelding
+      verleend als het aan uzelf te wijten is dat u de
+      aanslag (nu) niet kunt betalen. Hiervan is onder
+      andere sprake als:
+
+      - een uitbetaald bedrag (bijvoorbeeld een
+      belastingteruggaaf) niet is gebruikt om de aanslag
+      te betalen waarvoor kwijtschelding wordt gevraagd;
+      - vanaf het opleggen van de belastingaanslag tot aan
+      het indienen van het verzoek om kwijtschelding op
+      enig moment voldoende middelen aanwezig waren om de
+      aanslag te kunnen betalen;
+      - U wist of kon vermoeden dat een aanslag
+      waterschapsbelasting zou worden opgelegd en u
+      hiervoor geen middelen heeft gereserveerd, terwijl
+      deze middelen er wel waren;
+      - Als uw inkomen niet in verhouding staat tot uw
+      uitgaven en u hier geen of onvoldoende opheldering
+      over geeft.
+    url: >-
+      https://cuatro.sim-cdn.nl/hhnk/uploads/toelichting_kwijtschelding_waterschapsbelasting_januari_2026.pdf
+    machine_readable:
+      execution:
+        parameters:
+          - name: uitbetaald_bedrag_niet_aangewend
+            type: boolean
+            required: true
+            description: >-
+              Uitbetaald bedrag niet gebruikt om aanslag
+              te betalen
+          - name: op_enig_moment_voldoende_middelen
+            type: boolean
+            required: true
+            description: >-
+              Tussen opleggen aanslag en verzoek waren er
+              voldoende middelen
+          - name: nalatig_middelen_reserveren
+            type: boolean
+            required: true
+            description: >-
+              Wist of kon vermoeden dat aanslag zou komen
+              maar heeft niet gereserveerd
+          - name: inkomen_uitgaven_onevenredig
+            type: boolean
+            required: true
+            description: >-
+              Inkomen staat niet in verhouding tot
+              uitgaven zonder opheldering
+        output:
+          - name: is_verwijtbaar
+            type: boolean
+            description: >-
+              Of het niet-betalen verwijtbaar is aan de
+              belastingschuldige
+        actions:
+          - output: is_verwijtbaar
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $uitbetaald_bedrag_niet_aangewend
+                  value: true
+                - operation: EQUALS
+                  subject: $op_enig_moment_voldoende_middelen
+                  value: true
+                - operation: EQUALS
+                  subject: $nalatig_middelen_reserveren
+                  value: true
+                - operation: EQUALS
+                  subject: $inkomen_uitgaven_onevenredig
+                  value: true
+
+  - number: '6'
+    text: |-
+      **Bijlage: Normbedragen kwijtschelding per
+      1 januari 2026**
+
+      Normbedragen, ziektekostennormen,
+      woonlastennormen en kinderopvangtarieven die
+      gelden voor kwijtscheldingsverzoeken per
+      1 januari 2026. Deze bedragen worden halfjaarlijks
+      bijgesteld door de Rijksoverheid.
+    url: >-
+      https://cuatro.sim-cdn.nl/hhnk/uploads/toelichting_kwijtschelding_waterschapsbelasting_januari_2026.pdf
+    machine_readable:
+      definitions:
+        ZIEKTEKOSTENNORM_ALLEENSTAAND:
+          value: 4700
+          description: >-
+            Ziektekostennorm alleenstaande of
+            alleenstaande ouder per maand (EUR 47)
+        ZIEKTEKOSTENNORM_ECHTPAAR:
+          value: 10600
+          description: >-
+            Ziektekostennorm echtgenoten of
+            samenwonend per maand (EUR 106)
+        WOONLASTENNORM_EENPERSOONS:
+          value: 20252
+          description: >-
+            Woonlastennorm eenpersoonshuishouden
+            per maand (EUR 202,52)
+        WOONLASTENNORM_MEERPERSOONS:
+          value: 20071
+          description: >-
+            Woonlastennorm meerpersoonshuishouden
+            per maand (EUR 200,71)
+        MAXIMALE_HUUR:
+          value: 93293
+          description: >-
+            Maximale rekenhuur/hypotheekrente
+            per maand (EUR 932,93)
+        MAX_UURPRIJS_DAGOPVANG:
+          value: 1123
+          description: >-
+            Maximaal uurtarief dagopvang
+            kindercentrum (EUR 11,23)
+        MAX_UURPRIJS_BSO:
+          value: 998
+          description: >-
+            Maximaal uurtarief buitenschoolse
+            opvang kindercentrum (EUR 9,98)
+        MAX_UURPRIJS_GASTOUDER:
+          value: 849
+          description: >-
+            Maximaal uurtarief gastouderopvang
+            (EUR 8,49)
+        MAX_UREN_KINDEROPVANG_PER_MAAND:
+          value: 230
+          description: >-
+            Maximum uren kinderopvang per kind
+            per maand
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_NIET_PGL_1K:
+          value: 100107
+          description: >-
+            Alleenstaande niet-PGL + 1 kostendeler
+            per maand (EUR 1.001,07)
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_NIET_PGL_2K:
+          value: 86759
+          description: >-
+            Alleenstaande niet-PGL + 2 kostendelers
+            per maand (EUR 867,59)
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_NIET_PGL_3K:
+          value: 80085
+          description: >-
+            Alleenstaande niet-PGL + 3 kostendelers
+            per maand (EUR 800,85)
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_NIET_PGL_4K:
+          value: 76081
+          description: >-
+            Alleenstaande niet-PGL + 4 kostendelers
+            per maand (EUR 760,81)
+        NORMBEDRAG_KOSTENDELER_ECHTPAAR_NIET_PGL_1K:
+          value: 173518
+          description: >-
+            Echtpaar niet-PGL + 1 kostendeler
+            per maand (EUR 1.735,18)
+        NORMBEDRAG_KOSTENDELER_ECHTPAAR_NIET_PGL_2K:
+          value: 160170
+          description: >-
+            Echtpaar niet-PGL + 2 kostendelers
+            per maand (EUR 1.601,70)
+        NORMBEDRAG_KOSTENDELER_ECHTPAAR_NIET_PGL_3K:
+          value: 152162
+          description: >-
+            Echtpaar niet-PGL + 3 kostendelers
+            per maand (EUR 1.521,62)
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_PGL_1K:
+          value: 114011
+          description: >-
+            Alleenstaande PGL + 1 kostendeler
+            per maand (EUR 1.140,11)
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_PGL_2K:
+          value: 98810
+          description: >-
+            Alleenstaande PGL + 2 kostendelers
+            per maand (EUR 988,10)
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_PGL_3K:
+          value: 91209
+          description: >-
+            Alleenstaande PGL + 3 kostendelers
+            per maand (EUR 912,09)
+        NORMBEDRAG_KOSTENDELER_ALLEENSTAANDE_PGL_4K:
+          value: 86648
+          description: >-
+            Alleenstaande PGL + 4 kostendelers
+            per maand (EUR 866,48)
+        NORMBEDRAG_KOSTENDELER_ECHTPAAR_PGL_1K:
+          value: 197619
+          description: >-
+            Echtpaar PGL + 1 kostendeler
+            per maand (EUR 1.976,19)
+        NORMBEDRAG_KOSTENDELER_ECHTPAAR_PGL_2K:
+          value: 182418
+          description: >-
+            Echtpaar PGL + 2 kostendelers
+            per maand (EUR 1.824,18)
+        NORMBEDRAG_KOSTENDELER_ECHTPAAR_PGL_3K:
+          value: 173297
+          description: >-
+            Echtpaar PGL + 3 kostendelers
+            per maand (EUR 1.732,97)
