@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::ApiState;
 
@@ -85,7 +85,10 @@ pub async fn search_bwb(
 fn parse_sru_response(xml: &str) -> Result<Vec<BwbSearchResult>, String> {
     let doc = roxmltree::Document::parse(xml).map_err(|e| e.to_string())?;
 
-    let mut seen: HashMap<String, BwbSearchResult> = HashMap::new();
+    // SRU returns results in relevance order — preserve that ordering by
+    // deduplicating via a HashSet of seen IDs while pushing into a Vec.
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut results: Vec<BwbSearchResult> = Vec::new();
 
     for node in doc.descendants() {
         if !node.is_element() {
@@ -112,15 +115,15 @@ fn parse_sru_response(xml: &str) -> Result<Vec<BwbSearchResult>, String> {
             if !bwb_id.starts_with("BWBR") {
                 continue;
             }
-            seen.entry(bwb_id.clone()).or_insert(BwbSearchResult {
-                bwb_id,
-                title,
-                law_type: law_type.unwrap_or_default(),
-            });
+            if seen.insert(bwb_id.clone()) {
+                results.push(BwbSearchResult {
+                    bwb_id,
+                    title,
+                    law_type: law_type.unwrap_or_default(),
+                });
+            }
         }
     }
 
-    let mut results: Vec<BwbSearchResult> = seen.into_values().collect();
-    results.sort_by(|a, b| a.title.cmp(&b.title));
     Ok(results)
 }

@@ -106,8 +106,10 @@ async fn main() {
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
         )
-        // Harvest proxy — forwarded to pipeline-api
-        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
+        // safe to expose unauthenticated. (The search endpoint lives behind
+        // auth because it triggers outbound requests to zoekservice.overheid.nl
+        // and would otherwise be an amplification vector.)
         .route("/api/harvest/status", get(harvest_proxy::proxy_harvest));
 
     // Protected API routes — require authentication when OIDC is enabled.
@@ -140,7 +142,9 @@ async fn main() {
             "/api/favorites/{law_id}",
             axum::routing::put(favorites::add).delete(favorites::remove),
         )
-        // Harvest proxy — write operations behind auth
+        // Harvest proxy — write operations behind auth. Search is also
+        // behind auth because it makes outbound requests to the SRU API.
+        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
         .route(
             "/api/harvest",
             axum::routing::post(harvest_proxy::proxy_harvest),

@@ -173,7 +173,7 @@ export function useBwbHarvest() {
     const s = harvestStatus.value[bwbId];
     if (!s) return 'arrow-down-to-line';
     if (AVAILABLE_STATUSES.has(s)) return 'arrow-right';
-    if (POLLING_STATUSES.has(s)) return 'arrow-clockwise';
+    if (s === 'loading' || POLLING_STATUSES.has(s)) return 'arrow-clockwise';
     if (TERMINAL_STATUSES.has(s)) return 'x-circle';
     return 'arrow-down-to-line';
   }
