@@ -63,16 +63,16 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
     And the output "kan_kwijtschelding_worden_verleend" is "false"
     And the output "hoogte_kwijtschelding" is "0"
 
-  # Pensioengerechtigde alleenstaande: kostennorm gebruikt bijstandsnorm_aow_alleenstaand
-  # (156469 eurocent). Bij inkomen gelijk aan die norm is betalingscapaciteit 0,
-  # dus de volledige aanslag wordt kwijtgescholden.
-  Scenario: AOW-gerechtigde alleenstaande krijgt kwijtschelding met pensioen-norm
+  # Pensioengerechtigde alleenstaande: kostennorm gebruikt netto_ouderdomspensioen_alleenstaand
+  # (155815 eurocent = netto AOW alleenstaand 2026 per RKBM art 3).
+  # Bij inkomen gelijk aan netto-AOW is betalingscapaciteit 0, dus volledige kwijtschelding.
+  Scenario: AOW-gerechtigde alleenstaande krijgt kwijtschelding met netto-ouderdomspensioen-norm
     Given the calculation date is "2026-06-01"
     And a citizen with the following data:
       | bsn                                     | 999993653                     |
       | waterschap_code                         | WS0155                        |
       | belastingsoort                          | verontreinigingsheffing_woonruimte |
-      | netto_besteedbaar_inkomen_maand         | 156469                        |
+      | netto_besteedbaar_inkomen_maand         | 155815                        |
       | netto_besteedbaar_inkomen_partner_maand | 0                             |
       | huishoudtype                            | alleenstaande                 |
       | is_pensioengerechtigd                   | true                          |
@@ -84,6 +84,27 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "20000"
+
+  # AOW-gerechtigde echtgenoten: kostennorm gebruikt netto_ouderdomspensioen_echtgenoten
+  # (213540 eurocent = tweemaal netto AOW gehuwd 2026 per RKBM art 3 lid 2 sub a).
+  Scenario: AOW-gerechtigde echtgenoten krijgen kwijtschelding met AOW-gehuwd-norm
+    Given the calculation date is "2026-06-01"
+    And a citizen with the following data:
+      | bsn                                     | 999993653                       |
+      | waterschap_code                         | WS0155                          |
+      | belastingsoort                          | watersysteemheffing_ingezetenen |
+      | netto_besteedbaar_inkomen_maand         | 213540                          |
+      | netto_besteedbaar_inkomen_partner_maand | 0                               |
+      | huishoudtype                            | echtgenoten                     |
+      | is_pensioengerechtigd                   | true                            |
+      | vermogen                                | 0                               |
+      | aanslagbedrag                           | 25000                           |
+      | is_ondernemer                           | false                           |
+      | belasting_zakelijk                      | false                           |
+    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+    Then the execution succeeds
+    And the output "kan_kwijtschelding_worden_verleend" is "true"
+    And the output "hoogte_kwijtschelding" is "25000"
 
   # Niet-begunstigde belastingsoort (niet genoemd in HHNK art 1) valt buiten scope.
   Scenario: Belastingsoort buiten de HHNK-scope wordt afgewezen
