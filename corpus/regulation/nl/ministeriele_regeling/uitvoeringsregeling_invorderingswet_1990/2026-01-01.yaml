@@ -376,6 +376,19 @@ articles:
             pensioengerechtigde leeftijd heeft bereikt, artikel 22 onderdeel b Participatiewet. Bedrag per 1 januari 2026
             inclusief 5% vakantie-uitkering.
           value: 214416
+        netto_ouderdomspensioen_alleenstaand:
+          description: Netto-ouderdomspensioen (eurocent per maand) voor een ongehuwde pensioengerechtigde, artikel 9 lid 1
+            onderdeel a Algemene Ouderdomswet, na aftrek loonbelasting + premies volksverzekeringen + inkomensafhankelijke
+            bijdrage Zvw (artikel 41 Zvw). Conform artikel 3 lid 3 Regeling kwijtschelding belastingen medeoverheden.
+            Bruto-bedrag 2026 per SVB-publicatie Staatscourant 2025 inclusief 5% vakantie-uitkering; netto-omrekening op
+            basis van tarieven eerste schijf loonbelasting 2026.
+          value: 155815
+        netto_ouderdomspensioen_echtgenoten:
+          description: Netto-ouderdomspensioen (eurocent per maand, gezamenlijk) voor twee gehuwde pensioengerechtigden
+            (tweemaal het netto-AOW-bedrag voor een gehuwde pensioengerechtigde per artikel 9 lid 1 onderdeel b AOW).
+            Conform artikel 3 lid 2 onderdeel a Regeling kwijtschelding belastingen medeoverheden. Bedrag per 1 januari 2026
+            per SVB-publicatie inclusief 5% vakantie-uitkering.
+          value: 213540
       open_terms:
         - id: kostennorm_percentage
           description: Percentage van de bijstandsnorm dat als kosten van bestaan geldt. Bij ministeriele regeling (Regeling
@@ -431,8 +444,8 @@ articles:
                               operation: EQUALS
                               subject: $huishoudtype
                               value: echtgenoten
-                            then: $bijstandsnorm_aow_echtgenoten
-                        default: $bijstandsnorm_aow_alleenstaand
+                            then: $netto_ouderdomspensioen_echtgenoten
+                        default: $netto_ouderdomspensioen_alleenstaand
                   default:
                     operation: IF
                     cases:
