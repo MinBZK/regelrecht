@@ -71,7 +71,35 @@ articles:
           - name: is_pensioengerechtigd
             type: boolean
             required: true
-          - name: vermogen
+          - name: inboedel_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_onmisbaar
+            type: boolean
+            required: true
+          - name: onroerend_goed_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: andere_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: hoger_bevoorrechte_schulden
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: liquide_middelen
             type: amount
             type_spec:
               unit: eurocent
@@ -95,6 +123,25 @@ articles:
               parameters:
                 is_ondernemer: $is_ondernemer
                 belasting_zakelijk: $belasting_zakelijk
+          - name: vermogen_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
+              output: vermogen_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                inboedel_waarde: $inboedel_waarde
+                auto_waarde: $auto_waarde
+                auto_onmisbaar: $auto_onmisbaar
+                onroerend_goed_waarde: $onroerend_goed_waarde
+                andere_bezittingen: $andere_bezittingen
+                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
+                liquide_middelen: $liquide_middelen
           - name: kan_kwijtschelding_verleend_uri
             type: boolean
             source:
@@ -107,7 +154,7 @@ articles:
                 netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
-                vermogen: $vermogen
+                vermogen: $vermogen_bedrag
                 aanslagbedrag: $aanslagbedrag
           - name: hoogte_kwijtschelding_uri
             type: amount
@@ -123,7 +170,7 @@ articles:
                 netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
-                vermogen: $vermogen
+                vermogen: $vermogen_bedrag
                 aanslagbedrag: $aanslagbedrag
         output:
           - name: belastingsoort_in_scope
@@ -219,6 +266,43 @@ articles:
 
       c. € 1.500 voor een alleenstaande.
     url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_4
+    machine_readable:
+      implements:
+        - law: uitvoeringsregeling_invorderingswet_1990
+          article: '12'
+          open_term: verhoging_financiele_middelen_vrijstelling
+          gelet_op: Gelet op artikel 4 van de Regeling kwijtschelding belastingen medeoverheden
+      execution:
+        parameters:
+          - name: huishoudtype
+            type: string
+            required: true
+        output:
+          - name: verhoging_financiele_middelen_vrijstelling
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: verhoging_financiele_middelen_vrijstelling
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: echtgenoten
+                  then: 200000
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: alleenstaande_ouder
+                  then: 180000
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: alleenstaande
+                  then: 150000
+              default: 0
 
   - number: '5'
     text: |-

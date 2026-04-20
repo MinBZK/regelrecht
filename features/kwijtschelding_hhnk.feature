@@ -12,7 +12,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                               |
       | huishoudtype                            | alleenstaande                   |
       | is_pensioengerechtigd                   | false                           |
-      | vermogen                                | 0                               |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
@@ -34,7 +40,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                          |
       | huishoudtype                            | echtgenoten                |
       | is_pensioengerechtigd                   | false                      |
-      | vermogen                                | 0                          |
+      | inboedel_waarde                         | 0                          |
+      | auto_waarde                             | 0                          |
+      | auto_onmisbaar                          | false                      |
+      | onroerend_goed_waarde                   | 0                          |
+      | andere_bezittingen                      | 0                          |
+      | hoger_bevoorrechte_schulden             | 0                          |
+      | liquide_middelen                        | 0                          |
       | aanslagbedrag                           | 60000                      |
       | is_ondernemer                           | false                      |
       | belasting_zakelijk                      | false                      |
@@ -54,7 +66,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                               |
       | huishoudtype                            | alleenstaande                   |
       | is_pensioengerechtigd                   | false                           |
-      | vermogen                                | 0                               |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
       | is_ondernemer                           | true                            |
       | belasting_zakelijk                      | true                            |
@@ -76,7 +94,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                             |
       | huishoudtype                            | alleenstaande                 |
       | is_pensioengerechtigd                   | true                          |
-      | vermogen                                | 0                             |
+      | inboedel_waarde                         | 0                             |
+      | auto_waarde                             | 0                             |
+      | auto_onmisbaar                          | false                         |
+      | onroerend_goed_waarde                   | 0                             |
+      | andere_bezittingen                      | 0                             |
+      | hoger_bevoorrechte_schulden             | 0                             |
+      | liquide_middelen                        | 0                             |
       | aanslagbedrag                           | 20000                         |
       | is_ondernemer                           | false                         |
       | belasting_zakelijk                      | false                         |
@@ -97,7 +121,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                               |
       | huishoudtype                            | echtgenoten                     |
       | is_pensioengerechtigd                   | true                            |
-      | vermogen                                | 0                               |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 25000                           |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
@@ -105,6 +135,62 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "25000"
+
+  # Auto boven drempelwaarde van EUR 2269 (226900 eurocent) die absoluut onmisbaar is voor werk
+  # of vanwege invaliditeit wordt niet als vermogen beschouwd (URI art 12 lid 2 onderdeel c).
+  # Alleenstaande met bijstand + essential auto -> volledige kwijtschelding.
+  Scenario: Auto onmisbaar voor werk/invaliditeit telt niet als vermogen
+    Given the calculation date is "2026-06-01"
+    And a citizen with the following data:
+      | bsn                                     | 999993653                       |
+      | waterschap_code                         | WS0155                          |
+      | belastingsoort                          | watersysteemheffing_ingezetenen |
+      | netto_besteedbaar_inkomen_maand         | 140150                          |
+      | netto_besteedbaar_inkomen_partner_maand | 0                               |
+      | huishoudtype                            | alleenstaande                   |
+      | is_pensioengerechtigd                   | false                           |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 500000                          |
+      | auto_onmisbaar                          | true                            |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
+      | aanslagbedrag                           | 15000                           |
+      | is_ondernemer                           | false                           |
+      | belasting_zakelijk                      | false                           |
+    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+    Then the execution succeeds
+    And the output "kan_kwijtschelding_worden_verleend" is "true"
+    And the output "hoogte_kwijtschelding" is "15000"
+
+  # Liquide middelen boven de HHNK-vrijstelling (kostennorm 140150 + art 4 verhoging alleenstaand
+  # 150000 = 290150 eurocent) tellen bovenmatig mee als vermogen. Bij liquide 400000 is
+  # 400000 - 290150 = 109850 vermogen. Vermogen > aanslag 80000 -> hoogte = 0.
+  Scenario: Vermogen boven de HHNK-vrijstelling blokkeert kwijtschelding
+    Given the calculation date is "2026-06-01"
+    And a citizen with the following data:
+      | bsn                                     | 999993653                       |
+      | waterschap_code                         | WS0155                          |
+      | belastingsoort                          | watersysteemheffing_ingezetenen |
+      | netto_besteedbaar_inkomen_maand         | 140150                          |
+      | netto_besteedbaar_inkomen_partner_maand | 0                               |
+      | huishoudtype                            | alleenstaande                   |
+      | is_pensioengerechtigd                   | false                           |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 400000                          |
+      | aanslagbedrag                           | 80000                           |
+      | is_ondernemer                           | false                           |
+      | belasting_zakelijk                      | false                           |
+    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+    Then the execution succeeds
+    And the output "kan_kwijtschelding_worden_verleend" is "false"
+    And the output "hoogte_kwijtschelding" is "0"
 
   # Niet-begunstigde belastingsoort (niet genoemd in HHNK art 1) valt buiten scope.
   Scenario: Belastingsoort buiten de HHNK-scope wordt afgewezen
@@ -117,7 +203,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                                     |
       | huishoudtype                            | alleenstaande                         |
       | is_pensioengerechtigd                   | false                                 |
-      | vermogen                                | 0                                     |
+      | inboedel_waarde                         | 0                                     |
+      | auto_waarde                             | 0                                     |
+      | auto_onmisbaar                          | false                                 |
+      | onroerend_goed_waarde                   | 0                                     |
+      | andere_bezittingen                      | 0                                     |
+      | hoger_bevoorrechte_schulden             | 0                                     |
+      | liquide_middelen                        | 0                                     |
       | aanslagbedrag                           | 15000                                 |
       | is_ondernemer                           | false                                 |
       | belasting_zakelijk                      | false                                 |
@@ -140,7 +232,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                               |
       | huishoudtype                            | alleenstaande                   |
       | is_pensioengerechtigd                   | false                           |
-      | vermogen                                | 0                               |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
       | is_ondernemer                           | false                           |
       | belasting_zakelijk                      | false                           |
@@ -162,7 +260,13 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | netto_besteedbaar_inkomen_partner_maand | 0                               |
       | huishoudtype                            | alleenstaande                   |
       | is_pensioengerechtigd                   | false                           |
-      | vermogen                                | 0                               |
+      | inboedel_waarde                         | 0                               |
+      | auto_waarde                             | 0                               |
+      | auto_onmisbaar                          | false                           |
+      | onroerend_goed_waarde                   | 0                               |
+      | andere_bezittingen                      | 0                               |
+      | hoger_bevoorrechte_schulden             | 0                               |
+      | liquide_middelen                        | 0                               |
       | aanslagbedrag                           | 15000                           |
       | is_ondernemer                           | true                            |
       | belasting_zakelijk                      | false                           |

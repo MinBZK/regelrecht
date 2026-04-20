@@ -167,6 +167,181 @@ articles:
       maand wordt in plaats van het per maand gemiddelde bedrag in aanmerking genomen het deel van het termijnbedrag voor
       zover dat, gelet op de vervaldatum van de termijnbetaling, op het moment van het verzoek om kwijtschelding
       redelijkerwijs kan worden aangemerkt als reservering voor die termijnbetaling.
+    machine_readable:
+      definitions:
+        drempelwaarde_inboedel_auto:
+          description: Drempelwaarde (eurocent) waarboven de inboedel of een auto als vermogen wordt beschouwd,
+            artikel 12 tweede lid onderdelen a en c. Origineel vastgesteld op f 5000 (1990) en nooit geindexeerd;
+            actuele waarde 226900 eurocent (= EUR 2269).
+          value: 226900
+      open_terms:
+        - id: verhoging_financiele_middelen_vrijstelling
+          description: Verhoging (eurocent) van de vrijstelling voor financiele middelen bovenop kostennorm en
+            gemiddelde maand-uitgaven. Per artikel 4 Regeling kwijtschelding belastingen medeoverheden mag een
+            verordening deze verhogen; HHNK art 4 stelt deze op 200000 (echtgenoten), 180000 (alleenstaande ouder)
+            en 150000 (alleenstaande) eurocent.
+          type: amount
+          required: false
+          delegated_to: provincie, gemeente of waterschap
+          delegation_type: WATERSCHAPS_VERORDENING
+          legal_basis: artikel 4 Regeling kwijtschelding belastingen medeoverheden
+          default:
+            actions:
+              - output: verhoging_financiele_middelen_vrijstelling
+                value: 0
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: inboedel_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_onmisbaar
+            type: boolean
+            required: true
+          - name: onroerend_goed_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: andere_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: hoger_bevoorrechte_schulden
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: liquide_middelen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+        input:
+          - name: kostennorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: kostennorm_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                gemeente_code: $gemeente_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+        output:
+          - name: inboedel_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: auto_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: financiele_middelen_vrijstelling
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: liquide_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: totaal_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: vermogen_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: inboedel_als_vermogen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $inboedel_waarde
+                    value: $drempelwaarde_inboedel_auto
+                  then: $inboedel_waarde
+              default: 0
+          - output: auto_als_vermogen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: GREATER_THAN
+                        subject: $auto_waarde
+                        value: $drempelwaarde_inboedel_auto
+                      - operation: EQUALS
+                        subject: $auto_onmisbaar
+                        value: false
+                  then: $auto_waarde
+              default: 0
+          - output: financiele_middelen_vrijstelling
+            value:
+              operation: ADD
+              values:
+                - $kostennorm_bedrag
+                - $verhoging_financiele_middelen_vrijstelling
+          - output: liquide_als_vermogen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $liquide_middelen
+                    - $financiele_middelen_vrijstelling
+          - output: totaal_bezittingen
+            value:
+              operation: ADD
+              values:
+                - $inboedel_als_vermogen
+                - operation: ADD
+                  values:
+                    - $auto_als_vermogen
+                    - operation: ADD
+                      values:
+                        - $onroerend_goed_waarde
+                        - operation: ADD
+                          values:
+                            - $liquide_als_vermogen
+                            - $andere_bezittingen
+          - output: vermogen_bedrag
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $totaal_bezittingen
+                    - $hoger_bevoorrechte_schulden
   - number: '13'
     url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel13
     text: |
