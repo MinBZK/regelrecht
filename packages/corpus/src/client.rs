@@ -322,25 +322,12 @@ impl CorpusClient {
         Ok(())
     }
 
-    /// Fetch a base branch and check out specific paths from it into the
-    /// current working tree.
-    ///
-    /// Used by the enricher to pull in newly harvested laws from `development`
-    /// into long-lived enrichment branches (`enrich/opencode`, `enrich/claude`).
-    /// Without this, laws harvested after the enrichment branch was created
-    /// would be missing from the checkout.
-    ///
-    /// Unlike a merge, this does **not** create a merge commit. The checked-out
-    /// files are left as unstaged working-tree changes. When the enrichment
-    /// later commits, the new law file and its `machine_readable` additions
-    /// appear together in a single commit — which survives `git rebase` cleanly.
+    /// Fetch `base_branch` and check out `paths` from it without a merge commit,
+    /// leaving the files unstaged so they land in the enrichment's own commit
+    /// and survive `commit_and_push`'s `pull --rebase`.
     pub async fn checkout_from_branch(&self, base_branch: &str, paths: &[&str]) -> Result<()> {
-        // Skip paths already tracked on this branch to avoid overwriting
-        // enrichment-branch content (e.g. prior machine_readable additions)
-        // with the raw development version. `ls-files` without
-        // `--error-unmatch` returns empty stdout for untracked paths and
-        // exits non-zero only on genuine git failures, so transient errors
-        // propagate instead of being silently treated as "file missing".
+        // Skip already-tracked paths so prior machine_readable additions
+        // aren't overwritten by the raw base-branch version.
         let mut missing: Vec<&str> = Vec::new();
         for path in paths {
             let listed = self.run_git_output(&["ls-files", "--", path]).await?;
