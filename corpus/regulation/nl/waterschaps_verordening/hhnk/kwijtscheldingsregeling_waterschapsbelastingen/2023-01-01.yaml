@@ -32,6 +32,138 @@ articles:
       degene die krachtens eigendom, bezit of beperkt recht het genot heeft van een gebouwde onroerende zaak die geheel of
       gedeeltelijk bij hem in gebruik is als woonruimte;
     url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_1
+    machine_readable:
+      definitions:
+        belastingsoorten_in_scope:
+          value:
+            - watersysteemheffing_ingezetenen
+            - watersysteemheffing_gebouwd_woonruimte
+            - zuiveringsheffing_woonruimte
+            - verontreinigingsheffing_woonruimte
+            - wegenheffing_ingezetenen
+            - wegenheffing_gebouwd_woonruimte
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: true
+          - name: belastingsoort
+            type: string
+            required: true
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: netto_besteedbaar_inkomen_partner_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: aanslagbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: is_ondernemer
+            type: boolean
+            required: true
+          - name: belasting_zakelijk
+            type: boolean
+            required: true
+        input:
+          - name: ondernemer_komt_in_aanmerking
+            type: boolean
+            source:
+              output: ondernemer_komt_in_aanmerking
+              parameters:
+                is_ondernemer: $is_ondernemer
+                belasting_zakelijk: $belasting_zakelijk
+          - name: kan_kwijtschelding_verleend_uri
+            type: boolean
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
+              output: kan_kwijtschelding_worden_verleend
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                vermogen: $vermogen
+                aanslagbedrag: $aanslagbedrag
+          - name: hoogte_kwijtschelding_uri
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
+              output: hoogte_kwijtschelding
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                vermogen: $vermogen
+                aanslagbedrag: $aanslagbedrag
+        output:
+          - name: belastingsoort_in_scope
+            type: boolean
+          - name: kan_kwijtschelding_worden_verleend
+            type: boolean
+          - name: hoogte_kwijtschelding
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: belastingsoort_in_scope
+            value:
+              operation: IN
+              subject: $belastingsoort
+              value: $belastingsoorten_in_scope
+          - output: kan_kwijtschelding_worden_verleend
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $belastingsoort_in_scope
+                  value: true
+                - operation: EQUALS
+                  subject: $ondernemer_komt_in_aanmerking
+                  value: true
+                - operation: EQUALS
+                  subject: $kan_kwijtschelding_verleend_uri
+                  value: true
+          - output: hoogte_kwijtschelding
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $kan_kwijtschelding_worden_verleend
+                    value: true
+                  then: $hoogte_kwijtschelding_uri
+              default: 0
 
   - number: '2'
     text: |-
@@ -44,6 +176,19 @@ articles:
       2. In afwijking van het eerste lid worden voor pensioengerechtigde personen de kosten van bestaan gesteld op 100% van
       de in artikel 3 van de Regeling kwijtschelding belastingen medeoverheden bedoelde netto-ouderdomspensioen.
     url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_2
+    machine_readable:
+      implements:
+        - law: uitvoeringsregeling_invorderingswet_1990
+          article: '16'
+          open_term: kostennorm_percentage
+          gelet_op: Gelet op artikel 2 van de Regeling kwijtschelding belastingen medeoverheden
+      execution:
+        output:
+          - name: kostennorm_percentage
+            type: number
+        actions:
+          - output: kostennorm_percentage
+            value: 1.0
 
   - number: '3'
     text: |-
@@ -77,6 +222,29 @@ articles:
       met de uitoefening van een bedrijf of beroep, verschuldigd door een natuurlijk persoon die een bedrijf of zelfstandig
       een beroep uitoefent.
     url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_5
+    machine_readable:
+      execution:
+        parameters:
+          - name: is_ondernemer
+            type: boolean
+            required: true
+          - name: belasting_zakelijk
+            type: boolean
+            required: true
+        output:
+          - name: ondernemer_komt_in_aanmerking
+            type: boolean
+        actions:
+          - output: ondernemer_komt_in_aanmerking
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $is_ondernemer
+                  value: false
+                - operation: EQUALS
+                  subject: $belasting_zakelijk
+                  value: false
 
   - number: '6'
     text: |-
