@@ -135,9 +135,26 @@ export function useBwbHarvest() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ law_ids: lawIds }),
       });
-      if (res.ok) {
-        return await res.json();
+      if (!res.ok) return null;
+      const data = await res.json();
+
+      // Populate shared harvestStatus / harvestSlugs and start polling so the
+      // dependency walker picks up completion via the usual mechanism.
+      const updatedStatus = { ...harvestStatus.value };
+      const updatedSlugs = { ...harvestSlugs.value };
+      let anyQueued = false;
+      for (const entry of data.results ?? []) {
+        updatedStatus[entry.bwb_id] = entry.status;
+        if (entry.slug) updatedSlugs[entry.bwb_id] = entry.slug;
+        if (entry.status === 'queued' || entry.status === 'already_queued') {
+          anyQueued = true;
+        }
       }
+      harvestStatus.value = updatedStatus;
+      harvestSlugs.value = updatedSlugs;
+      if (anyQueued) startPolling();
+
+      return data;
     } catch {
       // Batch harvest is best-effort
     }

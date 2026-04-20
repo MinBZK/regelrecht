@@ -282,39 +282,55 @@ async fn test_transaction_rollback() {
 async fn test_update_status_unless_any_protects_multiple_statuses() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "active_law", None, None)
+    // Mirrors the production protected set in api::harvest::create_harvest_job.
+    let protected = &[
+        LawStatusValue::Harvesting,
+        LawStatusValue::Harvested,
+        LawStatusValue::Enriching,
+        LawStatusValue::Enriched,
+    ];
+
+    for status in protected {
+        law_status::upsert_law(&db.pool, "protected_law", None, None)
+            .await
+            .unwrap();
+        law_status::update_status(&db.pool, "protected_law", *status)
+            .await
+            .unwrap();
+
+        let res = law_status::update_status_unless_any(
+            &db.pool,
+            "protected_law",
+            protected,
+            LawStatusValue::Queued,
+        )
         .await
         .unwrap();
+        assert!(
+            res.is_none(),
+            "{status:?} should be protected from downgrade"
+        );
+        let entry = law_status::get_law(&db.pool, "protected_law")
+            .await
+            .unwrap();
+        assert_eq!(entry.status, *status);
+    }
 
-    law_status::update_status(&db.pool, "active_law", LawStatusValue::Enriching)
+    // Non-protected statuses should still allow the update.
+    law_status::update_status(&db.pool, "protected_law", LawStatusValue::HarvestFailed)
         .await
         .unwrap();
-
     let res = law_status::update_status_unless_any(
         &db.pool,
-        "active_law",
-        &[LawStatusValue::Harvesting, LawStatusValue::Enriching],
+        "protected_law",
+        protected,
         LawStatusValue::Queued,
     )
     .await
     .unwrap();
-    assert!(res.is_none(), "Enriching should be protected");
-    let entry = law_status::get_law(&db.pool, "active_law").await.unwrap();
-    assert_eq!(entry.status, LawStatusValue::Enriching);
-
-    law_status::update_status(&db.pool, "active_law", LawStatusValue::Harvested)
+    assert!(res.is_some(), "HarvestFailed is not in the protected set");
+    let entry = law_status::get_law(&db.pool, "protected_law")
         .await
         .unwrap();
-
-    let res = law_status::update_status_unless_any(
-        &db.pool,
-        "active_law",
-        &[LawStatusValue::Harvesting, LawStatusValue::Enriching],
-        LawStatusValue::Queued,
-    )
-    .await
-    .unwrap();
-    assert!(res.is_some(), "Harvested is not in the protected set");
-    let entry = law_status::get_law(&db.pool, "active_law").await.unwrap();
     assert_eq!(entry.status, LawStatusValue::Queued);
 }

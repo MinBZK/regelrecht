@@ -467,5 +467,12 @@ fn discover_pipeline_api_url_from_k8s() -> Option<String> {
     env::var("KUBERNETES_SERVICE_HOST").ok()?;
     let hostname = env::var("HOSTNAME").ok()?;
     let deployment = hostname.split('-').next().filter(|s| !s.is_empty())?;
-    Some(format!("http://{deployment}-pipelineapi:8000"))
+    let url = format!("http://{deployment}-pipelineapi:8000");
+    tracing::info!(
+        hostname = %hostname,
+        deployment = %deployment,
+        url = %url,
+        "derived pipeline-api URL from HOSTNAME — if deployment name contains hyphens, set PIPELINE_API_URL explicitly",
+    );
+    Some(url)
 }

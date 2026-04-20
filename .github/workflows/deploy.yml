@@ -299,7 +299,9 @@ jobs:
           deployment-name: pr${{ github.event.pull_request.number }}
           component: pipelineapi
           image: ${{ env.REGISTRY }}/minbzk/regelrecht-pipeline-api:sha-${{ steps.sha.outputs.short }}
-          domain-format: component-deployment-project
+          # No public domain: pipeline-api has no authentication and is only
+          # reachable in-cluster by editor-api (which enforces auth). Matches
+          # the production deploy below.
           clone-from: regelrecht
           force-clone: false
 
