@@ -1,0 +1,498 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/schema.json
+$id: uitvoeringsregeling_invorderingswet_1990
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-07-11'
+valid_from: '2026-01-01'
+bwb_id: BWBR0004766
+url: https://wetten.overheid.nl/BWBR0004766/2026-01-01
+name: Uitvoeringsregeling Invorderingswet 1990
+competent_authority:
+  name: Minister van Financiën
+legal_basis:
+  - law_id: invorderingswet_1990
+    article: '26'
+articles:
+  - number: '10'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel10
+    text: |
+      1. Deze afdeling heeft betrekking op kwijtschelding van inkomstenbelasting verschuldigd door natuurlijke personen die
+      geen bedrijf of niet zelfstandig een beroep uitoefenen, van loonbelasting verschuldigd door werknemers alsmede van door
+      natuurlijke personen verschuldigd successierecht, schenkingsrecht, recht van overgang en verschuldigde belastingen van
+      rechtsverkeer.
+
+      2. Deze afdeling heeft voorts, in afwijking in zoverre van artikel 20 betrekking op kwijtschelding van
+      inkomstenbelasting verschuldigd door natuurlijke personen die een uitkering genieten ingevolge de Wet
+      inkomensvoorziening kunstenaars.
+  - number: '11'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel11
+    text: |
+      Kwijtschelding wordt verleend voor:
+
+      a. het gehele op de belastingaanslag openstaande bedrag indien geen vermogen en geen betalingscapaciteit aanwezig is;
+
+      b. het openstaande bedrag van de belastingaanslag dat resteert nadat:
+
+      1°. het aanwezige vermogen is aangewend ter voldoening van de belastingaanslag;
+
+      2°. ten minste 80 percent van de betalingscapaciteit is aangewend;
+
+      een en ander onverminderd het bepaalde in artikel 8, artikel 17 en artikel 18.
+    machine_readable:
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: netto_besteedbaar_inkomen_partner_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: aanslagbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+        input:
+          - name: betalingscapaciteit
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: betalingscapaciteit
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                gemeente_code: $gemeente_code
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+        output:
+          - name: aanwendbare_betalingscapaciteit
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: hoogte_kwijtschelding
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: kan_kwijtschelding_worden_verleend
+            type: boolean
+        actions:
+          - output: aanwendbare_betalingscapaciteit
+            value:
+              operation: MULTIPLY
+              values:
+                - 0.8
+                - $betalingscapaciteit
+          - output: hoogte_kwijtschelding
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - operation: SUBTRACT
+                      values:
+                        - $aanslagbedrag
+                        - $vermogen
+                    - $aanwendbare_betalingscapaciteit
+          - output: kan_kwijtschelding_worden_verleend
+            value:
+              operation: GREATER_THAN
+              subject: $hoogte_kwijtschelding
+              value: 0
+  - number: '12'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel12
+    text: |
+      1. Onder vermogen als bedoeld in artikel 11 wordt verstaan de waarde in het economische verkeer van de bezittingen van
+      de belastingschuldige en van zijn echtgenoot, bedoeld in artikel 3 van de Algemene bijstandswet, verminderd met de
+      schulden van de belastingschuldige en deze persoon die hoger bevoorrecht zijn dan de rijksbelastingen.
+
+      2. Onder bezittingen wordt niet begrepen:
+
+      a. de inboedel voor zover de waarde hiervan niet meer bedraagt dan € 2269;
+
+      b. rechten op kapitaalsuitkeringen of prestaties uit levensverzekering, uitsluitend bestaande uit een kapitaaluitkering
+      bij overlijden van de belastingschuldige of zijn echtgenoot, mits deze kapitaaluitkering is bestemd voor de verzorging
+      van de uitvaart van de belastingschuldige of zijn echtgenoot, dan wel op prestaties in natura ter zake van de
+      verzorging van een uitvaart van de belastingschuldige of zijn echtgenoot;
+
+      c. een auto die op het moment van het verzoek een waarde heeft van € 2269 of minder; een auto met een waarde van meer
+      dan € 2269 wordt niet als vermogen beschouwd indien jegens de ontvanger aannemelijk kan worden gemaakt dat die auto
+      absoluut onmisbaar is voor de uitoefening van een beroep dan wel absoluut onmisbaar is in verband met invaliditeit;
+
+      d. het totale bedrag aan financiële middelen, andere dan de onder f bedoelde, voor zover dat bedrag de ingevolge
+      artikel 16 in aanmerking te nemen kosten van bestaan vermeerderd met een bedrag ter grootte van het per maand
+      gemiddelde bedrag van de uitgaven bedoeld in artikel 15, onderdelen b en c, niet te boven gaat;
+
+      e. het bedrag op een bank- of girorekening dat in het kader van de Wet studiefinanciering 2000 of de Wet tegemoetkoming
+      studiekosten is verkregen in de vorm van leningen of dat is verkregen in het kader van een regeling voor
+      persoonsgebonden budget, welke regeling is gegrond op artikel 1p, eerste lid, onderdeel d, van de Ziekenfondswet;
+
+      f. een bedrag van € 2269 aan financiële middelen per persoon voor personen die op 31 december 1999 de leeftijd van 65
+      jaar hebben bereikt.
+
+      3. Onder waarde, bedoeld in het tweede lid, onderdeel c, wordt verstaan de prijs die de autohandel bereid is te betalen
+      bij inkoop zonder gelijktijdige verkoop van een andere auto.
+
+      4. Indien de uitgaven, bedoeld in artikel 15, onderdelen b en c, verschuldigd zijn over een termijn van langer dan een
+      maand wordt in plaats van het per maand gemiddelde bedrag in aanmerking genomen het deel van het termijnbedrag voor
+      zover dat, gelet op de vervaldatum van de termijnbetaling, op het moment van het verzoek om kwijtschelding
+      redelijkerwijs kan worden aangemerkt als reservering voor die termijnbetaling.
+  - number: '13'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel13
+    text: |
+      1. Onder betalingscapaciteit, bedoeld in artikel 11, wordt verstaan het positieve verschil in de periode van 12 maanden
+      vanaf de datum waarop het verzoek om kwijtschelding is ingediend van het gemiddeld per maand te verwachten
+      netto-besteedbare inkomen van de belastingschuldige in die periode en de gemiddeld per maand te verwachten kosten van
+      bestaan in die periode.
+
+      2. Het netto-besteedbare inkomen van de belastingschuldige, bedoeld in het eerste lid, wordt vermeerderd met het
+      gemiddeld per maand te verwachten netto-besteedbare inkomen in de periode van twaalf maanden vanaf de datum waarop het
+      verzoek om kwijtschelding is ingediend van zijn echtgenoot, bedoeld in artikel 3 van de Algemene bijstandswet.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: netto_besteedbaar_inkomen_partner_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+        input:
+          - name: kostennorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: kostennorm_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                gemeente_code: $gemeente_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+        output:
+          - name: betalingscapaciteit
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: betalingscapaciteit
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: MULTIPLY
+                  values:
+                    - 12
+                    - operation: SUBTRACT
+                      values:
+                        - operation: ADD
+                          values:
+                            - $netto_besteedbaar_inkomen_maand
+                            - $netto_besteedbaar_inkomen_partner_maand
+                        - $kostennorm_bedrag
+  - number: '14'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel14
+    text: |
+      1. Onder het netto-besteedbare inkomen, bedoeld in artikel 13, wordt verstaan het met de in artikel 15 vermelde
+      uitgaven verminderde gezamenlijke bedrag van:
+
+      a. de aan inhouding van loonbelasting/premie voor de volksverzekeringen onderworpen inkomsten verminderd met de
+      wettelijke inhoudingen en de ingehouden pensioenpremies en premies ziektekostenverzekering;
+
+      b. uitkeringen voor levensonderhoud ingevolge de artikelen 157, 158 of 404 van Boek 1 van het Burgerlijk Wetboek;
+
+      c. overige inkomsten met uitzondering van de uitkeringen ingevolge de Algemene Kinderbijslagwet, de artikelen 229d,
+      tweede lid, en 255a van de Gemeentewet en een regeling voor persoonsgebonden budget, welke regeling is gegrond op
+      artikel 1p, eerste lid, onderdeel d, van de Ziekenfondswet, alsmede inkomsten als bedoeld in artikel 43, tweede lid,
+      onderdelen i, j, m en n, van de Algemene bijstandswet en, tot ten hoogste het bedrag genoemd in artikel 43, tweede lid,
+      onderdeel p, van de Algemene bijstandswet, de subsidies, bedoeld in artikel 3, eerste lid, van de Wet inschakeling
+      werkzoekenden, voorzover deze subsidies niet kunnen worden aangemerkt als premies als bedoeld in artikel 43, tweede
+      lid, onderdelen i en j, van de Algemene bijstandswet.
+
+      2. Tot de inkomsten, bedoeld in het eerste lid, onderdeel c, wordt ook gerekend de voorlopige teruggaaf, bedoeld in
+      artikel 13, tweede lid, van de Algemene wet inzake rijksbelastingen, daaronder begrepen de aanspraak op een zodanige
+      teruggaaf, met uitzondering van de daarin begrepen kinderkorting, aanvullende kinderkorting of toetrederskorting,
+      bedoeld in hoofdstuk 8 van de Wet inkomstenbelasting 2001.
+
+      3. Indien bij de vaststelling van de voorlopige teruggaaf rekening is gehouden met kinderkorting, aanvullende
+      kinderkorting of toetrederskorting wordt voor de toepassing van het tweede lid het bedrag van de voorlopige teruggaaf
+      zoveel mogelijk geacht betrekking te hebben op die kortingen.
+
+      4. Voor de belastingschuldige, bedoeld in artikel 10, tweede lid, die in het kalenderjaar voorafgaande aan het verzoek
+      om kwijtschelding een uitkering heeft genoten ingevolge de Wet inkomensvoorziening kunstenaars worden tot de inkomsten,
+      bedoeld in het eerste lid, onderdeel c, ook gerekend de inkomsten uit de beroepsuitoefening. Deze inkomsten worden in
+      aanmerking genomen voor het bedrag dat blijkt uit de opgave van de in het kalenderjaar genoten inkomsten die de
+      belastingschuldige aan het college van burgemeester en wethouders moet verstrekken ten behoeve van de definitieve
+      vaststelling van de hoogte van de uitkering, bedoeld in artikel 10 van de Wet inkomensvoorziening kunstenaars.
+
+      5. Voor de belastingschuldige, bedoeld in artikel 10, tweede lid, die in het kalenderjaar voorafgaande aan het verzoek
+      om kwijtschelding geen uitkering heeft genoten ingevolge de Wet inkomensvoorziening kunstenaars worden de inkomsten,
+      bedoeld in het eerste lid, gesteld op de op hem van toepassing zijnde bijstandsnorm ingevolge hoofdstuk IV, afdeling 1,
+      van de Algemene bijstandswet.
+  - number: '15'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel15
+    text: |
+      Als uitgaven als bedoeld in artikel 14, eerste lid, worden in aanmerking genomen:
+
+      a. betalingen op belastingschulden, met uitzondering van die genoemd in artikel 8, tweede lid;
+
+      b. het bedrag van de voor rekening van de belastingschuldige komende netto-woonlasten tot maximaal het bedrag, genoemd
+      in artikel 13, eerste lid, onderdeel a, van de Huursubsidiewet, voorzover dit meer is dan het bedrag, genoemd in
+      artikel 17, tweede lid, van die wet. Onder netto-woonlasten wordt verstaan: de op de belastingschuldige drukkende
+      huurprijs, bedoeld in artikel 5, eerste lid, van genoemde wet, dan wel hypotheekrente en erfpachtcanon ter zake van een
+      door hem bewoonde woning voorzover deze hem voor gebruik ter beschikking staat, verminderd met de ontvangen
+      huursubsidie en bijzondere bijdrage in de huurlasten op grond van artikel 26b van genoemde wet of met de ontvangen
+      woonkostentoeslag, andere dan die in de vorm van de verhogingen, genoemd in artikel 21, eerste lid, onderdeel d, van
+      genoemde wet, onderscheidenlijk een daarmee overeenkomende verhoging ingevolge hoofdstuk IV, afdeling 2, van de
+      Algemene bijstandswet;
+
+      c. de niet door de werkgever ingehouden premies ziektekostenverzekering en de nominale premies ingevolge de
+      Ziekenfondswet en de Algemene Wet Bijzondere Ziektekosten;
+
+      d. betaalde uitkeringen voor levensonderhoud ingevolge de artikelen 157, 158 of 404 van Boek 1 van het Burgerlijk
+      Wetboek;
+
+      e. aflossingen op leningen voor zover die zijn aangewend voor de betaling van belastingschulden, met uitzondering van
+      die genoemd in artikel 8, tweede lid;
+
+      f. de met het houden van kostgangers verbonden kosten tot het totaal van:
+
+      - het bedrag, genoemd in artikel 32, eerste lid, van de Uitvoeringsregeling loonbelasting 2001, voor een ontbijt en
+      voor een warme maaltijd, en
+
+      - het bedrag per dag, genoemd in artikel 34, eerste lid, onderdelen a, b, d en e, van de Uitvoeringsregeling
+      loonbelasting 2001,
+
+      doch ten hoogste de met het houden van kostgangers genoten inkomsten. Bij de bepaling van het aantal dagen wordt een
+      volle maand op 30 dagen gesteld.
+  - number: '16'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel16
+    text: |
+      1. De kosten van bestaan, bedoeld in artikel 13, eerste lid, bedragen voor belastingschuldigen die worden aangemerkt
+      als:
+
+      a. echtgenoten als bedoeld in artikel 3 van de Algemene bijstandswet: 90 percent van het gezamenlijke bedrag, bedoeld
+      in artikel 14, eerste lid, doch ten minste 90 percent van de bijstandsnorm, genoemd in artikel 30, eerste lid,
+      onderdeel c, van de Algemene bijstandswet nadat deze is verminderd met het bedrag, genoemd in artikel 33, tweede lid,
+      van die wet, en ten hoogste 90 percent van de bijstandsnorm, genoemd in artikel 30, eerste lid, onderdeel c, van die
+      wet;
+
+      b. een alleenstaande en een alleenstaande ouder als bedoeld in artikel 4, onderdeel a, onderscheidenlijk onderdeel b,
+      van de Algemene bijstandswet: 90 percent van het gezamenlijke bedrag, bedoeld in artikel 14, eerste lid, doch ten
+      minste 90 percent van de bijstandsnorm, genoemd in artikel 30, eerste lid, onderdeel a, onderscheidenlijk onderdeel b,
+      van de Algemene bijstandswet, en ten hoogste 90 percent van die bijstandsnorm nadat deze is verhoogd met het bedrag,
+      genoemd in artikel 33, tweede lid, van die wet.
+
+      2. De kosten van bestaan, bedoeld in artikel 13, eerste lid, bedragen, in afwijking van het eerste lid, voor
+      belastingschuldigen die worden aangemerkt als:
+
+      a. echtgenoten als bedoeld in artikel 3 van de Algemene bijstandswet die 65 jaar of ouder zijn, onderscheidenlijk
+      waarvan een echtgenoot 65 jaar of ouder is: 90 percent van de bijstandsnorm, genoemd in artikel 30, tweede lid,
+      onderdeel c, onderscheidenlijk onderdeel d, van de Algemene bijstandswet;
+
+      b. een alleenstaande en een alleenstaande ouder als bedoeld in artikel 4, onderdeel a, onderscheidenlijk onderdeel b,
+      van de Algemene bijstandswet die 65 jaar of ouder zijn: 90 percent van de bijstandsnorm, genoemd in artikel 30, tweede
+      lid, onderdeel a, onderscheidenlijk onderdeel b, van de Algemene bijstandswet.
+
+      3. De kosten van bestaan, bedoeld in artikel 13, eerste lid, bedragen, in afwijking van de vorige leden, voor de
+      belastingschuldige die ter verzorging of verpleging in een daartoe bestemde inrichting is opgenomen: de prijs die is
+      verschuldigd voor verzorging dan wel verpleging, verhoogd met twee derden van de op hem van toepassing zijnde
+      bijstandsnorm, genoemd in artikel 31 van de Algemene bijstandswet.
+    machine_readable:
+      definitions:
+        bijstandsnorm_alleenstaand:
+          value: 140150
+        bijstandsnorm_alleenstaande_ouder:
+          value: 140150
+        bijstandsnorm_echtgenoten:
+          value: 200213
+        bijstandsnorm_aow_alleenstaand:
+          value: 156469
+        bijstandsnorm_aow_echtgenoten:
+          value: 214416
+      open_terms:
+        - id: kostennorm_percentage
+          description: Percentage van de bijstandsnorm dat als kosten van bestaan geldt. Bij ministeriele regeling (Regeling
+            kwijtschelding belastingen medeoverheden, artikel 2) kan een verordening van een medeoverheid dit verhogen tot
+            maximaal 100 procent.
+          type: number
+          required: false
+          delegated_to: provincie, gemeente of waterschap
+          delegation_type: WATERSCHAPS_VERORDENING
+          legal_basis: artikel 2 Regeling kwijtschelding belastingen medeoverheden
+          default:
+            actions:
+              - output: kostennorm_percentage
+                value: 0.9
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+        output:
+          - name: kostennorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: kostennorm_bedrag
+            value:
+              operation: MULTIPLY
+              values:
+                - $kostennorm_percentage
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: EQUALS
+                        subject: $is_pensioengerechtigd
+                        value: true
+                      then:
+                        operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $huishoudtype
+                              value: echtgenoten
+                            then: $bijstandsnorm_aow_echtgenoten
+                        default: $bijstandsnorm_aow_alleenstaand
+                  default:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $huishoudtype
+                          value: echtgenoten
+                        then: $bijstandsnorm_echtgenoten
+                      - when:
+                          operation: EQUALS
+                          subject: $huishoudtype
+                          value: alleenstaande_ouder
+                        then: $bijstandsnorm_alleenstaande_ouder
+                    default: $bijstandsnorm_alleenstaand
+  - number: '17'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel17
+    text: |
+      Indien geen betalingscapaciteit aanwezig is of wel betalingscapaciteit aanwezig is doch die betalingscapaciteit niet
+      voldoende is om de belastingaanslagen waarvoor kwijtschelding is verzocht te voldoen, wordt ingeval sprake is van
+      aflossingen op schulden, andere dan die waarmee bij de berekening van de betalingscapaciteit rekening is gehouden en
+      die aflossingen meer dan € 136 per maand bedragen, slechts in zeer bijzondere omstandigheden kwijtschelding verleend.
+  - number: '27'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel27
+    text: |
+      Deze afdeling heeft betrekking op:
+
+      a. provinciale belastingen als bedoeld in hoofdstuk XV, paragraaf 2, van de Provinciewet alsmede belastingen waarvan de
+      heffing krachtens andere wetten door de provincie geschiedt;
+
+      b. gemeentelijke belastingen als bedoeld in hoofdstuk XV, paragraaf 2 en 3, van de Gemeentewet alsmede belastingen
+      waarvan de heffing krachtens andere wetten door de gemeente geschiedt;
+
+      c. waterschapsbelastingen als bedoeld in hoofdstuk XVI van de Waterschapswet alsmede belastingen waarvan de heffing
+      krachtens bijzondere wetten door het waterschap geschiedt;
+
+      d. de beveiligingsheffing ingevolge artikel 37j van de Luchtvaartwet;
+
+      e. de geluidsheffing burgerluchtvaart ingevolge artikel 77 van de Luchtvaartwet;
+
+      f. de heffingen ingevolge hoofdstuk IV van de Meststoffenwet;
+
+      g. de heffing ingevolge artikel 91a van de Gezondheids- en welzijnswet voor dieren, alsmede bij algemene maatregel van
+      bestuur ingevolge artikel 91h of artikel 92 van die wet ingevoerde heffingen;
+
+      h. de verontreinigingsheffing rijkswateren ingevolge artikel 23 van de Wet verontreiniging oppervlaktewateren.
+  - number: '28'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel28
+    text: |
+      1. Met betrekking tot een verzoek om kwijtschelding van de in artikel 27 genoemde belastingen en heffingen verschuldigd
+      door:
+
+      a. een natuurlijk persoon die geen bedrijf of niet zelfstandig een beroep uitoefent, zijn de afdelingen 1, 2 en 5 van
+      overeenkomstige toepassing;
+
+      b. een natuurlijk persoon die een bedrijf of zelfstandig een beroep uitoefent, zijn de afdelingen 1, 3, 4 en 5 van
+      overeenkomstige toepassing;
+
+      c. een rechtspersoon zijn de afdelingen 1, 3 en 5 van overeenkomstige toepassing;
+
+      d. een natuurlijk persoon die een uitkering geniet ingevolge de Wet inkomensvoorziening kunstenaars zijn de artikelen
+      10, tweede lid, en 14, vierde en vijfde lid, van overeenkomstige toepassing.
+
+      2. Waar in artikel 9, tweede lid, en in afdeling 5 sprake is van directeur wordt voor:
+
+      a. provinciale belastingen gelezen: gedeputeerde staten;
+
+      b. gemeentelijke belastingen gelezen: het college van burgemeester en wethouders;
+
+      c. waterschapsbelastingen gelezen: het dagelijks bestuur;
+
+      d. de beveiligingsheffing gelezen: het hoofd van de Directie Politie van het Ministerie van Justitie;
+
+      e. de geluidsheffing burgerluchtvaart gelezen: de directeur-hoofdinspecteur van de divisie Luchtvaart van de Inspectie
+      Verkeer en Waterstaat;
+
+      f. de heffingen ingevolge hoofdstuk IV van de Meststoffenwet, de heffing ingevolge artikel 91a van de Gezondheids- en
+      welzijnswet voor dieren, alsmede bij algemene maatregel van bestuur ingevolge artikel 91h of artikel 92 van die wet
+      ingevoerde heffingen gelezen: de directeur Financiële en Economische Zaken van het Ministerie van Landbouw,
+      Natuurbeheer en Visserij.
