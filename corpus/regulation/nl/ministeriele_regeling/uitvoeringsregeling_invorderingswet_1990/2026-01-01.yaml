@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
 $id: uitvoeringsregeling_invorderingswet_1990
 regulatory_layer: MINISTERIELE_REGELING
 publication_date: '2025-07-11'
@@ -62,7 +62,7 @@ articles:
             type: amount
             type_spec:
               unit: eurocent
-            required: false
+            required: true
           - name: huishoudtype
             type: string
             required: true
@@ -199,7 +199,7 @@ articles:
             type: amount
             type_spec:
               unit: eurocent
-            required: false
+            required: true
           - name: huishoudtype
             type: string
             required: true
@@ -351,14 +351,30 @@ articles:
     machine_readable:
       definitions:
         bijstandsnorm_alleenstaand:
+          description: Bijstandsnorm (eurocent per maand) voor een alleenstaande van 21 jaar of ouder en jonger dan de
+            pensioengerechtigde leeftijd, artikel 21 onderdeel a Participatiewet. Bedrag per 1 januari 2026 inclusief 5%
+            vakantie-uitkering.
           value: 140150
         bijstandsnorm_alleenstaande_ouder:
+          description: Bijstandsnorm (eurocent per maand) voor een alleenstaande ouder. Sinds de Participatiewet-
+            hervorming per 1 januari 2015 is de afzonderlijke alleenstaande-ouder-norm afgeschaft; de aanvullende
+            bijstand voor alleenstaande ouders is vervangen door het kindgebonden budget. De norm is daarom gelijk aan
+            die van de alleenstaande (artikel 21 onderdeel a Participatiewet). Bedrag per 1 januari 2026 inclusief 5%
+            vakantie-uitkering.
           value: 140150
         bijstandsnorm_echtgenoten:
+          description: Bijstandsnorm (eurocent per maand) voor gehuwden/samenwonenden waarvan beide echtgenoten 21 jaar of
+            ouder zijn en jonger dan de pensioengerechtigde leeftijd, artikel 21 onderdeel b Participatiewet. Bedrag per
+            1 januari 2026 inclusief 5% vakantie-uitkering.
           value: 200213
         bijstandsnorm_aow_alleenstaand:
+          description: Bijstandsnorm (eurocent per maand) voor een alleenstaande die de pensioengerechtigde leeftijd heeft
+            bereikt, artikel 22 onderdeel a Participatiewet. Bedrag per 1 januari 2026 inclusief 5% vakantie-uitkering.
           value: 156469
         bijstandsnorm_aow_echtgenoten:
+          description: Bijstandsnorm (eurocent per maand) voor gehuwden/samenwonenden waarvan ten minste een echtgenoot de
+            pensioengerechtigde leeftijd heeft bereikt, artikel 22 onderdeel b Participatiewet. Bedrag per 1 januari 2026
+            inclusief 5% vakantie-uitkering.
           value: 214416
       open_terms:
         - id: kostennorm_percentage

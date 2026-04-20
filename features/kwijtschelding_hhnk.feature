@@ -104,3 +104,48 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
     And the output "hoogte_kwijtschelding" is "0"
+
+  # Hoog inkomen: alleenstaande, inkomen 300000 eurocent, HHNK-kostennorm 100%
+  # (140150). Betalingscapaciteit = 12 x (300000 - 140150) = 1918200 eurocent.
+  # Aanwendbaar = 80% x 1918200 = 1534560 eurocent, ver boven de aanslag van 15000.
+  # Dus geen kwijtschelding mogelijk.
+  Scenario: Hoog inkomen wordt afgewezen
+    Given the calculation date is "2026-06-01"
+    And a citizen with the following data:
+      | bsn                                     | 999993653                       |
+      | waterschap_code                         | WS0155                          |
+      | belastingsoort                          | watersysteemheffing_ingezetenen |
+      | netto_besteedbaar_inkomen_maand         | 300000                          |
+      | netto_besteedbaar_inkomen_partner_maand | 0                               |
+      | huishoudtype                            | alleenstaande                   |
+      | is_pensioengerechtigd                   | false                           |
+      | vermogen                                | 0                               |
+      | aanslagbedrag                           | 15000                           |
+      | is_ondernemer                           | false                           |
+      | belasting_zakelijk                      | false                           |
+    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+    Then the execution succeeds
+    And the output "kan_kwijtschelding_worden_verleend" is "false"
+    And the output "hoogte_kwijtschelding" is "0"
+
+  # Ondernemer met uitsluitend privé-aanslag (niet zakelijk) valt wel binnen de
+  # regeling: HHNK art 5 sluit alleen zakelijke belastingschulden uit. Verder
+  # identiek aan het eerste scenario, dus volledige kwijtschelding.
+  Scenario: Ondernemer met privé-aanslag wordt wel toegelaten
+    Given the calculation date is "2026-06-01"
+    And a citizen with the following data:
+      | bsn                                     | 999993653                       |
+      | waterschap_code                         | WS0155                          |
+      | belastingsoort                          | watersysteemheffing_ingezetenen |
+      | netto_besteedbaar_inkomen_maand         | 140150                          |
+      | netto_besteedbaar_inkomen_partner_maand | 0                               |
+      | huishoudtype                            | alleenstaande                   |
+      | is_pensioengerechtigd                   | false                           |
+      | vermogen                                | 0                               |
+      | aanslagbedrag                           | 15000                           |
+      | is_ondernemer                           | true                            |
+      | belasting_zakelijk                      | false                           |
+    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+    Then the execution succeeds
+    And the output "kan_kwijtschelding_worden_verleend" is "true"
+    And the output "hoogte_kwijtschelding" is "15000"
