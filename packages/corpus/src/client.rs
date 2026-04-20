@@ -898,7 +898,7 @@ mod tests {
         // which picks up untracked files, so the machine_readable additions
         // and new file land in the same commit.
         let status = Command::new("git")
-            .args(["status", "--porcelain"])
+            .args(["status", "--porcelain", "--untracked-files=all"])
             .current_dir(&repo_path)
             .output()
             .await
@@ -907,6 +907,10 @@ mod tests {
         assert!(
             !status_str.contains("A "),
             "file should not be staged: {status_str}"
+        );
+        assert!(
+            status_str.contains("?? regulation/nl/wet/new_law/2025-01-01.yaml"),
+            "file should be untracked: {status_str}"
         );
     }
 
