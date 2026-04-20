@@ -341,8 +341,11 @@ impl CorpusClient {
         self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
             .await?;
 
-        let remote_ref = format!("origin/{base_branch}");
-        let mut args = vec!["checkout", &remote_ref, "--"];
+        // Use FETCH_HEAD rather than `origin/<base_branch>`: the enrichment
+        // clone is `--single-branch` for `enrich/<provider>`, so its fetch
+        // refspec never creates `refs/remotes/origin/<base_branch>` even
+        // after `git fetch origin <base_branch>`. FETCH_HEAD is always set.
+        let mut args = vec!["checkout", "FETCH_HEAD", "--"];
         args.extend(&missing);
         self.run_git(&args).await?;
 
@@ -1035,6 +1038,92 @@ mod tests {
             .exists());
         assert!(repo_path
             .join("regulation/nl/wet/some_law/2024-01-01.yaml")
+            .exists());
+    }
+
+    #[tokio::test]
+    async fn test_checkout_from_branch_works_with_preexisting_enrichment_branch() {
+        // Regression: when the enrichment branch already exists on the remote,
+        // ensure_repo clones it with `--single-branch --branch enrich/<provider>`.
+        // The configured fetch refspec then only matches enrich/<provider>, so
+        // `git fetch origin development` does NOT update refs/remotes/origin/development.
+        // checkout_from_branch must still be able to reach the fetched commit —
+        // which it does via FETCH_HEAD.
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Pre-create enrich/test on the bare, branching from development.
+        let tmp = dir.path().join("setup");
+        clone_with_config(&bare_path, &tmp).await;
+        for args in [
+            vec!["checkout", "-b", "enrich/test"],
+            vec!["push", "-u", "origin", "enrich/test"],
+            vec!["checkout", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Now push a new law to development (not yet on enrich/test).
+        let law_dir = tmp.join("regulation/nl/wet/new_law");
+        tokio::fs::create_dir_all(&law_dir).await.unwrap();
+        tokio::fs::write(law_dir.join("2025-01-01.yaml"), "new law content")
+            .await
+            .unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "harvest new law"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&tmp)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Clone enrich/test — this goes through git_clone (not the fallback),
+        // so the fetch refspec is +refs/heads/enrich/test:refs/remotes/origin/enrich/test only.
+        let repo_path = dir.path().join("enrich-clone");
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "enrich/test".into();
+        let mut client = CorpusClient::new(config);
+        client.ensure_repo().await.unwrap();
+
+        // Sanity-check: origin/development must NOT exist as a remote-tracking ref.
+        let refs = Command::new("git")
+            .args([
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/remotes/origin/",
+            ])
+            .current_dir(&repo_path)
+            .output()
+            .await
+            .unwrap();
+        let refs_str = String::from_utf8_lossy(&refs.stdout);
+        assert!(
+            !refs_str.contains("refs/remotes/origin/development"),
+            "expected no origin/development tracking ref before checkout_from_branch, got: {refs_str}"
+        );
+
+        // This would fail with `invalid reference: origin/development` before the FETCH_HEAD fix.
+        client
+            .checkout_from_branch(
+                "development",
+                &["regulation/nl/wet/new_law/2025-01-01.yaml"],
+            )
+            .await
+            .unwrap();
+
+        assert!(repo_path
+            .join("regulation/nl/wet/new_law/2025-01-01.yaml")
             .exists());
     }
 
