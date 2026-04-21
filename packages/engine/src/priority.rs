@@ -40,9 +40,13 @@ pub fn layer_rank(layer: &RegulatoryLayer) -> u8 {
         RegulatoryLayer::Amvb => 6,
         RegulatoryLayer::MinisterieleRegeling => 7,
         RegulatoryLayer::ProvincialeVerordening => 8,
-        RegulatoryLayer::GemeentelijkeVerordening => 9,
-        RegulatoryLayer::Beleidsregel => 10,
-        RegulatoryLayer::Uitvoeringsbeleid => 11,
+        // Waterschappen and gemeenten have coequal constitutional status (Grondwet ch. 7)
+        // but govern non-overlapping domains. Scope filtering (waterschap_code vs
+        // gemeente_code) prevents lex superior conflicts between them in practice.
+        RegulatoryLayer::WaterschapsVerordening => 9,
+        RegulatoryLayer::GemeentelijkeVerordening => 10,
+        RegulatoryLayer::Beleidsregel => 11,
+        RegulatoryLayer::Uitvoeringsbeleid => 12,
     }
 }
 
@@ -182,6 +186,14 @@ mod tests {
         assert!(
             layer_rank(&RegulatoryLayer::MinisterieleRegeling)
                 < layer_rank(&RegulatoryLayer::Beleidsregel)
+        );
+        assert!(
+            layer_rank(&RegulatoryLayer::ProvincialeVerordening)
+                < layer_rank(&RegulatoryLayer::WaterschapsVerordening)
+        );
+        assert!(
+            layer_rank(&RegulatoryLayer::WaterschapsVerordening)
+                < layer_rank(&RegulatoryLayer::GemeentelijkeVerordening)
         );
     }
 
