@@ -358,6 +358,20 @@ local-psql:
 local-clean:
     {{ compose-local }} down -v
 
+# --- Burger-demo (frontend-demo + demo-api, zie RFC-016) ---
+
+# Run burger-demo frontend (vite dev server)
+demo-dev:
+    cd frontend-demo && npm run dev
+
+# Build burger-demo frontend (static bundle incl. WASM + corpus)
+demo-build:
+    cd frontend-demo && npm run build
+
+# Run demo-api (LLM-proxy) locally; requires ANTHROPIC_API_KEY
+demo-api:
+    cd packages && cargo run --package regelrecht-demo-api
+
 # --- Documentation ---
 
 # Install docs dependencies (requires GITHUB_TOKEN for @minbzk/storybook)
