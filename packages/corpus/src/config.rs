@@ -29,16 +29,37 @@ impl std::fmt::Debug for CorpusConfig {
     }
 }
 
+/// Extract the ZAD deployment name from a Kubernetes pod hostname.
+///
+/// Pod hostnames follow `{deployment}-{component}-{rs-hash}-{pod-hash}`.
+/// Only the literal `regelrecht` (production) and `pr<digits>` (PR previews)
+/// are recognised; anything else returns `None` so a stray multi-segment
+/// deployment name can't be misread as a bare first segment.
+fn deployment_from_hostname(hostname: &str) -> Option<String> {
+    let first = hostname.split('-').next()?;
+    let is_pr_preview = first
+        .strip_prefix("pr")
+        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()));
+    (first == "regelrecht" || is_pr_preview).then(|| first.to_string())
+}
+
 /// Resolve the corpus branch from explicit config and platform variables.
 ///
-/// Priority: `CORPUS_BRANCH` > `DEPLOYMENT_NAME` (if preview) > `"development"`.
+/// Priority: `CORPUS_BRANCH` > `DEPLOYMENT_NAME` > `HOSTNAME` prefix > `"development"`.
 /// Production deployment name (`"regelrecht"`) is ignored so it falls through
 /// to the default `"development"` branch.
-fn resolve_branch(corpus_branch: Option<String>, deployment_name: Option<String>) -> String {
+fn resolve_branch(
+    corpus_branch: Option<String>,
+    deployment_name: Option<String>,
+    hostname: Option<String>,
+) -> String {
     if let Some(branch) = corpus_branch.filter(|b| !b.is_empty()) {
         return branch;
     }
-    if let Some(name) = deployment_name.filter(|n| !n.is_empty() && n != "regelrecht") {
+    let derived = deployment_name
+        .filter(|n| !n.is_empty())
+        .or_else(|| hostname.as_deref().and_then(deployment_from_hostname));
+    if let Some(name) = derived.filter(|n| n != "regelrecht") {
         return name;
     }
     "development".into()
@@ -62,7 +83,8 @@ impl CorpusConfig {
     ///
     /// Required: `CORPUS_REPO_URL`
     /// Optional: `CORPUS_REPO_PATH` (default: `/tmp/corpus-repo`),
-    ///           `CORPUS_BRANCH` (default: `DEPLOYMENT_NAME` in previews, else `development`),
+    ///           `CORPUS_BRANCH` (default: `DEPLOYMENT_NAME`, else `HOSTNAME` prefix
+    ///            for PR previews, else `development`),
     ///           `CORPUS_GIT_AUTHOR_NAME` (default: `regelrecht-harvester`),
     ///           `CORPUS_GIT_AUTHOR_EMAIL` (default: `noreply@minbzk.nl`),
     ///           `CORPUS_GIT_TOKEN` (for authentication)
@@ -77,6 +99,7 @@ impl CorpusConfig {
         let branch = resolve_branch(
             std::env::var("CORPUS_BRANCH").ok(),
             std::env::var("DEPLOYMENT_NAME").ok(),
+            std::env::var("HOSTNAME").ok(),
         );
 
         let git_author_name = std::env::var("CORPUS_GIT_AUTHOR_NAME")
@@ -198,31 +221,35 @@ mod tests {
 
     #[test]
     fn resolve_branch_defaults_to_development() {
-        assert_eq!(resolve_branch(None, None), "development");
+        assert_eq!(resolve_branch(None, None, None), "development");
     }
 
     #[test]
     fn resolve_branch_uses_corpus_branch() {
         assert_eq!(
-            resolve_branch(Some("custom".into()), Some("pr42".into())),
+            resolve_branch(
+                Some("custom".into()),
+                Some("pr42".into()),
+                Some("pr99-harvester-worker-abc-xyz".into())
+            ),
             "custom"
         );
     }
 
     #[test]
     fn resolve_branch_uses_corpus_branch_without_deployment() {
-        assert_eq!(resolve_branch(Some("custom".into()), None), "custom");
+        assert_eq!(resolve_branch(Some("custom".into()), None, None), "custom");
     }
 
     #[test]
     fn resolve_branch_uses_deployment_name_for_preview() {
-        assert_eq!(resolve_branch(None, Some("pr42".into())), "pr42");
+        assert_eq!(resolve_branch(None, Some("pr42".into()), None), "pr42");
     }
 
     #[test]
     fn resolve_branch_ignores_production_deployment() {
         assert_eq!(
-            resolve_branch(None, Some("regelrecht".into())),
+            resolve_branch(None, Some("regelrecht".into()), None),
             "development"
         );
     }
@@ -230,9 +257,61 @@ mod tests {
     #[test]
     fn resolve_branch_ignores_empty_values() {
         assert_eq!(
-            resolve_branch(Some("".into()), Some("".into())),
+            resolve_branch(Some("".into()), Some("".into()), Some("".into())),
             "development"
         );
+    }
+
+    #[test]
+    fn resolve_branch_uses_pr_hostname_when_deployment_name_missing() {
+        assert_eq!(
+            resolve_branch(None, None, Some("pr429-harvester-worker-abc-xyz".into())),
+            "pr429"
+        );
+    }
+
+    #[test]
+    fn resolve_branch_ignores_production_hostname() {
+        assert_eq!(
+            resolve_branch(
+                None,
+                None,
+                Some("regelrecht-harvester-worker-abc-xyz".into())
+            ),
+            "development"
+        );
+    }
+
+    #[test]
+    fn resolve_branch_deployment_name_beats_hostname() {
+        assert_eq!(
+            resolve_branch(
+                None,
+                Some("pr99".into()),
+                Some("regelrecht-harvester-worker-abc-xyz".into())
+            ),
+            "pr99"
+        );
+    }
+
+    #[test]
+    fn deployment_from_hostname_recognises_pr_and_prod() {
+        assert_eq!(
+            deployment_from_hostname("pr568-enrichworker-abc-xyz"),
+            Some("pr568".into())
+        );
+        assert_eq!(
+            deployment_from_hostname("regelrecht-harvester-admin-abc-xyz"),
+            Some("regelrecht".into())
+        );
+    }
+
+    #[test]
+    fn deployment_from_hostname_rejects_unknown_prefixes() {
+        assert_eq!(deployment_from_hostname("feature-x-foo-a-b"), None);
+        assert_eq!(deployment_from_hostname("prabc-foo-a-b"), None);
+        assert_eq!(deployment_from_hostname("pr-foo-a-b"), None);
+        assert_eq!(deployment_from_hostname(""), None);
     }
 
     #[test]
