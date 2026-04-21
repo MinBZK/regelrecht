@@ -117,8 +117,83 @@
 
   // --- Folder upload state (alternatief voor backend /laws/list) ---
   let folderInputEl: HTMLInputElement | null = null;
+  let featureInputEl: HTMLInputElement | null = null;
   let uploadedSourceLabel = $state<string | null>(null);
   let uploadedFeatureContents = new Map<string, string>();
+
+  // --- Scope manifest state ---
+  // Manifest-contract (gedeeld met poc-machine-law):
+  //   schema_version: '1'
+  //   name: <string>
+  //   laws: [{ id, layer?, critical?, notes? }, ...]
+  //   scenarios: [<path-to-.feature>, ...]   # optioneel
+  // Matching op `id` tegen $id uit de regelrecht-YAML (== `law` in de PoC).
+  // Onbekende IDs worden gewaarschuwd, niet fataal. Als `scenarios` gezet is
+  // wordt de feature-lijst gefilterd op basename.
+  type ScopeLaw = { id: string; layer?: string; critical?: boolean; notes?: string };
+  type ScopeManifest = {
+    schema_version?: string;
+    name?: string;
+    laws: ScopeLaw[];
+    scenarios?: string[];
+  };
+  let scopeInputEl: HTMLInputElement | null = null;
+  let scopeManifest = $state<ScopeManifest | null>(null);
+  let scopeUnknownIds = $state<string[]>([]);
+  let scopeVersionWarning = $state<string | null>(null);
+
+  function parseScopeManifest(text: string): ScopeManifest | null {
+    try {
+      const data = yaml.parse(text);
+      if (!data || !Array.isArray(data.laws)) return null;
+
+      const laws: ScopeLaw[] = [];
+      for (const entry of data.laws) {
+        if (typeof entry === 'string') {
+          // Back-compat: flat string list
+          laws.push({ id: entry });
+        } else if (entry && typeof entry === 'object' && typeof entry.id === 'string') {
+          laws.push({
+            id: entry.id,
+            layer: typeof entry.layer === 'string' ? entry.layer : undefined,
+            critical: typeof entry.critical === 'boolean' ? entry.critical : undefined,
+            notes: typeof entry.notes === 'string' ? entry.notes : undefined,
+          });
+        }
+      }
+      if (laws.length === 0) return null;
+
+      const scenarios = Array.isArray(data.scenarios)
+        ? data.scenarios.filter((x: unknown): x is string => typeof x === 'string')
+        : undefined;
+
+      return {
+        schema_version: typeof data.schema_version === 'string' ? data.schema_version : undefined,
+        name: typeof data.name === 'string' ? data.name : undefined,
+        laws,
+        scenarios,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function applyScenarioFilter(manifest: ScopeManifest | null) {
+    // Filter the features dropdown to the scenarios listed in the manifest.
+    // Manifest-paden kunnen met map-prefix zijn (bijv.
+    // "features/foo.feature"); we matchen op basename zodat de uploaded
+    // feature-lijst gewoon werkt.
+    if (!manifest?.scenarios || manifest.scenarios.length === 0) return;
+    const wanted = new Set(manifest.scenarios.map((p) => p.split('/').pop() || p));
+    features = features.filter((f) => wanted.has(f));
+    if (selectedFeature && !wanted.has(selectedFeature)) selectedFeature = null;
+    if (features.length === 1 && !selectedFeature) selectedFeature = features[0];
+  }
+
+  function isScopeManifestFile(f: File): boolean {
+    const n = f.name.toLowerCase();
+    return n === 'scope.yaml' || n === 'scope.yml' || n === 'scope_manifest.yaml' || n === 'scope_manifest.yml';
+  }
 
   // Bekendmaking follow-up execution. Default = vandaag: juridisch de meest
   // voor de hand liggende datum (het besluit wordt direct na vaststelling
@@ -349,8 +424,14 @@
       if (focusParam) {
         const focusIds = getTransitiveDeps(focusParam, laws);
         selectedLaws = [...focusIds];
+      } else if (scopeManifest) {
+        const known = new Set(laws.map((l) => l.id));
+        const wantedIds = scopeManifest.laws.map((e) => e.id);
+        selectedLaws = wantedIds.filter((id) => known.has(id));
+        scopeUnknownIds = wantedIds.filter((id) => !known.has(id));
       } else {
         selectedLaws = laws.filter(l => l.articles.length > 0).map((law) => law.id);
+        scopeUnknownIds = [];
       }
 
       const ns: Node[] = [];
@@ -773,7 +854,13 @@
   async function handleFolderUpload(e: Event) {
     const input = e.target as HTMLInputElement;
     const all = Array.from(input.files ?? []);
-    const yamlFiles = all.filter((f) => f.name.endsWith('.yaml') || f.name.endsWith('.yml'));
+    // Separate scope manifest from regular YAMLs — the manifest is not a law
+    // and must not be parsed by parseLaw (the $id check would fail anyway, but
+    // excluding it here keeps the counts accurate).
+    const scopeFile = all.find(isScopeManifestFile) ?? null;
+    const yamlFiles = all.filter(
+      (f) => (f.name.endsWith('.yaml') || f.name.endsWith('.yml')) && f !== scopeFile,
+    );
     const featureFiles = all.filter((f) => f.name.endsWith('.feature'));
     if (yamlFiles.length === 0 && featureFiles.length === 0) {
       runError = 'Geen YAML- of .feature-bestanden gevonden in deze map';
@@ -781,7 +868,8 @@
     }
     runError = null;
     const folderName = all[0]?.webkitRelativePath.split('/')[0] ?? 'upload';
-    uploadedSourceLabel = `📂 ${folderName} — ${yamlFiles.length} wet(ten), ${featureFiles.length} feature(s)`;
+    const scopeNote = scopeFile ? ', 1 scope' : '';
+    uploadedSourceLabel = `📂 ${folderName} — ${yamlFiles.length} wet(ten), ${featureFiles.length} feature(s)${scopeNote}`;
 
     // Reset scenario state (uploaded features replace backend features)
     resetTrace();
@@ -797,9 +885,82 @@
     features = featureFiles.map((f) => f.name).sort();
     if (features.length === 1) selectedFeature = features[0];
 
+    // Apply scope manifest before rendering so the initial selection honors it.
+    scopeManifest = scopeFile ? parseScopeManifest(await scopeFile.text()) : null;
+    scopeUnknownIds = [];
+    scopeVersionWarning =
+      scopeManifest && scopeManifest.schema_version !== '1'
+        ? `Scope schema_version=${scopeManifest.schema_version ?? '(ontbreekt)'} — verwacht '1'`
+        : null;
+
     await loadAndRenderLaws(yamlFiles);
+    applyScenarioFilter(scopeManifest);
     // allow re-picking the same folder later
     input.value = '';
+  }
+
+  async function handleFeatureFiles(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const picked = Array.from(input.files ?? []).filter((f) => f.name.endsWith('.feature'));
+    if (picked.length === 0) {
+      input.value = '';
+      return;
+    }
+    runError = null;
+    // Merge into the uploaded feature cache (not replace), so users can keep
+    // previously loaded backend features and pile extras on top.
+    const newlyAdded: string[] = [];
+    for (const f of picked) {
+      const wasNew = !uploadedFeatureContents.has(f.name);
+      uploadedFeatureContents.set(f.name, await f.text());
+      if (wasNew && !features.includes(f.name)) newlyAdded.push(f.name);
+    }
+    if (newlyAdded.length > 0) {
+      features = [...features, ...newlyAdded].sort();
+    }
+    if (!selectedFeature && features.length > 0) {
+      // Prefer the first newly loaded feature so the user sees what they just picked.
+      selectedFeature = newlyAdded[0] ?? features[0];
+    }
+    input.value = '';
+  }
+
+  async function handleScopeFile(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const f = input.files?.[0];
+    if (!f) return;
+    const parsed = parseScopeManifest(await f.text());
+    if (!parsed) {
+      runError = `Scope-manifest ongeldig (verwacht een 'laws:' lijst met id-strings of objecten)`;
+      input.value = '';
+      return;
+    }
+    runError = null;
+    scopeManifest = parsed;
+    scopeVersionWarning =
+      parsed.schema_version !== '1'
+        ? `Scope schema_version=${parsed.schema_version ?? '(ontbreekt)'} — verwacht '1'`
+        : null;
+    // Re-apply to the currently loaded laws without re-parsing YAMLs.
+    const known = new Set(laws.map((l) => l.id));
+    const wantedIds = parsed.laws.map((e) => e.id);
+    selectedLaws = wantedIds.filter((id) => known.has(id));
+    scopeUnknownIds = wantedIds.filter((id) => !known.has(id));
+    applyScenarioFilter(parsed);
+    input.value = '';
+  }
+
+  function clearScope() {
+    scopeManifest = null;
+    scopeUnknownIds = [];
+    scopeVersionWarning = null;
+    selectedLaws = laws.filter((l) => l.articles.length > 0).map((l) => l.id);
+    // Rehydrate full feature list (dropping the manifest's scenario filter).
+    if (uploadedFeatureContents.size > 0) {
+      features = Array.from(uploadedFeatureContents.keys()).sort();
+    } else {
+      loadFeatureList();
+    }
   }
 
   function calculatePositions() {
@@ -1326,12 +1487,75 @@
       type="button"
       onclick={() => folderInputEl?.click()}
       class="cursor-pointer rounded-md border border-gray-400 bg-white px-3 py-1 text-gray-700 transition hover:bg-gray-100"
-      title="Kies een map met YAML-wetten (en optioneel .feature-bestanden)"
+      title="Kies een map met YAML-wetten (en optioneel .feature-bestanden en scope.yaml)"
     >
       📂 Map kiezen
     </button>
+
+    <input
+      type="file"
+      bind:this={featureInputEl}
+      onchange={handleFeatureFiles}
+      accept=".feature"
+      multiple
+      class="hidden"
+    />
+    <button
+      type="button"
+      onclick={() => featureInputEl?.click()}
+      class="cursor-pointer rounded-md border border-gray-400 bg-white px-3 py-1 text-gray-700 transition hover:bg-gray-100"
+      title="Laad één of meer .feature-bestanden (merget met de huidige lijst)"
+    >
+      📄 Feature laden
+    </button>
+
+    <input
+      type="file"
+      bind:this={scopeInputEl}
+      onchange={handleScopeFile}
+      accept=".yaml,.yml"
+      class="hidden"
+    />
+    <button
+      type="button"
+      onclick={() => scopeInputEl?.click()}
+      class="cursor-pointer rounded-md border border-gray-400 bg-white px-3 py-1 text-gray-700 transition hover:bg-gray-100"
+      title="Laad een YAML-manifest met een 'laws:' lijst om de getoonde subset te beperken"
+    >
+      📋 Scope laden
+    </button>
+
     {#if uploadedSourceLabel}
       <span class="truncate text-xs text-gray-500" title={uploadedSourceLabel}>{uploadedSourceLabel}</span>
+    {/if}
+
+    {#if scopeManifest}
+      {@const critical = scopeManifest.laws.filter((l) => l.critical).length}
+      <span
+        class="flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-800"
+        title={scopeManifest.name || 'Scope actief'}
+      >
+        📋 {scopeManifest.name ?? 'scope'} · {selectedLaws.length}/{scopeManifest.laws.length}{critical > 0 ? ` · ${critical} kritiek` : ''}
+        <button
+          type="button"
+          onclick={clearScope}
+          class="ml-1 cursor-pointer text-indigo-600 hover:text-indigo-900"
+          title="Scope verwijderen"
+        >✕</button>
+      </span>
+      {#if scopeUnknownIds.length > 0}
+        <span
+          class="truncate rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800"
+          title={`Niet gevonden in geladen set:\n- ${scopeUnknownIds.join('\n- ')}`}
+        >
+          ⚠ {scopeUnknownIds.length} onbekende id
+        </span>
+      {/if}
+      {#if scopeVersionWarning}
+        <span class="truncate rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800" title={scopeVersionWarning}>
+          ⚠ versie
+        </span>
+      {/if}
     {/if}
 
     {#if features.length > 1}
