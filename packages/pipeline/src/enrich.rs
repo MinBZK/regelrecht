@@ -438,32 +438,31 @@ pub async fn create_enrich_corpus(
     client.ensure_repo().await?;
 
     // Prefer the worker's own base branch (e.g. `pr574`) so PR deployments
-    // enrich their own harvested YAML, not production's. Fall back to
-    // `development` for a fresh PR whose harvester hasn't pushed yet.
+    // enrich their own harvested YAML, not production's. Probe the remote
+    // first and fall back to `development` only when the branch doesn't
+    // exist yet — which covers a fresh PR whose harvester hasn't pushed.
+    // Probing explicitly (instead of try-then-fallback on any error)
+    // prevents an unrelated `checkout` or `reset` failure from silently
+    // dropping the enrichment back to production's branch.
     //
     // Pass the exact file path (not the directory) so the `ls-files` guard
     // inside `checkout_from_branch` doesn't match sibling files and skip
     // fetching a newly harvested version of an already-known law.
     let preferred_base = base_config.branch.as_str();
-    if preferred_base != "development" {
-        if let Err(e) = client
-            .checkout_from_branch(preferred_base, &[&normalized])
-            .await
-        {
-            tracing::warn!(
+    let base_branch =
+        if preferred_base == "development" || client.remote_branch_exists(preferred_base).await? {
+            preferred_base
+        } else {
+            tracing::info!(
                 branch = %preferred_base,
-                error = %e,
-                "base branch not available on remote, falling back to development"
+                "base branch not yet published on remote, using development for first enrichment"
             );
-            client
-                .checkout_from_branch("development", &[&normalized])
-                .await?;
-        }
-    } else {
-        client
-            .checkout_from_branch("development", &[&normalized])
-            .await?;
-    }
+            "development"
+        };
+
+    client
+        .checkout_from_branch(base_branch, &[&normalized])
+        .await?;
 
     Ok(client)
 }

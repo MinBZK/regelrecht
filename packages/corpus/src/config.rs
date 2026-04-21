@@ -91,8 +91,8 @@ impl CorpusConfig {
     ///
     /// Required: `CORPUS_REPO_URL`
     /// Optional: `CORPUS_REPO_PATH` (default: `/tmp/corpus-repo`),
-    ///           `CORPUS_BRANCH` (default: `HOSTNAME` prefix for PR previews,
-    ///            else `DEPLOYMENT_NAME`, else `development`),
+    ///           `CORPUS_BRANCH` (used only when `HOSTNAME` is not a recognised
+    ///            ZAD prefix; see `resolve_branch` for the full priority chain),
     ///           `CORPUS_GIT_AUTHOR_NAME` (default: `regelrecht-harvester`),
     ///           `CORPUS_GIT_AUTHOR_EMAIL` (default: `noreply@minbzk.nl`),
     ///           `CORPUS_GIT_TOKEN` (for authentication)

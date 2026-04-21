@@ -381,6 +381,15 @@ impl CorpusClient {
         Ok(())
     }
 
+    /// Check whether a branch exists on the configured `origin` remote.
+    pub async fn remote_branch_exists(&self, branch: &str) -> Result<bool> {
+        let refspec = format!("refs/heads/{}", branch);
+        let output = self
+            .run_git_output(&["ls-remote", "origin", &refspec])
+            .await?;
+        Ok(!output.trim().is_empty())
+    }
+
     /// Run a git command in the repo directory and check for success.
     async fn run_git(&self, args: &[&str]) -> Result<()> {
         let output = Command::new("git")
