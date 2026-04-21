@@ -22,13 +22,16 @@ const settingsOpen = ref(false);
 const showMiddlePane = computed(() => isEnabled('panel.scenario_form') || isEnabled('panel.yaml_editor'));
 const showFormOption = computed(() => isEnabled('panel.scenario_form'));
 const showYamlOption = computed(() => isEnabled('panel.yaml_editor'));
+const showResultOption = computed(() => isEnabled('panel.execution_trace'));
+const showMachineOption = computed(() => isEnabled('panel.machine_readable'));
+const showRightPane = computed(() => showResultOption.value || showMachineOption.value);
 
 // Compute visible pane count and slot assignments for split view
 const visiblePanes = computed(() => {
   const panes = [];
   if (isEnabled('panel.article_text')) panes.push('text');
   if (showMiddlePane.value) panes.push('middle');
-  if (isEnabled('panel.execution_trace')) panes.push('trace');
+  if (showRightPane.value) panes.push('trace');
   return panes.length > 0 ? panes : ['text', 'middle', 'trace'];
 });
 const paneSlot = (name) => {
@@ -183,6 +186,12 @@ watch([showFormOption, showYamlOption], ([form, yaml]) => {
   if (!yaml && middlePaneView.value === 'yaml' && form) middlePaneView.value = 'form';
 }, { immediate: true });
 
+// Keep rightPaneView in sync with enabled options
+watch([showResultOption, showMachineOption], ([result, machine]) => {
+  if (!result && rightPaneView.value === 'result' && machine) rightPaneView.value = 'machine';
+  if (!machine && rightPaneView.value === 'machine' && result) rightPaneView.value = 'result';
+}, { immediate: true });
+
 function onMiddlePaneChange(event) {
   const value = event.target?.value ?? event.detail?.[0];
   if (value) middlePaneView.value = value;
@@ -208,7 +217,7 @@ function handleScenarioExecuted({ result, traceText, error, expectations, scenar
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
-  rightPaneView.value = 'result';
+  if (showResultOption.value) rightPaneView.value = 'result';
 }
 
 // --- Editor state ---
@@ -745,17 +754,17 @@ function handleActionSave() {
           </ndd-split-view-pane>
 
           <!-- Right: Execution Result or Machine Readable -->
-          <ndd-split-view-pane v-if="isEnabled('panel.execution_trace')" :slot="paneSlot('trace')">
+          <ndd-split-view-pane v-if="showRightPane" :slot="paneSlot('trace')">
             <ndd-page sticky-header>
               <ndd-top-title-bar slot="header" :text="rightPaneTitle">
-                <ndd-segmented-control slot="toolbar" size="md" data-testid="right-pane-toggle" :value="rightPaneView" @change="onRightPaneChange">
+                <ndd-segmented-control v-if="showResultOption && showMachineOption" slot="toolbar" size="md" data-testid="right-pane-toggle" :value="rightPaneView" @change="onRightPaneChange">
                   <ndd-segmented-control-item value="result" text="Resultaat"></ndd-segmented-control-item>
                   <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
                 </ndd-segmented-control>
               </ndd-top-title-bar>
 
               <ExecutionTraceView
-                v-if="rightPaneView === 'result'"
+                v-if="showResultOption && rightPaneView === 'result'"
                 :result="lastResult"
                 :trace-text="lastTraceText"
                 :error="lastError"
@@ -764,7 +773,7 @@ function handleActionSave() {
               />
 
               <!-- Machine view: structured editor -->
-              <ndd-simple-section v-else-if="rightPaneView === 'machine'">
+              <ndd-simple-section v-else-if="showMachineOption && rightPaneView === 'machine'">
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
