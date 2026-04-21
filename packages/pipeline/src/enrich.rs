@@ -437,12 +437,33 @@ pub async fn create_enrich_corpus(
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
 
+    // Prefer the worker's own base branch (e.g. `pr574`) so PR deployments
+    // enrich their own harvested YAML, not production's. Fall back to
+    // `development` for a fresh PR whose harvester hasn't pushed yet.
+    //
     // Pass the exact file path (not the directory) so the `ls-files` guard
     // inside `checkout_from_branch` doesn't match sibling files and skip
     // fetching a newly harvested version of an already-known law.
-    client
-        .checkout_from_branch("development", &[&normalized])
-        .await?;
+    let preferred_base = base_config.branch.as_str();
+    if preferred_base != "development" {
+        if let Err(e) = client
+            .checkout_from_branch(preferred_base, &[&normalized])
+            .await
+        {
+            tracing::warn!(
+                branch = %preferred_base,
+                error = %e,
+                "base branch not available on remote, falling back to development"
+            );
+            client
+                .checkout_from_branch("development", &[&normalized])
+                .await?;
+        }
+    } else {
+        client
+            .checkout_from_branch("development", &[&normalized])
+            .await?;
+    }
 
     Ok(client)
 }
