@@ -20,6 +20,7 @@ use tracing_subscriber::EnvFilter;
 mod config;
 mod corpus_handlers;
 mod favorites;
+mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
@@ -107,6 +108,7 @@ async fn main() {
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
         )
+        .route("/api/feature-flags", get(feature_flags::list_feature_flags))
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
         // auth because it triggers outbound requests to zoekservice.overheid.nl
@@ -157,6 +159,10 @@ async fn main() {
         .route(
             "/api/corpus/reload",
             axum::routing::post(corpus_handlers::reload_corpus),
+        )
+        .route(
+            "/api/feature-flags/{key}",
+            axum::routing::put(feature_flags::update_feature_flag),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

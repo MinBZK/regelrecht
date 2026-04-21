@@ -99,6 +99,7 @@ jobs:
     with:
       image-name: minbzk/regelrecht-editor
       dockerfile: frontend/Dockerfile
+      cache-scope: editor
     # Only GITHUB_TOKEN is needed; it is automatically available to called workflows
 
   build-admin:
