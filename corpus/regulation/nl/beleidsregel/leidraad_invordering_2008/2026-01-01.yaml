@@ -275,6 +275,43 @@ articles:
       De waarde van de inboedel wordt niet als vermogensbestanddeel in aanmerking genomen als deze bij gedwongen verkoop niet
       meer dan € 2269 bedraagt.
     url: https://wetten.overheid.nl/BWBR0024096/2026-01-01#Circulaire.divisie26.2.2
+    machine_readable:
+      definitions:
+        drempel_inboedel:
+          description: >-
+            Drempelwaarde (eurocent) voor de inboedel bij bepaling van het vermogen voor
+            kwijtschelding. Bij gedwongen verkoop niet meer dan EUR 2269 betekent geen
+            vermogensbestanddeel. Geldt op grond van de Leidraad Invordering 2008 art 26.2.2
+            en is consistent met URI art 12, tweede lid, onderdeel a.
+          value: 226900
+      execution:
+        parameters:
+          - name: inboedel_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Actuele waarde (gedwongen-verkoop) van de inboedel.
+        output:
+          - name: inboedel_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Als vermogen meetellende waarde van de inboedel: 0 indien waarde binnen de drempel,
+              anders de volle waarde. URI art 12 implementeert dezelfde regel via
+              `drempelwaarde_inboedel_auto`.
+        actions:
+          - output: inboedel_als_vermogen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: GREATER_THAN
+                    subject: $inboedel_waarde
+                    value: $drempel_inboedel
+                  then: $inboedel_waarde
+              default: 0
   - number: 26.2.3
     text: |
       De waarde van de personenauto wordt niet als vermogensbestanddeel in aanmerking genomen als deze op het moment waarop
@@ -288,6 +325,60 @@ articles:
       gezinsleden. Met gezinsleden wordt bedoeld de echtgenoot van belastingschuldige, of zijn kind(eren) voor zover deze
       geen eigen inkomen/vermogen heeft (hebben) waaruit de auto in beginsel zou kunnen worden betaald.
     url: https://wetten.overheid.nl/BWBR0024096/2026-01-01#Circulaire.divisie26.2.3
+    machine_readable:
+      overrides:
+        - law: uitvoeringsregeling_invorderingswet_1990
+          article: '12'
+          output: auto_als_vermogen
+      definitions:
+        drempel_auto:
+          description: >-
+            Drempelwaarde (eurocent) voor een personenauto bij bepaling van het vermogen voor
+            kwijtschelding. Bij waarde EUR 3350 of minder geen vermogensbestanddeel; boven de
+            drempel telt de volle waarde. Leidraad Invordering 2008 art 26.2.3 — beleidsregel-
+            overrule van URI art 12 lid 2 onder c (daar EUR 2269). Lex pro cive (burger
+            gunstiger) sinds de leidraad deze drempel hanteert.
+          value: 335000
+      execution:
+        parameters:
+          - name: auto_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Actuele (over)waarde van de personenauto, na aftrek van eventuele
+              financieringsschuld als er een pandrecht op rust.
+          - name: auto_onmisbaar
+            type: boolean
+            required: true
+            description: >-
+              True indien de belastingschuldige aannemelijk maakt dat de auto absoluut onmisbaar is
+              voor beroepsuitoefening, of in verband met invaliditeit of ziekte van hem of zijn
+              gezinsleden. In dat geval telt de auto niet als vermogen, ongeacht de waarde.
+        output:
+          - name: auto_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Als vermogen meetellende waarde van de personenauto. Onmisbaarheid maakt de auto
+              altijd vermogensvrij; anders geldt de drempel.
+        actions:
+          - output: auto_als_vermogen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $auto_onmisbaar
+                    value: true
+                  then: 0
+                - when:
+                    operation: GREATER_THAN
+                    subject: $auto_waarde
+                    value: $drempel_auto
+                  then: $auto_waarde
+              default: 0
   - number: 26.2.4
     text: |
       Incidentele ontvangsten op een bankrekening (zoals vakantiegeld) worden voor de bepaling van een aanwezig
