@@ -39,6 +39,41 @@ articles:
       a. de percentages ten minste 90 en ten hoogste 100 bedragen; en
 
       b. het percentage voor alle belastingschuldigen, bedoeld in artikel 16 van de Uitvoeringsregeling, hetzelfde is.
+    machine_readable:
+      definitions:
+        kostennorm_percentage_min:
+          description: Ondergrens (decimaal) van het kostennorm-percentage dat een provinciale/gemeentelijke/waterschaps
+            verordening mag hanteren. Artikel 2, onder a, Regeling kwijtschelding belastingen medeoverheden.
+          value: 0.9
+        kostennorm_percentage_max:
+          description: Bovengrens (decimaal) van het kostennorm-percentage dat een provinciale/gemeentelijke/waterschaps
+            verordening mag hanteren. Artikel 2, onder a, Regeling kwijtschelding belastingen medeoverheden.
+          value: 1.0
+      execution:
+        parameters:
+          - name: kostennorm_percentage_verordening
+            type: number
+            required: true
+            description: Het door de verordening gekozen percentage (decimaal, bv. 1.0 voor 100%).
+        output:
+          - name: kostennorm_percentage_rechtsgeldig
+            type: boolean
+            description: |
+              True indien het door een verordening gekozen kostennorm-percentage valt binnen de bij
+              artikel 2 van deze regeling gestelde grenzen (>= 90% en <= 100%). URI artikel 16 declareert
+              de open_term `kostennorm_percentage`; deze regeling begrenst wat verordeningen daar mogen
+              invullen. HHNK art 2 kiest 1.0 (100%), dat valt binnen de grenzen.
+        actions:
+          - output: kostennorm_percentage_rechtsgeldig
+            value:
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $kostennorm_percentage_verordening
+                  value: $kostennorm_percentage_min
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $kostennorm_percentage_verordening
+                  value: $kostennorm_percentage_max
   - number: '3'
     url: https://wetten.overheid.nl/BWBR0047157/2022-09-17#Artikel3
     text: |
@@ -68,6 +103,92 @@ articles:
       b. de premies voor de volksverzekeringen; en
 
       c. de inkomensafhankelijke bijdrage, bedoeld in artikel 41 van de Zorgverzekeringswet.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bruto_ouderdomspensioen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Bruto-ouderdomspensioen per maand (artikel 9, vijfde lid, AOW). SVB-bedrag
+              inclusief vakantie-uitkering.
+          - name: verschuldigde_loonbelasting_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Verschuldigde loonbelasting over het bruto-ouderdomspensioen (tarieven eerste
+              schijf voor pensioengerechtigden).
+          - name: premies_volksverzekeringen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Premies voor de volksverzekeringen (AOW-, ANW-, Wlz-premie) die op het
+              bruto-pensioen drukken.
+          - name: huishoudtype
+            type: string
+            required: true
+        input:
+          - name: inkomensafhankelijke_bijdrage_zvw_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: zorgverzekeringswet
+              output: inkomensafhankelijke_bijdrage_maand
+              parameters:
+                bruto_inkomen_maand: $bruto_ouderdomspensioen_maand
+            description: Inkomensafhankelijke bijdrage per artikel 41 Zorgverzekeringswet. Wordt via
+              cross-law source opgehaald bij Zvw; als die wet geen machine_readable artikel 41 biedt,
+              dient deze waarde door de caller te worden aangeleverd.
+        output:
+          - name: netto_ouderdomspensioen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |
+              Netto-ouderdomspensioen per lid 3: bruto minus loonbelasting minus premies volksverzekeringen
+              minus inkomensafhankelijke bijdrage Zvw. Gebruikt als alternatief voor de bijstandsnorm
+              wanneer een verordening lid 1 activeert voor pensioengerechtigden. URI art 16 heeft deze
+              waarde voor 2026 ingebakken in de `definitions` netto_ouderdomspensioen_alleenstaand en
+              netto_ouderdomspensioen_echtgenoten; dit artikel documenteert de formule.
+          - name: kostennorm_basis_pensioengerechtigd
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |
+              Basisbedrag kostennorm voor een pensioengerechtigde na toepassing van lid 2: tweemaal het
+              netto-ouderdomspensioen voor gehuwden (onderdeel a) of eenmaal voor alleenstaanden
+              (onderdeel c). HHNK art 2 lid 2 activeert dit pad.
+        actions:
+          - output: netto_ouderdomspensioen_maand
+            value:
+              operation: SUBTRACT
+              values:
+                - operation: SUBTRACT
+                  values:
+                    - operation: SUBTRACT
+                      values:
+                        - $bruto_ouderdomspensioen_maand
+                        - $verschuldigde_loonbelasting_maand
+                    - $premies_volksverzekeringen_maand
+                - $inkomensafhankelijke_bijdrage_zvw_maand
+          - output: kostennorm_basis_pensioengerechtigd
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: echtgenoten
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - 2
+                      - $netto_ouderdomspensioen_maand
+              default: $netto_ouderdomspensioen_maand
   - number: '4'
     url: https://wetten.overheid.nl/BWBR0047157/2022-09-17#Artikel4
     text: |
@@ -79,6 +200,79 @@ articles:
       b. de verhoging voor een alleenstaande 75 procent bedraagt van de verhoging, bedoeld in onderdeel a; en
 
       c. de verhoging voor een alleenstaande ouder 90 procent bedraagt van de verhoging, bedoeld in onderdeel a.
+    machine_readable:
+      definitions:
+        verhoging_cap_echtgenoten:
+          description: Maximale verhoging (eurocent) van de vrijstelling financiele middelen voor de
+            belastingschuldige en echtgenoot, artikel 4, onder a.
+          value: 200000
+        verhoging_ratio_alleenstaande:
+          description: Ratio van de verhoging voor een alleenstaande ten opzichte van echtgenoten
+            (artikel 4, onder b). 75%.
+          value: 0.75
+        verhoging_ratio_alleenstaande_ouder:
+          description: Ratio van de verhoging voor een alleenstaande ouder ten opzichte van echtgenoten
+            (artikel 4, onder c). 90%.
+          value: 0.9
+      execution:
+        parameters:
+          - name: verhoging_verordening
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Door de verordening vastgestelde verhoging (eurocent per huishoudtype).
+          - name: huishoudtype
+            type: string
+            required: true
+        output:
+          - name: verhoging_max
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Wettelijke bovengrens voor de verhoging per huishoudtype conform artikel 4.
+          - name: verhoging_rechtsgeldig
+            type: boolean
+            description: |
+              True indien de door een verordening vastgestelde verhoging binnen de bij artikel 4
+              gestelde grenzen valt. URI art 12 declareert de open_term
+              `verhoging_financiele_middelen_vrijstelling`; deze regeling begrenst de maxima per
+              huishoudtype. HHNK art 4 kiest 200000/180000/150000 (echtgenoten/alleenstaande ouder/
+              alleenstaande), wat de grenzen raakt maar niet overschrijdt.
+        actions:
+          - output: verhoging_max
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: echtgenoten
+                  then: $verhoging_cap_echtgenoten
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: alleenstaande_ouder
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $verhoging_cap_echtgenoten
+                      - $verhoging_ratio_alleenstaande_ouder
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: alleenstaande
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $verhoging_cap_echtgenoten
+                      - $verhoging_ratio_alleenstaande
+              default: 0
+          - output: verhoging_rechtsgeldig
+            value:
+              operation: LESS_THAN_OR_EQUAL
+              subject: $verhoging_verordening
+              value: $verhoging_max
   - number: '5'
     url: https://wetten.overheid.nl/BWBR0047157/2022-09-17#Artikel5
     text: |
