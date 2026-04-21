@@ -89,6 +89,7 @@
     GRONDWET: 4,
     BELEIDSREGEL: 5,
     EU_VERORDENING: 6,
+    WATERSCHAPS_VERORDENING: 7,
   };
 
   function getLayerColorIndex(layer: string): number {
@@ -113,6 +114,11 @@
   let traceView = $state<'steps' | 'tree'>('steps');
   let traceFilter = $state<'highlights' | 'all'>('highlights');
   let traceStartNodeIds = $state<string[]>([]); // root laws + initial output leaves
+
+  // --- Folder upload state (alternatief voor backend /laws/list) ---
+  let folderInputEl: HTMLInputElement | null = null;
+  let uploadedSourceLabel = $state<string | null>(null);
+  let uploadedFeatureContents = new Map<string, string>();
 
   // Bekendmaking follow-up execution. Default = vandaag: juridisch de meest
   // voor de hand liggende datum (het besluit wordt direct na vaststelling
@@ -262,26 +268,51 @@
     return deps;
   }
 
-  (async () => {
+  async function loadAndRenderLaws(sourceFiles?: File[]) {
     try {
-      const response = await fetch('/laws/list');
-      const filePaths: string[] = await response.json();
+      // Unload any previously-loaded laws from the engine so upload replaces
+      // the backend corpus instead of merging.
+      try {
+        const engine = await initEngine();
+        for (const id of engine.listLaws()) engine.unloadLaw(id);
+      } catch {
+        // engine failed to init — surface via nodes/edges being empty
+      }
 
       const allLaws: Law[] = [];
       const yamlByLawKey = new Map<string, { yaml: string; valid_from: string }>();
-      await Promise.all(
-        filePaths.map(async (filePath) => {
-          const fileContent = await fetch(`/law/${filePath}`).then((r) => r.text());
-          const law = parseLaw(fileContent);
-          if (law) {
-            allLaws.push(law);
-            const existing = yamlByLawKey.get(law.id);
-            if (!existing || law.valid_from > existing.valid_from) {
-              yamlByLawKey.set(law.id, { yaml: fileContent, valid_from: law.valid_from });
+
+      if (sourceFiles && sourceFiles.length > 0) {
+        await Promise.all(
+          sourceFiles.map(async (file) => {
+            const fileContent = await file.text();
+            const law = parseLaw(fileContent);
+            if (law) {
+              allLaws.push(law);
+              const existing = yamlByLawKey.get(law.id);
+              if (!existing || law.valid_from > existing.valid_from) {
+                yamlByLawKey.set(law.id, { yaml: fileContent, valid_from: law.valid_from });
+              }
             }
-          }
-        }),
-      );
+          }),
+        );
+      } else {
+        const response = await fetch('/laws/list');
+        const filePaths: string[] = await response.json();
+        await Promise.all(
+          filePaths.map(async (filePath) => {
+            const fileContent = await fetch(`/law/${filePath}`).then((r) => r.text());
+            const law = parseLaw(fileContent);
+            if (law) {
+              allLaws.push(law);
+              const existing = yamlByLawKey.get(law.id);
+              if (!existing || law.valid_from > existing.valid_from) {
+                yamlByLawKey.set(law.id, { yaml: fileContent, valid_from: law.valid_from });
+              }
+            }
+          }),
+        );
+      }
 
       // Deduplicate: keep latest version per $id
       const lawMap = new Map<string, Law>();
@@ -735,7 +766,41 @@
     } catch (error) {
       console.error('Error reading file', error);
     }
-  })();
+  }
+
+  loadAndRenderLaws();
+
+  async function handleFolderUpload(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const all = Array.from(input.files ?? []);
+    const yamlFiles = all.filter((f) => f.name.endsWith('.yaml') || f.name.endsWith('.yml'));
+    const featureFiles = all.filter((f) => f.name.endsWith('.feature'));
+    if (yamlFiles.length === 0 && featureFiles.length === 0) {
+      runError = 'Geen YAML- of .feature-bestanden gevonden in deze map';
+      return;
+    }
+    runError = null;
+    const folderName = all[0]?.webkitRelativePath.split('/')[0] ?? 'upload';
+    uploadedSourceLabel = `📂 ${folderName} — ${yamlFiles.length} wet(ten), ${featureFiles.length} feature(s)`;
+
+    // Reset scenario state (uploaded features replace backend features)
+    resetTrace();
+    selectedFeature = null;
+    featureScenarios = [];
+    selectedScenarioIdx = 0;
+
+    // Populate feature cache + list from upload (or clear if none)
+    uploadedFeatureContents = new Map();
+    for (const f of featureFiles) {
+      uploadedFeatureContents.set(f.name, await f.text());
+    }
+    features = featureFiles.map((f) => f.name).sort();
+    if (features.length === 1) selectedFeature = features[0];
+
+    await loadAndRenderLaws(yamlFiles);
+    // allow re-picking the same folder later
+    input.value = '';
+  }
 
   function calculatePositions() {
     const rootNodes = nodes.filter((n) => n.class?.includes('root') && !n.hidden);
@@ -914,6 +979,8 @@
   }
 
   async function loadFeatureList() {
+    // Uploaded features take precedence; skip backend fetch when they're set.
+    if (uploadedFeatureContents.size > 0) return;
     try {
       const res = await fetch('/features/list');
       if (!res.ok) return;
@@ -930,9 +997,12 @@
 
   async function loadSelectedFeature(name: string) {
     try {
-      const res = await fetch(`/feature/${encodeURIComponent(name)}`);
-      if (!res.ok) throw new Error(`Failed to load feature: ${res.status}`);
-      const text = await res.text();
+      const cached = uploadedFeatureContents.get(name);
+      const text = cached ?? (await (async () => {
+        const res = await fetch(`/feature/${encodeURIComponent(name)}`);
+        if (!res.ok) throw new Error(`Failed to load feature: ${res.status}`);
+        return res.text();
+      })());
       featureScenarios = parseFeature(text);
       selectedScenarioIdx = 0;
       resetTrace();
@@ -1231,6 +1301,7 @@
     AMVB: 'AMvB',
     MINISTERIELE_REGELING: 'Ministeriële regeling',
     GEMEENTELIJKE_VERORDENING: 'Gemeentelijke verordening',
+    WATERSCHAPS_VERORDENING: 'Waterschapsverordening',
     GRONDWET: 'Grondwet',
   };
 </script>
@@ -1243,6 +1314,26 @@
   <!-- Scenario toolbar -->
   <div class="flex flex-col border-b border-gray-200 bg-white text-sm">
   <div class="flex items-center gap-2 px-4 py-2">
+    <input
+      type="file"
+      bind:this={folderInputEl}
+      onchange={handleFolderUpload}
+      class="hidden"
+      multiple
+      {...{ webkitdirectory: '', directory: '' } as any}
+    />
+    <button
+      type="button"
+      onclick={() => folderInputEl?.click()}
+      class="cursor-pointer rounded-md border border-gray-400 bg-white px-3 py-1 text-gray-700 transition hover:bg-gray-100"
+      title="Kies een map met YAML-wetten (en optioneel .feature-bestanden)"
+    >
+      📂 Map kiezen
+    </button>
+    {#if uploadedSourceLabel}
+      <span class="truncate text-xs text-gray-500" title={uploadedSourceLabel}>{uploadedSourceLabel}</span>
+    {/if}
+
     {#if features.length > 1}
       <label class="font-semibold text-gray-700" for="feature-select">Feature:</label>
       <select
@@ -1599,6 +1690,8 @@
   :global(.service-5.property-group) { @apply border-yellow-800 bg-yellow-100; }
   :global(.service-6.root) { @apply border-slate-800 bg-slate-50; }
   :global(.service-6.property-group) { @apply border-slate-800 bg-slate-100; }
+  :global(.service-7.root) { @apply border-cyan-800 bg-cyan-50; }
+  :global(.service-7.property-group) { @apply border-cyan-800 bg-cyan-100; }
 
   .service-0 { @apply bg-blue-100 text-blue-800; }
   .service-1 { @apply bg-pink-100 text-pink-800; }
@@ -1607,6 +1700,7 @@
   .service-4 { @apply bg-purple-100 text-purple-800; }
   .service-5 { @apply bg-yellow-100 text-yellow-800; }
   .service-6 { @apply bg-slate-100 text-slate-800; }
+  .service-7 { @apply bg-cyan-100 text-cyan-800; }
 
   :global(.property-group, .svelte-flow__node-input, .svelte-flow__node-source, .svelte-flow__node-output) {
     @apply cursor-grab overflow-hidden text-ellipsis;
