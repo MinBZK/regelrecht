@@ -23,6 +23,11 @@ pub struct AppState {
     /// Base URL of the pipeline-api service (e.g. "http://pipeline-api:8001").
     /// When set, `/api/harvest/*` requests are proxied to this service.
     pub pipeline_api_url: Option<String>,
+    /// Single-flight gate for `POST /api/corpus/reload`. The reload fans out
+    /// to GitHub (one API call per law source); without this gate an
+    /// authenticated user could burn through the 5000 req/hr token quota
+    /// with a single `xargs -P` and block corpus reads for everyone.
+    pub reload_lock: Arc<Mutex<()>>,
 }
 
 impl OidcAppState for AppState {

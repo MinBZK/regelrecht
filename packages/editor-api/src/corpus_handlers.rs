@@ -685,6 +685,18 @@ pub async fn reload_corpus(
     State(state): State<AppState>,
     body: Option<Json<ReloadRequest>>,
 ) -> Result<Json<ReloadResponse>, (StatusCode, String)> {
+    // Single-flight: each reload fans out to GitHub (one call per law
+    // source). Without this gate, an authenticated client firing parallel
+    // reloads can exhaust the 5000 req/hr token quota and break corpus
+    // reads for everyone. Concurrent callers get 429 rather than being
+    // serialised — a reload already in flight will pick up their changes.
+    let _reload_guard = state.reload_lock.try_lock().map_err(|_| {
+        (
+            StatusCode::TOO_MANY_REQUESTS,
+            "Corpus reload already in progress".to_string(),
+        )
+    })?;
+
     // Gather everything we need under a read lock so concurrent readers
     // (law fetches, scenario loads, dependency resolution) are not blocked
     // for the duration of the GitHub round-trip.
