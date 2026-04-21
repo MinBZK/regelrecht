@@ -46,7 +46,8 @@ fn deployment_from_hostname(hostname: &str) -> Option<String> {
 /// Resolve the corpus branch from explicit config and platform variables.
 ///
 /// Priority: `CORPUS_BRANCH` > `DEPLOYMENT_NAME` > `HOSTNAME` prefix > `"development"`.
-/// Production deployment name (`"regelrecht"`) is ignored so it falls through
+/// Both `DEPLOYMENT_NAME` and the hostname-derived prefix are ignored when they
+/// equal `"regelrecht"` (production), so production workers always fall through
 /// to the default `"development"` branch.
 fn resolve_branch(
     corpus_branch: Option<String>,
@@ -291,6 +292,18 @@ mod tests {
                 Some("regelrecht-harvester-worker-abc-xyz".into())
             ),
             "pr99"
+        );
+    }
+
+    #[test]
+    fn resolve_branch_production_deployment_name_beats_pr_hostname() {
+        assert_eq!(
+            resolve_branch(
+                None,
+                Some("regelrecht".into()),
+                Some("pr429-harvester-worker-abc-xyz".into())
+            ),
+            "development"
         );
     }
 
