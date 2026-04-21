@@ -247,18 +247,14 @@ where
     Ok(count)
 }
 
-/// Create a harvest job only if no non-failed harvest job exists
-/// for the same (law_id, date) combination.
+/// Create a harvest job only if no active harvest job exists for this law.
 ///
-/// Uses `INSERT ... WHERE NOT EXISTS` to reduce duplicates compared to a
-/// separate check + insert. Only `failed` jobs allow re-creation, enabling
-/// retries. Uses negation (`!= 'failed'`) rather than an explicit allowlist
-/// so that any future job statuses automatically block duplicate creation.
-///
-/// Note: under READ COMMITTED isolation, concurrent transactions can still
-/// both insert if they evaluate the subquery before either commits. This is
-/// acceptable for the single-worker MVP — duplicates only cause redundant
-/// work, not data corruption.
+/// The fast path uses `INSERT ... WHERE NOT EXISTS` (filtered by date) to
+/// avoid a round-trip for the common non-racing case. When two requests race
+/// and both pass the subquery, the partial unique index
+/// `idx_unique_active_harvest_job` (migration 0011) rejects the second with
+/// a 23505 unique-violation — we translate that into `Ok(None)` so callers
+/// see the same "already exists" signal regardless of which path caught it.
 ///
 /// Returns `Some(Job)` if a new job was created, `None` if a matching job already exists.
 pub async fn create_harvest_job_if_not_exists<'e, E>(
@@ -269,7 +265,7 @@ pub async fn create_harvest_job_if_not_exists<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let job = sqlx::query_as::<_, Job>(
+    let result = sqlx::query_as::<_, Job>(
         r#"
         INSERT INTO jobs (job_type, law_id, priority, payload, max_attempts)
         SELECT $1, $2, $3, $4, $5
@@ -290,7 +286,15 @@ where
     .bind(req.max_attempts)
     .bind(date)
     .fetch_optional(executor)
-    .await?;
+    .await;
+
+    let job = match result {
+        Ok(job) => job,
+        Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23505") => {
+            return Ok(None);
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     if let Some(ref j) = job {
         tracing::info!(job_id = %j.id, law_id = %j.law_id, "follow-up harvest job created");

@@ -1,5 +1,8 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue';
+import { useBwbSearch, MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
+import { useBwbHarvest } from '../composables/useBwbHarvest.js';
+import { useAuth } from '../composables/useAuth.js';
 
 const props = defineProps({
   laws: { type: Array, default: () => [] },
@@ -7,7 +10,17 @@ const props = defineProps({
   anchorRect: { type: Object, default: null },
 });
 
-const emit = defineEmits(['update:modelValue', 'select-law']);
+const emit = defineEmits(['update:modelValue', 'select-law', 'harvest-available']);
+
+const { results: bwbResults, loading: bwbLoading, search: searchBwb, clear: clearBwb } = useBwbSearch();
+const {
+  harvestStatus, harvestSlugs, hasActiveHarvests,
+  requestHarvest, isAvailable, isPolling, isTerminal,
+  statusText, statusIcon,
+} = useBwbHarvest();
+const { authenticated, oidcConfigured, login } = useAuth();
+
+const needsLogin = computed(() => oidcConfigured.value && !authenticated.value);
 
 const search = ref('');
 const searchFieldRef = ref(null);
@@ -28,8 +41,37 @@ const filteredLaws = computed(() => {
 
 const hasSearch = computed(() => search.value.length > 0);
 
+// Trigger BWB search when local results are empty. Always clear prior BWB
+// results on any query change — the harvest status for in-flight jobs is
+// tracked in module-level `harvestStatus`, so clearing `bwbResults` does
+// not lose the background poll; it just hides the stale list from a
+// different query.
+watch([search, filteredLaws], ([q, filtered]) => {
+  clearBwb();
+  if (!q || q.length < 3 || filtered.length > 0) return;
+  if (needsLogin.value) return;
+  searchBwb(q);
+});
+
+function bwbItemClick(result) {
+  if (needsLogin.value) {
+    login();
+    return;
+  }
+  const status = harvestStatus.value[result.bwb_id];
+  if (status === 'loading') return;
+  const slug = harvestSlugs.value[result.bwb_id];
+  if (isAvailable(status) && slug) {
+    emit('harvest-available', slug);
+    close();
+  } else if (!status || isTerminal(status)) {
+    requestHarvest(result.bwb_id);
+  }
+}
+
 function close() {
   search.value = '';
+  clearBwb();
   emit('update:modelValue', false);
 }
 
@@ -85,11 +127,7 @@ watch(() => props.modelValue, async (open) => {
       </div>
 
       <div v-if="hasSearch" class="search-window-results">
-        <div v-if="filteredLaws.length === 0" class="search-window-empty">
-          <div class="search-window-empty-title">Geen resultaten gevonden</div>
-          <div class="search-window-empty-subtitle">Pas je zoektermen of voorkeuren aan</div>
-        </div>
-        <ndd-list v-else variant="simple">
+        <ndd-list v-if="filteredLaws.length > 0" variant="simple">
           <ndd-list-item
             v-for="law in filteredLaws"
             :key="law.law_id"
@@ -101,6 +139,47 @@ watch(() => props.modelValue, async (open) => {
             </ndd-text-cell>
           </ndd-list-item>
         </ndd-list>
+
+        <!-- BWB external search results -->
+        <template v-if="filteredLaws.length === 0">
+          <div v-if="needsLogin && search.length >= MIN_QUERY_LENGTH" class="search-window-login-prompt">
+            <div class="search-window-empty-title">Log in om externe bronnen te doorzoeken</div>
+            <div class="search-window-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
+            <ndd-spacer size="12"></ndd-spacer>
+            <ndd-button size="md" text="Inloggen" @click="login"></ndd-button>
+          </div>
+          <ndd-inline-dialog v-else-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
+          <template v-else-if="bwbResults.length > 0">
+            <ndd-spacer size="8"></ndd-spacer>
+            <ndd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></ndd-title>
+            <ndd-spacer size="8"></ndd-spacer>
+            <ndd-list variant="simple">
+              <ndd-list-item
+                v-for="result in bwbResults"
+                :key="result.bwb_id"
+                size="md"
+                type="button"
+                :disabled="harvestStatus[result.bwb_id] === 'loading'
+                  || isPolling(harvestStatus[result.bwb_id])
+                  || undefined"
+                @click="bwbItemClick(result)"
+              >
+                <ndd-text-cell
+                  :text="result.title"
+                  :supporting-text="statusText(result.bwb_id, `${result.type} \u2014 ${result.bwb_id}`)"
+                >
+                </ndd-text-cell>
+                <ndd-icon-cell slot="end" size="20">
+                  <ndd-icon :name="statusIcon(result.bwb_id)"></ndd-icon>
+                </ndd-icon-cell>
+              </ndd-list-item>
+            </ndd-list>
+          </template>
+          <div v-else-if="!needsLogin && search.length >= MIN_QUERY_LENGTH && !bwbLoading && filteredLaws.length === 0" class="search-window-empty">
+            <div class="search-window-empty-title">Geen resultaten gevonden</div>
+            <div class="search-window-empty-subtitle">Pas je zoektermen of voorkeuren aan</div>
+          </div>
+        </template>
       </div>
     </div>
   </Teleport>
@@ -165,7 +244,8 @@ watch(() => props.modelValue, async (open) => {
   padding: 0 var(--primitives-space-12, 12px) var(--primitives-space-12, 12px);
 }
 
-.search-window-empty {
+.search-window-empty,
+.search-window-login-prompt {
   display: flex;
   flex-direction: column;
   align-items: center;

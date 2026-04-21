@@ -1,3 +1,5 @@
+pub mod api;
+mod api_state;
 pub mod config;
 pub mod db;
 pub mod enrich;
@@ -7,6 +9,8 @@ pub mod job_queue;
 pub mod law_status;
 pub mod models;
 pub mod worker;
+
+pub use api_state::ApiState;
 
 pub use config::{PipelineConfig, WorkerConfig};
 pub use db::{create_pool, ensure_schema, MIGRATION_LOCK_KEY};

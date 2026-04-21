@@ -10,7 +10,7 @@ use regelrecht_pipeline::models::{JobType, LawStatusValue};
 async fn test_upsert_law() {
     let db = common::TestDb::new().await;
 
-    let entry = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"))
+    let entry = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
         .await
         .unwrap();
 
@@ -19,9 +19,10 @@ async fn test_upsert_law() {
     assert_eq!(entry.status, LawStatusValue::Unknown);
     assert!(entry.coverage_score.is_none());
 
-    let updated = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet v2"))
-        .await
-        .unwrap();
+    let updated =
+        law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet v2"), None)
+            .await
+            .unwrap();
     assert_eq!(updated.law_name, Some("Zorgtoeslagwet v2".to_string()));
 }
 
@@ -29,21 +30,43 @@ async fn test_upsert_law() {
 async fn test_upsert_law_without_name() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", Some("Test Law"))
+    law_status::upsert_law(&db.pool, "test_law", Some("Test Law"), None)
         .await
         .unwrap();
 
-    let entry = law_status::upsert_law(&db.pool, "test_law", None)
+    let entry = law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
     assert_eq!(entry.law_name, Some("Test Law".to_string()));
 }
 
 #[tokio::test]
+async fn test_upsert_law_slug_preserved() {
+    let db = common::TestDb::new().await;
+
+    let entry = law_status::upsert_law(&db.pool, "slug_law", Some("Slug Law"), Some("slug_law"))
+        .await
+        .unwrap();
+    assert_eq!(entry.slug, Some("slug_law".to_string()));
+
+    // Upserting with None slug should preserve the original
+    let entry = law_status::upsert_law(&db.pool, "slug_law", None, None)
+        .await
+        .unwrap();
+    assert_eq!(entry.slug, Some("slug_law".to_string()));
+
+    // Upserting with a new slug should update it
+    let entry = law_status::upsert_law(&db.pool, "slug_law", None, Some("new_slug"))
+        .await
+        .unwrap();
+    assert_eq!(entry.slug, Some("new_slug".to_string()));
+}
+
+#[tokio::test]
 async fn test_update_status() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -70,7 +93,7 @@ async fn test_update_status_not_found() {
 async fn test_set_job_links() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -101,7 +124,7 @@ async fn test_set_job_links() {
 async fn test_set_coverage_score() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -115,7 +138,7 @@ async fn test_set_coverage_score() {
 async fn test_set_coverage_score_validation() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "test_law", None)
+    law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
         .unwrap();
 
@@ -149,7 +172,7 @@ async fn test_set_coverage_score_validation() {
 async fn test_get_law() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"))
+    law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
         .await
         .unwrap();
 
@@ -171,10 +194,10 @@ async fn test_get_law_not_found() {
 async fn test_list_laws() {
     let db = common::TestDb::new().await;
 
-    law_status::upsert_law(&db.pool, "law_a", Some("Law A"))
+    law_status::upsert_law(&db.pool, "law_a", Some("Law A"), None)
         .await
         .unwrap();
-    law_status::upsert_law(&db.pool, "law_b", Some("Law B"))
+    law_status::upsert_law(&db.pool, "law_b", Some("Law B"), None)
         .await
         .unwrap();
 
@@ -208,7 +231,7 @@ async fn test_transaction_atomicity() {
         .await
         .unwrap();
 
-    law_status::upsert_law(&mut *tx, "tx_law", Some("Transaction Law"))
+    law_status::upsert_law(&mut *tx, "tx_law", Some("Transaction Law"), None)
         .await
         .unwrap();
 
@@ -241,7 +264,7 @@ async fn test_transaction_rollback() {
         .await
         .unwrap();
 
-        law_status::upsert_law(&mut *tx, "rollback_law", Some("Should Not Exist"))
+        law_status::upsert_law(&mut *tx, "rollback_law", Some("Should Not Exist"), None)
             .await
             .unwrap();
 
@@ -253,4 +276,61 @@ async fn test_transaction_rollback() {
 
     let jobs = job_queue::list_jobs(&db.pool, None).await.unwrap();
     assert!(jobs.is_empty());
+}
+
+#[tokio::test]
+async fn test_update_status_unless_any_protects_multiple_statuses() {
+    let db = common::TestDb::new().await;
+
+    // Mirrors the production protected set in api::harvest::create_harvest_job.
+    let protected = &[
+        LawStatusValue::Harvesting,
+        LawStatusValue::Harvested,
+        LawStatusValue::Enriching,
+        LawStatusValue::Enriched,
+    ];
+
+    for status in protected {
+        law_status::upsert_law(&db.pool, "protected_law", None, None)
+            .await
+            .unwrap();
+        law_status::update_status(&db.pool, "protected_law", *status)
+            .await
+            .unwrap();
+
+        let res = law_status::update_status_unless_any(
+            &db.pool,
+            "protected_law",
+            protected,
+            LawStatusValue::Queued,
+        )
+        .await
+        .unwrap();
+        assert!(
+            res.is_none(),
+            "{status:?} should be protected from downgrade"
+        );
+        let entry = law_status::get_law(&db.pool, "protected_law")
+            .await
+            .unwrap();
+        assert_eq!(entry.status, *status);
+    }
+
+    // Non-protected statuses should still allow the update.
+    law_status::update_status(&db.pool, "protected_law", LawStatusValue::HarvestFailed)
+        .await
+        .unwrap();
+    let res = law_status::update_status_unless_any(
+        &db.pool,
+        "protected_law",
+        protected,
+        LawStatusValue::Queued,
+    )
+    .await
+    .unwrap();
+    assert!(res.is_some(), "HarvestFailed is not in the protected set");
+    let entry = law_status::get_law(&db.pool, "protected_law")
+        .await
+        .unwrap();
+    assert_eq!(entry.status, LawStatusValue::Queued);
 }

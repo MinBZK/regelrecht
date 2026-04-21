@@ -46,6 +46,22 @@ services:
     volumes:
       - regulation-repo-harvester:/tmp/regulation-repo
 
+  pipelineapi:
+    build:
+      context: .
+      dockerfile: packages/pipeline/Dockerfile.pipeline-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, --spider, -q, http://localhost:8000/health]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    environment:
+      DATABASE_URL: postgresql://regelrecht:regelrecht_dev@postgres:5432/regelrecht_pipeline
+      RUST_LOG: info
+
   enrich-worker:
     build:
       context: .
@@ -75,6 +91,8 @@ services:
       dockerfile: frontend/Dockerfile
       secrets:
         - GITHUB_TOKEN
+    environment:
+      PIPELINE_API_URL: http://pipelineapi:8000
     ports:
       - ${FRONTEND_PORT:-3000}:8000
 

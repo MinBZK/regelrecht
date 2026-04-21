@@ -3,26 +3,30 @@ use uuid::Uuid;
 use crate::error::{PipelineError, Result};
 use crate::models::{LawEntry, LawStatusValue};
 
-/// Upsert a law entry. Creates it if it doesn't exist, updates name if it does.
+/// Upsert a law entry. Creates it if it doesn't exist, updates name/slug if it does.
 #[tracing::instrument(skip(executor))]
 pub async fn upsert_law<'e, E>(
     executor: E,
     law_id: &str,
     law_name: Option<&str>,
+    slug: Option<&str>,
 ) -> Result<LawEntry>
 where
     E: sqlx::PgExecutor<'e>,
 {
     let entry = sqlx::query_as::<_, LawEntry>(
         r#"
-        INSERT INTO law_entries (law_id, law_name)
-        VALUES ($1, $2)
-        ON CONFLICT (law_id) DO UPDATE SET law_name = COALESCE($2, law_entries.law_name)
+        INSERT INTO law_entries (law_id, law_name, slug)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (law_id) DO UPDATE SET
+            law_name = COALESCE($2, law_entries.law_name),
+            slug = COALESCE($3, law_entries.slug)
         RETURNING *
         "#,
     )
     .bind(law_id)
     .bind(law_name)
+    .bind(slug)
     .fetch_one(executor)
     .await?;
 
@@ -200,6 +204,49 @@ where
         tracing::info!(law_id = %e.law_id, to = ?new_status, "law status updated (was not {:?})", not_status);
     } else {
         tracing::debug!(law_id = %law_id, not_status = ?not_status, to = ?new_status, "status update skipped (status is {:?})", not_status);
+    }
+    Ok(entry)
+}
+
+/// Atomically update status only if the current status is NOT in `not_statuses`.
+///
+/// Used when a caller wants to "downgrade" a status to e.g. `Queued` while
+/// protecting multiple in-progress / terminal states (e.g. `Harvesting`,
+/// `Enriching`, `Harvested`, `Enriched`) from being overwritten by a
+/// concurrent request.
+///
+/// The protected set is serialised via `strum::Display` and compared against
+/// `status::text` — this avoids needing `PgHasArrayType` on `LawStatusValue`
+/// (sqlx's `Type` derive does not implement it) while still giving a single
+/// atomic SQL statement.
+#[tracing::instrument(skip(executor))]
+pub async fn update_status_unless_any<'e, E>(
+    executor: E,
+    law_id: &str,
+    not_statuses: &[LawStatusValue],
+    new_status: LawStatusValue,
+) -> Result<Option<LawEntry>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
+    let not_status_names: Vec<String> = not_statuses.iter().map(|s| s.to_string()).collect();
+    let entry = sqlx::query_as::<_, LawEntry>(
+        r#"
+        UPDATE law_entries SET status = $3
+        WHERE law_id = $1 AND status::text <> ALL($2)
+        RETURNING *
+        "#,
+    )
+    .bind(law_id)
+    .bind(&not_status_names)
+    .bind(new_status)
+    .fetch_optional(executor)
+    .await?;
+
+    if let Some(ref e) = entry {
+        tracing::info!(law_id = %e.law_id, to = ?new_status, "law status updated (protected set: {:?})", not_statuses);
+    } else {
+        tracing::debug!(law_id = %law_id, to = ?new_status, "status update skipped (current status is in protected set {:?})", not_statuses);
     }
     Ok(entry)
 }

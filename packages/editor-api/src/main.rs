@@ -20,6 +20,7 @@ use tracing_subscriber::EnvFilter;
 mod config;
 mod corpus_handlers;
 mod favorites;
+mod harvest_proxy;
 mod middleware;
 mod state;
 
@@ -62,6 +63,14 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
+    let pipeline_api_url = env::var("PIPELINE_API_URL")
+        .ok()
+        .or_else(discover_pipeline_api_url_from_k8s);
+    match &pipeline_api_url {
+        Some(url) => tracing::info!(url = %url, "pipeline-api proxy target"),
+        None => tracing::info!("no pipeline-api URL configured, harvest proxy disabled"),
+    }
+
     let mut app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
         oidc_client,
@@ -69,6 +78,8 @@ async fn main() {
         config: Arc::new(app_config),
         http_client,
         pool: None, // set below when auth is enabled
+        pipeline_api_url,
+        reload_lock: Arc::new(tokio::sync::Mutex::new(())),
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -95,7 +106,12 @@ async fn main() {
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
-        );
+        )
+        // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
+        // safe to expose unauthenticated. (The search endpoint lives behind
+        // auth because it triggers outbound requests to zoekservice.overheid.nl
+        // and would otherwise be an amplification vector.)
+        .route("/api/harvest/status", get(harvest_proxy::proxy_harvest));
 
     // Protected API routes — require authentication when OIDC is enabled.
     // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
@@ -126,6 +142,21 @@ async fn main() {
         .route(
             "/api/favorites/{law_id}",
             axum::routing::put(favorites::add).delete(favorites::remove),
+        )
+        // Harvest proxy — write operations behind auth. Search is also
+        // behind auth because it makes outbound requests to the SRU API.
+        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        .route(
+            "/api/harvest",
+            axum::routing::post(harvest_proxy::proxy_harvest),
+        )
+        .route(
+            "/api/harvest/batch",
+            axum::routing::post(harvest_proxy::proxy_harvest),
+        )
+        .route(
+            "/api/corpus/reload",
+            axum::routing::post(corpus_handlers::reload_corpus),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -323,6 +354,7 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
         registry,
         source_map,
         backends,
+        auth_file: auth_file.map(|p| p.to_path_buf()),
     }
 }
 
@@ -413,4 +445,35 @@ fn load_favorites(static_dir: &str) -> HashSet<String> {
 fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
     regelrecht_corpus::CorpusRegistry::from_yaml("schema_version: '1.0'\nsources: []\n")
         .unwrap_or_else(|_| unreachable!())
+}
+
+/// Fallback when `PIPELINE_API_URL` is not set: discover pipelineapi from the
+/// pod's own HOSTNAME. ZAD's alias-based env injection is resolved at
+/// component-creation time, so it gets stuck with stale ports when the
+/// pipelineapi component is recreated. ZAD pod/Service names follow the
+/// convention `<deployment>-<component>`, so we derive the deployment from
+/// HOSTNAME's first segment and reach pipelineapi via cluster-internal DNS.
+///
+/// Gated on `KUBERNETES_SERVICE_HOST` so dev machines (where HOSTNAME is also
+/// set but maps to the machine name) fall through to `None` and harvest calls
+/// cleanly return 503 "not configured" instead of 502 network errors.
+///
+/// Assumption: ZAD deployment names do not contain hyphens. If they did,
+/// splitting on `-` would pick up only the first segment (e.g. "mijn" from
+/// `mijn-regelrecht-editor-...`) and the resulting URL would silently point at
+/// the wrong service. Today all regel-k4c deployments follow single-word
+/// (`regelrecht`) or `pr<N>` naming. Set `PIPELINE_API_URL` explicitly if a
+/// multi-hyphen deployment ever lands.
+fn discover_pipeline_api_url_from_k8s() -> Option<String> {
+    env::var("KUBERNETES_SERVICE_HOST").ok()?;
+    let hostname = env::var("HOSTNAME").ok()?;
+    let deployment = hostname.split('-').next().filter(|s| !s.is_empty())?;
+    let url = format!("http://{deployment}-pipelineapi:8000");
+    tracing::info!(
+        hostname = %hostname,
+        deployment = %deployment,
+        url = %url,
+        "derived pipeline-api URL from HOSTNAME — if deployment name contains hyphens, set PIPELINE_API_URL explicitly",
+    );
+    Some(url)
 }
