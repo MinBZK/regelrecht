@@ -15,6 +15,9 @@
 # Git worktrees
 .worktrees/
 
+# Local corpus scope (symlinks to a selected subset of regulations)
+.scope/
+
 # Frontend
 node_modules/
 frontend/dist/
