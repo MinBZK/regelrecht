@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
@@ -7,6 +9,28 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
+
+/// Per-process cache of branch names already confirmed to exist on the
+/// corpus remote. Branches are never deleted once created, so a positive
+/// probe is permanent for the life of the worker — caching skips the
+/// ls-remote round-trip on every subsequent enrich job for the same PR.
+fn known_remote_branches() -> &'static Mutex<HashSet<String>> {
+    static CACHE: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn branch_is_known(branch: &str) -> bool {
+    known_remote_branches()
+        .lock()
+        .map(|cache| cache.contains(branch))
+        .unwrap_or(false)
+}
+
+fn remember_branch(branch: &str) {
+    if let Ok(mut cache) = known_remote_branches().lock() {
+        cache.insert(branch.to_string());
+    }
+}
 
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
 /// with a fake provider that doesn't spawn real processes.
@@ -449,16 +473,18 @@ pub async fn create_enrich_corpus(
     // inside `checkout_from_branch` doesn't match sibling files and skip
     // fetching a newly harvested version of an already-known law.
     let preferred_base = base_config.branch.as_str();
-    let base_branch =
-        if preferred_base == "development" || client.remote_branch_exists(preferred_base).await? {
-            preferred_base
-        } else {
-            tracing::info!(
-                branch = %preferred_base,
-                "base branch not yet published on remote, using development for first enrichment"
-            );
-            "development"
-        };
+    let base_branch = if preferred_base == "development" || branch_is_known(preferred_base) {
+        preferred_base
+    } else if client.remote_branch_exists(preferred_base).await? {
+        remember_branch(preferred_base);
+        preferred_base
+    } else {
+        tracing::info!(
+            branch = %preferred_base,
+            "base branch not yet published on remote, using development for first enrichment"
+        );
+        "development"
+    };
 
     client
         .checkout_from_branch(base_branch, &[&normalized])

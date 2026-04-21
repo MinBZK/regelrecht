@@ -33,9 +33,15 @@ impl std::fmt::Debug for CorpusConfig {
 ///
 /// Pod hostnames follow `{deployment}-{component}-{rs-hash}-{pod-hash}`.
 /// Only the literal `regelrecht` (production) and `pr<digits>` (PR previews)
-/// are recognised; anything else returns `None` so a stray multi-segment
-/// deployment name can't be misread as a bare first segment.
+/// are recognised, and the hostname must contain at least one `-` — a bare
+/// first segment without the pod suffix (e.g. a dev box literally named
+/// `pr42`) returns `None` so it can't shadow an explicit `CORPUS_BRANCH`.
 fn deployment_from_hostname(hostname: &str) -> Option<String> {
+    // Require the K8s pod-name shape: at least one `-` must follow the
+    // deployment segment. Anything shorter is almost certainly not a pod.
+    if !hostname.contains('-') {
+        return None;
+    }
     let first = hostname.split('-').next()?;
     let is_pr_preview = first
         .strip_prefix("pr")
@@ -91,8 +97,10 @@ impl CorpusConfig {
     ///
     /// Required: `CORPUS_REPO_URL`
     /// Optional: `CORPUS_REPO_PATH` (default: `/tmp/corpus-repo`),
-    ///           `CORPUS_BRANCH` (used only when `HOSTNAME` is not a recognised
-    ///            ZAD prefix; see `resolve_branch` for the full priority chain),
+    ///           `CORPUS_BRANCH` (used when `HOSTNAME` resolves to no usable
+    ///            branch — i.e. not a ZAD PR prefix — or when `HOSTNAME` is
+    ///            the production deployment name `regelrecht`; see
+    ///            `resolve_branch` for the full priority chain),
     ///           `CORPUS_GIT_AUTHOR_NAME` (default: `regelrecht-harvester`),
     ///           `CORPUS_GIT_AUTHOR_EMAIL` (default: `noreply@minbzk.nl`),
     ///           `CORPUS_GIT_TOKEN` (for authentication)
@@ -336,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_branch_empty_deployment_name_falls_through_to_hostname() {
+    fn resolve_branch_hostname_wins_over_empty_deployment_name() {
         assert_eq!(
             resolve_branch(
                 None,
@@ -365,6 +373,26 @@ mod tests {
         assert_eq!(deployment_from_hostname("prabc-foo-a-b"), None);
         assert_eq!(deployment_from_hostname("pr-foo-a-b"), None);
         assert_eq!(deployment_from_hostname(""), None);
+    }
+
+    #[test]
+    fn deployment_from_hostname_rejects_bare_names() {
+        // A bare `pr42` (no K8s pod suffix) is most likely a dev box, not a
+        // pod; treating it as a ZAD deployment would silently shadow an
+        // explicit CORPUS_BRANCH on that machine.
+        assert_eq!(deployment_from_hostname("pr42"), None);
+        assert_eq!(deployment_from_hostname("regelrecht"), None);
+    }
+
+    #[test]
+    fn resolve_branch_bare_pr_hostname_does_not_shadow_corpus_branch() {
+        // A dev machine with HOSTNAME=pr42 (no pod suffix) must not override
+        // an explicit CORPUS_BRANCH; the hostname-derivation requires the
+        // full K8s pod-name shape.
+        assert_eq!(
+            resolve_branch(Some("feature-x".into()), None, Some("pr42".into())),
+            "feature-x"
+        );
     }
 
     #[test]

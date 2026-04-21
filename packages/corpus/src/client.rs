@@ -688,6 +688,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_remote_branch_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let config = CorpusConfig::new(&bare_url, &repo_path);
+        let client = CorpusClient::new(config);
+
+        // `setup_bare_repo` creates the remote with `development` branch.
+        assert!(client.remote_branch_exists("development").await.unwrap());
+        // A branch that doesn't exist yet on the remote.
+        assert!(!client.remote_branch_exists("pr574").await.unwrap());
+    }
+
+    #[tokio::test]
     async fn test_commit_local_without_push() {
         let dir = tempfile::tempdir().unwrap();
         let bare_path = setup_bare_repo(dir.path()).await;
