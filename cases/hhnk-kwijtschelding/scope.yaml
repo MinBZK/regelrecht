@@ -1,0 +1,69 @@
+---
+# Scope manifest — consumed by regelrecht-mvp en (TODO) poc-machine-law.
+#
+# Het `id`-veld is de `law_id` / `$id` zoals die in beide corpora voorkomt.
+# Per-systeem-paden worden NIET hier vastgelegd — elke consumer resolveert
+# zelf: regelrecht-mvp scant `corpus/regulation/nl/<layer>/<id>/`,
+# poc-machine-law scant `laws/<id>/`. Ontbrekende wetten worden door de
+# loader overgeslagen met een waarschuwing.
+#
+# Schema (v1):
+#   name        — korte titel van de casus
+#   description — wat de casus beslaat
+#   tags        — labels voor filtering in UI
+#   laws        — lijst van { id, layer?, critical? }
+#   scenarios   — BDD feature-bestanden (paden relatief aan repo root)
+
+schema_version: '1'
+name: HHNK Kwijtschelding
+description: >-
+  Kwijtscheldingsregeling waterschapsbelastingen Hoogheemraadschap Hollands
+  Noorderkwartier 2023 met de volledige delegatieketen — van de landelijke
+  Invorderingswet 1990 via de Uitvoeringsregeling en Regeling kwijtschelding
+  belastingen medeoverheden tot de HHNK-verordening, leidraad en toelichting.
+tags:
+  - waterschap
+  - kwijtschelding
+  - hhnk
+owner: hhnk
+
+laws:
+  - id: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+    layer: waterschaps_verordening
+    critical: true
+  - id: leidraad_invordering_waterschapsbelastingen_hhnk
+    layer: waterschaps_verordening
+  - id: toelichting_kwijtschelding_waterschapsbelasting_hhnk
+    layer: uitvoeringsbeleid
+  - id: regeling_kwijtschelding_belastingen_medeoverheden
+    layer: ministeriele_regeling
+    critical: true
+  - id: uitvoeringsregeling_invorderingswet_1990
+    layer: ministeriele_regeling
+    critical: true
+  - id: leidraad_invordering_2008
+    layer: beleidsregel
+  - id: invorderingswet_1990
+    layer: wet
+    critical: true
+  - id: participatiewet
+    layer: wet
+    notes: >-
+      Bron voor bijstandsnorm (art 21-24) en echtgenoot-definitie (art 3).
+  - id: zorgverzekeringswet
+    layer: wet
+    notes: >-
+      Bron voor inkomensafhankelijke bijdrage (art 41) — gebruikt in
+      Regeling medeoverheden art 3 voor netto-AOW berekening.
+  - id: wet_inkomstenbelasting_2001
+    layer: wet
+    notes: >-
+      Voorlopige teruggaaf en kinderkorting-uitzonderingen (URI art 14 lid 2-3).
+  - id: wet_basisregistratie_personen
+    layer: wet
+    notes: >-
+      BSN-lookup en huishoudrelaties (impliciet gebruikt door de engine).
+
+scenarios:
+  - features/kwijtschelding_hhnk.feature
+  - features/hhnk_kwijtschelding_machinereadable_units.feature

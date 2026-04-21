@@ -11,6 +11,20 @@ ci_flags := "RUSTFLAGS=-Dwarnings"
 default:
     @just --list
 
+# --- Cases (scope manifests) ---
+
+# List available case manifests in cases/
+case-list:
+    node script/case-load.js list
+
+# Load a case manifest: regenerate .scope/ and corpus-registry.local.yaml
+case-load SLUG:
+    node script/case-load.js load {{SLUG}}
+
+# Clear any loaded case scope (removes .scope/ and corpus-registry.local.yaml)
+case-clear:
+    node script/case-load.js clear
+
 # --- WASM ---
 
 # Build WASM module for browser use
