@@ -3525,6 +3525,93 @@ articles:
       te vermelden, wijst de ontvanger dit verzoek af onder verwijzing naar de uitspraak van D&H. Als de belastingschuldige
       het met deze beschikking niet eens is, dan kan hij daartegen binnen tien dagen in beroep gaan bij D&H.
     url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_25
+    machine_readable:
+      definitions:
+        drempel_kort_uitstel_particulier:
+          description: >-
+            Bovengrens (eurocent) voor de totale openstaande schuld om zonder nader
+            onderzoek kort uitstel van betaling te krijgen voor particulieren.
+            HHNK-leidraad art 25.5.3 onder a: EUR 500 = 50000 eurocent.
+          value: 50000
+        lookback_goed_betalingsgedrag_jaren:
+          description: >-
+            Aantal jaren terug waarover goed betalingsgedrag wordt vereist voor het
+            kort uitstel zonder onderzoek. HHNK-leidraad art 25.5.3 onder d: 3 jaar.
+          value: 3
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: totale_openstaande_schuld
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: >-
+              Totale openstaande schuld. Belastingschuld waarvoor uitstel in verband met
+              een ingediend bezwaar- of beroepschrift is verleend, telt niet mee
+              (art 25.5.3 onder a, tweede volzin).
+          - name: ander_uitstel_van_toepassing
+            type: boolean
+            required: true
+            description: >-
+              True als voor dezelfde of andere belastingaanslagen reeds uitstel in verband
+              met betalingsproblemen of een te verwachten teruggaaf is verleend
+              (art 25.5.3 onder b).
+          - name: dwangbevel_betekend_of_postdwangbevel_verstreken
+            type: boolean
+            required: true
+            description: >-
+              True als er openstaande belastingschuld is waarvoor een dwangbevel is
+              betekend of een postdwangbevel is verzonden waarvan de betalingstermijn is
+              verstreken (art 25.5.3 onder c).
+          - name: goed_betalingsgedrag_afgelopen_3_jaar
+            type: boolean
+            required: true
+            description: >-
+              True als in de afgelopen drie jaren geen executoriale maatregelen door de
+              belastingdeurwaarder nodig waren (art 25.5.3 onder d).
+          - name: automatische_incasso_geactiveerd
+            type: boolean
+            required: true
+            description: >-
+              True als de belastingschuldige meedoet via de automatische incassoregeling.
+        output:
+          - name: schuld_onder_drempel
+            type: boolean
+            description: Of de totale openstaande schuld onder de EUR 500 drempel ligt.
+          - name: komt_in_aanmerking_kort_uitstel_particulier
+            type: boolean
+            description: >-
+              True indien aan alle cumulatieve voorwaarden van art 25.5.3 is voldaan:
+              schuld < EUR 500, geen ander uitstel, geen dwangbevel, goed betalingsgedrag,
+              automatische incasso actief.
+        actions:
+          - output: schuld_onder_drempel
+            value:
+              operation: LESS_THAN
+              subject: $totale_openstaande_schuld
+              value: $drempel_kort_uitstel_particulier
+          - output: komt_in_aanmerking_kort_uitstel_particulier
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $schuld_onder_drempel
+                  value: true
+                - operation: EQUALS
+                  subject: $ander_uitstel_van_toepassing
+                  value: false
+                - operation: EQUALS
+                  subject: $dwangbevel_betekend_of_postdwangbevel_verstreken
+                  value: false
+                - operation: EQUALS
+                  subject: $goed_betalingsgedrag_afgelopen_3_jaar
+                  value: true
+                - operation: EQUALS
+                  subject: $automatische_incasso_geactiveerd
+                  value: true
 
   - number: 25a
     text: |-
@@ -4380,6 +4467,259 @@ articles:
       schriftelijk bericht heeft ontvangen. De betalingen via automatische incasso worden echter niet opgeschort en worden
       ook gedurende de periode van aanvraag tot en met uitspraak op het verzoek om kwijtschelding maandelijks geïnd.
     url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26
+    machine_readable:
+      execution:
+        produces:
+          legal_character: INFORMATIEF
+          decision_type: BELEIDSREGEL
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: true
+          - name: belastingsoort
+            type: string
+            required: true
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: netto_besteedbaar_inkomen_partner_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: inboedel_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_onmisbaar
+            type: boolean
+            required: true
+          - name: onroerend_goed_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: andere_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: hoger_bevoorrechte_schulden
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: liquide_middelen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: aanslagbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: kinderopvang_nettokosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: is_ondernemer
+            type: boolean
+            required: true
+          - name: belasting_zakelijk
+            type: boolean
+            required: true
+          - name: gegevens_onvolledig_of_onjuist
+            type: boolean
+            required: false
+          - name: bezwaar_of_beroep_aanhangig
+            type: boolean
+            required: false
+          - name: zekerheid_gesteld
+            type: boolean
+            required: false
+          - name: meerdere_belastingschuldigen
+            type: boolean
+            required: false
+          - name: derde_aansprakelijk_gesteld
+            type: boolean
+            required: false
+          - name: verwijtbaarheid_belastingschuld
+            type: boolean
+            required: false
+          - name: in_faillissement_of_surseance_zonder_akkoord
+            type: boolean
+            required: false
+          - name: verzoek_ingediend
+            type: boolean
+            required: true
+            description: >-
+              True indien een schriftelijk of digitaal kwijtscheldingsverzoek is ingediend
+              ("Mijn loket" op www.hhnk.nl of op een kwijtscheldingsformulier, zie 26.1.2).
+        input:
+          - name: verordening_verleent_kwijtschelding
+            type: boolean
+            source:
+              regulation: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+              output: kan_kwijtschelding_worden_verleend
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                belastingsoort: $belastingsoort
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                inboedel_waarde: $inboedel_waarde
+                auto_waarde: $auto_waarde
+                auto_onmisbaar: $auto_onmisbaar
+                onroerend_goed_waarde: $onroerend_goed_waarde
+                andere_bezittingen: $andere_bezittingen
+                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
+                liquide_middelen: $liquide_middelen
+                aanslagbedrag: $aanslagbedrag
+                kinderopvang_nettokosten_maand: $kinderopvang_nettokosten_maand
+                is_ondernemer: $is_ondernemer
+                belasting_zakelijk: $belasting_zakelijk
+                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
+                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
+                zekerheid_gesteld: $zekerheid_gesteld
+                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
+                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
+                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
+                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
+            description: >-
+              De inhoudelijke toetsing wordt door de Kwijtscheldingsregeling
+              waterschapsbelastingen HHNK 2023 (verordening) uitgevoerd, die zelf
+              doorschakelt naar URI/Regeling medeoverheden.
+          - name: verordening_hoogte_kwijtschelding
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+              output: hoogte_kwijtschelding
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                belastingsoort: $belastingsoort
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                inboedel_waarde: $inboedel_waarde
+                auto_waarde: $auto_waarde
+                auto_onmisbaar: $auto_onmisbaar
+                onroerend_goed_waarde: $onroerend_goed_waarde
+                andere_bezittingen: $andere_bezittingen
+                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
+                liquide_middelen: $liquide_middelen
+                aanslagbedrag: $aanslagbedrag
+                kinderopvang_nettokosten_maand: $kinderopvang_nettokosten_maand
+                is_ondernemer: $is_ondernemer
+                belasting_zakelijk: $belasting_zakelijk
+                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
+                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
+                zekerheid_gesteld: $zekerheid_gesteld
+                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
+                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
+                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
+                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
+        output:
+          - name: beleidsregel_vereist_verzoek
+            type: boolean
+            description: >-
+              True — HHNK hanteert de regel dat kwijtschelding alleen wordt beoordeeld op
+              verzoek (26.1.2). De ambtshalve terugbetaling uit 26.1.1 is een uitzondering
+              die apart moet worden aangevraagd.
+          - name: kwijtschelding_komt_in_aanmerking
+            type: boolean
+            description: >-
+              True als (a) een verzoek is ingediend én (b) de verordening een toewijzing
+              kan geven. Subsecties 26.1.9 (uitsluitingen), 26.2.* (particulieren) en 26.3.*
+              (ondernemers) zijn in de verordening en in de Leidraad Invordering 2008
+              gecodeerd; waar HHNK afwijkt is dit in de verordening vastgelegd.
+          - name: kwijtschelding_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Toe te kennen kwijtschelding in eurocent. 0 indien niet toegekend of geen
+              verzoek ingediend.
+        actions:
+          - output: beleidsregel_vereist_verzoek
+            value: true
+          - output: kwijtschelding_komt_in_aanmerking
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $verzoek_ingediend
+                  value: true
+                - operation: EQUALS
+                  subject: $verordening_verleent_kwijtschelding
+                  value: true
+          - output: kwijtschelding_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $kwijtschelding_komt_in_aanmerking
+                    value: true
+                  then: $verordening_hoogte_kwijtschelding
+              default: 0
+      untranslatables:
+        - construct: 26.1.1 ambtshalve terugbetaling van reeds betaalde belastingschulden
+          reason: >-
+            De beleidsregel om bedragen terug te betalen die tot maximaal drie maanden
+            voorafgaand aan het verzoek zijn betaald (onder voorwaarden), bevat een
+            tijdsvenster-toetsing en een feitelijke beoordeling ("onder omstandigheden die
+            aanleiding zouden hebben gegeven tot kwijtschelding") die per geval verschilt
+            en daarmee niet als generieke formule te vangen is.
+          legal_text_excerpt: >-
+            De ontvanger verleent ook kwijtschelding van bedragen die op belastingaanslagen
+            zijn betaald, als (...) het verzoek om kwijtschelding [wordt] ingediend binnen
+            drie maanden nadat de (laatste) betaling op de belastingaanslag heeft
+            plaatsgevonden.
+          accepted: true
+        - construct: 26.1.3 behandeling van onvolledig/onjuist ingevuld verzoekformulier
+          reason: >-
+            De beleidsregel over een éénmalige herstelmogelijkheid binnen twee weken bij
+            ontbrekende gegevens is proceduraal; er is geen output die zinvol te berekenen
+            is zonder aanvullende caller-state (wel/geen herstelbrief verzonden, wel/geen
+            tijdig hersteld).
+          accepted: true
+        - construct: 26.2.13 bijzondere bijstand als niet-inkomen
+          reason: >-
+            De splitsing tussen bijzondere bijstand die niet als inkomen telt (gericht op
+            specifieke kosten buiten de reguliere norm) versus wél meetellend (voor personen
+            jonger dan 21 jaar, ouderlijke bijdrage) vereist case-analyse van het doel van
+            de uitkering.
+          accepted: true
+        - construct: 26.2.20 onderhoud gezinsleden in het buitenland
+          reason: >-
+            Beoordeling van netto-besteedbaar inkomen bij onderhoud van gezinsleden in het
+            buitenland vergt individuele weging van bedragen, wettelijkheid en bewijslast.
+          accepted: true
 
   - number: '27'
     text: |-
@@ -4805,6 +5145,68 @@ articles:
 
       Er kan ook aanleiding bestaan een gering restbedrag op tactische gronden buiten invordering te laten.
     url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_48
+    machine_readable:
+      definitions:
+        drempel_invordering_erfgenaam:
+          description: >-
+            Ondergrens (eurocent) voor invordering ten laste van een erfgenaam als niet
+            meer tegen de gezamenlijke erfgenamen kan worden opgetreden. Onder EUR 23
+            (2300 eurocent) blijft invordering achterwege, tenzij het de hoofdsom van
+            de aanslag betreft. HHNK-leidraad art 48.2.
+          value: 2300
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: GEEN_BESLUIT
+        parameters:
+          - name: te_vorderen_bedrag_erfgenaam
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Bedrag dat van de individuele erfgenaam zou moeten worden
+              ingevorderd.
+          - name: betreft_hoofdsom_aanslag
+            type: boolean
+            required: true
+            description: >-
+              True als het te vorderen bedrag de hoofdsom van de aanslag betreft (niet
+              slechts boete/rente/kosten). Dan geldt de drempel niet.
+          - name: niet_meer_tegen_gezamenlijke_erfgenamen
+            type: boolean
+            required: true
+            description: >-
+              True als niet meer tegen de gezamenlijke erfgenamen kan worden opgetreden
+              (voorwaarde uit art 48.2, eerste zin).
+        output:
+          - name: onder_drempel
+            type: boolean
+            description: Of het te vorderen bedrag onder de EUR 23 drempel ligt.
+          - name: invordering_blijft_achterwege
+            type: boolean
+            description: >-
+              True als invordering ten laste van deze erfgenaam achterwege blijft op
+              grond van art 48.2 (cumulatief: bedrag < EUR 23 EN het betreft niet de
+              hoofdsom EN niet meer tegen gezamenlijke erfgenamen opgetreden).
+        actions:
+          - output: onder_drempel
+            value:
+              operation: LESS_THAN
+              subject: $te_vorderen_bedrag_erfgenaam
+              value: $drempel_invordering_erfgenaam
+          - output: invordering_blijft_achterwege
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $onder_drempel
+                  value: true
+                - operation: EQUALS
+                  subject: $betreft_hoofdsom_aanslag
+                  value: false
+                - operation: EQUALS
+                  subject: $niet_meer_tegen_gezamenlijke_erfgenamen
+                  value: true
 
   - number: 48a
     text: |-
@@ -6605,3 +7007,58 @@ articles:
 
       Werkenbijdeoverheid.nl
     url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_80
+    machine_readable:
+      definitions:
+        minimum_termijnbedrag_incasso:
+          description: >-
+            Minimumbedrag (eurocent) per termijn bij automatische incasso.
+            HHNK-leidraad art 80 Incassoreglement art 4 lid 3: EUR 10 = 1000 eurocent.
+          value: 1000
+        drempel_minder_dan_tien_termijnen:
+          description: >-
+            Bovengrens (eurocent) van de aanslag waaronder minder dan tien termijnen
+            worden gehanteerd (aanslag gedeeld door minimum-termijnbedrag zou minder
+            dan 10 termijnen opleveren). HHNK-leidraad art 80 Incassoreglement art 4
+            lid 3: EUR 100 = 10000 eurocent.
+          value: 10000
+      execution:
+        parameters:
+          - name: aanslagbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: aantal_termijnen_standaard
+            type: number
+            required: false
+            description: >-
+              Standaard aantal termijnen (doorgaans 10 volgens het Incassoreglement).
+              Default 10.
+        output:
+          - name: aanslag_onder_drempel
+            type: boolean
+            description: True als het aanslagbedrag onder EUR 100 ligt, dan minder dan
+              tien termijnen.
+          - name: effectief_termijnbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Effectief termijnbedrag: standaard aanslag/10, maar minstens EUR 10 per
+              termijn. Onder de drempel van EUR 100 geldt het minimum, wat leidt tot
+              minder dan tien termijnen.
+        actions:
+          - output: aanslag_onder_drempel
+            value:
+              operation: LESS_THAN
+              subject: $aanslagbedrag
+              value: $drempel_minder_dan_tien_termijnen
+          - output: effectief_termijnbedrag
+            value:
+              operation: MAX
+              values:
+                - $minimum_termijnbedrag_incasso
+                - operation: DIVIDE
+                  values:
+                    - $aanslagbedrag
+                    - 10
