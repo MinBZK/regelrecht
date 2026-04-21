@@ -308,6 +308,18 @@ mod tests {
     }
 
     #[test]
+    fn resolve_branch_empty_deployment_name_falls_through_to_hostname() {
+        assert_eq!(
+            resolve_branch(
+                None,
+                Some("".into()),
+                Some("pr429-harvester-worker-abc-xyz".into())
+            ),
+            "pr429"
+        );
+    }
+
+    #[test]
     fn deployment_from_hostname_recognises_pr_and_prod() {
         assert_eq!(
             deployment_from_hostname("pr568-enrichworker-abc-xyz"),
