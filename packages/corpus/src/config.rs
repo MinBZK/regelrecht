@@ -45,22 +45,29 @@ fn deployment_from_hostname(hostname: &str) -> Option<String> {
 
 /// Resolve the corpus branch from explicit config and platform variables.
 ///
-/// Priority: `CORPUS_BRANCH` > `DEPLOYMENT_NAME` > `HOSTNAME` prefix > `"development"`.
-/// Both `DEPLOYMENT_NAME` and the hostname-derived prefix are ignored when they
-/// equal `"regelrecht"` (production), so production workers always fall through
-/// to the default `"development"` branch.
+/// Priority: `HOSTNAME` prefix > `CORPUS_BRANCH` > `DEPLOYMENT_NAME` > `"development"`.
+/// `HOSTNAME` comes first because it is intrinsic to the pod and cannot be
+/// inherited by ZAD's `clone-from` — so a PR preview that copies production's
+/// env vars (e.g. `CORPUS_BRANCH=development`) still picks up its own
+/// `pr<N>` branch. Both `DEPLOYMENT_NAME` and the hostname-derived prefix are
+/// ignored when they equal `"regelrecht"` (production), so production workers
+/// always fall through to the default `"development"` branch.
 fn resolve_branch(
     corpus_branch: Option<String>,
     deployment_name: Option<String>,
     hostname: Option<String>,
 ) -> String {
+    if let Some(name) = hostname
+        .as_deref()
+        .and_then(deployment_from_hostname)
+        .filter(|n| n != "regelrecht")
+    {
+        return name;
+    }
     if let Some(branch) = corpus_branch.filter(|b| !b.is_empty()) {
         return branch;
     }
-    let derived = deployment_name
-        .filter(|n| !n.is_empty())
-        .or_else(|| hostname.as_deref().and_then(deployment_from_hostname));
-    if let Some(name) = derived.filter(|n| n != "regelrecht") {
+    if let Some(name) = deployment_name.filter(|n| !n.is_empty() && n != "regelrecht") {
         return name;
     }
     "development".into()
@@ -84,8 +91,8 @@ impl CorpusConfig {
     ///
     /// Required: `CORPUS_REPO_URL`
     /// Optional: `CORPUS_REPO_PATH` (default: `/tmp/corpus-repo`),
-    ///           `CORPUS_BRANCH` (default: `DEPLOYMENT_NAME`, else `HOSTNAME` prefix
-    ///            for PR previews, else `development`),
+    ///           `CORPUS_BRANCH` (default: `HOSTNAME` prefix for PR previews,
+    ///            else `DEPLOYMENT_NAME`, else `development`),
     ///           `CORPUS_GIT_AUTHOR_NAME` (default: `regelrecht-harvester`),
     ///           `CORPUS_GIT_AUTHOR_EMAIL` (default: `noreply@minbzk.nl`),
     ///           `CORPUS_GIT_TOKEN` (for authentication)
@@ -226,12 +233,14 @@ mod tests {
     }
 
     #[test]
-    fn resolve_branch_uses_corpus_branch() {
+    fn resolve_branch_uses_corpus_branch_when_hostname_nonmatching() {
+        // HOSTNAME without a ZAD prefix (e.g. local dev box) falls through to
+        // CORPUS_BRANCH, which in turn beats DEPLOYMENT_NAME.
         assert_eq!(
             resolve_branch(
                 Some("custom".into()),
                 Some("pr42".into()),
-                Some("pr99-harvester-worker-abc-xyz".into())
+                Some("devbox".into())
             ),
             "custom"
         );
@@ -284,7 +293,8 @@ mod tests {
     }
 
     #[test]
-    fn resolve_branch_deployment_name_beats_hostname() {
+    fn resolve_branch_deployment_name_used_when_hostname_is_production() {
+        // Production hostname is suppressed; deployment_name fills in.
         assert_eq!(
             resolve_branch(
                 None,
@@ -296,14 +306,32 @@ mod tests {
     }
 
     #[test]
-    fn resolve_branch_production_deployment_name_beats_pr_hostname() {
+    fn resolve_branch_pr_hostname_beats_inherited_production_deployment_name() {
+        // ZAD's `clone-from: regelrecht` copies production's DEPLOYMENT_NAME
+        // into the PR deployment. The pod's own hostname must still win,
+        // otherwise the PR worker harvests into `development` instead of `pr429`.
         assert_eq!(
             resolve_branch(
                 None,
                 Some("regelrecht".into()),
                 Some("pr429-harvester-worker-abc-xyz".into())
             ),
-            "development"
+            "pr429"
+        );
+    }
+
+    #[test]
+    fn resolve_branch_pr_hostname_beats_inherited_corpus_branch() {
+        // Production sets CORPUS_BRANCH=development explicitly; the PR
+        // deployment inherits it via clone-from. The pod's own hostname
+        // must still win so the PR worker uses its own branch.
+        assert_eq!(
+            resolve_branch(
+                Some("development".into()),
+                None,
+                Some("pr574-harvester-worker-abc-xyz".into())
+            ),
+            "pr574"
         );
     }
 
