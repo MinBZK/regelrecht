@@ -1,0 +1,12 @@
+---
+# Welke wetten zichtbaar zijn in frontend-demo.
+# Pad is relatief aan de repo-root.
+# Law-faithful wetten worden hergebruikt uit corpus/regulation/.
+# Demo-only wetten staan in corpus-demo/regulation/.
+
+laws:
+  - id: wet_op_de_zorgtoeslag
+    path: corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
+    output: hoogte_zorgtoeslag
+    label: Zorgtoeslag
+    summary: Maandelijkse tegemoetkoming in de premie van je zorgverzekering.
