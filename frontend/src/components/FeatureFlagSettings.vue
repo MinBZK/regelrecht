@@ -14,6 +14,7 @@ const panelFlags = [
   ['panel.scenario_form', 'Scenario formulier'],
   ['panel.yaml_editor', 'YAML editor'],
   ['panel.execution_trace', 'Resultaat'],
+  ['panel.machine_readable', 'Machine readable'],
 ];
 
 const sheetEl = ref(null);
