@@ -135,6 +135,69 @@ Feature: Unit-tests voor nieuwe machine_readable blocks in HHNK-kwijtschelding k
 
   # === HHNK-leidraad art 26: verzoek-gate ===
 
+  # === Zvw art 41: inkomensafhankelijke bijdrage ===
+
+  Scenario: Zvw art 41 - pensioengerechtigde laag tarief 5.26% onder maximum
+    Given a citizen with the following data:
+      | bruto_inkomen_maand   | 200000 |
+      | is_pensioengerechtigd | true   |
+    When the law "zorgverzekeringswet" is executed for outputs "bijdrage_percentage,inkomensafhankelijke_bijdrage_maand"
+    Then the execution succeeds
+    And the output "bijdrage_percentage" is "0.0526"
+    And the output "inkomensafhankelijke_bijdrage_maand" is "10520"
+
+  Scenario: Zvw art 41 - werknemer hoog tarief 6.51%
+    Given a citizen with the following data:
+      | bruto_inkomen_maand   | 300000 |
+      | is_pensioengerechtigd | false  |
+    When the law "zorgverzekeringswet" is executed for outputs "bijdrage_percentage,inkomensafhankelijke_bijdrage_maand"
+    Then the execution succeeds
+    And the output "bijdrage_percentage" is "0.0651"
+    And the output "inkomensafhankelijke_bijdrage_maand" is "19530"
+
+  Scenario: Zvw art 41 - bruto boven maximum bijdrage-inkomen wordt gecapt
+    Given a citizen with the following data:
+      | bruto_inkomen_maand   | 1000000 |
+      | is_pensioengerechtigd | false   |
+    When the law "zorgverzekeringswet" is executed for outputs "gecap_bijdrage_inkomen_maand,inkomensafhankelijke_bijdrage_maand"
+    Then the execution succeeds
+    And the output "gecap_bijdrage_inkomen_maand" is "632200"
+    And the output "inkomensafhankelijke_bijdrage_maand" is "41156"
+
+  # === BRP afgeleid-kwijtschelding: is_pensioengerechtigd + huishoudtype ===
+
+  Scenario: BRP afgeleid - 50-jarige met partner is echtgenoten-huishouden
+    Given a citizen with the following data:
+      | bsn                                  | 999993653 |
+      | heeft_ten_laste_komende_kinderen     | false     |
+      | leeftijd                             | 50        |
+      | heeft_partner                        | true      |
+    When the law "wet_basisregistratie_personen" is executed for outputs "is_pensioengerechtigd,huishoudtype"
+    Then the execution succeeds
+    And the output "is_pensioengerechtigd" is "false"
+    And the output "huishoudtype" is "echtgenoten"
+
+  Scenario: BRP afgeleid - 70-jarige alleenstaande is pensioengerechtigd alleenstaande
+    Given a citizen with the following data:
+      | bsn                                  | 999993653 |
+      | heeft_ten_laste_komende_kinderen     | false     |
+      | leeftijd                             | 70        |
+      | heeft_partner                        | false     |
+    When the law "wet_basisregistratie_personen" is executed for outputs "is_pensioengerechtigd,huishoudtype"
+    Then the execution succeeds
+    And the output "is_pensioengerechtigd" is "true"
+    And the output "huishoudtype" is "alleenstaande"
+
+  Scenario: BRP afgeleid - 35-jarige zonder partner met kinderen is alleenstaande ouder
+    Given a citizen with the following data:
+      | bsn                                  | 999993653 |
+      | heeft_ten_laste_komende_kinderen     | true      |
+      | leeftijd                             | 35        |
+      | heeft_partner                        | false     |
+    When the law "wet_basisregistratie_personen" is executed for outputs "huishoudtype"
+    Then the execution succeeds
+    And the output "huishoudtype" is "alleenstaande_ouder"
+
   # === HHNK-leidraad art 48.2: erfgenaam-drempel EUR 23 ===
 
   Scenario: Erfgenaam EUR 20 - onder drempel, invordering blijft achterwege
