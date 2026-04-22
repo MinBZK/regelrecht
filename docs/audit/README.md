@@ -46,5 +46,26 @@ placeholders voor wettekst-excerpts.
 
 ## Bestaande audits
 
+**HHNK-keten (beleidsregel + verordening):**
+
 - [hhnk-leidraad-art-26.md](hhnk-leidraad-art-26.md) — HHNK-leidraad
-  invordering waterschapsbelastingen, artikel 26 (kwijtschelding)
+  invordering waterschapsbelastingen, artikel 26 (kwijtschelding) — de
+  orchestrator.
+
+**Federale ministeriele regeling (URI 1990):**
+
+- [uri-art-11.md](uri-art-11.md) — Kwijtschelding-hoofdbepaling (kan + hoogte)
+- [uri-art-12.md](uri-art-12.md) — Vermogen (bezittingen, drempels, open_term)
+- [uri-art-13.md](uri-art-13.md) — Betalingscapaciteit (12× (inkomen − uitgaven − kostennorm))
+- [uri-art-14.md](uri-art-14.md) — Netto-besteedbaar inkomen (5 categorieën)
+- [uri-art-15.md](uri-art-15.md) — Uitgaven (6 categorieën, woonlasten met cap)
+- [uri-art-16.md](uri-art-16.md) — Kostennorm (open_term + 7 SHORTCUT definitions)
+- [uri-art-17.md](uri-art-17.md) — €136-drempel ondernemers
+
+**Nog te doen:**
+
+- Regeling kwijtschelding belastingen medeoverheden art 2, 3, 4
+- HHNK-verordening art 1, 2, 3, 4, 5
+- Leidraad Invordering 2008 art 26.1.9, 26.2.2, 26.2.3
+- Zorgverzekeringswet art 41
+- BRP afgeleid-kwijtschelding
