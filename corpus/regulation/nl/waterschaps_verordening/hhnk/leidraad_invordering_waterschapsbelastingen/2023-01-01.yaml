@@ -4602,20 +4602,6 @@ articles:
               parameters:
                 is_ondernemer: $is_ondernemer
                 belasting_zakelijk: $belasting_zakelijk
-          # Uitsluitingsgronden — Leidraad Invordering 2008 art 26.1.9
-          - name: uitgesloten_van_kwijtschelding
-            type: boolean
-            source:
-              regulation: leidraad_invordering_2008
-              output: uitgesloten_van_kwijtschelding
-              parameters:
-                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
-                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
-                zekerheid_gesteld: $zekerheid_gesteld
-                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
-                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
-                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
-                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
           # Vermogen — URI art 12 (met Leidraad 2008 26.2.3 auto-overrule)
           - name: vermogen_bedrag
             type: amount
@@ -4675,6 +4661,13 @@ articles:
             description: >-
               True — HHNK-leidraad 26.1.2 schrijft voor dat kwijtschelding alleen op
               verzoek wordt beoordeeld.
+          - name: uitgesloten_van_kwijtschelding
+            type: boolean
+            description: >-
+              True als een van de HHNK-leidraad 26.1.9 weigergronden van toepassing is.
+              De tekst van 26.1.9 in de HHNK-leidraad is inhoudelijk gelijk aan
+              Leidraad Invordering 2008 art 26.1.9, maar juridisch staat deze regel
+              zelfstandig als HHNK-beleidsregel — de logica leeft hier.
           - name: kan_kwijtschelding_worden_verleend
             type: boolean
             description: >-
@@ -4691,6 +4684,33 @@ articles:
         actions:
           - output: beleidsregel_vereist_verzoek
             value: true
+          # Uitsluitingsgronden HHNK-leidraad 26.1.9 — eigen beleidsregel,
+          # juridisch zelfstandig naast Leidraad Invordering 2008 26.1.9.
+          - output: uitgesloten_van_kwijtschelding
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $gegevens_onvolledig_of_onjuist
+                  value: true
+                - operation: EQUALS
+                  subject: $bezwaar_of_beroep_aanhangig
+                  value: true
+                - operation: EQUALS
+                  subject: $zekerheid_gesteld
+                  value: true
+                - operation: EQUALS
+                  subject: $meerdere_belastingschuldigen
+                  value: true
+                - operation: EQUALS
+                  subject: $derde_aansprakelijk_gesteld
+                  value: true
+                - operation: EQUALS
+                  subject: $verwijtbaarheid_belastingschuld
+                  value: true
+                - operation: EQUALS
+                  subject: $in_faillissement_of_surseance_zonder_akkoord
+                  value: true
           - output: kan_kwijtschelding_worden_verleend
             value:
               operation: AND
