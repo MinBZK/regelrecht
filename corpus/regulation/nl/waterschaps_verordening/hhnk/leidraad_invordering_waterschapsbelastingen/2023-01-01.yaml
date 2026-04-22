@@ -2,12 +2,12 @@
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
 $id: leidraad_invordering_waterschapsbelastingen_hhnk
 regulatory_layer: BELEIDSREGEL
-publication_date: '2026-02-06'
-valid_from: '2026-02-07'
+publication_date: '2023-09-08'
+valid_from: '2023-09-08'
 waterschap_code: WS0155
-officiele_titel: Leidraad invordering waterschapsbelastingen HHNK 2026
-url: https://lokaleregelgeving.overheid.nl/CVDR756485
-name: Leidraad invordering waterschapsbelastingen HHNK 2026
+officiele_titel: Leidraad invordering waterschapsbelastingen HHNK 2023
+url: https://lokaleregelgeving.overheid.nl/CVDR691525
+name: Leidraad invordering waterschapsbelastingen HHNK 2023
 legal_basis:
   - law_id: invorderingswet_1990
     article: '26'
@@ -414,7 +414,7 @@ articles:
 
       De ontvanger handelt zoveel mogelijk in overeenstemming met de Awb en het Besluit fiscaal bestuursrecht (zie ook
       artikel 1 onderdeel 1.8 van deze leidraad).
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_1
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_1
 
   - number: '2'
     text: |-
@@ -443,7 +443,7 @@ articles:
       In artikel 123 Wschw is tevens bepaald aan welke colleges of functionarissen van HHNK de in de wet genoemde
       bevoegdheden toekomen. Het gaat daarbij om een vertaling van de functionarissen die in artikel 2 van de wet worden
       genoemd naar colleges en functionarissen van HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_2
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_2
 
   - number: '3'
     text: |-
@@ -529,12 +529,12 @@ articles:
       3.4 Rijksadvocaat
 
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_3
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_3
 
   - number: 3a
     text: |-
       Er zijn in deze leidraad op artikel 3a van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_3a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_3a
 
   - number: '4'
     text: |-
@@ -569,12 +569,12 @@ articles:
 
       Voor de uitoefening van de aan hem opgedragen invorderingstaken kan de belastingdeurwaarder op verzoek zich legitimeren
       aan de belastingschuldige en/of zijn/haar gemachtigden.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_4
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_4
 
   - number: '5'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_5
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_5
 
   - number: '6'
     text: |-
@@ -589,7 +589,7 @@ articles:
       Onder kosten wordt verstaan: alle kosten die op de voet van de Kostenwet invordering rijksbelastingen aan de
       belastingschuldige in rekening worden gebracht. Hieronder vallen ook de kosten die zijn verbonden aan de werkzaamheden
       die de belastingdeurwaarder verricht bij de invordering langs civielrechtelijke weg.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_6
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_6
 
   - number: '7'
     text: |-
@@ -764,7 +764,7 @@ articles:
       Betalingen van belastingaanslagen in kleinere bedragen dan die van de termijnen worden niet geweigerd, tenzij dit door
       de ambtenaar belast met invordering aangemerkt wordt als nodeloos overlast. In dat geval treedt hij in contact met de
       belastingschuldige om de betalingswijze aan te passen.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_7
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_7
 
   - number: 7a
     text: |-
@@ -838,12 +838,12 @@ articles:
       bankrekening, blijven voor diens rekening. De ontvanger beroept zich in dat geval op het bevrijdende karakter van de
       (uit)betaling (artikel 6:34 BW). Desgevraagd wordt de belastingschuldige op de hoogte gesteld omtrent de naam-, adres-
       en woonplaatsgegevens van de derde aan wie onverschuldigd is betaald.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_7a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_7a
 
   - number: 7b
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_7b
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_7b
 
   - number: '8'
     text: |-
@@ -917,7 +917,7 @@ articles:
 
       Als voor een belastingaanslag ten name van een overledene tegen de erfgenamen afzonderlijk moet worden opgetreden,
       worden zij zoveel mogelijk vooraf schriftelijk uitgenodigd het verschuldigde binnen een redelijk termijn te voldoen.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_8
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_8
 
   - number: '9'
     text: |-
@@ -989,7 +989,7 @@ articles:
       HHNK stelt belastingplichtigen in de gelegenheid de aanslag te voldoen via een automatische incasso. Nadere regels
       hieromtrent zijn vastgelegd in het Reglement automatische incasso waterschapsbelastingen HHNK dat als bijlage bij deze
       leidraad is bijgevoegd.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_9
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_9
 
   - number: '10'
     text: |-
@@ -1119,7 +1119,7 @@ articles:
       Als de ontvanger met betrekking tot een bepaalde belastingaanslag een vordering jegens een derde heeft gedaan en nadien
       worden andere belastingaanslagen opgelegd, dan kunnen ook die aanslagen tot het volle bedrag worden ingevorderd, ook
       als de betalingstermijnen van die nieuwe aanslagen nog niet zijn verstreken.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_10
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_10
 
   - number: '11'
     text: |-
@@ -1197,7 +1197,7 @@ articles:
       eerst een aanmaning.
 
       De ontvanger verzendt echter geen aanmaning als reeds conservatoir beslag is gelegd.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_11
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_11
 
   - number: '12'
     text: |-
@@ -1256,7 +1256,7 @@ articles:
       of niet wenselijk is, dan vermeldt de ontvanger alle erfgenamen met naam en adres alsmede met hun kwaliteit van
       erfgenaam van de overleden belastingschuldige in het dwangbevel. De ontvanger brengt daarbij evenwel niet het deel van
       ieders aansprakelijkheid tot uitdrukking.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_12
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_12
 
   - number: '13'
     text: |-
@@ -1345,7 +1345,7 @@ articles:
 
       Ten aanzien van schippers zonder vaste woonplaats aan de wal, is betekening mogelijk op het adres van het verplicht
       gekozen domicilie.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_13
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_13
 
   - number: '14'
     text: |-
@@ -2055,17 +2055,17 @@ articles:
 
       Van de opheffing van het beslag wordt schriftelijk mededeling gedaan aan de belastingschuldige. Ook wordt – ingeval van
       teboekgestelde schepen – van de opheffing bij deurwaardersexploot mededeling gedaan aan de ingeschreven schuldeisers.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_14
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_14
 
   - number: '15'
     text: |-
       Er zijn in deze leidraad op artikel 15 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_15
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_15
 
   - number: '16'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_16
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_16
 
   - number: '17'
     text: |-
@@ -2108,12 +2108,12 @@ articles:
 
       Als het aanslagbiljet, de aanmaning of het afschrift van het per post betekende dwangbevel aan een onjuist adres is
       verzonden en daarom de belastingschuldige niet heeft bereikt, is verzet mogelijk.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_17
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_17
 
   - number: '18'
     text: |-
       Er zijn in deze leidraad op artikel 18 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_18
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_18
 
   - number: '19'
     text: |-
@@ -2444,12 +2444,12 @@ articles:
 
       Op schriftelijk verzoek van de belastingschuldige betaalt de ontvanger het daarop afgedragen bedrag terug, tot maximaal
       het bedrag van de ontvangen energietoeslag.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_19
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_19
 
   - number: '20'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_20
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_20
 
   - number: '22'
     text: |-
@@ -2634,12 +2634,12 @@ articles:
       22.9 Terughoudend beleid bij reëel eigendom derde
 
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_22
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_22
 
   - number: 22bis
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_22bis
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_22bis
 
   - number: '24'
     text: |-
@@ -2796,7 +2796,7 @@ articles:
 
       Als de rechter het verzoek ook in hoger beroep afwijst, verrekent de ontvanger niet eerder dan nadat de uitspraak in
       hoger beroep onherroepelijk vaststaat.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_24
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_24
 
   - number: '25'
     text: |-
@@ -3531,7 +3531,7 @@ articles:
       op een administratief beroep afwijzend heeft beslist, zonder daarbij nieuw gebleken feiten of veranderde omstandigheden
       te vermelden, wijst de ontvanger dit verzoek af onder verwijzing naar de uitspraak van D&H. Als de belastingschuldige
       het met deze beschikking niet eens is, dan kan hij daartegen binnen tien dagen in beroep gaan bij D&H.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_25
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_25
     machine_readable:
       definitions:
         drempel_kort_uitstel_particulier:
@@ -3623,7 +3623,7 @@ articles:
   - number: 25a
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_25a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_25a
 
   - number: '26'
     text: |-
@@ -4473,7 +4473,7 @@ articles:
       door de ontvanger bij de aanvraag gestopt totdat de geautomatiseerde toets is genomen en belastingschuldige
       schriftelijk bericht heeft ontvangen. De betalingen via automatische incasso worden echter niet opgeschort en worden
       ook gedurende de periode van aanvraag tot en met uitspraak op het verzoek om kwijtschelding maandelijks geïnd.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_26
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26
     machine_readable:
       execution:
         produces:
@@ -4896,12 +4896,12 @@ articles:
       Voor de verjaring van belastingteruggaven geldt eenzelfde verjaringstermijn als voor belastingschulden. Na verjaring
       ontstaat een natuurlijke verbintenis. De ontvanger zal een beroep op de verjaring doen, tenzij hij gerede twijfel heeft
       of de belastingaanslag aan de belastingschuldige is bekend gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_27
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_27
 
   - number: 27a
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_27a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_27a
 
   - number: '28'
     text: |-
@@ -4980,22 +4980,22 @@ articles:
       leidraad.
 
       28.7 Verminderingen en toepassing artikel 28, zesde lid, van de wet [Vervallen per 01-01-2013]
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_28
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_28
 
   - number: 28a
     text: |-
       Er zijn in deze leidraad op de artikelen 28a en 28b van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_28a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_28a
 
   - number: 28c
     text: |-
       Er zijn in deze leidraad op artikel 28c van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_28c
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_28c
 
   - number: '29'
     text: |-
       Er zijn in deze leidraad op artikel 29 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_29
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_29
 
   - number: '30'
     text: |-
@@ -5043,7 +5043,7 @@ articles:
       30.5 Geen bezwaar mogelijk tegen de niet verleende betalingskorting
 
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_30
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_30
 
   - number: '31'
     text: |-
@@ -5051,12 +5051,12 @@ articles:
       het van overeenkomstige toepassing verklaren van de regeling waarin nadere regels staan over de berekening van
       invorderingsrente. Het Besluit nadere regels met betrekking tot de heffing en invordering van waterschapsbelastingen en
       leges 2011 (10.37000) voorziet hierin.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_31
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_31
 
   - number: 31a
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_31a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_31a
 
   - number: '32'
     text: |-
@@ -5088,7 +5088,7 @@ articles:
       32.2 Gemeenschapsschulden [Vervallen per 01-07-2022]
 
       32.3 Belastingrente, heffingsrente en aansprakelijkheid [Vervallen per 01-01-2019]
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_32
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_32
 
   - number: '33'
     text: |-
@@ -5184,12 +5184,12 @@ articles:
       omvangrijke miscalculatie of door het faillissement van een belangrijke debiteur. Bij dit laatste geldt echter dat een
       ondernemer die zijn bedrijf uitoefent op een te zwakke financiële basis zich niet gemakkelijk op niet-verwijtbaarheid
       zal kunnen beroepen.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_33
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_33
 
   - number: 33a
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_33a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_33a
 
   - number: '48'
     text: |-
@@ -5223,7 +5223,7 @@ articles:
       tenzij het de hoofdsom van de aanslag betreft.
 
       Er kan ook aanleiding bestaan een gering restbedrag op tactische gronden buiten invordering te laten.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_48
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_48
     machine_readable:
       definitions:
         drempel_invordering_erfgenaam:
@@ -5290,7 +5290,7 @@ articles:
   - number: 48a
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_48a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_48a
 
   - number: '49'
     text: |-
@@ -5448,7 +5448,7 @@ articles:
       49.8.2 Beslissing op het bezwaarschrift [Vervallen per 24-10-2008]
 
       49.9 Overgangsrecht [Vervallen per 01-01-2019]
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_49
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_49
 
   - number: '51'
     text: |-
@@ -5465,7 +5465,7 @@ articles:
 
       Als er conservatoir beslag ligt en de aansprakelijkgestelde verzoekt om uitstel van betaling in verband met een bezwaar
       tegen de beschikking, dan verleent de ontvanger alleen uitstel van betaling als er zekerheid wordt gesteld.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_51
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_51
 
   - number: '52'
     text: |-
@@ -5483,7 +5483,7 @@ articles:
 
       Als de inspecteur de aanslag vermindert, past de ontvanger het bedrag van de aansprakelijkstellingsbeschikking aan voor
       zover dat voortvloeit uit de vermindering en deelt dat mee aan de aansprakelijkgestelde.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_52
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_52
 
   - number: '53'
     text: |-
@@ -5512,7 +5512,7 @@ articles:
 
       bestuurder is gebaseerd op artikel 36, vierde lid, van de wet, het enkele feit dat het lichaam niet op de juiste wijze
       heeft gemeld niet in de weg hoeft te staan aan ontslag van betalingsverplichting.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_53
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_53
 
   - number: '54'
     text: |-
@@ -5529,12 +5529,12 @@ articles:
       In deze periode kan de belastingschuldige – als de derde zich al voor de aansprakelijkheidsschuld op hem heeft verhaald
       – derdenbeslag leggen onder de ontvanger op het bedrag van de teruggaaf. In de derdenbeslagprocedure zal worden
       uitgemaakt aan wie de ontvanger het bedrag van de teruggaaf moet betalen.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_54
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_54
 
   - number: '55'
     text: |-
       Er zijn in deze leidraad op de artikelen 55 tot en met 57 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_55
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_55
 
   - number: '58'
     text: |-
@@ -5576,12 +5576,12 @@ articles:
       curator. Als de ontvanger een verzoek krijgt van de curator om een onderzoek in te stellen, moet het onderzoek in het
       teken van het invorderingsbelang staan. De ontvanger stelt geen onderzoek in als hij vermoedt dat de informatie er
       slechts toe strekt dat de curator de (niet fiscale) boedelschulden kan innen.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_58
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_58
 
   - number: '59'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_59
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_59
 
   - number: '60'
     text: |-
@@ -5620,7 +5620,7 @@ articles:
       Gegevensverstrekking vindt in beginsel uitsluitend schriftelijk plaats. In uitzonderingssituaties kan de ontvanger
       toestaan dat de gegevens mondeling worden verstrekt. In verband met de bewijsvoering zorgt de ontvanger voor een
       vastlegging van het gesprek.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_60
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_60
 
   - number: '61'
     text: |-
@@ -5642,27 +5642,27 @@ articles:
       ontvanger privacygegevens onder ogen krijgt, vormt dit geen grond om de verstrekking van gegevens of de
       beschikbaarstelling van gegevensdragers te weigeren. De ontvanger is op grond van artikel 67, eerste lid, van de wet
       gehouden tot geheimhouding van die gegevens.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_61
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_61
 
   - number: '62'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_62
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_62
 
   - number: 62bis
     text: |-
       Er zijn in deze leidraad op de artikelen 62bis tot en met 63ab van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_62bis
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_62bis
 
   - number: 63b
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_63b
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_63b
 
   - number: 63c
     text: |-
       Er zijn in deze leidraad op de artikelen 63c en 64 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_63c
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_63c
 
   - number: '65'
     text: |-
@@ -5685,12 +5685,12 @@ articles:
 
       De vereiste opzet voor de toepassing van artikel 65, eerste en tweede lid, van de wet behoeft zich niet uit te strekken
       tot het feit dat te weinig belasting wordt ingevorderd.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_65
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_65
 
   - number: 65a
     text: |-
       Er zijn in deze leidraad op de artikelen 65a en 66 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_65a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_65a
 
   - number: '67'
     text: |-
@@ -5740,32 +5740,32 @@ articles:
       67.3 Informatieverstrekking aan gerechtsdeurwaarder over periodieke betalingen
 
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_67
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_67
 
   - number: 67a
     text: |-
       Er zijn in deze leidraad op artikel 67a van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_67a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_67a
 
   - number: '68'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_68
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_68
 
   - number: '70'
     text: |-
       Er zijn in deze leidraad op artikel 70 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_70
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_70
 
   - number: 70a
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_70a
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_70a
 
   - number: 70b
     text: |-
       Er zijn in deze leidraad op de artikelen 70b tot en met 72 van de wet geen beleidsregels gemaakt.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_70b
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_70b
 
   - number: '73'
     text: |-
@@ -6508,12 +6508,12 @@ articles:
       afkoelingsperiode is niet van invloed op een eventueel verleend uitstel van betaling. Hierop blijft het in deze
       leidraad opgenomen beleid op artikel 25 van de wet van toepassing. Gedurende de afkoelingsperiode schort de ontvanger
       de uitbetaling aan een derde op in verband met een executoriaal beslag op belastingteruggaven aan de belastingschuldige
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_73
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_73
 
   - number: '74'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_74
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_74
 
   - number: '75'
     text: |-
@@ -6791,12 +6791,12 @@ articles:
       worden betekend, is de belastingschuldige niet meer betekeningskosten verschuldigd dan het, op grond van artikel 3,
       eerste lid, van de Kostenwet invordering rijksbelastingen, maximaal in rekening te brengen bedrag voor het betekenen
       van een dwangbevel.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_75
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_75
 
   - number: '76'
     text: |-
       Niet van toepassing voor HHNK.
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_76
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_76
 
   - number: '80'
     text: |-
@@ -7085,7 +7085,7 @@ articles:
       Ondernemersplein.nl
 
       Werkenbijdeoverheid.nl
-    url: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_80
+    url: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_80
     machine_readable:
       definitions:
         minimum_termijnbedrag_incasso:
