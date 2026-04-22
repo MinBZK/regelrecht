@@ -800,43 +800,69 @@ articles:
     machine_readable:
       definitions:
         bijstandsnorm_alleenstaand:
-          description: Bijstandsnorm (eurocent per maand) voor een alleenstaande van 21 jaar of ouder en jonger dan de
-            pensioengerechtigde leeftijd, artikel 21 onderdeel a Participatiewet. Bedrag per 1 januari 2026 inclusief 5%
-            vakantie-uitkering.
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor een alleenstaande
+            van 21 jaar of ouder en jonger dan de pensioengerechtigde leeftijd.
+            Normatieve bron is Participatiewet art 21 onderdeel a; URI zou dit via
+            `source:` moeten opvragen, maar doet dat niet zodat URI op 2026-waarden
+            kan draaien terwijl Pw-YAML nog 2022-waarden bevat. Bedrag per 1 januari
+            2026 inclusief 5% vakantie-uitkering. Kandidaat voor source-refactor
+            zodra Participatiewet geactualiseerd is.
           value: 140150
         bijstandsnorm_alleenstaande_ouder:
-          description: Bijstandsnorm (eurocent per maand) voor een alleenstaande ouder. Sinds de Participatiewet-
-            hervorming per 1 januari 2015 is de afzonderlijke alleenstaande-ouder-norm afgeschaft; de aanvullende
-            bijstand voor alleenstaande ouders is vervangen door het kindgebonden budget. De norm is daarom gelijk aan
-            die van de alleenstaande (artikel 21 onderdeel a Participatiewet). Bedrag per 1 januari 2026 inclusief 5%
-            vakantie-uitkering.
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor een alleenstaande
+            ouder. Sinds de Participatiewet-hervorming per 1 januari 2015 is de
+            afzonderlijke alleenstaande-ouder-norm afgeschaft; de aanvullende
+            bijstand voor alleenstaande ouders is vervangen door het kindgebonden
+            budget. De norm is daarom gelijk aan die van de alleenstaande
+            (Participatiewet art 21 onderdeel a). Normatieve bron Pw; hardcoded
+            hier voor dezelfde 2026-snapshot-reden als bijstandsnorm_alleenstaand.
           value: 140150
         bijstandsnorm_echtgenoten:
-          description: Bijstandsnorm (eurocent per maand) voor gehuwden/samenwonenden waarvan beide echtgenoten 21 jaar of
-            ouder zijn en jonger dan de pensioengerechtigde leeftijd, artikel 21 onderdeel b Participatiewet. Bedrag per
-            1 januari 2026 inclusief 5% vakantie-uitkering.
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor gehuwden/
+            samenwonenden waarvan beide echtgenoten 21 jaar of ouder zijn en jonger
+            dan de pensioengerechtigde leeftijd. Normatieve bron Participatiewet
+            art 21 onderdeel b; hardcoded hier voor 2026. Bedrag inclusief 5%
+            vakantie-uitkering. Kandidaat voor source-refactor.
           value: 200213
         bijstandsnorm_aow_alleenstaand:
-          description: Bijstandsnorm (eurocent per maand) voor een alleenstaande die de pensioengerechtigde leeftijd heeft
-            bereikt, artikel 22 onderdeel a Participatiewet. Bedrag per 1 januari 2026 inclusief 5% vakantie-uitkering.
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor een alleenstaande
+            die de pensioengerechtigde leeftijd heeft bereikt. Normatieve bron
+            Participatiewet art 22 onderdeel a; hardcoded hier voor 2026.
+            Kandidaat voor source-refactor.
           value: 156469
         bijstandsnorm_aow_echtgenoten:
-          description: Bijstandsnorm (eurocent per maand) voor gehuwden/samenwonenden waarvan ten minste een echtgenoot de
-            pensioengerechtigde leeftijd heeft bereikt, artikel 22 onderdeel b Participatiewet. Bedrag per 1 januari 2026
-            inclusief 5% vakantie-uitkering.
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor gehuwden/
+            samenwonenden waarvan ten minste een echtgenoot de pensioengerechtigde
+            leeftijd heeft bereikt. Normatieve bron Participatiewet art 22 onderdeel
+            b; hardcoded hier voor 2026. Kandidaat voor source-refactor.
           value: 214416
         netto_ouderdomspensioen_alleenstaand:
-          description: Netto-ouderdomspensioen (eurocent per maand) voor een ongehuwde pensioengerechtigde, artikel 9 lid 1
-            onderdeel a Algemene Ouderdomswet, na aftrek loonbelasting + premies volksverzekeringen + inkomensafhankelijke
-            bijdrage Zvw (artikel 41 Zvw). Conform artikel 3 lid 3 Regeling kwijtschelding belastingen medeoverheden.
-            Bruto-bedrag 2026 per SVB-publicatie Staatscourant 2025 inclusief 5% vakantie-uitkering; netto-omrekening op
-            basis van tarieven eerste schijf loonbelasting 2026.
+          description: >-
+            SHORTCUT — netto-ouderdomspensioen (eurocent per maand) voor een
+            ongehuwde pensioengerechtigde, AOW art 9 lid 1 onderdeel a. De
+            normatieve *formule* staat in Regeling kwijtschelding belastingen
+            medeoverheden art 3 lid 3 (bruto AOW − loonbelasting − premies
+            volksverzekeringen − Zvw-bijdrage art 41). URI slaat die formule hier
+            over en hardcodet de uitkomst: bruto-bedrag 2026 per SVB-publicatie
+            Staatscourant 2025 inclusief 5% vakantie-uitkering; netto-omrekening op
+            basis van tarieven eerste schijf loonbelasting 2026. Kandidaat voor
+            source-refactor naar Regeling medeoverheden art 3.
           value: 155815
         netto_ouderdomspensioen_echtgenoten:
-          description: Netto-ouderdomspensioen (eurocent per maand, gezamenlijk) voor twee gehuwde pensioengerechtigden
-            (tweemaal het netto-AOW-bedrag voor een gehuwde pensioengerechtigde per artikel 9 lid 1 onderdeel b AOW).
-            Conform artikel 3 lid 2 onderdeel a Regeling kwijtschelding belastingen medeoverheden. Bedrag per 1 januari 2026
-            per SVB-publicatie inclusief 5% vakantie-uitkering.
+          description: >-
+            SHORTCUT — netto-ouderdomspensioen (eurocent per maand, gezamenlijk)
+            voor twee gehuwde pensioengerechtigden (tweemaal het netto-AOW-bedrag
+            voor een gehuwde pensioengerechtigde per AOW art 9 lid 1 onderdeel b).
+            Conform Regeling kwijtschelding belastingen medeoverheden art 3 lid 2
+            onderdeel a. Bedrag per 1 januari 2026 per SVB-publicatie inclusief 5%
+            vakantie-uitkering. Net als _alleenstaand: hardcoded uitkomst van de
+            formule die in Regeling medeoverheden art 3 leeft; kandidaat voor
+            source-refactor.
           value: 213540
       open_terms:
         - id: kostennorm_percentage
