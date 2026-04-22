@@ -9,6 +9,7 @@ import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import MachineReadable from './components/MachineReadable.vue';
+import ArticleRelations from './components/ArticleRelations.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
@@ -667,6 +668,19 @@ function handleActionSave() {
           <ndd-split-view-pane slot="pane-1" background="tinted">
             <ndd-page sticky-header>
               <ndd-top-title-bar slot="header" text="Tekst"></ndd-top-title-bar>
+              <ndd-simple-section v-if="law?.legal_basis?.length">
+                <div class="law-legal-basis">
+                  <span class="law-legal-basis-label">Berust op</span>
+                  <ndd-button
+                    v-for="(b, i) in law.legal_basis"
+                    :key="`lb-${i}`"
+                    size="sm"
+                    :text="`${b.law_id}${b.article ? ' art ' + b.article : ''}`"
+                    data-testid="legal-basis-link"
+                    @click="router.push(`/editor/${encodeURIComponent(b.law_id)}`)"
+                  ></ndd-button>
+                </div>
+              </ndd-simple-section>
               <ArticleText :article="selectedArticle" />
             </ndd-page>
           </ndd-split-view-pane>
@@ -737,6 +751,10 @@ function handleActionSave() {
 
               <!-- Machine view: structured editor -->
               <ndd-simple-section v-else-if="rightPaneView === 'machine'">
+                <ArticleRelations
+                  :law="law"
+                  :article="editedArticle"
+                />
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
@@ -839,5 +857,21 @@ function handleActionSave() {
   padding: 8px 12px;
   border: 1px solid #fecaca;
   border-radius: 6px;
+}
+
+.law-legal-basis {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+}
+
+.law-legal-basis-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--rvo-color-grijs-700, #535353);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { useRouter } from 'vue-router';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -11,6 +12,8 @@ const props = defineProps({
   /** Error from the most recent save attempt (Error instance or null) */
   saveError: { type: Object, default: null },
 });
+
+const router = useRouter();
 
 const emit = defineEmits([
   'open-action',
@@ -58,9 +61,17 @@ const inputs = computed(() =>
   (execution.value?.input ?? []).map((i) => ({
     name: i.name,
     type: i.type,
+    sourceRegulation: i.source?.regulation ?? null,
+    sourceOutput: i.source?.output ?? null,
+    // Legacy display string used by the existing test-id/row rendering.
     source: i.source?.regulation ?? i.source?.output ?? null,
   }))
 );
+
+function navigateToSource(input) {
+  if (!input.sourceRegulation) return;
+  router.push(`/editor/${encodeURIComponent(input.sourceRegulation)}`);
+}
 
 const outputs = computed(() =>
   (execution.value?.output ?? []).map((o) => ({
@@ -254,16 +265,28 @@ function addOutput() {
       <ndd-spacer size="8"></ndd-spacer>
       <ndd-list variant="box">
         <ndd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
-          <ndd-text-cell :text="`${input.name} (${input.type})${input.source ? ` — ${input.source}` : ''}`"></ndd-text-cell>
-          <ndd-cell v-if="editable">
+          <ndd-text-cell
+            :text="`${input.name} (${input.type})`"
+            :supporting-text="input.sourceOutput ? `output '${input.sourceOutput}'${input.sourceRegulation ? ' uit ' + input.sourceRegulation : ''}` : undefined"
+          ></ndd-text-cell>
+          <ndd-cell>
             <div class="mr-row-actions">
-              <ndd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></ndd-button>
-              <ndd-icon-button
-                icon="minus"
-                accessible-label="Verwijder input"
-                :data-testid="`input-${input.name}-delete-btn`"
-                @click="deleteInput(index)"
-              ></ndd-icon-button>
+              <ndd-button
+                v-if="input.sourceRegulation"
+                size="md"
+                :data-testid="`input-${input.name}-goto-btn`"
+                :text="input.sourceRegulation"
+                @click="navigateToSource(input)"
+              ></ndd-button>
+              <template v-if="editable">
+                <ndd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></ndd-button>
+                <ndd-icon-button
+                  icon="minus"
+                  accessible-label="Verwijder input"
+                  :data-testid="`input-${input.name}-delete-btn`"
+                  @click="deleteInput(index)"
+                ></ndd-icon-button>
+              </template>
             </div>
           </ndd-cell>
         </ndd-list-item>
