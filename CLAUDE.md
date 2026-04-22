@@ -150,6 +150,8 @@ CI runs via `.github/workflows/ci.yml`.
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
+| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` |
+| demo-api | `regelrecht-demo-api` | `demoapi.regelrecht.rijks.app` |
 
 ### How It Works
 
