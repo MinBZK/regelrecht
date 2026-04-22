@@ -410,8 +410,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-header: '## Preview Deployment — docs'
 
+      # Demo components must be pre-registered on the ZAD project with
+      # `zad component add` before the preview deploy can succeed. Until that
+      # one-time setup is done, gate both demo deploys behind the `deploy:demo`
+      # PR label so CI stays green on normal PRs.
       - name: Deploy demo-api to ZAD (Preview)
-        if: needs.build-demo-api.result == 'success'
+        if: >-
+          needs.build-demo-api.result == 'success' &&
+          contains(github.event.pull_request.labels.*.name, 'deploy:demo')
         uses: RijksICTGilde/zad-actions/deploy@v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -427,7 +433,9 @@ jobs:
           comment-header: '## Preview Deployment — demo-api'
 
       - name: Deploy demo-frontend to ZAD (Preview)
-        if: needs.build-demo-frontend.result == 'success'
+        if: >-
+          needs.build-demo-frontend.result == 'success' &&
+          contains(github.event.pull_request.labels.*.name, 'deploy:demo')
         uses: RijksICTGilde/zad-actions/deploy@v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -565,8 +573,14 @@ jobs:
           component: docs
           image: ${{ env.REGISTRY }}/minbzk/regelrecht-docs:sha-${{ steps.sha.outputs.short }}
 
+      # Demo production deploys are gated on a repo variable so the workflow
+      # doesn't start failing on main the moment this PR merges — the demo/
+      # demoapi components must be registered on the ZAD `regelrecht` deployment
+      # first. Set `vars.DEMO_DEPLOY_ENABLED` to 'true' once that is done.
       - name: Deploy demo-api to ZAD (Production)
-        if: needs.build-demo-api.result == 'success'
+        if: >-
+          needs.build-demo-api.result == 'success' &&
+          vars.DEMO_DEPLOY_ENABLED == 'true'
         uses: RijksICTGilde/zad-actions/deploy@v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
@@ -576,7 +590,9 @@ jobs:
           image: ${{ env.REGISTRY }}/minbzk/regelrecht-demo-api:sha-${{ steps.sha.outputs.short }}
 
       - name: Deploy demo-frontend to ZAD (Production)
-        if: needs.build-demo-frontend.result == 'success'
+        if: >-
+          needs.build-demo-frontend.result == 'success' &&
+          vars.DEMO_DEPLOY_ENABLED == 'true'
         uses: RijksICTGilde/zad-actions/deploy@v4
         with:
           api-key: ${{ secrets.RIG_API_KEY }}
