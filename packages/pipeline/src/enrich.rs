@@ -32,6 +32,18 @@ fn remember_branch(branch: &str) {
     }
 }
 
+/// Pick the base branch to check out the law YAML from, given the worker's
+/// preferred branch and whether that branch exists on the remote. Pure
+/// function so the branch-selection contract can be pinned by unit tests
+/// without a live git remote.
+fn pick_enrich_base(preferred: &str, preferred_exists: bool) -> &str {
+    if preferred == "development" || preferred_exists {
+        preferred
+    } else {
+        "development"
+    }
+}
+
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
 /// with a fake provider that doesn't spawn real processes.
 #[async_trait::async_trait]
@@ -473,18 +485,22 @@ pub async fn create_enrich_corpus(
     // inside `checkout_from_branch` doesn't match sibling files and skip
     // fetching a newly harvested version of an already-known law.
     let preferred_base = base_config.branch.as_str();
-    let base_branch = if preferred_base == "development" || branch_is_known(preferred_base) {
-        preferred_base
-    } else if client.remote_branch_exists(preferred_base).await? {
-        remember_branch(preferred_base);
-        preferred_base
+    let preferred_exists = if preferred_base == "development" || branch_is_known(preferred_base) {
+        true
     } else {
+        let exists = client.remote_branch_exists(preferred_base).await?;
+        if exists {
+            remember_branch(preferred_base);
+        }
+        exists
+    };
+    let base_branch = pick_enrich_base(preferred_base, preferred_exists);
+    if !preferred_exists {
         tracing::info!(
             branch = %preferred_base,
             "base branch not yet published on remote, using development for first enrichment"
         );
-        "development"
-    };
+    }
 
     client
         .checkout_from_branch(base_branch, &[&normalized])
@@ -821,6 +837,26 @@ fn count_machine_readable_in_value(value: &serde_yaml_ng::Value) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pick_enrich_base_uses_preferred_when_remote_has_it() {
+        assert_eq!(pick_enrich_base("pr574", true), "pr574");
+    }
+
+    #[test]
+    fn pick_enrich_base_falls_back_when_preferred_missing() {
+        // Fresh PR deployment whose harvester hasn't pushed its branch yet:
+        // enrichment must fall back to development instead of failing.
+        assert_eq!(pick_enrich_base("pr574", false), "development");
+    }
+
+    #[test]
+    fn pick_enrich_base_short_circuits_for_development() {
+        // When the worker's own base is already `development`, the
+        // remote-exists bool is moot and we always use `development`.
+        assert_eq!(pick_enrich_base("development", true), "development");
+        assert_eq!(pick_enrich_base("development", false), "development");
+    }
 
     #[test]
     fn test_enrich_payload_serde_roundtrip() {

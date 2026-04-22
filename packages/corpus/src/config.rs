@@ -31,15 +31,18 @@ impl std::fmt::Debug for CorpusConfig {
 
 /// Extract the ZAD deployment name from a Kubernetes pod hostname.
 ///
-/// Pod hostnames follow `{deployment}-{component}-{rs-hash}-{pod-hash}`.
-/// Only the literal `regelrecht` (production) and `pr<digits>` (PR previews)
-/// are recognised, and the hostname must contain at least one `-` — a bare
-/// first segment without the pod suffix (e.g. a dev box literally named
-/// `pr42`) returns `None` so it can't shadow an explicit `CORPUS_BRANCH`.
+/// Pod hostnames follow `{deployment}-{component}-{rs-hash}-{pod-hash}` —
+/// always four or more dash-separated segments. Only the literal
+/// `regelrecht` (production) and `pr<digits>` (PR previews) are recognised,
+/// and the hostname must have at least three `-` characters (the minimum
+/// pod-name shape). A dev box named `pr42`, `pr42-workstation`, or
+/// `pr42-a-b` therefore returns `None` and can't shadow an explicit
+/// `CORPUS_BRANCH`.
 fn deployment_from_hostname(hostname: &str) -> Option<String> {
-    // Require the K8s pod-name shape: at least one `-` must follow the
-    // deployment segment. Anything shorter is almost certainly not a pod.
-    if !hostname.contains('-') {
+    // Require the full K8s pod-name shape: at least three `-` characters,
+    // matching `{deployment}-{component}-{rs-hash}-{pod-hash}`. Anything
+    // shorter is almost certainly not a pod.
+    if hostname.matches('-').count() < 3 {
         return None;
     }
     let first = hostname.split('-').next()?;
@@ -377,11 +380,13 @@ mod tests {
 
     #[test]
     fn deployment_from_hostname_rejects_bare_names() {
-        // A bare `pr42` (no K8s pod suffix) is most likely a dev box, not a
-        // pod; treating it as a ZAD deployment would silently shadow an
-        // explicit CORPUS_BRANCH on that machine.
+        // Require at least three dashes — the minimum K8s pod-name shape.
+        // Bare names and short dash-separated dev hostnames both fall short
+        // and must not silently shadow CORPUS_BRANCH on developer machines.
         assert_eq!(deployment_from_hostname("pr42"), None);
         assert_eq!(deployment_from_hostname("regelrecht"), None);
+        assert_eq!(deployment_from_hostname("pr42-workstation"), None);
+        assert_eq!(deployment_from_hostname("pr42-a-b"), None);
     }
 
     #[test]
