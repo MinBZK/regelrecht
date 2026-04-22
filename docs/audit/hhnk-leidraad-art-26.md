@@ -1,9 +1,9 @@
 # Audit — HHNK-leidraad invordering waterschapsbelastingen art 26
 
-**Wet**: Leidraad invordering waterschapsbelastingen HHNK 2023
+**Wet**: Leidraad invordering waterschapsbelastingen HHNK 2026
 **`$id`**: `leidraad_invordering_waterschapsbelastingen_hhnk`
 **Type**: beleidsregel College van Dijkgraaf en Heemraden HHNK (Awb 4:81)
-**Wet-URL**: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26
+**Wet-URL**: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_26
 **YAML-bestand**: `corpus/regulation/nl/waterschaps_verordening/hhnk/leidraad_invordering_waterschapsbelastingen/2023-01-01.yaml`
 **Laatste review**: —
 **Reviewer(s)**: —
@@ -40,7 +40,7 @@ Symbolische kortschriften die in formules worden gebruikt:
 > middel van 'Mijn loket' op www.hhnk.nl (zie verder artikel 26.7), of
 > op een daartoe ingesteld kwijtscheldingsformulier."
 
-🔗 https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26
+🔗 https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_26
 
 | | |
 |---|---|
@@ -76,7 +76,7 @@ Symbolische kortschriften die in formules worden gebruikt:
 >   belastingaanslag niet kan worden voldaan […];
 > • [overige gronden waaronder de schuldsaneringsregeling]."
 
-🔗 https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26 (subsectie 26.1.9)
+🔗 https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_26 (subsectie 26.1.9)
 
 | | |
 |---|---|
