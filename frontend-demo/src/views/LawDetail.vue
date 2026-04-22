@@ -14,6 +14,9 @@ const profile = ref(null);
 const lawEntry = ref(null);
 const calculationDate = ref('2025-06-01');
 const showTrace = ref(false);
+const explanation = ref(null);
+const explanationLoading = ref(false);
+const explanationError = ref(null);
 
 onMounted(async () => {
   const [index, merijn] = await Promise.all([getDemoIndex(), getProfile('merijn')]);
@@ -53,6 +56,38 @@ const formattedAmount = computed(() => {
 
 function goToSimulation() {
   router.push({ name: 'law-simulation', params: { lawId: props.lawId } });
+}
+
+async function requestExplanation() {
+  if (!lawEntry.value || !lastResult.value) return;
+  explanationLoading.value = true;
+  explanationError.value = null;
+  explanation.value = null;
+  try {
+    const resp = await fetch('/api/explain', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        law_id: lawEntry.value.id,
+        law_label: lawEntry.value.label,
+        output_name: lawEntry.value.output,
+        parameters: { bsn: profile.value?.bsn },
+        result: lastResult.value,
+        trace: lastResult.value?.trace ?? null,
+        profile_summary: profile.value?.description ?? '',
+      }),
+    });
+    if (!resp.ok) {
+      explanationError.value = `Uitleg-service gaf ${resp.status}`;
+      return;
+    }
+    const body = await resp.json();
+    explanation.value = body.explanation;
+  } catch (e) {
+    explanationError.value = e?.message || String(e);
+  } finally {
+    explanationLoading.value = false;
+  }
 }
 </script>
 
@@ -98,12 +133,23 @@ function goToSimulation() {
               text="Toon redenering"
               @click="showTrace = !showTrace"
             ></ndd-toggle-button>
+            <ndd-button
+              variant="secondary"
+              :text="explanationLoading ? 'Uitleg laden…' : 'Vraag uitleg'"
+              :disabled="explanationLoading"
+              @click="requestExplanation"
+            ></ndd-button>
             <ndd-spacer size="8"></ndd-spacer>
             <div v-if="showTrace" class="trace">
               <h6>Gebruikte invoer</h6>
               <pre>{{ JSON.stringify(lastResult?.resolved_inputs ?? {}, null, 2) }}</pre>
               <h6>Trace</h6>
               <pre>{{ lastResult?.trace_text ?? JSON.stringify(lastResult?.trace ?? {}, null, 2) }}</pre>
+            </div>
+            <div v-if="explanationError" class="error">{{ explanationError }}</div>
+            <div v-if="explanation" class="explanation">
+              <h6>Uitleg</h6>
+              <p>{{ explanation }}</p>
             </div>
           </template>
           <p v-else>Nog niets berekend.</p>
@@ -130,4 +176,6 @@ function goToSimulation() {
 .amount small { display: block; font-size: 0.8rem; color: var(--ndd-color-neutral-600, #666); }
 .error { color: var(--ndd-color-red-600, #b00020); }
 .trace pre { font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; background: var(--ndd-color-neutral-50, #fafafa); padding: 8px; border-radius: 4px; }
+.explanation { margin-top: 16px; padding: 12px; background: var(--ndd-color-primary-50, #eef3ff); border-left: 4px solid var(--ndd-color-primary-500, #1e5bc6); border-radius: 4px; }
+.explanation p { margin: 0; white-space: pre-wrap; }
 </style>
