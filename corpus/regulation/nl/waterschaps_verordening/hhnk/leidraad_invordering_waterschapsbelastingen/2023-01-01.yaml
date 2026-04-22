@@ -1,7 +1,7 @@
 ---
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
 $id: leidraad_invordering_waterschapsbelastingen_hhnk
-regulatory_layer: WATERSCHAPS_VERORDENING
+regulatory_layer: BELEIDSREGEL
 publication_date: '2023-09-08'
 valid_from: '2023-09-08'
 waterschap_code: WS0155
