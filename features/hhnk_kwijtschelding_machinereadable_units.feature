@@ -265,10 +265,10 @@ Feature: Unit-tests voor nieuwe machine_readable blocks in HHNK-kwijtschelding k
       | verwijtbaarheid_belastingschuld              | false                           |
       | in_faillissement_of_surseance_zonder_akkoord | false                           |
       | verzoek_ingediend                            | true                            |
-    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kwijtschelding_komt_in_aanmerking,kwijtschelding_bedrag"
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
-    And the output "kwijtschelding_komt_in_aanmerking" is "true"
-    And the output "kwijtschelding_bedrag" is "15000"
+    And the output "kan_kwijtschelding_worden_verleend" is "true"
+    And the output "hoogte_kwijtschelding" is "15000"
 
   # === HHNK-leidraad art 25.5.3: kort uitstel particulier (EUR 500 drempel) ===
 
@@ -347,7 +347,7 @@ Feature: Unit-tests voor nieuwe machine_readable blocks in HHNK-kwijtschelding k
       | verwijtbaarheid_belastingschuld              | false                           |
       | in_faillissement_of_surseance_zonder_akkoord | false                           |
       | verzoek_ingediend                            | false                           |
-    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kwijtschelding_komt_in_aanmerking,kwijtschelding_bedrag"
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
-    And the output "kwijtschelding_komt_in_aanmerking" is "false"
-    And the output "kwijtschelding_bedrag" is "0"
+    And the output "kan_kwijtschelding_worden_verleend" is "false"
+    And the output "hoogte_kwijtschelding" is "0"

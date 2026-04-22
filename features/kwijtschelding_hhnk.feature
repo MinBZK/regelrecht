@@ -30,7 +30,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "15000"
@@ -66,7 +67,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                      |
       | verwijtbaarheid_belastingschuld               | false                      |
       | in_faillissement_of_surseance_zonder_akkoord  | false                      |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "12000"
@@ -100,7 +102,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
     And the output "hoogte_kwijtschelding" is "0"
@@ -136,7 +139,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                         |
       | verwijtbaarheid_belastingschuld               | false                         |
       | in_faillissement_of_surseance_zonder_akkoord  | false                         |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "20000"
@@ -171,7 +175,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "25000"
@@ -209,7 +214,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "45000"
@@ -244,7 +250,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
     And the output "hoogte_kwijtschelding" is "0"
@@ -280,7 +287,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "15000"
@@ -316,7 +324,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
     And the output "hoogte_kwijtschelding" is "0"
@@ -350,7 +359,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                                 |
       | verwijtbaarheid_belastingschuld               | false                                 |
       | in_faillissement_of_surseance_zonder_akkoord  | false                                 |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
     And the output "hoogte_kwijtschelding" is "0"
@@ -387,7 +397,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "false"
     And the output "hoogte_kwijtschelding" is "0"
@@ -423,7 +434,8 @@ Feature: HHNK kwijtschelding waterschapsbelastingen
       | derde_aansprakelijk_gesteld                   | false                           |
       | verwijtbaarheid_belastingschuld               | false                           |
       | in_faillissement_of_surseance_zonder_akkoord  | false                           |
-    When the law "kwijtscheldingsregeling_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
+      | verzoek_ingediend                             | true                            |
+    When the law "leidraad_invordering_waterschapsbelastingen_hhnk" is executed for outputs "kan_kwijtschelding_worden_verleend,hoogte_kwijtschelding"
     Then the execution succeeds
     And the output "kan_kwijtschelding_worden_verleend" is "true"
     And the output "hoogte_kwijtschelding" is "15000"

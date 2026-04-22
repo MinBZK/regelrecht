@@ -4477,8 +4477,8 @@ articles:
     machine_readable:
       execution:
         produces:
-          legal_character: INFORMATIEF
-          decision_type: BELEIDSREGEL
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: bsn
             type: string
@@ -4548,6 +4548,8 @@ articles:
             type_spec:
               unit: eurocent
             required: false
+            description: Nettokosten kinderopvang per maand. Per HHNK-verordening art 3 jo URI art 28 lid 3
+              worden deze als uitgaven meegenomen in de betalingscapaciteit-berekening. Default 0.
           - name: is_ondernemer
             type: boolean
             required: true
@@ -4577,104 +4579,119 @@ articles:
             required: false
           - name: verzoek_ingediend
             type: boolean
-            required: true
+            required: false
             description: >-
-              True indien een schriftelijk of digitaal kwijtscheldingsverzoek is ingediend
-              ("Mijn loket" op www.hhnk.nl of op een kwijtscheldingsformulier, zie 26.1.2).
+              Beleidsregel-gate uit 26.1.2: een verzoek moet ingediend zijn voordat de
+              ontvanger beoordeelt. Default true voor scenarios die de materiele toets
+              testen; caller zet op false om de gate te testen.
         input:
-          - name: verordening_verleent_kwijtschelding
+          # Scope-check — verordening art 1 is de normatieve reikwijdte
+          - name: belastingsoort_in_scope
             type: boolean
             source:
               regulation: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+              output: belastingsoort_in_scope
+              parameters:
+                belastingsoort: $belastingsoort
+          # Ondernemer-regel — verordening art 5
+          - name: ondernemer_komt_in_aanmerking
+            type: boolean
+            source:
+              regulation: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+              output: ondernemer_komt_in_aanmerking
+              parameters:
+                is_ondernemer: $is_ondernemer
+                belasting_zakelijk: $belasting_zakelijk
+          # Uitsluitingsgronden — Leidraad Invordering 2008 art 26.1.9
+          - name: uitgesloten_van_kwijtschelding
+            type: boolean
+            source:
+              regulation: leidraad_invordering_2008
+              output: uitgesloten_van_kwijtschelding
+              parameters:
+                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
+                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
+                zekerheid_gesteld: $zekerheid_gesteld
+                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
+                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
+                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
+                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
+          # Vermogen — URI art 12 (met Leidraad 2008 26.2.3 auto-overrule)
+          - name: vermogen_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
+              output: vermogen_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                inboedel_waarde: $inboedel_waarde
+                auto_waarde: $auto_waarde
+                auto_onmisbaar: $auto_onmisbaar
+                onroerend_goed_waarde: $onroerend_goed_waarde
+                andere_bezittingen: $andere_bezittingen
+                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
+                liquide_middelen: $liquide_middelen
+          # Kan/hoogte op URI-niveau — URI art 11
+          - name: kan_kwijtschelding_verleend_uri
+            type: boolean
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
               output: kan_kwijtschelding_worden_verleend
               parameters:
                 bsn: $bsn
                 waterschap_code: $waterschap_code
-                belastingsoort: $belastingsoort
                 netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
                 netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
-                inboedel_waarde: $inboedel_waarde
-                auto_waarde: $auto_waarde
-                auto_onmisbaar: $auto_onmisbaar
-                onroerend_goed_waarde: $onroerend_goed_waarde
-                andere_bezittingen: $andere_bezittingen
-                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
-                liquide_middelen: $liquide_middelen
+                vermogen: $vermogen_bedrag
+                extra_uitgaven_maand: $kinderopvang_nettokosten_maand
                 aanslagbedrag: $aanslagbedrag
-                kinderopvang_nettokosten_maand: $kinderopvang_nettokosten_maand
-                is_ondernemer: $is_ondernemer
-                belasting_zakelijk: $belasting_zakelijk
-                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
-                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
-                zekerheid_gesteld: $zekerheid_gesteld
-                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
-                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
-                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
-                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
-            description: >-
-              De inhoudelijke toetsing wordt door de Kwijtscheldingsregeling
-              waterschapsbelastingen HHNK 2023 (verordening) uitgevoerd, die zelf
-              doorschakelt naar URI/Regeling medeoverheden.
-          - name: verordening_hoogte_kwijtschelding
+          - name: hoogte_kwijtschelding_uri
             type: amount
             type_spec:
               unit: eurocent
             source:
-              regulation: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+              regulation: uitvoeringsregeling_invorderingswet_1990
               output: hoogte_kwijtschelding
               parameters:
                 bsn: $bsn
                 waterschap_code: $waterschap_code
-                belastingsoort: $belastingsoort
                 netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
                 netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
-                inboedel_waarde: $inboedel_waarde
-                auto_waarde: $auto_waarde
-                auto_onmisbaar: $auto_onmisbaar
-                onroerend_goed_waarde: $onroerend_goed_waarde
-                andere_bezittingen: $andere_bezittingen
-                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
-                liquide_middelen: $liquide_middelen
+                vermogen: $vermogen_bedrag
+                extra_uitgaven_maand: $kinderopvang_nettokosten_maand
                 aanslagbedrag: $aanslagbedrag
-                kinderopvang_nettokosten_maand: $kinderopvang_nettokosten_maand
-                is_ondernemer: $is_ondernemer
-                belasting_zakelijk: $belasting_zakelijk
-                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
-                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
-                zekerheid_gesteld: $zekerheid_gesteld
-                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
-                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
-                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
-                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
         output:
           - name: beleidsregel_vereist_verzoek
             type: boolean
             description: >-
-              True — HHNK hanteert de regel dat kwijtschelding alleen wordt beoordeeld op
-              verzoek (26.1.2). De ambtshalve terugbetaling uit 26.1.1 is een uitzondering
-              die apart moet worden aangevraagd.
-          - name: kwijtschelding_komt_in_aanmerking
+              True — HHNK-leidraad 26.1.2 schrijft voor dat kwijtschelding alleen op
+              verzoek wordt beoordeeld.
+          - name: kan_kwijtschelding_worden_verleend
             type: boolean
             description: >-
-              True als (a) een verzoek is ingediend én (b) de verordening een toewijzing
-              kan geven. Subsecties 26.1.9 (uitsluitingen), 26.2.* (particulieren) en 26.3.*
-              (ondernemers) zijn in de verordening en in de Leidraad Invordering 2008
-              gecodeerd; waar HHNK afwijkt is dit in de verordening vastgelegd.
-          - name: kwijtschelding_bedrag
+              Samengestelde toets: scope (verordening art 1) AND ondernemer-regel
+              (verordening art 5) AND geen uitsluitingsgrond (Leidraad 2008 26.1.9)
+              AND URI-kwalificatie (art 11 URI).
+          - name: hoogte_kwijtschelding
             type: amount
             type_spec:
               unit: eurocent
             description: >-
-              Toe te kennen kwijtschelding in eurocent. 0 indien niet toegekend of geen
-              verzoek ingediend.
+              Het toegekende kwijtscheldingsbedrag. 0 indien niet toegekend of indien
+              geen verzoek is ingediend.
         actions:
           - output: beleidsregel_vereist_verzoek
             value: true
-          - output: kwijtschelding_komt_in_aanmerking
+          - output: kan_kwijtschelding_worden_verleend
             value:
               operation: AND
               conditions:
@@ -4682,17 +4699,26 @@ articles:
                   subject: $verzoek_ingediend
                   value: true
                 - operation: EQUALS
-                  subject: $verordening_verleent_kwijtschelding
+                  subject: $belastingsoort_in_scope
                   value: true
-          - output: kwijtschelding_bedrag
+                - operation: EQUALS
+                  subject: $ondernemer_komt_in_aanmerking
+                  value: true
+                - operation: EQUALS
+                  subject: $uitgesloten_van_kwijtschelding
+                  value: false
+                - operation: EQUALS
+                  subject: $kan_kwijtschelding_verleend_uri
+                  value: true
+          - output: hoogte_kwijtschelding
             value:
               operation: IF
               cases:
                 - when:
                     operation: EQUALS
-                    subject: $kwijtschelding_komt_in_aanmerking
+                    subject: $kan_kwijtschelding_worden_verleend
                     value: true
-                  then: $verordening_hoogte_kwijtschelding
+                  then: $hoogte_kwijtschelding_uri
               default: 0
       untranslatables:
         - construct: 26.1.1 ambtshalve terugbetaling van reeds betaalde belastingschulden
