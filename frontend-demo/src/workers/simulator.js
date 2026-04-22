@@ -6,13 +6,21 @@
 //   Worker -> Main (result):   { type: 'result', results: [{ amount, eligible }], summary }
 //   Worker -> Main (error):    { type: 'error', message }
 
-// Use a dynamic import so the WASM bundle loads lazily in the worker.
+// Load the WASM engine lazily. /wasm/pkg/ is served from the public dir at
+// runtime — fetch the glue, wrap in a Blob, and dynamic-import via blob URL
+// with @vite-ignore so the bundler doesn't try to resolve the path at build.
 let engine = null;
 
 async function ensureEngine() {
   if (engine) return engine;
-  const mod = await import('/wasm/pkg/regelrecht_engine.js');
-  await mod.default();
+  const jsRes = await fetch('/wasm/pkg/regelrecht_engine.js');
+  if (!jsRes.ok) throw new Error(`WASM glue fetch failed: ${jsRes.status}`);
+  const jsText = await jsRes.text();
+  const blob = new Blob([jsText], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  const mod = await import(/* @vite-ignore */ blobUrl);
+  URL.revokeObjectURL(blobUrl);
+  await mod.default('/wasm/pkg/regelrecht_engine_bg.wasm');
   engine = new mod.WasmEngine();
   return engine;
 }
