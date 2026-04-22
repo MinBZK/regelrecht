@@ -4622,29 +4622,16 @@ articles:
                 andere_bezittingen: $andere_bezittingen
                 hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
                 liquide_middelen: $liquide_middelen
-          # Kan/hoogte op URI-niveau — URI art 11
-          - name: kan_kwijtschelding_verleend_uri
-            type: boolean
-            source:
-              regulation: uitvoeringsregeling_invorderingswet_1990
-              output: kan_kwijtschelding_worden_verleend
-              parameters:
-                bsn: $bsn
-                waterschap_code: $waterschap_code
-                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
-                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
-                huishoudtype: $huishoudtype
-                is_pensioengerechtigd: $is_pensioengerechtigd
-                vermogen: $vermogen_bedrag
-                extra_uitgaven_maand: $kinderopvang_nettokosten_maand
-                aanslagbedrag: $aanslagbedrag
-          - name: hoogte_kwijtschelding_uri
+          # Betalingscapaciteit — URI art 13 (door art 26 in bredere tekst van
+          # de HHNK-leidraad expliciet aangeduid als federale rekenregel voor
+          # het beschikbare bedrag na kosten van bestaan).
+          - name: betalingscapaciteit
             type: amount
             type_spec:
               unit: eurocent
             source:
               regulation: uitvoeringsregeling_invorderingswet_1990
-              output: hoogte_kwijtschelding
+              output: betalingscapaciteit
               parameters:
                 bsn: $bsn
                 waterschap_code: $waterschap_code
@@ -4652,9 +4639,7 @@ articles:
                 netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
                 huishoudtype: $huishoudtype
                 is_pensioengerechtigd: $is_pensioengerechtigd
-                vermogen: $vermogen_bedrag
                 extra_uitgaven_maand: $kinderopvang_nettokosten_maand
-                aanslagbedrag: $aanslagbedrag
         output:
           - name: beleidsregel_vereist_verzoek
             type: boolean
@@ -4665,22 +4650,39 @@ articles:
             type: boolean
             description: >-
               True als een van de HHNK-leidraad 26.1.9 weigergronden van toepassing is.
-              De tekst van 26.1.9 in de HHNK-leidraad is inhoudelijk gelijk aan
-              Leidraad Invordering 2008 art 26.1.9, maar juridisch staat deze regel
-              zelfstandig als HHNK-beleidsregel — de logica leeft hier.
+              Juridisch zelfstandig als HHNK-beleidsregel — de OR-logica is inline
+              gedeclareerd in dit artikel, niet via source.
+          - name: aanwendbare_betalingscapaciteit
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              80% van de door URI art 13 geleverde betalingscapaciteit. Volgt uit de
+              tekst van HHNK-leidraad art 26: "ten minste 80 percent van de
+              betalingscapaciteit is aangewend".
+          - name: raw_hoogte_kwijtschelding
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Het bedrag dat resteert na aanwending van vermogen (URI art 12) en 80%
+              van de betalingscapaciteit (URI art 13) op het aanslagbedrag. Gate-loos
+              — de beleidsregel-gates (scope, ondernemer, uitsluiting, verzoek)
+              bepalen of het bedrag ook daadwerkelijk wordt toegekend.
           - name: kan_kwijtschelding_worden_verleend
             type: boolean
             description: >-
-              Samengestelde toets: scope (verordening art 1) AND ondernemer-regel
-              (verordening art 5) AND geen uitsluitingsgrond (Leidraad 2008 26.1.9)
-              AND URI-kwalificatie (art 11 URI).
+              Samengestelde toets: verzoek ingediend AND belastingsoort in scope
+              (verordening art 1) AND ondernemer-regel (verordening art 5) AND geen
+              uitsluitingsgrond (26.1.9 inline) AND raw_hoogte > 0 (na vermogen- en
+              betalingscap-aanwending).
           - name: hoogte_kwijtschelding
             type: amount
             type_spec:
               unit: eurocent
             description: >-
-              Het toegekende kwijtscheldingsbedrag. 0 indien niet toegekend of indien
-              geen verzoek is ingediend.
+              Het toegekende kwijtscheldingsbedrag. Gelijk aan raw_hoogte wanneer alle
+              gates voldoen, anders 0.
         actions:
           - output: beleidsregel_vereist_verzoek
             value: true
@@ -4711,6 +4713,30 @@ articles:
                 - operation: EQUALS
                   subject: $in_faillissement_of_surseance_zonder_akkoord
                   value: true
+          # 80% betalingscap-aanwending conform art 26 tekst: "ten minste 80
+          # percent van de betalingscapaciteit is aangewend"
+          - output: aanwendbare_betalingscapaciteit
+            value:
+              operation: MULTIPLY
+              values:
+                - 0.8
+                - $betalingscapaciteit
+          # Raw-hoogte: aanslag minus vermogen (URI art 12) minus 80% betalings-
+          # capaciteit (URI art 13). Tekst art 26: "het openstaande bedrag dat
+          # resteert nadat vermogen + ten minste 80% betalingscapaciteit is
+          # aangewend".
+          - output: raw_hoogte_kwijtschelding
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - operation: SUBTRACT
+                      values:
+                        - $aanslagbedrag
+                        - $vermogen_bedrag
+                    - $aanwendbare_betalingscapaciteit
           - output: kan_kwijtschelding_worden_verleend
             value:
               operation: AND
@@ -4727,9 +4753,9 @@ articles:
                 - operation: EQUALS
                   subject: $uitgesloten_van_kwijtschelding
                   value: false
-                - operation: EQUALS
-                  subject: $kan_kwijtschelding_verleend_uri
-                  value: true
+                - operation: GREATER_THAN
+                  subject: $raw_hoogte_kwijtschelding
+                  value: 0
           - output: hoogte_kwijtschelding
             value:
               operation: IF
@@ -4738,7 +4764,7 @@ articles:
                     operation: EQUALS
                     subject: $kan_kwijtschelding_worden_verleend
                     value: true
-                  then: $hoogte_kwijtschelding_uri
+                  then: $raw_hoogte_kwijtschelding
               default: 0
       untranslatables:
         - construct: 26.1.1 ambtshalve terugbetaling van reeds betaalde belastingschulden
