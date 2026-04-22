@@ -1,12 +1,45 @@
 # Audit — HHNK-leidraad invordering waterschapsbelastingen art 26
 
-**Wet**: Leidraad invordering waterschapsbelastingen HHNK 2023
+**Wet**: Leidraad invordering waterschapsbelastingen HHNK 2026 (vervangt 2023)
 **`$id`**: `leidraad_invordering_waterschapsbelastingen_hhnk`
 **Type**: beleidsregel College van Dijkgraaf en Heemraden HHNK (Awb 4:81)
-**Wet-URL**: https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26
-**YAML-bestand**: `corpus/regulation/nl/waterschaps_verordening/hhnk/leidraad_invordering_waterschapsbelastingen/2023-01-01.yaml`
+**Wet-URL (CVDR)**: https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_26
+**Wet-URL (WSB)**: https://zoek.officielebekendmakingen.nl/wsb-2026-2845
+**YAML-bestand 2026**: `corpus/regulation/nl/waterschaps_verordening/hhnk/leidraad_invordering_waterschapsbelastingen/2026-02-07.yaml`
+**YAML-bestand 2023**: `corpus/regulation/nl/waterschaps_verordening/hhnk/leidraad_invordering_waterschapsbelastingen/2023-01-01.yaml` *(legacy parallel, 2023-01-01 t/m 2026-02-06)*
 **Laatste review**: —
 **Reviewer(s)**: —
+
+---
+
+## 2026-wijzigingen t.o.v. 2023 (bron: WSB-2026-2845)
+
+**Authentieke bron**: Waterschapsblad wsb-2026-2845, publicatie 2026-02-06,
+inwerkingtreding 2026-02-07 ([metadata.xml](https://zoek.officielebekendmakingen.nl/wsb-2026-2845/metadata.xml)).
+
+**Inhoudelijke wijzigingen in art 26**:
+
+| Subartikel | 2023-tekst | 2026-tekst | Impact op MR |
+|---|---|---|---|
+| 26.1.1 | Terugbetaling bij reeds betaald, **max 3 maanden** | Terugbetaling **onbeperkt** ("bedrag waarvoor kwijtschelding is verleend") | Geen — refund-logica niet in MR |
+| 26.1.9 / 26.2.x (vermogen) | — | Schade-uitkering verzekeraar: **1 jaar buiten vermogen**; smartengeld: **5 jaar buiten vermogen** | Niet in MR (vermogenstoets via URI art 12) |
+| 26.2.x (studenten) | HO forfait **€67**, MBO **€60** | HO **€80**, MBO **€70** | Niet in MR (bedragen niet geëncodeerd) |
+| 26.2.19 (normpremie Zvw) | Alleenstaand **€3/mnd**, echtg. **€50/mnd** | Alleenstaand **€47/mnd**, echtg. **€106/mnd** | Niet in MR (caller-parameter) |
+| 26.3.8 (saneringsakkoord) | Looptijd **10 maanden** | Looptijd **12 maanden** | Niet in MR (ondernemers-deel) |
+| 26.4.2 (herhaald verzoek) | Bezwaar = beroepschrift | Herschreven: administratief beroep, met onderscheid nieuwe feiten | Niet in MR (procedureel) |
+
+**Totaal-impact op machine_readable art 26**: **NIHIL**. De kern-orchestrator
+(vermogenstoets, betalingscapaciteit, OR-over-7 uitsluitingsgronden,
+hoogte-berekening) is tekst-identiek aan 2023. MR-logica is 1-op-1 geport
+naar `2026-02-07.yaml`. BDD blijft 95/95 groen onder `calculation_date: 2026-06-01`.
+
+**Keten-wijzigingen buiten art 26** (art 25 — uitstel van betaling):
+- 25.5.7 VERVALLEN per 2025-01-01 (bijzondere uitgaven)
+- 25.5.11 VERVALLEN per 2025-07-01 (betalingsregeling > 10 mnd)
+- **25.5a NIEUW**: verlengde betalingsregeling illiquide vermogen, **max 60 mnd**
+- 25.5.8 verruimd: aflossingen aan derden kunnen worden meegenomen
+
+Valt buiten kwijtschelding-flow (art 25 = uitstel, art 26 = kwijtschelding).
 
 ---
 
@@ -40,7 +73,8 @@ Symbolische kortschriften die in formules worden gebruikt:
 > middel van 'Mijn loket' op www.hhnk.nl (zie verder artikel 26.7), of
 > op een daartoe ingesteld kwijtscheldingsformulier."
 
-🔗 https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26
+🔗 https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_26 (subsectie 26.1.2)
+🔗 Authentieke bron 2026: https://zoek.officielebekendmakingen.nl/wsb-2026-2845
 
 | | |
 |---|---|
@@ -53,6 +87,7 @@ Symbolische kortschriften die in formules worden gebruikt:
 - ☐ Formule dekt 26.1.2 volledig: beoordeling start pas na indienen van een verzoek.
 - ☐ Ambtshalve terugbetaling (26.1.1) is terecht als uitzondering (untranslatable) behandeld, niet als onderdeel van dit boolean.
 - ☐ Geen andere bepalingen in art 26 die dit gate-karakter relativeren.
+- ☐ **2026-wijziging**: tekst 26.1.2 inhoudelijk ongewijzigd t.o.v. 2023 — gate-karakter blijft identiek.
 
 ---
 
@@ -76,26 +111,32 @@ Symbolische kortschriften die in formules worden gebruikt:
 >   belastingaanslag niet kan worden voldaan […];
 > • [overige gronden waaronder de schuldsaneringsregeling]."
 
-🔗 https://lokaleregelgeving.overheid.nl/CVDR691525/1#artikel_26 (subsectie 26.1.9)
+🔗 https://lokaleregelgeving.overheid.nl/CVDR756485/1#artikel_26 (subsectie 26.1.9)
 
 | | |
 |---|---|
-| **Formule** | `U = g₁ ∨ g₂ ∨ g₃ ∨ g₄ ∨ g₅ ∨ g₆ ∨ g₇` |
-| **Gronden** | g₁ = *gegevens_onvolledig_of_onjuist* · g₂ = *bezwaar_of_beroep_aanhangig* · g₃ = *zekerheid_gesteld* · g₄ = *meerdere_belastingschuldigen* · g₅ = *derde_aansprakelijk_gesteld* · g₆ = *verwijtbaarheid_belastingschuld* · g₇ = *in_faillissement_of_surseance_zonder_akkoord* |
+| **Formule** | `U = g₁ₐ ∨ g₁ᵦ ∨ g₁ᵧ ∨ g₂ ∨ g₃ ∨ g₄ ∨ g₅ ∨ g₆ ∨ g₇` |
+| **Gronden** | g₁ₐ = *aanvraag_gegevens_onvolledig_of_onjuist* (26.1.9 bullet 1) · g₁ᵦ = *onevenredige_uitgaven_inkomen_onopgehelderd* (bullet 2) · g₁ᵧ = *aangifte_niet_ingediend* (bullet 3) · g₂ = *bezwaar_of_beroep_aanhangig* · g₃ = *zekerheid_gesteld* · g₄ = *meerdere_belastingschuldigen* · g₅ = *derde_aansprakelijk_gesteld* · g₆ = *verwijtbaarheid_belastingschuld* · g₇ = *in_faillissement_of_surseance_zonder_akkoord* |
+| **Splitsing g₁ (refactor 2026-04-22)** | De 2023-MR had 1 parameter `gegevens_onvolledig_of_onjuist` voor bullets 1+2+3. Die bundelde drie gronden met verschillende herstelroutes en discretie-ruimte. Bij audit 2026-04-22 gesplitst in g₁ₐ/g₁ᵦ/g₁ᵧ zodat ontvanger in beschikking (26.1.6 motivering) per grond kan onderbouwen en herstelroute passend kan wijzen (2 weken herstel / opheldering / aangifte-spoor). |
 | **Interpretatie** | OR — één grond is genoeg om kwijtschelding te weigeren. Gronden zijn cumulatief in de tekst, in formule identiek. |
 | **YAML-locatie** | `articles[…].machine_readable.actions[1]` |
 
+**Telling wettekst 26.1.9**: 13 bullets in hoofdlijst (waarvan bullet 11 placeholder "niet van toepassing") + 2 eindblok-gronden. Dus **12 echte gronden + 2 eindblok = 14 totaal**. MR dekt **9** via g₁ₐ/g₁ᵦ/g₁ᵧ/g₂..g₇.
+
+**Niet gedekt** (5 echte gronden, blijven untranslatable): bullet 12 (nadere voorwaarden niet nagekomen), bullet 13 (gem. sociale dienst vergoedt), eindblok 1 (wisselende inkomens-verwachting), eindblok 2 (verbeteringsverwachting). Plus bullet 11 als placeholder.
+
 **Review**:
 
-- ☐ Alle zeven gronden uit 26.1.9 gedekt.
-- ☐ Grond "onevenredige verhouding uitgaven/inkomen zonder opheldering" valt onder `gegevens_onvolledig_of_onjuist` of heeft eigen parameter nodig?
-- ☐ Grond "nagelaten aangifte" gedekt onder *gegevens_onvolledig_of_onjuist* of apart?
-- ☐ "Toerekenbaarheid" (verwijtbaarheid): subpunten a-c uit de wettekst horen bij g₆; geen eigen parameter nodig?
-- ☐ Geen achtste grond over het hoofd gezien.
+- ☐ 9 van 12 echte gronden in formule (75% dekking hoofdlijst) + 0 van 2 eindblok-gronden (0%). Acceptabel, of moet coverage hoger?
+- ☐ **Pre-workshop voorstel 2026-04-22 (nog te bekrachtigen)**: "Onevenredige verhouding uitgaven/inkomen zonder opheldering" (bullet 2) kreeg eigen parameter `g₁ᵦ = onevenredige_uitgaven_inkomen_onopgehelderd`. Voorgestelde juridische reden: bullet 2 bevat discretie ("naar het oordeel van de ontvanger") en andere herstelroute (opheldering in plaats van formulier-herstel). **Experts moeten bevestigen of terugdraaien.**
+- ☐ **Pre-workshop voorstel 2026-04-22 (nog te bekrachtigen)**: "Nagelaten aangifte" (bullet 3) kreeg eigen parameter `g₁ᵧ = aangifte_niet_ingediend`. Voorgestelde reden: herstelroute via inspecteur (aanslag eerst correct laten vaststellen), niet via kwijtscheldings-formulier. **Experts moeten bevestigen of terugdraaien.**
+- ☐ "Toerekenbaarheid" bullet 8: subpunten a, c, d, e horen bij g₆ (subpunten b, f, g, h staan als "niet van toepassing" in de wettekst). Geen eigen parameter per subpunt nodig?
+- ☐ **2026-wijziging**: opsomming gronden in 26.1.9 tekst-identiek aan 2023 — MR blijft geldig zonder aanpassing.
+- ☐ **2026-nieuw (26.2.x)**: vermogensvrijstelling schade-uitkering (1 jaar) en smartengeld (5 jaar) — niet in MR (vermogenstoets is via URI art 12). Accepteerbaar dat de vermogen-*inhoud* niet in HHNK-MR wordt herberekend?
 
 **Open**:
 
-- De wettekst noemt ook ondermeer "schuldsaneringsregeling met akkoord" als *uitzondering op* de faillissementsgrond — nu alleen *zonder* akkoord gemodelleerd. Klopt dit?
+- Akkoord-uitzonderingen op g₇ (surseance/faillissement/WSNP): bullets 9+10 van 26.1.9 noemen resp. art 138/252 FW en art 329 FW akkoorden. Huidige parameter `in_faillissement_of_surseance_zonder_akkoord` vangt dit met één boolean — caller bepaalt of er een akkoord is. Klopt deze modellering?
 
 ---
 
@@ -219,7 +260,7 @@ Wat in art 26 staat maar bewust niet in de formule is vertaald:
 
 | Subsectie | Wettekst-kern | Reden | Review |
 |---|---|---|---|
-| **26.1.1** Ambtshalve terugbetaling | "De ontvanger verleent ook kwijtschelding van bedragen die op belastingaanslagen zijn betaald, als (…) het verzoek om kwijtschelding [wordt] ingediend binnen drie maanden nadat de (laatste) betaling op de belastingaanslag heeft plaatsgevonden." | Tijdsvenster-toetsing + "onder omstandigheden die aanleiding zouden hebben gegeven" = case-specifieke interpretatie. | ☐ Accepteerbaar als out-of-scope voor generieke engine |
+| **26.1.1** Ambtshalve terugbetaling (2026) | "De ontvanger verleent ook kwijtschelding van belastingaanslagen die al zijn betaald, als (…) het verzoek [wordt] ingediend binnen drie maanden nadat de (laatste) betaling op de belastingaanslag heeft plaatsgevonden (…). Als de ontvanger het verzoek toewijst, betaalt hij de belastingschuldige het bedrag terug waarvoor kwijtschelding is verleend." | "Onder omstandigheden die aanleiding zouden hebben gegeven" = case-specifieke beoordeling; refund-bedrag volgt direct uit hoogte_kwijtschelding. **2026-wijziging**: de 2023-beperking "max 3 maanden voorafgaand aan verzoek" is in 2026 vervallen — refund is nu het volledige kwijtscheldingsbedrag. | ☐ Accepteerbaar als out-of-scope voor generieke engine (procedure-gate, indiening-drempel blijft 3 maanden) ☐ **2026**: verwijdering refund-cap niet in MR vertaald (geen refund-output) — acceptabel |
 | **26.1.3** Herstelprocedure | Twee-weken-herstelmogelijkheid bij onvolledig formulier | Vereist proces-state (hersteltbrief verzonden? ontvangen?) die niet in parameters zit. | ☐ Accepteerbaar |
 | **26.2.13** Bijzondere bijstand | "Uitkeringen in bijzondere bijstand bestemd voor specifieke kosten worden niet als inkomen in aanmerking genomen; bijzondere bijstand voor personen < 21 jr wél." | Case-analyse naar doel van de uitkering vereist; niet als generieke formule vast te leggen. | ☐ Accepteerbaar |
 | **26.2.20** Onderhoud gezinsleden buitenland | Beoordeling van netto-besteedbaar inkomen bij buitenland-onderhoud | Individuele weging van bedragen, wettelijkheid, bewijslast. | ☐ Accepteerbaar |
@@ -248,6 +289,12 @@ Niet onderdeel van art 26 zelf, maar aangehaald voor volledigheid:
 3. **Schuldsaneringsregeling-akkoord** — uitzondering op faillissement-grond — correct gemodelleerd als `in_faillissement_of_surseance_zonder_akkoord`?
 4. **Vermogens- vs. betalingscap-volgorde** — art 26 zegt expliciet "nadat vermogen is aangewend én 80% betalingscap" — onze subtract doet beide tegelijk in één MAX. Semantisch equivalent, maar review-waardig.
 5. **"Onverminderd art 8, 17, 18 URI"** — deze clause uit de art-26-tekst: hoe werken die 3 URI-artikelen door? Art 8 raakt scope, art 17 is niet gekoppeld, art 18 is niet relevant.
+6. **2026: normpremie Zvw (26.2.19) sterk verhoogd** (€3→€47, €50→€106). Nu caller-parameter; moet dit niet een `source:` naar Zvw art 41 of een eigen bedrag-output worden in HHNK-leidraad 26?
+7. **2026: student-forfaits** (26.2.x: HO €67→€80, MBO €60→€70). Niet in MR; impliciet via URI art 14 netto-besteedbaar. Moet HHNK zelf studentenforfait hardcoden of via Participatiewet source-en?
+8. **2026: vermogensvrijstelling schade-uitkering en smartengeld** (1 jr / 5 jr buiten vermogen). Valt dit in vermogenstoets URI art 12 — en zo ja, moet URI art 12 een open_term "niet-tellende_vermogensbestanddelen" krijgen die HHNK vult?
+9. **2026: art 25.5a nieuw (verlengde betalingsregeling illiquide vermogen, 60 mnd)** — uitstel, valt strict buiten kwijtschelding. Wel vermelden als keten-gerelateerd.
+10. **2026: saneringsakkoord 10→12 maanden (26.3.8)** — raakt alleen ondernemers-saneringsflow, niet in MR. Acceptabel?
+11. **2026: 26.4.2 herhaald verzoek herschreven** — procedureel, niet in MR. Moet er een `verzoek_herhaald_zonder_nieuwe_feiten` uitsluitingsgrond bij?
 
 ---
 
