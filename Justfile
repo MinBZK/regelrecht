@@ -360,12 +360,21 @@ local-clean:
 
 # --- Burger-demo (frontend-demo + demo-api, zie RFC-016) ---
 
-# Run burger-demo frontend (vite dev server)
-demo-dev:
+# Bundle corpus YAMLs + persona JSON naar frontend-demo/public/demo-assets/
+demo-assets:
+    bash scripts/build-demo-assets.sh
+
+# Build the engine as WASM voor frontend-demo
+demo-wasm:
+    cargo build --manifest-path packages/engine/Cargo.toml --target wasm32-unknown-unknown --release --features wasm
+    wasm-bindgen --target web --out-dir frontend-demo/public/wasm/pkg packages/target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
+
+# Run burger-demo frontend (vite dev server); bundelt assets eerst
+demo-dev: demo-assets
     cd frontend-demo && npm run dev
 
 # Build burger-demo frontend (static bundle incl. WASM + corpus)
-demo-build:
+demo-build: demo-assets demo-wasm
     cd frontend-demo && npm run build
 
 # Run demo-api (LLM-proxy) locally; requires ANTHROPIC_API_KEY
