@@ -257,7 +257,9 @@ Feature: Unit-tests voor nieuwe machine_readable blocks in HHNK-kwijtschelding k
       | kinderopvang_nettokosten_maand               | 0                               |
       | is_ondernemer                                | false                           |
       | belasting_zakelijk                           | false                           |
-      | gegevens_onvolledig_of_onjuist               | false                           |
+      | aanvraag_gegevens_onvolledig_of_onjuist     | false                           |
+      | onevenredige_uitgaven_inkomen_onopgehelderd | false                           |
+      | aangifte_niet_ingediend                     | false                           |
       | bezwaar_of_beroep_aanhangig                  | false                           |
       | zekerheid_gesteld                            | false                           |
       | meerdere_belastingschuldigen                 | false                           |
@@ -339,7 +341,9 @@ Feature: Unit-tests voor nieuwe machine_readable blocks in HHNK-kwijtschelding k
       | kinderopvang_nettokosten_maand               | 0                               |
       | is_ondernemer                                | false                           |
       | belasting_zakelijk                           | false                           |
-      | gegevens_onvolledig_of_onjuist               | false                           |
+      | aanvraag_gegevens_onvolledig_of_onjuist     | false                           |
+      | onevenredige_uitgaven_inkomen_onopgehelderd | false                           |
+      | aangifte_niet_ingediend                     | false                           |
       | bezwaar_of_beroep_aanhangig                  | false                           |
       | zekerheid_gesteld                            | false                           |
       | meerdere_belastingschuldigen                 | false                           |

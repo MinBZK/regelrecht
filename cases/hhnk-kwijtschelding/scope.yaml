@@ -18,9 +18,12 @@ schema_version: '1'
 name: HHNK Kwijtschelding
 description: >-
   Kwijtscheldingsregeling waterschapsbelastingen Hoogheemraadschap Hollands
-  Noorderkwartier 2023 met de volledige delegatieketen — van de landelijke
+  Noorderkwartier met de volledige delegatieketen — van de landelijke
   Invorderingswet 1990 via de Uitvoeringsregeling en Regeling kwijtschelding
   belastingen medeoverheden tot de HHNK-verordening, leidraad en toelichting.
+  De HHNK-leidraad is parallel geversioneerd: 2023-01-01 (t/m 2026-02-06) en
+  2026-02-07 (WSB-2026-2845, inhoudelijke wijzigingen in 26.1.1/26.2.x/26.3.8/26.4.2
+  zonder impact op machine_readable kern-orchestrator).
 tags:
   - waterschap
   - kwijtschelding
@@ -33,6 +36,12 @@ laws:
     critical: true
   - id: leidraad_invordering_waterschapsbelastingen_hhnk
     layer: waterschaps_verordening
+    notes: >-
+      Orchestrator voor kwijtschelding (art 26). Parallel geversioneerd:
+      2023-01-01.yaml (t/m 2026-02-06) en 2026-02-07.yaml (WSB-2026-2845,
+      CVDR756485). Machine_readable 1-op-1 geport — tekst-wijzigingen in
+      26.1.1/26.2.x/26.3.8/26.4.2 raken de MR niet. Engine dispatcht op
+      calculation_date.
   - id: toelichting_kwijtschelding_waterschapsbelasting_hhnk
     layer: uitvoeringsbeleid
   - id: regeling_kwijtschelding_belastingen_medeoverheden
