@@ -8,6 +8,17 @@ waterschap_code: WS0155
 officiele_titel: Kwijtscheldingsregeling waterschapsbelastingen HHNK 2023
 url: https://lokaleregelgeving.overheid.nl/CVDR686061
 name: Kwijtscheldingsregeling waterschapsbelastingen HHNK 2023
+legal_basis:
+  - law_id: invorderingswet_1990
+    article: '26'
+  - law_id: uitvoeringsregeling_invorderingswet_1990
+    article: '16'
+  - law_id: uitvoeringsregeling_invorderingswet_1990
+    article: '12'
+  - law_id: regeling_kwijtschelding_belastingen_medeoverheden
+    article: '2'
+  - law_id: regeling_kwijtschelding_belastingen_medeoverheden
+    article: '4'
 articles:
   - number: '1'
     text: |-

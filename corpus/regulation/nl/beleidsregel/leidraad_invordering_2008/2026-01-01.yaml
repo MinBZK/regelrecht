@@ -7,6 +7,11 @@ valid_from: '2026-01-01'
 bwb_id: BWBR0024096
 name: Leidraad Invordering 2008
 url: https://wetten.overheid.nl/BWBR0024096/2026-01-01
+legal_basis:
+  - law_id: invorderingswet_1990
+    article: '26'
+  - law_id: uitvoeringsregeling_invorderingswet_1990
+    article: '11'
 articles:
   - number: '26'
     text: |

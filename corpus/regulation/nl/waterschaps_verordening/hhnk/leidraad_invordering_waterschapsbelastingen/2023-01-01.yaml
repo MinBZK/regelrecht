@@ -8,6 +8,13 @@ waterschap_code: WS0155
 officiele_titel: Leidraad invordering waterschapsbelastingen HHNK 2023
 url: https://lokaleregelgeving.overheid.nl/CVDR691525
 name: Leidraad invordering waterschapsbelastingen HHNK 2023
+legal_basis:
+  - law_id: invorderingswet_1990
+    article: '26'
+  - law_id: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+    article: '1'
+  - law_id: leidraad_invordering_2008
+    article: '26'
 
 articles:
   - number: '1'
