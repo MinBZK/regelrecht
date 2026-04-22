@@ -4,6 +4,7 @@ members = [
     "admin",
     "auth",
     "corpus",
+    "demo-api",
     "demo-profile",
     "editor-api",
     "engine",
