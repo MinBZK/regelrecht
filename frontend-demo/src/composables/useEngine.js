@@ -10,8 +10,17 @@ const profileCache = new Map();
 const lawYamlCache = new Map();
 
 async function loadEngineModule() {
-  const mod = await import('/wasm/pkg/regelrecht_engine.js');
-  await mod.default();
+  // /wasm/pkg/ is served from public/ at runtime — not a module that Vite can
+  // resolve at build time. Fetch the glue, wrap in a Blob, dynamic-import that
+  // with @vite-ignore so rolldown leaves the reference alone.
+  const jsRes = await fetch('/wasm/pkg/regelrecht_engine.js');
+  if (!jsRes.ok) throw new Error(`WASM glue fetch failed: ${jsRes.status}`);
+  const jsText = await jsRes.text();
+  const blob = new Blob([jsText], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  const mod = await import(/* @vite-ignore */ blobUrl);
+  URL.revokeObjectURL(blobUrl);
+  await mod.default('/wasm/pkg/regelrecht_engine_bg.wasm');
   return mod;
 }
 
