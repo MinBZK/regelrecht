@@ -53,8 +53,10 @@ laws:
   - id: zorgverzekeringswet
     layer: wet
     notes: >-
-      Bron voor inkomensafhankelijke bijdrage (art 41) — gebruikt in
-      Regeling medeoverheden art 3 voor netto-AOW berekening.
+      Art 41 is machine_readable met output inkomensafhankelijke_bijdrage_maand
+      (tarieven hoog 6.51%, laag 5.26%, max bijdrage-inkomen EUR 75.864/jaar,
+      waarden 2025). Gebruikt via source door Regeling medeoverheden art 3 voor
+      netto-AOW berekening.
   - id: wet_inkomstenbelasting_2001
     layer: wet
     notes: >-
@@ -62,7 +64,10 @@ laws:
   - id: wet_basisregistratie_personen
     layer: wet
     notes: >-
-      BSN-lookup en huishoudrelaties (impliciet gebruikt door de engine).
+      BSN-lookup, leeftijd (art 2.7), heeft_partner (art 2.8). Aanvullend artikel
+      afgeleid-kwijtschelding combineert deze tot is_pensioengerechtigd en
+      huishoudtype conform AOW art 7a en Pw art 3. Output-doelen voor een
+      toekomstige source-refactor in URI art 12/13/16 en HHNK-verordening.
 
 scenarios:
   - features/kwijtschelding_hhnk.feature
