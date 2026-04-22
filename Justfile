@@ -50,6 +50,38 @@ build-check:
 validate *FILES:
     script/validate.sh {{FILES}}
 
+# Genereer boolean-logic Markdown audit-doc uit YAML(s). Zonder argument: alle MR-bevattende YAMLs.
+audit-boolean *FILES:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files="{{FILES}}"
+    if [ -z "$files" ]; then
+      files=$(grep -rl "machine_readable:" corpus/regulation --include='*.yaml')
+    fi
+    for y in $files; do
+      node script/derive-boolean-logic.js "$y"
+    done
+
+# Faal bij drift tussen YAMLs en checked-in boolean-logic audit-docs
+audit-boolean-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    fail=0
+    for y in $(grep -rl "machine_readable:" corpus/regulation --include='*.yaml'); do
+      rel=${y#corpus/regulation/}
+      expected="$tmp/${rel%.yaml}.formulas.md"
+      mkdir -p "$(dirname "$expected")"
+      node script/derive-boolean-logic.js "$y" "$expected" > /dev/null
+      actual="docs/audit/corpus/${rel%.yaml}.formulas.md"
+      if [ -f "$actual" ] && ! diff -q "$expected" "$actual" > /dev/null; then
+        echo "DRIFT: $actual ≠ afgeleid van $y" >&2
+        fail=1
+      fi
+    done
+    [ $fail -eq 0 ] && echo "audit-boolean-check: alle docs synchroon met YAMLs"
+
 # Run all quality checks (format + lint + check + validate + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
 check: format lint build-check validate test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
