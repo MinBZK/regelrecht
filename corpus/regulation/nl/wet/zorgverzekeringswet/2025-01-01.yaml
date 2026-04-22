@@ -932,6 +932,89 @@ articles:
     text: |-
       Artikel 41 De verzekeringsplichtige is een inkomensafhankelijke bijdrage verschuldigd.
     url: https://wetten.overheid.nl/BWBR0018450/2025-01-01#Artikel41
+    machine_readable:
+      definitions:
+        percentage_hoog_tarief:
+          description: >-
+            Percentage inkomensafhankelijke bijdrage hoog tarief (werknemers,
+            uitkeringsgerechtigden, zelfstandigen zonder loondienst). Art 43 Zvw
+            jo. Regeling zorgverzekering. Waarde 2025: 6.51%.
+          value: 0.0651
+        percentage_laag_tarief:
+          description: >-
+            Percentage inkomensafhankelijke bijdrage laag tarief, onder andere voor
+            pensioenuitkeringen en AOW-ers zonder werkinkomen. Art 43 Zvw. Waarde
+            2025: 5.26%.
+          value: 0.0526
+        maximum_bijdrage_inkomen_jaar:
+          description: >-
+            Maximum bijdrage-inkomen per jaar (eurocent) waarover inkomensafhankelijke
+            bijdrage wordt geheven. Art 43 Zvw jo. Regeling zorgverzekering. Waarde
+            2025: EUR 75.864 = 7586400 eurocent per jaar.
+          value: 7586400
+      execution:
+        produces:
+          legal_character: TOETS
+          decision_type: AANSLAG
+        parameters:
+          - name: bruto_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Bruto bijdrage-inkomen per maand.
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: false
+            description: >-
+              True indien de verzekerde de pensioengerechtigde leeftijd heeft bereikt
+              of uitsluitend pensioen/uitkering geniet zonder loondienst. Bepaalt of
+              het hoge of lage tarief geldt. Default false.
+        output:
+          - name: bijdrage_percentage
+            type: number
+            description: >-
+              Van toepassing zijnde percentage (hoog of laag) conform art 43 Zvw jo.
+              Regeling zorgverzekering.
+          - name: gecap_bijdrage_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Bruto bijdrage-inkomen gecapt op het maximum per maand.
+          - name: inkomensafhankelijke_bijdrage_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: >-
+              Verschuldigde inkomensafhankelijke bijdrage per maand. Gebruikt door
+              Regeling kwijtschelding belastingen medeoverheden art 3 voor de
+              netto-ouderdomspensioen berekening.
+        actions:
+          - output: bijdrage_percentage
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $is_pensioengerechtigd
+                    value: true
+                  then: $percentage_laag_tarief
+              default: $percentage_hoog_tarief
+          - output: gecap_bijdrage_inkomen_maand
+            value:
+              operation: MIN
+              values:
+                - $bruto_inkomen_maand
+                - operation: DIVIDE
+                  values:
+                    - $maximum_bijdrage_inkomen_jaar
+                    - 12
+          - output: inkomensafhankelijke_bijdrage_maand
+            value:
+              operation: MULTIPLY
+              values:
+                - $gecap_bijdrage_inkomen_maand
+                - $bijdrage_percentage
   - number: '42'
     text: |-
       Artikel 42 De inkomensafhankelijke bijdrage over een jaar wordt geheven over het bijdrage-inkomen van dat jaar.
