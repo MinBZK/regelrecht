@@ -1996,6 +1996,83 @@ articles:
     text: |-
       Artikel 4.19 De [Wet gemeentelijke basisadministratie persoonsgegevens](jci1.3:c:BWBR0006723) wordt ingetrokken.
     url: https://wetten.overheid.nl/BWBR0033715/2025-02-12#Artikel4.19
+  - number: afgeleid-kwijtschelding
+    text: |-
+      Afgeleide kenmerken voor kwijtschelding. Dit artikel is geen onderdeel van
+      de Wet basisregistratie personen zelf, maar combineert BRP-primitieven
+      (leeftijd, heeft_partner) plus een caller-parameter (heeft_ten_laste_komende_kinderen)
+      tot de kenmerken is_pensioengerechtigd en huishoudtype zoals gebruikt door
+      de kwijtscheldingsregelgeving (URI Invorderingswet 1990 art 12-16, Regeling
+      kwijtschelding belastingen medeoverheden art 1).
+
+      Pensioengerechtigde leeftijd: artikel 7a Algemene Ouderdomswet. Waarde 2026:
+      67 jaar en 3 maanden; voor deze derivatie wordt 67 gehanteerd als hele jaren-
+      grens (het artikel is bewust grof — fijne kalenderrekening hoort thuis in een
+      AOW-specifiek artikel).
+    url: https://wetten.overheid.nl/BWBR0033715/2025-02-12
+    machine_readable:
+      definitions:
+        aow_leeftijd_jaar:
+          description: >-
+            Pensioengerechtigde leeftijd in hele jaren per artikel 7a AOW. 2026: 67.
+          value: 67
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: heeft_ten_laste_komende_kinderen
+            type: boolean
+            required: false
+            description: >-
+              Niet-BRP-gegeven, door de caller aangeleverd. BRP registreert gezin
+              niet als losse eigenschap; voor huishoudtype-bepaling is dit nodig
+              naast heeft_partner.
+        input:
+          - name: leeftijd
+            type: number
+            source:
+              output: leeftijd
+              parameters:
+                bsn: $bsn
+          - name: heeft_partner
+            type: boolean
+            source:
+              output: heeft_partner
+              parameters:
+                bsn: $bsn
+        output:
+          - name: is_pensioengerechtigd
+            type: boolean
+            description: True indien leeftijd >= pensioengerechtigde leeftijd (art 7a AOW).
+          - name: huishoudtype
+            type: string
+            description: >-
+              Een van echtgenoten, alleenstaande_ouder, alleenstaande. Bij heeft_partner
+              = true wordt huishoudtype echtgenoten; anders bepaalt
+              heeft_ten_laste_komende_kinderen tussen alleenstaande_ouder en
+              alleenstaande.
+        actions:
+          - output: is_pensioengerechtigd
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $leeftijd
+              value: $aow_leeftijd_jaar
+          - output: huishoudtype
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_partner
+                    value: true
+                  then: echtgenoten
+                - when:
+                    operation: EQUALS
+                    subject: $heeft_ten_laste_komende_kinderen
+                    value: true
+                  then: alleenstaande_ouder
+              default: alleenstaande
   - number: '4.20'
     text: |-
       Artikel 4.20 Deze wet treedt in werking op een bij koninklijk besluit te bepalen tijdstip.
