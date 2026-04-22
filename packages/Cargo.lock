@@ -3677,6 +3677,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "regelrecht-demo-profile"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "regelrecht-engine",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "thiserror 2.0.18",
+ "walkdir",
+]
+
+[[package]]
 name = "regelrecht-editor-api"
 version = "0.1.0"
 dependencies = [
