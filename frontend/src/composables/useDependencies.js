@@ -1,54 +1,143 @@
 /**
- * useDependencies — recursive dependency graph walker for law YAML files.
+ * useDependencies — cross-law reference graph extractor + loader.
  *
- * Parses a law's YAML structure to find all `source.regulation` references,
- * fetches each dependency via the API, loads it into the engine, and recurses.
- * Also discovers implementing regulations via corpus scan.
+ * Exports:
+ *   Per-law extractors (sync, on a parsed law object):
+ *     - extractRegulationRefs(law)    → unique target law_ids via source.regulation
+ *     - extractImplements(law)        → [{article, law, article: target, open_term, gelet_op}]
+ *     - extractOverrides(law)         → [{article, law, article: target, output}]
+ *     - extractOpenTerms(law)         → [{article, id, delegated_to, delegation_type, legal_basis}]
+ *     - extractEnables(law)           → [{article, regulatory_layer, subject, ...}]
+ *     - extractLegalBasis(law)        → top-level legal_basis array as-is
+ *     - extractArticleSources(law)    → [{article, inputs: [{name, regulation, output, params}]}]
+ *
+ *   Corpus-scanning reverse-lookups (async, need fetchLawYaml + allLaws list):
+ *     - discoverImplementors(lawId, allLaws, fetchLawYaml[, targetArticle])
+ *     - discoverOverriders(lawId, allLaws, fetchLawYaml[, targetArticle[, targetOutput]])
+ *     - discoverUsers(lawId, allLaws, fetchLawYaml[, targetOutput])
+ *
+ *   Recursive loader composable:
+ *     - useDependencies() — loadAllDependencies(yamlText, engine, fetchLawYaml)
  */
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 
-/**
- * Extract all unique `source.regulation` references from a parsed law object.
- * Skips self-references (where regulation === the law's own $id).
- *
- * @param {object} law - Parsed law YAML object
- * @returns {string[]} Array of unique law IDs referenced
- */
+// ---------- Sync extractors ----------
+
 export function extractRegulationRefs(law) {
   const refs = new Set();
   const selfId = law.$id;
-
   for (const article of law.articles || []) {
     const inputs = article.machine_readable?.execution?.input || [];
     for (const input of inputs) {
       const reg = input.source?.regulation;
-      if (reg && reg !== selfId) {
-        refs.add(reg);
-      }
+      if (reg && reg !== selfId) refs.add(reg);
     }
   }
-
   return [...refs];
 }
 
-/**
- * Find laws in the corpus that implement open_terms of the given law.
- *
- * @param {string} lawId - The law ID to find implementors for
- * @param {object[]} allLaws - Full corpus law list (from /api/corpus/laws)
- * @returns {Promise<string[]>} Law IDs that implement open_terms of lawId
- */
-async function discoverImplementors(lawId, allLaws, fetchLawYaml) {
-  const candidates = allLaws.filter((entry) => entry.law_id !== lawId);
+export function extractImplements(law) {
+  const out = [];
+  for (const article of law.articles || []) {
+    const impls = article.machine_readable?.implements || [];
+    for (const impl of impls) {
+      out.push({
+        article: String(article.number),
+        target_law: impl.law,
+        target_article: impl.article != null ? String(impl.article) : undefined,
+        open_term: impl.open_term,
+        gelet_op: impl.gelet_op,
+      });
+    }
+  }
+  return out;
+}
 
-  // Fetch all candidate laws in parallel (batched)
-  const BATCH_SIZE = 10;
-  const implementors = [];
+export function extractOverrides(law) {
+  const out = [];
+  for (const article of law.articles || []) {
+    const ovs = article.machine_readable?.overrides || [];
+    for (const ov of ovs) {
+      out.push({
+        article: String(article.number),
+        target_law: ov.law,
+        target_article: ov.article != null ? String(ov.article) : undefined,
+        target_output: ov.output,
+      });
+    }
+  }
+  return out;
+}
 
-  for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
-    const batch = candidates.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(
+export function extractOpenTerms(law) {
+  const out = [];
+  for (const article of law.articles || []) {
+    const terms = article.machine_readable?.open_terms || [];
+    for (const term of terms) {
+      out.push({
+        article: String(article.number),
+        id: term.id,
+        type: term.type,
+        delegated_to: term.delegated_to,
+        delegation_type: term.delegation_type,
+        legal_basis: term.legal_basis,
+        required: term.required,
+        description: term.description,
+      });
+    }
+  }
+  return out;
+}
+
+export function extractEnables(law) {
+  const out = [];
+  for (const article of law.articles || []) {
+    const en = article.machine_readable?.enables || [];
+    for (const entry of en) {
+      out.push({
+        article: String(article.number),
+        regulatory_layer: entry.regulatory_layer,
+        subject: entry.subject,
+        interface: entry.interface,
+      });
+    }
+  }
+  return out;
+}
+
+export function extractLegalBasis(law) {
+  return Array.isArray(law.legal_basis) ? law.legal_basis.slice() : [];
+}
+
+export function extractArticleSources(law) {
+  const out = [];
+  for (const article of law.articles || []) {
+    const inputs = article.machine_readable?.execution?.input || [];
+    const items = [];
+    for (const input of inputs) {
+      if (!input.source) continue;
+      items.push({
+        name: input.name,
+        regulation: input.source.regulation,
+        output: input.source.output,
+        parameters: input.source.parameters,
+      });
+    }
+    if (items.length) out.push({ article: String(article.number), inputs: items });
+  }
+  return out;
+}
+
+// ---------- Async reverse-lookups over the corpus ----------
+
+const BATCH_SIZE = 10;
+
+async function scanCorpus(allLaws, fetchLawYaml, visitor) {
+  const results = [];
+  for (let i = 0; i < allLaws.length; i += BATCH_SIZE) {
+    const batch = allLaws.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.allSettled(
       batch.map(async (entry) => {
         let text;
         try {
@@ -57,45 +146,105 @@ async function discoverImplementors(lawId, allLaws, fetchLawYaml) {
           return null;
         }
         const law = yaml.load(text);
-
-        for (const article of law.articles || []) {
-          const impls = article.machine_readable?.implements || [];
-          for (const impl of impls) {
-            if (impl.law === lawId) {
-              return law.$id || entry.law_id;
-            }
-          }
-        }
-        return null;
+        return visitor(law, entry);
       }),
     );
-
-    for (const result of results) {
-      if (result.status === 'fulfilled' && result.value) {
-        implementors.push(result.value);
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled' && r.value) {
+        if (Array.isArray(r.value)) results.push(...r.value);
+        else results.push(r.value);
       }
     }
   }
-
-  return implementors;
+  return results;
 }
 
 /**
- * Composable for loading all dependencies of a law recursively.
+ * Laws whose articles implement open_terms of (lawId[, targetArticle]).
+ * Returns [{law_id, article, target_article, open_term, gelet_op}].
  */
+export async function discoverImplementors(lawId, allLaws, fetchLawYaml, targetArticle) {
+  const candidates = allLaws.filter((e) => e.law_id !== lawId);
+  return scanCorpus(candidates, fetchLawYaml, (law, entry) => {
+    const hits = [];
+    for (const article of law.articles || []) {
+      const impls = article.machine_readable?.implements || [];
+      for (const impl of impls) {
+        if (impl.law !== lawId) continue;
+        if (targetArticle && String(impl.article) !== String(targetArticle)) continue;
+        hits.push({
+          law_id: law.$id || entry.law_id,
+          article: String(article.number),
+          target_article: impl.article != null ? String(impl.article) : undefined,
+          open_term: impl.open_term,
+          gelet_op: impl.gelet_op,
+        });
+      }
+    }
+    return hits.length ? hits : null;
+  });
+}
+
+/**
+ * Laws whose articles override outputs of (lawId[, targetArticle[, targetOutput]]).
+ * Returns [{law_id, article, target_article, target_output}].
+ */
+export async function discoverOverriders(lawId, allLaws, fetchLawYaml, targetArticle, targetOutput) {
+  const candidates = allLaws.filter((e) => e.law_id !== lawId);
+  return scanCorpus(candidates, fetchLawYaml, (law, entry) => {
+    const hits = [];
+    for (const article of law.articles || []) {
+      const ovs = article.machine_readable?.overrides || [];
+      for (const ov of ovs) {
+        if (ov.law !== lawId) continue;
+        if (targetArticle && String(ov.article) !== String(targetArticle)) continue;
+        if (targetOutput && ov.output !== targetOutput) continue;
+        hits.push({
+          law_id: law.$id || entry.law_id,
+          article: String(article.number),
+          target_article: ov.article != null ? String(ov.article) : undefined,
+          target_output: ov.output,
+        });
+      }
+    }
+    return hits.length ? hits : null;
+  });
+}
+
+/**
+ * Laws whose articles source outputs from (lawId[, targetOutput]).
+ * Returns [{law_id, article, input_name, target_output}].
+ */
+export async function discoverUsers(lawId, allLaws, fetchLawYaml, targetOutput) {
+  const candidates = allLaws.filter((e) => e.law_id !== lawId);
+  return scanCorpus(candidates, fetchLawYaml, (law, entry) => {
+    const hits = [];
+    for (const article of law.articles || []) {
+      const inputs = article.machine_readable?.execution?.input || [];
+      for (const input of inputs) {
+        const reg = input.source?.regulation;
+        if (reg !== lawId) continue;
+        if (targetOutput && input.source?.output !== targetOutput) continue;
+        hits.push({
+          law_id: law.$id || entry.law_id,
+          article: String(article.number),
+          input_name: input.name,
+          target_output: input.source?.output,
+        });
+      }
+    }
+    return hits.length ? hits : null;
+  });
+}
+
+// ---------- Recursive loader composable (unchanged behaviour) ----------
+
 export function useDependencies() {
   const loading = ref(false);
   const loadedDeps = ref([]);
   const progress = ref('');
   const error = ref(null);
 
-  /**
-   * Load all dependencies for a law, recursively.
-   *
-   * @param {string} lawYamlText - Raw YAML text of the main law
-   * @param {object} engine - WasmEngine instance
-   * @param {(lawId: string) => Promise<string>} fetchLawYaml - Fetch law YAML by ID
-   */
   async function loadAllDependencies(lawYamlText, engine, fetchLawYaml) {
     loading.value = true;
     error.value = null;
@@ -107,25 +256,17 @@ export function useDependencies() {
       const visited = new Set();
       const toLoad = [];
 
-      // Phase 1: Collect all transitive regulation references
       collectDeps(mainLaw, visited, toLoad);
 
-      // Phase 2: Discover implementing regulations
       try {
         const corpusRes = await fetch('/api/corpus/laws?limit=1000');
         if (corpusRes.ok) {
           const allLaws = await corpusRes.json();
-
-          // Check for implementors of the main law
-          const implementors = await discoverImplementors(
-            mainLaw.$id,
-            allLaws,
-            fetchLawYaml,
-          );
-          for (const implId of implementors) {
-            if (!visited.has(implId)) {
-              visited.add(implId);
-              toLoad.push(implId);
+          const implementors = await discoverImplementors(mainLaw.$id, allLaws, fetchLawYaml);
+          for (const hit of implementors) {
+            if (!visited.has(hit.law_id)) {
+              visited.add(hit.law_id);
+              toLoad.push(hit.law_id);
             }
           }
         }
@@ -133,7 +274,6 @@ export function useDependencies() {
         // Corpus scan is best-effort
       }
 
-      // Phase 3: Load all collected dependencies
       let total = toLoad.length;
       let loaded = 0;
 
@@ -152,7 +292,6 @@ export function useDependencies() {
           loadedDeps.value = [...loadedDeps.value, lawId];
           progress.value = `${loaded}/${total} wetten geladen`;
 
-          // Recurse into newly loaded law for transitive deps
           const depLaw = yaml.load(yamlText);
           const newDeps = [];
           collectDeps(depLaw, visited, newDeps);
@@ -180,14 +319,9 @@ export function useDependencies() {
   return { loading, loadedDeps, progress, error, loadAllDependencies };
 }
 
-/**
- * Recursively collect dependency law IDs from a parsed law.
- * Mutates `visited` and `toLoad` in place.
- */
 function collectDeps(law, visited, toLoad) {
   const selfId = law.$id;
   if (selfId) visited.add(selfId);
-
   const refs = extractRegulationRefs(law);
   for (const depId of refs) {
     if (!visited.has(depId)) {
