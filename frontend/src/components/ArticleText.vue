@@ -1,15 +1,20 @@
 <script setup>
 import { computed } from 'vue';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 const props = defineProps({
   article: { type: Object, default: null },
   raw: { type: Boolean, default: false },
 });
 
+// marked v18 no longer sanitizes HTML in Markdown by default; run its output
+// through DOMPurify before binding with v-html so law text (today author-
+// controlled, but harvested laws could introduce arbitrary HTML) cannot inject
+// <script>, event handlers or javascript: links.
 const html = computed(() => {
   if (!props.article?.text) return '';
-  return marked.parse(props.article.text);
+  return DOMPurify.sanitize(marked.parse(props.article.text));
 });
 
 const paragraphs = computed(() => {

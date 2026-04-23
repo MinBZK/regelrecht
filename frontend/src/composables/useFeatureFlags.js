@@ -55,10 +55,9 @@ async function toggle(key) {
   const current = flags.value[key] ?? DEFAULTS[key] ?? true;
   const newValue = !current;
 
-  // Optimistic update + persist locally so the toggle survives refreshes
-  // even when the backend can't (no DB configured in dev).
+  // Optimistic update. Persist locally too so the toggle survives refreshes
+  // when the backend explicitly can't persist (503, no DB configured in dev).
   flags.value = { ...flags.value, [key]: newValue };
-  saveLocal({ ...loadLocal(), [key]: newValue });
 
   try {
     const res = await fetch(`/api/feature-flags/${encodeURIComponent(key)}`, {
@@ -66,12 +65,23 @@ async function toggle(key) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: newValue }),
     });
-    if (res.status === 503) return;
+    if (res.status === 503) {
+      // Backend has no DB; keep the change local so it survives refresh.
+      saveLocal({ ...loadLocal(), [key]: newValue });
+      return;
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Clear any stale local override for this key — server is now authoritative.
+    const local = loadLocal();
+    if (key in local) {
+      delete local[key];
+      saveLocal(local);
+    }
     const updated = await res.json();
     flags.value = { ...DEFAULTS, ...updated, ...loadLocal() };
   } catch (e) {
-    console.warn('Failed to update feature flag on server (kept locally):', e.message);
+    console.warn('Failed to update feature flag, reverting:', e.message);
+    flags.value = { ...flags.value, [key]: current };
   }
 }
 
