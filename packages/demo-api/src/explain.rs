@@ -129,10 +129,20 @@ pub async fn explain(
 ) -> Result<ExplainResponse, ExplainError> {
     let user_prompt = build_user_prompt(&req);
 
+    // Send the system prompt as a content-block array with `cache_control:
+    // ephemeral` so Anthropic caches the prefix across calls. Reduces first-token
+    // latency on cache hits at zero risk: cache misses fall back to a normal
+    // prompt and the system text is still applied.
     let body = serde_json::json!({
         "model": config.model,
         "max_tokens": 512,
-        "system": SYSTEM_PROMPT,
+        "system": [
+            {
+                "type": "text",
+                "text": SYSTEM_PROMPT,
+                "cache_control": { "type": "ephemeral" }
+            }
+        ],
         "messages": [
             { "role": "user", "content": user_prompt }
         ]
