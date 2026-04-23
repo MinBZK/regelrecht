@@ -66,6 +66,7 @@ Eindig met één zin die de burger vertelt wat hij hiermee kan doen.";
 // payload can't burn unbounded API budget or smuggle a wall of "ignore previous
 // instructions" text into the prompt. Numbers picked to fit comfortably around
 // real zorgtoeslag traces (~10 KB) with headroom.
+const MAX_IDENTIFIER_CHARS: usize = 200;
 const MAX_PROFILE_SUMMARY_CHARS: usize = 500;
 const MAX_PARAMETERS_CHARS: usize = 4_000;
 const MAX_RESULT_CHARS: usize = 16_000;
@@ -86,13 +87,13 @@ pub fn build_user_prompt(req: &ExplainRequest) -> String {
     let mut out = String::new();
     out.push_str("Wet: ");
     if req.law_label.is_empty() {
-        out.push_str(&req.law_id);
+        out.push_str(&clip(&req.law_id, MAX_IDENTIFIER_CHARS));
     } else {
-        out.push_str(&req.law_label);
+        out.push_str(&clip(&req.law_label, MAX_IDENTIFIER_CHARS));
     }
     out.push('\n');
     out.push_str("Gevraagde uitkomst: ");
-    out.push_str(&req.output_name);
+    out.push_str(&clip(&req.output_name, MAX_IDENTIFIER_CHARS));
     out.push_str("\n\n");
 
     if !req.profile_summary.is_empty() {

@@ -6,6 +6,8 @@
 //   Worker -> Main (result):   { type: 'result', results: [{ amount, eligible }], summary }
 //   Worker -> Main (error):    { type: 'error', message }
 
+import { deriveLawId } from '../utils/lawUtils.js';
+
 // Load the WASM engine lazily. /wasm/pkg/ is served from the public dir at
 // runtime — fetch the glue, wrap in a Blob, and dynamic-import via blob URL
 // with @vite-ignore so the bundler doesn't try to resolve the path at build.
@@ -72,11 +74,6 @@ function personRecords(person) {
       juridische_grondslag: null,
     }] },
   ];
-}
-
-function deriveLawId(yaml) {
-  const match = yaml.match(/^\$id:\s*(\S+)/m);
-  return match ? match[1] : '';
 }
 
 async function runSimulation({ lawYamls, lawEntry, population, calculationDate }) {

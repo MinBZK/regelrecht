@@ -3,6 +3,7 @@
 // Data-sources are re-registered every evaluation (engine is stateful).
 
 import { ref, shallowRef } from 'vue';
+import { deriveLawId } from '../utils/lawUtils.js';
 
 let enginePromise = null;
 let demoIndexPromise = null;
@@ -92,12 +93,6 @@ export function useEngine() {
       await loadLaw(engine, dep);
     }
     await loadLaw(engine, lawEntry.path);
-  }
-
-  function deriveLawId(yaml) {
-    // quick-and-dirty $id extractor so we don't parse the full YAML client-side
-    const match = yaml.match(/^\$id:\s*(\S+)/m);
-    return match ? match[1] : '';
   }
 
   function registerProfile(engine, profile) {
