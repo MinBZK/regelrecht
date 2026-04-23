@@ -23,6 +23,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use tower_governor::governor::GovernorConfigBuilder;
+use tower_governor::key_extractor::PeerIpKeyExtractor;
 use tower_governor::GovernorLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -75,11 +76,19 @@ async fn main() {
         config: Arc::new(ExplainerConfig { api_key, model }),
     };
 
-    // 5 requests / minute / IP.
+    // 5 requests / minute, keyed on the connecting peer IP. The default
+    // extractor (`SmartIpKeyExtractor`) trusts the leftmost `X-Forwarded-For`,
+    // which is attacker-controlled when an upstream proxy appends rather than
+    // replaces the header — so a hostile client can rotate fake IPs and bypass
+    // the limit. We deliberately use `PeerIpKeyExtractor` (the socket peer
+    // address) so the only way to get a fresh quota is from a fresh L4 source.
+    // Behind a single ingress this rate-limits per-ingress; that's acceptable
+    // here because the limit's job is "cap LLM spend", not per-user fairness.
     let governor_conf = Arc::new(
         GovernorConfigBuilder::default()
             .per_second(12)
             .burst_size(5)
+            .key_extractor(PeerIpKeyExtractor)
             .finish()
             .unwrap_or_else(|| {
                 tracing::error!("invalid governor config");
