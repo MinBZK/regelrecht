@@ -5,7 +5,7 @@ Minimale LLM-uitlegproxy voor de burger-demo. Eén route (`POST /api/explain`) d
 ## Env
 
 - `ANTHROPIC_API_KEY` — **vereist**. Proces stopt zonder deze.
-- `ANTHROPIC_MODEL` — default `claude-opus-4-7`.
+- `ANTHROPIC_MODEL` — default `claude-haiku-4-5-20251001`. Haiku handelt de B1-uitleg goed af voor ~5% van de Opus-kosten; override naar Sonnet/Opus alleen als kwaliteit tekortschiet.
 - `ALLOWED_ORIGINS` — comma-separated allow-list. Default `http://localhost:7180`. Entries kunnen exact zijn (`https://demo.regelrecht.rijks.app`) of een subdomein-wildcard `*.regelrecht.rijks.app` (matcht subdomeinen, NIET het apex). Legacy `ALLOWED_ORIGIN` (enkelvoud) wordt nog gehonoreerd.
 - `PORT` — default `7181`.
 

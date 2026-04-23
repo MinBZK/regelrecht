@@ -51,20 +51,32 @@ export function useEngine() {
 
   async function getDemoIndex() {
     if (!demoIndexPromise) {
-      demoIndexPromise = fetch('/demo-assets/demo-index.json').then((r) => {
-        if (!r.ok) throw new Error(`demo-index fetch failed: ${r.status}`);
-        return r.json();
-      });
+      // Evict on rejection so a transient asset-bundling failure (e.g. running
+      // before `just demo-assets`) doesn't permanently brick the page until reload.
+      demoIndexPromise = fetch('/demo-assets/demo-index.json')
+        .then((r) => {
+          if (!r.ok) throw new Error(`demo-index fetch failed: ${r.status}`);
+          return r.json();
+        })
+        .catch((err) => {
+          demoIndexPromise = null;
+          throw err;
+        });
     }
     return demoIndexPromise;
   }
 
   async function getProfile(name) {
     if (profileCache.has(name)) return profileCache.get(name);
-    const p = fetch(`/demo-assets/profiles/${name}.json`).then((r) => {
-      if (!r.ok) throw new Error(`profile ${name} fetch failed: ${r.status}`);
-      return r.json();
-    });
+    const p = fetch(`/demo-assets/profiles/${name}.json`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`profile ${name} fetch failed: ${r.status}`);
+        return r.json();
+      })
+      .catch((err) => {
+        profileCache.delete(name);
+        throw err;
+      });
     profileCache.set(name, p);
     return p;
   }
