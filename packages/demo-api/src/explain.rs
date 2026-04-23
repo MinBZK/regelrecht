@@ -62,6 +62,26 @@ Leg stap voor stap uit waarom de uitkomst is wat hij is, gebaseerd op de aangele
 Verzin geen getallen of regels; gebruik alleen wat in de invoer of trace staat. \
 Eindig met één zin die de burger vertelt wat hij hiermee kan doen.";
 
+// Caller-supplied strings get truncated before they reach the LLM so a hostile
+// payload can't burn unbounded API budget or smuggle a wall of "ignore previous
+// instructions" text into the prompt. Numbers picked to fit comfortably around
+// real zorgtoeslag traces (~10 KB) with headroom.
+const MAX_PROFILE_SUMMARY_CHARS: usize = 500;
+const MAX_PARAMETERS_CHARS: usize = 4_000;
+const MAX_RESULT_CHARS: usize = 16_000;
+const MAX_TRACE_CHARS: usize = 32_000;
+
+fn clip(s: &str, max_chars: usize) -> String {
+    if s.chars().count() <= max_chars {
+        return s.to_string();
+    }
+    let truncated: String = s.chars().take(max_chars).collect();
+    format!(
+        "{truncated}… [{} tekens afgekapt]",
+        s.chars().count() - max_chars
+    )
+}
+
 pub fn build_user_prompt(req: &ExplainRequest) -> String {
     let mut out = String::new();
     out.push_str("Wet: ");
@@ -77,21 +97,21 @@ pub fn build_user_prompt(req: &ExplainRequest) -> String {
 
     if !req.profile_summary.is_empty() {
         out.push_str("Over de burger:\n");
-        out.push_str(&req.profile_summary);
+        out.push_str(&clip(&req.profile_summary, MAX_PROFILE_SUMMARY_CHARS));
         out.push_str("\n\n");
     }
 
     out.push_str("Invoer-parameters (JSON):\n");
-    out.push_str(&req.parameters.to_string());
+    out.push_str(&clip(&req.parameters.to_string(), MAX_PARAMETERS_CHARS));
     out.push_str("\n\n");
 
     out.push_str("Uitvoerings-resultaat (JSON):\n");
-    out.push_str(&req.result.to_string());
+    out.push_str(&clip(&req.result.to_string(), MAX_RESULT_CHARS));
     out.push_str("\n\n");
 
     if !req.trace.is_null() {
         out.push_str("Trace (JSON):\n");
-        out.push_str(&req.trace.to_string());
+        out.push_str(&clip(&req.trace.to_string(), MAX_TRACE_CHARS));
         out.push_str("\n\n");
     }
 
@@ -190,6 +210,23 @@ mod tests {
         let p = build_user_prompt(&req);
         assert!(p.contains("Wet: zorgtoeslagwet"));
         assert!(!p.contains("Trace (JSON)"));
+    }
+
+    #[test]
+    fn long_user_input_gets_clipped() {
+        let big = "x".repeat(50_000);
+        let req = ExplainRequest {
+            law_id: "z".into(),
+            law_label: String::new(),
+            output_name: "y".into(),
+            parameters: json!({}),
+            result: json!({}),
+            trace: Value::Null,
+            profile_summary: big,
+        };
+        let p = build_user_prompt(&req);
+        assert!(p.contains("tekens afgekapt"));
+        assert!(p.len() < 10_000);
     }
 
     #[test]

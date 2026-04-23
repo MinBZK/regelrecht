@@ -218,5 +218,5 @@ progress { flex: 1; height: 10px; }
 }
 .bar { flex: 1; background: var(--primitives-color-accent-500, #1e5bc6); min-height: 2px; }
 .error { color: var(--primitives-color-danger-600, #b00020); }
-.warning { color: var(--primitives-color-danger-600, #b00020); font-size: 0.9rem; }
+.warning { color: var(--primitives-color-warning-700, #8a6100); font-size: 0.9rem; }
 </style>
