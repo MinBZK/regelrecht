@@ -151,7 +151,10 @@ pub async fn explain(
     }
     if !resp.status().is_success() {
         let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
+        let text = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable error body>".to_string());
         return Err(ExplainError::Upstream(format!("{status}: {text}")));
     }
 

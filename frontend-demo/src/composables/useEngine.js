@@ -77,7 +77,11 @@ export function useEngine() {
       lawYamlCache.set(lawPath, yaml);
     }
     const id = deriveLawId(yaml);
-    if (!id) return;
+    if (!id) {
+      throw new Error(
+        `law YAML at ${lawPath} has no $id; engine cannot register it (check the bundling step)`,
+      );
+    }
     if (!engine.hasLaw || !engine.hasLaw(id)) {
       engine.loadLaw(yaml);
     }

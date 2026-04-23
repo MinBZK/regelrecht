@@ -58,6 +58,8 @@ pub enum ProfileError {
     Parse(#[from] serde_yaml_ng::Error),
     #[error("failed to register data source '{table}': {reason}")]
     Register { table: String, reason: String },
+    #[error("failed to serialize profile to JSON: {0}")]
+    Serialize(#[from] serde_json::Error),
 }
 
 impl Profile {
@@ -87,10 +89,7 @@ impl Profile {
 
     /// JSON-representation suitable for handing to WASM / browser code.
     pub fn to_json(&self) -> Result<String, ProfileError> {
-        serde_json::to_string(self).map_err(|e| ProfileError::Register {
-            table: "<json>".to_string(),
-            reason: e.to_string(),
-        })
+        Ok(serde_json::to_string(self)?)
     }
 }
 

@@ -53,6 +53,14 @@ mkdir -p "$OUT_DIR/laws"
 
 while IFS= read -r rel_path; do
     [ -n "$rel_path" ] || continue
+    # Reject absolute paths and any '..' segments so a malformed demo-index
+    # cannot make us read or write outside REPO_ROOT / OUT_DIR.
+    case "$rel_path" in
+        /*|*..*)
+            echo "error: law path '$rel_path' is absolute or contains '..'" >&2
+            exit 1
+            ;;
+    esac
     src="$REPO_ROOT/$rel_path"
     if [ ! -f "$src" ]; then
         echo "error: law file not found: $src" >&2
