@@ -67,10 +67,13 @@ async fn main() {
     let hostname = env::var("HOSTNAME").ok();
     let pipeline_api_url =
         resolve_pipeline_api_url(hostname.as_deref(), env::var("PIPELINE_API_URL").ok());
+    let hostname_log = hostname.as_deref().unwrap_or("<none>");
     match &pipeline_api_url {
-        Some(url) => tracing::info!(url = %url, hostname = ?hostname, "pipeline-api proxy target"),
+        Some(url) => {
+            tracing::info!(url = %url, hostname = %hostname_log, "pipeline-api proxy target")
+        }
         None => tracing::info!(
-            hostname = ?hostname,
+            hostname = %hostname_log,
             "no pipeline-api URL configured, harvest proxy disabled"
         ),
     }
