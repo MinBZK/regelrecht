@@ -116,10 +116,19 @@ async fn main() {
         .allow_methods([axum::http::Method::POST, axum::http::Method::OPTIONS])
         .allow_headers([axum::http::header::CONTENT_TYPE]);
 
+    // The rate limit must NOT cover /health: PeerIpKeyExtractor keys on the
+    // socket peer address, which in k8s is the node IP for liveness/readiness
+    // probes. With a 5-token burst and refill of 1 token / 12s, default 10s
+    // probe intervals would exhaust the bucket within the first minute and the
+    // pod would be killed in a restart loop. Apply GovernorLayer only to the
+    // explain route by merging two sub-routers.
+    let rate_limited = Router::new()
+        .route("/api/explain", post(explain_handler))
+        .layer(GovernorLayer::new(governor_conf));
+
     let app = Router::new()
         .route("/health", get(|| async { "OK" }))
-        .route("/api/explain", post(explain_handler))
-        .layer(GovernorLayer::new(governor_conf))
+        .merge(rate_limited)
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
