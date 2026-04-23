@@ -11,6 +11,7 @@ const DEFAULTS = {
   'panel.scenario_form': true,
   'panel.yaml_editor': true,
   'panel.machine_readable': true,
+  'panel.law_graph': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).

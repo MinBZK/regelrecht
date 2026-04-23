@@ -13,6 +13,7 @@ import SearchWindow from './components/SearchWindow.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
+import LawGraphView from './components/LawGraphView.vue';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
@@ -22,12 +23,14 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
+  ['panel.law_graph', 'Wettengraaf'],
 ];
 
 const showTextPane = computed(() => isEnabled('panel.article_text'));
 const showFormPane = computed(() => isEnabled('panel.scenario_form'));
 const showYamlPane = computed(() => isEnabled('panel.yaml_editor'));
 const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
+const showGraphPane = computed(() => isEnabled('panel.law_graph'));
 
 // Compute visible pane count and slot assignments for split view.
 const visiblePanes = computed(() => {
@@ -36,6 +39,7 @@ const visiblePanes = computed(() => {
   if (showMachinePane.value) panes.push('machine');
   if (showFormPane.value) panes.push('form');
   if (showYamlPane.value) panes.push('yaml');
+  if (showGraphPane.value) panes.push('graph');
   return panes.length > 0 ? panes : ['text', 'machine', 'form', 'yaml'];
 });
 const paneSlot = (name) => {
@@ -834,6 +838,14 @@ function handleActionSave() {
                   @click="handleMachineReadableSave"
                 ></nldd-button>
               </nldd-container>
+            </nldd-page>
+          </nldd-split-view-pane>
+
+          <!-- Law dependency graph -->
+          <nldd-split-view-pane v-if="showGraphPane" :slot="paneSlot('graph')">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Wettengraaf"></nldd-top-title-bar>
+              <LawGraphView :law-id="lawId" />
             </nldd-page>
           </nldd-split-view-pane>
         </nldd-side-by-side-split-view>
