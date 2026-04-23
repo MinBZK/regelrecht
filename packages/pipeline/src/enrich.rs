@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use regelrecht_corpus::{CorpusClient, CorpusConfig};
@@ -7,6 +9,40 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::error::{PipelineError, Result};
+
+/// Per-process cache of branch names already confirmed to exist on the
+/// corpus remote. Branches are never deleted once created, so a positive
+/// probe is permanent for the life of the worker — caching skips the
+/// ls-remote round-trip on every subsequent enrich job for the same PR.
+fn known_remote_branches() -> &'static Mutex<HashSet<String>> {
+    static CACHE: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn branch_is_known(branch: &str) -> bool {
+    known_remote_branches()
+        .lock()
+        .map(|cache| cache.contains(branch))
+        .unwrap_or(false)
+}
+
+fn remember_branch(branch: &str) {
+    if let Ok(mut cache) = known_remote_branches().lock() {
+        cache.insert(branch.to_string());
+    }
+}
+
+/// Pick the base branch to check out the law YAML from, given the worker's
+/// preferred branch and whether that branch exists on the remote. Pure
+/// function so the branch-selection contract can be pinned by unit tests
+/// without a live git remote.
+fn pick_enrich_base(preferred: &str, preferred_exists: bool) -> &str {
+    if preferred == "development" || preferred_exists {
+        preferred
+    } else {
+        "development"
+    }
+}
 
 /// Trait abstracting the LLM invocation so `execute_enrich` can be tested
 /// with a fake provider that doesn't spawn real processes.
@@ -437,11 +473,37 @@ pub async fn create_enrich_corpus(
     let mut client = CorpusClient::new(config);
     client.ensure_repo().await?;
 
+    // Prefer the worker's own base branch (e.g. `pr574`) so PR deployments
+    // enrich their own harvested YAML, not production's. Probe the remote
+    // first and fall back to `development` only when the branch doesn't
+    // exist yet — which covers a fresh PR whose harvester hasn't pushed.
+    // Probing explicitly (instead of try-then-fallback on any error)
+    // prevents an unrelated `checkout` or `reset` failure from silently
+    // dropping the enrichment back to production's branch.
+    //
     // Pass the exact file path (not the directory) so the `ls-files` guard
     // inside `checkout_from_branch` doesn't match sibling files and skip
     // fetching a newly harvested version of an already-known law.
+    let preferred_base = base_config.branch.as_str();
+    let preferred_exists = if preferred_base == "development" || branch_is_known(preferred_base) {
+        true
+    } else {
+        let exists = client.remote_branch_exists(preferred_base).await?;
+        if exists {
+            remember_branch(preferred_base);
+        }
+        exists
+    };
+    let base_branch = pick_enrich_base(preferred_base, preferred_exists);
+    if !preferred_exists {
+        tracing::info!(
+            branch = %preferred_base,
+            "base branch not yet published on remote, using development for first enrichment"
+        );
+    }
+
     client
-        .checkout_from_branch("development", &[&normalized])
+        .checkout_from_branch(base_branch, &[&normalized])
         .await?;
 
     Ok(client)
@@ -775,6 +837,26 @@ fn count_machine_readable_in_value(value: &serde_yaml_ng::Value) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pick_enrich_base_uses_preferred_when_remote_has_it() {
+        assert_eq!(pick_enrich_base("pr574", true), "pr574");
+    }
+
+    #[test]
+    fn pick_enrich_base_falls_back_when_preferred_missing() {
+        // Fresh PR deployment whose harvester hasn't pushed its branch yet:
+        // enrichment must fall back to development instead of failing.
+        assert_eq!(pick_enrich_base("pr574", false), "development");
+    }
+
+    #[test]
+    fn pick_enrich_base_short_circuits_for_development() {
+        // When the worker's own base is already `development`, the
+        // remote-exists bool is moot and we always use `development`.
+        assert_eq!(pick_enrich_base("development", true), "development");
+        assert_eq!(pick_enrich_base("development", false), "development");
+    }
 
     #[test]
     fn test_enrich_payload_serde_roundtrip() {
