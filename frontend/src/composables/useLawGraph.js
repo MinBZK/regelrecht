@@ -119,10 +119,10 @@ async function loadLawGraph(rootLawId, fetchLawYaml) {
         if (!law) continue;
         laws.set(law.id, law);
 
-        for (const ref of extractRegulationRefs(parsed)) {
-          if (!seen.has(ref)) {
-            seen.add(ref);
-            nextFrontier.push(ref);
+        for (const depId of extractRegulationRefs(parsed)) {
+          if (!seen.has(depId)) {
+            seen.add(depId);
+            nextFrontier.push(depId);
           }
         }
         // implements / overrides are also structural deps
@@ -680,8 +680,14 @@ export function useLawGraph({ rootLawId, fetchLawYaml }) {
 
   async function rebuild(lawId) {
     if (!lawId) {
+      // Bump generation so any in-flight fetch cancels its own finally
+      // branch, and clear loading so the composable's public contract
+      // doesn't stay stuck at true after a lawId → null transition.
+      generation++;
       nodes.value = [];
       edges.value = [];
+      loading.value = false;
+      error.value = null;
       return;
     }
     const gen = ++generation;
