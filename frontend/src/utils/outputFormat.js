@@ -9,13 +9,32 @@ export function formatValue(value) {
   return String(value);
 }
 
+const EURO_FORMATTER = new Intl.NumberFormat('nl-NL', {
+  style: 'currency',
+  currency: 'EUR',
+});
+
+function isMonetary(value, name) {
+  return typeof value === 'number' && Number.isInteger(value) &&
+    (name.includes('hoogte') || name.includes('bedrag') || name.includes('premie'));
+}
+
 export function formatOutputValue(value, name) {
   const raw = formatValue(value);
-  if (typeof value === 'number' && Number.isInteger(value) &&
-      (name.includes('hoogte') || name.includes('bedrag') || name.includes('premie'))) {
-    return `${raw} (${(value / 100).toFixed(2)} euro)`;
+  if (isMonetary(value, name)) {
+    return `${raw} (${EURO_FORMATTER.format(value / 100)})`;
   }
   return raw;
+}
+
+/** Returns `{ text, supportingText }` for output rendering. For monetary
+ *  integer outputs the euro-formatted value becomes supporting text. */
+export function formatOutputValueParts(value, name) {
+  const raw = formatValue(value);
+  if (isMonetary(value, name)) {
+    return { text: raw, supportingText: EURO_FORMATTER.format(value / 100) };
+  }
+  return { text: raw, supportingText: '' };
 }
 
 export function normalizeForCompare(value) {

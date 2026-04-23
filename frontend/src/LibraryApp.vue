@@ -8,8 +8,19 @@ import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchWindow from './components/SearchWindow.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useFeatureFlags } from './composables/useFeatureFlags.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
+const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
+
+// Kept in sync with EditorApp.editorPanelFlags so toggling from the library
+// affects the editor the next time it mounts.
+const editorPanelFlags = [
+  ['panel.article_text', 'Tekst editor'],
+  ['panel.machine_readable', 'Machine editor'],
+  ['panel.scenario_form', 'Scenario editor'],
+  ['panel.yaml_editor', 'YAML editor'],
+];
 
 const route = useRoute();
 const router = useRouter();
@@ -313,11 +324,18 @@ loadIndex();
                   <template v-if="!authLoading && authenticated">
                     <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
                     <nldd-menu-divider></nldd-menu-divider>
-                    <nldd-menu-item text="Uitloggen" @click="logout"></nldd-menu-item>
                   </template>
-                  <template v-else-if="!authLoading && oidcConfigured">
-                    <nldd-menu-item text="Inloggen" @click="login"></nldd-menu-item>
-                  </template>
+                  <nldd-menu-item
+                    v-for="[key, label] in editorPanelFlags"
+                    :key="key"
+                    type="checkbox"
+                    :selected="isEnabled(key) || undefined"
+                    :text="label"
+                    @select="toggleFlag(key)"
+                  ></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
+                  <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
                 </nldd-menu>
               </nldd-button-bar>
             </nldd-toolbar-item>

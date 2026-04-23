@@ -46,6 +46,14 @@ const {
 const formState = ref(null);
 const saveSuccess = ref(false);
 const isDirty = ref(false);
+const selectedScenarioIndex = ref(null);
+const scenarioSheetEl = ref(null);
+
+watch(selectedScenarioIndex, async (idx) => {
+  await nextTick();
+  if (idx !== null) scenarioSheetEl.value?.show();
+  else scenarioSheetEl.value?.hide();
+});
 
 watch(isDirty, (val) => emit('dirty-change', val));
 
@@ -53,9 +61,23 @@ function markDirty() {
   if (!isDirty.value) isDirty.value = true;
 }
 
+function humanize(name) {
+  if (typeof name !== 'string') return name;
+  const spaced = name.replace(/_/g, ' ');
+  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
+}
+
+function scenarioExpectations(index) {
+  const assertions = formState.value?.scenarios?.[index]?.assertions || [];
+  return assertions
+    .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
+    .map((a) => ({ name: humanize(a.outputName), value: humanize(String(a.value)) }));
+}
+
 // Parse feature file when loaded
 watch(featureText, (text) => {
   isDirty.value = false;
+  selectedScenarioIndex.value = null;
   if (!text) {
     formState.value = null;
     return;
@@ -193,9 +215,12 @@ watch(
 
 // --- Details handler: emit to right panel ---
 function onShowDetails(index) {
-  // Prefer fresh data from the form ref, fall back to cached results
+  // Prefer fresh data from the form ref, but its state may have been reset
+  // after a save/reload — fall back to the cached result in that case.
   const formRef = scenarioRefs.value[index];
-  const data = formRef?.getExecutionData?.() || scenarioResults.value.get(index);
+  const fresh = formRef?.getExecutionData?.();
+  const hasFresh = fresh && (fresh.result || fresh.traceText || fresh.error);
+  const data = hasFresh ? fresh : scenarioResults.value.get(index);
   if (data) {
     const scenarioName = formState.value?.scenarios[index]?.name || '';
     emit('executed', {
@@ -239,6 +264,7 @@ async function onSave() {
     await saveScenario(selectedScenarioFile.value, gherkin);
     saveSuccess.value = true;
     isDirty.value = false;
+    selectedScenarioIndex.value = null;
     setTimeout(() => { saveSuccess.value = false; }, 3000);
   } catch (e) {
     // The composable sets saveError on its own failures. For sync/serialise
@@ -248,109 +274,169 @@ async function onSave() {
   }
 }
 
+async function onSaveAndShow() {
+  const idx = selectedScenarioIndex.value;
+  await onSave();
+  if (saveError.value || idx === null) return;
+  // Saving reloads featureText which resets each ScenarioForm's local result
+  // via its setup/scenario watcher. Re-execute so the result sheet reflects
+  // the saved scenario rather than a stale cache or an empty state.
+  await nextTick();
+  const formRef = scenarioRefs.value[idx];
+  if (formRef?.execute) {
+    formRef.execute();
+    const data = formRef.getExecutionData?.();
+    if (data) onScenarioResult(idx, data);
+  }
+  onShowDetails(idx);
+}
+
+function cancelEdits() {
+  // Discard edits by re-parsing the last-loaded feature text into formState.
+  // Each ScenarioForm's deep watcher resets its local inputs when its
+  // `scenario`/`setup` props are replaced.
+  const text = featureText.value;
+  if (text) {
+    try {
+      const parsed = parseFeature(text);
+      formState.value = mapFeatureToForm(parsed);
+    } catch { /* keep the previous state */ }
+  }
+  isDirty.value = false;
+  selectedScenarioIndex.value = null;
+}
+
 defineExpose({ save: onSave });
 </script>
 
 <template>
-  <div class="sb-container">
-    <div class="sb-scroll">
-      <!-- Feature file selector -->
-      <div class="sb-section sb-toolbar" v-if="scenarioFiles.length > 1 || scenariosLoading">
-        <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
-        <select
-          v-else
-          class="sb-select"
-          :value="selectedScenarioFile"
-          @change="onScenarioFileSelect"
-        >
-          <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
-            {{ sf.filename }}
-          </option>
-        </select>
-      </div>
+  <!-- Overview -->
+  <nldd-simple-section>
+      <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
+      <select
+        v-else-if="scenarioFiles.length > 1"
+        class="sb-select"
+        :value="selectedScenarioFile"
+        @change="onScenarioFileSelect"
+      >
+        <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
+          {{ sf.filename }}
+        </option>
+      </select>
 
-      <!-- Save feedback -->
-      <div v-if="saveSuccess" class="sb-section sb-save-success">Opgeslagen</div>
-      <div v-if="saveError" class="sb-section sb-error">
-        Opslaan mislukt: {{ saveError.message || saveError }}
-      </div>
+      <nldd-inline-dialog v-if="saveSuccess" text="Opgeslagen"></nldd-inline-dialog>
+      <nldd-inline-dialog v-if="saveError" variant="alert" text="Opslaan mislukt" :supporting-text="saveError.message || String(saveError)"></nldd-inline-dialog>
 
-      <!-- Dependencies loading -->
-      <div v-if="depsLoading" class="sb-section sb-deps-loading">
+      <template v-if="depsLoading">
+        <nldd-spacer size="8"></nldd-spacer>
         <div class="sb-section-title">Afhankelijkheden laden</div>
         <div class="sb-loading">{{ depsProgress }}</div>
-      </div>
-      <div v-else-if="depsError" class="sb-section sb-error">
-        Fout: {{ depsError }}
-      </div>
+      </template>
+      <nldd-inline-dialog v-else-if="depsError" variant="alert" text="Fout" :supporting-text="String(depsError)"></nldd-inline-dialog>
 
-      <!-- Scenario accordion -->
       <template v-if="formState">
-        <nldd-spacer size="8"></nldd-spacer>
-        <details
-          v-for="(scenario, i) in formState.scenarios"
-          :key="i"
-          class="sb-accordion"
-        >
-          <summary
-            class="sb-accordion-header"
-            :class="{
-              'sb-header--pass': scenarioStatus(i) === 'passed',
-              'sb-header--fail': scenarioStatus(i) === 'failed',
-            }"
-          >
-            <span class="sb-accordion-title">{{ scenario.name }}</span>
-            <span v-if="scenarioStatus(i) === 'passed'" class="sb-badge sb-badge--pass">&#x2713;</span>
-            <span v-else-if="scenarioStatus(i) === 'failed'" class="sb-badge sb-badge--fail">&#x2717;</span>
-          </summary>
-          <div class="sb-accordion-body">
-            <ScenarioForm
-              v-if="scenarioSetups[i]"
-              :ref="(el) => { scenarioRefs[i] = el; }"
-              :scenario="scenario"
-              :setup="scenarioSetups[i]"
-              :engine="engine"
-              :ready="ready"
-              :law-id="lawId"
-              :article-map="articleMap"
-              @show-details="() => onShowDetails(i)"
-              @executed="(data) => onScenarioResult(i, data)"
-              @change="markDirty"
-            />
-          </div>
-        </details>
+        <nldd-collection layout="grid" item-width="320px">
+          <nldd-card v-for="(scenario, i) in formState.scenarios" :key="i">
+            <nldd-container slot="header" padding-top="16" padding-inline="16">
+              <nldd-title size="4"><h3>{{ scenario.name }}</h3></nldd-title>
+            </nldd-container>
+            <nldd-container padding="16">
+              <template v-if="scenarioExpectations(i).length">
+                <nldd-title size="6"><h4>Verwachte uitkomsten</h4></nldd-title>
+                <nldd-spacer size="4"></nldd-spacer>
+                <nldd-list variant="simple">
+                  <nldd-list-item v-for="(exp, j) in scenarioExpectations(i)" :key="j" size="sm">
+                    <nldd-text-cell size="sm" :text="exp.name"></nldd-text-cell>
+                    <nldd-text-cell size="sm" horizontal-alignment="right" :text="exp.value"></nldd-text-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </template>
+              <template v-else>
+                <span class="sb-no-expectations">Geen verwachte uitkomsten gedefinieerd</span>
+              </template>
+            </nldd-container>
+            <nldd-container slot="footer" padding-inline="16" padding-bottom="16">
+              <nldd-button-group orientation="horizontal">
+                <nldd-button
+                  variant="primary"
+                  :disabled="!scenarioResults.get(i) || undefined"
+                  text="Toon resultaat"
+                  @click="onShowDetails(i)"
+                ></nldd-button>
+                <nldd-button
+                  text="Bewerk"
+                  @click="selectedScenarioIndex = i"
+                ></nldd-button>
+              </nldd-button-group>
+            </nldd-container>
+          </nldd-card>
+        </nldd-collection>
       </template>
 
-      <!-- No scenarios -->
-      <div v-else-if="!scenariosLoading && !depsLoading" class="sb-section sb-empty">
-        Geen scenario's beschikbaar voor deze wet.
-      </div>
-    </div>
-  </div>
+      <nldd-inline-dialog
+        v-else-if="!scenariosLoading && !depsLoading"
+        text="Geen scenario's beschikbaar voor deze wet."
+      ></nldd-inline-dialog>
+    </nldd-simple-section>
+
+  <!-- Edit scenario in a side sheet. All ScenarioForm instances stay
+       mounted so auto-execute can cache results for the overview cards. -->
+  <Teleport to="body">
+    <nldd-sheet
+      v-if="formState"
+      ref="scenarioSheetEl"
+      placement="right"
+      width="640px"
+      @close="cancelEdits"
+    >
+      <nldd-page sticky-header :sticky-footer="isDirty || undefined">
+        <nldd-top-title-bar
+          slot="header"
+          :text="selectedScenarioIndex !== null ? formState.scenarios[selectedScenarioIndex].name : ''"
+          dismiss-text="Annuleer"
+          @dismiss="cancelEdits"
+        ></nldd-top-title-bar>
+        <nldd-simple-section>
+          <ScenarioForm
+            v-for="(scenario, i) in formState.scenarios"
+            v-show="selectedScenarioIndex === i"
+            :key="i"
+            :ref="(el) => { scenarioRefs[i] = el; }"
+            :scenario="scenario"
+            :setup="scenarioSetups[i]"
+            :engine="engine"
+            :ready="ready"
+            :law-id="lawId"
+            :article-map="articleMap"
+            @show-details="() => onShowDetails(i)"
+            @executed="(data) => onScenarioResult(i, data)"
+            @change="markDirty"
+          />
+        </nldd-simple-section>
+        <nldd-container v-if="isDirty" slot="footer" padding="16">
+          <nldd-button-group orientation="vertical">
+            <nldd-button
+              variant="primary"
+              size="md"
+              data-testid="save-scenarios-btn"
+              :disabled="saving || undefined"
+              :text="saving ? 'Opslaan…' : 'Opslaan'"
+              @click="onSave"
+            ></nldd-button>
+            <nldd-button
+              size="md"
+              :disabled="saving || undefined"
+              text="Opslaan en toon resultaat"
+              @click="onSaveAndShow"
+            ></nldd-button>
+          </nldd-button-group>
+        </nldd-container>
+      </nldd-page>
+    </nldd-sheet>
+  </Teleport>
 </template>
 
 <style scoped>
-.sb-container {
-  height: 100%;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.sb-scroll {
-  height: 100%;
-  overflow-y: auto;
-}
-
-.sb-section {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
-}
-
-.sb-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .sb-section-title {
   font-weight: 600;
   font-size: 13px;
@@ -359,7 +445,6 @@ defineExpose({ save: onSave });
 }
 
 .sb-select {
-  flex: 1;
   padding: 6px 8px;
   border: 1px solid var(--semantics-dividers-color, #E0E3E8);
   border-radius: 6px;
@@ -374,97 +459,10 @@ defineExpose({ save: onSave });
   font-style: italic;
 }
 
-.sb-deps-loading {
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
-}
-
-.sb-error {
-  background: #fee;
-  color: #c00;
+/* Card collection */
+.sb-no-expectations {
   font-size: 13px;
-}
-
-.sb-save-success {
-  background: #efe;
-  color: #060;
-  font-size: 13px;
-}
-
-.sb-empty {
-  color: var(--semantics-text-color-secondary, #666);
-  font-size: 13px;
-  text-align: center;
-  padding: 32px 16px;
-}
-
-/* Accordion */
-.sb-accordion {
-  border-bottom: 1px solid var(--semantics-dividers-color, #E0E3E8);
-}
-
-.sb-accordion-header {
-  padding: 10px 16px;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sb-accordion-header:hover {
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
-}
-
-.sb-accordion-header::marker {
-  color: var(--semantics-text-color-secondary, #999);
-}
-
-.sb-header--pass {
-  background: #e8f5e9;
-}
-
-.sb-header--pass:hover {
-  background: #c8e6c9;
-}
-
-.sb-header--fail {
-  background: #ffebee;
-}
-
-.sb-header--fail:hover {
-  background: #ffcdd2;
-}
-
-.sb-accordion-title {
-  flex: 1;
-}
-
-.sb-badge {
-  font-size: 12px;
-  font-weight: 700;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.sb-badge--pass {
-  background: #2e7d32;
-  color: white;
-}
-
-.sb-badge--fail {
-  background: #c62828;
-  color: white;
-}
-
-.sb-accordion-body {
-  padding: 0 16px 12px;
+  color: var(--semantics-text-color-secondary, #545D68);
+  font-style: italic;
 }
 </style>

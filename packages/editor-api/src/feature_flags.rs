@@ -14,7 +14,6 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         ("panel.article_text".into(), true),
         ("panel.scenario_form".into(), true),
         ("panel.yaml_editor".into(), true),
-        ("panel.execution_trace".into(), true),
         ("panel.machine_readable".into(), true),
     ])
 });

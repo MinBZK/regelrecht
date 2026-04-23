@@ -1,6 +1,12 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+
+function humanize(name) {
+  if (typeof name !== 'string') return name;
+  const spaced = name.replace(/_/g, ' ');
+  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
+}
 
 const props = defineProps({
   /** Execution result with outputs */
@@ -35,125 +41,89 @@ const overallStatus = computed(() => {
 </script>
 
 <template>
-  <!-- Empty state -->
   <nldd-simple-section v-if="!hasContent" align="center">
     <nldd-inline-dialog text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></nldd-inline-dialog>
   </nldd-simple-section>
 
-  <!-- Error state -->
-  <nldd-simple-section v-else-if="error && !result" align="center">
+  <nldd-simple-section v-else-if="error && !result && !traceText" align="center">
     <nldd-inline-dialog variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
   </nldd-simple-section>
 
-  <template v-if="result">
-    <!-- Scenario title -->
-    <nldd-simple-section v-if="scenarioName">
+  <nldd-simple-section v-else>
+    <template v-if="result && scenarioName">
       <nldd-title size="4"><span>{{ scenarioName }}</span></nldd-title>
-    </nldd-simple-section>
+      <nldd-spacer size="16"></nldd-spacer>
+    </template>
 
-    <!-- Output summary — only outputs with expectations -->
-    <nldd-simple-section v-if="Object.keys(expectations).length">
+    <template v-if="result && Object.keys(expectations).length">
       <nldd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></nldd-title>
-      <div class="etv-expectations-block" :class="overallStatus ? `etv-expectations-block--${overallStatus}` : ''">
-        <div
-          v-for="name in Object.keys(expectations)"
-          :key="name"
-          class="etv-expectation-item"
-        >
-          <span class="etv-expectation-name">{{ name }}</span>
-          <span class="etv-expectation-detail">
-            <span>{{ formatValue(normalizeForCompare(expectations[name])) }}</span>
-            <span class="etv-expectation-arrow">&rarr;</span>
-            <span>{{ formatOutputValue(result.outputs?.[name], name) }}</span>
-            <span
-              v-if="matchStatus(name, result.outputs?.[name]) === 'passed'"
-              class="etv-badge etv-badge--pass"
-            >GESLAAGD</span>
-            <span
-              v-if="matchStatus(name, result.outputs?.[name]) === 'failed'"
-              class="etv-badge etv-badge--fail"
-            >MISLUKT</span>
-          </span>
-        </div>
-      </div>
-    </nldd-simple-section>
+      <nldd-spacer size="4"></nldd-spacer>
+      <nldd-list variant="simple">
+        <nldd-list-item size="md">
+          <nldd-text-cell size="md" color="secondary" text=""></nldd-text-cell>
+          <nldd-text-cell
+            size="md"
+            color="secondary"
+            horizontal-alignment="right"
+            width="100px"
+            text="Verwacht"
+          ></nldd-text-cell>
+          <nldd-text-cell
+            size="md"
+            color="secondary"
+            horizontal-alignment="right"
+            width="100px"
+            text="Uitkomst"
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell size="md" color="secondary" horizontal-alignment="right" width="80px" text="Status"></nldd-text-cell>
+        </nldd-list-item>
+        <nldd-list-item v-for="name in Object.keys(expectations)" :key="name" size="md">
+          <nldd-text-cell size="md" :text="humanize(name)"></nldd-text-cell>
+          <nldd-text-cell
+            size="md"
+            horizontal-alignment="right"
+            width="100px"
+            :text="humanize(formatValue(normalizeForCompare(expectations[name])))"
+          ></nldd-text-cell>
+          <nldd-text-cell
+            size="md"
+            horizontal-alignment="right"
+            width="100px"
+            :text="humanize(formatOutputValueParts(result.outputs?.[name], name).text)"
+            :supporting-text="formatOutputValueParts(result.outputs?.[name], name).supportingText"
+          ></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-text-cell
+            size="md"
+            horizontal-alignment="right"
+            width="80px"
+            :text="matchStatus(name, result.outputs?.[name]) === 'passed'
+              ? 'Geslaagd'
+              : matchStatus(name, result.outputs?.[name]) === 'failed'
+                ? 'Mislukt'
+                : '—'"
+          ></nldd-text-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="16"></nldd-spacer>
+    </template>
 
-    <!-- Trace text -->
-    <nldd-simple-section v-if="traceText">
+    <template v-if="result && traceText">
       <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
+      <nldd-spacer size="4"></nldd-spacer>
       <pre class="etv-trace-text">{{ traceText }}</pre>
-    </nldd-simple-section>
-  </template>
+    </template>
 
-  <!-- Partial trace on error -->
-  <nldd-simple-section v-if="error && traceText && !result">
-    <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
-    <pre class="etv-trace-text">{{ traceText }}</pre>
+    <template v-if="error && traceText && !result">
+      <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
+      <nldd-spacer size="4"></nldd-spacer>
+      <pre class="etv-trace-text">{{ traceText }}</pre>
+    </template>
   </nldd-simple-section>
 </template>
 
 <style scoped>
-.etv-section-title {
-  margin-bottom: 4px;
-}
-
-/* Single continuous block with left border */
-.etv-expectations-block {
-  border-left: 3px solid transparent;
-  padding: 8px 10px;
-  border-radius: 4px;
-  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.etv-expectations-block--passed {
-  border-left-color: #2e7d32;
-}
-
-.etv-expectations-block--failed {
-  border-left-color: #c62828;
-}
-
-.etv-expectation-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.etv-expectation-name {
-  font-weight: 400;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.etv-expectation-detail {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.etv-expectation-arrow {
-  flex-shrink: 0;
-  color: var(--semantics-text-color-secondary, #666);
-}
-
-.etv-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-.etv-badge--pass { background: #efe; color: #060; }
-.etv-badge--fail { background: #fee; color: #c00; }
-
 .etv-trace-text {
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 11px;

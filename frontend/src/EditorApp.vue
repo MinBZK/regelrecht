@@ -9,26 +9,30 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
-import FeatureFlagSettings from './components/FeatureFlagSettings.vue';
 import SearchWindow from './components/SearchWindow.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
-const { isEnabled } = useFeatureFlags();
+const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 
-const settingsOpen = ref(false);
+const editorPanelFlags = [
+  ['panel.article_text', 'Tekst editor'],
+  ['panel.machine_readable', 'Machine editor'],
+  ['panel.scenario_form', 'Scenario editor'],
+  ['panel.yaml_editor', 'YAML editor'],
+];
 
+const showTextPane = computed(() => isEnabled('panel.article_text'));
 const showFormPane = computed(() => isEnabled('panel.scenario_form'));
 const showYamlPane = computed(() => isEnabled('panel.yaml_editor'));
-const showResultSheet = computed(() => isEnabled('panel.execution_trace'));
 const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
 
-// Compute visible pane count and slot assignments for split view
+// Compute visible pane count and slot assignments for split view.
 const visiblePanes = computed(() => {
   const panes = [];
-  if (isEnabled('panel.article_text')) panes.push('text');
+  if (showTextPane.value) panes.push('text');
   if (showMachinePane.value) panes.push('machine');
   if (showFormPane.value) panes.push('form');
   if (showYamlPane.value) panes.push('yaml');
@@ -106,8 +110,6 @@ async function onSearchHarvestAvailable(slug) {
   router.push(`/editor/${encodeURIComponent(slug)}`);
 }
 const resultSheetEl = ref(null);
-const scenarioBuilderRef = ref(null);
-const scenariosDirty = ref(false);
 watch(resultSheetOpen, async (open) => {
   await nextTick();
   if (open) resultSheetEl.value?.show();
@@ -116,6 +118,7 @@ watch(resultSheetOpen, async (open) => {
 
 // --- Multi-law tab state (persisted in localStorage) ---
 const TABS_STORAGE_KEY = 'regelrecht-open-tabs';
+const ACTIVE_TAB_STORAGE_KEY = 'regelrecht-active-tab';
 
 function loadSavedTabs() {
   try {
@@ -127,6 +130,30 @@ function loadSavedTabs() {
 
 function saveTabs(tabs) {
   localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabs));
+}
+
+function loadSavedActiveTab() {
+  try {
+    const saved = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch { return null; }
+}
+
+function saveActiveTab(tab) {
+  if (!tab) localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
+  else localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(tab));
+}
+
+// If the user lands on /editor without a lawId, restore the last tab
+// they had open before the refresh.
+if (!route.params.lawId) {
+  const last = loadSavedActiveTab();
+  if (last?.lawId) {
+    router.replace({
+      name: 'editor',
+      params: { lawId: last.lawId, articleNumber: last.articleNumber || undefined },
+    });
+  }
 }
 
 const openTabs = ref(loadSavedTabs());
@@ -156,6 +183,7 @@ watch([() => lawId.value, selectedArticle], ([id, article]) => {
     saveTabs(openTabs.value);
   }
   activeTab.value = { lawId: id, articleNumber: num };
+  saveActiveTab(activeTab.value);
   if (lawName.value) lawNames.value = { ...lawNames.value, [id]: lawName.value };
 });
 
@@ -231,7 +259,7 @@ function handleScenarioExecuted({ result, traceText, error, expectations, scenar
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
-  if (showResultSheet.value) resultSheetOpen.value = true;
+  resultSheetOpen.value = true;
 }
 
 // --- Editor state ---
@@ -666,8 +694,6 @@ function handleActionSave() {
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item text="Nieuw project"></nldd-menu-item>
                 </nldd-menu>
-                <nldd-icon-button size="md" icon="gear" title="Instellingen" @click="settingsOpen = true">
-                </nldd-icon-button>
                 <nldd-button-bar-divider></nldd-button-bar-divider>
                 <nldd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
                 </nldd-icon-button>
@@ -675,11 +701,18 @@ function handleActionSave() {
                   <template v-if="!authLoading && authenticated">
                     <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
                     <nldd-menu-divider></nldd-menu-divider>
-                    <nldd-menu-item text="Uitloggen" @click="logout"></nldd-menu-item>
                   </template>
-                  <template v-else-if="!authLoading && oidcConfigured">
-                    <nldd-menu-item text="Inloggen" @click="login"></nldd-menu-item>
-                  </template>
+                  <nldd-menu-item
+                    v-for="[key, label] in editorPanelFlags"
+                    :key="key"
+                    type="checkbox"
+                    :selected="isEnabled(key) || undefined"
+                    :text="label"
+                    @select="toggleFlag(key)"
+                  ></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
+                  <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
                 </nldd-menu>
               </nldd-button-bar>
             </nldd-toolbar-item>
@@ -725,7 +758,7 @@ function handleActionSave() {
         <!-- Dynamic column layout based on feature flags -->
         <nldd-side-by-side-split-view v-else :panes="String(visiblePanes.length)">
           <!-- Left: Article Text -->
-          <nldd-split-view-pane v-if="isEnabled('panel.article_text')" :slot="paneSlot('text')" background="tinted">
+          <nldd-split-view-pane v-if="showTextPane" :slot="paneSlot('text')">
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" text="Tekst"></nldd-top-title-bar>
               <nldd-simple-section :align="selectedArticle ? undefined : 'center'">
@@ -736,7 +769,7 @@ function handleActionSave() {
 
           <!-- Scenarios -->
           <nldd-split-view-pane v-if="showFormPane" :slot="paneSlot('form')">
-            <nldd-page sticky-header :sticky-footer="scenariosDirty || undefined">
+            <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" text="Scenario's"></nldd-top-title-bar>
 
               <nldd-simple-section v-if="engineInitError" align="center">
@@ -745,26 +778,13 @@ function handleActionSave() {
 
               <ScenarioBuilder
                 v-else
-                ref="scenarioBuilderRef"
                 :law-id="lawId"
                 :law-yaml="currentLawYaml"
                 :engine="getEngine()"
                 :ready="engineReady"
                 :articles="articles"
                 @executed="handleScenarioExecuted"
-                @dirty-change="scenariosDirty = $event"
               />
-
-              <nldd-container v-if="scenariosDirty" slot="footer" padding="16">
-                <nldd-button
-                  variant="primary"
-                  size="md"
-                  full-width
-                  data-testid="save-scenarios-btn"
-                  text="Opslaan"
-                  @click="scenarioBuilderRef?.save()"
-                ></nldd-button>
-              </nldd-container>
             </nldd-page>
           </nldd-split-view-pane>
 
@@ -829,7 +849,6 @@ function handleActionSave() {
 
   <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" :article="editedArticle" @save="handleSave" @close="activeEditItem = null" />
-  <FeatureFlagSettings :open="settingsOpen" @close="settingsOpen = false" />
   <SearchWindow
     v-model="searchOpen"
     :laws="corpusLaws"
