@@ -20,8 +20,20 @@ async function loadEngineModule() {
   const blobUrl = URL.createObjectURL(blob);
   const mod = await import(/* @vite-ignore */ blobUrl);
   URL.revokeObjectURL(blobUrl);
-  await mod.default('/wasm/pkg/regelrecht_engine_bg.wasm');
+  await mod.default({ module_or_path: '/wasm/pkg/regelrecht_engine_bg.wasm' });
   return mod;
+}
+
+function formatEngineError(e) {
+  if (!e) return 'Onbekende fout';
+  if (typeof e === 'string') return e;
+  if (e.message) return e.message;
+  if (e.error) return e.error;
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return String(e);
+  }
 }
 
 export function useEngine() {
@@ -57,17 +69,25 @@ export function useEngine() {
   }
 
   async function loadLaw(engine, lawPath) {
-    const basename = lawPath.split('/').pop();
-    let yaml = lawYamlCache.get(basename);
+    let yaml = lawYamlCache.get(lawPath);
     if (!yaml) {
-      const resp = await fetch(`/demo-assets/laws/${basename}`);
-      if (!resp.ok) throw new Error(`law fetch failed: ${resp.status}`);
+      const resp = await fetch(`/demo-assets/laws/${lawPath}`);
+      if (!resp.ok) throw new Error(`law fetch failed (${lawPath}): ${resp.status}`);
       yaml = await resp.text();
-      lawYamlCache.set(basename, yaml);
+      lawYamlCache.set(lawPath, yaml);
     }
-    if (!engine.hasLaw || !engine.hasLaw(deriveLawId(yaml))) {
+    const id = deriveLawId(yaml);
+    if (!id) return;
+    if (!engine.hasLaw || !engine.hasLaw(id)) {
       engine.loadLaw(yaml);
     }
+  }
+
+  async function loadLawWithDependencies(engine, lawEntry) {
+    for (const dep of lawEntry.dependencies || []) {
+      await loadLaw(engine, dep);
+    }
+    await loadLaw(engine, lawEntry.path);
   }
 
   function deriveLawId(yaml) {
@@ -88,7 +108,7 @@ export function useEngine() {
     error.value = null;
     try {
       const engine = await getEngine();
-      await loadLaw(engine, lawEntry.path);
+      await loadLawWithDependencies(engine, lawEntry);
       registerProfile(engine, profile);
       const result = engine.executeWithTrace(
         lawEntry.id,
@@ -99,7 +119,7 @@ export function useEngine() {
       lastResult.value = result;
       return result;
     } catch (e) {
-      error.value = e?.message || String(e);
+      error.value = formatEngineError(e);
       throw e;
     } finally {
       loading.value = false;

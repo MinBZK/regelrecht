@@ -16,6 +16,7 @@ const progress = ref(0);
 const progressTotal = ref(0);
 const summary = ref(null);
 const error = ref(null);
+const warning = ref(null);
 const buckets = ref([]);
 let worker = null;
 
@@ -32,12 +33,18 @@ async function run() {
   if (!lawEntry.value) return;
   running.value = true;
   error.value = null;
+  warning.value = null;
   summary.value = null;
   buckets.value = [];
   progress.value = 0;
 
-  const lawBasename = lawEntry.value.path.split('/').pop();
-  const lawYaml = await fetch(`/demo-assets/laws/${lawBasename}`).then((r) => r.text());
+  const paths = [...(lawEntry.value.dependencies || []), lawEntry.value.path];
+  const lawYamls = await Promise.all(
+    paths.map((p) => fetch(`/demo-assets/laws/${p}`).then((r) => {
+      if (!r.ok) throw new Error(`law fetch failed (${p}): ${r.status}`);
+      return r.text();
+    })),
+  );
   const population = generatePopulation({
     size: size.value,
     calculationDate: calculationDate.value,
@@ -52,6 +59,9 @@ async function run() {
       progress.value = msg.done;
     } else if (msg.type === 'result') {
       summary.value = msg.summary;
+      if (msg.firstError) {
+        warning.value = `Let op: ${msg.errorCount} van ${msg.summary.total} berekeningen faalden. Eerste fout: ${msg.firstError}`;
+      }
       const amounts = msg.results.filter((r) => r.eligible).map((r) => r.amount / 100);
       buckets.value = histogram(amounts, 20).buckets;
       running.value = false;
@@ -64,7 +74,7 @@ async function run() {
   worker.postMessage({
     type: 'run',
     lawEntry: { id: lawEntry.value.id, output: lawEntry.value.output },
-    lawYaml,
+    lawYamls,
     population,
     calculationDate: calculationDate.value,
   });
@@ -97,39 +107,63 @@ const medianFormatted = computed(() =>
       })
     : '',
 );
+
+const summaryRows = computed(() => {
+  if (!summary.value) return [];
+  return [
+    { label: 'Totaal', value: String(summary.value.total) },
+    {
+      label: 'Rechthebbend',
+      value: `${summary.value.eligible} (${(summary.value.percentageEligible * 100).toFixed(1)}%)`,
+    },
+    { label: 'Gemiddeld bedrag', value: avgFormatted.value },
+    { label: 'Mediaan', value: medianFormatted.value },
+  ];
+});
 </script>
 
 <template>
-  <ndd-page>
-    <ndd-container padding="24">
-      <ndd-back-button
-        text="Terug"
+  <nldd-page>
+    <nldd-container padding="24">
+      <nldd-button
+        variant="secondary"
+        text="← Terug"
         @click="router.push({ name: 'law-detail', params: { lawId } })"
-      ></ndd-back-button>
-      <ndd-spacer size="8"></ndd-spacer>
-      <ndd-title size="2"><h1>Populatie-simulatie</h1></ndd-title>
+      ></nldd-button>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-title size="2"><h1>Populatie-simulatie</h1></nldd-title>
       <p v-if="lawEntry">
         Draai <strong>{{ lawEntry.label }}</strong> over een synthetische populatie en kijk
         naar de verdeling van uitkomsten.
       </p>
 
-      <ndd-container padding="16" class="form-card">
-        <label>Aantal personen
-          <ndd-number-field :value="size" @input="updateSize"></ndd-number-field>
-        </label>
-        <ndd-spacer size="8"></ndd-spacer>
-        <label>Peildatum
-          <ndd-text-field type="date" :value="calculationDate" @input="updateDate"></ndd-text-field>
-        </label>
-        <ndd-spacer size="8"></ndd-spacer>
-        <ndd-button
-          :text="running ? 'Bezig…' : 'Start simulatie'"
-          :disabled="running || !lawEntry"
-          @click="run"
-        ></ndd-button>
-      </ndd-container>
+      <nldd-card>
+        <nldd-title slot="header" size="5"><h5>Invoer</h5></nldd-title>
+        <nldd-container padding="16">
+          <nldd-form-field label="Aantal personen">
+            <nldd-number-field
+              :value="size"
+              @input="updateSize"
+            ></nldd-number-field>
+          </nldd-form-field>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-form-field label="Peildatum">
+            <nldd-text-field
+              type="date"
+              :value="calculationDate"
+              @input="updateDate"
+            ></nldd-text-field>
+          </nldd-form-field>
+          <nldd-spacer size="8"></nldd-spacer>
+          <nldd-button
+            :text="running ? 'Bezig…' : 'Start simulatie'"
+            :disabled="running || !lawEntry"
+            @click="run"
+          ></nldd-button>
+        </nldd-container>
+      </nldd-card>
 
-      <ndd-spacer size="16"></ndd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
 
       <div v-if="running" class="progress">
         <progress :value="progress" :max="progressTotal"></progress>
@@ -137,23 +171,24 @@ const medianFormatted = computed(() =>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="warning" class="warning">{{ warning }}</p>
 
       <template v-if="summary">
-        <ndd-container padding="16" class="summary-card">
-          <ndd-title size="5"><h5>Samenvatting</h5></ndd-title>
-          <ndd-spacer size="4"></ndd-spacer>
-          <dl>
-            <dt>Totaal</dt><dd>{{ summary.total }}</dd>
-            <dt>Rechthebbend</dt>
-            <dd>{{ summary.eligible }} ({{ (summary.percentageEligible * 100).toFixed(1) }}%)</dd>
-            <dt>Gemiddeld bedrag</dt><dd>{{ avgFormatted }}</dd>
-            <dt>Mediaan</dt><dd>{{ medianFormatted }}</dd>
-          </dl>
-        </ndd-container>
+        <nldd-card>
+          <nldd-title slot="header" size="5"><h5>Samenvatting</h5></nldd-title>
+          <nldd-list variant="box">
+            <nldd-list-item v-for="row in summaryRows" :key="row.label" size="md">
+              <nldd-description-cell>
+                <span slot="title">{{ row.label }}</span>
+                <span slot="description">{{ row.value }}</span>
+              </nldd-description-cell>
+            </nldd-list-item>
+          </nldd-list>
+        </nldd-card>
 
-        <ndd-spacer size="16"></ndd-spacer>
-        <ndd-title size="5"><h5>Verdeling bedragen (€)</h5></ndd-title>
-        <ndd-spacer size="4"></ndd-spacer>
+        <nldd-spacer size="16"></nldd-spacer>
+        <nldd-title size="5"><h5>Verdeling bedragen (€)</h5></nldd-title>
+        <nldd-spacer size="4"></nldd-spacer>
         <div class="histogram" :aria-label="`Histogram met ${buckets.length} buckets`">
           <div
             v-for="(b, i) in buckets"
@@ -164,29 +199,24 @@ const medianFormatted = computed(() =>
           ></div>
         </div>
       </template>
-    </ndd-container>
-  </ndd-page>
+    </nldd-container>
+  </nldd-page>
 </template>
 
 <style scoped>
-.form-card, .summary-card {
-  border: 1px solid var(--ndd-color-neutral-200, #e5e5e5);
-  border-radius: 8px;
-}
 .progress { display: flex; align-items: center; gap: 8px; margin: 16px 0; }
 progress { flex: 1; height: 10px; }
-dl { display: grid; grid-template-columns: 200px 1fr; row-gap: 4px; margin: 0; }
-dt { font-weight: 600; }
 .histogram {
   display: flex;
   align-items: flex-end;
   gap: 2px;
   height: 160px;
   padding: 8px;
-  background: var(--ndd-color-neutral-50, #fafafa);
-  border: 1px solid var(--ndd-color-neutral-200, #e5e5e5);
+  background: var(--primitives-color-neutral-50, #fafafa);
+  border: 1px solid var(--primitives-color-neutral-200, #e5e5e5);
   border-radius: 4px;
 }
-.bar { flex: 1; background: var(--ndd-color-primary-500, #1e5bc6); min-height: 2px; }
-.error { color: var(--ndd-color-red-600, #b00020); }
+.bar { flex: 1; background: var(--primitives-color-accent-500, #1e5bc6); min-height: 2px; }
+.error { color: var(--primitives-color-danger-600, #b00020); }
+.warning { color: var(--primitives-color-danger-600, #b00020); font-size: 0.9rem; }
 </style>

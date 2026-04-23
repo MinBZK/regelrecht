@@ -92,90 +92,94 @@ async function requestExplanation() {
 </script>
 
 <template>
-  <ndd-page>
-    <ndd-container padding="24">
-      <ndd-back-button text="Terug" @click="router.push({ name: 'dashboard' })"></ndd-back-button>
-      <ndd-spacer size="8"></ndd-spacer>
+  <nldd-page>
+    <nldd-container padding="24">
+      <nldd-button
+        variant="secondary"
+        text="← Terug"
+        @click="router.push({ name: 'dashboard' })"
+      ></nldd-button>
+      <nldd-spacer size="8"></nldd-spacer>
 
       <template v-if="lawEntry">
-        <ndd-title size="2"><h1>{{ lawEntry.label }}</h1></ndd-title>
+        <nldd-title size="2"><h1>{{ lawEntry.label }}</h1></nldd-title>
         <p>{{ lawEntry.summary }}</p>
-        <ndd-spacer size="16"></ndd-spacer>
+        <nldd-spacer size="16"></nldd-spacer>
 
-        <ndd-container padding="16" class="form-card">
-          <ndd-title size="5"><h5>Invoer</h5></ndd-title>
-          <ndd-spacer size="4"></ndd-spacer>
-          <label>Peildatum
-            <ndd-text-field
-              type="date"
-              :value="calculationDate"
-              @input="updateDate"
-            ></ndd-text-field>
-          </label>
-          <ndd-spacer size="8"></ndd-spacer>
-          <ndd-button text="Bereken opnieuw" @click="run"></ndd-button>
-        </ndd-container>
+        <nldd-card>
+          <nldd-title slot="header" size="5"><h5>Invoer</h5></nldd-title>
+          <nldd-container padding="16">
+            <nldd-form-field label="Peildatum">
+              <nldd-text-field
+                type="date"
+                :value="calculationDate"
+                @input="updateDate"
+              ></nldd-text-field>
+            </nldd-form-field>
+            <nldd-spacer size="8"></nldd-spacer>
+            <nldd-button text="Bereken opnieuw" @click="run"></nldd-button>
+          </nldd-container>
+        </nldd-card>
 
-        <ndd-spacer size="16"></ndd-spacer>
+        <nldd-spacer size="16"></nldd-spacer>
 
-        <ndd-container padding="16" class="result-card">
-          <ndd-title size="5"><h5>Uitkomst</h5></ndd-title>
-          <ndd-spacer size="4"></ndd-spacer>
-          <p v-if="loading">Rekenen…</p>
-          <p v-else-if="error" class="error">{{ error }}</p>
-          <template v-else-if="primaryOutput !== null && primaryOutput !== undefined">
-            <p class="amount">
-              <strong>{{ formattedAmount ?? primaryOutput }}</strong>
-              <small>per {{ lawEntry.output }}</small>
-            </p>
-            <ndd-toggle-button
-              :pressed="showTrace"
-              text="Toon redenering"
-              @click="showTrace = !showTrace"
-            ></ndd-toggle-button>
-            <ndd-button
-              variant="secondary"
-              :text="explanationLoading ? 'Uitleg laden…' : 'Vraag uitleg'"
-              :disabled="explanationLoading"
-              @click="requestExplanation"
-            ></ndd-button>
-            <ndd-spacer size="8"></ndd-spacer>
-            <div v-if="showTrace" class="trace">
-              <h6>Gebruikte invoer</h6>
-              <pre>{{ JSON.stringify(lastResult?.resolved_inputs ?? {}, null, 2) }}</pre>
-              <h6>Trace</h6>
-              <pre>{{ lastResult?.trace_text ?? JSON.stringify(lastResult?.trace ?? {}, null, 2) }}</pre>
-            </div>
-            <div v-if="explanationError" class="error">{{ explanationError }}</div>
-            <div v-if="explanation" class="explanation">
-              <h6>Uitleg</h6>
-              <p>{{ explanation }}</p>
-            </div>
-          </template>
-          <p v-else>Nog niets berekend.</p>
-        </ndd-container>
+        <nldd-card>
+          <nldd-title slot="header" size="5"><h5>Uitkomst</h5></nldd-title>
+          <nldd-container padding="16">
+            <p v-if="loading">Rekenen…</p>
+            <p v-else-if="error" class="error">{{ error }}</p>
+            <template v-else-if="primaryOutput !== null && primaryOutput !== undefined">
+              <p class="amount">
+                <strong>{{ formattedAmount ?? primaryOutput }}</strong>
+                <small>per {{ lawEntry.output }}</small>
+              </p>
+              <nldd-toggle-button
+                :pressed="showTrace"
+                text="Toon redenering"
+                @click="showTrace = !showTrace"
+              ></nldd-toggle-button>
+              <nldd-button
+                variant="secondary"
+                :text="explanationLoading ? 'Uitleg laden…' : 'Vraag uitleg'"
+                :disabled="explanationLoading"
+                @click="requestExplanation"
+              ></nldd-button>
+              <nldd-spacer size="8"></nldd-spacer>
+              <div v-if="showTrace" class="trace">
+                <h6>Gebruikte invoer</h6>
+                <pre>{{ JSON.stringify(lastResult?.resolved_inputs ?? {}, null, 2) }}</pre>
+                <h6>Trace</h6>
+                <pre>{{ lastResult?.trace_text ?? JSON.stringify(lastResult?.trace ?? {}, null, 2) }}</pre>
+              </div>
+              <div v-if="explanationError" class="error">{{ explanationError }}</div>
+              <nldd-box v-if="explanation">
+                <nldd-title size="6"><h6>Uitleg</h6></nldd-title>
+                <p class="explanation-text">{{ explanation }}</p>
+              </nldd-box>
+            </template>
+            <p v-else>Nog niets berekend.</p>
+          </nldd-container>
+        </nldd-card>
 
-        <ndd-spacer size="16"></ndd-spacer>
-        <ndd-button
+        <nldd-spacer size="16"></nldd-spacer>
+        <nldd-button
           variant="secondary"
           text="Simuleer voor 1000 burgers"
           @click="goToSimulation"
-        ></ndd-button>
+        ></nldd-button>
       </template>
 
       <template v-else>
         <p>Wet niet gevonden.</p>
       </template>
-    </ndd-container>
-  </ndd-page>
+    </nldd-container>
+  </nldd-page>
 </template>
 
 <style scoped>
-.form-card, .result-card { border: 1px solid var(--ndd-color-neutral-200, #e5e5e5); border-radius: 8px; }
 .amount { font-size: 1.5rem; margin: 0.5em 0; }
-.amount small { display: block; font-size: 0.8rem; color: var(--ndd-color-neutral-600, #666); }
-.error { color: var(--ndd-color-red-600, #b00020); }
-.trace pre { font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; background: var(--ndd-color-neutral-50, #fafafa); padding: 8px; border-radius: 4px; }
-.explanation { margin-top: 16px; padding: 12px; background: var(--ndd-color-primary-50, #eef3ff); border-left: 4px solid var(--ndd-color-primary-500, #1e5bc6); border-radius: 4px; }
-.explanation p { margin: 0; white-space: pre-wrap; }
+.amount small { display: block; font-size: 0.8rem; color: var(--primitives-color-neutral-600, #666); }
+.error { color: var(--primitives-color-danger-600, #b00020); }
+.trace pre { font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; background: var(--primitives-color-neutral-50, #fafafa); padding: 8px; border-radius: 4px; }
+.explanation-text { margin: 0; white-space: pre-wrap; }
 </style>
