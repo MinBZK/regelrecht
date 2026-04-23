@@ -187,6 +187,16 @@ function buildGraph(lawsMap) {
     const inputsSeen = new Set();
     const fieldProvenance = new Map();
 
+    // Delegates that other laws implement FOR this law. Hoisted out of the
+    // per-article loop because the scan is law-level, not article-level.
+    for (const otherLaw of laws) {
+      for (const otherArt of otherLaw.articles) {
+        for (const impl of otherArt.implements) {
+          if (impl.law === law.id) allDelegates.add(impl.open_term);
+        }
+      }
+    }
+
     for (const art of law.articles) {
       for (const p of art.parameters) {
         allParams.add(p);
@@ -203,14 +213,6 @@ function buildGraph(lawsMap) {
       for (const impl of art.implements) {
         allImplements.add(impl.open_term);
         fieldProvenance.set(`impl:${impl.open_term}`, { artNumber: art.number, text: art.text || '' });
-      }
-      // Delegates that other laws implement FOR this law.
-      for (const otherLaw of laws) {
-        for (const otherArt of otherLaw.articles) {
-          for (const impl of otherArt.implements) {
-            if (impl.law === law.id) allDelegates.add(impl.open_term);
-          }
-        }
       }
       for (const inp of art.input) {
         if (inputsSeen.has(inp.name)) continue;

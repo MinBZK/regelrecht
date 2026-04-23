@@ -122,7 +122,6 @@ function miniMapNodeColor(node) {
         :nodes-connectable="false"
         :min-zoom="0.1"
         fit-view-on-init
-        :pro-options="{ hideAttribution: true }"
         @node-click="handleNodeClick"
       >
         <Controls :show-lock="false" />
@@ -136,7 +135,10 @@ function miniMapNodeColor(node) {
 <style scoped>
 .law-graph-view {
   /* Fill the pane. ndd-page gives us a flex body; claim the viewport
-   * minus toolbar + tab-bar chrome (mirrors the YAML textarea). */
+   * minus toolbar + tab-bar chrome (mirrors the YAML textarea).
+   * 180px = primary toolbar (~48px) + document tab bar (~56px) +
+   * right-pane title bar (~48px) + spacer (~28px). Update this if the
+   * chrome layout changes (e.g. a new toolbar row is added). */
   height: calc(100vh - 180px);
   display: flex;
   flex-direction: column;
