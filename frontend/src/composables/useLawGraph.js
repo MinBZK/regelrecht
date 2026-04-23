@@ -12,6 +12,13 @@
  *   - implements:       "impl:${lawId}:${art}->${implLaw}:${openTerm}"
  *   - overrides:        "ovr:${lawId}:${art}->${ovrLaw}:${ovrArticle}"
  *   - hooks:            "hook:${hookLaw}:${art}->${producerLaw}:${producerArt}"
+ *
+ * INVARIANT: law $id slugs MUST NOT contain a hyphen. Node ids encode
+ * `${lawId}-${nodeType}-${fieldName}` and `applyLayeredLayout` /
+ * `LawGraphView.rootOfId` both split on the first hyphen to recover the
+ * root law id. Current corpus slugs use underscores exclusively; if a
+ * future source (e.g. CVDR imports) introduces a hyphen in a law id,
+ * that scheme has to be rethought.
  */
 import { ref, watch } from 'vue';
 import yaml from 'js-yaml';
@@ -284,6 +291,7 @@ function buildGraph(lawsMap) {
           width: 200,
           height: 40,
           parentNode: sourcesID,
+          extent: 'parent',
           draggable: false,
           selectable: false,
         });
