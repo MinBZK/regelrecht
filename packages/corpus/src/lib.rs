@@ -11,7 +11,7 @@ pub mod source_map;
 pub mod validation;
 
 pub use client::CorpusClient;
-pub use config::CorpusConfig;
+pub use config::{deployment_from_hostname, CorpusConfig};
 pub use error::CorpusError;
 #[cfg(feature = "github")]
 pub use github::{FetchResult, GitHubFetcher};
