@@ -20,7 +20,7 @@ async function ensureEngine() {
   const blobUrl = URL.createObjectURL(blob);
   const mod = await import(/* @vite-ignore */ blobUrl);
   URL.revokeObjectURL(blobUrl);
-  await mod.default('/wasm/pkg/regelrecht_engine_bg.wasm');
+  await mod.default({ module_or_path: '/wasm/pkg/regelrecht_engine_bg.wasm' });
   engine = new mod.WasmEngine();
   return engine;
 }
@@ -74,9 +74,17 @@ function personRecords(person) {
   ];
 }
 
-async function runSimulation({ lawYaml, lawEntry, population, calculationDate }) {
+function deriveLawId(yaml) {
+  const match = yaml.match(/^\$id:\s*(\S+)/m);
+  return match ? match[1] : '';
+}
+
+async function runSimulation({ lawYamls, lawEntry, population, calculationDate }) {
   const e = await ensureEngine();
-  if (!e.hasLaw(lawEntry.id)) e.loadLaw(lawYaml);
+  for (const yaml of lawYamls) {
+    const id = deriveLawId(yaml);
+    if (id && !e.hasLaw(id)) e.loadLaw(yaml);
+  }
 
   const results = new Array(population.length);
   let eligible = 0;
@@ -100,7 +108,7 @@ async function runSimulation({ lawYaml, lawEntry, population, calculationDate })
       const raw = result?.outputs?.[lawEntry.output];
       amount = typeof raw === 'number' ? raw : Number(raw ?? 0);
     } catch (ex) {
-      err = ex?.message || String(ex);
+      err = formatErr(ex);
     }
     const isEligible = !err && amount > 0;
     results[i] = { bsn: person.bsn, amount, eligible: isEligible, error: err };
@@ -115,10 +123,14 @@ async function runSimulation({ lawYaml, lawEntry, population, calculationDate })
 
   const amounts = results.filter((r) => r.eligible).map((r) => r.amount).sort((a, b) => a - b);
   const median = amounts.length ? amounts[Math.floor(amounts.length / 2)] : 0;
+  const firstError = results.find((r) => r.error)?.error ?? null;
+  const errorCount = results.reduce((n, r) => n + (r.error ? 1 : 0), 0);
 
   postMessage({
     type: 'result',
     results,
+    firstError,
+    errorCount,
     summary: {
       total: population.length,
       eligible,
@@ -129,11 +141,19 @@ async function runSimulation({ lawYaml, lawEntry, population, calculationDate })
   });
 }
 
+function formatErr(e) {
+  if (!e) return 'Onbekende fout';
+  if (typeof e === 'string') return e;
+  if (e.message) return e.message;
+  if (e.error) return e.error;
+  try { return JSON.stringify(e); } catch { return String(e); }
+}
+
 onmessage = (event) => {
   const msg = event.data;
   if (msg?.type === 'run') {
     runSimulation(msg).catch((err) => {
-      postMessage({ type: 'error', message: err?.message || String(err) });
+      postMessage({ type: 'error', message: formatErr(err) });
     });
   }
 };

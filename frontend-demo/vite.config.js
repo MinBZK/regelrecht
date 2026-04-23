@@ -9,7 +9,7 @@ export default defineConfig({
     vue({
       template: {
         compilerOptions: {
-          isCustomElement: (tag) => tag.startsWith('ndd-'),
+          isCustomElement: (tag) => tag.startsWith('nldd-'),
         },
       },
     }),
@@ -18,7 +18,7 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use((req, _res, next) => {
           const url = req.url.split('?')[0];
-          if (!url.includes('.') && !url.startsWith('/wasm') && !url.startsWith('/demo-assets')) {
+          if (!url.includes('.') && !url.startsWith('/@') && !url.startsWith('/wasm') && !url.startsWith('/demo-assets')) {
             req.url = '/index.html';
           }
           next();
