@@ -20,7 +20,7 @@ import { test, expect } from '@playwright/test';
 import { loadCorpus, loadScenario, mockCorpusApi } from './helpers-corpus.js';
 
 /**
- * Wait for an ndd-sheet to be open. The host element itself doesn't change
+ * Wait for an nldd-sheet to be open. The host element itself doesn't change
  * `display`; visibility lives on the shadow-DOM `<dialog>`'s `open` attribute.
  */
 async function waitForSheetOpen(page, hostSelector) {
@@ -33,7 +33,7 @@ async function waitForSheetOpen(page, hostSelector) {
 }
 
 /**
- * Wait for an ndd-sheet to be closed (host present + shadow `<dialog>`'s
+ * Wait for an nldd-sheet to be closed (host present + shadow `<dialog>`'s
  * `open` no longer true). The host MUST be present — otherwise a typo in
  * the selector or a test ordering bug would let this helper resolve
  * immediately and silently mask the error. Pair every `waitForSheetClosed`
@@ -76,7 +76,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     // Open article 2 directly via the route param (avoids the
     // selectArticle helper bug noted in the previous PR).
     await page.goto('/editor/zorgtoeslagwet/2');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 15_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
 
     // --- Initial state: Minderjarige scenario is red ---
     const minorHeader = page
@@ -108,19 +108,19 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
       .first()
       .evaluate((el) => el.click());
 
-    const editSheet = page.locator('ndd-sheet.edit-sheet');
-    await waitForSheetOpen(page, 'ndd-sheet.edit-sheet');
+    const editSheet = page.locator('nldd-sheet.edit-sheet');
+    await waitForSheetOpen(page, 'nldd-sheet.edit-sheet');
 
-    // Helper: ndd-text-field renders an input inside its shadow DOM. The
+    // Helper: nldd-text-field renders an input inside its shadow DOM. The
     // light-DOM `input` element is reachable via the locator's `>> input`
     // descendant, but Vue listens to the host's `input` event. Set value
     // and dispatch the input event so Vue's @input handler updates the
     // model — same trick the existing helpers.fillSheetTextField uses.
     async function setSheetField(label, value) {
-      const listItem = editSheet.locator('ndd-list-item').filter({
+      const listItem = editSheet.locator('nldd-list-item').filter({
         hasText: label,
       });
-      const input = listItem.locator('ndd-text-field input').first();
+      const input = listItem.locator('nldd-text-field input').first();
       await input.evaluate((el, val) => {
         el.value = val;
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -128,7 +128,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     }
 
     async function setSheetDropdown(label, value) {
-      const listItem = editSheet.locator('ndd-list-item').filter({
+      const listItem = editSheet.locator('nldd-list-item').filter({
         hasText: label,
       });
       const select = listItem.locator('select').first();
@@ -152,7 +152,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     await addParamBtn.click();
     await addParamBtn.click();
 
-    const paramRows = editSheet.locator('[data-testid="source-parameters-list"] ndd-list-item');
+    const paramRows = editSheet.locator('[data-testid="source-parameters-list"] nldd-list-item');
     // The list ends with the "Voeg parameter toe" row, so the editable
     // rows are the first N. Wait for both new rows to be present before
     // filling them.
@@ -160,7 +160,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
 
     async function setParamRow(rowIdx, key, value) {
       const row = paramRows.nth(rowIdx);
-      const inputs = row.locator('ndd-text-field input');
+      const inputs = row.locator('nldd-text-field input');
       await inputs.nth(0).evaluate((el, v) => {
         el.value = v;
         el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -174,14 +174,14 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     await setParamRow(1, 'peildatum', '2025-01-01');
 
     // --- Save the EditSheet ---
-    // ndd-button renders its label via the `text` attribute through Lit's
+    // nldd-button renders its label via the `text` attribute through Lit's
     // shadow DOM and the property is not reflected back, so a [text=]
     // attribute selector or hasText filter wouldn't match the host. We
     // tagged the save button with a data-testid for stable targeting.
     await editSheet
       .locator('[data-testid="edit-sheet-save-btn"]')
       .evaluate((el) => el.click());
-    await waitForSheetClosed(page, 'ndd-sheet.edit-sheet');
+    await waitForSheetClosed(page, 'nldd-sheet.edit-sheet');
 
     // The new input should now appear in the Machine panel inputs list.
     await expect(
@@ -193,8 +193,8 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
       .locator('[data-testid="action-heeft_recht_op_zorgtoeslag-edit-btn"]')
       .evaluate((el) => el.click());
 
-    const actionSheet = page.locator('ndd-sheet.action-sheet');
-    await waitForSheetOpen(page, 'ndd-sheet.action-sheet');
+    const actionSheet = page.locator('nldd-sheet.action-sheet');
+    await waitForSheetOpen(page, 'nldd-sheet.action-sheet');
 
     // The ActionSheet selects the LAST operation in the tree on open.
     // For the heeft_recht AND that's one of the leaf comparisons, not the
@@ -241,10 +241,10 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     // Onderwerp is empty (a literal '') so it renders as a text input;
     // typing `$leeftijd` is interpreted as a variable ref by the engine.
     const onderwerpRow = actionSheet
-      .locator('ndd-list-item')
+      .locator('nldd-list-item')
       .filter({ hasText: 'Onderwerp' });
     await onderwerpRow
-      .locator('ndd-text-field input')
+      .locator('nldd-text-field input')
       .first()
       .evaluate((el) => {
         el.value = '$leeftijd';
@@ -252,10 +252,10 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
       });
 
     const waardeRow = actionSheet
-      .locator('ndd-list-item')
+      .locator('nldd-list-item')
       .filter({ hasText: 'Waarde' });
     await waardeRow
-      .locator('ndd-text-field input')
+      .locator('nldd-text-field input')
       .first()
       .evaluate((el) => {
         el.value = '18';
@@ -266,7 +266,7 @@ test.describe('Edit → re-execute loop via Machine panel', () => {
     await actionSheet
       .locator('[data-testid="action-sheet-save-btn"]')
       .evaluate((el) => el.click());
-    await waitForSheetClosed(page, 'ndd-sheet.action-sheet');
+    await waitForSheetClosed(page, 'nldd-sheet.action-sheet');
 
     // --- Scenarios re-execute against the edited machine_readable ---
     // ScenarioBuilder is still mounted in the middle pane (we never

@@ -46,7 +46,7 @@ export async function interceptLaw(page, lawId, fixtureName) {
 export async function gotoEditor(page, lawId = 'zorgtoeslagwet') {
   await page.goto(`/editor/${lawId}`);
   // Wait for the document tab bar to appear (articles loaded)
-  await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+  await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 }
 
 /**
@@ -55,7 +55,7 @@ export async function gotoEditor(page, lawId = 'zorgtoeslagwet') {
  * @param {string|number} articleNumber
  */
 export async function selectArticle(page, articleNumber) {
-  const tabs = page.locator('ndd-document-tab-bar-item');
+  const tabs = page.locator('nldd-document-tab-bar-item');
   const count = await tabs.count();
   for (let i = 0; i < count; i++) {
     const text = await tabs.nth(i).textContent();
@@ -95,27 +95,27 @@ export function machineReadablePane(page) {
  * @param {string} text
  */
 export async function clickButton(container, text) {
-  await container.locator(`ndd-button:has-text("${text}")`).click();
+  await container.locator(`nldd-button:has-text("${text}")`).click();
 }
 
 /**
- * Fill an ndd-text-field by label within a container.
- * The ndd-text-field wraps a native <input> in shadow DOM.
+ * Fill an nldd-text-field by label within a container.
+ * The nldd-text-field wraps a native <input> in shadow DOM.
  */
 export async function fillTextField(container, label, value) {
-  const listItem = container.locator(`ndd-list-item:has(ndd-text-cell:has-text("${label}"))`);
-  const textField = listItem.locator('ndd-text-field');
+  const listItem = container.locator(`nldd-list-item:has(nldd-text-cell:has-text("${label}"))`);
+  const textField = listItem.locator('nldd-text-field');
   const input = textField.locator('input');
   await input.fill(value);
   await input.dispatchEvent('input');
 }
 
 /**
- * Select a value in an ndd-dropdown within a list item by label.
+ * Select a value in an nldd-dropdown within a list item by label.
  */
 export async function selectDropdown(container, label, value) {
-  const listItem = container.locator(`ndd-list-item:has(ndd-text-cell:has-text("${label}"))`);
-  const select = listItem.locator('ndd-dropdown select');
+  const listItem = container.locator(`nldd-list-item:has(nldd-text-cell:has-text("${label}"))`);
+  const select = listItem.locator('nldd-dropdown select');
   await select.selectOption(value);
 }
 
@@ -124,7 +124,7 @@ export async function selectDropdown(container, label, value) {
  * @param {import('@playwright/test').Page} page
  */
 export async function waitForEditSheet(page) {
-  await page.locator('ndd-sheet').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('nldd-sheet').waitFor({ state: 'visible', timeout: 5000 });
   await page.waitForTimeout(100);
 }
 
@@ -133,28 +133,28 @@ export async function waitForEditSheet(page) {
  * @param {import('@playwright/test').Page} page
  */
 export async function saveEditSheet(page) {
-  const sheet = page.locator('ndd-sheet');
-  await sheet.locator('ndd-button:has-text("Opslaan")').click();
+  const sheet = page.locator('nldd-sheet');
+  await sheet.locator('nldd-button:has-text("Opslaan")').click();
   await page.waitForTimeout(200);
 }
 
 /**
- * Click "Opslaan" in the action sheet (ndd-sheet on main).
+ * Click "Opslaan" in the action sheet (nldd-sheet on main).
  * @param {import('@playwright/test').Page} page
  */
 export async function saveActionSheet(page) {
-  const sheet = page.locator('ndd-sheet');
-  await sheet.locator('ndd-button:has-text("Opslaan")').click();
+  const sheet = page.locator('nldd-sheet');
+  await sheet.locator('nldd-button:has-text("Opslaan")').click();
   await page.waitForTimeout(200);
 }
 
 /**
- * Wait for the ndd-sheet dialog to be open (Lit component uses internal <dialog>).
+ * Wait for the nldd-sheet dialog to be open (Lit component uses internal <dialog>).
  * @param {import('@playwright/test').Page} page
  */
 export async function waitForSheet(page) {
   await page.waitForFunction(() => {
-    const sheet = document.querySelector('ndd-sheet');
+    const sheet = document.querySelector('nldd-sheet');
     if (!sheet) return false;
     const dialog = sheet.shadowRoot?.querySelector('dialog');
     return dialog?.open ?? false;
@@ -163,13 +163,13 @@ export async function waitForSheet(page) {
 }
 
 /**
- * Fill an ndd-text-field input inside ndd-sheet by label text.
+ * Fill an nldd-text-field input inside nldd-sheet by label text.
  * Uses evaluate to bypass shadow DOM visibility issues.
  */
 export async function fillSheetTextField(page, labelText, value) {
-  const sheet = page.locator('ndd-sheet');
-  const listItem = sheet.locator(`ndd-list-item:has(ndd-text-cell:has-text("${labelText}"))`);
-  const input = listItem.locator('ndd-text-field input');
+  const sheet = page.locator('nldd-sheet');
+  const listItem = sheet.locator(`nldd-list-item:has(nldd-text-cell:has-text("${labelText}"))`);
+  const input = listItem.locator('nldd-text-field input');
   await input.evaluate((el, val) => {
     el.value = val;
     el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -177,13 +177,13 @@ export async function fillSheetTextField(page, labelText, value) {
 }
 
 /**
- * Fill an ndd-number-field input inside ndd-sheet by label text.
+ * Fill an nldd-number-field input inside nldd-sheet by label text.
  * Dispatches both native and custom events for Vue binding.
  */
 export async function fillSheetNumberField(page, labelText, value) {
-  const sheet = page.locator('ndd-sheet');
-  const listItem = sheet.locator(`ndd-list-item:has(ndd-text-cell:has-text("${labelText}"))`);
-  const numberField = listItem.locator('ndd-number-field');
+  const sheet = page.locator('nldd-sheet');
+  const listItem = sheet.locator(`nldd-list-item:has(nldd-text-cell:has-text("${labelText}"))`);
+  const numberField = listItem.locator('nldd-number-field');
   await numberField.evaluate((el, val) => {
     const input = el.shadowRoot?.querySelector('input') ?? el.querySelector('input');
     if (input) {
@@ -196,11 +196,11 @@ export async function fillSheetNumberField(page, labelText, value) {
 }
 
 /**
- * Select a value in an ndd-dropdown inside ndd-sheet by label text.
+ * Select a value in an nldd-dropdown inside nldd-sheet by label text.
  */
 export async function selectSheetDropdown(page, labelText, value) {
-  const sheet = page.locator('ndd-sheet');
-  const listItem = sheet.locator(`ndd-list-item:has(ndd-text-cell:has-text("${labelText}"))`);
+  const sheet = page.locator('nldd-sheet');
+  const listItem = sheet.locator(`nldd-list-item:has(nldd-text-cell:has-text("${labelText}"))`);
   const select = listItem.locator('select');
   await select.evaluate((el, val) => {
     el.value = val;
@@ -209,11 +209,11 @@ export async function selectSheetDropdown(page, labelText, value) {
 }
 
 /**
- * Click "Opslaan" in the ndd-sheet.
+ * Click "Opslaan" in the nldd-sheet.
  */
 export async function saveSheet(page) {
-  const sheet = page.locator('ndd-sheet');
-  const btn = sheet.locator('ndd-button:has-text("Opslaan")');
+  const sheet = page.locator('nldd-sheet');
+  const btn = sheet.locator('nldd-button:has-text("Opslaan")');
   await btn.evaluate(el => el.click());
   await page.waitForTimeout(300);
 }

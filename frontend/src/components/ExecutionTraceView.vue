@@ -36,24 +36,24 @@ const overallStatus = computed(() => {
 
 <template>
   <!-- Empty state -->
-  <ndd-simple-section v-if="!hasContent" align="center">
-    <ndd-inline-dialog text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></ndd-inline-dialog>
-  </ndd-simple-section>
+  <nldd-simple-section v-if="!hasContent" align="center">
+    <nldd-inline-dialog text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></nldd-inline-dialog>
+  </nldd-simple-section>
 
   <!-- Error state -->
-  <ndd-simple-section v-else-if="error && !result" align="center">
-    <ndd-inline-dialog variant="alert" text="Fout bij uitvoering" :supporting-text="error"></ndd-inline-dialog>
-  </ndd-simple-section>
+  <nldd-simple-section v-else-if="error && !result" align="center">
+    <nldd-inline-dialog variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
+  </nldd-simple-section>
 
   <template v-if="result">
     <!-- Scenario title -->
-    <ndd-simple-section v-if="scenarioName">
-      <ndd-title size="4"><span>{{ scenarioName }}</span></ndd-title>
-    </ndd-simple-section>
+    <nldd-simple-section v-if="scenarioName">
+      <nldd-title size="4"><span>{{ scenarioName }}</span></nldd-title>
+    </nldd-simple-section>
 
     <!-- Output summary — only outputs with expectations -->
-    <ndd-simple-section v-if="Object.keys(expectations).length">
-      <ndd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></ndd-title>
+    <nldd-simple-section v-if="Object.keys(expectations).length">
+      <nldd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></nldd-title>
       <div class="etv-expectations-block" :class="overallStatus ? `etv-expectations-block--${overallStatus}` : ''">
         <div
           v-for="name in Object.keys(expectations)"
@@ -76,20 +76,20 @@ const overallStatus = computed(() => {
           </span>
         </div>
       </div>
-    </ndd-simple-section>
+    </nldd-simple-section>
 
     <!-- Trace text -->
-    <ndd-simple-section v-if="traceText">
-      <ndd-title size="5" class="etv-section-title"><span>Execution trace</span></ndd-title>
+    <nldd-simple-section v-if="traceText">
+      <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
       <pre class="etv-trace-text">{{ traceText }}</pre>
-    </ndd-simple-section>
+    </nldd-simple-section>
   </template>
 
   <!-- Partial trace on error -->
-  <ndd-simple-section v-if="error && traceText && !result">
-    <ndd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></ndd-title>
+  <nldd-simple-section v-if="error && traceText && !result">
+    <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
     <pre class="etv-trace-text">{{ traceText }}</pre>
-  </ndd-simple-section>
+  </nldd-simple-section>
 </template>
 
 <style scoped>

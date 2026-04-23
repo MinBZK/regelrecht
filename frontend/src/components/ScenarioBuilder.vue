@@ -17,7 +17,7 @@ const props = defineProps({
   articles: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['executed']);
+const emit = defineEmits(['executed', 'dirty-change']);
 
 // --- Article mapping ---
 const articleMap = computed(() => buildArticleMap(props.articles));
@@ -45,9 +45,17 @@ const {
 
 const formState = ref(null);
 const saveSuccess = ref(false);
+const isDirty = ref(false);
+
+watch(isDirty, (val) => emit('dirty-change', val));
+
+function markDirty() {
+  if (!isDirty.value) isDirty.value = true;
+}
 
 // Parse feature file when loaded
 watch(featureText, (text) => {
+  isDirty.value = false;
   if (!text) {
     formState.value = null;
     return;
@@ -200,12 +208,6 @@ function onShowDetails(index) {
   }
 }
 
-function onAccordionToggle(event, index) {
-  if (event.target.open) {
-    onShowDetails(index);
-  }
-}
-
 // Memoized setup per scenario (avoids new object on every render)
 const scenarioSetups = computed(() => {
   if (!formState.value) return [];
@@ -236,6 +238,7 @@ async function onSave() {
     const gherkin = formStateToGherkin(formState.value);
     await saveScenario(selectedScenarioFile.value, gherkin);
     saveSuccess.value = true;
+    isDirty.value = false;
     setTimeout(() => { saveSuccess.value = false; }, 3000);
   } catch (e) {
     // The composable sets saveError on its own failures. For sync/serialise
@@ -244,34 +247,26 @@ async function onSave() {
     if (!saveError.value) saveError.value = e;
   }
 }
+
+defineExpose({ save: onSave });
 </script>
 
 <template>
   <div class="sb-container">
     <div class="sb-scroll">
-      <!-- Feature file selector + save button -->
-      <div class="sb-section sb-toolbar" v-if="scenarioFiles.length > 0 || scenariosLoading">
+      <!-- Feature file selector -->
+      <div class="sb-section sb-toolbar" v-if="scenarioFiles.length > 1 || scenariosLoading">
         <div v-if="scenariosLoading" class="sb-loading">Scenario's laden...</div>
-        <template v-else>
-          <select
-            v-if="scenarioFiles.length > 1"
-            class="sb-select"
-            :value="selectedScenarioFile"
-            @change="onScenarioFileSelect"
-          >
-            <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
-              {{ sf.filename }}
-            </option>
-          </select>
-          <button
-            v-if="formState"
-            class="sb-save-btn"
-            :disabled="saving"
-            @click="onSave"
-          >
-            {{ saving ? 'Opslaan...' : 'Opslaan' }}
-          </button>
-        </template>
+        <select
+          v-else
+          class="sb-select"
+          :value="selectedScenarioFile"
+          @change="onScenarioFileSelect"
+        >
+          <option v-for="sf in scenarioFiles" :key="sf.filename" :value="sf.filename">
+            {{ sf.filename }}
+          </option>
+        </select>
       </div>
 
       <!-- Save feedback -->
@@ -291,12 +286,11 @@ async function onSave() {
 
       <!-- Scenario accordion -->
       <template v-if="formState">
-        <ndd-spacer size="8"></ndd-spacer>
+        <nldd-spacer size="8"></nldd-spacer>
         <details
           v-for="(scenario, i) in formState.scenarios"
           :key="i"
           class="sb-accordion"
-          @toggle="onAccordionToggle($event, i)"
         >
           <summary
             class="sb-accordion-header"
@@ -321,6 +315,7 @@ async function onSave() {
               :article-map="articleMap"
               @show-details="() => onShowDetails(i)"
               @executed="(data) => onScenarioResult(i, data)"
+              @change="markDirty"
             />
           </div>
         </details>
@@ -371,27 +366,6 @@ async function onSave() {
   font-size: 13px;
   font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   background: white;
-}
-
-.sb-save-btn {
-  padding: 6px 14px;
-  border: 1px solid var(--semantics-dividers-color, #E0E3E8);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  background: var(--semantics-surfaces-color-primary, white);
-  color: var(--semantics-text-color-primary, #1C2029);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.sb-save-btn:hover:not(:disabled) {
-  background: var(--semantics-surfaces-color-secondary, #F8F9FA);
-}
-
-.sb-save-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .sb-loading {

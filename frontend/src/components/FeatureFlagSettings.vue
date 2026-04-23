@@ -30,33 +30,33 @@ watch(() => props.open, (val) => {
 </script>
 
 <template>
-  <ndd-sheet ref="sheetEl" placement="right" @close="emit('close')">
+  <nldd-sheet ref="sheetEl" placement="right" @close="emit('close')">
     <div class="settings-content">
-      <ndd-toolbar size="md">
-        <ndd-toolbar-item slot="start">
-          <ndd-title-bar size="4" text="Instellingen"></ndd-title-bar>
-        </ndd-toolbar-item>
-        <ndd-toolbar-item slot="end">
-          <ndd-icon-button variant="neutral-plain" size="md" icon="dismiss" @click="emit('close')"></ndd-icon-button>
-        </ndd-toolbar-item>
-      </ndd-toolbar>
+      <nldd-toolbar size="md">
+        <nldd-toolbar-item slot="start">
+          <nldd-title-bar size="4" text="Instellingen"></nldd-title-bar>
+        </nldd-toolbar-item>
+        <nldd-toolbar-item slot="end">
+          <nldd-icon-button variant="neutral-plain" size="md" icon="dismiss" @click="emit('close')"></nldd-icon-button>
+        </nldd-toolbar-item>
+      </nldd-toolbar>
 
-      <ndd-simple-section>
-        <ndd-title-bar size="5" text="Panelen" style="margin-bottom: 8px;"></ndd-title-bar>
-        <ndd-list variant="box">
-          <ndd-list-item v-for="[key, label] in panelFlags" :key="key" size="md">
-            <ndd-text-cell :text="label"></ndd-text-cell>
-            <ndd-cell>
-              <ndd-switch
+      <nldd-simple-section>
+        <nldd-title-bar size="5" text="Panelen" style="margin-bottom: 8px;"></nldd-title-bar>
+        <nldd-list variant="box">
+          <nldd-list-item v-for="[key, label] in panelFlags" :key="key" size="md">
+            <nldd-text-cell :text="label"></nldd-text-cell>
+            <nldd-cell>
+              <nldd-switch
                 :checked="flags[key] ? true : undefined"
                 @change="toggle(key)"
-              ></ndd-switch>
-            </ndd-cell>
-          </ndd-list-item>
-        </ndd-list>
-      </ndd-simple-section>
+              ></nldd-switch>
+            </nldd-cell>
+          </nldd-list-item>
+        </nldd-list>
+      </nldd-simple-section>
     </div>
-  </ndd-sheet>
+  </nldd-sheet>
 </template>
 
 <style scoped>

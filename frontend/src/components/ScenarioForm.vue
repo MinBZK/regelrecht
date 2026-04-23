@@ -19,7 +19,7 @@ const props = defineProps({
   articleMap: { type: Object, default: null },
 });
 
-const emit = defineEmits(['show-details', 'executed']);
+const emit = defineEmits(['show-details', 'executed', 'change']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -194,6 +194,7 @@ function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];
   updated[index] = { ...updated[index], rows };
   dataSources.value = updated;
+  emit('change');
 }
 
 // --- Result formatting (delegates to shared utils) ---
@@ -218,7 +219,7 @@ const overallStatus = computed(() => {
   <div class="sf-form">
     <!-- Expected outputs at top -->
     <template v-if="hasExpectations">
-      <ndd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></ndd-title>
+      <nldd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></nldd-title>
       <div
         class="sf-expectations-block"
         :class="result ? `sf-expectations-block--${overallStatus}` : (error ? 'sf-expectations-block--failed' : '')"
@@ -248,26 +249,26 @@ const overallStatus = computed(() => {
     <div v-if="running" class="sf-running">Uitvoeren...</div>
 
     <!-- Input: date + parameters -->
-    <ndd-title size="5" class="sf-section-title"><span>Invoer</span></ndd-title>
-    <ndd-list variant="box" class="sf-input-list">
-      <ndd-list-item size="md">
-        <ndd-text-cell text="Datum" max-width="140"></ndd-text-cell>
-        <ndd-cell>
-          <ndd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate"></ndd-text-field>
-        </ndd-cell>
-      </ndd-list-item>
-      <ndd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-        <ndd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140"></ndd-text-cell>
-        <ndd-cell>
-          <ndd-text-field
+    <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
+    <nldd-list variant="box" class="sf-input-list">
+      <nldd-list-item size="md">
+        <nldd-text-cell text="Datum" max-width="140"></nldd-text-cell>
+        <nldd-cell>
+          <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+        </nldd-cell>
+      </nldd-list-item>
+      <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
+        <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140"></nldd-text-cell>
+        <nldd-cell>
+          <nldd-text-field
             size="md"
             :value="value"
             :placeholder="name"
-            @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }"
-          ></ndd-text-field>
-        </ndd-cell>
-      </ndd-list-item>
-    </ndd-list>
+            @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
+          ></nldd-text-field>
+        </nldd-cell>
+      </nldd-list-item>
+    </nldd-list>
 
     <!-- Data sources -->
     <DataSourceTable
@@ -283,11 +284,11 @@ const overallStatus = computed(() => {
 
     <!-- Details button -->
     <div class="sf-actions-row">
-      <ndd-button
+      <nldd-button
         :disabled="!result && !error || undefined"
         @click="emit('show-details')"
-        text="Details" end-icon="chevron-right"
-      ></ndd-button>
+        text="Toon resultaat" end-icon="chevron-right"
+      ></nldd-button>
     </div>
   </div>
 </template>
@@ -387,19 +388,19 @@ const overallStatus = computed(() => {
 </style>
 
 <style>
-/* Unscoped: ndd web components need global selectors */
-.sf-input-list ndd-text-cell {
+/* Unscoped: nldd web components need global selectors */
+.sf-input-list nldd-text-cell {
   width: 140px;
   min-width: 140px;
   flex-shrink: 0;
 }
 
-.sf-input-list ndd-cell {
+.sf-input-list nldd-cell {
   flex: 1;
   min-width: 0;
 }
 
-.sf-input-list ndd-text-field {
+.sf-input-list nldd-text-field {
   width: 100%;
 }
 </style>

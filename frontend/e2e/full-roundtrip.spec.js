@@ -20,7 +20,7 @@ test.describe('Full round-trip', () => {
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fullYaml })
     );
     await page.goto('/editor/zorgtoeslagwet');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     // Article 1a: simple definition
     await selectArticle(page, '1a');
@@ -142,11 +142,11 @@ execution:
     await expect(mrPane).toContainText('heeft_recht_op_zorgtoeslag');
 
     // Verify the action is displayed and can be opened
-    const actionItem = page.locator('ndd-list-item:has(ndd-text-cell:has-text("heeft_recht_op_zorgtoeslag"))').last();
-    await actionItem.locator('ndd-button:has-text("Bewerk")').click();
+    const actionItem = page.locator('nldd-list-item:has(nldd-text-cell:has-text("heeft_recht_op_zorgtoeslag"))').last();
+    await actionItem.locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
     await expect(panel).toBeVisible();
 
     // Verify the operation type

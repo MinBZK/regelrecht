@@ -54,7 +54,7 @@ test.describe('Edit → re-execute loop', () => {
     await page.goto('/editor/zorgtoeslagwet/2');
 
     // Wait for the document tab bar to render — articles loaded.
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 15_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 15_000 });
 
     const minorHeader = page
       .locator('.sb-accordion-header')
@@ -71,7 +71,7 @@ test.describe('Edit → re-execute loop', () => {
     // Initial state: scenario is failed (age check not in the law).
     await expect(minorHeader).toHaveClass(/sb-header--fail/);
 
-    // Toggle the middle pane to YAML view. ndd-segmented-control-item is
+    // Toggle the middle pane to YAML view. nldd-segmented-control-item is
     // a custom element whose click target lives in shadow DOM, so instead
     // of clicking we synthesize the change event the way EditorApp's
     // `onMiddlePaneChange` handler expects: it reads `event.target.value`

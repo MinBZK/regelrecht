@@ -11,7 +11,7 @@ const DEFAULTS = {
   'panel.scenario_form': true,
   'panel.yaml_editor': true,
   'panel.execution_trace': true,
-  'panel.machine_readable': false,
+  'panel.machine_readable': true,
 };
 
 const flags = ref({ ...DEFAULTS });

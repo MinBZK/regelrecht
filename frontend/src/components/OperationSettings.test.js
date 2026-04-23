@@ -3,9 +3,9 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import OperationSettings from './OperationSettings.vue';
 
-// `ndd-*` tags are configured as custom elements in vite.config.js, so
+// `nldd-*` tags are configured as custom elements in vite.config.js, so
 // Vue Test Utils' stub system doesn't replace them. None of the tests
-// here interact with the rendered NDD elements (we drive the component
+// here interact with the rendered NLDD elements (we drive the component
 // via wrapper.vm), so we leave them as raw HTMLElement and only stub the
 // methods that the watcher / lifecycle would otherwise complain about.
 beforeAll(() => {

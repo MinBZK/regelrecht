@@ -62,11 +62,11 @@ function mountEditable(articleOverrides = {}) {
 }
 
 function findBewerkButtons(wrapper) {
-  return wrapper.findAll('ndd-button[text="Bewerk"]');
+  return wrapper.findAll('nldd-button[text="Bewerk"]');
 }
 
 function findBekijkButtons(wrapper) {
-  return wrapper.findAll('ndd-button[text="Bekijk"]');
+  return wrapper.findAll('nldd-button[text="Bekijk"]');
 }
 
 async function clickBewerk(wrapper, index) {
@@ -75,14 +75,14 @@ async function clickBewerk(wrapper, index) {
 }
 
 function findAddButton(wrapper, text) {
-  return wrapper.findAll('ndd-button').find((b) => b.attributes('text')?.includes(`Nieuwe ${text}`));
+  return wrapper.findAll('nldd-button').find((b) => b.attributes('text')?.includes(`Nieuwe ${text}`));
 }
 
 describe('MachineReadable', () => {
   describe('display mode', () => {
     it('renders all sections', () => {
       const wrapper = mountEditable();
-      const headings = wrapper.findAll('ndd-title');
+      const headings = wrapper.findAll('nldd-title');
       const titles = headings.map((h) => h.text());
       expect(titles).toContain('Definities');
       expect(titles).toContain('Parameters');
@@ -93,32 +93,32 @@ describe('MachineReadable', () => {
 
     it('shows produces metadata', () => {
       const wrapper = mountEditable();
-      expect(wrapper.find('ndd-button[text="BESCHIKKING"]').exists()).toBe(true);
-      expect(wrapper.find('ndd-button[text="TOEKENNING"]').exists()).toBe(true);
+      expect(wrapper.find('nldd-button[text="beschikking"]').exists()).toBe(true);
+      expect(wrapper.find('nldd-button[text="toekenning"]').exists()).toBe(true);
     });
 
     it('shows empty state when no machine_readable', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: { number: '1' }, editable: true },
       });
-      expect(wrapper.find('ndd-inline-dialog').attributes('text')).toContain('Geen machine-leesbare gegevens');
+      expect(wrapper.find('nldd-inline-dialog').attributes('text')).toContain('Geen machine-leesbare gegevens');
     });
 
     it('formats percentage values (0 < v < 1)', () => {
       const wrapper = mountEditable();
-      const cells = wrapper.findAll('ndd-text-cell').map(c => c.attributes('text') || '');
+      const cells = wrapper.findAll('nldd-text-cell').map(c => c.attributes('text') || '');
       expect(cells.some(t => /1,896\s*%/.test(t))).toBe(true);
     });
 
     it('formats eurocent values as currency', () => {
       const wrapper = mountEditable();
-      const cells = wrapper.findAll('ndd-text-cell').map(c => c.attributes('text') || '');
+      const cells = wrapper.findAll('nldd-text-cell').map(c => c.attributes('text') || '');
       expect(cells.some(t => /1\.500,00/.test(t))).toBe(true);
     });
 
     it('shows plain number when no unit', () => {
       const wrapper = mountEditable();
-      const cells = wrapper.findAll('ndd-text-cell').map(c => c.attributes('text') || '');
+      const cells = wrapper.findAll('nldd-text-cell').map(c => c.attributes('text') || '');
       expect(cells.some(t => t.includes('3971900'))).toBe(true);
     });
 
@@ -221,7 +221,7 @@ describe('MachineReadable', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const addButtons = wrapper.findAll('ndd-button').filter((b) => b.attributes('text')?.includes('Nieuwe'));
+      const addButtons = wrapper.findAll('nldd-button').filter((b) => b.attributes('text')?.includes('Nieuwe'));
       expect(addButtons.length).toBe(0);
     });
 
@@ -259,76 +259,28 @@ describe('MachineReadable', () => {
   });
 
   describe('non-editable mode', () => {
-    it('only shows Bekijk button for actions when editable is false', () => {
+    it('renders action rows as button-type list items with a chevron', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const buttons = findBekijkButtons(wrapper);
-      // Only the action Bekijk button is rendered
-      expect(buttons.length).toBe(1);
+      // No Bewerk/Bekijk buttons in read-only mode; list-item itself is the trigger.
+      expect(findBekijkButtons(wrapper).length).toBe(0);
+      const actionItems = wrapper.findAll('nldd-list-item[type="button"]');
+      expect(actionItems.length).toBeGreaterThan(0);
     });
 
-    it('action Bekijk emits open-action even when not editable', async () => {
+    it('clicking an action row emits open-action', async () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const buttons = findBekijkButtons(wrapper);
-      await buttons[0].trigger('click');
+      const actionItems = wrapper.findAll('nldd-list-item[type="button"]');
+      await actionItems[0].trigger('click');
       expect(wrapper.emitted('open-action')).toHaveLength(1);
       expect(wrapper.emitted('open-edit')).toBeUndefined();
     });
   });
 
-  describe('save bar', () => {
-    function findSaveButton(wrapper) {
-      return wrapper.find('[data-testid="save-mr-btn"]');
-    }
-
-    it('is hidden when editable is false', () => {
-      const wrapper = mount(MachineReadable, {
-        props: { article: createArticle(), editable: false },
-      });
-      expect(findSaveButton(wrapper).exists()).toBe(false);
-    });
-
-    it('shows "Opgeslagen" and is disabled when not dirty', () => {
-      const wrapper = mount(MachineReadable, {
-        props: { article: createArticle(), editable: true, dirty: false },
-      });
-      const btn = findSaveButton(wrapper);
-      expect(btn.exists()).toBe(true);
-      expect(btn.attributes('text')).toBe('Opgeslagen');
-      expect(btn.attributes('disabled')).toBe('true');
-    });
-
-    it('shows "Opslaan" and reports not-disabled when dirty', () => {
-      const wrapper = mount(MachineReadable, {
-        props: { article: createArticle(), editable: true, dirty: true },
-      });
-      const btn = findSaveButton(wrapper);
-      expect(btn.attributes('text')).toBe('Opslaan');
-      // Vue serializes a reactive bool binding as "true"/"false" on a custom
-      // element; the string "false" means the button is enabled.
-      expect(btn.attributes('disabled')).toBe('false');
-    });
-
-    it('shows "Opslaan…" while saving regardless of dirty state', () => {
-      const wrapper = mount(MachineReadable, {
-        props: { article: createArticle(), editable: true, dirty: true, saving: true },
-      });
-      const btn = findSaveButton(wrapper);
-      expect(btn.attributes('text')).toBe('Opslaan\u2026');
-      expect(btn.attributes('disabled')).toBe('true');
-    });
-
-    it('emits save on click when dirty', async () => {
-      const wrapper = mount(MachineReadable, {
-        props: { article: createArticle(), editable: true, dirty: true },
-      });
-      await findSaveButton(wrapper).trigger('click');
-      expect(wrapper.emitted('save')).toHaveLength(1);
-    });
-
+  describe('save error dialog', () => {
     it('renders save error dialog when saveError is set', () => {
       const err = new Error('Forbidden: read-only backend');
       const wrapper = mount(MachineReadable, {

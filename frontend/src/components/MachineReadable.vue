@@ -83,6 +83,12 @@ function formatValue(val, unit) {
   return String(val);
 }
 
+function humanize(name) {
+  if (typeof name !== 'string') return name;
+  const spaced = name.replace(/_/g, ' ');
+  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
+}
+
 // Open edit sheet for existing items
 function editDef(name) {
   const rawDef = mr.value?.definitions?.[name];
@@ -147,195 +153,200 @@ function addOutput() {
 </script>
 
 <template>
-  <ndd-simple-section v-if="!mr" align="center" data-testid="no-machine-readable">
-    <ndd-inline-dialog text="Geen machine-leesbare gegevens voor dit artikel"></ndd-inline-dialog>
-    <ndd-spacer v-if="editable" size="8"></ndd-spacer>
-    <ndd-button v-if="editable" variant="primary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Initialiseer machine_readable"></ndd-button>
-  </ndd-simple-section>
+  <div v-if="!mr" data-testid="no-machine-readable">
+    <nldd-inline-dialog text="Geen machine-leesbare gegevens voor dit artikel">
+      <nldd-button v-if="editable" slot="actions" variant="primary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Initialiseer machine readable versie"></nldd-button>
+    </nldd-inline-dialog>
+  </div>
 
-  <ndd-simple-section v-else data-testid="machine-readable">
-    <!-- Save bar: visible only when the user can edit. The button itself is
-         disabled when there's nothing to save so it still acts as a clear
-         "everything's saved" signal instead of disappearing. -->
-    <template v-if="editable">
-      <div class="mr-save-bar">
-        <ndd-button
-          variant="primary"
-          size="md"
-          data-testid="save-mr-btn"
-          :disabled="!dirty || saving"
-          :text="saving ? 'Opslaan…' : dirty ? 'Opslaan' : 'Opgeslagen'"
-          @click="emit('save')"
-        ></ndd-button>
-      </div>
-      <ndd-inline-dialog
-        v-if="saveError"
+  <div v-else data-testid="machine-readable">
+    <!-- Save error surfaces inline; the actual save button lives in the
+         parent pane's footer. -->
+    <template v-if="editable && saveError">
+      <nldd-inline-dialog
         variant="alert"
         text="Opslaan mislukt"
         :supporting-text="saveError.message || String(saveError)"
         data-testid="save-mr-error"
-      ></ndd-inline-dialog>
-      <ndd-spacer size="12"></ndd-spacer>
+      ></nldd-inline-dialog>
+      <nldd-spacer size="12"></nldd-spacer>
     </template>
 
     <!-- Metadata: produces -->
-    <ndd-list v-if="produces" variant="box">
-      <ndd-list-item v-if="produces.legal_character" size="md">
-        <ndd-text-cell text="Juridische basis"></ndd-text-cell>
-        <ndd-cell>
-          <ndd-button size="md" expandable :text="produces.legal_character"></ndd-button>
-        </ndd-cell>
-      </ndd-list-item>
-      <ndd-list-item v-if="produces.decision_type" size="md">
-        <ndd-text-cell text="Besluit-type"></ndd-text-cell>
-        <ndd-cell>
-          <ndd-button size="md" expandable :text="produces.decision_type"></ndd-button>
-        </ndd-cell>
-      </ndd-list-item>
-    </ndd-list>
+    <nldd-list v-if="produces" variant="box">
+      <nldd-list-item v-if="produces.legal_character" size="md">
+        <nldd-text-cell text="Juridische basis"></nldd-text-cell>
+        <nldd-cell v-if="editable">
+          <nldd-button size="md" expandable :text="humanize(produces.legal_character)"></nldd-button>
+        </nldd-cell>
+        <nldd-text-cell v-else horizontal-alignment="right" :text="humanize(produces.legal_character)"></nldd-text-cell>
+      </nldd-list-item>
+      <nldd-list-item v-if="produces.decision_type" size="md">
+        <nldd-text-cell text="Besluit-type"></nldd-text-cell>
+        <nldd-cell v-if="editable">
+          <nldd-button size="md" expandable :text="humanize(produces.decision_type)"></nldd-button>
+        </nldd-cell>
+        <nldd-text-cell v-else horizontal-alignment="right" :text="humanize(produces.decision_type)"></nldd-text-cell>
+      </nldd-list-item>
+    </nldd-list>
 
-    <ndd-spacer v-if="produces" size="12"></ndd-spacer>
+    <nldd-spacer v-if="produces" size="12"></nldd-spacer>
 
     <!-- Definities -->
     <template v-if="definitions.length || editable">
-      <ndd-title size="5" data-testid="section-definitions"><h5>Definities</h5></ndd-title>
-      <ndd-spacer size="8"></ndd-spacer>
-      <ndd-list variant="box">
-        <ndd-list-item v-for="def in definitions" :key="def.name" size="md">
-          <ndd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></ndd-text-cell>
-          <ndd-cell v-if="editable">
+      <nldd-title size="5" data-testid="section-definitions"><h5>Definities</h5></nldd-title>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-list variant="box">
+        <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
+          <nldd-text-cell :text="`${humanize(def.name)} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+          <nldd-cell v-if="editable">
             <div class="mr-row-actions">
-              <ndd-button @click="editDef(def.name)" text="Bewerk"></ndd-button>
-              <ndd-icon-button
+              <nldd-button @click="editDef(def.name)" text="Bewerk"></nldd-button>
+              <nldd-icon-button
                 icon="minus"
                 accessible-label="Verwijder definitie"
                 :data-testid="`def-${def.name}-delete-btn`"
                 @click="deleteDef(def.name)"
-              ></ndd-icon-button>
+              ></nldd-icon-button>
             </div>
-          </ndd-cell>
-        </ndd-list-item>
-        <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Nieuwe definitie"></ndd-button>
-        </ndd-list-item>
-      </ndd-list>
-      <ndd-spacer size="16"></ndd-spacer>
+          </nldd-cell>
+        </nldd-list-item>
+        <nldd-list-item v-if="editable" size="md">
+          <nldd-cell width="stretch">
+            <nldd-button full-width start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Nieuwe definitie"></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Parameters -->
     <template v-if="parameters.length || editable">
-      <ndd-title size="5" data-testid="section-parameters"><h5>Parameters</h5></ndd-title>
-      <ndd-spacer size="8"></ndd-spacer>
-      <ndd-list variant="box">
-        <ndd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
-          <ndd-text-cell :text="`${param.name} (${param.type})`"></ndd-text-cell>
-          <ndd-cell v-if="editable">
+      <nldd-title size="5" data-testid="section-parameters"><h5>Parameters</h5></nldd-title>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-list variant="box">
+        <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
+          <nldd-text-cell :text="`${humanize(param.name)} (${param.type})`"></nldd-text-cell>
+          <nldd-cell v-if="editable">
             <div class="mr-row-actions">
-              <ndd-button @click="editParam(index)" text="Bewerk"></ndd-button>
-              <ndd-icon-button
+              <nldd-button @click="editParam(index)" text="Bewerk"></nldd-button>
+              <nldd-icon-button
                 icon="minus"
                 accessible-label="Verwijder parameter"
                 :data-testid="`param-${param.name}-delete-btn`"
                 @click="deleteParam(index)"
-              ></ndd-icon-button>
+              ></nldd-icon-button>
             </div>
-          </ndd-cell>
-        </ndd-list-item>
-        <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Nieuwe parameter"></ndd-button>
-        </ndd-list-item>
-      </ndd-list>
-      <ndd-spacer size="16"></ndd-spacer>
+          </nldd-cell>
+        </nldd-list-item>
+        <nldd-list-item v-if="editable" size="md">
+          <nldd-cell width="stretch">
+            <nldd-button full-width start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Nieuwe parameter"></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Inputs -->
     <template v-if="inputs.length || editable">
-      <ndd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></ndd-title>
-      <ndd-spacer size="8"></ndd-spacer>
-      <ndd-list variant="box">
-        <ndd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
-          <ndd-text-cell :text="`${input.name} (${input.type})${input.source ? ` — ${input.source}` : ''}`"></ndd-text-cell>
-          <ndd-cell v-if="editable">
+      <nldd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></nldd-title>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-list variant="box">
+        <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
+          <nldd-text-cell :text="`${humanize(input.name)} (${input.type})${input.source ? ` — ${humanize(input.source)}` : ''}`"></nldd-text-cell>
+          <nldd-cell v-if="editable">
             <div class="mr-row-actions">
-              <ndd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></ndd-button>
-              <ndd-icon-button
+              <nldd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></nldd-button>
+              <nldd-icon-button
                 icon="minus"
                 accessible-label="Verwijder input"
                 :data-testid="`input-${input.name}-delete-btn`"
                 @click="deleteInput(index)"
-              ></ndd-icon-button>
+              ></nldd-icon-button>
             </div>
-          </ndd-cell>
-        </ndd-list-item>
-        <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Nieuwe input"></ndd-button>
-        </ndd-list-item>
-      </ndd-list>
-      <ndd-spacer size="16"></ndd-spacer>
+          </nldd-cell>
+        </nldd-list-item>
+        <nldd-list-item v-if="editable" size="md">
+          <nldd-cell width="stretch">
+            <nldd-button full-width start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Nieuwe input"></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Outputs -->
     <template v-if="outputs.length || editable">
-      <ndd-title size="5" data-testid="section-outputs"><h5>Outputs</h5></ndd-title>
-      <ndd-spacer size="8"></ndd-spacer>
-      <ndd-list variant="box">
-        <ndd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
-          <ndd-text-cell :text="`${output.name} (${output.type})`"></ndd-text-cell>
-          <ndd-cell v-if="editable">
+      <nldd-title size="5" data-testid="section-outputs"><h5>Outputs</h5></nldd-title>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-list variant="box">
+        <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
+          <nldd-text-cell :text="`${humanize(output.name)} (${output.type})`"></nldd-text-cell>
+          <nldd-cell v-if="editable">
             <div class="mr-row-actions">
-              <ndd-button @click="editOutput(index)" text="Bewerk"></ndd-button>
-              <ndd-icon-button
+              <nldd-button @click="editOutput(index)" text="Bewerk"></nldd-button>
+              <nldd-icon-button
                 icon="minus"
                 accessible-label="Verwijder output"
                 :data-testid="`output-${output.name}-delete-btn`"
                 @click="deleteOutput(index)"
-              ></ndd-icon-button>
+              ></nldd-icon-button>
             </div>
-          </ndd-cell>
-        </ndd-list-item>
-        <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Nieuwe output"></ndd-button>
-        </ndd-list-item>
-      </ndd-list>
-      <ndd-spacer size="16"></ndd-spacer>
+          </nldd-cell>
+        </nldd-list-item>
+        <nldd-list-item v-if="editable" size="md">
+          <nldd-cell width="stretch">
+            <nldd-button full-width start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Nieuwe output"></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Acties -->
     <template v-if="actions.length || editable">
-      <ndd-title size="5" data-testid="section-actions"><h5>Acties</h5></ndd-title>
-      <ndd-spacer size="8"></ndd-spacer>
-      <ndd-list variant="box">
-        <ndd-list-item v-for="(action, index) in actions" :key="index" size="md">
-          <ndd-text-cell :text="action.output"></ndd-text-cell>
-          <ndd-cell>
+      <nldd-title size="5" data-testid="section-actions"><h5>Acties</h5></nldd-title>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-list variant="box">
+        <nldd-list-item
+          v-for="(action, index) in actions"
+          :key="index"
+          size="md"
+          :type="editable ? undefined : 'button'"
+          @click="!editable && emit('open-action', action)"
+        >
+          <nldd-text-cell :text="humanize(action.output)"></nldd-text-cell>
+          <nldd-cell v-if="editable">
             <div class="mr-row-actions">
-              <ndd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" :text="editable ? 'Bewerk' : 'Bekijk'"></ndd-button>
-              <ndd-icon-button
-                v-if="editable"
+              <nldd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" text="Bewerk"></nldd-button>
+              <nldd-icon-button
                 icon="minus"
                 accessible-label="Verwijder actie"
                 :data-testid="`action-${action.output}-delete-btn`"
                 @click="deleteAction(index)"
-              ></ndd-icon-button>
+              ></nldd-icon-button>
             </div>
-          </ndd-cell>
-        </ndd-list-item>
-        <ndd-list-item v-if="editable" size="md">
-          <ndd-button start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Voeg actie toe"></ndd-button>
-        </ndd-list-item>
-      </ndd-list>
-      <ndd-spacer size="16"></ndd-spacer>
+          </nldd-cell>
+          <template v-else>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-icon-cell size="20">
+              <nldd-icon name="chevron-right"></nldd-icon>
+            </nldd-icon-cell>
+          </template>
+        </nldd-list-item>
+        <nldd-list-item v-if="editable" size="md">
+          <nldd-cell width="stretch">
+            <nldd-button full-width start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Voeg actie toe"></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="16"></nldd-spacer>
     </template>
-  </ndd-simple-section>
+  </div>
 </template>
 
 <style scoped>
-.mr-save-bar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-
 /* Row-level actions cluster: Bewerk button + minus icon button. flex-end
  * keeps them right-aligned within the row's value cell, and the gap matches
  * the spacing used in OperationSettings' value-row pattern. */

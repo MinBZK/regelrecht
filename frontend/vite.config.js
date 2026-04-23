@@ -7,7 +7,7 @@ export default defineConfig({
     vue({
       template: {
         compilerOptions: {
-          isCustomElement: (tag) => tag.startsWith('ndd-'),
+          isCustomElement: (tag) => tag.startsWith('nldd-'),
         },
       },
     }),
@@ -41,10 +41,6 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    watch: {
-      usePolling: true,
-      interval: 1000,
-    },
     proxy: {
       '/api': 'http://localhost:8000',
       '/auth': 'http://localhost:8000',

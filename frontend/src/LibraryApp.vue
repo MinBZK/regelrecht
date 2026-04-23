@@ -19,18 +19,9 @@ const favorites = ref(null);
 const loading = ref(true);
 const indexError = ref(null);
 const searchOpen = ref(false);
-const searchAnchorRef = ref(null);
-const searchAnchorRect = ref(null);
 
 function openSearch() {
   if (searchOpen.value) return;
-  const el = searchAnchorRef.value;
-  if (el) {
-    const rect = el.getBoundingClientRect();
-    const pad = 13;
-    const maxWidth = Math.min(800, window.innerWidth - rect.left + pad - 16);
-    searchAnchorRect.value = { top: rect.top - pad, left: rect.left - pad, width: maxWidth };
-  }
   searchOpen.value = true;
 }
 
@@ -39,7 +30,7 @@ const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
 const selectedArticleNumber = ref(null);
-const detailView = ref('machine');
+const detailView = ref('tekst');
 const activeAction = ref(null);
 
 function onDetailViewChange(event) {
@@ -88,7 +79,7 @@ function displayName(law) {
 
 function articleDescription(article) {
   if (!article.text) return '';
-  const firstLine = article.text.split('\n')[0];
+  const firstLine = article.text.split('\n')[0].replace(/\*\*/g, '');
   return firstLine.length > 80 ? firstLine.slice(0, 80) + '...' : firstLine;
 }
 
@@ -183,16 +174,13 @@ async function loadLaw(lawId) {
     const text = await res.text();
     selectedLaw.value = yaml.load(text);
     if (articles.value.length > 0) {
-      // Use article from route if valid, otherwise select first
+      // Use article from route if valid; otherwise show nothing (empty state).
       const routeArticle = route.params.articleNumber;
       if (routeArticle && articles.value.some(a => String(a.number) === String(routeArticle))) {
         selectedArticleNumber.value = String(routeArticle);
-      } else {
-        selectedArticleNumber.value = String(articles.value[0].number);
-        // Correct URL if the route had an invalid article number
-        if (routeArticle) {
-          router.replace({ name: 'library', params: { lawId, articleNumber: selectedArticleNumber.value } });
-        }
+      } else if (routeArticle) {
+        // Route had an invalid article number — strip it so the URL reflects the empty state.
+        router.replace({ name: 'library', params: { lawId } });
       }
     }
   } catch (e) {
@@ -204,6 +192,12 @@ async function loadLaw(lawId) {
       selectedLawLoading.value = false;
     }
   }
+}
+
+function editInEditor() {
+  if (!selectedLawId.value || !selectedArticleNumber.value) return;
+  activeAction.value = null;
+  router.push(`/editor/${encodeURIComponent(selectedLawId.value)}/${encodeURIComponent(selectedArticleNumber.value)}`);
 }
 
 function selectLaw(lawId) {
@@ -256,8 +250,8 @@ onBeforeRouteUpdate((to) => {
         selectedArticleNumber.value = articleStr;
         activeAction.value = null;
       }
-    } else if (articles.value.length > 0) {
-      selectedArticleNumber.value = String(articles.value[0].number);
+    } else {
+      selectedArticleNumber.value = null;
       activeAction.value = null;
     }
   }
@@ -283,71 +277,70 @@ loadIndex();
 </script>
 
 <template>
-  <ndd-app-view>
-    <ndd-bar-split-view>
+  <nldd-app-view>
+    <nldd-bar-split-view>
       <!-- Primary Bar: App Toolbar -->
-      <ndd-split-view-pane slot="primary-bar">
-        <ndd-container padding="8">
-          <ndd-toolbar size="md">
-            <ndd-toolbar-item slot="start">
-              <ndd-tab-bar size="md">
-                <ndd-tab-bar-item selected text="Bibliotheek"></ndd-tab-bar-item>
-                <ndd-tab-bar-item href="/editor" @click.prevent="router.push('/editor')" text="Editor"></ndd-tab-bar-item>
-              </ndd-tab-bar>
-            </ndd-toolbar-item>
-            <ndd-toolbar-item slot="center" min-width="240px" width="40%">
-              <ndd-search-field
-                ref="searchAnchorRef"
+      <nldd-split-view-pane slot="primary-bar">
+        <nldd-container padding="8">
+          <nldd-toolbar size="md">
+            <nldd-toolbar-item slot="start">
+              <nldd-tab-bar size="md">
+                <nldd-tab-bar-item selected text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item href="/editor" @click.prevent="router.push('/editor')" text="Editor"></nldd-tab-bar-item>
+              </nldd-tab-bar>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="center" min-width="240px" width="40%">
+              <nldd-search-field
                 size="md"
                 placeholder="Zoeken"
                 @focus="openSearch"
                 @click="openSearch"
-              ></ndd-search-field>
-            </ndd-toolbar-item>
-            <ndd-toolbar-item slot="end">
-              <ndd-button-bar size="md">
-                <ndd-button id="project-menu-btn" size="md" expandable text="RR Project" popovertarget="project-menu"></ndd-button>
-                <ndd-menu id="project-menu" anchor="project-menu-btn">
-                  <ndd-menu-item text="Instellingen"></ndd-menu-item>
-                  <ndd-menu-item text="Leden"></ndd-menu-item>
-                  <ndd-menu-divider></ndd-menu-divider>
-                  <ndd-menu-item text="Nieuw project"></ndd-menu-item>
-                </ndd-menu>
-                <ndd-button-bar-divider></ndd-button-bar-divider>
-                <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
-                </ndd-icon-button>
-                <ndd-menu id="account-menu" anchor="account-menu-btn">
+              ></nldd-search-field>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <nldd-button-bar size="md">
+                <nldd-button id="project-menu-btn" size="md" expandable text="RR Project" popovertarget="project-menu"></nldd-button>
+                <nldd-menu id="project-menu" anchor="project-menu-btn">
+                  <nldd-menu-item text="Instellingen"></nldd-menu-item>
+                  <nldd-menu-item text="Leden"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Nieuw project"></nldd-menu-item>
+                </nldd-menu>
+                <nldd-button-bar-divider></nldd-button-bar-divider>
+                <nldd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
+                </nldd-icon-button>
+                <nldd-menu id="account-menu" anchor="account-menu-btn">
                   <template v-if="!authLoading && authenticated">
-                    <ndd-menu-item :text="person?.name || person?.email" disabled></ndd-menu-item>
-                    <ndd-menu-divider></ndd-menu-divider>
-                    <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
+                    <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
+                    <nldd-menu-divider></nldd-menu-divider>
+                    <nldd-menu-item text="Uitloggen" @click="logout"></nldd-menu-item>
                   </template>
                   <template v-else-if="!authLoading && oidcConfigured">
-                    <ndd-menu-item text="Inloggen" @click="login"></ndd-menu-item>
+                    <nldd-menu-item text="Inloggen" @click="login"></nldd-menu-item>
                   </template>
-                </ndd-menu>
-              </ndd-button-bar>
-            </ndd-toolbar-item>
-          </ndd-toolbar>
-        </ndd-container>
-      </ndd-split-view-pane>
+                </nldd-menu>
+              </nldd-button-bar>
+            </nldd-toolbar-item>
+          </nldd-toolbar>
+        </nldd-container>
+      </nldd-split-view-pane>
 
       <!-- Main: Navigation Split View -->
-      <ndd-split-view-pane slot="main">
-        <ndd-navigation-split-view>
+      <nldd-split-view-pane slot="main">
+        <nldd-navigation-split-view>
 
           <!-- Sidebar: Wetten Browser -->
-          <ndd-split-view-pane slot="sidebar" has-content>
-            <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" text="Wetten en regels" collapse-anchor="home-titel"></ndd-top-title-bar>
+          <nldd-split-view-pane slot="sidebar" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Wetten en regels" collapse-anchor="home-titel"></nldd-top-title-bar>
 
-              <ndd-simple-section :align="loading || indexError ? 'center' : undefined">
-                <ndd-title id="home-titel" size="3"><h3>Wetten en regels</h3></ndd-title>
-                <ndd-spacer size="16"></ndd-spacer>
-                <ndd-inline-dialog v-if="loading" text="Laden..."></ndd-inline-dialog>
-                <ndd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></ndd-inline-dialog>
-                <ndd-list v-else variant="simple">
-                  <ndd-list-item
+              <nldd-simple-section :align="loading || indexError ? 'center' : undefined">
+                <nldd-title id="home-titel" size="3"><h3>Wetten en regels</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
+                <nldd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></nldd-inline-dialog>
+                <nldd-list v-else variant="simple">
+                  <nldd-list-item
                     v-for="law in sidebarLaws"
                     :key="law.law_id"
                     size="md"
@@ -355,48 +348,36 @@ loadIndex();
                     :selected="law.law_id === selectedLawId || undefined"
                     @click="selectLaw(law.law_id)"
                   >
-                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-                    </ndd-text-cell>
-                    <ndd-icon-cell slot="end" size="20">
-                      <ndd-icon name="chevron-right"></ndd-icon>
-                    </ndd-icon-cell>
-                  </ndd-list-item>
-                </ndd-list>
-              </ndd-simple-section>
-            </ndd-page>
-          </ndd-split-view-pane>
+                    <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+                    </nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20">
+                      <nldd-icon name="chevron-right"></nldd-icon>
+                    </nldd-icon-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
 
           <!-- Secondary Sidebar: Artikelen Lijst -->
-          <ndd-split-view-pane slot="secondary-sidebar" has-content>
-            <ndd-page sticky-header>
-              <ndd-top-title-bar
+          <nldd-split-view-pane slot="secondary-sidebar" has-content>
+            <nldd-page sticky-header>
+              <nldd-top-title-bar
                 slot="header"
                 :text="lawName || 'Selecteer een wet'"
                 back-text="Wetten"
                 collapse-anchor="wet-titel"
-              ></ndd-top-title-bar>
+              ></nldd-top-title-bar>
 
-              <ndd-simple-section :align="selectedLawLoading || lawError || !selectedLaw ? 'center' : undefined">
-                <ndd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></ndd-title>
-                <ndd-spacer size="16"></ndd-spacer>
-                <ndd-toolbar>
-                  <ndd-toolbar-item v-if="authenticated" slot="start">
-                    <ndd-icon-button
-                      :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
-                      :title="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
-                      @click="toggleFavorite(selectedLawId)"
-                    ></ndd-icon-button>
-                  </ndd-toolbar-item>
-                  <ndd-toolbar-item slot="start">
-                    <ndd-button text="Filter"></ndd-button>
-                  </ndd-toolbar-item>
-                </ndd-toolbar>
-                <ndd-spacer size="16"></ndd-spacer>
-                <ndd-inline-dialog v-if="selectedLawLoading" text="Laden..."></ndd-inline-dialog>
-                <ndd-inline-dialog v-else-if="lawError" variant="alert" text="Fout bij laden" :supporting-text="lawError.message"></ndd-inline-dialog>
-                <ndd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></ndd-inline-dialog>
-                <ndd-list v-else variant="simple">
-                  <ndd-list-item
+              <nldd-simple-section :align="selectedLawLoading || lawError || !selectedLaw ? 'center' : undefined">
+                <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
+                <nldd-spacer size="16"></nldd-spacer>
+                <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
+                <nldd-inline-dialog v-else-if="lawError" variant="alert" text="Fout bij laden" :supporting-text="lawError.message"></nldd-inline-dialog>
+                <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
+                <nldd-list v-else variant="simple">
+                  <nldd-list-item
                     v-for="article in articles"
                     :key="article.number"
                     size="md"
@@ -404,94 +385,78 @@ loadIndex();
                     :selected="String(article.number) === String(selectedArticleNumber) || undefined"
                     @click="selectArticle(article.number)"
                   >
-                    <ndd-text-cell :text="`Artikel ${article.number}`" :supporting-text="articleDescription(article)">
-                    </ndd-text-cell>
-                    <ndd-icon-cell slot="end" size="20">
-                      <ndd-icon name="chevron-right"></ndd-icon>
-                    </ndd-icon-cell>
-                  </ndd-list-item>
-                </ndd-list>
-              </ndd-simple-section>
-            </ndd-page>
-          </ndd-split-view-pane>
+                    <nldd-text-cell :text="`Artikel ${article.number}`" :supporting-text="articleDescription(article)">
+                    </nldd-text-cell>
+                    <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                    <nldd-icon-cell size="20">
+                      <nldd-icon name="chevron-right"></nldd-icon>
+                    </nldd-icon-cell>
+                  </nldd-list-item>
+                </nldd-list>
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <ndd-split-view-pane slot="main" has-content>
-            <ndd-page sticky-header>
-              <ndd-top-title-bar
+          <nldd-split-view-pane slot="main" :has-content="selectedArticle ? true : undefined">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar
+                v-if="selectedArticle"
                 slot="header"
-                :text="selectedArticle ? `Artikel ${selectedArticle.number}` : 'Selecteer een artikel'"
+                :text="`Artikel ${selectedArticle.number}`"
+                :supporting-text="lawName"
                 :back-text="lawName || 'Terug'"
                 collapse-anchor="article-titel"
-              ></ndd-top-title-bar>
+              ></nldd-top-title-bar>
 
-              <ndd-simple-section v-if="!selectedArticle" align="center">
-                <ndd-inline-dialog text="Selecteer een artikel"></ndd-inline-dialog>
-              </ndd-simple-section>
+              <nldd-simple-section v-if="!selectedArticle" align="center">
+                <nldd-inline-dialog text="Selecteer een artikel"></nldd-inline-dialog>
+              </nldd-simple-section>
               <template v-else>
-                <ndd-simple-section>
-                  <ndd-title id="article-titel" size="3"><h3>Artikel {{ selectedArticle.number }}</h3></ndd-title>
-                  <ndd-spacer size="16"></ndd-spacer>
-                  <ndd-toolbar>
-                    <ndd-toolbar-item slot="start">
-                      <ndd-segmented-control size="md" :value="detailView" @change="onDetailViewChange">
-                        <ndd-segmented-control-item value="tekst" text="Tekst"></ndd-segmented-control-item>
-                        <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
-                        <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
-                      </ndd-segmented-control>
-                    </ndd-toolbar-item>
-                    <ndd-toolbar-item slot="end">
+                <nldd-simple-section>
+                  <nldd-title id="article-titel" size="3">
+                    <h3>Artikel {{ selectedArticle.number }}</h3>
+                    <span slot="subtitle">{{ lawName }}</span>
+                  </nldd-title>
+                  <nldd-spacer size="16"></nldd-spacer>
+                  <nldd-toolbar>
+                    <nldd-toolbar-item slot="start">
+                      <nldd-segmented-control size="md" :value="detailView" @change="onDetailViewChange">
+                        <nldd-segmented-control-item value="tekst" text="Tekst"></nldd-segmented-control-item>
+                        <nldd-segmented-control-item value="machine" text="Machine"></nldd-segmented-control-item>
+                        <nldd-segmented-control-item value="yaml" text="YAML"></nldd-segmented-control-item>
+                      </nldd-segmented-control>
+                    </nldd-toolbar-item>
+                    <nldd-toolbar-item slot="end">
                       <a v-if="selectedLawId" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)">
-                        <ndd-button variant="primary" text="Bewerk"></ndd-button>
+                        <nldd-button variant="primary" text="Bewerk"></nldd-button>
                       </a>
-                    </ndd-toolbar-item>
-                  </ndd-toolbar>
-                  <ndd-spacer size="16"></ndd-spacer>
-                </ndd-simple-section>
-                <div class="library-detail-content" :class="`library-detail-content--${detailView}`">
+                    </nldd-toolbar-item>
+                  </nldd-toolbar>
+                  <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
                     <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" />
                     <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
                     <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
                   </KeepAlive>
-                </div>
+                </nldd-simple-section>
               </template>
-            </ndd-page>
-          </ndd-split-view-pane>
+            </nldd-page>
+          </nldd-split-view-pane>
 
-        </ndd-navigation-split-view>
-      </ndd-split-view-pane>
-    </ndd-bar-split-view>
-  </ndd-app-view>
+        </nldd-navigation-split-view>
+      </nldd-split-view-pane>
+    </nldd-bar-split-view>
+  </nldd-app-view>
 
   <!-- LibraryApp is a read-only browser; ActionSheet is mounted without editable
        so the output field is hidden and the footer button just closes the sheet. -->
-  <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" />
+  <ActionSheet :action="activeAction" :article="selectedArticle" :editable="false" @close="activeAction = null" @save="activeAction = null" @edit="editInEditor" />
   <SearchWindow
     v-model="searchOpen"
     :laws="laws"
-    :anchor-rect="searchAnchorRect"
     @select-law="selectLaw"
     @harvest-available="onHarvestAvailable"
   />
 </template>
 
-<style scoped>
-.library-detail-content {
-  flex: 1;
-  min-height: 0;
-}
-
-.library-detail-content--machine,
-.library-detail-content--yaml {
-  background: var(--semantics-surfaces-tinted-background-color, #F4F6F9);
-  border-top-left-radius: 12px;
-  border-top-right-radius: 12px;
-  margin-inline: 4px;
-}
-
-.library-detail-content--yaml :deep(.yaml-source) {
-  border-radius: 0;
-  background: transparent;
-}
-</style>

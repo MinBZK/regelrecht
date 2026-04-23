@@ -46,18 +46,18 @@ test.describe('Operation binding', () => {
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
     await page.goto('/editor/zorgtoeslagwet');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
     // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('ndd-list-item:has(ndd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('ndd-button:has-text("Bewerk")').click();
+    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
+    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
     // ActionSheet should be open
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
     await expect(panel).toBeVisible();
 
     // Verify the operation type is currently ADD
@@ -73,7 +73,7 @@ test.describe('Operation binding', () => {
     await page.waitForTimeout(100);
 
     // Save
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // Verify YAML
@@ -88,20 +88,20 @@ test.describe('Operation binding', () => {
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
     await page.goto('/editor/zorgtoeslagwet');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
     // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('ndd-list-item:has(ndd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('ndd-button:has-text("Bewerk")').click();
+    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
+    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
 
     // Find value 1 input (should be 10)
-    const value1Input = panel.locator('[data-testid="op-value-0"] ndd-text-field input');
+    const value1Input = panel.locator('[data-testid="op-value-0"] nldd-text-field input');
     await value1Input.evaluate((el, val) => {
       el.value = val;
       el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -109,7 +109,7 @@ test.describe('Operation binding', () => {
     await page.waitForTimeout(100);
 
     // Save
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // Verify YAML
@@ -125,24 +125,24 @@ test.describe('Operation binding', () => {
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
     await page.goto('/editor/zorgtoeslagwet');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
     // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('ndd-list-item:has(ndd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('ndd-button:has-text("Bewerk")').click();
+    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
+    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
 
     // Click "Voeg waarde toe"
     await panel.locator('[data-testid="add-value-btn"]').click();
     await page.waitForTimeout(200);
 
     // Save
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // Verify YAML - should now have 3 values
@@ -158,25 +158,25 @@ test.describe('Operation binding', () => {
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
     await page.goto('/editor/zorgtoeslagwet');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
 
     // Click "Bewerk" on the action in the Acties section (last list item with "resultaat")
-    const actionItems = page.locator('ndd-list-item:has(ndd-text-cell:has-text("resultaat"))');
-    await actionItems.last().locator('ndd-button:has-text("Bewerk")').click();
+    const actionItems = page.locator('nldd-list-item:has(nldd-text-cell:has-text("resultaat"))');
+    await actionItems.last().locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
 
-    // Click minus button on first value (ndd-icon-button may be "not visible" to Playwright)
-    const removeBtn = panel.locator('[data-testid="op-value-0"] ndd-icon-button[icon="minus"]');
+    // Click minus button on first value (nldd-icon-button may be "not visible" to Playwright)
+    const removeBtn = panel.locator('[data-testid="op-value-0"] nldd-icon-button[icon="minus"]');
     await removeBtn.evaluate(el => el.click());
     await page.waitForTimeout(200);
 
     // Save
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // Verify YAML - should now have 1 value (20 remains)
