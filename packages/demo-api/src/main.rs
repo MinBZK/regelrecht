@@ -51,7 +51,11 @@ async fn main() {
         tracing::error!("ANTHROPIC_API_KEY is required");
         std::process::exit(1);
     });
-    let model = env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "claude-opus-4-7".to_string());
+    // Default to Haiku for cost: this proxy renders 4-6 zinnen B1-Nederlands,
+    // a workload Haiku handles fine for ~5% of the per-token cost of Opus.
+    // Operators can override to Sonnet/Opus via the env var.
+    let model =
+        env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "claude-haiku-4-5-20251001".to_string());
     let raw_origins = env::var("ALLOWED_ORIGINS")
         .or_else(|_| env::var("ALLOWED_ORIGIN"))
         .unwrap_or_else(|_| "http://localhost:7180".to_string());
