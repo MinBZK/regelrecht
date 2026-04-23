@@ -36,8 +36,7 @@ function layerColor(layer) {
 // clutter every node with the same three leaves.
 const UTILITY_OUTPUTS = new Set(['wet_naam', 'bevoegd_gezag', 'datum_inwerkingtreding']);
 
-function parseLaw(yamlContent) {
-  const data = yaml.load(yamlContent);
+function parseLawFromParsed(data) {
   if (!data || !data.$id) return null;
 
   const articles = [];
@@ -95,43 +94,56 @@ function parseLaw(yamlContent) {
  */
 async function loadLawGraph(rootLawId, fetchLawYaml) {
   const laws = new Map();
-  const queue = [rootLawId];
   const seen = new Set([rootLawId]);
+  let frontier = [rootLawId];
 
-  while (queue.length > 0) {
-    const lawId = queue.shift();
-    let yamlText;
-    try {
-      yamlText = await fetchLawYaml(lawId);
-    } catch {
-      continue; // skip unreachable deps; graph stays partial
-    }
-    const law = parseLaw(yamlText);
-    if (!law) continue;
-    laws.set(law.id, law);
+  // Breadth-first with batched parallel fetches (mirrors useDependencies.js).
+  const BATCH_SIZE = 10;
 
-    const parsed = yaml.load(yamlText);
-    for (const ref of extractRegulationRefs(parsed)) {
-      if (!seen.has(ref)) {
-        seen.add(ref);
-        queue.push(ref);
-      }
-    }
-    // implements / overrides are also structural deps
-    for (const art of law.articles) {
-      for (const impl of art.implements) {
-        if (!seen.has(impl.law)) {
-          seen.add(impl.law);
-          queue.push(impl.law);
+  while (frontier.length > 0) {
+    const nextFrontier = [];
+
+    for (let i = 0; i < frontier.length; i += BATCH_SIZE) {
+      const batch = frontier.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async (lawId) => {
+          const yamlText = await fetchLawYaml(lawId);
+          return yaml.load(yamlText);
+        }),
+      );
+
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue; // skip unreachable deps
+        const parsed = result.value;
+        const law = parseLawFromParsed(parsed);
+        if (!law) continue;
+        laws.set(law.id, law);
+
+        for (const ref of extractRegulationRefs(parsed)) {
+          if (!seen.has(ref)) {
+            seen.add(ref);
+            nextFrontier.push(ref);
+          }
+        }
+        // implements / overrides are also structural deps
+        for (const art of law.articles) {
+          for (const impl of art.implements) {
+            if (!seen.has(impl.law)) {
+              seen.add(impl.law);
+              nextFrontier.push(impl.law);
+            }
+          }
+          for (const ovr of art.overrides) {
+            if (!seen.has(ovr.law)) {
+              seen.add(ovr.law);
+              nextFrontier.push(ovr.law);
+            }
+          }
         }
       }
-      for (const ovr of art.overrides) {
-        if (!seen.has(ovr.law)) {
-          seen.add(ovr.law);
-          queue.push(ovr.law);
-        }
-      }
     }
+
+    frontier = nextFrontier;
   }
 
   return laws;
@@ -424,6 +436,7 @@ function buildGraph(lawsMap) {
   }
 
   const nodeIds = new Set(nodes.map((n) => n.id));
+  const seenEdgeIds = new Set();
 
   // Cross-law source references
   for (const law of laws) {
@@ -437,8 +450,11 @@ function buildGraph(lawsMap) {
         for (const targetLawId of serviceOutputToIDs.get(key) || []) {
           const target = `${targetLawId}-output-${input.source_output || input.name}`;
           if (!nodeIds.has(inputID) || !nodeIds.has(target)) continue;
+          const edgeId = `${inputID}->${target}`;
+          if (seenEdgeIds.has(edgeId)) continue;
+          seenEdgeIds.add(edgeId);
           edges.push({
-            id: `${inputID}->${target}`,
+            id: edgeId,
             source: inputID,
             target,
             data: { refersToService: input.source_regulation },
@@ -455,7 +471,8 @@ function buildGraph(lawsMap) {
         const targetId = `${impl.law}-delegate-${impl.open_term}`;
         if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) continue;
         const edgeId = `impl:${law.id}:${art.number}->${impl.law}:${impl.open_term}`;
-        if (edges.some((e) => e.id === edgeId)) continue;
+        if (seenEdgeIds.has(edgeId)) continue;
+        seenEdgeIds.add(edgeId);
         edges.push({
           id: edgeId,
           source: sourceId,
@@ -476,7 +493,8 @@ function buildGraph(lawsMap) {
         const targetId = `${ovr.law}-output-${ovr.output}`;
         if (!nodeIds.has(sourceId) || !nodeIds.has(targetId)) continue;
         const edgeId = `ovr:${law.id}:${art.number}->${ovr.law}:${ovr.article}`;
-        if (edges.some((e) => e.id === edgeId)) continue;
+        if (seenEdgeIds.has(edgeId)) continue;
+        seenEdgeIds.add(edgeId);
         edges.push({
           id: edgeId,
           source: sourceId,
@@ -523,7 +541,8 @@ function buildGraph(lawsMap) {
           if (!nodeIds.has(targetId)) continue;
 
           const edgeId = `hook:${law.id}:${art.number}->${producer.lawId}:${producer.artNumber}`;
-          if (edges.some((e) => e.id === edgeId)) continue;
+          if (seenEdgeIds.has(edgeId)) continue;
+          seenEdgeIds.add(edgeId);
           edges.push({
             id: edgeId,
             source: sourceId,

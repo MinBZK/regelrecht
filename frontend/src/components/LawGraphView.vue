@@ -80,6 +80,13 @@ const visibleEdges = computed(() => {
 });
 
 function handleNodeClick({ node, event }) {
+  // A11Y LIMITATION (tracked for PR3 polish): the close button on a root
+  // law node is detected here by DOM sniffing the click target. Keyboard
+  // activation (Enter/Space on a focused button) dispatches a synthetic
+  // `click` that bubbles normally, so this path works for keyboards too —
+  // but the close button has no independent activation path if Vue Flow
+  // ever stops forwarding inner clicks via `node-click`. Wiring a proper
+  // data-callback from the custom node component is deferred to PR3.
   const target = event?.target;
   if (target && target.closest && target.closest('.close')) {
     hiddenLaws.value = new Set([...hiddenLaws.value, node.id]);
