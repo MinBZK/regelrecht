@@ -477,4 +477,3 @@ loadIndex();
     @harvest-available="onHarvestAvailable"
   />
 </template>
-
