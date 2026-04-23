@@ -382,7 +382,7 @@ loadIndex();
                 <ndd-toolbar>
                   <ndd-toolbar-item v-if="authenticated" slot="start">
                     <ndd-icon-button
-                      :icon="favorites?.has(selectedLawId) ? 'heart-fill' : 'heart'"
+                      :icon="favorites?.has(selectedLawId) ? 'heart-filled' : 'heart'"
                       :title="favorites?.has(selectedLawId) ? 'Verwijder uit favorieten' : 'Voeg toe aan favorieten'"
                       @click="toggleFavorite(selectedLawId)"
                     ></ndd-icon-button>
