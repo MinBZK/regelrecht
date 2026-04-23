@@ -69,7 +69,10 @@ async fn main() {
         resolve_pipeline_api_url(hostname.as_deref(), env::var("PIPELINE_API_URL").ok());
     match &pipeline_api_url {
         Some(url) => tracing::info!(url = %url, hostname = ?hostname, "pipeline-api proxy target"),
-        None => tracing::info!("no pipeline-api URL configured, harvest proxy disabled"),
+        None => tracing::info!(
+            hostname = ?hostname,
+            "no pipeline-api URL configured, harvest proxy disabled"
+        ),
     }
 
     let mut app_state = AppState {
@@ -512,6 +515,19 @@ mod pipeline_api_url_tests {
     fn dev_hostname_falls_back_to_env_override() {
         let url = resolve_pipeline_api_url(
             Some("tim-laptop"),
+            Some("http://localhost:8001".to_string()),
+        );
+        assert_eq!(url.as_deref(), Some("http://localhost:8001"));
+    }
+
+    /// A non-whitelisted pod-shaped hostname (≥3 hyphens but first segment is
+    /// not `regelrecht` or `pr<N>`) must not be trusted as a deployment name —
+    /// `deployment_from_hostname` returns `None` and we fall through to the
+    /// env override. Documents the whitelist boundary explicitly.
+    #[test]
+    fn non_whitelisted_pod_hostname_falls_back_to_env() {
+        let url = resolve_pipeline_api_url(
+            Some("feature-editor-abc-xyz"),
             Some("http://localhost:8001".to_string()),
         );
         assert_eq!(url.as_deref(), Some("http://localhost:8001"));
