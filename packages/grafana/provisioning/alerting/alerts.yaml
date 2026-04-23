@@ -89,7 +89,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_laws{status="harvested", namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_laws{status="harvested", deployment="regelrecht"})
               instant: true
               refId: A
           - refId: B
@@ -98,7 +98,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_laws{status="enriched", namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_laws{status="enriched", deployment="regelrecht"})
               instant: true
               refId: B
           - refId: E
@@ -107,7 +107,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_jobs{status="pending", namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_jobs{status="pending", deployment="regelrecht"})
               instant: true
               refId: E
           - refId: F
@@ -116,7 +116,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_jobs{status="completed", namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_jobs{status="completed", deployment="regelrecht"})
               instant: true
               refId: F
           # Per-type failed metrics for harvest/enrich split.
@@ -126,7 +126,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_jobs_failed_harvest_24h{namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_jobs_failed_harvest_24h{deployment="regelrecht"})
               instant: true
               refId: I
           - refId: J
@@ -135,7 +135,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_jobs_failed_enrich_24h{namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_jobs_failed_enrich_24h{deployment="regelrecht"})
               instant: true
               refId: J
           - refId: K
@@ -144,7 +144,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_jobs_failed_harvest{namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_jobs_failed_harvest{deployment="regelrecht"})
               instant: true
               refId: K
           - refId: L
@@ -153,7 +153,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_jobs_failed_enrich{namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_jobs_failed_enrich{deployment="regelrecht"})
               instant: true
               refId: L
           - refId: M
@@ -162,7 +162,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_exhausted_harvest{namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_exhausted_harvest{deployment="regelrecht"})
               instant: true
               refId: M
           - refId: N
@@ -171,7 +171,7 @@ groups:
               to: 0
             datasourceUid: PBFA97CFB590B2093
             model:
-              expr: max(regelrecht_exhausted_enrich{namespace="rig-prd-regel-k4c"})
+              expr: max(regelrecht_exhausted_enrich{deployment="regelrecht"})
               instant: true
               refId: N
           # Always-fire: A + B + 1 is always > 0.
