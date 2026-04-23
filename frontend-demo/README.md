@@ -37,7 +37,7 @@ src/
 
 ## Design
 
-Alleen `@minbzk/storybook` (prefix `ndd-`). Geen tailwind, geen andere UI-libs.
+Alleen `@minbzk/storybook` (prefix `nldd-`). Geen tailwind, geen andere UI-libs.
 
 ## LLM-uitleg
 

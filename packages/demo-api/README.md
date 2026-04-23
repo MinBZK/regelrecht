@@ -6,7 +6,7 @@ Minimale LLM-uitlegproxy voor de burger-demo. Eén route (`POST /api/explain`) d
 
 - `ANTHROPIC_API_KEY` — **vereist**. Proces stopt zonder deze.
 - `ANTHROPIC_MODEL` — default `claude-opus-4-7`.
-- `ALLOWED_ORIGIN` — default `http://localhost:7180` (frontend-demo dev-server). Zet op de productie-URL in ZAD.
+- `ALLOWED_ORIGINS` — comma-separated allow-list. Default `http://localhost:7180`. Entries kunnen exact zijn (`https://demo.regelrecht.rijks.app`) of een subdomein-wildcard `*.regelrecht.rijks.app` (matcht subdomeinen, NIET het apex). Legacy `ALLOWED_ORIGIN` (enkelvoud) wordt nog gehonoreerd.
 - `PORT` — default `7181`.
 
 ## Routes

@@ -1,7 +1,7 @@
 // Dedicated Web Worker that runs the engine against a synthetic population.
 //
 // Protocol:
-//   Main -> Worker: { type: 'run', lawYaml, lawEntry, population, calculationDate }
+//   Main -> Worker: { type: 'run', lawYamls, lawEntry, population, calculationDate }
 //   Worker -> Main (progress): { type: 'progress', done, total }
 //   Worker -> Main (result):   { type: 'result', results: [{ amount, eligible }], summary }
 //   Worker -> Main (error):    { type: 'error', message }
