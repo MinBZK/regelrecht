@@ -64,12 +64,11 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
-    let pipeline_api_url = resolve_pipeline_api_url(
-        env::var("HOSTNAME").ok().as_deref(),
-        env::var("PIPELINE_API_URL").ok(),
-    );
+    let hostname = env::var("HOSTNAME").ok();
+    let pipeline_api_url =
+        resolve_pipeline_api_url(hostname.as_deref(), env::var("PIPELINE_API_URL").ok());
     match &pipeline_api_url {
-        Some(url) => tracing::info!(url = %url, "pipeline-api proxy target"),
+        Some(url) => tracing::info!(url = %url, hostname = ?hostname, "pipeline-api proxy target"),
         None => tracing::info!("no pipeline-api URL configured, harvest proxy disabled"),
     }
 
@@ -469,6 +468,11 @@ fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
 ///
 /// `PIPELINE_API_URL` remains as an explicit override for local dev where
 /// HOSTNAME doesn't match the `{deployment}-{component}-{rs}-{pod}` shape.
+///
+/// Edge case: a dev machine whose HOSTNAME happens to match that shape *and*
+/// starts with `regelrecht` or `pr<N>` would silently derive a cluster-internal
+/// URL that won't resolve locally. `deployment_from_hostname`'s whitelist is
+/// the sole guard here; the old `KUBERNETES_SERVICE_HOST` gate is gone.
 fn resolve_pipeline_api_url(hostname: Option<&str>, env_url: Option<String>) -> Option<String> {
     hostname
         .and_then(regelrecht_corpus::deployment_from_hostname)
