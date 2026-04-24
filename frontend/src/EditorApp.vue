@@ -43,17 +43,11 @@ const paneSlot = (name) => {
   return idx >= 0 ? `pane-${idx + 1}` : undefined;
 };
 
-// Redirect to login when OIDC is configured but user is not authenticated.
-// { immediate: true } is needed because in SPA navigation the auth state may
-// already be resolved by the time EditorApp mounts (useAuth is a singleton).
-watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) => {
-  if (!isLoading && oidc && !authed) {
-    login();
-  }
-}, { immediate: true });
-
 // All edit operations are gated behind SSO. When OIDC is configured the user
 // must be authenticated; when OIDC is disabled the editor is fully open.
+// In practice the `requiresAuth` router guard already awaits the auth-check
+// and blocks unauthenticated users before this component mounts, so canEdit
+// is always true here — the computed remains as a safety net.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
 const route = useRoute();
