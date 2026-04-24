@@ -9,7 +9,7 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import ArticleText from './components/ArticleText.vue';
+import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
@@ -448,6 +448,10 @@ const parseError = ref(null);
 
 const machineReadable = ref(null);
 const yamlSource = ref('');
+// In-memory markdown for the currently selected article's `text` field.
+// Seeded on article switch alongside machineReadable so the Tekst and Machine
+// panes reset in lockstep when the user tabs to a different article.
+const editedText = ref('');
 
 const dumpOpts = { lineWidth: 80, noRefs: true };
 
@@ -457,6 +461,7 @@ watch(selectedArticle, (article) => {
   const mr = article?.machine_readable;
   machineReadable.value = mr ? structuredClone(mr) : null;
   yamlSource.value = mr ? yaml.dump(mr, dumpOpts) : '';
+  editedText.value = article?.text ?? '';
   parseError.value = null;
 }, { immediate: true });
 
@@ -477,7 +482,11 @@ watchEffect(() => {
 
 const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
-  return { ...selectedArticle.value, machine_readable: machineReadable.value };
+  return {
+    ...selectedArticle.value,
+    text: editedText.value,
+    machine_readable: machineReadable.value,
+  };
 });
 
 // Parse rawYaml once per law load into a reusable document skeleton. The
@@ -515,9 +524,7 @@ const parsedRawLaw = computed(() => {
 // article).
 const currentLawYaml = computed(() => {
   if (!rawYaml.value) return null;
-  if (!selectedArticle.value || machineReadable.value == null) {
-    return rawYaml.value;
-  }
+  if (!selectedArticle.value) return rawYaml.value;
   const base = parsedRawLaw.value;
   if (!base) return rawYaml.value;
   try {
@@ -532,10 +539,18 @@ const currentLawYaml = computed(() => {
       (a) => String(a.number) === String(selectedArticleNumber.value),
     );
     if (idx < 0) return rawYaml.value;
-    docArticles[idx] = {
-      ...docArticles[idx],
-      machine_readable: machineReadable.value,
-    };
+    // Only splice fields that have diverged from the base — passing
+    // `machineReadable.value` verbatim when it's null would erase the
+    // article's machine_readable from the serialized doc, and similarly
+    // for text. The dirty computeds below drive this same contract.
+    const patched = { ...docArticles[idx] };
+    if (editedText.value !== (docArticles[idx].text ?? '')) {
+      patched.text = editedText.value;
+    }
+    if (machineReadable.value != null) {
+      patched.machine_readable = machineReadable.value;
+    }
+    docArticles[idx] = patched;
     doc.articles = docArticles;
     return yaml.dump(doc, dumpOpts);
   } catch {
@@ -586,34 +601,46 @@ const isMachineReadableDirty = computed(() => {
   }
 });
 
-async function handleMachineReadableSave() {
+const isArticleTextDirty = computed(() => {
+  if (!selectedArticle.value) return false;
+  return (selectedArticle.value.text ?? '') !== (editedText.value ?? '');
+});
+
+// Single save handler shared by the Tekst and Machine panes. The PUT writes
+// the whole law YAML, so one click persists every in-memory edit for the
+// selected article regardless of which pane surfaced the button.
+async function handleLawSave() {
   const lawYaml = currentLawYaml.value;
   if (!lawYaml) return;
   // Snapshot the law id before the await. saveLaw itself guards its own
   // reactive writes with the same check, but the post-save cleanup below
   // runs in the EditorApp scope and would happily overwrite the new law's
-  // in-progress machine_readable with its pristine article data if the
-  // user switched laws mid-flight.
+  // in-progress edits with its pristine article data if the user switched
+  // laws mid-flight.
   const savedLawId = lawId.value;
   try {
     await saveLaw(lawYaml);
     if (lawId.value !== savedLawId) return; // law switched mid-PUT
-    // After save, `rawYaml` is the saved text and `selectedArticle` now
-    // points at the re-parsed article. We could rely on the `watch`
-    // further up to re-sync `machineReadable` from the new selectedArticle,
-    // but that watcher fires on the next microtask — leaving a window
-    // where `isMachineReadableDirty` still sees the pre-save object and
-    // the save button stays enabled, enabling a double-save click. Reset
-    // `machineReadable` explicitly from the freshly-parsed article so the
-    // dirty flag clears synchronously with the save.
-    const fresh = selectedArticle.value?.machine_readable ?? null;
-    machineReadable.value = fresh ? structuredClone(fresh) : null;
-    yamlSource.value = fresh ? yaml.dump(fresh, dumpOpts) : '';
+    // points at the re-parsed article. The `watch(selectedArticle)` above
+    // fires on the next microtask — leaving a window where the dirty
+    // computeds still see the pre-save values and the save button stays
+    // enabled, enabling a double-save click. Reset local state explicitly
+    // from the freshly-parsed article so both dirty flags clear
+    // synchronously with the save.
+    const fresh = selectedArticle.value;
+    const freshMr = fresh?.machine_readable ?? null;
+    machineReadable.value = freshMr ? structuredClone(freshMr) : null;
+    yamlSource.value = freshMr ? yaml.dump(freshMr, dumpOpts) : '';
+    editedText.value = fresh?.text ?? '';
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
     console.warn('saveLaw failed:', e);
   }
 }
+
+// Alias kept to minimise template churn; both panes ultimately call the
+// same whole-law save.
+const handleMachineReadableSave = handleLawSave;
 
 function onYamlInput(event) {
   // nldd-code-editor dispatches a CustomEvent with the new value in
@@ -1053,7 +1080,7 @@ function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :sticky-footer="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
+              :sticky-footer="(view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEdit && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
               <div slot="header" class="pane-header">
                 <nldd-button
@@ -1078,8 +1105,33 @@ function handleActionSave() {
 
               <!-- Tekst -->
               <nldd-simple-section v-if="view === 'text'" full-width>
-                <ArticleText :article="selectedArticle" raw />
+                <ArticleTextEditor
+                  :article="selectedArticle"
+                  :editable="canEdit"
+                  :dirty="isArticleTextDirty"
+                  :saving="lawSaving"
+                  :save-error="lawSaveError"
+                  :model-value="editedText"
+                  @update:model-value="editedText = $event"
+                  @save="handleLawSave"
+                />
               </nldd-simple-section>
+              <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
+              <nldd-container
+                v-if="view === 'text' && canEdit && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx"
+                slot="footer"
+                padding="16"
+              >
+                <nldd-button
+                  variant="primary"
+                  size="md"
+                  full-width
+                  data-testid="save-text-btn"
+                  :disabled="lawSaving || undefined"
+                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
+                  @click="handleLawSave"
+                ></nldd-button>
+              </nldd-container>
 
               <!-- Machine readable -->
               <nldd-simple-section v-else-if="view === 'machine'" full-width>
