@@ -551,31 +551,46 @@ impl DataSource for RecordSetDataSource {
         }
 
         // Array mode: return the whole list of matched records, projected.
+        // Records where the requested projection is absent (column does not
+        // exist at all) are skipped — do NOT wrap absent values as Null. A
+        // column that IS present with an explicit Null value is preserved.
         if as_array {
             let items: Vec<Value> = indices
                 .iter()
-                .map(|i| project_record_value(&self.records[*i], field, fields))
+                .filter_map(|i| project_record_value(&self.records[*i], field, fields))
                 .collect();
+            if items.is_empty() {
+                return None;
+            }
             return Some(Value::Array(items));
         }
 
-        // Scalar/object mode: take the first matching record.
+        // Scalar/object mode: take the first matching record. If the projected
+        // value is absent (None), return None so the caller can type-default.
         let record = &self.records[indices[0]];
-        Some(project_record_value(record, field, fields))
+        project_record_value(record, field, fields)
     }
 }
 
 /// Project a single record into a `Value` according to the requested field
-/// or fields:
+/// or fields.
 ///
-/// - If `fields` is set: build an object with those columns.
-/// - Else if `field` is set: extract that single column (or `Null` if absent).
-/// - Else: return the entire record as an object.
+/// Returns `None` when the projection yields nothing to include:
+/// - `field` is set and the column is ABSENT from the record (not just null).
+/// - `fields` is set and NONE of the requested columns are present.
+///
+/// A column that IS present but holds `Value::Null` is treated as a real
+/// value and preserved — `Some(Value::Null)` for scalar mode, or inserted
+/// into the object for object mode.
+///
+/// - If `fields` is set: build an object with those columns that exist.
+/// - Else if `field` is set: extract that single column.
+/// - Else: return the entire record as an object (always `Some`).
 fn project_record_value(
     record: &BTreeMap<String, Value>,
     field: Option<&str>,
     fields: Option<&[String]>,
-) -> Value {
+) -> Option<Value> {
     if let Some(field_list) = fields {
         let mut obj = BTreeMap::new();
         for f in field_list {
@@ -584,13 +599,19 @@ fn project_record_value(
                 obj.insert(lc, v.clone());
             }
         }
-        return Value::Object(obj);
+        if obj.is_empty() {
+            return None;
+        }
+        return Some(Value::Object(obj));
     }
     if let Some(f) = field {
         let lc = f.to_lowercase();
-        return record.get(&lc).cloned().unwrap_or(Value::Null);
+        if !record.contains_key(&lc) {
+            return None;
+        }
+        return Some(record.get(&lc).cloned().unwrap_or(Value::Null));
     }
-    Value::Object(record.clone())
+    Some(Value::Object(record.clone()))
 }
 
 /// Builder for `RecordSetDataSource`.
@@ -1654,6 +1675,149 @@ mod tests {
         ];
         let result = source.query_native(Some("income"), None, &select, &BTreeMap::new(), false);
         assert_eq!(result, Some(Value::Int(55000)));
+    }
+
+    // Helpers for the absent-column tests. Matches the wet_brp `relaties`
+    // reproduction: a record that matches the select_on criterion but has no
+    // `kinderen` column at all.
+    fn make_relaties_no_kinderen() -> Vec<BTreeMap<String, Value>> {
+        vec![{
+            let mut r = BTreeMap::new();
+            r.insert("bsn".to_string(), Value::String("999993653".to_string()));
+            r.insert(
+                "partnerschap_type".to_string(),
+                Value::String("GEEN".to_string()),
+            );
+            r.insert("partner_bsn".to_string(), Value::Null);
+            r
+        }]
+    }
+
+    fn make_relaties_null_kinderen() -> Vec<BTreeMap<String, Value>> {
+        vec![{
+            let mut r = BTreeMap::new();
+            r.insert("bsn".to_string(), Value::String("999993653".to_string()));
+            r.insert("kinderen".to_string(), Value::Null);
+            r
+        }]
+    }
+
+    #[test]
+    fn test_query_native_absent_column_array_returns_none() {
+        // Regression: wet_brp `kinderen_gegevens` used to return Some([Null])
+        // when the matched `relaties` record had no `kinderen` column. That
+        // made EXISTS([Null]) → true and wrongly activated IACK.
+        let source = RecordSetDataSource::builder("relaties", 10)
+            .records(make_relaties_no_kinderen())
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "bsn".to_string(),
+            value: Value::String("999993653".to_string()),
+        }];
+
+        let result = source.query_native(Some("kinderen"), None, &select, &BTreeMap::new(), true);
+        assert!(
+            result.is_none(),
+            "Absent column in array mode must return None, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_query_native_present_null_column_array_returns_null_item() {
+        // A column that is present but explicitly Null is a real value and
+        // must be preserved in the array.
+        let source = RecordSetDataSource::builder("relaties", 10)
+            .records(make_relaties_null_kinderen())
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "bsn".to_string(),
+            value: Value::String("999993653".to_string()),
+        }];
+
+        let result = source.query_native(Some("kinderen"), None, &select, &BTreeMap::new(), true);
+        assert_eq!(result, Some(Value::Array(vec![Value::Null])));
+    }
+
+    #[test]
+    fn test_query_native_mixed_presence_array_skips_absent() {
+        // One matching record has the column, another does not. Only the
+        // present value should appear in the result array.
+        let records = vec![
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+                r.insert("kind_bsn".to_string(), Value::String("anna".to_string()));
+                r
+            },
+            {
+                let mut r = BTreeMap::new();
+                r.insert("ouder_bsn".to_string(), Value::String("123".to_string()));
+                // no kind_bsn column here
+                r.insert(
+                    "partner_bsn".to_string(),
+                    Value::String("spouse".to_string()),
+                );
+                r
+            },
+        ];
+
+        let source = RecordSetDataSource::builder("relaties", 10)
+            .records(records)
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "ouder_bsn".to_string(),
+            value: Value::String("123".to_string()),
+        }];
+
+        let result = source.query_native(Some("kind_bsn"), None, &select, &BTreeMap::new(), true);
+        assert_eq!(
+            result,
+            Some(Value::Array(vec![Value::String("anna".to_string())])),
+            "Only the present value should appear; absent record must be skipped"
+        );
+    }
+
+    #[test]
+    fn test_query_native_absent_column_scalar_returns_none() {
+        // Scalar mode: a matched record without the projected column must
+        // return None so the caller can apply a type-default.
+        let source = RecordSetDataSource::builder("relaties", 10)
+            .records(make_relaties_no_kinderen())
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "bsn".to_string(),
+            value: Value::String("999993653".to_string()),
+        }];
+
+        let result = source.query_native(Some("kinderen"), None, &select, &BTreeMap::new(), false);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_query_native_present_null_scalar_returns_some_null() {
+        // Scalar mode: a column present with an explicit Null value is a real
+        // value and must be returned as Some(Null), not None.
+        let source = RecordSetDataSource::builder("relaties", 10)
+            .records(make_relaties_null_kinderen())
+            .build()
+            .unwrap();
+
+        let select = vec![SelectOn {
+            field: "bsn".to_string(),
+            value: Value::String("999993653".to_string()),
+        }];
+
+        let result = source.query_native(Some("kinderen"), None, &select, &BTreeMap::new(), false);
+        assert_eq!(result, Some(Value::Null));
     }
 
     #[test]
