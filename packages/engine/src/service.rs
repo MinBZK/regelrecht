@@ -2299,9 +2299,7 @@ impl LawExecutionService {
             // `source.{table, field/fields, select_on}`, the engine reads
             // those directly and queries the matching registered source
             // without any external orchestration.
-            let mut data_source_attempted = false;
             if let Some(table) = source.table.as_deref() {
-                data_source_attempted = true;
                 if self.data_registry.source_count() > 0 {
                     let resolved_inputs = context.resolved_inputs().clone();
                     let select_on: Vec<SelectOn> = source
@@ -2343,26 +2341,53 @@ impl LawExecutionService {
                         continue;
                     }
                 }
-                // No match for a native YAML-declared source — fall through
-                // (legacy single-key path below) so a generic register_data_source
-                // call still has a chance.
+                // No match for a native YAML-declared source — do NOT fall
+                // through to the legacy single-key path. That path scans every
+                // registered source for any column literally named the same as
+                // the input, which causes cross-table collisions. Example:
+                // wet_brp article 2.7 declares
+                // `source: {table: verblijfplaats, fields: [..., type]}` for
+                // input `adres`. An APV caller registers a
+                // `horecagebiedsplannen` source with a string `adres` column.
+                // Falling through would hand the wet_brp code a string where
+                // it expects an object. Instead, flow to the final else-branch
+                // where the engine type-defaults optional inputs (and leaves
+                // required inputs unresolved for claim collection), and emit
+                // a trace node so the dashboard shows the miss.
+                let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                res_ctx.trace_set_message(format!(
+                    "Native lookup missed: no record in table '{}' matching select_on",
+                    table
+                ));
+                drop(_guard);
+
+                let is_required = input.required.unwrap_or(false);
+                if !is_required {
+                    let default = type_default(input.input_type);
+                    context.set_resolved_input(&input.name, default);
+                }
+                continue;
             }
 
             // Legacy DataSourceRegistry resolution (single-key lookup by
             // input name). Used when YAML doesn't declare table metadata.
             //
             // Skip this fallback entirely when the YAML declares an explicit
-            // cross-law source (`source.regulation`) or internal reference
-            // (`source.output`). Otherwise a registered data source that
-            // happens to expose a column with the same name as the input
-            // would short-circuit the cross-law call and return the
-            // wrong-typed raw value. See kieswet: a boolean `nationaliteit`
-            // input cross-references wet_brp#heeft_nederlandse_nationaliteit,
-            // while the registered `personen` table has a string column
-            // `nationaliteit` ("NEDERLANDS").
+            // cross-law source (`source.regulation`), internal reference
+            // (`source.output`), or native table metadata (`source.table`,
+            // handled above with an early `continue`). Otherwise a registered
+            // data source that happens to expose a column with the same name
+            // as the input would short-circuit the cross-law call and return
+            // the wrong-typed raw value. See kieswet: a boolean
+            // `nationaliteit` input cross-references
+            // wet_brp#heeft_nederlandse_nationaliteit, while the registered
+            // `personen` table has a string column `nationaliteit`
+            // ("NEDERLANDS").
             if self.data_registry.source_count() > 0
                 && source.regulation.is_none()
                 && source.output.is_none()
+                && source.table.is_none()
             {
                 if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
                     tracing::debug!(
@@ -2543,7 +2568,6 @@ impl LawExecutionService {
                 // downstream arithmetic and comparisons proceed. Required
                 // inputs remain unresolved so the caller can collect a claim.
                 let is_required = input.required.unwrap_or(false);
-                let _ = data_source_attempted; // suppress dead-let warning when no defaulting fires
                 if !is_required {
                     let default = type_default(input.input_type);
                     let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
@@ -3553,6 +3577,98 @@ articles:
 
         // doubled_value = base_value (100) * 2 = 200
         assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_native_table_miss_does_not_fall_through_to_legacy_registry() {
+        // Regression test for APV/wet_brp `adres` collision: when YAML declares
+        // `source: {table: X, field: Y, select_on: [...]}` and the native
+        // lookup finds no matching record, the engine must NOT fall through
+        // to the legacy single-key registry. The legacy path scans every
+        // registered source for a column literally named the same as the
+        // input, which causes cross-table collisions.
+        //
+        // Setup: source_a has column `x=5` (integer) but is filtered on
+        // `key=nonexistent` so select_on MISSES. source_b has column
+        // `x="not-a-number"` (string) registered under a different key. The
+        // input declares `source: {table: source_a, field: x, select_on: key}`
+        // with type number. The result must be the type default (0), NOT
+        // "not-a-number" from source_b.
+        let law = r#"
+$id: native_miss_test
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Input from native table that will miss select_on
+    machine_readable:
+      execution:
+        parameters:
+          - name: lookup_key
+            type: string
+        input:
+          - name: x
+            type: number
+            source:
+              table: source_a
+              field: x
+              select_on:
+                - name: key
+                  value: $lookup_key
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $x
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        // source_a keyed on `key=match_me` with x=5 (integer). The query uses
+        // key=nonexistent so this record will NOT match.
+        let mut rec_a = BTreeMap::new();
+        rec_a.insert("key".to_string(), Value::String("match_me".to_string()));
+        rec_a.insert("x".to_string(), Value::Int(5));
+        service
+            .register_record_set_source(
+                "source_a",
+                vec![rec_a],
+                None,
+                Some(vec!["key".to_string()]),
+                None,
+                None,
+            )
+            .unwrap();
+
+        // source_b has an unrelated column `x` of string type. If the engine
+        // wrongly falls through to the legacy path, this value would be
+        // returned and the numeric `result` would end up as "not-a-number".
+        let mut rec_b = BTreeMap::new();
+        rec_b.insert("other_key".to_string(), Value::String("b".to_string()));
+        rec_b.insert("x".to_string(), Value::String("not-a-number".to_string()));
+        service
+            .register_dict_source("source_b", "other_key", vec![rec_b])
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "lookup_key".to_string(),
+            Value::String("nonexistent".to_string()),
+        );
+
+        let result = service
+            .evaluate_law_output("native_miss_test", "result", params, "2025-01-01")
+            .unwrap();
+
+        // Input `x` is optional (no required: true), type number. On native
+        // miss the engine type-defaults to 0. The wrong behavior would be
+        // Value::String("not-a-number") leaking through from source_b.
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(0)),
+            "Native table miss must type-default to 0, not fall through to source_b's string column"
+        );
     }
 
     #[test]
