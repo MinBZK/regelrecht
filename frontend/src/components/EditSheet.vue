@@ -365,9 +365,9 @@ const sectionLabels = {
 </script>
 
 <template>
-  <ndd-sheet ref="sheetEl" placement="right" class="edit-sheet" @close="emit('close')">
-    <!-- `:key` forces ndd-page to remount whenever the section changes.
-         ndd-page captures the sticky-header height ONCE per mount via
+  <nldd-sheet ref="sheetEl" placement="right" width="640px" @close="emit('close')">
+    <!-- `:key` forces nldd-page to remount whenever the section changes.
+         nldd-page captures the sticky-header height ONCE per mount via
          requestAnimationFrame; if the header text changes after that
          (which happens here because :text is reactive on item.section),
          the measurement stays at the empty/initial value and the body
@@ -375,90 +375,90 @@ const sectionLabels = {
          change re-runs the measurement with the now-set title text,
          which is the storybook-conventional way to handle a header
          whose content swaps in. -->
-    <ndd-page :key="item?.section ?? 'none'" sticky-header>
-      <ndd-top-title-bar slot="header" :text="item ? (sectionLabels[item.section] || 'Bewerk') : ''" dismiss-text="Annuleer" @dismiss="emit('close')"></ndd-top-title-bar>
+    <nldd-page :key="item?.section ?? 'none'" sticky-header>
+      <nldd-top-title-bar slot="header" :text="item ? (sectionLabels[item.section] || 'Bewerk') : ''" dismiss-text="Annuleer" @dismiss="emit('close')"></nldd-top-title-bar>
 
-      <ndd-simple-section v-if="item">
+      <nldd-simple-section v-if="item">
           <!-- Definition -->
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
-            <ndd-list variant="box" class="edit-settings-list">
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Waarde" max-width="140"></ndd-text-cell>
-                <ndd-cell>
+            <nldd-list variant="box" class="edit-settings-list">
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
+                <nldd-cell>
+                  <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
+                </nldd-cell>
+              </nldd-list-item>
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Waarde" max-width="140"></nldd-text-cell>
+                <nldd-cell>
                   <div v-if="values.controlType === 'currency'" class="edit-sheet-value-group">
                     <span class="edit-sheet-unit">&euro;</span>
-                    <ndd-number-field :value="values.displayValue" step="0.01" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></ndd-number-field>
+                    <nldd-number-field :value="values.displayValue" step="0.01" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></nldd-number-field>
                   </div>
                   <div v-else-if="values.controlType === 'percentage'" class="edit-sheet-value-group">
-                    <ndd-number-field :value="values.displayValue" step="0.001" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></ndd-number-field>
+                    <nldd-number-field :value="values.displayValue" step="0.001" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></nldd-number-field>
                     <span class="edit-sheet-unit">%</span>
                   </div>
-                  <ndd-switch-field v-else-if="values.controlType === 'boolean'" :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</ndd-switch-field>
-                  <ndd-number-field v-else-if="values.controlType === 'number'" :value="values.displayValue" full-width hide-spin-buttons @change="values.displayValue = $event.detail?.value ?? values.displayValue"></ndd-number-field>
-                  <ndd-text-field v-else size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-            </ndd-list>
+                  <nldd-switch-field v-else-if="values.controlType === 'boolean'" :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</nldd-switch-field>
+                  <nldd-number-field v-else-if="values.controlType === 'number'" :value="values.displayValue" full-width hide-spin-buttons @change="values.displayValue = $event.detail?.value ?? values.displayValue"></nldd-number-field>
+                  <nldd-text-field v-else size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></nldd-text-field>
+                </nldd-cell>
+              </nldd-list-item>
+            </nldd-list>
           </template>
 
           <!-- Parameter -->
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
-            <ndd-list variant="box" class="edit-settings-list">
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-dropdown size="md">
+            <nldd-list variant="box" class="edit-settings-list">
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
+                <nldd-cell>
+                  <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
+                </nldd-cell>
+              </nldd-list-item>
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Type" max-width="140"></nldd-text-cell>
+                <nldd-cell>
+                  <nldd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
-                  </ndd-dropdown>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Verplicht" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></ndd-switch>
-                </ndd-cell>
-              </ndd-list-item>
-            </ndd-list>
+                  </nldd-dropdown>
+                </nldd-cell>
+              </nldd-list-item>
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Verplicht" max-width="140"></nldd-text-cell>
+                <nldd-cell>
+                  <nldd-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></nldd-switch>
+                </nldd-cell>
+              </nldd-list-item>
+            </nldd-list>
           </template>
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
             <div class="input-fields-wrapper" ref="inputWrapperEl">
-              <ndd-list variant="box" class="edit-settings-list">
-                <ndd-list-item size="md">
-                  <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
-                  <ndd-cell>
-                    <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
-                  </ndd-cell>
-                </ndd-list-item>
-                <ndd-list-item v-if="!values.sourceOutput" size="md">
-                  <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
-                  <ndd-cell>
-                    <ndd-dropdown size="md">
+              <nldd-list variant="box" class="edit-settings-list">
+                <nldd-list-item size="md">
+                  <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
+                  <nldd-cell>
+                    <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
+                  </nldd-cell>
+                </nldd-list-item>
+                <nldd-list-item v-if="!values.sourceOutput" size="md">
+                  <nldd-text-cell text="Type" max-width="140"></nldd-text-cell>
+                  <nldd-cell>
+                    <nldd-dropdown size="md">
                       <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                         <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                       </select>
-                    </ndd-dropdown>
-                  </ndd-cell>
-                </ndd-list-item>
-                <ndd-list-item size="md">
-                  <ndd-text-cell text="Bron regelgeving" max-width="140"></ndd-text-cell>
-                  <ndd-cell>
-                    <ndd-search-field
+                    </nldd-dropdown>
+                  </nldd-cell>
+                </nldd-list-item>
+                <nldd-list-item size="md">
+                  <nldd-text-cell text="Bron regelgeving" max-width="140"></nldd-text-cell>
+                  <nldd-cell>
+                    <nldd-search-field
                       ref="searchFieldEl"
                       size="md"
                       placeholder="Zoek regelgeving..."
@@ -467,29 +467,29 @@ const sectionLabels = {
                       @input="onLawSearchInput($event)"
                       @focus="showLawResults = true; nextTick(() => updateResultsPosition())"
                       @focusout="closeLawResults"
-                    ></ndd-search-field>
-                  </ndd-cell>
-                </ndd-list-item>
-                <ndd-list-item size="md">
-                  <ndd-text-cell text="Bron output" max-width="140"></ndd-text-cell>
-                  <ndd-cell>
-                    <ndd-dropdown v-if="availableOutputs.length > 0" size="md" data-testid="output-dropdown">
+                    ></nldd-search-field>
+                  </nldd-cell>
+                </nldd-list-item>
+                <nldd-list-item size="md">
+                  <nldd-text-cell text="Bron output" max-width="140"></nldd-text-cell>
+                  <nldd-cell>
+                    <nldd-dropdown v-if="availableOutputs.length > 0" size="md" data-testid="output-dropdown">
                       <select :value="values.sourceOutput" @change="onOutputSelected($event.target.value)" aria-label="Bron output">
                         <option value="">Selecteer output...</option>
                         <option v-for="out in availableOutputs" :key="out.name" :value="out.name">{{ out.name }} ({{ out.output_type }})</option>
                       </select>
-                    </ndd-dropdown>
-                    <ndd-text-field v-else size="md" :value="values.sourceOutput" data-testid="output-text-field" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></ndd-text-field>
-                  </ndd-cell>
-                </ndd-list-item>
-              </ndd-list>
+                    </nldd-dropdown>
+                    <nldd-text-field v-else size="md" :value="values.sourceOutput" data-testid="output-text-field" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></nldd-text-field>
+                  </nldd-cell>
+                </nldd-list-item>
+              </nldd-list>
 
-              <!-- Absolute overlay: rendered outside the ndd-list to escape
+              <!-- Absolute overlay: rendered outside the nldd-list to escape
                    shadow DOM overflow clipping, but positioned over the
                    controls below (Bron output, parameters) via z-index. -->
               <div v-if="showLawResults && filteredLaws.length > 0" class="law-search-results" :style="{ top: resultsTopPx + 'px' }" data-testid="law-search-results">
-                <ndd-list variant="box">
-                  <ndd-list-item
+                <nldd-list variant="box">
+                  <nldd-list-item
                     v-for="law in filteredLaws"
                     :key="law.law_id"
                     size="sm"
@@ -497,32 +497,32 @@ const sectionLabels = {
                     :data-testid="`law-result-${law.law_id}`"
                     @mousedown.prevent="selectLaw(law)"
                   >
-                    <ndd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></ndd-text-cell>
-                  </ndd-list-item>
-                </ndd-list>
+                    <nldd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></nldd-text-cell>
+                  </nldd-list-item>
+                </nldd-list>
               </div>
             </div>
 
-            <ndd-spacer size="12"></ndd-spacer>
-            <ndd-title size="6"><h6>Bron parameters</h6></ndd-title>
-            <ndd-spacer size="8"></ndd-spacer>
-            <ndd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
-              <ndd-list-item
+            <nldd-spacer size="12"></nldd-spacer>
+            <nldd-title size="6"><h6>Bron parameters</h6></nldd-title>
+            <nldd-spacer size="8"></nldd-spacer>
+            <nldd-list variant="box" class="edit-settings-list" data-testid="source-parameters-list">
+              <nldd-list-item
                 v-for="param in values.sourceParameters"
                 :key="param._rowId"
                 size="md"
               >
-                <ndd-cell>
-                  <ndd-text-field
+                <nldd-cell>
+                  <nldd-text-field
                     size="md"
                     placeholder="naam"
                     :value="param.key"
                     readonly
                     :data-testid="`source-param-key-${param._rowId}`"
-                  ></ndd-text-field>
-                </ndd-cell>
-                <ndd-cell>
-                  <ndd-dropdown size="md" :data-testid="`source-param-value-${param._rowId}`">
+                  ></nldd-text-field>
+                </nldd-cell>
+                <nldd-cell>
+                  <nldd-dropdown size="md" :data-testid="`source-param-value-${param._rowId}`">
                     <select :value="param.value" :aria-label="`Waarde voor ${param.key}`" @change="param.value = $event.target.value">
                       <option value="">Selecteer...</option>
                       <option v-if="param.value && !param.value.startsWith('$')" :value="param.value" :selected="true">{{ param.value }}</option>
@@ -530,73 +530,63 @@ const sectionLabels = {
                         <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === param.value">{{ opt.label }}</option>
                       </optgroup>
                     </select>
-                  </ndd-dropdown>
-                </ndd-cell>
-              </ndd-list-item>
-            </ndd-list>
+                  </nldd-dropdown>
+                </nldd-cell>
+              </nldd-list-item>
+            </nldd-list>
           </template>
 
           <!-- Output -->
           <template v-if="item.section === 'output' || item.section === 'add-output'">
-            <ndd-list variant="box" class="edit-settings-list">
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Naam" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></ndd-text-field>
-                </ndd-cell>
-              </ndd-list-item>
-              <ndd-list-item size="md">
-                <ndd-text-cell text="Type" max-width="140"></ndd-text-cell>
-                <ndd-cell>
-                  <ndd-dropdown size="md">
+            <nldd-list variant="box" class="edit-settings-list">
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
+                <nldd-cell>
+                  <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
+                </nldd-cell>
+              </nldd-list-item>
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Type" max-width="140"></nldd-text-cell>
+                <nldd-cell>
+                  <nldd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
                       <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
                     </select>
-                  </ndd-dropdown>
-                </ndd-cell>
-              </ndd-list-item>
-            </ndd-list>
+                  </nldd-dropdown>
+                </nldd-cell>
+              </nldd-list-item>
+            </nldd-list>
           </template>
-      </ndd-simple-section>
+      </nldd-simple-section>
 
-      <ndd-container slot="footer" padding="16">
-        <ndd-button variant="primary" size="md" full-width data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></ndd-button>
-      </ndd-container>
-    </ndd-page>
-  </ndd-sheet>
+      <nldd-container slot="footer" padding="16">
+        <nldd-button variant="primary" size="md" full-width data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></nldd-button>
+      </nldd-container>
+    </nldd-page>
+  </nldd-sheet>
 </template>
 
 <style>
-/* Make our EditSheet wider than the NDD default. ndd-sheet hard-codes its
- * width via these tokens (360px md / 480px lg, see node_modules/@minbzk/
- * storybook). Overriding the custom properties on the host scopes the
- * change to this sheet only — other ndd-sheets in the app keep the design
- * system defaults. */
-ndd-sheet.edit-sheet {
-  --components-sheet-side-md-width: 480px;
-  --components-sheet-side-lg-width: 640px;
-}
-
 /* Form field layout in the edit sheet's settings list.
  *
  * The previous attempt used `display: grid` on the host element, but
- * `ndd-list-item` is a Lit web component whose internal shadow DOM lays
+ * `nldd-list-item` is a Lit web component whose internal shadow DOM lays
  * out slotted children with its own flexbox — the user-side grid rule
  * is silently ignored, so the labels collapsed and the value fields
  * shrank to ~80px wide.
  *
  * The pattern that DOES work is the one OperationSettings.vue uses:
- * pin the label cell width via the ndd-text-cell `max-width` attribute
+ * pin the label cell width via the nldd-text-cell `max-width` attribute
  * (handled inside the component's shadow DOM), and let the value cell
  * grow with `flex: 1; min-width: 0`. The slotted children participate
- * as flex items in ndd-list-item's shadow DOM flex container. */
-.edit-settings-list ndd-cell {
+ * as flex items in nldd-list-item's shadow DOM flex container. */
+.edit-settings-list nldd-cell {
   flex: 1;
   min-width: 0;
 }
-.edit-settings-list ndd-text-field,
-.edit-settings-list ndd-dropdown,
-.edit-settings-list ndd-number-field {
+.edit-settings-list nldd-text-field,
+.edit-settings-list nldd-dropdown,
+.edit-settings-list nldd-number-field {
   width: 100%;
 }
 .edit-sheet-value-group {
@@ -605,7 +595,7 @@ ndd-sheet.edit-sheet {
   gap: 6px;
   width: 100%;
 }
-.edit-sheet-value-group ndd-number-field {
+.edit-sheet-value-group nldd-number-field {
   flex: 1;
   min-width: 0;
 }

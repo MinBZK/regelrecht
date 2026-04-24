@@ -15,7 +15,7 @@ test.describe('Inputs with sources', () => {
     await page.waitForTimeout(300);
 
     // Add input: leeftijd from wet_basisregistratie_personen
-    await page.locator('ndd-button:has-text("Nieuwe input")').click();
+    await page.locator('nldd-button:has-text("Nieuwe input")').click();
     await waitForSheet(page);
 
     await fillSheetTextField(page, 'Naam', 'leeftijd');

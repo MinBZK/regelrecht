@@ -19,7 +19,7 @@ test.describe('Action CRUD', () => {
     await page.waitForTimeout(300);
 
     // ActionSheet should be open
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
     await expect(panel).toBeVisible();
 
     // Set output name
@@ -33,7 +33,7 @@ test.describe('Action CRUD', () => {
     // The operation tree should be empty for a new action with value=''
     // The OperationSettings won't show since there's no operation
     // Let's save and check the YAML
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // Verify YAML
@@ -53,7 +53,7 @@ test.describe('Action CRUD', () => {
     await page.locator('[data-testid="add-action-btn"]').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
 
     // Set output name
     const outputField = panel.locator('[data-testid="action-output-field"] input');
@@ -64,7 +64,7 @@ test.describe('Action CRUD', () => {
     await page.waitForTimeout(100);
 
     // Save actionsheet
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // Now manually edit the YAML to set the value (simpler than building UI for literal string values)
@@ -94,7 +94,7 @@ test.describe('Action CRUD', () => {
     await page.locator('[data-testid="add-action-btn"]').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
 
     // Set output name
     const outputField = panel.locator('[data-testid="action-output-field"] input');
@@ -106,7 +106,7 @@ test.describe('Action CRUD', () => {
 
     // No OperationSettings visible yet because action.value is '' (not an operation)
     // Save and verify
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     const yaml = await readYamlPane(page);

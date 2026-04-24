@@ -16,7 +16,9 @@
   "dependencies": {
     "@cucumber/gherkin": "^39.0.0",
     "@cucumber/messages": "^32.3.1",
-    "@minbzk/storybook": "^0.8.24"
+    "@minbzk/storybook": "^0.8.35",
+    "dompurify": "^3.4.1",
+    "marked": "^18.0.2"
   },
   "overrides": {
     "brace-expansion": "^5.0.5"

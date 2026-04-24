@@ -3,9 +3,9 @@ import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import EditSheet from './EditSheet.vue';
 
-// Vite is configured with `isCustomElement: tag => tag.startsWith('ndd-')`
+// Vite is configured with `isCustomElement: tag => tag.startsWith('nldd-')`
 // (vite.config.js), so Vue's compiler emits raw HTML elements for the
-// `<ndd-sheet>` tag rather than Vue components. The Vue Test Utils
+// `<nldd-sheet>` tag rather than Vue components. The Vue Test Utils
 // `stubs:` map doesn't apply to those — the template ref ends up pointing
 // at a real HTMLElement in happy-dom, which has no `show()` / `hide()`
 // methods, so EditSheet's `watch(item, ...)` throws an unhandled
@@ -15,17 +15,17 @@ import EditSheet from './EditSheet.vue';
 // watcher runs cleanly. We don't care about visual rendering — the tests
 // drive the component via `wrapper.vm.values` / `wrapper.vm.save()`.
 beforeAll(() => {
-  if (typeof customElements !== 'undefined' && !customElements.get('ndd-sheet')) {
+  if (typeof customElements !== 'undefined' && !customElements.get('nldd-sheet')) {
     class NddSheetTestStub extends HTMLElement {
       show() {}
       hide() {}
     }
-    customElements.define('ndd-sheet', NddSheetTestStub);
+    customElements.define('nldd-sheet', NddSheetTestStub);
   }
 });
 
 /**
- * EditSheet relies on `ndd-sheet`'s `show()` / `hide()` methods which only
+ * EditSheet relies on `nldd-sheet`'s `show()` / `hide()` methods which only
  * exist on the real custom element. In jsdom there is no element backing
  * those methods, so we stub the ref before the watch fires by mounting
  * with a sheetEl shim.
@@ -35,10 +35,10 @@ beforeAll(() => {
  * each section's data flow.
  */
 function mountSheet(item = null) {
-  // No stubs needed: ndd-* tags are treated as raw HTML by Vue's compiler
-  // (see vite.config.js `isCustomElement`), and `ndd-sheet` is registered
+  // No stubs needed: nldd-* tags are treated as raw HTML by Vue's compiler
+  // (see vite.config.js `isCustomElement`), and `nldd-sheet` is registered
   // above with no-op show/hide so the watcher in EditSheet doesn't crash.
-  // The remaining ndd-* elements render as empty <ndd-*> nodes; the tests
+  // The remaining nldd-* elements render as empty <nldd-*> nodes; the tests
   // poke values directly through `wrapper.vm.values` and exercise the
   // emitted save payloads, not the rendered form.
   return mount(EditSheet, {

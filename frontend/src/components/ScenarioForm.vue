@@ -4,6 +4,12 @@ import { parseValue } from '../gherkin/steps.js';
 import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
 
+function humanize(name) {
+  if (typeof name !== 'string') return name;
+  const spaced = name.replace(/_/g, ' ');
+  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
+}
+
 const props = defineProps({
   /** Scenario object from mapFeatureToForm() */
   scenario: { type: Object, required: true },
@@ -19,7 +25,7 @@ const props = defineProps({
   articleMap: { type: Object, default: null },
 });
 
-const emit = defineEmits(['show-details', 'executed']);
+const emit = defineEmits(['show-details', 'executed', 'change']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -194,6 +200,7 @@ function updateDataSourceRows(index, rows) {
   const updated = [...dataSources.value];
   updated[index] = { ...updated[index], rows };
   dataSources.value = updated;
+  emit('change');
 }
 
 // --- Result formatting (delegates to shared utils) ---
@@ -202,43 +209,31 @@ function matchStatus(outputName, actualValue) {
 }
 
 const hasExpectations = computed(() => Object.keys(expectations.value).length > 0);
-
-const overallStatus = computed(() => {
-  if (!result.value) return null;
-  const keys = Object.keys(expectations.value);
-  if (keys.length === 0) return null;
-  for (const name of keys) {
-    if (matchStatus(name, result.value.outputs?.[name]) === 'failed') return 'failed';
-  }
-  return 'passed';
-});
 </script>
 
 <template>
   <div class="sf-form">
-    <!-- Expected outputs at top -->
+    <!-- Expected outputs -->
     <template v-if="hasExpectations">
-      <ndd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></ndd-title>
-      <div
-        class="sf-expectations-block"
-        :class="result ? `sf-expectations-block--${overallStatus}` : (error ? 'sf-expectations-block--failed' : '')"
-      >
-        <div
-          v-for="(exp, name) in expectations"
-          :key="name"
-          class="sf-expectation-item"
-        >
-          <span class="sf-expectation-name">{{ name }}</span>
-          <span v-if="articleMap?.outputToArticle?.get(name)" class="sf-article-tag">Art. {{ articleMap.outputToArticle.get(name) }}</span>
-          <span class="sf-expectation-detail">
-            <span>{{ formatValue(normalizeForCompare(exp)) }}</span>
-            <template v-if="result && result.outputs">
-              <span class="sf-expectation-arrow">&rarr;</span>
-              <span>{{ formatOutputValue(result.outputs[name], name) }}</span>
-            </template>
-          </span>
-        </div>
-      </div>
+      <nldd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></nldd-title>
+      <nldd-spacer size="4"></nldd-spacer>
+      <nldd-list variant="simple">
+        <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
+          <nldd-text-cell size="md" :text="humanize(name)"></nldd-text-cell>
+          <nldd-text-cell
+            size="md"
+            horizontal-alignment="right"
+            :text="humanize(formatValue(normalizeForCompare(exp)))"
+          ></nldd-text-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-button
+        :disabled="!result && !error || undefined"
+        @click="emit('show-details')"
+        text="Toon resultaat"
+      ></nldd-button>
+      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Error -->
@@ -248,26 +243,26 @@ const overallStatus = computed(() => {
     <div v-if="running" class="sf-running">Uitvoeren...</div>
 
     <!-- Input: date + parameters -->
-    <ndd-title size="5" class="sf-section-title"><span>Invoer</span></ndd-title>
-    <ndd-list variant="box" class="sf-input-list">
-      <ndd-list-item size="md">
-        <ndd-text-cell text="Datum" max-width="140"></ndd-text-cell>
-        <ndd-cell>
-          <ndd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate"></ndd-text-field>
-        </ndd-cell>
-      </ndd-list-item>
-      <ndd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-        <ndd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140"></ndd-text-cell>
-        <ndd-cell>
-          <ndd-text-field
+    <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
+    <nldd-list variant="box" class="sf-input-list">
+      <nldd-list-item size="md">
+        <nldd-text-cell text="Datum" max-width="140"></nldd-text-cell>
+        <nldd-cell>
+          <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+        </nldd-cell>
+      </nldd-list-item>
+      <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
+        <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140"></nldd-text-cell>
+        <nldd-cell>
+          <nldd-text-field
             size="md"
             :value="value"
             :placeholder="name"
-            @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }"
-          ></ndd-text-field>
-        </ndd-cell>
-      </ndd-list-item>
-    </ndd-list>
+            @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
+          ></nldd-text-field>
+        </nldd-cell>
+      </nldd-list-item>
+    </nldd-list>
 
     <!-- Data sources -->
     <DataSourceTable
@@ -281,14 +276,6 @@ const overallStatus = computed(() => {
       @update:model-value="updateDataSourceRows(i, $event)"
     />
 
-    <!-- Details button -->
-    <div class="sf-actions-row">
-      <ndd-button
-        :disabled="!result && !error || undefined"
-        @click="emit('show-details')"
-        text="Details" end-icon="chevron-right"
-      ></ndd-button>
-    </div>
   </div>
 </template>
 
@@ -308,67 +295,9 @@ const overallStatus = computed(() => {
 }
 
 /* Expected outputs — single continuous block with left border */
-.sf-expectations-block {
-  border-left: 3px solid transparent;
-  padding: 8px 10px;
-  border-radius: 4px;
-  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.sf-expectations-block--passed {
-  border-left-color: #2e7d32;
-}
-
-.sf-expectations-block--failed {
-  border-left-color: #c62828;
-}
-
-.sf-expectation-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.sf-expectation-name {
-  font-weight: 400;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sf-article-tag {
-  font-size: 10px;
-  font-weight: 600;
-  color: #666;
-  background: rgba(0, 0, 0, 0.06);
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.sf-expectation-detail {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--semantics-text-color-primary, #1C2029);
-}
-
-.sf-expectation-arrow {
-  flex-shrink: 0;
-  color: var(--semantics-text-color-secondary, #666);
-}
-
 /* DataSourceTable blocks get the same top spacing as section titles */
 .sf-form :deep(.ds-block) {
   margin-top: 16px;
-}
-
-/* Actions row */
-.sf-actions-row {
-  padding: 8px 0;
 }
 
 .sf-running {
@@ -387,19 +316,19 @@ const overallStatus = computed(() => {
 </style>
 
 <style>
-/* Unscoped: ndd web components need global selectors */
-.sf-input-list ndd-text-cell {
+/* Unscoped: nldd web components need global selectors */
+.sf-input-list nldd-text-cell {
   width: 140px;
   min-width: 140px;
   flex-shrink: 0;
 }
 
-.sf-input-list ndd-cell {
+.sf-input-list nldd-cell {
   flex: 1;
   min-width: 0;
 }
 
-.sf-input-list ndd-text-field {
+.sf-input-list nldd-text-field {
   width: 100%;
 }
 </style>

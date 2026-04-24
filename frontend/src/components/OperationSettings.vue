@@ -157,6 +157,10 @@ const operationValues = computed(() => {
   return vals;
 });
 
+const hasClickableRow = computed(() =>
+  !props.editable && operationValues.value.some(v => isNestedOperation(v._value))
+);
+
 function isNestedOperation(val) {
   return val != null && typeof val === 'object' && val.operation;
 }
@@ -344,6 +348,28 @@ function updateDropdownValue(val, event) {
   applyValueMutation(val, newVal);
 }
 
+function humanize(name) {
+  if (typeof name !== 'string') return name;
+  const spaced = name.replace(/_/g, ' ');
+  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
+}
+
+function variableLabel(ref) {
+  for (const opts of variableGroups.value.values()) {
+    const hit = opts.find(o => o.value === ref);
+    if (hit) return humanize(hit.label);
+  }
+  return humanize(ref);
+}
+
+function readonlyValueText(val) {
+  const v = val._value;
+  if (v === null || v === undefined || v === '') return '—';
+  if (isNestedOperation(v)) return formatValueLabel(v) + ' (operatie)';
+  if (typeof v === 'string' && v.startsWith('$')) return variableLabel(v);
+  return humanize(String(v));
+}
+
 function removeValue(val) {
   const node = props.operation?.node;
   if (!node) return;
@@ -402,62 +428,82 @@ function addNestedOperation() {
 
 <template>
   <template v-if="operation">
-    <ndd-title size="4" class="operation-settings__title">
+    <nldd-title size="4" class="operation-settings__title">
       <h4>Instellingen operatie {{ operation.number }}</h4>
-      <ndd-icon-button slot="actions" icon="ellipsis" title="Meer opties"></ndd-icon-button>
-    </ndd-title>
-    <ndd-spacer size="12"></ndd-spacer>
-    <ndd-list variant="box" class="settings-list">
+    </nldd-title>
+    <nldd-spacer size="12"></nldd-spacer>
+    <nldd-list variant="box" class="settings-list">
       <!-- Titel -->
-      <ndd-list-item size="md">
-        <ndd-text-cell text="Titel" max-width="120"></ndd-text-cell>
-        <ndd-cell>
-          <!-- Title is derived from the operation type (humanized) and not a
-               persistable YAML field, so it's display-only. -->
-          <ndd-text-field size="md" :value="operation.title" readonly></ndd-text-field>
-        </ndd-cell>
-      </ndd-list-item>
+      <nldd-list-item size="md">
+        <nldd-text-cell text="Titel" max-width="120"></nldd-text-cell>
+        <nldd-cell v-if="editable">
+          <nldd-text-field size="md" :value="operation.title" readonly></nldd-text-field>
+        </nldd-cell>
+        <template v-else>
+          <nldd-text-cell horizontal-alignment="right" :text="operation.title || '—'"></nldd-text-cell>
+          <template v-if="hasClickableRow">
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-icon-cell size="20"></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          </template>
+        </template>
+      </nldd-list-item>
 
       <!-- Type -->
-      <ndd-list-item size="md">
-        <ndd-text-cell text="Type" max-width="120"></ndd-text-cell>
-        <ndd-cell>
-          <ndd-dropdown size="md" data-testid="operation-type-dropdown">
-            <select aria-label="Operatie type" :value="operation.operation" :disabled="!editable" @change="editable && changeOperationType($event)">
+      <nldd-list-item size="md">
+        <nldd-text-cell text="Type" max-width="120"></nldd-text-cell>
+        <nldd-cell v-if="editable">
+          <nldd-dropdown size="md" data-testid="operation-type-dropdown">
+            <select aria-label="Operatie type" :value="operation.operation" @change="changeOperationType($event)">
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value" :selected="opt.value === operation.operation">{{ opt.label }}</option>
             </select>
-          </ndd-dropdown>
-        </ndd-cell>
-      </ndd-list-item>
+          </nldd-dropdown>
+        </nldd-cell>
+        <template v-else>
+          <nldd-text-cell horizontal-alignment="right" :text="OPERATION_LABELS[operation.operation] || operation.operation || '—'"></nldd-text-cell>
+          <template v-if="hasClickableRow">
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-icon-cell size="20"></nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          </template>
+        </template>
+      </nldd-list-item>
 
       <!-- Waarde rows -->
-      <ndd-list-item v-for="(val, i) in operationValues" :key="i" size="md" :data-testid="`op-value-${i}`">
-        <ndd-text-cell :text="val._label" max-width="120"></ndd-text-cell>
-        <ndd-cell>
+      <nldd-list-item
+        v-for="(val, i) in operationValues"
+        :key="i"
+        size="md"
+        :data-testid="`op-value-${i}`"
+        :type="!editable && isNestedOperation(val._value) ? 'button' : undefined"
+        @click="!editable && isNestedOperation(val._value) && emit('select-operation', val._value)"
+      >
+        <nldd-text-cell :text="val._label" max-width="120"></nldd-text-cell>
+        <nldd-cell v-if="editable">
           <div class="value-row">
             <!-- Subject/date fields show a dropdown of available variables.
                  If the field already holds a literal value (e.g. "2025-01-01"),
                  it's included as the first option so it stays visible and
                  selectable. -->
             <template v-if="val._kind === 'subject' || val._kind === 'date_of_birth' || val._kind === 'reference_date'">
-              <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
-                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
+              <nldd-dropdown size="md" style="flex: 1; min-width: 0;">
+                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
                   <option value="">Selecteer...</option>
                   <option v-if="isLiteralValue(val._value) && val._value !== '' && val._value !== null" :value="String(val._value)" :selected="true">{{ String(val._value) }}</option>
                   <optgroup v-for="[category, opts] in variableGroups" :key="category" :label="category">
                     <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                   </optgroup>
                 </select>
-              </ndd-dropdown>
+              </nldd-dropdown>
             </template>
             <!-- Literal values show a text field -->
             <template v-else-if="isLiteralValue(val._value)">
-              <ndd-text-field size="md" :value="String(val._value)" is-full-width :readonly="!editable" @input="editable && updateValue(val, $event)"></ndd-text-field>
+              <nldd-text-field size="md" :value="String(val._value)" is-full-width @input="updateValue(val, $event)"></nldd-text-field>
             </template>
             <!-- Variable references and nested operations show a full dropdown -->
             <template v-else>
-              <ndd-dropdown size="md" style="flex: 1; min-width: 0;">
-                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" :disabled="!editable" @change="editable && updateDropdownValue(val, $event)">
+              <nldd-dropdown size="md" style="flex: 1; min-width: 0;">
+                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
                   <template v-for="nestedOpt in [valueDropdownNestedOption(val._value)]" :key="'nested'">
                     <option v-if="nestedOpt" :value="nestedOpt.value" :selected="currentDropdownValue(val._value) === '__nested__'">{{ nestedOpt.label }}</option>
                   </template>
@@ -465,50 +511,64 @@ function addNestedOperation() {
                     <option v-for="opt in opts" :key="opt.value" :value="opt.value" :selected="opt.value === currentDropdownValue(val._value)">{{ opt.label }}</option>
                   </optgroup>
                 </select>
-              </ndd-dropdown>
+              </nldd-dropdown>
             </template>
-            <ndd-icon-button v-if="canRemoveValue(val)" icon="minus" title="Verwijder waarde" @click="removeValue(val)">
-            </ndd-icon-button>
+            <nldd-icon-button v-if="canRemoveValue(val)" icon="minus" title="Verwijder waarde" @click="removeValue(val)">
+            </nldd-icon-button>
           </div>
           <p v-if="isNestedOperation(val._value)" class="value-help-text">
             {{ describeSubtitle(val._value) }}
             <a href="#" @click.prevent="emit('select-operation', val._value)">Bewerk</a>
           </p>
-        </ndd-cell>
-      </ndd-list-item>
+        </nldd-cell>
+        <template v-else>
+          <nldd-text-cell
+            horizontal-alignment="right"
+            :text="readonlyValueText(val)"
+            :supporting-text="isNestedOperation(val._value) ? describeSubtitle(val._value) : ''"
+          ></nldd-text-cell>
+          <template v-if="hasClickableRow">
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-icon-cell size="20">
+              <nldd-icon v-if="isNestedOperation(val._value)" name="chevron-down"></nldd-icon>
+            </nldd-icon-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          </template>
+        </template>
+      </nldd-list-item>
 
       <!-- Add value -->
-      <ndd-list-item v-if="canAddValue || canAddNestedOperation" size="md">
+      <nldd-list-item v-if="canAddValue || canAddNestedOperation" size="md">
         <div class="add-value-buttons">
-          <ndd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></ndd-button>
-          <ndd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Voeg operatie toe"></ndd-button>
+          <nldd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></nldd-button>
+          <nldd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Voeg operatie toe"></nldd-button>
         </div>
-      </ndd-list-item>
-    </ndd-list>
+      </nldd-list-item>
+    </nldd-list>
   </template>
 </template>
 
 <style>
-/* Reset browser default h4 margin so the ndd-spacer below the title is the
+/* Reset browser default h4 margin so the nldd-spacer below the title is the
  * only source of vertical gap. Without this the h4's default bottom margin
  * (~1em) collapses into the spacer unpredictably, which caused the
  * "textboxes falling under the title" visual in the action panel.
  *
- * Keyed off a `.operation-settings__title` BEM class on the ndd-title in
+ * Keyed off a `.operation-settings__title` BEM class on the nldd-title in
  * this component. The rule is in an unscoped `<style>` block alongside the
- * rest of the file's selectors (Vue scoped styles can't reach into NDD
+ * rest of the file's selectors (Vue scoped styles can't reach into NLDD
  * shadow DOM), so the class name is the only thing preventing bleed into
  * other components — keep the class unique to this component. */
 .operation-settings__title h4 {
   margin: 0;
 }
 
-.settings-list ndd-cell {
+.settings-list nldd-cell {
   flex: 1;
   min-width: 0;
 }
-.settings-list ndd-text-field,
-.settings-list ndd-dropdown {
+.settings-list nldd-text-field,
+.settings-list nldd-dropdown {
   width: 100%;
 }
 
@@ -518,8 +578,8 @@ function addNestedOperation() {
   align-items: center;
   width: 100%;
 }
-.value-row ndd-text-field,
-.value-row ndd-dropdown {
+.value-row nldd-text-field,
+.value-row nldd-dropdown {
   flex: 1;
   min-width: 0;
 }

@@ -42,17 +42,17 @@ function onModeChange(event) {
 <template>
   <div class="scenario-panel">
     <!-- Init error -->
-    <ndd-simple-section v-if="initError" align="center">
-      <ndd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${initError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></ndd-inline-dialog>
-    </ndd-simple-section>
+    <nldd-simple-section v-if="initError" align="center">
+      <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${initError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
+    </nldd-simple-section>
 
     <template v-else>
       <!-- Mode toggle -->
       <div class="scenario-mode-bar">
-        <ndd-segmented-control size="md" :value="mode" @change="onModeChange">
-          <ndd-segmented-control-item value="form" text="Formulier"></ndd-segmented-control-item>
-          <ndd-segmented-control-item value="gherkin" text="Gherkin"></ndd-segmented-control-item>
-        </ndd-segmented-control>
+        <nldd-segmented-control size="md" :value="mode" @change="onModeChange">
+          <nldd-segmented-control-item value="form" text="Formulier"></nldd-segmented-control-item>
+          <nldd-segmented-control-item value="gherkin" text="Gherkin"></nldd-segmented-control-item>
+        </nldd-segmented-control>
       </div>
 
       <!-- Form mode -->

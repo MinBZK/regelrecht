@@ -15,7 +15,7 @@ test.describe('Definitions', () => {
     await page.waitForTimeout(300);
 
     // Click "Nieuwe definitie" button
-    await page.locator('ndd-button:has-text("Nieuwe definitie")').click();
+    await page.locator('nldd-button:has-text("Nieuwe definitie")').click();
     await waitForSheet(page);
 
     // Set name
@@ -46,7 +46,7 @@ test.describe('Definitions', () => {
     await page.waitForTimeout(300);
 
     // Add definition: drempelinkomen_alleenstaande = 3971900
-    await page.locator('ndd-button:has-text("Nieuwe definitie")').click();
+    await page.locator('nldd-button:has-text("Nieuwe definitie")').click();
     await waitForSheet(page);
 
     await fillSheetTextField(page, 'Naam', 'drempelinkomen_alleenstaande');
