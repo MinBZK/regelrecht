@@ -2350,7 +2350,20 @@ impl LawExecutionService {
 
             // Legacy DataSourceRegistry resolution (single-key lookup by
             // input name). Used when YAML doesn't declare table metadata.
-            if self.data_registry.source_count() > 0 {
+            //
+            // Skip this fallback entirely when the YAML declares an explicit
+            // cross-law source (`source.regulation`) or internal reference
+            // (`source.output`). Otherwise a registered data source that
+            // happens to expose a column with the same name as the input
+            // would short-circuit the cross-law call and return the
+            // wrong-typed raw value. See kieswet: a boolean `nationaliteit`
+            // input cross-references wet_brp#heeft_nederlandse_nationaliteit,
+            // while the registered `personen` table has a string column
+            // `nationaliteit` ("NEDERLANDS").
+            if self.data_registry.source_count() > 0
+                && source.regulation.is_none()
+                && source.output.is_none()
+            {
                 if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
                     tracing::debug!(
                         input = %input.name,
@@ -3420,16 +3433,16 @@ articles:
 
     #[test]
     fn test_data_registry_provides_input() {
-        // A law references a regulation for an input, but the data registry
-        // provides the value directly. The referenced regulation is NOT loaded,
-        // proving the registry short-circuits cross-law resolution.
+        // A law declares `source: {}` (no regulation/output) for an input and
+        // the data registry holds a matching key. The legacy single-key
+        // registry fallback should resolve it.
         let law = r#"
 $id: registry_test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
 articles:
   - number: '1'
-    text: Has external reference resolved by registry
+    text: Has empty source resolved by registry
     machine_readable:
       execution:
         parameters:
@@ -3439,11 +3452,7 @@ articles:
         input:
           - name: external_value
             type: number
-            source:
-              regulation: nonexistent_law
-              output: some_output
-              parameters:
-                BSN: $BSN
+            source: {}
         output:
           - name: result
             type: number
@@ -3475,6 +3484,45 @@ articles:
 
         // result = 42 * 3 = 126
         assert_eq!(result.outputs.get("result"), Some(&Value::Int(126)));
+    }
+
+    #[test]
+    fn test_cross_law_wins_over_registry_with_same_input_name() {
+        // Regression test for kieswet/wet_brp nationaliteit collision:
+        // when a YAML declares an explicit cross-law source
+        // (source.regulation + source.output), a registered data source that
+        // happens to expose a column with the same name as the input must
+        // NOT short-circuit the cross-law call.
+        //
+        // Setup: base_law outputs base_value=100. dependent_law references
+        // base_law#base_value. A registry entry also provides a column
+        // named `external_base` with value 7. The cross-law value (100) must
+        // win, not the registry value (7).
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+
+        let mut record = BTreeMap::new();
+        record.insert("key".to_string(), Value::String("x".to_string()));
+        // Column name collides with the input name in dependent_law
+        record.insert("external_base".to_string(), Value::Int(7));
+
+        service
+            .register_dict_source("colliding_data", "key", vec![record])
+            .unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "dependent_law",
+                "doubled_value",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        // Cross-law base_value=100 → doubled=200. If the registry had won,
+        // doubled would be 14.
+        assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
     }
 
     #[test]
