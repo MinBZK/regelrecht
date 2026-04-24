@@ -164,6 +164,9 @@ function getExecutionData() {
     traceText: result.value?.trace_text || errorTraceText.value || null,
     error: error.value,
     expectations: expectations.value,
+    // Expose the scenario's entry output so the graph view can mark the
+    // starting leaf (see useTraceStepping.startNodeIds).
+    outputName: props.scenario.execution?.outputName || selectedOutputs.value[0] || null,
   };
 }
 

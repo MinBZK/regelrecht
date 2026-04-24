@@ -250,13 +250,17 @@ const lastResult = ref(null);
 const lastError = ref(null);
 const lastExpectations = ref({});
 const lastScenarioName = ref('');
+// The scenario's entry output (e.g. "is_rechthebbende"). The graph pane
+// uses this to pin its "▶ start" marker to the right leaf.
+const lastOutputName = ref(null);
 
-function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName }) {
+function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
+  lastOutputName.value = outputName || null;
   resultSheetOpen.value = true;
 }
 
@@ -845,7 +849,12 @@ function handleActionSave() {
           <nldd-split-view-pane v-if="showGraphPane" :slot="paneSlot('graph')">
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" text="Wettengraaf"></nldd-top-title-bar>
-              <LawGraphView :law-id="lawId" />
+              <LawGraphView
+                :law-id="lawId"
+                :result="lastResult"
+                :output-name="lastOutputName"
+                :expectations="lastExpectations"
+              />
             </nldd-page>
           </nldd-split-view-pane>
         </nldd-side-by-side-split-view>

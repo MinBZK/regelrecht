@@ -229,6 +229,9 @@ function onShowDetails(index) {
       error: data.error,
       expectations: data.expectations || {},
       scenarioName,
+      // Forward the scenario's entry output so the graph view can pin
+      // its "▶ start" marker to the right output leaf.
+      outputName: data.outputName || null,
     });
   }
 }
