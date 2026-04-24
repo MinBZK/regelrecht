@@ -35,9 +35,14 @@ export function ensureAuthReady() {
 export function useAuth() {
   ensureAuthReady();
 
-  function login() {
-    const returnUrl = window.location.pathname + window.location.search + window.location.hash;
-    window.location.href = '/auth/login?return_url=' + encodeURIComponent(returnUrl);
+  // Accepts an explicit return URL so callers that know the user's intended
+  // destination (e.g. a router guard firing before navigation commits, where
+  // `window.location` still points at the source route) can forward it to
+  // SSO. Falls back to the current location for the common case.
+  function login(returnUrl) {
+    const url = returnUrl
+      ?? window.location.pathname + window.location.search + window.location.hash;
+    window.location.href = '/auth/login?return_url=' + encodeURIComponent(url);
   }
 
   function logout() {

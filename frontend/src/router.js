@@ -43,7 +43,12 @@ router.beforeEach(async (to) => {
   await ensureAuthReady();
   const { authenticated, oidcConfigured, login } = useAuth();
   if (oidcConfigured.value && !authenticated.value) {
-    login();
+    // Pass the intended destination explicitly: inside beforeEach, the
+    // client-side navigation has not committed yet, so window.location
+    // still reflects the source route (e.g. /library). Without this, the
+    // user would land back on the source route after SSO instead of the
+    // page they originally clicked.
+    login(to.fullPath);
     return false;
   }
   return true;

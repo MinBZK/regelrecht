@@ -45,9 +45,9 @@ const paneSlot = (name) => {
 
 // All edit operations are gated behind SSO. When OIDC is configured the user
 // must be authenticated; when OIDC is disabled the editor is fully open.
-// The `requiresAuth` router guard already blocks unauthenticated users from
-// reaching this component when OIDC is on, so in practice canEdit is only
-// false in the OIDC-disabled fallback window before /auth/status returns.
+// In practice the `requiresAuth` router guard already awaits the auth-check
+// and blocks unauthenticated users before this component mounts, so canEdit
+// is always true here — the computed remains as a safety net.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
 const route = useRoute();
