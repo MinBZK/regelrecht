@@ -1,6 +1,6 @@
 # frontend-demo
 
-Burger-demo Vue-app voor regelrecht. Uitvoering gebeurt volledig in de browser via WASM (geen backend nodig voor berekeningen). Zie [RFC-016](../docs/rfcs/rfc-016.md).
+Burger-demo Vue-app voor regelrecht. Uitvoering gebeurt volledig in de browser via WASM (geen backend nodig voor berekeningen).
 
 ## Lokaal draaien
 

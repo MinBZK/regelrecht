@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Burger-demo voor regelrecht (RFC-016). Draait alleen in de browser; uitvoering via WASM.",
+  "description": "Burger-demo voor regelrecht. Draait alleen in de browser; uitvoering via WASM.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

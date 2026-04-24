@@ -358,7 +358,7 @@ local-psql:
 local-clean:
     {{ compose-local }} down -v
 
-# --- Burger-demo (frontend-demo + demo-api, zie RFC-016) ---
+# --- Burger-demo (frontend-demo + demo-api) ---
 
 # Bundle corpus YAMLs + persona JSON naar frontend-demo/public/demo-assets/
 demo-assets:

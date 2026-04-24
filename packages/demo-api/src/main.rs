@@ -1,4 +1,4 @@
-//! Burger-demo LLM-uitlegproxy (RFC-016).
+//! Burger-demo LLM-uitlegproxy.
 //!
 //! One-route Axum service that translates a law-execution result into a
 //! citizen-friendly Dutch explanation via the Anthropic API.

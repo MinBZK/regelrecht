@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `landing/` - Static landing page (regelrecht.rijks.app)
 - `docs/` - Documentation site (VitePress)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
-- `corpus-demo/` - Demo-only corpus additions (personas, demo-index, optional demo-only YAML). Zie [RFC-016](docs/rfcs/rfc-016.md)
+- `corpus-demo/` - Demo-only corpus additions (personas, demo-index, optional demo-only YAML) for the burger-demo
 - `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
 - `frontend-demo/` - Burger-demo Vue-app (alleen RR-Components; WASM-engine)
 - `packages/demo-api/` - Axum LLM-proxy voor burger-demo (POST /api/explain)
@@ -113,7 +113,7 @@ Write an RFC for:
 
 ## Burger-demo principes
 
-De burger-demo (`frontend-demo/` + `corpus-demo/`) is bewust geïsoleerd van het hoofdcorpus. Zie [RFC-016](docs/rfcs/rfc-016.md).
+De burger-demo (`frontend-demo/` + `corpus-demo/` + `packages/demo-api/`) is bewust geïsoleerd van het hoofdcorpus: eigen corpus-directory, WASM-in-browser executie, en een aparte Axum LLM-uitlegproxy.
 
 - **Demo-YAML mag afwijken van de wet** mits iedere afwijking in een README bij de wet wordt gedocumenteerd.
 - **Law-faithful wetten niet kopiëren** — de demo-index (`corpus-demo/demo-index.yaml`) verwijst naar `corpus/regulation/`.

@@ -1,6 +1,6 @@
 ---
-# Persona voor de burger-demo (RFC-016).
-# Synthetische BSN, gefingeerde inkomens. Niet gebruiken voor echte testen.
+# Persona voor de burger-demo. Synthetische BSN, gefingeerde inkomens.
+# Niet gebruiken voor echte testen.
 
 bsn: '100000001'
 name: Merijn van der Meer
