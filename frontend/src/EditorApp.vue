@@ -56,6 +56,11 @@ watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) 
 // must be authenticated; when OIDC is disabled the editor is fully open.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
+// Gate the editor UI on the auth-check result. Without this, the template
+// renders before `window.location.href = /auth/login` navigates away, so
+// unauthenticated users see a flash of the editor skeleton on the way to SSO.
+const canRender = computed(() => !authLoading.value && canEdit.value);
+
 const route = useRoute();
 const router = useRouter();
 
@@ -665,6 +670,8 @@ function handleActionSave() {
 </script>
 
 <template>
+  <div v-if="!canRender" class="editor-auth-wait" aria-hidden="true"></div>
+  <template v-else>
   <nldd-app-view>
     <nldd-bar-split-view>
       <!-- Primary Bar: App Toolbar + Document Tabs -->
@@ -873,9 +880,15 @@ function handleActionSave() {
       />
     </nldd-page>
   </nldd-sheet>
+  </template>
 </template>
 
 <style>
+.editor-auth-wait {
+  height: 100%;
+  background: var(--semantics-surfaces-default-background-color, #fff);
+}
+
 .editor-engine-error {
   padding: 12px 16px;
   background: #fee;
