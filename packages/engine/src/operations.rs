@@ -2961,15 +2961,9 @@ mod tests {
             // the candidate list.
             let resolver = TestResolver::new();
             let op = ActionOperation::In {
-                subject: lit(Value::Array(vec![
-                    Value::String("EENMANSZAAK".to_string()),
-                ])),
+                subject: lit(Value::Array(vec![Value::String("EENMANSZAAK".to_string())])),
                 value: None,
-                values: Some(vec![
-                    lit("EENMANSZAAK"),
-                    lit("VOF"),
-                    lit("MAATSCHAP"),
-                ]),
+                values: Some(vec![lit("EENMANSZAAK"), lit("VOF"), lit("MAATSCHAP")]),
             };
 
             let result = execute_operation(&op, &resolver, 0).unwrap();
@@ -3003,9 +2997,7 @@ mod tests {
                 ]),
             );
             let op = ActionOperation::In {
-                subject: lit(Value::Array(vec![
-                    Value::String("EENMANSZAAK".to_string()),
-                ])),
+                subject: lit(Value::Array(vec![Value::String("EENMANSZAAK".to_string())])),
                 value: Some(var("ondernemersvormen")),
                 values: None,
             };

@@ -362,6 +362,7 @@ impl RegelrechtEngine {
     ///         columns are kept in each record returned via array_field. Empty
     ///         or omitted means "include the whole record".
     #[pyo3(signature = (name, records, key_field=None, select_on=None, aliases=None, array_field=None, array_field_projection=None))]
+    #[allow(clippy::too_many_arguments)]
     fn register_record_set_source(
         &mut self,
         name: &str,

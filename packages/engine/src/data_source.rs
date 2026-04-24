@@ -490,11 +490,7 @@ impl DataSource for RecordSetDataSource {
         }
 
         // Field-alias input: rewrite to the underlying column name.
-        let lookup_field = self
-            .aliases
-            .get(&lc_field)
-            .cloned()
-            .unwrap_or(lc_field);
+        let lookup_field = self.aliases.get(&lc_field).cloned().unwrap_or(lc_field);
 
         // Take the first matching record and read the requested column.
         let indices = self.matching_indices(criteria);
@@ -632,8 +628,10 @@ impl RecordSetDataSourceBuilder {
     /// Add a single field alias: requesting `input_name` returns the value of
     /// the `column_name` field from the matched record.
     pub fn alias(mut self, input_name: impl Into<String>, column_name: impl Into<String>) -> Self {
-        self.aliases
-            .insert(input_name.into().to_lowercase(), column_name.into().to_lowercase());
+        self.aliases.insert(
+            input_name.into().to_lowercase(),
+            column_name.into().to_lowercase(),
+        );
         self
     }
 
@@ -664,19 +662,12 @@ impl RecordSetDataSourceBuilder {
         // Normalize record column names to lowercase.
         let normalized: Vec<BTreeMap<String, Value>> = records
             .into_iter()
-            .map(|r| {
-                r.into_iter()
-                    .map(|(k, v)| (k.to_lowercase(), v))
-                    .collect()
-            })
+            .map(|r| r.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect())
             .collect();
 
         // Build field index from all observed columns.
-        let field_index: HashSet<String> = normalized
-            .iter()
-            .flat_map(|r| r.keys())
-            .cloned()
-            .collect();
+        let field_index: HashSet<String> =
+            normalized.iter().flat_map(|r| r.keys()).cloned().collect();
 
         Ok(RecordSetDataSource {
             name: self.name,
@@ -1261,7 +1252,10 @@ mod tests {
                 r.insert("bsn".to_string(), Value::String("123".to_string()));
                 r.insert("year".to_string(), Value::Int(2024));
                 r.insert("income".to_string(), Value::Int(50000));
-                r.insert("mate_van_gevaar".to_string(), Value::String("hoog".to_string()));
+                r.insert(
+                    "mate_van_gevaar".to_string(),
+                    Value::String("hoog".to_string()),
+                );
                 r
             },
             {
@@ -1269,7 +1263,10 @@ mod tests {
                 r.insert("bsn".to_string(), Value::String("123".to_string()));
                 r.insert("year".to_string(), Value::Int(2025));
                 r.insert("income".to_string(), Value::Int(55000));
-                r.insert("mate_van_gevaar".to_string(), Value::String("middel".to_string()));
+                r.insert(
+                    "mate_van_gevaar".to_string(),
+                    Value::String("middel".to_string()),
+                );
                 r
             },
             {
@@ -1277,7 +1274,10 @@ mod tests {
                 r.insert("bsn".to_string(), Value::String("456".to_string()));
                 r.insert("year".to_string(), Value::Int(2025));
                 r.insert("income".to_string(), Value::Int(40000));
-                r.insert("mate_van_gevaar".to_string(), Value::String("laag".to_string()));
+                r.insert(
+                    "mate_van_gevaar".to_string(),
+                    Value::String("laag".to_string()),
+                );
                 r
             },
         ]
@@ -1694,14 +1694,8 @@ mod tests {
     #[test]
     fn test_registry_resolve_native_unknown_table() {
         let registry = DataSourceRegistry::new();
-        let result = registry.resolve_native(
-            "missing",
-            Some("foo"),
-            None,
-            &[],
-            &BTreeMap::new(),
-            false,
-        );
+        let result =
+            registry.resolve_native("missing", Some("foo"), None, &[], &BTreeMap::new(), false);
         assert!(result.is_none());
     }
 

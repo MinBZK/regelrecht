@@ -26,7 +26,7 @@
 //! ```
 
 use crate::article::{
-    Article, ArticleBasedLaw, Execution, HookPoint, MachineReadable, SelectOnCriterion,
+    Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable, SelectOnCriterion,
 };
 use crate::config;
 use crate::context::RuleContext;
@@ -373,6 +373,149 @@ fn resolve_param_ref(
             .cloned()
             .or_else(|| resolved_inputs.get(name).cloned())
     }
+}
+
+/// Extract a `$name` reference from a source-ref string.
+///
+/// `source.parameters`, `select_on[*].value`, and `temporal.reference` may
+/// carry a single `$name` reference or a literal. Returns `Some("name")`
+/// for the former (with any trailing `.field` stripped — dot notation reads
+/// a property off the base variable, so the dep is on the base), `None`
+/// otherwise.
+fn extract_var_name(s: &str) -> Option<&str> {
+    let stripped = s.strip_prefix('$')?;
+    // Dot notation: `$obj.field` depends on `obj`, not `field`.
+    Some(stripped.split('.').next().unwrap_or(stripped))
+}
+
+/// Extract a `$name` reference from a `select_on` YAML value.
+///
+/// The YAML value is typed as `serde_yaml_ng::Value`. Only string values
+/// starting with `$` count as variable references.
+fn extract_var_name_from_yaml(yaml: &serde_yaml_ng::Value) -> Option<&str> {
+    match yaml {
+        serde_yaml_ng::Value::String(s) => extract_var_name(s),
+        _ => None,
+    }
+}
+
+/// Collect all input names (within this article) that a given input depends on.
+///
+/// Walks `source.parameters` values, `source.select_on[*].value`, and
+/// `temporal.reference`, looking for `$name` references that name another
+/// input in the same article. References to runtime parameters or names
+/// not matching any input are ignored.
+fn collect_input_deps(input: &Input, input_index: &HashMap<&str, usize>) -> Vec<usize> {
+    let mut deps: Vec<usize> = Vec::new();
+
+    let add_dep = |name: &str, deps: &mut Vec<usize>| {
+        if let Some(&idx) = input_index.get(name) {
+            if !deps.contains(&idx) {
+                deps.push(idx);
+            }
+        }
+    };
+
+    if let Some(source) = &input.source {
+        if let Some(params) = &source.parameters {
+            for v in params.values() {
+                if let Some(name) = extract_var_name(v) {
+                    add_dep(name, &mut deps);
+                }
+            }
+        }
+        if let Some(select_on) = &source.select_on {
+            for crit in select_on {
+                if let Some(name) = extract_var_name_from_yaml(&crit.value) {
+                    add_dep(name, &mut deps);
+                }
+            }
+        }
+    }
+    if let Some(temporal) = &input.temporal {
+        if let Some(r) = &temporal.reference {
+            if let Some(name) = extract_var_name(r) {
+                add_dep(name, &mut deps);
+            }
+        }
+    }
+
+    deps
+}
+
+/// Topologically sort article inputs by `$input_name` dependencies.
+///
+/// Inputs in the same article can reference each other through
+/// `source.parameters`, `source.select_on[*].value`, and
+/// `temporal.reference`. The previous linear walk resolved inputs strictly
+/// in YAML order, so an input referencing a later-declared input saw it as
+/// Null (lenient resolution) and fed garbage into cross-law calls or
+/// data-source lookups.
+///
+/// Returns input indices in an order that respects these dependencies.
+/// YAML order is preserved where no edge constrains it. On cycle detection,
+/// falls back to full YAML order and logs a warning (no error, no panic).
+fn topo_sort_inputs(inputs: &[Input]) -> Vec<usize> {
+    if inputs.is_empty() {
+        return Vec::new();
+    }
+
+    // Map input name -> index. Last occurrence wins on duplicate names, which
+    // matches how `context.resolve` would later overwrite the earlier binding.
+    let mut name_to_idx: HashMap<&str, usize> = HashMap::with_capacity(inputs.len());
+    for (i, inp) in inputs.iter().enumerate() {
+        name_to_idx.insert(inp.name.as_str(), i);
+    }
+
+    let deps: Vec<Vec<usize>> = inputs
+        .iter()
+        .map(|inp| collect_input_deps(inp, &name_to_idx))
+        .collect();
+
+    // Iterative DFS topo-sort. States: 0 = unvisited, 1 = on stack (gray),
+    // 2 = finished (black). Roots are visited in YAML order so sibling
+    // inputs without a constraint keep their YAML order.
+    let n = inputs.len();
+    let mut state = vec![0u8; n];
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    let mut cycle_detected = false;
+
+    for start in 0..n {
+        if state[start] != 0 {
+            continue;
+        }
+        let mut stack: Vec<(usize, usize)> = vec![(start, 0)];
+        state[start] = 1;
+
+        while let Some(&mut (node, ref mut next)) = stack.last_mut() {
+            if *next < deps[node].len() {
+                let dep = deps[node][*next];
+                *next += 1;
+                match state[dep] {
+                    0 => {
+                        state[dep] = 1;
+                        stack.push((dep, 0));
+                    }
+                    1 => cycle_detected = true,
+                    _ => {}
+                }
+            } else {
+                state[node] = 2;
+                order.push(node);
+                stack.pop();
+            }
+        }
+    }
+
+    if cycle_detected {
+        tracing::warn!(
+            "Cycle detected in input dependency graph; \
+             falling back to YAML order for affected inputs"
+        );
+        return (0..n).collect();
+    }
+
+    order
 }
 
 /// Trait for resolving cross-law references.
@@ -2138,8 +2281,10 @@ impl LawExecutionService {
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
         let inputs = article.get_inputs();
+        let order = topo_sort_inputs(inputs);
 
-        for input in inputs {
+        for &idx in &order {
+            let input = &inputs[idx];
             let source = match &input.source {
                 Some(s) => s,
                 None => continue,
@@ -2169,8 +2314,7 @@ impl LawExecutionService {
                         })
                         .collect();
 
-                    let as_array =
-                        matches!(input.input_type, crate::types::ParameterType::Array);
+                    let as_array = matches!(input.input_type, crate::types::ParameterType::Array);
 
                     if let Some(data_match) = self.data_registry.resolve_native(
                         table,
@@ -2315,8 +2459,7 @@ impl LawExecutionService {
                                 "Cross-law output unavailable, defaulting to {}",
                                 default
                             );
-                            let _guard =
-                                res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                            let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
                             res_ctx.trace_set_message(format!(
                                 "Cross-law {} → {} unavailable, defaulting",
                                 regulation, output_name
@@ -2695,9 +2838,7 @@ impl LawExecutionService {
             let proj_refs: Vec<&str> = proj.iter().map(|s| s.as_str()).collect();
             builder = builder.array_field(field, &proj_refs);
         }
-        let source = builder
-            .build()
-            .map_err(EngineError::DataSourceError)?;
+        let source = builder.build().map_err(EngineError::DataSourceError)?;
         self.data_registry.add_source(Box::new(source));
         Ok(())
     }
@@ -3842,12 +3983,7 @@ articles:
         // Evaluating on 2025-06-15 with prev_january_first should resolve to
         // 2024-01-01 → v1 → 100. Without the shift it would pick v2 → 200.
         let result = service
-            .evaluate_law_output(
-                "temporal_consumer",
-                "result",
-                BTreeMap::new(),
-                "2025-06-15",
-            )
+            .evaluate_law_output("temporal_consumer", "result", BTreeMap::new(), "2025-06-15")
             .unwrap();
         assert_eq!(
             result.outputs.get("result"),
@@ -3895,7 +4031,9 @@ articles:
         // the Python `_round_to_output_precision` helper that previously did
         // the same as a post-processing step.
         let mut service = LawExecutionService::new();
-        service.load_law(&precision_law("0", "13.74", None)).unwrap();
+        service
+            .load_law(&precision_law("0", "13.74", None))
+            .unwrap();
         let result = service
             .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
             .unwrap();
@@ -3919,16 +4057,16 @@ articles:
     #[test]
     fn precision_two_rounds_to_two_decimals() {
         let mut service = LawExecutionService::new();
-        service.load_law(&precision_law("2", "13.00205", None)).unwrap();
+        service
+            .load_law(&precision_law("2", "13.00205", None))
+            .unwrap();
         let result = service
             .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
             .unwrap();
         match result.outputs.get("result") {
-            Some(Value::Float(f)) => assert!(
-                (f - 13.00).abs() < 1e-9,
-                "Expected ~13.00, got {}",
-                f
-            ),
+            Some(Value::Float(f)) => {
+                assert!((f - 13.00).abs() < 1e-9, "Expected ~13.00, got {}", f)
+            }
             other => panic!("Expected Value::Float(13.00), got {:?}", other),
         }
     }
@@ -4028,12 +4166,7 @@ articles:
         let mut service = LawExecutionService::new();
         service.load_law(yaml).unwrap();
         let result = service
-            .evaluate_law_output(
-                "foreach_outer_law",
-                "roles",
-                BTreeMap::new(),
-                "2025-01-01",
-            )
+            .evaluate_law_output("foreach_outer_law", "roles", BTreeMap::new(), "2025-01-01")
             .unwrap();
 
         let roles = result.outputs.get("roles").expect("roles output");
@@ -4246,6 +4379,254 @@ articles:
         match result.outputs.get("result") {
             Some(Value::Float(f)) => assert!((f - 13.74).abs() < 1e-9),
             other => panic!("Expected unrounded float, got {:?}", other),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Topological input ordering tests
+    // -------------------------------------------------------------------------
+
+    mod topo_sort {
+        use super::*;
+        use crate::article::{Input, SelectOnCriterion, Source, Temporal};
+        use crate::types::ParameterType;
+
+        fn mk_input(name: &str, source: Option<Source>, temporal: Option<Temporal>) -> Input {
+            Input {
+                name: name.to_string(),
+                input_type: ParameterType::String,
+                source,
+                type_spec: None,
+                description: None,
+                required: None,
+                temporal,
+            }
+        }
+
+        fn src_params(params: &[(&str, &str)]) -> Source {
+            Source {
+                regulation: Some("some_law".to_string()),
+                output: Some("x".to_string()),
+                parameters: Some(
+                    params
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                ),
+                service: None,
+                table: None,
+                field: None,
+                fields: None,
+                select_on: None,
+                source_type: None,
+            }
+        }
+
+        fn src_select_on(criteria: &[(&str, &str)]) -> Source {
+            Source {
+                regulation: None,
+                output: None,
+                parameters: None,
+                service: None,
+                table: Some("some_table".to_string()),
+                field: Some("x".to_string()),
+                fields: None,
+                select_on: Some(
+                    criteria
+                        .iter()
+                        .map(|(n, v)| SelectOnCriterion {
+                            name: n.to_string(),
+                            value: serde_yaml_ng::Value::String(v.to_string()),
+                            description: None,
+                        })
+                        .collect(),
+                ),
+                source_type: None,
+            }
+        }
+
+        fn names(order: &[usize], inputs: &[Input]) -> Vec<String> {
+            order.iter().map(|&i| inputs[i].name.clone()).collect()
+        }
+
+        #[test]
+        fn empty_inputs_returns_empty() {
+            assert!(topo_sort_inputs(&[]).is_empty());
+        }
+
+        #[test]
+        fn no_deps_preserves_yaml_order() {
+            let inputs = vec![
+                mk_input("a", Some(src_params(&[("p", "literal")])), None),
+                mk_input("b", Some(src_params(&[("q", "another")])), None),
+                mk_input("c", None, None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b", "c"]);
+        }
+
+        #[test]
+        fn linear_dep_reorders_after_dependency() {
+            // B depends on A but A is declared after B in YAML.
+            let inputs = vec![
+                mk_input("b", Some(src_params(&[("x", "$a")])), None),
+                mk_input("a", Some(src_params(&[("p", "literal")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b"]);
+        }
+
+        #[test]
+        fn chain_reverse_order_topologically_sorts_to_abc() {
+            // C depends on B depends on A, declared as C, B, A.
+            let inputs = vec![
+                mk_input("c", Some(src_params(&[("x", "$b")])), None),
+                mk_input("b", Some(src_params(&[("x", "$a")])), None),
+                mk_input("a", Some(src_params(&[("p", "literal")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b", "c"]);
+        }
+
+        #[test]
+        fn select_on_ref_creates_dependency() {
+            // `bsn` has select_on: $kvk_nummer — but here kvk_nummer is
+            // declared as a *later* input, so the edge must reorder.
+            let inputs = vec![
+                mk_input(
+                    "bsn",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+                mk_input("kvk_nummer", Some(src_select_on(&[("id", "42")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["kvk_nummer", "bsn"]);
+        }
+
+        #[test]
+        fn temporal_reference_creates_dependency() {
+            // `age` depends on `verkiezingsdatum` via temporal.reference.
+            let inputs = vec![
+                mk_input(
+                    "age",
+                    Some(src_params(&[("bsn", "literal")])),
+                    Some(Temporal {
+                        kind: Some("point_in_time".to_string()),
+                        reference: Some("$verkiezingsdatum".to_string()),
+                        period_type: None,
+                        immutable_after: None,
+                    }),
+                ),
+                mk_input(
+                    "verkiezingsdatum",
+                    Some(src_select_on(&[("id", "1")])),
+                    None,
+                ),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["verkiezingsdatum", "age"]);
+        }
+
+        #[test]
+        fn runtime_parameter_ref_is_not_a_dep() {
+            // `leeftijd` references `$bsn`, which IS declared as an input → dep.
+            // `bsn` references `$kvk_nummer`, NOT declared as an input → no dep.
+            let inputs = vec![
+                mk_input("leeftijd", Some(src_params(&[("bsn", "$bsn")])), None),
+                mk_input(
+                    "bsn",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["bsn", "leeftijd"]);
+        }
+
+        #[test]
+        fn dot_notation_ref_depends_on_base_name() {
+            // `$obj.field` depends on `obj`.
+            let inputs = vec![
+                mk_input(
+                    "consumer",
+                    Some(src_params(&[("postcode", "$obj.postcode")])),
+                    None,
+                ),
+                mk_input("obj", Some(src_select_on(&[("id", "1")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["obj", "consumer"]);
+        }
+
+        #[test]
+        fn self_cycle_falls_back_to_yaml_order() {
+            let inputs = vec![
+                mk_input("a", Some(src_params(&[("x", "$a")])), None),
+                mk_input("b", Some(src_params(&[("y", "literal")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b"]);
+        }
+
+        #[test]
+        fn two_node_cycle_falls_back_to_yaml_order() {
+            let inputs = vec![
+                mk_input("a", Some(src_params(&[("x", "$b")])), None),
+                mk_input("b", Some(src_params(&[("y", "$a")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b"]);
+        }
+
+        #[test]
+        fn alcoholwet_rotterdam_pattern() {
+            // Mirrors the real YAML pattern that triggered this fix:
+            // - leeftijd_exploitant depends on $bsn
+            // - voldoet_aan_nationale_eisen depends on $leeftijd_exploitant,
+            //   $vloeroppervlakte_horecalokaliteit, $type_bedrijf
+            // - bsn, vloeroppervlakte_horecalokaliteit, type_bedrijf are
+            //   later-declared data-source inputs keyed on $kvk_nummer
+            //   (a runtime parameter, not an input).
+            let inputs = vec![
+                mk_input(
+                    "leeftijd_exploitant",
+                    Some(src_params(&[("bsn", "$bsn")])),
+                    None,
+                ),
+                mk_input(
+                    "voldoet_aan_nationale_eisen",
+                    Some(src_params(&[
+                        ("leeftijd_leidinggevende", "$leeftijd_exploitant"),
+                        ("vloeroppervlakte", "$vloeroppervlakte_horecalokaliteit"),
+                        ("type_bedrijf", "$type_bedrijf"),
+                    ])),
+                    None,
+                ),
+                mk_input(
+                    "bsn",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+                mk_input(
+                    "vloeroppervlakte_horecalokaliteit",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+                mk_input(
+                    "type_bedrijf",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            let resolved = names(&order, &inputs);
+
+            let pos = |n: &str| resolved.iter().position(|s| s == n).unwrap();
+            assert!(pos("bsn") < pos("leeftijd_exploitant"));
+            assert!(pos("leeftijd_exploitant") < pos("voldoet_aan_nationale_eisen"));
+            assert!(pos("vloeroppervlakte_horecalokaliteit") < pos("voldoet_aan_nationale_eisen"));
+            assert!(pos("type_bedrijf") < pos("voldoet_aan_nationale_eisen"));
         }
     }
 }
