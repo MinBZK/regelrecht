@@ -1,6 +1,6 @@
 # regelrecht-demo-api
 
-Minimale LLM-uitlegproxy voor de burger-demo. Eén route (`POST /api/explain`) die een law-uitvoer + trace vertaalt naar een burger-vriendelijke Nederlandse uitleg via de Anthropic API. Zie [RFC-016](../../docs/rfcs/rfc-016.md).
+Minimale LLM-uitlegproxy voor de burger-demo. Eén route (`POST /api/explain`) die een law-uitvoer + trace vertaalt naar een burger-vriendelijke Nederlandse uitleg via de Anthropic API.
 
 ## Env
 

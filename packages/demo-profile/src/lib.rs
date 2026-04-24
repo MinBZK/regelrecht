@@ -1,4 +1,4 @@
-//! Demo-profile loader voor de burger-demo (RFC-016).
+//! Demo-profile loader voor de burger-demo.
 //!
 //! Leest een persona-YAML uit `corpus-demo/profiles/` en registreert de
 //! bijbehorende data-sources in een `LawExecutionService`.

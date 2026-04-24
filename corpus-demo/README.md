@@ -4,8 +4,6 @@ Demo-only corpus-toevoegingen voor de burger-demo (`frontend-demo/`).
 
 **Dit pad is niet de bron voor productie.** YAML hier mag afwijken van de letter van de wet, zolang de afwijkingen expliciet zijn vermeld. Gebruik niets uit dit pad als referentie voor echt wetgevingswerk — daarvoor is `corpus/regulation/`.
 
-Zie [RFC-016](../docs/rfcs/rfc-016.md) voor de achtergrond.
-
 ## Wat mag hier wel
 
 - **Persona-data** (`profiles/`). Synthetische BSN's, gefingeerde inkomens, gefingeerde relaties. Zie `profiles/merijn.yaml`.
