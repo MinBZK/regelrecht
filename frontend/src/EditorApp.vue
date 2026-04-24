@@ -43,23 +43,12 @@ const paneSlot = (name) => {
   return idx >= 0 ? `pane-${idx + 1}` : undefined;
 };
 
-// Redirect to login when OIDC is configured but user is not authenticated.
-// { immediate: true } is needed because in SPA navigation the auth state may
-// already be resolved by the time EditorApp mounts (useAuth is a singleton).
-watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) => {
-  if (!isLoading && oidc && !authed) {
-    login();
-  }
-}, { immediate: true });
-
 // All edit operations are gated behind SSO. When OIDC is configured the user
 // must be authenticated; when OIDC is disabled the editor is fully open.
+// The `requiresAuth` router guard already blocks unauthenticated users from
+// reaching this component when OIDC is on, so in practice canEdit is only
+// false in the OIDC-disabled fallback window before /auth/status returns.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
-
-// Gate the editor UI on the auth-check result. Without this, the template
-// renders before `window.location.href = /auth/login` navigates away, so
-// unauthenticated users see a flash of the editor skeleton on the way to SSO.
-const canRender = computed(() => !authLoading.value && canEdit.value);
 
 const route = useRoute();
 const router = useRouter();
@@ -670,8 +659,6 @@ function handleActionSave() {
 </script>
 
 <template>
-  <div v-if="!canRender" class="editor-auth-wait" aria-hidden="true"></div>
-  <template v-else>
   <nldd-app-view>
     <nldd-bar-split-view>
       <!-- Primary Bar: App Toolbar + Document Tabs -->
@@ -880,15 +867,9 @@ function handleActionSave() {
       />
     </nldd-page>
   </nldd-sheet>
-  </template>
 </template>
 
 <style>
-.editor-auth-wait {
-  height: 100%;
-  background: var(--semantics-surfaces-default-background-color, #fff);
-}
-
 .editor-engine-error {
   padding: 12px 16px;
   background: #fee;

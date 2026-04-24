@@ -5,7 +5,7 @@ const oidcConfigured = ref(false);
 const person = ref(null);
 const loading = ref(true);
 
-let initialized = false;
+let readyPromise = null;
 
 async function checkAuth() {
   try {
@@ -22,11 +22,18 @@ async function checkAuth() {
   }
 }
 
-export function useAuth() {
-  if (!initialized) {
-    initialized = true;
-    checkAuth();
+// Kick off the single shared /auth/status fetch and expose its promise so
+// callers outside the Vue component tree (e.g. router guards) can await it
+// without touching the reactive `loading` ref.
+export function ensureAuthReady() {
+  if (!readyPromise) {
+    readyPromise = checkAuth();
   }
+  return readyPromise;
+}
+
+export function useAuth() {
+  ensureAuthReady();
 
   function login() {
     const returnUrl = window.location.pathname + window.location.search + window.location.hash;
