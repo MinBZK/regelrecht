@@ -12,7 +12,7 @@ import './graph/graph-styles.css';
 
 import LawNode from './graph/LawNode.vue';
 import LeafNode from './graph/LeafNode.vue';
-import { useLawGraph } from '../composables/useLawGraph.js';
+import { useLawGraph, rootOfId } from '../composables/useLawGraph.js';
 
 const props = defineProps({
   lawId: { type: String, default: null },
@@ -29,7 +29,7 @@ const nodeTypes = markRaw({
   leaf: LeafNode,
 });
 
-const { nodes, edges, loading, error } = useLawGraph({
+const { nodes, edges, loading, error, missingDeps } = useLawGraph({
   rootLawId: toRef(props, 'lawId'),
   fetchLawYaml,
 });
@@ -42,11 +42,6 @@ const selectedRoot = ref(null);
 
 // Laws the user hid via the close button (visible but excluded).
 const hiddenLaws = ref(new Set());
-
-function rootOfId(nodeOrEdgeId) {
-  const i = nodeOrEdgeId.indexOf('-');
-  return i === -1 ? nodeOrEdgeId : nodeOrEdgeId.substring(0, i);
-}
 
 // Reset local UI state when the underlying law changes, otherwise the
 // hidden set / selection carries over to an unrelated graph.
@@ -115,6 +110,9 @@ function miniMapNodeColor(node) {
 
     <div v-else class="law-graph-container">
       <div v-if="loading" class="law-graph-loading">Bezig met laden…</div>
+      <div v-else-if="missingDeps.length > 0" class="law-graph-warning" :title="missingDeps.join(', ')">
+        Kon {{ missingDeps.length }} afhankelijkhe{{ missingDeps.length === 1 ? 'id' : 'den' }} niet laden
+      </div>
       <VueFlow
         :nodes="visibleNodes"
         :edges="visibleEdges"
@@ -151,16 +149,27 @@ function miniMapNodeColor(node) {
   min-height: 0;
 }
 
-.law-graph-loading {
+.law-graph-loading,
+.law-graph-warning {
   position: absolute;
   top: 12px;
   left: 12px;
   z-index: 5;
-  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 13px;
+}
+
+.law-graph-loading {
+  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
   color: var(--semantics-text-color-secondary, #666);
+}
+
+.law-graph-warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+  cursor: help;
 }
 
 .law-graph-empty,

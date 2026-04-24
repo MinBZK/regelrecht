@@ -51,10 +51,11 @@
   --vf-edge-stroke-width: 3;
 }
 
-.vue-flow__arrowhead polyline {
-  fill: #0ea5e9 !important;
-  stroke: #0ea5e9 !important;
-}
+/* Arrowhead color is set per-edge via `markerEnd.color` in useLawGraph.js
+ * so each edge type (cross-law, impl, override, hook) gets an arrowhead
+ * matching its stroke color. The previous global override forced every
+ * arrowhead to sky-blue regardless of stroke. */
+
 .vue-flow__edge.selected {
   --vf-edge-stroke-width: 5;
 }

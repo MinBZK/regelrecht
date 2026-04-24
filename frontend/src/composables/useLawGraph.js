@@ -43,6 +43,18 @@ function layerColor(layer) {
 // clutter every node with the same three leaves.
 const UTILITY_OUTPUTS = new Set(['wet_naam', 'bevoegd_gezag', 'datum_inwerkingtreding']);
 
+/**
+ * Extract the root law id from a node or edge id.
+ *
+ * Node ids encode `${lawId}-${nodeType}-${field}` and edges source/target
+ * use the same scheme. The law id is everything up to the first hyphen
+ * (see INVARIANT in the module header).
+ */
+export function rootOfId(nodeOrEdgeId) {
+  const i = nodeOrEdgeId.indexOf('-');
+  return i === -1 ? nodeOrEdgeId : nodeOrEdgeId.substring(0, i);
+}
+
 function parseLawFromParsed(data) {
   if (!data || !data.$id) return null;
 
@@ -96,11 +108,13 @@ function parseLawFromParsed(data) {
 
 /**
  * Walk from rootLawId, loading and parsing each transitively referenced law.
- * Returns a Map<lawId, Law>. Missing laws (fetch failures) are skipped;
- * the caller decides whether to surface that as an error. Loads breadth-first.
+ * Returns { laws: Map<lawId, Law>, missing: string[] }. Missing laws (fetch
+ * failures) are collected so the caller can surface a "kon X afhankelijkheden
+ * niet laden" warning. Loads breadth-first.
  */
 async function loadLawGraph(rootLawId, fetchLawYaml) {
   const laws = new Map();
+  const missing = [];
   const seen = new Set([rootLawId]);
   let frontier = [rootLawId];
 
@@ -115,13 +129,17 @@ async function loadLawGraph(rootLawId, fetchLawYaml) {
       const results = await Promise.allSettled(
         batch.map(async (lawId) => {
           const yamlText = await fetchLawYaml(lawId);
-          return yaml.load(yamlText);
+          return { lawId, parsed: yaml.load(yamlText) };
         }),
       );
 
-      for (const result of results) {
-        if (result.status !== 'fulfilled') continue; // skip unreachable deps
-        const parsed = result.value;
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
+        if (result.status !== 'fulfilled') {
+          missing.push(batch[j]);
+          continue;
+        }
+        const parsed = result.value.parsed;
         const law = parseLawFromParsed(parsed);
         if (!law) continue;
         laws.set(law.id, law);
@@ -153,7 +171,7 @@ async function loadLawGraph(rootLawId, fetchLawYaml) {
     frontier = nextFrontier;
   }
 
-  return laws;
+  return { laws, missing };
 }
 
 /**
@@ -469,7 +487,7 @@ function buildGraph(lawsMap) {
             target,
             data: { refersToService: input.source_regulation },
             type: 'bezier',
-            markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40 },
+            markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40, color: '#3b82f6' },
             zIndex: 2,
           });
         }
@@ -488,7 +506,7 @@ function buildGraph(lawsMap) {
           source: sourceId,
           target: targetId,
           type: 'bezier',
-          markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40 },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40, color: '#10b981' },
           style: { stroke: '#10b981', strokeWidth: 3, strokeDasharray: '8 4' },
           zIndex: 2,
           label: 'implements',
@@ -510,7 +528,7 @@ function buildGraph(lawsMap) {
           source: sourceId,
           target: targetId,
           type: 'bezier',
-          markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40 },
+          markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40, color: '#ef4444' },
           style: { stroke: '#ef4444', strokeWidth: 3, strokeDasharray: '4 4' },
           zIndex: 2,
           label: 'overrides',
@@ -558,7 +576,7 @@ function buildGraph(lawsMap) {
             source: sourceId,
             target: targetId,
             type: 'bezier',
-            markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40 },
+            markerEnd: { type: MarkerType.ArrowClosed, width: 20, height: 40, color: '#7c3aed' },
             style: { stroke: '#7c3aed', strokeWidth: 3, strokeDasharray: '3 6' },
             zIndex: 1,
             label: `hook: ${hookTarget}`,
@@ -579,28 +597,35 @@ function buildGraph(lawsMap) {
  */
 function applyLayeredLayout(nodes, edges) {
   const rootNodes = nodes.filter((n) => n.class?.includes('root'));
-  const dependencyGraph = new Map();
+  // dependents: rootId → Set of root ids that depend on it (forward edges in the topo sort)
+  // dependencies: rootId → Set of root ids it depends on (used to check "all deps processed")
+  const dependents = new Map();
+  const dependencies = new Map();
   const incomingCount = new Map();
 
   for (const node of rootNodes) {
-    dependencyGraph.set(node.id, new Set());
+    dependents.set(node.id, new Set());
+    dependencies.set(node.id, new Set());
     incomingCount.set(node.id, 0);
   }
 
   for (const edge of edges) {
-    const sourceRoot = edge.source.split('-')[0];
-    const targetRoot = edge.target.split('-')[0];
+    const sourceRoot = rootOfId(edge.source);
+    const targetRoot = rootOfId(edge.target);
     if (sourceRoot === targetRoot) continue;
-    if (!dependencyGraph.has(sourceRoot)) {
-      dependencyGraph.set(sourceRoot, new Set());
+    if (!dependents.has(sourceRoot)) {
+      dependents.set(sourceRoot, new Set());
+      dependencies.set(sourceRoot, new Set());
       incomingCount.set(sourceRoot, 0);
     }
-    if (!dependencyGraph.has(targetRoot)) {
-      dependencyGraph.set(targetRoot, new Set());
+    if (!dependents.has(targetRoot)) {
+      dependents.set(targetRoot, new Set());
+      dependencies.set(targetRoot, new Set());
       incomingCount.set(targetRoot, 0);
     }
-    if (!dependencyGraph.get(targetRoot).has(sourceRoot)) {
-      dependencyGraph.get(targetRoot).add(sourceRoot);
+    if (!dependents.get(targetRoot).has(sourceRoot)) {
+      dependents.get(targetRoot).add(sourceRoot);
+      dependencies.get(sourceRoot).add(targetRoot);
       incomingCount.set(sourceRoot, (incomingCount.get(sourceRoot) || 0) + 1);
     }
   }
@@ -616,13 +641,14 @@ function applyLayeredLayout(nodes, edges) {
     for (const nodeId of currentLayer) processed.add(nodeId);
     const next = new Set();
     for (const nodeId of currentLayer) {
-      for (const dependent of dependencyGraph.get(nodeId) || new Set()) {
+      for (const dependent of dependents.get(nodeId) || new Set()) {
         if (processed.has(dependent)) continue;
+        // All of `dependent`'s own dependencies must already be processed.
+        // Using the precomputed inverse map makes this O(deps) per candidate
+        // instead of O(edges).
         let allDepsDone = true;
-        for (const edge of edges) {
-          const sr = edge.source.split('-')[0];
-          const tr = edge.target.split('-')[0];
-          if (sr === dependent && tr !== sr && !processed.has(tr)) {
+        for (const dep of dependencies.get(dependent) || new Set()) {
+          if (!processed.has(dep)) {
             allDepsDone = false;
             break;
           }
@@ -683,6 +709,11 @@ export function useLawGraph({ rootLawId, fetchLawYaml }) {
   const edges = ref([]);
   const loading = ref(false);
   const error = ref(null);
+  // Law ids whose YAML could not be fetched during the BFS walk. The graph
+  // still renders the laws that did load, but the UI should warn the user
+  // that some dependencies are missing — otherwise a partial graph looks
+  // complete and silently omits connections.
+  const missingDeps = ref([]);
 
   let generation = 0;
 
@@ -696,18 +727,21 @@ export function useLawGraph({ rootLawId, fetchLawYaml }) {
       edges.value = [];
       loading.value = false;
       error.value = null;
+      missingDeps.value = [];
       return;
     }
     const gen = ++generation;
     loading.value = true;
     error.value = null;
+    missingDeps.value = [];
     try {
-      const laws = await loadLawGraph(lawId, fetchLawYaml);
+      const { laws, missing } = await loadLawGraph(lawId, fetchLawYaml);
       if (gen !== generation) return; // superseded
       const { nodes: ns, edges: es } = buildGraph(laws);
       const laidOut = applyLayeredLayout(ns, es);
       nodes.value = laidOut;
       edges.value = es;
+      missingDeps.value = missing;
     } catch (e) {
       if (gen !== generation) return;
       error.value = e.message || String(e);
@@ -720,5 +754,5 @@ export function useLawGraph({ rootLawId, fetchLawYaml }) {
 
   watch(rootLawId, (id) => { rebuild(id); }, { immediate: true });
 
-  return { nodes, edges, loading, error, rebuild };
+  return { nodes, edges, loading, error, missingDeps, rebuild };
 }
