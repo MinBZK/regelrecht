@@ -134,7 +134,7 @@ function miniMapNodeColor(node) {
 
 <style scoped>
 .law-graph-view {
-  /* Fill the pane. ndd-page gives us a flex body; claim the viewport
+  /* Fill the pane. nldd-page gives us a flex body; claim the viewport
    * minus toolbar + tab-bar chrome (mirrors the YAML textarea).
    * 180px = primary toolbar (~48px) + document tab bar (~56px) +
    * right-pane title bar (~48px) + spacer (~28px). Update this if the
