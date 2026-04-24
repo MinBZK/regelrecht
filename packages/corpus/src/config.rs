@@ -38,7 +38,7 @@ impl std::fmt::Debug for CorpusConfig {
 /// pod-name shape). A dev box named `pr42`, `pr42-workstation`, or
 /// `pr42-a-b` therefore returns `None` and can't shadow an explicit
 /// `CORPUS_BRANCH`.
-fn deployment_from_hostname(hostname: &str) -> Option<String> {
+pub fn deployment_from_hostname(hostname: &str) -> Option<String> {
     // Require the full K8s pod-name shape: at least three `-` characters,
     // matching `{deployment}-{component}-{rs-hash}-{pod-hash}`. Anything
     // shorter is almost certainly not a pod.
