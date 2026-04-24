@@ -1,0 +1,77 @@
+/* Global styles for the law graph view. Vue Flow renders edges + node
+ * containers outside a scoped-CSS boundary, so these selectors must be
+ * global (imported once, not scoped to a component).
+ *
+ * Ported from demo/graph/src/routes/+page.svelte (branch
+ * feature/demo-leenstelsel-tegemoetkoming). Tailwind utilities were
+ * inlined to vanilla CSS; class names (.root, .property-group,
+ * .service-N, .inbound, .outbound) are used exactly as emitted by
+ * useLawGraph.js. Keep the two in sync.
+ *
+ * Trace-stepping highlights (.trace-active, .trace-visited, .trace-start)
+ * will land in PR2 when useTraceStepping is introduced.
+ */
+
+.vue-flow .root {
+  border-radius: 6px;
+  border: 1px solid black;
+  padding: 8px;
+}
+
+/* Service colors — one per regulatory_layer index (see LAYER_COLOR_INDEX
+ * in useLawGraph.js). Chosen from Tailwind's palette so the editor and
+ * the demo read the same. */
+.vue-flow .service-0.root { border-color: #1e40af; background: #eff6ff; }
+.vue-flow .service-0.property-group { border: 1px solid #1e40af; background: #dbeafe; }
+.vue-flow .service-1.root { border-color: #9d174d; background: #fdf2f8; }
+.vue-flow .service-1.property-group { border: 1px solid #9d174d; background: #fce7f3; }
+.vue-flow .service-2.root { border-color: #065f46; background: #ecfdf5; }
+.vue-flow .service-2.property-group { border: 1px solid #065f46; background: #d1fae5; }
+.vue-flow .service-3.root { border-color: #92400e; background: #fffbeb; }
+.vue-flow .service-3.property-group { border: 1px solid #92400e; background: #fef3c7; }
+.vue-flow .service-4.root { border-color: #6b21a8; background: #faf5ff; }
+.vue-flow .service-4.property-group { border: 1px solid #6b21a8; background: #f3e8ff; }
+.vue-flow .service-5.root { border-color: #854d0e; background: #fefce8; }
+.vue-flow .service-5.property-group { border: 1px solid #854d0e; background: #fef9c3; }
+.vue-flow .service-6.root { border-color: #1e293b; background: #f8fafc; }
+.vue-flow .service-6.property-group { border: 1px solid #1e293b; background: #f1f5f9; }
+
+.vue-flow .property-group,
+.vue-flow .vue-flow__node-input,
+.vue-flow .vue-flow__node-source,
+.vue-flow .vue-flow__node-output {
+  cursor: grab;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vue-flow {
+  --vf-edge-stroke: #3b82f6;
+  --vf-edge-stroke-selected: #1d4ed8;
+  --vf-edge-stroke-width: 3;
+}
+
+/* Arrowhead color is set per-edge via `markerEnd.color` in useLawGraph.js
+ * so each edge type (cross-law, impl, override, hook) gets an arrowhead
+ * matching its stroke color. The previous global override forced every
+ * arrowhead to sky-blue regardless of stroke. */
+
+.vue-flow__edge.selected {
+  --vf-edge-stroke-width: 5;
+}
+
+/* Click-highlight: inbound = edges that come into the clicked law,
+ * outbound = edges that leave it. Thicker + color-swapped so the
+ * direction is unambiguous at a glance. */
+.vue-flow__edge.inbound path {
+  stroke: #ef4444 !important;
+  stroke-width: 5 !important;
+}
+.vue-flow__edge.outbound path {
+  stroke: #22c55e !important;
+  stroke-width: 5 !important;
+}
+.vue-flow__edge.inbound path:first-child,
+.vue-flow__edge.outbound path:first-child {
+  marker-end: none;
+}
