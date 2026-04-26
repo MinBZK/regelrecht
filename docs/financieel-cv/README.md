@@ -94,6 +94,39 @@ Output-leaf-knopen die de graph rendert (filtert standaard
   `heeft_recht_op_werkplekaanpassing`
 - ww: `mag_proefplaatsing_aangaan`, `duur_proefplaatsing_weken`
 
+### Overzichtsplaatje (alle 7 wetten samen)
+
+De editor-graph laat steeds één wortel-wet zien met haar transitieve
+dependencies. Voor een totaalbeeld van alle Financieel CV-regelingen:
+
+```mermaid
+graph LR
+  subgraph "Regelingen-wetten"
+    ZW[Ziektewet<br/>NRP]
+    WTL[Wtl<br/>LIV + LKV]
+    PW[Participatiewet<br/>LKS]
+    WAJ[Wajong<br/>LDP]
+    WIA[Wet WIA<br/>JC + WPA]
+    WW[Werkloosheidswet<br/>PP]
+  end
+
+  subgraph "Procesrecht"
+    AWB[AWB<br/>BESCHIKKING-hooks]
+  end
+
+  ZW -- "lid 1.a, 1.b, 4" --> WIA
+  ZW -- "lid 1.c-d, 2.a, 2.c" --> WAJ
+  ZW -- "lid 2.e, 2.f" --> PW
+  WTL -- "banenafspraak" --> PW
+  ZW -. "motivering + bezwaartermijn" .-> AWB
+```
+
+Solide pijlen = cross-law data dependencies (input.source.regulation),
+gestippeld = AWB-hook (fires automatisch op elke BESCHIKKING).
+
+NB: WW (PP) staat los — geen cross-law dependencies.
+JC/WPA en LDP gebruiken intra-law sources (zelfde wet, doelgroepstub).
+
 ### Visualisatie tijdens demo
 
 Start de editor lokaal en navigeer naar de law dependency graph view:
