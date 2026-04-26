@@ -188,6 +188,118 @@ flowchart LR
 - Wsw-doelgroep (BWBR0008903) — nu als directe parameter
   `is_wsw_werknemer`, niet als cross-law node.
 
+### Detail-zoom: alleen NRP (Ziektewet artikel 29b)
+
+Hetzelfde diagram maar nu volledig uitgepakt voor NRP: elke
+afzonderlijke input uit een bron-wet als eigen edge, en de interne
+lid-logica zichtbaar.
+
+```mermaid
+flowchart LR
+  classDef input fill:#f0f6ff,stroke:#2980b9,color:#000;
+  classDef param fill:#f5f5f5,stroke:#7f8c8d,color:#000,stroke-dasharray: 3 3;
+  classDef gate fill:#fff5f5,stroke:#c0392b,color:#000;
+  classDef output fill:#fde2e4,stroke:#a02020,color:#000,font-weight:bold;
+  classDef proces fill:#fff9e6,stroke:#b58900,color:#000;
+
+  subgraph WIA["Wet WIA — art. 1 doelgroepstub"]
+    WIA_out1["is_wia_uitkeringsgerechtigd<br/>(lid 1.a)"]
+    WIA_out2["is_wia_min_35_arbeidsongeschikt<br/>(lid 1.b)"]
+    WIA_out3["heeft_voortgezet_wia_recht<br/>(lid 4)"]
+  end
+
+  subgraph WAJ["Wajong — art. 1:1 doelgroepstub"]
+    WAJ_out1["is_jonggehandicapt_schoolverlater<br/>(lid 1.c, 1.d)"]
+    WAJ_out2["is_wajong_gerechtigd<br/>(lid 2.a, 2.c)"]
+  end
+
+  subgraph PW["Participatiewet — art. 1 doelgroepstub"]
+    PW_out1["is_banenafspraak_doelgroep<br/>(lid 2.e)"]
+    PW_out2["is_pwet_loonkostensubsidie<br/>(lid 2.e alt.)"]
+    PW_out3["is_beschut_werk<br/>(lid 2.f)"]
+  end
+
+  subgraph PARAMS["Parameters bij NRP-aanvraag"]
+    P_bsn["bsn"]
+    P_wsw["is_wsw_werknemer<br/>(lid 2.b, 2.d)"]
+  end
+
+  subgraph ZW["Ziektewet artikel 29b — NRP"]
+    direction TB
+    LID1["voldoet_aan_lid_1<br/>OR(a, b, c+d)"]
+    LID2["voldoet_aan_lid_2<br/>OR(a, b, c, e, f)"]
+    LID4["voldoet_aan_lid_4<br/>= heeft_voortgezet_wia_recht"]
+    OUT1["heeft_recht_op_no_risk_polis<br/>= OR(lid_1, lid_2, lid_4)"]
+    OUT2["duur_no_risk_polis_jaren<br/>IF lid_2 → 0; lid_1 → 5; lid_4 → 5"]
+
+    LID1 --> OUT1
+    LID2 --> OUT1
+    LID4 --> OUT1
+    LID1 --> OUT2
+    LID2 --> OUT2
+    LID4 --> OUT2
+  end
+
+  subgraph AWB_HOOKS["AWB — fires op BESCHIKKING TOEKENNING"]
+    AWB1["Art. 3:46 → motivering_vereist"]
+    AWB2["Art. 6:7 → bezwaartermijn_weken"]
+  end
+
+  %% Lid 1
+  WIA_out1 --> LID1
+  WIA_out2 --> LID1
+  WAJ_out1 --> LID1
+
+  %% Lid 2
+  WAJ_out2 --> LID2
+  P_wsw --> LID2
+  PW_out1 --> LID2
+  PW_out2 --> LID2
+  PW_out3 --> LID2
+
+  %% Lid 4
+  WIA_out3 --> LID4
+
+  %% bsn forward via source.parameters
+  P_bsn -.->|"bsn"| WIA
+  P_bsn -.->|"bsn"| WAJ
+  P_bsn -.->|"bsn"| PW
+
+  %% AWB hooks
+  OUT1 -. "BESCHIKKING-hook" .-> AWB1
+  OUT1 -. "BESCHIKKING-hook" .-> AWB2
+
+  class WIA_out1,WIA_out2,WIA_out3,WAJ_out1,WAJ_out2,PW_out1,PW_out2,PW_out3 input
+  class P_bsn,P_wsw param
+  class LID1,LID2,LID4 gate
+  class OUT1,OUT2 output
+  class AWB1,AWB2 proces
+```
+
+**Legenda detail-versie:**
+
+- 🟦 *input* — boolean uit bron-wet via `input.source.regulation`
+  (8 stuks: 3 uit WIA, 2 uit Wajong, 3 uit Pwet)
+- ⬜ *parameter* — directe input bij de aanvraag, niet via cross-law
+  (`bsn` voor BSN, `is_wsw_werknemer` omdat Wsw buiten scope is)
+- 🟥 *gate* — lid-niveau OR-poort die de doelgroep-toets doet
+- 🟥 *bold output* — finale uitkomst van NRP (recht + duur)
+- 🟨 *proces* — AWB-hook die automatisch firet
+
+**Wat de jurist hieruit kan lezen:**
+
+- Lid 1 vraagt drie alternatieven: WIA-uitkering OR <35% AO OR
+  jonggehandicapt-schoolverlater. Eén volstaat.
+- Lid 2 voegt vier extra doelgroepen toe (Wajong, Wsw, banenafspraak/LKS,
+  beschut werk). Pwet `loonwaarde_lager_dan_minimumloon` is nu nog niet
+  als input gebruikt — staat klaar voor LKS-uitwerking.
+- Lid 4 is een aparte route (voortzetting WIA-recht na vaststelling).
+- De duur is conditionneel — lid 2 telt als 0 jaar
+  (gemodelleerd, zie untranslatable; in werkelijkheid zolang
+  dienstverband voortduurt).
+- Recht op NRP = OR van de drie lid-uitkomsten — als één route lukt,
+  is het recht er.
+
 ### Visualisatie tijdens demo
 
 Start de editor lokaal en navigeer naar de law dependency graph view:
