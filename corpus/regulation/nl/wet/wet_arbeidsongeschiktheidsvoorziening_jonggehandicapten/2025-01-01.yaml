@@ -2123,6 +2123,54 @@ articles:
     references:
       - id: ref1
         bwb_id: BWBR0002638
+    # SKELETON: alleen relatie-structuur, geen volledige logica.
+    # LDP = Loondispensatie. Volledige logica vereist:
+    #   - werknemer met recht op arbeidsondersteuning Wajong (hfdst 1A/2)
+    #   - geen Wsw-werknemer
+    #   - UWV-vaststelling dat arbeidsprestatie < minimumloon
+    #   - bepaling dispensatiepercentage door UWV
+    #   - duur en herziening (artikel 2:20 lid 2 e.v.)
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: is_wsw_werknemer
+            type: boolean
+            required: true
+            description: Uitsluitingsgrond — Wsw-dienstbetrekking.
+          - name: arbeidsprestatie_minder_dan_minimumloon
+            type: boolean
+            required: true
+            description: |-
+              UWV heeft vastgesteld dat arbeidsprestatie wegens ziekte of
+              gebrek duidelijk minder is dan minimumloon-equivalent.
+        input:
+          - name: heeft_recht_op_arbeidsondersteuning_wajong
+            type: boolean
+            description: |-
+              Recht op arbeidsondersteuning Wajong; vereist
+              UWV-vaststelling. Pass-through via doelgroepstub artikel 1:1.
+            source:
+              regulation: wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten
+              output: is_wajong_gerechtigd
+              parameters:
+                bsn: $bsn
+                is_wajong_gerechtigd: $heeft_recht_op_arbeidsondersteuning_wajong
+                is_jonggehandicapt_schoolverlater: $heeft_recht_op_arbeidsondersteuning_wajong
+        output:
+          - name: heeft_recht_op_loondispensatie
+            type: boolean
+        actions:
+          - output: heeft_recht_op_loondispensatie
+            value:
+              operation: AND
+              conditions:
+                - $heeft_recht_op_arbeidsondersteuning_wajong
+                - operation: NOT
+                  value: $is_wsw_werknemer
+                - $arbeidsprestatie_minder_dan_minimumloon
   - number: 2:20.2
     text: |-
       Elk beding waarbij een geldelijke beloning voor de verrichte arbeid wordt overeengekomen die lager is dan de
