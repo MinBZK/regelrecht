@@ -108,6 +108,75 @@ articles:
   - number: '2.1'
     text: 'Een werkgever kan in de loonaangifte een verzoek doen voor de volgende tegemoetkomingen:'
     url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
+    # SKELETON: alleen relatie-structuur, geen volledige logica.
+    # Volledige logica vereist:
+    #   - per categorie a, b, c, d aparte voorwaarden uit hoofdstuk 2 Wtl
+    #   - doelgroepverklaring via UWV (registers)
+    #   - hoogte per uur per categorie
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: is_oudere_werknemer
+            type: boolean
+            required: true
+            description: Doelgroep oudere werknemer (categorie a, art. 2.2).
+          - name: is_arbeidsgehandicapte_werknemer
+            type: boolean
+            required: true
+            description: Doelgroep arbeidsgehandicapte (categorie b, art. 2.3).
+        input:
+          - name: is_doelgroep_banenafspraak
+            type: boolean
+            description: |-
+              Categorie c — doelgroep banenafspraak en
+              scholingsbelemmerden. Doelgroepvaststelling via Pwet
+              (UWV-doelgroepregister).
+            source:
+              regulation: participatiewet
+              output: is_banenafspraak_doelgroep
+              parameters:
+                bsn: $bsn
+                is_banenafspraak_doelgroep: $is_doelgroep_banenafspraak
+        output:
+          - name: heeft_recht_op_lkv
+            type: boolean
+          - name: categorie_lkv
+            type: string
+            description: |-
+              Welke LKV-categorie van toepassing is (oudere /
+              arbeidsgehandicapt / banenafspraak). Default 'geen' als geen
+              categorie van toepassing.
+          - name: hoogte_lkv_per_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |-
+              Bedrag per kalenderjaar; in skeleton 0 omdat de
+              hoogteberekening uit hoofdstuk 2 Wtl niet is uitgewerkt.
+        actions:
+          - output: heeft_recht_op_lkv
+            value:
+              operation: OR
+              conditions:
+                - $is_oudere_werknemer
+                - $is_arbeidsgehandicapte_werknemer
+                - $is_doelgroep_banenafspraak
+          - output: categorie_lkv
+            value:
+              operation: IF
+              cases:
+                - when: $is_oudere_werknemer
+                  then: oudere_werknemer
+                - when: $is_arbeidsgehandicapte_werknemer
+                  then: arbeidsgehandicapte_werknemer
+                - when: $is_doelgroep_banenafspraak
+                  then: banenafspraak
+              default: geen
+          - output: hoogte_lkv_per_jaar
+            value: 0
   - number: 2.1.a
     text: loonkostenvoordeel oudere werknemer;
     url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
@@ -1110,6 +1179,48 @@ articles:
       Een werkgever heeft recht op een lage-inkomensvoordeel indien bij deze werkgever een werknemer in een of meerdere
       dienstbetrekkingen is waarvan:
     url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
+    # SKELETON: alleen relatie-structuur, geen volledige logica.
+    # NB: LIV is per 2025-01-01 afgeschaft (artikel 3.1 t/m 3.4 vervalt
+    # voor nieuwe dienstverbanden). Peildatum 2024-01-01 gekozen zodat de
+    # regeling nog in beeld is voor de Financieel CV-graphdemo.
+    # Volledige logica vereist:
+    #   - gemiddeld uurloon binnen LIV-grenzen (€14,33–€14,91 in 2024)
+    #   - >= 1248 verloonde uren in kalenderjaar
+    #   - werknemer niet pensioengerechtigd
+    #   - hoogteberekening uit artikel 3.2 (€ 0,49 of € 1,01 per uur)
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: voldoet_aan_uurloongrens_liv
+            type: boolean
+            required: true
+            description: Gemiddeld uurloon ligt binnen de LIV-grenzen.
+          - name: voldoet_aan_minimum_verloonde_uren
+            type: boolean
+            required: true
+            description: Ten minste 1248 verloonde uren in kalenderjaar.
+        output:
+          - name: heeft_recht_op_liv
+            type: boolean
+          - name: hoogte_liv_per_jaar
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |-
+              Bedrag per kalenderjaar; in skeleton 0 omdat de
+              hoogteberekening (artikel 3.2) niet is uitgewerkt.
+        actions:
+          - output: heeft_recht_op_liv
+            value:
+              operation: AND
+              conditions:
+                - $voldoet_aan_uurloongrens_liv
+                - $voldoet_aan_minimum_verloonde_uren
+          - output: hoogte_liv_per_jaar
+            value: 0
   - number: 3.1.1.a
     text: |-
       het gemiddelde uurloon in het kalenderjaar gelijk is aan of meer bedraagt dan € 14,33 maar niet meer dan € 14,91;
