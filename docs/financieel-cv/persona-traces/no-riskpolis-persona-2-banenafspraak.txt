@@ -1,0 +1,54 @@
+ziektewet (2025-01-01 {bsn: 999990012, heeft_arbeidsbeperking_wia: false, heeft_voortgezet_wia_recht: false, is_banenafspraak_doelgroep: true, is_beschut_werk: false, is_jonggehandicapt_schoolverlater: false, is_pwet_loonkostensubsidie: false, is_wajong_gerechtigd: false, is_wia_min_35_arbeidsongeschikt: false, is_wia_uitkeringsgerechtigd: false, is_wsw_werknemer: false, loonwaarde_lager_dan_minimumloon: true} heeft_recht_op_no_risk_polis, duur_no_risk_polis_jaren)
+╟──Evaluating rules for ziektewet (heeft_recht_op_no_risk_polis, duur_no_risk_polis_jaren)
+Untranslatable: vijfjaarstermijn bij onderbroken dienstverbanden — Lid 1 onderdeel b 4° en lid 1 onderdeel c/d formuleren de
+vijfjaarstermijn als "binnen vijf jaar na die dag in
+dienstbetrekking werkzaamheden gaat verrichten". Bij
+onderbroken of opvolgende dienstverbanden binnen die termijn
+is in de wettekst niet eenduidig of de termijn opnieuw begint,
+doorloopt, of optelt. Vereist juridische interpretatie.
+║   ╟──Evaluating rules for untranslatable:vijfjaarstermijn bij onderbroken dienstverbanden
+Untranslatable: lid 2-duur als 'onbeperkt zolang dienstbetrekking voortduurt' — Voor doelgroepen lid 2 (Wajong, Wsw, banenafspraak, beschut
+werk) kent het artikel geen maximum-duur. De engine
+modelleert dit als 0 (niet-tijdsgebonden), maar dat verschilt
+semantisch van een eindige duur en kan bij downstream-gebruik
+verwarring geven.
+║   ╟──Evaluating rules for untranslatable:lid 2-duur als 'onbeperkt zolang dienstbetrekking voortduurt'
+Untranslatable: samenloop met loonkostenvoordelen (LKV) — Het artikel zelf regelt geen samenloop met LKV
+(Wet tegemoetkomingen loondomein) of LKS (Pwet 10d).
+In de praktijk kunnen deze cumulatief gelden, gedeeltelijk
+of niet, afhankelijk van overlappende doelgroepen. Dit valt
+buiten artikel 29b.
+║   ╟──Evaluating rules for untranslatable:samenloop met loonkostenvoordelen (LKV)
+║   ╟──HOOK: Hook PreActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:3:46
+║   ║   ╙──Computing motivering_vereist
+║   ║       └──Result: motivering_vereist = True
+║   ╟──Computing voldoet_aan_lid_1
+║   ║   ├──Compute OR(...) = False
+║   ║   │   ├──Resolving from PARAMETERS: $IS_WIA_UITKERINGSGERECHTIGD = False
+║   ║   │   ├──Resolving from PARAMETERS: $IS_WIA_MIN_35_ARBEIDSONGESCHIKT = False
+║   ║   │   └──Resolving from PARAMETERS: $IS_JONGGEHANDICAPT_SCHOOLVERLATER = False
+║   ║   └──Result: voldoet_aan_lid_1 = False
+║   ╟──Computing voldoet_aan_lid_2
+║   ║   ├──Compute OR(...) = True
+║   ║   │   ├──Resolving from PARAMETERS: $IS_WAJONG_GERECHTIGD = False
+║   ║   │   ├──Resolving from PARAMETERS: $IS_WSW_WERKNEMER = False
+║   ║   │   └──Resolving from PARAMETERS: $IS_BANENAFSPRAAK_DOELGROEP = True
+║   ║   └──Result: voldoet_aan_lid_2 = True
+║   ╟──Computing voldoet_aan_lid_4
+║   ║   ├──Resolving from PARAMETERS: $HEEFT_VOORTGEZET_WIA_RECHT = False
+║   ║   └──Result: voldoet_aan_lid_4 = False
+║   ╟──Computing heeft_recht_op_no_risk_polis
+║   ║   ├──Compute OR(...) = True
+║   ║   │   ├──Resolving from OUTPUT: $VOLDOET_AAN_LID_1 = False
+║   ║   │   └──Resolving from OUTPUT: $VOLDOET_AAN_LID_2 = True
+║   ║   └──Result: heeft_recht_op_no_risk_polis = True
+║   ╟──Computing duur_no_risk_polis_jaren
+║   ║   ├──IF(case 0 matched) = 0
+║   ║   │   ├──CASE 0: True
+║   ║   │   │   └──Resolving from OUTPUT: $VOLDOET_AAN_LID_2 = True
+║   ║   │   └──THEN: 0
+║   ║   └──Result: duur_no_risk_polis_jaren = 0
+║   ╙──HOOK: Hook PostActions on BESCHIKKING stage BESLUIT → algemene_wet_bestuursrecht:6:7
+║       ╙──Computing bezwaartermijn_weken
+║           └──Result: bezwaartermijn_weken = 6
+╙──Result: heeft_recht_op_no_risk_polis, duur_no_risk_polis_jaren = {'bezwaartermijn_weken': 6, 'duur_no_risk_polis_jaren': 0, 'heeft_recht_op_no_risk_polis': True, 'motivering_vereist': True, 'voldoet_aan_lid_1': False, 'voldoet_aan_lid_2': True, 'voldoet_aan_lid_4': False}

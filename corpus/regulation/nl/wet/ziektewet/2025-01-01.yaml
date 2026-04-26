@@ -2440,6 +2440,7 @@ articles:
             is in de wettekst niet eenduidig of de termijn opnieuw begint,
             doorloopt, of optelt. Vereist juridische interpretatie.
           legal_text_excerpt: 'binnen vijf jaar na die dag in dienstbetrekking werkzaamheden gaat verrichten'
+          accepted: true
         - construct: lid 2-duur als 'onbeperkt zolang dienstbetrekking voortduurt'
           reason: |-
             Voor doelgroepen lid 2 (Wajong, Wsw, banenafspraak, beschut
@@ -2450,6 +2451,7 @@ articles:
           suggestion: |-
             Een aparte boolean-output 'tijdsgebonden_duur' toevoegen, of
             een speciale waarde voor 'onbeperkt' (bijv. -1 of null).
+          accepted: true
         - construct: samenloop met loonkostenvoordelen (LKV)
           reason: |-
             Het artikel zelf regelt geen samenloop met LKV
@@ -2458,6 +2460,7 @@ articles:
             of niet, afhankelijk van overlappende doelgroepen. Dit valt
             buiten artikel 29b.
           suggestion: Apart artikel/regel modelleren voor cumulatieregels.
+          accepted: true
   - number: 29b.1.a
     text: |-
       die onmiddellijk voorafgaand aan een dienstbetrekking als bedoeld in [artikel 3][ref1], [4][ref2] of [5][ref3],
