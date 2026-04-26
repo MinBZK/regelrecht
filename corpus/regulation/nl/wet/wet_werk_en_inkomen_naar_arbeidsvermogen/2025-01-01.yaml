@@ -2711,6 +2711,76 @@ articles:
     references:
       - id: ref1
         bwb_id: BWBR0008903
+    # SKELETON: alleen relatie-structuur, geen volledige logica.
+    # Hosts twee Financieel CV-regelingen:
+    #   - JC  = Jobcoaching (artikel 35.2.d — persoonlijke ondersteuning)
+    #   - WPA = Werkplekaanpassingen (artikel 35.2.c — meeneembare
+    #     voorzieningen op de werkplek)
+    # Volledige logica vereist:
+    #   - UWV-vaststelling structurele functionele beperking
+    #   - werknemer niet in Wsw-dienstbetrekking
+    #   - aanvraag bij UWV (artikel 35 lid 1)
+    #   - voorzieningen-criteria (artikel 35 lid 2)
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: heeft_structurele_functionele_beperking
+            type: boolean
+            required: true
+            description: |-
+              UWV heeft structurele functionele beperking vastgesteld.
+          - name: is_wsw_werknemer
+            type: boolean
+            required: true
+            description: Uitsluitingsgrond — Wsw-dienstbetrekking.
+          - name: aanvraag_jobcoaching_ingediend
+            type: boolean
+            required: true
+            description: Aanvraag jobcoaching bij UWV ingediend.
+          - name: aanvraag_werkplekaanpassing_ingediend
+            type: boolean
+            required: true
+            description: Aanvraag werkplekaanpassing bij UWV ingediend.
+        input:
+          - name: heeft_arbeidsbeperking_volgens_wia
+            type: boolean
+            description: |-
+              Persoon heeft een arbeidsbeperking op grond van Wet WIA
+              (intra-law: pass-through via doelgroepstub artikel 1).
+            source:
+              regulation: wet_werk_en_inkomen_naar_arbeidsvermogen
+              output: heeft_arbeidsbeperking_wia
+              parameters:
+                bsn: $bsn
+                heeft_arbeidsbeperking_wia: $heeft_structurele_functionele_beperking
+                is_wia_uitkeringsgerechtigd: $heeft_structurele_functionele_beperking
+                is_wia_min_35_arbeidsongeschikt: $heeft_structurele_functionele_beperking
+                heeft_voortgezet_wia_recht: $heeft_structurele_functionele_beperking
+        output:
+          - name: heeft_recht_op_jobcoaching
+            type: boolean
+          - name: heeft_recht_op_werkplekaanpassing
+            type: boolean
+        actions:
+          - output: heeft_recht_op_jobcoaching
+            value:
+              operation: AND
+              conditions:
+                - $heeft_arbeidsbeperking_volgens_wia
+                - operation: NOT
+                  value: $is_wsw_werknemer
+                - $aanvraag_jobcoaching_ingediend
+          - output: heeft_recht_op_werkplekaanpassing
+            value:
+              operation: AND
+              conditions:
+                - $heeft_arbeidsbeperking_volgens_wia
+                - operation: NOT
+                  value: $is_wsw_werknemer
+                - $aanvraag_werkplekaanpassing_ingediend
   - number: '35.2'
     text: 'Onder voorzieningen als bedoeld in het eerste lid worden uitsluitend verstaan:'
     url: https://wetten.overheid.nl/BWBR0019057/2025-01-01#Artikel35
