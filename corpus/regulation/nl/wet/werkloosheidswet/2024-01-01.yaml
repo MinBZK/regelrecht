@@ -5274,56 +5274,155 @@ articles:
       - id: ref1
         bwb_id: BWBR0004045
         hoofdstuk: II
-    # SKELETON: alleen relatie-structuur, geen volledige logica.
-    # PP = Proefplaatsing. Volledige logica vereist:
-    #   - werknemer heeft recht op WW-uitkering (hoofdstuk II)
-    #   - voorwaarden uit lid 3: geschikte werkzaamheden,
-    #     aansprakelijkheidsverzekering, niet eerder bij deze werkgever,
-    #     reëel uitzicht op dienstbetrekking >= 6 maanden
-    #   - termijn-bepaling (max 6 maanden, lid 1)
-    #   - onderbreking wegens ziekte (lid 4)
+    # PP = Proefplaatsing — Werkloosheidswet artikel 76a lid 1 t/m 5.
+    # Lid 1 — UWV kan toestemming verlenen, max 6 maanden onbeloonde arbeid.
+    # Lid 2 — WW-uitkering blijft bestaan tijdens de proefplaatsing.
+    # Lid 3 — De werkzaamheden moeten voldoen aan a, b, c en d (cumulatief).
+    # Lid 4 — Onderbreking wegens ziekte: ziekteperiode telt niet mee.
+    # Lid 5 — Open term: bij ministeriële regeling kunnen nadere regels
+    #         worden gesteld omtrent de uitvoering van lid 1 t/m 4.
     machine_readable:
       definitions:
-        max_duur_proefplaatsing_weken:
-          value: 26
+        max_duur_proefplaatsing_maanden:
+          value: 6
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: bsn
             type: string
             required: true
+            description: BSN van de werknemer.
           - name: heeft_recht_op_ww_uitkering
             type: boolean
             required: true
-            description: Recht op WW-uitkering uit hoofdstuk II WW.
+            description: |-
+              Lid 1: werknemer heeft recht op een uitkering op grond van
+              hoofdstuk II van de Werkloosheidswet. Bron: UWV.
+          - name: in_staat_tot_werkzaamheden
+            type: boolean
+            required: true
+            description: |-
+              Lid 3 onderdeel a: werkzaamheden waartoe de werknemer met
+              zijn krachten en bekwaamheden in staat is. Bron: UWV-oordeel
+              (typisch arbeidskundig).
           - name: aansprakelijkheidsverzekering_aanwezig
             type: boolean
             required: true
             description: |-
-              Werkgever heeft aansprakelijkheidsverzekering ten behoeve van
-              werknemer (lid 3 onderdeel b).
-          - name: reeel_uitzicht_op_dienstbetrekking
+              Lid 3 onderdeel b: werkgever heeft een aansprakelijkheids­
+              verzekering ten behoeve van de werknemer afgesloten.
+          - name: niet_eerder_proefplaatsing_zelfde_werkgever
             type: boolean
             required: true
             description: |-
-              UWV oordeelt dat er reëel uitzicht is op een aansluitende
-              dienstbetrekking van >= 6 maanden (lid 3 onderdeel d).
+              Lid 3 onderdeel c: werknemer heeft de werkzaamheden niet
+              reeds eerder onbeloond op een proefplaats bij deze
+              werkgever (of diens rechtsvoorganger) verricht.
+          - name: reeel_uitzicht_op_dienstbetrekking_zes_maanden
+            type: boolean
+            required: true
+            description: |-
+              Lid 3 onderdeel d: naar het oordeel van het UWV is er reëel
+              uitzicht op een aansluitende dienstbetrekking van dezelfde
+              of grotere omvang voor ten minste 6 maanden.
         output:
+          - name: voldoet_aan_lid_3_voorwaarden
+            type: boolean
+            description: |-
+              Cumulatieve toets lid 3 onderdelen a, b, c en d.
           - name: mag_proefplaatsing_aangaan
             type: boolean
-          - name: duur_proefplaatsing_weken
-            type: number
             description: |-
-              Maximale duur in weken (lid 1: zes maanden = ~26 weken).
+              UWV mag op grond van lid 1 toestemming verlenen — werknemer
+              heeft WW-recht en de werkzaamheden voldoen aan lid 3.
+          - name: max_duur_proefplaatsing_maanden
+            type: number
+            type_spec:
+              unit: months
+            description: |-
+              Maximale duur uit lid 1 (zes kalendermaanden).
+          - name: ww_uitkering_blijft_bestaan
+            type: boolean
+            description: |-
+              Lid 2: gedurende de proefplaatsing blijft het WW-recht
+              bestaan, onverminderd artikel 20 lid 1 onderdeel b.
         actions:
+          - output: voldoet_aan_lid_3_voorwaarden
+            value:
+              operation: AND
+              conditions:
+                - $in_staat_tot_werkzaamheden
+                - $aansprakelijkheidsverzekering_aanwezig
+                - $niet_eerder_proefplaatsing_zelfde_werkgever
+                - $reeel_uitzicht_op_dienstbetrekking_zes_maanden
+              legal_basis:
+                law: Werkloosheidswet
+                bwb_id: BWBR0004045
+                article: 76a
+                paragraph: '3'
+                explanation: |-
+                  Lid 3 onderdelen a t/m d zijn cumulatief: alle vier
+                  moeten gelden anders kwalificeert de proefplaatsing
+                  niet als onbeloonde arbeid.
           - output: mag_proefplaatsing_aangaan
             value:
               operation: AND
               conditions:
                 - $heeft_recht_op_ww_uitkering
-                - $aansprakelijkheidsverzekering_aanwezig
-                - $reeel_uitzicht_op_dienstbetrekking
-          - output: duur_proefplaatsing_weken
-            value: $max_duur_proefplaatsing_weken
+                - $voldoet_aan_lid_3_voorwaarden
+              legal_basis:
+                law: Werkloosheidswet
+                bwb_id: BWBR0004045
+                article: 76a
+                paragraph: '1'
+                explanation: |-
+                  Lid 1 vereist WW-recht (hoofdstuk II); lid 3 stelt
+                  voorwaarden aan de werkzaamheden zelf.
+          - output: max_duur_proefplaatsing_maanden
+            value: $max_duur_proefplaatsing_maanden
+          - output: ww_uitkering_blijft_bestaan
+            value: $mag_proefplaatsing_aangaan
+      open_terms:
+        - id: nadere_regels_uitvoering_proefplaatsing
+          type: string
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 76a lid 5 Werkloosheidswet
+          description: |-
+            Lid 5 — bij ministeriële regeling kunnen nadere regels worden
+            gesteld omtrent de uitvoering van het eerste tot en met
+            vierde lid. Geen actuele regeling bekend; placeholder zodat
+            een implementing regulation later kan invullen.
+          default:
+            actions:
+              - output: nadere_regels_uitvoering_proefplaatsing
+                value: 'geen'
+      untranslatables:
+        - construct: onderbreking wegens ziekte
+          reason: |-
+            Lid 4 stelt dat ziekteperiode binnen de proefplaatsing buiten
+            beschouwing wordt gelaten voor het berekenen van de
+            zes-maanden-termijn. Dit vereist samenloop met de
+            Ziektewet-uitkering en day-by-day boekhouding van werk- vs
+            ziekte-dagen, wat met de huidige operatieset niet faithfully
+            modelleerbaar is. In een runtime context loopt dit via
+            UWV-uitvoering.
+          legal_text_excerpt: |-
+            Indien de werkzaamheden, bedoeld in het eerste lid, wegens
+            ziekte worden onderbroken, wordt de periode waarin een
+            uitkering bij ziekte wordt ontvangen, voor de toepassing
+            van dat lid buiten beschouwing gelaten.
+          accepted: true
+        - construct: oordeelvorming UWV ('reëel uitzicht')
+          reason: |-
+            Lid 3 onderdeel d is discretionair ("naar het oordeel van
+            het UWV"). De engine ontvangt de uitkomst als boolean
+            parameter; de inhoudelijke afweging is niet machine-leesbaar.
+          legal_text_excerpt: 'naar het oordeel van het UWV, een reëel uitzicht'
+          accepted: true
   - number: 76a.2
     text: |-
       Voor de werknemer, bedoeld in het eerste lid, blijft het recht op uitkering op grond van [hoofdstuk II][ref1]
