@@ -1179,48 +1179,196 @@ articles:
       Een werkgever heeft recht op een lage-inkomensvoordeel indien bij deze werkgever een werknemer in een of meerdere
       dienstbetrekkingen is waarvan:
     url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel3.1
-    # SKELETON: alleen relatie-structuur, geen volledige logica.
-    # NB: LIV is per 2025-01-01 afgeschaft (artikel 3.1 t/m 3.4 vervalt
-    # voor nieuwe dienstverbanden). Peildatum 2024-01-01 gekozen zodat de
-    # regeling nog in beeld is voor de Financieel CV-graphdemo.
-    # Volledige logica vereist:
-    #   - gemiddeld uurloon binnen LIV-grenzen (€14,33–€14,91 in 2024)
-    #   - >= 1248 verloonde uren in kalenderjaar
-    #   - werknemer niet pensioengerechtigd
-    #   - hoogteberekening uit artikel 3.2 (€ 0,49 of € 1,01 per uur)
+    # LIV — Lage-inkomensvoordeel, Wtl artikel 3.1 (recht) + 3.2 (hoogte).
+    # Geldend op peildatum 2024-01-01. Per 2025-01-01 afgeschaft door
+    # Wet 36458 (afschaffing LIV).
+    #
+    # Lid 1 — werkgever heeft recht als werknemer in dienstbetrekking is
+    #         met (a) gemiddeld uurloon binnen LIV-grenzen en
+    #         (b) ten minste 1248 verloonde uren.
+    # Lid 2 — uitsluiting bij pensioengerechtigde leeftijd.
+    # Lid 3 — gemiddeld uurloon = jaarloon / verloonde uren.
+    # Lid 4 — uurloongrenzen worden jaarlijks aangepast (open_term).
+    # Lid 5 — afwijking 2024: bovengrens = 104% van ondergrens
+    #         (volgt uit ministeriële regeling, hier hardgecodeerd).
+    # Hoogte (artikel 3.2.1): € 0,49 per verloond uur, max € 960 per
+    #         werknemer per kalenderjaar.
     machine_readable:
+      # 2024-specifieke bedragen (uit Regeling lage-inkomensvoordeel,
+      # bij wijziging via art. 3.1 lid 4 + lid 5) zijn als literals
+      # in de actions opgenomen — definitions-block werkt momenteel
+      # niet vanuit een tweede machine_readable in dezelfde wet
+      # (zie #TODO definitions-loading).
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: bsn
             type: string
             required: true
-          - name: voldoet_aan_uurloongrens_liv
+            description: BSN van de werknemer.
+          - name: jaarloon_eurocent
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: |-
+              Lid 3: jaarloon van de werknemer in eurocent
+              (loonaangifte, Belastingdienst).
+          - name: verloonde_uren
+            type: number
+            required: true
+            description: |-
+              Verloonde uren in het kalenderjaar (loonaangifte).
+              Lid 1 onderdeel b drempel: 1248.
+          - name: heeft_pensioengerechtigde_leeftijd_bereikt
             type: boolean
             required: true
-            description: Gemiddeld uurloon ligt binnen de LIV-grenzen.
-          - name: voldoet_aan_minimum_verloonde_uren
-            type: boolean
-            required: true
-            description: Ten minste 1248 verloonde uren in kalenderjaar.
+            description: |-
+              Lid 2: uitsluitingsgrond. Werknemer heeft de
+              pensioengerechtigde leeftijd bereikt (artikel 7a lid 1 AOW).
         output:
-          - name: heeft_recht_op_liv
-            type: boolean
-          - name: hoogte_liv_per_jaar
+          - name: gemiddeld_uurloon_eurocent
             type: amount
             type_spec:
               unit: eurocent
             description: |-
-              Bedrag per kalenderjaar; in skeleton 0 omdat de
-              hoogteberekening (artikel 3.2) niet is uitgewerkt.
+              Lid 3: jaarloon / verloonde uren (alleen zinvol bij
+              verloonde_uren > 0).
+          - name: voldoet_aan_uurloongrens
+            type: boolean
+            description: Lid 1 onderdeel a — gemiddeld uurloon binnen LIV-grenzen.
+          - name: voldoet_aan_minimum_verloonde_uren
+            type: boolean
+            description: Lid 1 onderdeel b — ≥ 1248 verloonde uren.
+          - name: heeft_recht_op_liv
+            type: boolean
+          - name: hoogte_liv_per_jaar_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |-
+              Artikel 3.2.1: € 0,49 × verloonde uren, met maximum € 960.
+              Bij geen recht = 0.
         actions:
+          - output: gemiddeld_uurloon_eurocent
+            value:
+              operation: DIVIDE
+              values:
+                - $jaarloon_eurocent
+                - $verloonde_uren
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                paragraph: '3'
+                explanation: 'Gemiddeld uurloon = jaarloon / verloonde uren.'
+          - output: voldoet_aan_uurloongrens
+            value:
+              operation: AND
+              conditions:
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $gemiddeld_uurloon_eurocent
+                  value: 1433
+                - operation: LESS_THAN_OR_EQUAL
+                  subject: $gemiddeld_uurloon_eurocent
+                  value: 1491
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                paragraph: '1'
+                sentence: 'a'
+                explanation: |-
+                  2024-grenzen: € 14,33 ondergrens, € 14,91 bovengrens
+                  (= 104% van ondergrens, lid 5).
+          - output: voldoet_aan_minimum_verloonde_uren
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $verloonde_uren
+              value: 1248
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                paragraph: '1'
+                sentence: 'b'
           - output: heeft_recht_op_liv
             value:
               operation: AND
               conditions:
-                - $voldoet_aan_uurloongrens_liv
+                - $voldoet_aan_uurloongrens
                 - $voldoet_aan_minimum_verloonde_uren
-          - output: hoogte_liv_per_jaar
-            value: 0
+                - operation: NOT
+                  value: $heeft_pensioengerechtigde_leeftijd_bereikt
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.1'
+                explanation: |-
+                  Lid 1 (a + b cumulatief) en lid 2 (uitsluiting
+                  pensioengerechtigden).
+          - output: hoogte_liv_per_jaar_eurocent
+            value:
+              operation: IF
+              cases:
+                - when: $heeft_recht_op_liv
+                  then:
+                    operation: MIN
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - 49
+                          - $verloonde_uren
+                      - 96000
+              default: 0
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '3.2'
+                paragraph: '1'
+                explanation: |-
+                  € 0,49 per verloond uur, met een maximum van € 960
+                  per werknemer per kalenderjaar.
+      open_terms:
+        - id: liv_uurloongrenzen_per_jaar
+          type: amount
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 3.1 lid 4 Wet tegemoetkomingen loondomein
+          description: |-
+            Lid 4 — bedragen worden jaarlijks gewijzigd via Regeling
+            van Minister van SZW na overleg met Minister van Financiën,
+            in lijn met aanpassingen artikel 8 lid 1 Wml. In deze
+            machine_readable hardgecodeerd voor 2024 als definitions.
+          default:
+            actions:
+              - output: liv_uurloongrenzen_per_jaar
+                value: 1433
+      untranslatables:
+        - construct: dienstbetrekking-aggregatie ('in een of meerdere dienstbetrekkingen')
+          reason: |-
+            Lid 1 staat toe dat verloonde uren over meerdere
+            dienstbetrekkingen bij dezelfde werkgever worden opgeteld.
+            Deze machine_readable rekent op één geaggregeerd jaarloon
+            en uren-totaal en delegeert de aggregatie naar de
+            invoerende laag (loonaangifte / Belastingdienst).
+          legal_text_excerpt: 'in een of meerdere dienstbetrekkingen'
+          accepted: true
+        - construct: aangiftetijdvak-verlenging bij pensioenleeftijd
+          reason: |-
+            Lid 2 verlengt het LIV-recht binnen het lopende
+            aangiftetijdvak waarin de werknemer pensioengerechtigd
+            wordt. Een dergelijke partial-period berekening is met de
+            huidige operatie-set niet faithful te modelleren; de engine
+            beoordeelt enkel de bool-status op peildatum.
+          legal_text_excerpt: |-
+            Ingeval de periode waarin het lage-inkomensvoordeel van
+            toepassing is, in de loop van een aangiftetijdvak eindigt,
+            wordt die periode verlengd...
+          accepted: true
   - number: 3.1.1.a
     text: |-
       het gemiddelde uurloon in het kalenderjaar gelijk is aan of meer bedraagt dan € 14,33 maar niet meer dan € 14,91;
