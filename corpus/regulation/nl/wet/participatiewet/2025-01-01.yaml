@@ -1848,54 +1848,212 @@ articles:
   - number: 10c.1
     text: 'Het college kan:'
     url: https://wetten.overheid.nl/BWBR0015703/2025-01-01#Artikel10c
-    # SKELETON: alleen relatie-structuur, geen volledige logica.
-    # LKS = Loonkostensubsidie. Volledige logica vereist:
-    #   - vaststelling doelgroep (Pwet 7 lid 1 a) door college
-    #   - loonwaardevaststelling onder minimumloon (artikel 10d)
-    #   - hoogte-bepaling (artikel 10d, percentage van minimumloon)
-    #   - duur-bepaling (artikel 10d lid 4)
+    # LKS — Loonkostensubsidie, Pwet artikel 10c (doelgroep) + 10d
+    # (verlening, hoogte, duur).
+    #
+    # Artikel 10c lid 1: college stelt vast of persoon tot doelgroep LKS
+    #   behoort, op aanvraag (a) of ambtshalve (b). Lid 2: aanvraag
+    #   max 1x per 12 maanden.
+    # Artikel 10d lid 1: college verleent LKS aan werkgever (a: na
+    #   loonwaardevaststelling, b: zonder loonwaardevaststelling).
+    # Artikel 10d lid 2: aanvraag binnen 6 mnd na dienstbetrekking;
+    #   onder voorwaarden van praktijkonderwijs / VSO / entreeopleiding
+    #   of Pwet 7 lid 1 a.
+    # Artikel 10d lid 3: uitgesloten bij Wsw-dienstbetrekking.
+    # Artikel 10d lid 4: hoogte = (WML + vakantiebijslag) − (loonwaarde +
+    #   vakantiebijslag), max 70% van WML+vakantiebijslag, plus
+    #   werkgeverslastenvergoeding (open_term ministeriële regeling).
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: bsn
             type: string
             required: true
+            description: BSN van de werknemer.
           - name: behoort_tot_doelgroep_lks
             type: boolean
             required: true
             description: |-
-              College heeft vastgesteld dat persoon tot de doelgroep
-              loonkostensubsidie behoort (artikel 10c lid 1 a/b).
-        input:
-          - name: heeft_loonwaarde_onder_minimumloon
+              Artikel 10c lid 1: college heeft vastgesteld dat persoon
+              tot de doelgroep loonkostensubsidie behoort.
+          - name: kan_minimumloon_niet_verdienen
             type: boolean
+            required: true
             description: |-
-              UWV/college heeft vastgesteld dat persoon niet in staat is
-              tot het verdienen van het wettelijk minimumloon.
-              Bron: artikel 10d Pwet, gemodelleerd via doelgroepstub.
-            source:
-              regulation: participatiewet
-              output: loonwaarde_lager_dan_minimumloon
-              parameters:
-                bsn: $bsn
-                loonwaarde_lager_dan_minimumloon: $heeft_loonwaarde_onder_minimumloon
+              Artikel 10d lid 2: college heeft vastgesteld dat persoon
+              met voltijdse arbeid niet in staat is tot het verdienen
+              van het wettelijk minimumloon.
+          - name: aanvraag_lks_ingediend_binnen_zes_maanden
+            type: boolean
+            required: true
+            description: |-
+              Artikel 10d lid 2: aanvraag werkgever of werknemer is
+              binnen 6 maanden na begin dienstbetrekking ingediend.
+          - name: voorafgaand_relevante_onderwijsroute_of_doelgroep
+            type: boolean
+            required: true
+            description: |-
+              Artikel 10d lid 2: in 6 maanden voorafgaand aan
+              dienstbetrekking deelnam aan praktijkonderwijs / VSO /
+              entreeopleiding óf was persoon als bedoeld in artikel 7
+              lid 1 a.
+          - name: is_wsw_dienstbetrekking
+            type: boolean
+            required: true
+            description: |-
+              Artikel 10d lid 3: uitsluitingsgrond — dienstbetrekking
+              op grond van artikelen 2 of 7 Wsw.
+          - name: loonwaarde_eurocent_per_maand
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: |-
+              Vastgestelde loonwaarde van de persoon in eurocent per
+              maand. Voor lid 4 gebruikt om subsidie-hoogte te bepalen.
+              Bij beslissing zonder loonwaardevaststelling (lid 1 b)
+              kan deze nul zijn — dan geldt 50% eerste-6-mnd-regeling
+              (untranslatable).
+          - name: minimumloon_plus_vakantiebijslag_eurocent_per_maand
+            type: amount
+            required: true
+            type_spec:
+              unit: eurocent
+            description: |-
+              WML + 8% vakantiebijslag (artikel 15 Wml) per maand,
+              afhankelijk van leeftijd en arbeidsduur. Bron: Wml.
         output:
           - name: heeft_recht_op_lks
             type: boolean
-          - name: loonwaarde_percentage
-            type: number
+          - name: bruto_subsidie_eurocent_per_maand
+            type: amount
+            type_spec:
+              unit: eurocent
             description: |-
-              Percentage van minimumloon dat werknemer kan verdienen;
-              in skeleton 0 omdat de hoogteberekening niet is uitgewerkt.
+              Lid 4 — verschil tussen WML+VB en loonwaarde+VB,
+              vóór toepassing van de 70%-cap.
+          - name: maximum_subsidie_eurocent_per_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: 'Lid 4 — 70% van WML+VB als bovengrens.'
+          - name: hoogte_lks_eurocent_per_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |-
+              Lid 4 — bedrag exclusief werkgeverslastenvergoeding
+              (open_term).
         actions:
           - output: heeft_recht_op_lks
             value:
               operation: AND
               conditions:
                 - $behoort_tot_doelgroep_lks
-                - $heeft_loonwaarde_onder_minimumloon
-          - output: loonwaarde_percentage
-            value: 0
+                - $kan_minimumloon_niet_verdienen
+                - $aanvraag_lks_ingediend_binnen_zes_maanden
+                - $voorafgaand_relevante_onderwijsroute_of_doelgroep
+                - operation: NOT
+                  value: $is_wsw_dienstbetrekking
+              legal_basis:
+                law: Participatiewet
+                bwb_id: BWBR0015703
+                article: '10d'
+                paragraph: '2'
+                explanation: |-
+                  Cumulatieve voorwaarden lid 2 + uitsluiting lid 3.
+          - output: bruto_subsidie_eurocent_per_maand
+            value:
+              operation: SUBTRACT
+              values:
+                - $minimumloon_plus_vakantiebijslag_eurocent_per_maand
+                - $loonwaarde_eurocent_per_maand
+              legal_basis:
+                law: Participatiewet
+                bwb_id: BWBR0015703
+                article: '10d'
+                paragraph: '4'
+                explanation: |-
+                  WML+VB − loonwaarde+VB. Hier wordt vakantiebijslag
+                  evenredig met loonwaarde meegenomen — wij ontvangen
+                  loonwaarde inclusief VB als één bedrag.
+          - output: maximum_subsidie_eurocent_per_maand
+            value:
+              operation: DIVIDE
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $minimumloon_plus_vakantiebijslag_eurocent_per_maand
+                    - 70
+                - 100
+              legal_basis:
+                law: Participatiewet
+                bwb_id: BWBR0015703
+                article: '10d'
+                paragraph: '4'
+                explanation: '70% van WML+VB als wettelijke bovengrens.'
+          - output: hoogte_lks_eurocent_per_maand
+            value:
+              operation: IF
+              cases:
+                - when: $heeft_recht_op_lks
+                  then:
+                    operation: MAX
+                    values:
+                      - 0
+                      - operation: MIN
+                        values:
+                          - $bruto_subsidie_eurocent_per_maand
+                          - $maximum_subsidie_eurocent_per_maand
+              default: 0
+      open_terms:
+        - id: werkgeverslastenvergoeding_eurocent
+          type: amount
+          required: false
+          delegated_to: minister
+          delegation_type: MINISTERIELE_REGELING
+          legal_basis: artikel 10d lid 4 Participatiewet
+          description: |-
+            Bij ministeriële regeling vastgestelde vergoeding voor
+            werkgeverslasten, bovenop de subsidie. Niet uitgewerkt
+            in deze YAML.
+          default:
+            actions:
+              - output: werkgeverslastenvergoeding_eurocent
+                value: 0
+      untranslatables:
+        - construct: '50%-regeling eerste zes maanden zonder loonwaardevaststelling (lid 5)'
+          reason: |-
+            Lid 5 introduceert een afwijkende hoogte (50% van WML+VB)
+            voor de eerste zes maanden indien geen loonwaarde is
+            vastgesteld (lid 1 b). Dit vereist een tijdgebonden split
+            van het subsidiebedrag binnen één dienstbetrekking, wat
+            met de huidige operatie-set niet faithful te modelleren is.
+          accepted: true
+        - construct: 'naar evenredigheid bij arbeidsduur < 36 uur (lid 4 zin 2)'
+          reason: |-
+            De subsidie wordt evenredig verminderd of vermeerderd bij
+            kortere of langere arbeidsduur dan 36 uur. Het bedrag dat
+            wij hier berekenen gaat uit van een normalisatie naar
+            36 uur en delegeert de evenredigheidstoepassing aan
+            de uitvoeringslaag.
+          accepted: true
+        - construct: 'jaarlijkse herziening loonkostensubsidie (lid 7)'
+          reason: |-
+            Het college stelt de hoogte ambtshalve opnieuw vast per
+            1 januari met toepassing van WML-ontwikkeling en
+            werkgeverslastenvergoeding. Dit is een runtime-proces
+            (jaarlijkse herrekening), geen statisch artikel-rekenwerk.
+          accepted: true
+        - construct: 'EU-woonplaatsverplaatsing (lid 10)'
+          reason: |-
+            Bij verhuizing naar EU/EER/Zwitserland blijft het
+            oorspronkelijke college bevoegd. Geen logische berekening,
+            wel een uitvoeringsregel.
+          accepted: true
   - number: 10c.1.a
     text: |-
       op schriftelijke aanvraag van een persoon als bedoeld in [artikel 7, eerste lid, onderdeel a][ref1], vaststellen of
