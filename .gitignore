@@ -45,7 +45,9 @@ trace_output/
 
 # Corpus local overrides
 corpus-registry.local.yaml
+corpus-registry.local-only.yaml
 corpus-auth.yaml
+corpus-financieel-cv-demo/
 
 # Environment
 .env

@@ -94,38 +94,99 @@ Output-leaf-knopen die de graph rendert (filtert standaard
   `heeft_recht_op_werkplekaanpassing`
 - ww: `mag_proefplaatsing_aangaan`, `duur_proefplaatsing_weken`
 
-### Overzichtsplaatje (alle 7 wetten samen)
+### Overzichtsplaatje (alle 7 wetten samen, artikel-niveau)
 
-De editor-graph laat steeds één wortel-wet zien met haar transitieve
-dependencies. Voor een totaalbeeld van alle Financieel CV-regelingen:
+De editor-graph rendert steeds vanuit één wortel-wet en walkt
+transitief naar dependencies. Voor één totaalbeeld van Financieel CV
+op artikel-niveau (vergelijkbaar met de editor-graph maar dan
+statisch en compleet):
 
 ```mermaid
-graph LR
-  subgraph "Regelingen-wetten"
-    ZW[Ziektewet<br/>NRP]
-    WTL[Wtl<br/>LIV + LKV]
-    PW[Participatiewet<br/>LKS]
-    WAJ[Wajong<br/>LDP]
-    WIA[Wet WIA<br/>JC + WPA]
-    WW[Werkloosheidswet<br/>PP]
+flowchart LR
+  classDef regeling fill:#fff5f5,stroke:#c0392b,color:#000;
+  classDef bron fill:#f0f6ff,stroke:#2980b9,color:#000;
+  classDef proces fill:#fff9e6,stroke:#b58900,color:#000;
+
+  subgraph ZW["Ziektewet (NRP) — BWBR0001888"]
+    ZW_29b["Art. 29b lid 1, 2, 4<br/>→ heeft_recht_op_no_risk_polis<br/>→ duur_no_risk_polis_jaren<br/>→ voldoet_aan_lid_1 / lid_2 / lid_4"]
   end
 
-  subgraph "Procesrecht"
-    AWB[AWB<br/>BESCHIKKING-hooks]
+  subgraph WTL["Wet tegemoetkomingen loondomein — BWBR0037522"]
+    WTL_31["Art. 3.1.1 (LIV)<br/>→ heeft_recht_op_liv<br/>→ hoogte_liv_per_jaar"]
+    WTL_21["Art. 2.1 (LKV)<br/>→ heeft_recht_op_lkv<br/>→ categorie_lkv<br/>→ hoogte_lkv_per_jaar"]
   end
 
-  ZW -- "lid 1.a, 1.b, 4" --> WIA
-  ZW -- "lid 1.c-d, 2.a, 2.c" --> WAJ
-  ZW -- "lid 2.e, 2.f" --> PW
-  WTL -- "banenafspraak" --> PW
-  ZW -. "motivering + bezwaartermijn" .-> AWB
+  subgraph PW["Participatiewet — BWBR0015703"]
+    PW_1["Art. 1 (doelgroep-stub)<br/>→ is_banenafspraak_doelgroep<br/>→ is_pwet_loonkostensubsidie<br/>→ is_beschut_werk<br/>→ loonwaarde_lager_dan_minimumloon"]
+    PW_10c["Art. 10c (LKS)<br/>→ heeft_recht_op_lks<br/>→ loonwaarde_percentage"]
+  end
+
+  subgraph WAJ["Wajong — BWBR0008657"]
+    WAJ_11["Art. 1:1 (doelgroep-stub)<br/>→ is_wajong_gerechtigd<br/>→ is_jonggehandicapt_schoolverlater"]
+    WAJ_220["Art. 2:20 (LDP)<br/>→ heeft_recht_op_loondispensatie"]
+  end
+
+  subgraph WIA["Wet WIA — BWBR0019057"]
+    WIA_1["Art. 1 (doelgroep-stub)<br/>→ is_wia_uitkeringsgerechtigd<br/>→ is_wia_min_35_arbeidsongeschikt<br/>→ heeft_voortgezet_wia_recht<br/>→ heeft_arbeidsbeperking_wia"]
+    WIA_35["Art. 35.1 (JC + WPA)<br/>→ heeft_recht_op_jobcoaching<br/>→ heeft_recht_op_werkplekaanpassing"]
+  end
+
+  subgraph WW["Werkloosheidswet — BWBR0004045"]
+    WW_76a["Art. 76a.1 (PP)<br/>→ mag_proefplaatsing_aangaan<br/>→ duur_proefplaatsing_weken (=26)"]
+  end
+
+  subgraph AWB["AWB — BWBR0005537 (procedure-hooks)"]
+    AWB_346["Art. 3:46 (motivering)<br/>→ motivering_vereist"]
+    AWB_67["Art. 6:7 (bezwaartermijn)<br/>→ bezwaartermijn_weken"]
+  end
+
+  %% NRP cross-law sources
+  ZW_29b -- "lid 1.a, 1.b, lid 4" --> WIA_1
+  ZW_29b -- "lid 1.c, 1.d, 2.a, 2.c" --> WAJ_11
+  ZW_29b -- "lid 2.e, 2.f" --> PW_1
+
+  %% Skeletons cross- / intra-law sources
+  WTL_21 -- "banenafspraak" --> PW_1
+  PW_10c -- "loonwaarde-stub" --> PW_1
+  WAJ_220 -- "Wajong-status" --> WAJ_11
+  WIA_35  -- "arbeidsbeperking-stub" --> WIA_1
+
+  %% AWB hooks fire op elke BESCHIKKING (NRP is BESCHIKKING TOEKENNING)
+  ZW_29b -. "BESCHIKKING-hook" .-> AWB_346
+  ZW_29b -. "BESCHIKKING-hook" .-> AWB_67
+
+  class ZW_29b,WTL_31,WTL_21,PW_10c,WAJ_220,WIA_35,WW_76a regeling
+  class WIA_1,WAJ_11,PW_1 bron
+  class AWB_346,AWB_67 proces
 ```
 
-Solide pijlen = cross-law data dependencies (input.source.regulation),
-gestippeld = AWB-hook (fires automatisch op elke BESCHIKKING).
+**Legenda:**
 
-NB: WW (PP) staat los — geen cross-law dependencies.
-JC/WPA en LDP gebruiken intra-law sources (zelfde wet, doelgroepstub).
+- 🟥 *regeling* — uitkomst-artikel uit de Financieel CV-regelhulp
+- 🟦 *bron* — doelgroepvaststelling-stub (pass-through naar UWV/college)
+- 🟨 *proces* — AWB-hook die automatisch firet op elke BESCHIKKING
+- ──── solide pijl — cross-law of intra-law `input.source.regulation`
+- ╶╶╶╶ gestippeld — AWB-hook (fires niet via `source` maar via
+  `hooks` declarations)
+
+**Wat valt op:**
+
+- NRP (Ziektewet 29b) is het meest verbonden, met drie cross-law uitgangen
+  naar WIA, Wajong en Pwet — dat is de doelgroepafbakening uit de wet.
+- LIV (Wtl 3.1) staat geheel los: geen cross-law, geen graph-edge —
+  dat klopt, het is een puur loon-uurgrenzen-instrument.
+- PP (WW 76a) staat los om dezelfde reden — voorwaarden zitten alleen
+  in WW zelf.
+- AWB-hooks zijn hier zichtbaar gemaakt, maar bestaan voor elke
+  BESCHIKKING in het corpus. NRP is BESCHIKKING TOEKENNING dus de hooks
+  triggeren tijdens elke uitvoering.
+
+**Wat ontbreekt bewust** (skeleton-status, jurist-input nodig):
+
+- Hoogteberekeningen (LIV, LKV, LKS, NRP-ziekengeld 70% × dagloon).
+- Cumulatie- en uitsluitingsregels tussen NRP, LKV, LKS, LDP.
+- Wsw-doelgroep (BWBR0008903) — nu als directe parameter
+  `is_wsw_werknemer`, niet als cross-law node.
 
 ### Visualisatie tijdens demo
 
