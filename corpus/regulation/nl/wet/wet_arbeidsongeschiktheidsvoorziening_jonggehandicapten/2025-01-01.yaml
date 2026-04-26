@@ -2123,45 +2123,68 @@ articles:
     references:
       - id: ref1
         bwb_id: BWBR0002638
-    # SKELETON: alleen relatie-structuur, geen volledige logica.
-    # LDP = Loondispensatie. Volledige logica vereist:
-    #   - werknemer met recht op arbeidsondersteuning Wajong (hfdst 1A/2)
-    #   - geen Wsw-werknemer
-    #   - UWV-vaststelling dat arbeidsprestatie < minimumloon
-    #   - bepaling dispensatiepercentage door UWV
-    #   - duur en herziening (artikel 2:20 lid 2 e.v.)
+    # LDP — Loondispensatie, Wajong artikel 2:20 lid 1 + 2.
+    # Lid 1 — UWV vermindert beloning naar evenredigheid (loondispensatie)
+    #         indien:
+    #           a. werknemer heeft recht op arbeidsondersteuning Wajong;
+    #           b. werknemer is geen Wsw-werknemer;
+    #           c. arbeidsprestatie is wegens ziekte of gebrek duidelijk
+    #              minder dan minimumloon-equivalent;
+    #           d. werkgever of werknemer heeft een verzoek ingediend.
+    #         In afwijking van Wml.
+    # Lid 2 — Beding voor lagere beloning dan vastgesteld is nietig
+    #         (dwingend recht; beschermt werknemer).
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: bsn
             type: string
             required: true
+            description: BSN van de werknemer (jonggehandicapte).
           - name: is_wsw_werknemer
             type: boolean
             required: true
-            description: Uitsluitingsgrond — Wsw-dienstbetrekking.
-          - name: arbeidsprestatie_minder_dan_minimumloon
+            description: |-
+              Lid 1: uitsluitingsgrond — geen werknemer in de zin van de
+              Wsw of arbeidsovereenkomst artikel 7 Wsw.
+          - name: arbeidsprestatie_duidelijk_minder_dan_minimumloon
             type: boolean
             required: true
             description: |-
-              UWV heeft vastgesteld dat arbeidsprestatie wegens ziekte of
-              gebrek duidelijk minder is dan minimumloon-equivalent.
-        input:
+              Lid 1: UWV heeft vastgesteld dat de arbeidsprestatie van
+              werknemer in deze functie wegens ziekte of gebrek "duidelijk
+              minder" is dan de prestatie die het minimumloon
+              rechtvaardigt.
+          - name: aanvraag_loondispensatie_ingediend
+            type: boolean
+            required: true
+            description: |-
+              Lid 1: het UWV vermindert "op verzoek van de betrokken
+              werkgever of werknemer". Een aanvraag is dus voorwaardelijk.
           - name: heeft_recht_op_arbeidsondersteuning_wajong
             type: boolean
+            required: true
             description: |-
-              Recht op arbeidsondersteuning Wajong; vereist
-              UWV-vaststelling. Pass-through via doelgroepstub artikel 1:1.
-            source:
-              regulation: wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten
-              output: is_wajong_gerechtigd
-              parameters:
-                bsn: $bsn
-                is_wajong_gerechtigd: $heeft_recht_op_arbeidsondersteuning_wajong
-                is_jonggehandicapt_schoolverlater: $heeft_recht_op_arbeidsondersteuning_wajong
+              Lid 1: werknemer heeft recht op arbeidsondersteuning op
+              grond van Wajong (hoofdstuk 1A nieuwe Wajong of
+              hoofdstuk 2 oude Wajong). Bron: UWV-doelgroepregister.
+              Direct als parameter; doelgroepvaststelling via
+              artikel 1:1 is in deze wet zelf gemodelleerd.
         output:
           - name: heeft_recht_op_loondispensatie
             type: boolean
+            description: |-
+              UWV mag op grond van lid 1 beloning verminderen
+              (loondispensatie toepassen).
+          - name: beding_lagere_beloning_is_nietig
+            type: boolean
+            description: |-
+              Lid 2 — uit de wet: een beding waarbij een lagere beloning
+              wordt overeengekomen dan UWV heeft vastgesteld is nietig.
+              Constante uit dwingend recht.
         actions:
           - output: heeft_recht_op_loondispensatie
             value:
@@ -2170,7 +2193,55 @@ articles:
                 - $heeft_recht_op_arbeidsondersteuning_wajong
                 - operation: NOT
                   value: $is_wsw_werknemer
-                - $arbeidsprestatie_minder_dan_minimumloon
+                - $arbeidsprestatie_duidelijk_minder_dan_minimumloon
+                - $aanvraag_loondispensatie_ingediend
+              legal_basis:
+                law: Wet arbeidsongeschiktheidsvoorziening jonggehandicapten
+                bwb_id: BWBR0008657
+                article: '2:20'
+                paragraph: '1'
+                explanation: |-
+                  Cumulatieve voorwaarden lid 1: Wajong-status,
+                  niet-Wsw, arbeidsprestatie duidelijk minder dan
+                  minimumloon, aanvraag ingediend.
+          - output: beding_lagere_beloning_is_nietig
+            value: true
+      open_terms:
+        - id: dispensatiepercentage
+          type: number
+          required: false
+          delegated_to: UWV
+          delegation_type: BELEIDSREGEL
+          legal_basis: artikel 2:20 lid 1 Wajong (uitvoeringsbeleid UWV)
+          description: |-
+            Het verminderingspercentage waarmee de beloning evenredig
+            naar beneden wordt bijgesteld. Vastgesteld door UWV per
+            individueel geval op basis van loonwaardevaststelling.
+            Niet eenduidig in de wet zelf — leeft in UWV-beleidsregels
+            ('Beleidsregels UWV loondispensatie').
+          default:
+            actions:
+              - output: dispensatiepercentage
+                value: 0
+      untranslatables:
+        - construct: 'duidelijk minder dan minimumloon-equivalent'
+          reason: |-
+            Lid 1 stelt dat de arbeidsprestatie "duidelijk minder" moet
+            zijn dan de prestatie die het minimumloon rechtvaardigt.
+            "Duidelijk minder" is discretionair (UWV-arbeidskundig
+            oordeel), geen meetbare drempel. De engine ontvangt de
+            uitkomst als boolean parameter.
+          legal_text_excerpt: 'duidelijk minder is dan de arbeidsprestatie die een geldelijke beloning van het minimumloon rechtvaardigt'
+          accepted: true
+        - construct: 'vermindering naar evenredigheid'
+          reason: |-
+            Lid 1 schrijft voor dat UWV de beloning "naar evenredigheid"
+            vermindert. Het concrete percentage is uitvoeringsbeleid van
+            UWV (zie open_term dispensatiepercentage), niet uit de wet
+            af te leiden. Vandaar als open_term gemodelleerd; het artikel
+            zelf produceert geen hoogte-output.
+          legal_text_excerpt: 'vermindert het Uitvoeringsinstituut werknemersverzekeringen ... de hoogte van de aanspraak op een geldelijke beloning voor de verrichte arbeid naar evenredigheid'
+          accepted: true
   - number: 2:20.2
     text: |-
       Elk beding waarbij een geldelijke beloning voor de verrichte arbeid wordt overeengekomen die lager is dan de
