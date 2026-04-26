@@ -1,25 +1,28 @@
-# Financieel CV — sessieoverzicht
+# Financieel CV — projectoverzicht
 
-Branch: `feat/financieel_cv_RVO`. Sessieduur: zes uur. Voor de demo op
-dinsdag aan de jurist.
+Branch: `feat/financieel_cv_RVO`. Voor de workshop met de makers van
+de regelhulp Financieel CV en juridische review.
 
 ## Scope
 
 Acht regelingen uit de regelhulp [Financieel
 CV](https://regelhulpenvoorbedrijven.nl/financieelcv/), gericht op
-werkgevers/werknemers met afstand tot de arbeidsmarkt. **Eén regeling
-grondig, zeven illustratief.**
+werkgevers/werknemers met afstand tot de arbeidsmarkt. **Alle acht
+volledig uitgewerkt, met BDD-validatie per regeling.**
 
-| Acroniem | Regeling                       | Status   | Wet                                                                                | BWB-ID       | Hoofdartikel    | Peildatum  |
-|----------|--------------------------------|----------|------------------------------------------------------------------------------------|--------------|-----------------|------------|
-| **NRP**  | **No-riskpolis**               | **full** | Ziektewet                                                                          | BWBR0001888  | 29b lid 1, 2, 4 | 2025-01-01 |
-| LIV      | Lage-inkomensvoordeel          | skeleton | Wet tegemoetkomingen loondomein (Wtl)                                              | BWBR0037522  | 3.1             | 2024-01-01 |
-| LKV      | Loonkostenvoordeel             | skeleton | Wet tegemoetkomingen loondomein (Wtl)                                              | BWBR0037522  | 2.1             | 2024-01-01 |
-| LKS      | Loonkostensubsidie             | skeleton | Participatiewet                                                                    | BWBR0015703  | 10c             | 2025-01-01 |
-| LDP      | Loondispensatie                | skeleton | Wet arbeidsongeschiktheidsvoorziening jonggehandicapten (Wajong)                   | BWBR0008657  | 2:20            | 2025-01-01 |
-| JC       | Jobcoaching                    | skeleton | Wet werk en inkomen naar arbeidsvermogen (Wet WIA)                                 | BWBR0019057  | 35.1, 35.2.d    | 2025-01-01 |
-| WPA      | Werkplekaanpassingen           | skeleton | Wet werk en inkomen naar arbeidsvermogen (Wet WIA)                                 | BWBR0019057  | 35.1, 35.2.c    | 2025-01-01 |
-| PP       | Proefplaatsing                 | skeleton | Werkloosheidswet (WW)                                                              | BWBR0004045  | 76a.1           | 2024-01-01 |
+| Acroniem | Regeling                       | Wet                                                                                | BWB-ID       | Hoofdartikel       | Peildatum  | BDD-scenarios |
+|----------|--------------------------------|------------------------------------------------------------------------------------|--------------|--------------------|------------|---------------|
+| **NRP**  | **No-riskpolis**               | Ziektewet                                                                          | BWBR0001888  | 29b lid 1, 2, 4    | 2025-01-01 | 5 (3 + 2 MvT) |
+| LIV      | Lage-inkomensvoordeel          | Wet tegemoetkomingen loondomein (Wtl)                                              | BWBR0037522  | 3.1 + 3.2          | 2024-01-01 | 5 |
+| LKV      | Loonkostenvoordeel             | Wet tegemoetkomingen loondomein (Wtl)                                              | BWBR0037522  | 2.1 + 2.7/9/13/17  | 2024-01-01 | 5 |
+| LKS      | Loonkostensubsidie             | Participatiewet                                                                    | BWBR0015703  | 10c + 10d          | 2025-01-01 | 5 |
+| LDP      | Loondispensatie                | Wet arbeidsongeschiktheidsvoorziening jonggehandicapten (Wajong)                   | BWBR0008657  | 2:20 lid 1 + 2     | 2025-01-01 | 5 |
+| JC       | Jobcoaching                    | Wet werk en inkomen naar arbeidsvermogen (Wet WIA)                                 | BWBR0019057  | 35 lid 1, 2.d, 4   | 2025-01-01 | 6 |
+| WPA      | Werkplekaanpassingen           | Wet werk en inkomen naar arbeidsvermogen (Wet WIA)                                 | BWBR0019057  | 35 lid 1, 2.c, 4   | 2025-01-01 | (idem JC) |
+| PP       | Proefplaatsing                 | Werkloosheidswet (WW)                                                              | BWBR0004045  | 76a lid 1-5        | 2024-01-01 | 4 |
+
+Totaal: **35 BDD-scenarios** voor de Financieel-CV-suite, 88/88 over
+de hele repo groen via `just bdd`.
 
 ### Toelichting op peildata
 
@@ -35,16 +38,24 @@ grondig, zeven illustratief.**
 
 ## Hoofduitkomsten
 
+Per regeling de finale outputs zoals ze nu in de YAML's staan
+(inclusief lid-niveau gates en hoogte-berekeningen):
+
 | Regeling | Hoofduitkomsten                                                                |
 |----------|--------------------------------------------------------------------------------|
 | NRP      | `heeft_recht_op_no_risk_polis`, `duur_no_risk_polis_jaren`, `voldoet_aan_lid_{1,2,4}` |
-| LIV      | `heeft_recht_op_liv`, `hoogte_liv_per_jaar` (skeleton: 0)                      |
-| LKV      | `heeft_recht_op_lkv`, `categorie_lkv`, `hoogte_lkv_per_jaar` (skeleton: 0)     |
-| LKS      | `heeft_recht_op_lks`, `loonwaarde_percentage` (skeleton: 0)                    |
-| LDP      | `heeft_recht_op_loondispensatie`                                               |
-| JC       | `heeft_recht_op_jobcoaching`                                                   |
-| WPA      | `heeft_recht_op_werkplekaanpassing`                                            |
-| PP       | `mag_proefplaatsing_aangaan`, `duur_proefplaatsing_weken` (=26)                |
+| LIV      | `heeft_recht_op_liv`, `hoogte_liv_per_jaar_eurocent` (= MIN(49 × uren, 96000)), `gemiddeld_uurloon_eurocent`, `voldoet_aan_uurloongrens`, `voldoet_aan_minimum_verloonde_uren` |
+| LKV      | `heeft_recht_op_lkv`, `categorie_lkv` (4 cat.), `bedrag_per_uur_eurocent` (305 of 101), `maximum_per_jaar_eurocent` (600000 of 200000), `hoogte_lkv_per_jaar_eurocent` |
+| LKS      | `heeft_recht_op_lks`, `bruto_subsidie_eurocent_per_maand` (WML+VB − loonwaarde+VB), `maximum_subsidie_eurocent_per_maand` (70% van WML+VB), `hoogte_lks_eurocent_per_maand` |
+| LDP      | `heeft_recht_op_loondispensatie`, `beding_lagere_beloning_is_nietig` (lid 2)   |
+| JC       | `heeft_recht_op_jobcoaching` (lid 2.d), `artikel_35_van_toepassing` (NOT lid 4 a/b), `voldoet_aan_basisvoorwaarden_lid_1` |
+| WPA      | `heeft_recht_op_werkplekaanpassing` (lid 2.c) — deelt gates met JC          |
+| PP       | `mag_proefplaatsing_aangaan`, `max_duur_proefplaatsing_maanden` (=6), `voldoet_aan_lid_3_voorwaarden`, `ww_uitkering_blijft_bestaan` |
+
+Daarnaast per regeling **gemarkeerde untranslatables** (zie de
+machine_readable-blokken in de YAML's en de detail-graph) — deze
+bevatten precies welke wettekst wel-of-niet machine-leesbaar is en
+wáár jurist-input nodig is.
 
 ## Cross-law structuur (graph)
 
@@ -175,12 +186,25 @@ flowchart LR
   BESCHIKKING in het corpus. NRP is BESCHIKKING TOEKENNING dus de hooks
   triggeren tijdens elke uitvoering.
 
-**Wat ontbreekt bewust** (skeleton-status, jurist-input nodig):
+**Wat bewust ontbreekt** (jurist-input nodig — zie `mvt-referenties.md`
+voor de specifieke open vragen):
 
-- Hoogteberekeningen (LIV, LKV, LKS, NRP-ziekengeld 70% × dagloon).
-- Cumulatie- en uitsluitingsregels tussen NRP, LKV, LKS, LDP.
-- Wsw-doelgroep (BWBR0008903) — nu als directe parameter
-  `is_wsw_werknemer`, niet als cross-law node.
+- **Ziekengeldhoogte** (NRP lid 5/6 — 70%/100% van dagloon). Onze YAML
+  modelleert alleen het *recht*; hoogte ziekengeld is uitvoerings­
+  rekening van UWV.
+- **Cumulatie- en uitsluitingsregels** tussen NRP, LKV, LKS, LDP.
+  Niet expliciet in een enkel artikel — vereist beleidsbesluit.
+- **LKV banenafspraak per 2025** is structureel zonder doelgroep­
+  verklaring; YAML peildatum 2024 dekt dit nog niet.
+- **Wsw-doelgroep** (BWBR0008903): niet geharvest, gebruikt als directe
+  parameter `is_wsw_werknemer` in NRP, LDP, LKS en JC/WPA.
+- **Tijdgebonden constructies** (NRP-vijfjaarstermijn bij onderbreking,
+  LKS lid 5 50%-eerste-6-mnd, JC/WPA lid 4.b 2-jaars-toets): als
+  `untranslatable: accepted: true` gemarkeerd. Volgende engine-iteratie
+  met `DATE_DIFF` / period-arithmetic zou deze kunnen modelleren.
+- **Reïntegratiebesluit** (BWBR0018394): AMvB onder Wet WIA art. 35
+  lid 5; nu als `open_term` placeholder, nog niet als `implements`-
+  relatie geharvest.
 
 ### Detail-zoom: alleen NRP (Ziektewet artikel 29b)
 
@@ -423,30 +447,41 @@ beoordelen):
 3. WPA: artikel 35 Wet WIA dekt ook vervoersvoorzieningen,
    intermediaire activiteiten (dovenondersteuning) en overige
    voorzieningen. Wat valt onder "WPA" in de regelhulp Financieel CV?
-4. PP-termijn (max 6 maanden, lid 1) — afgerond als 26 weken; correct?
-   Of beter als 6 maanden in `months`-eenheid modelleren?
+4. PP-termijn (max 6 maanden, lid 1) — gemodelleerd in `months`-eenheid;
+   onderbreking wegens ziekte (lid 4) als untranslatable. Akkoord?
 5. Cumulatie van NRP, LKV, LKS en LDP bij dezelfde dienstbetrekking —
    welke gelden tegelijk, en welke sluiten elkaar uit?
-6. LIV is afgeschaft per 2025-01-01. Hoort die nog in de regelhulp?
-   Voor de demo nu peildatum 2024-01-01 voor Wtl.
+6. LIV is afgeschaft per 2025-01-01. Peildatum Wtl op 2024-01-01
+   gehouden voor zichtbaarheid in de demo. Hoort LIV nog in de
+   regelhulp na 2025?
 7. Doelgroepvaststelling banenafspraak (Pwet 7 lid 1 a) — verzonken
-   in UWV-doelgroepregister. Hoe gemodelleerd te krijgen?
-8. Wsw is buiten scope gehouden (BWBR0008903 niet geharvest). Wel
-   relevant voor NRP lid 2 b/d.
+   in UWV-doelgroepregister. Hoe runtime te modelleren?
+8. Wsw is buiten scope gehouden (BWBR0008903 niet geharvest); nu als
+   parameter `is_wsw_werknemer` afgevangen waar uitgesloten.
+9. **Reïntegratiebesluit** (BWBR0018394) als AMvB onder Wet WIA
+   art. 35 lid 5 — nog niet als `implements`-relatie geharvest. Wel?
+
+(Zie `docs/financieel-cv/mvt-referenties.md` voor uitgebreidere
+juridische context per regeling.)
 
 ## Bestanden
 
 | Pad                                                                               | Inhoud                                                |
 |-----------------------------------------------------------------------------------|-------------------------------------------------------|
-| `corpus/regulation/nl/wet/ziektewet/2025-01-01.yaml`                              | NRP (volledig) + ongemoeide artikelen                 |
-| `corpus/regulation/nl/wet/wet_tegemoetkomingen_loondomein/2024-01-01.yaml`        | LIV + LKV (skeleton)                                  |
-| `corpus/regulation/nl/wet/participatiewet/2025-01-01.yaml`                        | LKS (skeleton) + doelgroepstub voor NRP/LKV           |
-| `corpus/regulation/nl/wet/wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten/2025-01-01.yaml` | LDP (skeleton) + doelgroepstub voor NRP |
-| `corpus/regulation/nl/wet/wet_werk_en_inkomen_naar_arbeidsvermogen/2025-01-01.yaml` | JC + WPA (skeleton) + doelgroepstub voor NRP        |
-| `corpus/regulation/nl/wet/werkloosheidswet/2024-01-01.yaml`                       | PP (skeleton)                                         |
-| `features/no_risk_polis.feature`                                                  | Drie BDD-scenarios voor NRP                           |
-| `docs/financieel-cv/persona-traces/`                                              | Twee traces (WIA-uitkering, banenafspraak)            |
-| `PLAN.md`                                                                         | Sessieplan + tijdsbudget                              |
+| `corpus/regulation/nl/wet/ziektewet/2025-01-01.yaml`                              | NRP (volledig)                                         |
+| `corpus/regulation/nl/wet/wet_tegemoetkomingen_loondomein/2024-01-01.yaml`        | LIV + LKV (volledig)                                   |
+| `corpus/regulation/nl/wet/participatiewet/2025-01-01.yaml`                        | LKS (volledig) + doelgroepstub voor NRP                |
+| `corpus/regulation/nl/wet/wet_arbeidsongeschiktheidsvoorziening_jonggehandicapten/2025-01-01.yaml` | LDP (volledig) + doelgroepstub voor NRP |
+| `corpus/regulation/nl/wet/wet_werk_en_inkomen_naar_arbeidsvermogen/2025-01-01.yaml` | JC + WPA (volledig) + doelgroepstub voor NRP        |
+| `corpus/regulation/nl/wet/werkloosheidswet/2024-01-01.yaml`                       | PP (volledig)                                          |
+| `features/no_risk_polis.feature`, `features/no_risk_polis_mvt.feature`            | NRP BDD-scenarios + MvT-derived                        |
+| `features/proefplaatsing.feature`, `lage_inkomensvoordeel.feature`, `loonkostenvoordeel.feature`, `loonkostensubsidie.feature`, `loondispensatie.feature`, `jobcoaching_werkplekaanpassing.feature` | BDD per regeling |
+| `docs/financieel-cv/persona-traces/`                                              | Trace-output (WIA-uitkering, banenafspraak)            |
+| `docs/financieel-cv/mvt-referenties.md`                                           | MvT-citaten + open vragen voor jurist                  |
+| `docs/financieel-cv/financieel-cv-graph.png`                                      | Overview-diagram (alle 7 + AWB-hooks)                  |
+| `docs/financieel-cv/financieel-cv-graph-detail.png`                               | NRP zoom-in (8 cross-law inputs + lid-OR-logica)       |
+| `docs/financieel-cv/financieel-cv-graph-detail-alle-7.png`                        | Detail-diagram alle 7 met untranslatables-annotaties   |
+| `PLAN.md`                                                                         | Oorspronkelijk sessieplan                              |
 
 ## Quality checks
 
@@ -454,19 +489,42 @@ beoordelen):
 - `just lint` — groen
 - `just validate` — groen (alle YAMLs schema v0.5.1)
 - `just test` — groen
-- `just bdd` — 56/56 scenarios (351/351 steps)
+- `just bdd` — **88/88 scenarios** (553 steps)
 
-`just check` faalt op `admin-test` omdat dat Docker (testcontainers) vereist;
-geen regressie van deze sessie.
+`just check` faalt op `admin-test` omdat dat Docker (testcontainers)
+vereist; geen regressie van deze sessie.
 
-## Niet-gedaan
+## Lokale-only state (NIET committen / mergen)
 
-- **Editor-screenshot** van de graph view: vereist `GITHUB_TOKEN` met
-  `read:packages` scope voor de private `@minbzk/storybook`-package
-  (zie `frontend/package.json`). De gebruiker draait `just dev` zelf
-  voor de demo; deze README beschrijft wat de graph behoort te tonen.
+Deze bestanden staan op de werkende laptop, zijn `.gitignore`d, en
+mogen niet naar main:
+
+- `.env` — `CORPUS_REGISTRY_PATH` en `DATABASE_URL` voor `just dev`
+- `corpus-registry.local-only.yaml` — wijst editor-API naar de demo-tree
+- `corpus-financieel-cv-demo/` — symlink-tree met alleen de 7 wetten
+  + AWB voor een opgeschoonde library-view in de editor
+
+Daarnaast staat één **uncommitted patch** (bewust niet in een commit):
+
+- `packages/editor-api/src/feature_flags.rs`: default
+  `panel.law_graph` van `false` naar `true` — om de graph-pane te
+  zien in de lokale editor zonder via DB-flag te hoeven flippen.
+  Vóór merge revert via `git checkout
+  packages/editor-api/src/feature_flags.rs`.
+
+## Niet-gedaan / volgende iteratie
+
+- **Editor-screenshot** als statisch artefact: niet gemaakt; `just dev`
+  + de graph-view zelf draaien geeft het echte beeld voor de
+  workshop. Mermaid-PNG's hieronder zijn een statische, complete
+  pendant.
+- **Reïntegratiebesluit** (BWBR0018394) niet geharvest als
+  `implements`-relatie onder Wet WIA art. 35 lid 5.
 - **Wet sociale werkvoorziening** (BWBR0008903) niet geharvest;
-  Wsw-doelgroep (NRP lid 2 b/d) afgehandeld als parameter
-  `is_wsw_werknemer` op artikel-niveau in zowel Ziektewet als Wajong.
-- **Volledige uitwerking** van de zeven illustratieve regelingen.
-  Skeleton-status is per ontwerp.
+  Wsw-doelgroep afgehandeld als parameter.
+- **Werkgever-WPA** (Wet WIA art. 36 — niet-meeneembare
+  voorzieningen) niet uitgewerkt; alleen art. 35 (werknemer-zijde).
+- **Uitvoeringsbeleid laag** ("regelhulp_financieel_cv" als
+  UITVOERINGSBELEID die de 8 outputs orkestreert) niet gebouwd —
+  in samenwerking met regelhulpenvoorbedrijven.nl-team na de
+  workshop.
