@@ -2711,76 +2711,220 @@ articles:
     references:
       - id: ref1
         bwb_id: BWBR0008903
-    # SKELETON: alleen relatie-structuur, geen volledige logica.
-    # Hosts twee Financieel CV-regelingen:
-    #   - JC  = Jobcoaching (artikel 35.2.d — persoonlijke ondersteuning)
-    #   - WPA = Werkplekaanpassingen (artikel 35.2.c — meeneembare
-    #     voorzieningen op de werkplek)
-    # Volledige logica vereist:
-    #   - UWV-vaststelling structurele functionele beperking
-    #   - werknemer niet in Wsw-dienstbetrekking
-    #   - aanvraag bij UWV (artikel 35 lid 1)
-    #   - voorzieningen-criteria (artikel 35 lid 2)
+    # JC = Jobcoaching (art. 35 lid 2 onderdeel d — noodzakelijke
+    #      persoonlijke ondersteuning)
+    # WPA = Werkplekaanpassingen (art. 35 lid 2 onderdeel c —
+    #       meeneembare voorzieningen werkplek + art. 36 voor
+    #       niet-meeneembare voorzieningen via werkgever-subsidie)
+    #
+    # Lid 1 — UWV kent op aanvraag voorzieningen toe aan persoon met:
+    #   - naar oordeel UWV structurele functionele beperking
+    #   - die arbeid in dienstbetrekking verricht of gaat verrichten
+    #   - niet werkzaam als werknemer Wsw
+    #   - voorzieningen strekken tot behoud/herstel/bevordering van
+    #     mogelijkheid tot arbeid/scholing/proefplaats
+    # Lid 2 — voorzieningen omvatten UITSLUITEND a t/m d (limitatief).
+    # Lid 4 — niet van toepassing indien:
+    #   a. persoon heeft recht op Wajong-arbeidsondersteuning
+    #   b. college Pwet 7.1.a draagt zorg (voor zover, t/m 2 jaar
+    #      minimumloon zonder LKS) — complex tijdgebonden, untranslatable.
+    # Lid 5 — bij of krachtens AMvB nadere regels (open_term —
+    #         Reïntegratiebesluit).
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: bsn
             type: string
             required: true
+            description: BSN van de werknemer.
           - name: heeft_structurele_functionele_beperking
             type: boolean
             required: true
             description: |-
-              UWV heeft structurele functionele beperking vastgesteld.
+              Lid 1: UWV oordeelt dat persoon een structurele functionele
+              beperking heeft. Discretionair (zie untranslatable).
+          - name: heeft_arbeidsverhouding_of_voorbereiding
+            type: boolean
+            required: true
+            description: |-
+              Lid 1: persoon verricht of gaat arbeid in dienstbetrekking
+              verrichten, of volgt scholing/opleiding ter inschakeling
+              in arbeidsproces, of verricht arbeid op proefplaats.
           - name: is_wsw_werknemer
             type: boolean
             required: true
-            description: Uitsluitingsgrond — Wsw-dienstbetrekking.
+            description: |-
+              Lid 1: uitsluitingsgrond — werkzaam als werknemer in zin
+              van de Wet sociale werkvoorziening.
+          - name: heeft_recht_op_arbeidsondersteuning_wajong
+            type: boolean
+            required: true
+            description: |-
+              Lid 4 onderdeel a: indien persoon recht heeft op
+              arbeidsondersteuning op grond van Wajong, valt deze
+              voorzieningen-route weg (Wajong art. 2:22 voorziet zelf).
+          - name: pwet_college_draagt_zorg_uitsluiting
+            type: boolean
+            required: true
+            description: |-
+              Lid 4 onderdeel b: indien het college van b&w op grond van
+              Pwet artikel 7 lid 1 a zorg draagt voor ondersteuning bij
+              arbeidsinschakeling — t/m moment dat persoon 2 aaneen­
+              gesloten jaren minimumloon verdient zonder LKS. De volledige
+              tijdgebonden toets is in deze YAML samengevat als één
+              boolean (zie untranslatable).
           - name: aanvraag_jobcoaching_ingediend
             type: boolean
             required: true
-            description: Aanvraag jobcoaching bij UWV ingediend.
+            description: |-
+              Lid 1 + 2.d: aanvraag bij UWV voor noodzakelijke persoonlijke
+              ondersteuning bij verrichten van opgedragen taken (compensatie
+              voor beperkingen).
           - name: aanvraag_werkplekaanpassing_ingediend
             type: boolean
             required: true
-            description: Aanvraag werkplekaanpassing bij UWV ingediend.
-        input:
-          - name: heeft_arbeidsbeperking_volgens_wia
+            description: |-
+              Lid 1 + 2.c: aanvraag voor meeneembare voorzieningen voor
+              inrichting arbeidsplaats / productie- en werkmethoden /
+              hulpmiddelen, in overwegende mate op individu afgestemd.
+        output:
+          - name: artikel_35_van_toepassing
             type: boolean
             description: |-
-              Persoon heeft een arbeidsbeperking op grond van Wet WIA
-              (intra-law: pass-through via doelgroepstub artikel 1).
-            source:
-              regulation: wet_werk_en_inkomen_naar_arbeidsvermogen
-              output: heeft_arbeidsbeperking_wia
-              parameters:
-                bsn: $bsn
-                heeft_arbeidsbeperking_wia: $heeft_structurele_functionele_beperking
-                is_wia_uitkeringsgerechtigd: $heeft_structurele_functionele_beperking
-                is_wia_min_35_arbeidsongeschikt: $heeft_structurele_functionele_beperking
-                heeft_voortgezet_wia_recht: $heeft_structurele_functionele_beperking
-        output:
+              Lid 4: dit artikel is wel of niet van toepassing op
+              de persoon (uitsluitingsgronden).
+          - name: voldoet_aan_basisvoorwaarden_lid_1
+            type: boolean
+            description: |-
+              Lid 1: structurele functionele beperking + arbeidsverhouding
+              + niet-Wsw cumulatief.
           - name: heeft_recht_op_jobcoaching
             type: boolean
+            description: 'Lid 2 onderdeel d — persoonlijke ondersteuning.'
           - name: heeft_recht_op_werkplekaanpassing
             type: boolean
+            description: 'Lid 2 onderdeel c — meeneembare werkplek-voorzieningen.'
         actions:
+          - output: artikel_35_van_toepassing
+            value:
+              operation: AND
+              conditions:
+                - operation: NOT
+                  value: $heeft_recht_op_arbeidsondersteuning_wajong
+                - operation: NOT
+                  value: $pwet_college_draagt_zorg_uitsluiting
+              legal_basis:
+                law: Wet werk en inkomen naar arbeidsvermogen
+                bwb_id: BWBR0019057
+                article: '35'
+                paragraph: '4'
+                explanation: |-
+                  Artikel niet van toepassing op Wajong-gerechtigden
+                  (a) of personen die onder Pwet 7.1.a vallen (b),
+                  zolang die uitsluitingsvoorwaarden gelden.
+          - output: voldoet_aan_basisvoorwaarden_lid_1
+            value:
+              operation: AND
+              conditions:
+                - $heeft_structurele_functionele_beperking
+                - $heeft_arbeidsverhouding_of_voorbereiding
+                - operation: NOT
+                  value: $is_wsw_werknemer
+              legal_basis:
+                law: Wet werk en inkomen naar arbeidsvermogen
+                bwb_id: BWBR0019057
+                article: '35'
+                paragraph: '1'
           - output: heeft_recht_op_jobcoaching
             value:
               operation: AND
               conditions:
-                - $heeft_arbeidsbeperking_volgens_wia
-                - operation: NOT
-                  value: $is_wsw_werknemer
+                - $artikel_35_van_toepassing
+                - $voldoet_aan_basisvoorwaarden_lid_1
                 - $aanvraag_jobcoaching_ingediend
+              legal_basis:
+                law: Wet werk en inkomen naar arbeidsvermogen
+                bwb_id: BWBR0019057
+                article: '35'
+                paragraph: '2'
+                sentence: 'd'
+                explanation: |-
+                  Onderdeel d (limitatief in lid 2): noodzakelijke
+                  persoonlijke ondersteuning als compensatie voor
+                  beperkingen.
           - output: heeft_recht_op_werkplekaanpassing
             value:
               operation: AND
               conditions:
-                - $heeft_arbeidsbeperking_volgens_wia
-                - operation: NOT
-                  value: $is_wsw_werknemer
+                - $artikel_35_van_toepassing
+                - $voldoet_aan_basisvoorwaarden_lid_1
                 - $aanvraag_werkplekaanpassing_ingediend
+              legal_basis:
+                law: Wet werk en inkomen naar arbeidsvermogen
+                bwb_id: BWBR0019057
+                article: '35'
+                paragraph: '2'
+                sentence: 'c'
+                explanation: |-
+                  Onderdeel c (limitatief in lid 2): meeneembare
+                  voorzieningen voor inrichting arbeidsplaats,
+                  productie- en werkmethoden, hulpmiddelen.
+      open_terms:
+        - id: nadere_regels_voorzieningen_artikel_35
+          type: string
+          required: false
+          delegated_to: regering
+          delegation_type: AMVB
+          legal_basis: artikel 35 lid 5 Wet WIA
+          description: |-
+            Lid 5 — bij of krachtens AMvB kunnen nadere regels worden
+            gesteld. Reïntegratiebesluit (BWBR0018394) implementeert dit
+            mede. Niet als implements opgenomen in deze YAML; placeholder.
+          default:
+            actions:
+              - output: nadere_regels_voorzieningen_artikel_35
+                value: 'Reïntegratiebesluit'
+      untranslatables:
+        - construct: '"structurele functionele beperking" — UWV-discretie'
+          reason: |-
+            Lid 1 vereist een UWV-oordeel over de aard van de beperking.
+            "Structureel functioneel" is geen meetbare drempel; UWV-arts
+            beoordeelt op basis van Schattingsbesluit. De engine ontvangt
+            de uitkomst als boolean parameter.
+          legal_text_excerpt: 'naar het oordeel van het UWV structurele functionele beperking'
+          accepted: true
+        - construct: 'lid 4 onderdeel b — Pwet 7.1.a college-ondersteuning t/m 2 jaar minimumloon zonder LKS'
+          reason: |-
+            Lid 4.b sluit personen uit die ondersteuning krijgen van
+            college b&w t/m het moment dat zij 2 aaneengesloten jaren
+            ten minste minimumloon verdienen zonder LKS. Deze samen­
+            gestelde tijds- en geldcomponent is met de huidige operatie-
+            set niet faithful te modelleren — wij vragen om een enkele
+            boolean en delegeren de tijdgebonden toets aan UWV.
+          legal_text_excerpt: |-
+            tot het moment dat het inkomen uit de arbeid in
+            dienstbetrekking gedurende twee aaneengesloten jaren ten
+            minste het minimumloon ... bedraagt en ten behoeve van die
+            persoon in die twee jaren geen loonkostensubsidie ... is verleend
+          accepted: true
+        - construct: 'voorzieningen-criterium "in overwegende mate op individu afgestemd" (lid 2.c)'
+          reason: |-
+            Onderdeel c definieert WPA als meeneembare voorzieningen
+            "die in overwegende mate op het individu van de persoon
+            zijn afgestemd". Of een voorziening "in overwegende mate"
+            individueel is, is een UWV-beoordeling.
+          legal_text_excerpt: 'die in overwegende mate op het individu van de persoon ... zijn afgestemd'
+          accepted: true
+        - construct: 'noodzakelijkheid + compensatie voor beperkingen (lid 2.d)'
+          reason: |-
+            Onderdeel d vereist dat de persoonlijke ondersteuning
+            "noodzakelijk" is en "een compensatie vormt voor zijn
+            beperkingen". UWV-discretionair.
+          legal_text_excerpt: 'noodzakelijke persoonlijke ondersteuning ... indien die ondersteuning een compensatie vormt voor zijn beperkingen'
+          accepted: true
   - number: '35.2'
     text: 'Onder voorzieningen als bedoeld in het eerste lid worden uitsluitend verstaan:'
     url: https://wetten.overheid.nl/BWBR0019057/2025-01-01#Artikel35
