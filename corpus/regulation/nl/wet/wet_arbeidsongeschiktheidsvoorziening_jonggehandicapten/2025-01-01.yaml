@@ -23,6 +23,41 @@ articles:
   - number: 1:1.1
     text: 'In deze wet en de daarop berustende bepalingen wordt verstaan onder:'
     url: https://wetten.overheid.nl/BWBR0008657/2025-01-01#Artikel11
+    # Stub voor doelgroepvaststelling: of een persoon Wajong-gerechtigd is
+    # wordt door UWV vastgesteld op grond van hoofdstuk 1A en hoofdstuk 2.
+    # Voor de NRP/LDP-graphconnecties is dit een pass-through stub.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: is_wajong_gerechtigd
+            type: boolean
+            required: true
+            description: |-
+              Heeft of had persoon recht op arbeidsongeschiktheidsuitkering
+              of arbeidsondersteuning op grond van Wajong (zowel oude als
+              nieuwe Wajong). Bron: UWV. Voor doelgroepbepaling
+              Ziektewet 29b lid 2 onderdeel a en c.
+          - name: is_jonggehandicapt_schoolverlater
+            type: boolean
+            required: true
+            description: |-
+              Heeft persoon onder 18 of 18+ vanwege ziekte/gebrek belemmering
+              ondervonden bij volgen onderwijs en gaat binnen 5 jaar arbeid
+              in dienstbetrekking verrichten. Bron: UWV-vaststelling.
+              Voor doelgroepbepaling Ziektewet 29b lid 1 onderdeel c en d.
+        output:
+          - name: is_wajong_gerechtigd
+            type: boolean
+          - name: is_jonggehandicapt_schoolverlater
+            type: boolean
+        actions:
+          - output: is_wajong_gerechtigd
+            value: $is_wajong_gerechtigd
+          - output: is_jonggehandicapt_schoolverlater
+            value: $is_jonggehandicapt_schoolverlater
   - number: 1:1.1.a
     text: '*Onze Minister:* Onze Minister van Sociale Zaken en Werkgelegenheid;'
     url: https://wetten.overheid.nl/BWBR0008657/2025-01-01#Artikel11

@@ -24,6 +24,63 @@ articles:
   - number: '1'
     text: 'In deze wet en de daarop berustende bepalingen wordt verstaan onder:'
     url: https://wetten.overheid.nl/BWBR0015703/2025-01-01#Artikel1
+    # Stub voor doelgroepvaststelling banenafspraak en loonkostensubsidie.
+    # De feitelijke vaststelling gebeurt door het college (artikel 7, 10c, 10d)
+    # en het UWV-doelgroepregister. Hier pass-through stub voor NRP-, LKS- en
+    # LDP-graphconnecties.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: is_banenafspraak_doelgroep
+            type: boolean
+            required: true
+            description: |-
+              Is persoon ingeschreven in doelgroepregister banenafspraak
+              (Pwet artikel 7, 10c, 10d). Bron: UWV-doelgroepregister.
+              Voor doelgroepbepaling Ziektewet 29b lid 2 onderdeel e.
+          - name: is_pwet_loonkostensubsidie
+            type: boolean
+            required: true
+            description: |-
+              Wordt of werd loonkostensubsidie verstrekt op grond van
+              Pwet 10d. Bron: gemeente. Voor doelgroepbepaling
+              Ziektewet 29b lid 2 onderdeel e.
+          - name: is_beschut_werk
+            type: boolean
+            required: true
+            description: |-
+              Verricht persoon arbeid in een dienstbetrekking als bedoeld
+              in Pwet 10b (beschut werk). Bron: gemeente. Voor doelgroepbepaling
+              Ziektewet 29b lid 2 onderdeel f.
+          - name: loonwaarde_lager_dan_minimumloon
+            type: boolean
+            required: true
+            description: |-
+              Is door UWV of college vastgesteld dat persoon niet in staat is
+              tot het verdienen van het wettelijk minimumloon. Bron: UWV
+              of college. Voor doelgroepbepaling Ziektewet 29b lid 2
+              onderdeel e en LKS-recht (Pwet 10d).
+        output:
+          - name: is_banenafspraak_doelgroep
+            type: boolean
+          - name: is_pwet_loonkostensubsidie
+            type: boolean
+          - name: is_beschut_werk
+            type: boolean
+          - name: loonwaarde_lager_dan_minimumloon
+            type: boolean
+        actions:
+          - output: is_banenafspraak_doelgroep
+            value: $is_banenafspraak_doelgroep
+          - output: is_pwet_loonkostensubsidie
+            value: $is_pwet_loonkostensubsidie
+          - output: is_beschut_werk
+            value: $is_beschut_werk
+          - output: loonwaarde_lager_dan_minimumloon
+            value: $loonwaarde_lager_dan_minimumloon
   - number: 1.a
     text: 'Onze Minister: Onze Minister van Sociale Zaken en Werkgelegenheid;'
     url: https://wetten.overheid.nl/BWBR0015703/2025-01-01#Artikel1

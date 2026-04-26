@@ -228,6 +228,65 @@ articles:
       - id: ref33
         bwb_id: BWBR0011353
         paragraaf: 3.2.5
+    # Stub voor doelgroepvaststelling: de feitelijke vaststelling of een
+    # persoon WIA-gerechtigd is wordt door UWV gedaan op grond van hoofdstuk 6
+    # en 7 Wet WIA. Voor de NRP/JC/WPA-graphconnecties wordt het hier als
+    # pass-through stub gemodelleerd: de status wordt als parameter
+    # aangeleverd en als output teruggegeven.
+    machine_readable:
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: is_wia_uitkeringsgerechtigd
+            type: boolean
+            required: true
+            description: |-
+              Heeft persoon recht op WIA-uitkering (IVA of WGA) op de peildatum.
+              Bron: UWV. Voor doelgroepbepaling Ziektewet 29b lid 1 onderdeel a
+              en lid 4. Hangt af van: arbeidsongeschiktheidspercentage,
+              wachttijd (104 weken), passende arbeid (artikel 23 Wet WIA).
+          - name: is_wia_min_35_arbeidsongeschikt
+            type: boolean
+            required: true
+            description: |-
+              Was persoon op de eerste dag na de wachttijd minder dan 35%
+              arbeidsongeschikt EN voldoet aan voorwaarden van Ziektewet
+              29b lid 1 onderdeel b (geen andere dienstbetrekking, niet in
+              staat tot eigen werk, binnen 5 jaar werkzaamheden gaat
+              verrichten). Bron: UWV-arbeidsdeskundig onderzoek.
+          - name: heeft_voortgezet_wia_recht
+            type: boolean
+            required: true
+            description: |-
+              Heeft persoon recht op WIA-uitkering en wordt dienstbetrekking
+              voortgezet (Ziektewet 29b lid 4). Bron: UWV.
+          - name: heeft_arbeidsbeperking_wia
+            type: boolean
+            required: true
+            description: |-
+              Heeft persoon een arbeidsbeperking op grond van de WIA waarvoor
+              voorzieningen of jobcoaching nodig zijn (artikelen 35-36).
+              Bron: UWV-beoordeling.
+        output:
+          - name: is_wia_uitkeringsgerechtigd
+            type: boolean
+          - name: is_wia_min_35_arbeidsongeschikt
+            type: boolean
+          - name: heeft_voortgezet_wia_recht
+            type: boolean
+          - name: heeft_arbeidsbeperking_wia
+            type: boolean
+        actions:
+          - output: is_wia_uitkeringsgerechtigd
+            value: $is_wia_uitkeringsgerechtigd
+          - output: is_wia_min_35_arbeidsongeschikt
+            value: $is_wia_min_35_arbeidsongeschikt
+          - output: heeft_voortgezet_wia_recht
+            value: $heeft_voortgezet_wia_recht
+          - output: heeft_arbeidsbeperking_wia
+            value: $heeft_arbeidsbeperking_wia
   - number: 1a.1
     text: 'Onder arbeidsuur wordt in deze wet verstaan:'
     url: https://wetten.overheid.nl/BWBR0019057/2025-01-01#Artikel1a
