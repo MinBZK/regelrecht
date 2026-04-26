@@ -108,50 +108,44 @@ flowchart LR
   classDef proces fill:#fff9e6,stroke:#b58900,color:#000;
 
   subgraph ZW["Ziektewet (NRP) — BWBR0001888"]
-    ZW_29b["Art. 29b lid 1, 2, 4<br/>→ heeft_recht_op_no_risk_polis<br/>→ duur_no_risk_polis_jaren<br/>→ voldoet_aan_lid_1 / lid_2 / lid_4"]
+    ZW_29b["Art. 29b lid 1, 2, 4<br/>━━━━━━━<br/>heeft_recht_op_no_risk_polis<br/>duur_no_risk_polis_jaren<br/>voldoet_aan_lid_1 / lid_2 / lid_4"]
   end
 
-  subgraph WTL["Wet tegemoetkomingen loondomein — BWBR0037522"]
-    WTL_31["Art. 3.1.1 (LIV)<br/>→ heeft_recht_op_liv<br/>→ hoogte_liv_per_jaar"]
-    WTL_21["Art. 2.1 (LKV)<br/>→ heeft_recht_op_lkv<br/>→ categorie_lkv<br/>→ hoogte_lkv_per_jaar"]
+  subgraph WTL["Wtl (LIV + LKV) — BWBR0037522"]
+    WTL_31["Art. 3.1 + 3.2 (LIV)<br/>━━━━━━━<br/>heeft_recht_op_liv<br/>hoogte_liv_per_jaar_eurocent<br/>gemiddeld_uurloon_eurocent<br/>voldoet_aan_uurloongrens<br/>voldoet_aan_minimum_verloonde_uren"]
+    WTL_21["Art. 2.1 + 2.7/9/13/17 (LKV)<br/>━━━━━━━<br/>heeft_recht_op_lkv<br/>categorie_lkv (4 cat.)<br/>bedrag_per_uur_eurocent<br/>maximum_per_jaar_eurocent<br/>hoogte_lkv_per_jaar_eurocent"]
   end
 
   subgraph PW["Participatiewet — BWBR0015703"]
-    PW_1["Art. 1 (doelgroep-stub)<br/>→ is_banenafspraak_doelgroep<br/>→ is_pwet_loonkostensubsidie<br/>→ is_beschut_werk<br/>→ loonwaarde_lager_dan_minimumloon"]
-    PW_10c["Art. 10c (LKS)<br/>→ heeft_recht_op_lks<br/>→ loonwaarde_percentage"]
+    PW_1["Art. 1 (doelgroep-stub)<br/>━━━━━━━<br/>is_banenafspraak_doelgroep<br/>is_pwet_loonkostensubsidie<br/>is_beschut_werk<br/>loonwaarde_lager_dan_minimumloon"]
+    PW_10c["Art. 10c + 10d (LKS)<br/>━━━━━━━<br/>heeft_recht_op_lks<br/>bruto_subsidie_eurocent_per_maand<br/>maximum_subsidie_eurocent_per_maand<br/>hoogte_lks_eurocent_per_maand"]
   end
 
   subgraph WAJ["Wajong — BWBR0008657"]
-    WAJ_11["Art. 1:1 (doelgroep-stub)<br/>→ is_wajong_gerechtigd<br/>→ is_jonggehandicapt_schoolverlater"]
-    WAJ_220["Art. 2:20 (LDP)<br/>→ heeft_recht_op_loondispensatie"]
+    WAJ_11["Art. 1:1 (doelgroep-stub)<br/>━━━━━━━<br/>is_wajong_gerechtigd<br/>is_jonggehandicapt_schoolverlater"]
+    WAJ_220["Art. 2:20 (LDP)<br/>━━━━━━━<br/>heeft_recht_op_loondispensatie<br/>beding_lagere_beloning_is_nietig"]
   end
 
   subgraph WIA["Wet WIA — BWBR0019057"]
-    WIA_1["Art. 1 (doelgroep-stub)<br/>→ is_wia_uitkeringsgerechtigd<br/>→ is_wia_min_35_arbeidsongeschikt<br/>→ heeft_voortgezet_wia_recht<br/>→ heeft_arbeidsbeperking_wia"]
-    WIA_35["Art. 35.1 (JC + WPA)<br/>→ heeft_recht_op_jobcoaching<br/>→ heeft_recht_op_werkplekaanpassing"]
+    WIA_1["Art. 1 (doelgroep-stub)<br/>━━━━━━━<br/>is_wia_uitkeringsgerechtigd<br/>is_wia_min_35_arbeidsongeschikt<br/>heeft_voortgezet_wia_recht<br/>heeft_arbeidsbeperking_wia"]
+    WIA_35["Art. 35.1+2 (JC + WPA)<br/>━━━━━━━<br/>heeft_recht_op_jobcoaching<br/>heeft_recht_op_werkplekaanpassing<br/>artikel_35_van_toepassing<br/>voldoet_aan_basisvoorwaarden_lid_1"]
   end
 
-  subgraph WW["Werkloosheidswet — BWBR0004045"]
-    WW_76a["Art. 76a.1 (PP)<br/>→ mag_proefplaatsing_aangaan<br/>→ duur_proefplaatsing_weken (=26)"]
+  subgraph WW["Werkloosheidswet (PP) — BWBR0004045"]
+    WW_76a["Art. 76a lid 1-5 (PP)<br/>━━━━━━━<br/>mag_proefplaatsing_aangaan<br/>max_duur_proefplaatsing_maanden (=6)<br/>voldoet_aan_lid_3_voorwaarden<br/>ww_uitkering_blijft_bestaan"]
   end
 
   subgraph AWB["AWB — BWBR0005537 (procedure-hooks)"]
-    AWB_346["Art. 3:46 (motivering)<br/>→ motivering_vereist"]
-    AWB_67["Art. 6:7 (bezwaartermijn)<br/>→ bezwaartermijn_weken"]
+    AWB_346["Art. 3:46<br/>motivering_vereist"]
+    AWB_67["Art. 6:7<br/>bezwaartermijn_weken"]
   end
 
-  %% NRP cross-law sources
+  %% NRP cross-law sources (echte input.source.regulation edges)
   ZW_29b -- "lid 1.a, 1.b, lid 4" --> WIA_1
   ZW_29b -- "lid 1.c, 1.d, 2.a, 2.c" --> WAJ_11
   ZW_29b -- "lid 2.e, 2.f" --> PW_1
 
-  %% Skeletons cross- / intra-law sources
-  WTL_21 -- "banenafspraak" --> PW_1
-  PW_10c -- "loonwaarde-stub" --> PW_1
-  WAJ_220 -- "Wajong-status" --> WAJ_11
-  WIA_35  -- "arbeidsbeperking-stub" --> WIA_1
-
-  %% AWB hooks fire op elke BESCHIKKING (NRP is BESCHIKKING TOEKENNING)
+  %% AWB hooks fire op elke BESCHIKKING (alle 7 regelingen produceren BESCHIKKING TOEKENNING)
   ZW_29b -. "BESCHIKKING-hook" .-> AWB_346
   ZW_29b -. "BESCHIKKING-hook" .-> AWB_67
 
@@ -299,6 +293,89 @@ flowchart LR
   dienstverband voortduurt).
 - Recht op NRP = OR van de drie lid-uitkomsten — als één route lukt,
   is het recht er.
+
+### Detail-zoom: alle 7 regelingen na uitwerking — outputs en condities
+
+```mermaid
+flowchart LR
+  classDef regeling fill:#fff5f5,stroke:#c0392b,color:#000;
+  classDef condition fill:#f0f6ff,stroke:#2980b9,color:#000;
+  classDef amount fill:#f5e6ff,stroke:#7d3c98,color:#000;
+  classDef param fill:#f5f5f5,stroke:#7f8c8d,color:#000;
+  classDef untranslated fill:#fff9e6,stroke:#b58900,color:#000;
+
+  subgraph PP["PP — WW art. 76a"]
+    PP_p["params: bsn, heeft_recht_op_ww_uitkering,<br/>in_staat_tot_werkzaamheden,<br/>aansprakelijkheidsverzekering_aanwezig,<br/>niet_eerder_proefplaatsing_zelfde_werkgever,<br/>reeel_uitzicht_op_dienstbetrekking_zes_maanden"]
+    PP_lid3["voldoet_aan_lid_3_voorwaarden<br/>= AND(a, b, c, d)"]
+    PP_out["mag_proefplaatsing_aangaan<br/>max_duur_proefplaatsing_maanden = 6<br/>ww_uitkering_blijft_bestaan"]
+    PP_u["⚠ untranslatables:<br/>• onderbreking wegens ziekte<br/>• 'reëel uitzicht' UWV-discretie"]
+    PP_p --> PP_lid3 --> PP_out
+    PP_u -.- PP_out
+  end
+
+  subgraph LIV["LIV — Wtl art. 3.1 + 3.2"]
+    LIV_p["params: bsn, jaarloon_eurocent, verloonde_uren,<br/>heeft_pensioengerechtigde_leeftijd_bereikt"]
+    LIV_calc["gemiddeld_uurloon = jaarloon / uren<br/>voldoet_aan_uurloongrens (€14,33-14,91)<br/>voldoet_aan_minimum_verloonde_uren (≥1248)"]
+    LIV_out["heeft_recht_op_liv<br/>hoogte_liv_per_jaar_eurocent =<br/>MIN(49 × uren, 96000)"]
+    LIV_p --> LIV_calc --> LIV_out
+  end
+
+  subgraph LKV["LKV — Wtl art. 2.1 + categorieën"]
+    LKV_p["params: bsn, verloonde_uren,<br/>4× boolean (oudere, arbeidsgehandicapt,<br/>herplaatsen, banenafspraak),<br/>heeft_loonaangifte_verzoek_ingediend"]
+    LKV_cat["categorie_lkv via IF-volgorde:<br/>oudere → arbeidsgehandicapt →<br/>herplaatsen → banenafspraak"]
+    LKV_out["heeft_recht_op_lkv<br/>bedrag_per_uur (305 of 101 cent)<br/>maximum_per_jaar (600000 of 200000)<br/>hoogte_lkv_per_jaar_eurocent"]
+    LKV_p --> LKV_cat --> LKV_out
+  end
+
+  subgraph LKS["LKS — Pwet art. 10c + 10d"]
+    LKS_p["params: bsn, behoort_tot_doelgroep_lks,<br/>kan_minimumloon_niet_verdienen,<br/>aanvraag_binnen_zes_maanden,<br/>onderwijsroute_of_doelgroep,<br/>is_wsw_dienstbetrekking,<br/>loonwaarde_eurocent_per_maand,<br/>minimumloon_plus_VB_eurocent"]
+    LKS_calc["bruto = WML+VB - loonwaarde+VB<br/>maximum = 70% × WML+VB<br/>hoogte = MIN(bruto, max)"]
+    LKS_out["heeft_recht_op_lks<br/>hoogte_lks_eurocent_per_maand"]
+    LKS_u["⚠ untranslatables:<br/>• lid 5 (50% eerste 6 mnd)<br/>• lid 4 zin 2 (evenredigheid <36u)<br/>• lid 7 (jaarlijkse herziening)"]
+    LKS_p --> LKS_calc --> LKS_out
+    LKS_u -.- LKS_out
+  end
+
+  subgraph LDP["LDP — Wajong art. 2:20"]
+    LDP_p["params: bsn, is_wsw_werknemer,<br/>arbeidsprestatie_duidelijk_minder,<br/>aanvraag_loondispensatie_ingediend,<br/>heeft_recht_op_arbeidsondersteuning_wajong"]
+    LDP_out["heeft_recht_op_loondispensatie<br/>beding_lagere_beloning_is_nietig (lid 2)"]
+    LDP_u["⚠ untranslatables:<br/>• 'duidelijk minder' UWV-discretie<br/>• 'naar evenredigheid' (% via UWV-beleidsregels)"]
+    LDP_p --> LDP_out
+    LDP_u -.- LDP_out
+  end
+
+  subgraph JCWPA["JC + WPA — Wet WIA art. 35"]
+    JCW_p["params: bsn,<br/>heeft_structurele_functionele_beperking,<br/>heeft_arbeidsverhouding_of_voorbereiding,<br/>is_wsw_werknemer,<br/>heeft_recht_op_arbeidsondersteuning_wajong,<br/>pwet_college_draagt_zorg_uitsluiting,<br/>aanvraag_jobcoaching_ingediend,<br/>aanvraag_werkplekaanpassing_ingediend"]
+    JCW_gates["artikel_35_van_toepassing (NOT lid 4 a/b)<br/>voldoet_aan_basisvoorwaarden_lid_1<br/>(beperking + arbeid + niet-Wsw)"]
+    JCW_out["heeft_recht_op_jobcoaching (lid 2.d)<br/>heeft_recht_op_werkplekaanpassing (lid 2.c)"]
+    JCW_u["⚠ untranslatables:<br/>• structurele functionele beperking<br/>• lid 4.b 2-jaars/LKS-toets<br/>• 'in overwegende mate op individu'<br/>• 'noodzakelijk + compensatie'"]
+    JCW_p --> JCW_gates --> JCW_out
+    JCW_u -.- JCW_out
+  end
+
+  subgraph NRP["NRP — Ziektewet art. 29b"]
+    NRP_p["params: bsn, is_wsw_werknemer +<br/>8 doelgroep-bools van 3 bron-wetten"]
+    NRP_lid["voldoet_aan_lid_1 (a, b, c+d)<br/>voldoet_aan_lid_2 (a-f)<br/>voldoet_aan_lid_4 (voortzetting WIA)"]
+    NRP_out["heeft_recht_op_no_risk_polis<br/>duur_no_risk_polis_jaren"]
+    NRP_u["⚠ untranslatables:<br/>• vijfjaarstermijn bij onderbreking<br/>• lid 2-duur als 'onbeperkt'<br/>• samenloop met LKV/LKS/LDP"]
+    NRP_p --> NRP_lid --> NRP_out
+    NRP_u -.- NRP_out
+  end
+
+  class PP_p,LIV_p,LKV_p,LKS_p,LDP_p,JCW_p,NRP_p param
+  class PP_lid3,LIV_calc,LKV_cat,LKS_calc,JCW_gates,NRP_lid condition
+  class PP_out,LIV_out,LKV_out,LKS_out,LDP_out,JCW_out,NRP_out regeling
+  class PP_u,LKS_u,LDP_u,JCW_u,NRP_u untranslated
+```
+
+**Legenda detail-versie alle 7:**
+
+- ⬜ *param* — directe input bij de aanvraag (parameter)
+- 🟦 *condition* — tussenresultaat (lid-niveau gate, voorwaarden-AND, hoogte-formule)
+- 🟥 *output* — finale uitkomst van de regeling
+- 🟨 *untranslatable* — gemarkeerde semantische gaps voor de jurist
+- ──── solide pijl — actieflow
+- ╶╶╶╶ gestippeld — verbinding naar untranslatables-annotatie
 
 ### Visualisatie tijdens demo
 
