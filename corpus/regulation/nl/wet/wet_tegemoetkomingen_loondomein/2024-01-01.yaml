@@ -108,62 +108,97 @@ articles:
   - number: '2.1'
     text: 'Een werkgever kan in de loonaangifte een verzoek doen voor de volgende tegemoetkomingen:'
     url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
-    # SKELETON: alleen relatie-structuur, geen volledige logica.
-    # Volledige logica vereist:
-    #   - per categorie a, b, c, d aparte voorwaarden uit hoofdstuk 2 Wtl
-    #   - doelgroepverklaring via UWV (registers)
-    #   - hoogte per uur per categorie
+    # LKV — Loonkostenvoordelen, Wtl artikel 2.1 (verzoek) +
+    # 4 categorieën uit hoofdstuk 2 Wtl:
+    #   a. oudere werknemer (art. 2.2 voorwaarden, art. 2.7 hoogte
+    #      € 3,05/uur, max € 6.000/jaar)
+    #   b. arbeidsgehandicapte werknemer (art. 2.6 voorwaarden,
+    #      art. 2.9 hoogte € 3,05/uur, max € 6.000/jaar)
+    #   c. doelgroep banenafspraak / scholingsbelemmerden
+    #      (art. 2.10 voorwaarden, art. 2.13 hoogte € 1,01/uur,
+    #      max € 2.000/jaar)
+    #   d. herplaatsen arbeidsgehandicapte werknemer (art. 2.14
+    #      voorwaarden, art. 2.17 hoogte € 3,05/uur, max € 6.000/jaar)
+    #
+    # Gemodelleerde aanname: per werknemer kwalificeert hoogstens één
+    # categorie. Bij meerdere doelgroep-statussen wordt de eerst-
+    # passende categorie volgens IF-volgorde toegepast.
+    # Doelgroepverklaring (a, b, d) komt van UWV; banenafspraak (c)
+    # uit doelgroepregister Pwet.
     machine_readable:
       execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
         parameters:
           - name: bsn
             type: string
             required: true
+            description: BSN van de werknemer.
+          - name: verloonde_uren
+            type: number
+            required: true
+            description: Verloonde uren in kalenderjaar (loonaangifte).
           - name: is_oudere_werknemer
             type: boolean
             required: true
-            description: Doelgroep oudere werknemer (categorie a, art. 2.2).
+            description: |-
+              Categorie a (art. 2.2): werknemer ≥ 56 jaar bij begin
+              dienstbetrekking, voorafgaand met uitkering, doelgroep­
+              verklaring oudere werknemer afgegeven door UWV.
           - name: is_arbeidsgehandicapte_werknemer
             type: boolean
             required: true
-            description: Doelgroep arbeidsgehandicapte (categorie b, art. 2.3).
-        input:
+            description: |-
+              Categorie b (art. 2.6): doelgroepverklaring arbeids­
+              gehandicapte werknemer afgegeven door UWV (na re-integratie
+              uit WIA / WAO / Wajong / WAZ etc.).
+          - name: is_herplaatsen_arbeidsgehandicapte
+            type: boolean
+            required: true
+            description: |-
+              Categorie d (art. 2.14): werknemer is na arbeidsongeschikt­
+              heid bij dezelfde werkgever herplaatst en voldoet aan
+              voorwaarden art. 2.14.
           - name: is_doelgroep_banenafspraak
             type: boolean
+            required: true
             description: |-
-              Categorie c — doelgroep banenafspraak en
-              scholingsbelemmerden. Doelgroepvaststelling via Pwet
-              (UWV-doelgroepregister).
-            source:
-              regulation: participatiewet
-              output: is_banenafspraak_doelgroep
-              parameters:
-                bsn: $bsn
-                is_banenafspraak_doelgroep: $is_doelgroep_banenafspraak
-        output:
-          - name: heeft_recht_op_lkv
+              Categorie c (art. 2.10): doelgroep banenafspraak en
+              scholingsbelemmerden. Doelgroepregister UWV.
+              In een latere iteratie te koppelen aan participatiewet
+              cross-law source (art. 1 doelgroepstub).
+          - name: heeft_loonaangifte_verzoek_ingediend
             type: boolean
+            required: true
+            description: |-
+              Art. 2.1: werkgever heeft in de loonaangifte verzoek
+              gedaan voor het loonkostenvoordeel.
+        output:
           - name: categorie_lkv
             type: string
             description: |-
-              Welke LKV-categorie van toepassing is (oudere /
-              arbeidsgehandicapt / banenafspraak). Default 'geen' als geen
-              categorie van toepassing.
-          - name: hoogte_lkv_per_jaar
+              Categorie die van toepassing is. Volgorde: oudere →
+              arbeidsgehandicapte → herplaatsing → banenafspraak.
+              'geen' als geen enkele categorie kwalificeert.
+          - name: heeft_recht_op_lkv
+            type: boolean
+          - name: bedrag_per_uur_eurocent
             type: amount
             type_spec:
               unit: eurocent
-            description: |-
-              Bedrag per kalenderjaar; in skeleton 0 omdat de
-              hoogteberekening uit hoofdstuk 2 Wtl niet is uitgewerkt.
+            description: 'Per categorie € 3,05 (305) of € 1,01 (101).'
+          - name: maximum_per_jaar_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: 'Per categorie € 6.000 (600000) of € 2.000 (200000).'
+          - name: hoogte_lkv_per_jaar_eurocent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: 'MIN(bedrag_per_uur × verloonde_uren, maximum).'
         actions:
-          - output: heeft_recht_op_lkv
-            value:
-              operation: OR
-              conditions:
-                - $is_oudere_werknemer
-                - $is_arbeidsgehandicapte_werknemer
-                - $is_doelgroep_banenafspraak
           - output: categorie_lkv
             value:
               operation: IF
@@ -172,11 +207,102 @@ articles:
                   then: oudere_werknemer
                 - when: $is_arbeidsgehandicapte_werknemer
                   then: arbeidsgehandicapte_werknemer
+                - when: $is_herplaatsen_arbeidsgehandicapte
+                  then: herplaatsen_arbeidsgehandicapte
                 - when: $is_doelgroep_banenafspraak
                   then: banenafspraak
               default: geen
-          - output: hoogte_lkv_per_jaar
-            value: 0
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.1'
+          - output: heeft_recht_op_lkv
+            value:
+              operation: AND
+              conditions:
+                - $heeft_loonaangifte_verzoek_ingediend
+                - operation: OR
+                  conditions:
+                    - $is_oudere_werknemer
+                    - $is_arbeidsgehandicapte_werknemer
+                    - $is_herplaatsen_arbeidsgehandicapte
+                    - $is_doelgroep_banenafspraak
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.1'
+          - output: bedrag_per_uur_eurocent
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_lkv
+                    value: banenafspraak
+                  then: 101
+              default: 305
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.7, 2.9, 2.13, 2.17'
+                explanation: |-
+                  € 3,05 per uur voor oudere/arbeidsgehandicapte/
+                  herplaatsing; € 1,01 per uur voor banenafspraak.
+          - output: maximum_per_jaar_eurocent
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $categorie_lkv
+                    value: banenafspraak
+                  then: 200000
+              default: 600000
+              legal_basis:
+                law: Wet tegemoetkomingen loondomein
+                bwb_id: BWBR0037522
+                article: '2.7, 2.9, 2.13, 2.17'
+                explanation: |-
+                  € 6.000 per werknemer per jaar voor oudere/
+                  arbeidsgehandicapte/herplaatsing; € 2.000 voor
+                  banenafspraak.
+          - output: hoogte_lkv_per_jaar_eurocent
+            value:
+              operation: IF
+              cases:
+                - when: $heeft_recht_op_lkv
+                  then:
+                    operation: MIN
+                    values:
+                      - operation: MULTIPLY
+                        values:
+                          - $bedrag_per_uur_eurocent
+                          - $verloonde_uren
+                      - $maximum_per_jaar_eurocent
+              default: 0
+      untranslatables:
+        - construct: 'doelgroepverklaring-vereiste binnen 3 maanden (art. 2.3, 2.6)'
+          reason: |-
+            Het LKV vereist een doelgroepverklaring die binnen drie
+            maanden na aanvang dienstbetrekking moet zijn aangevraagd.
+            Deze procedure-toets staat los van de inhoudelijke
+            voorwaarden en valt onder uitvoeringsbeleid.
+          accepted: true
+        - construct: 'aanvang dienstbetrekking-toets — 12-maanden uitsluiting'
+          reason: |-
+            Categorieën a en b sluiten werknemers uit die in de
+            6 maanden voorafgaand aan dienstbetrekking al bij dezelfde
+            werkgever in dienst waren (anti-misbruik). Deze tijdgebonden
+            herhalingstoets is niet faithful te modelleren met de
+            huidige operatie-set.
+          accepted: true
+        - construct: 'samenloop met LKS (art. 10d Pwet)'
+          reason: |-
+            Voor categorie c (banenafspraak) was er tot 2024 samenloop
+            mogelijk met LKS; sinds 2025 is de banenafspraak-LKV
+            structureel gemaakt en is doelgroepverklaring afgeschaft.
+            Cumulatieregels staan niet in deze artikelen.
+          accepted: true
   - number: 2.1.a
     text: loonkostenvoordeel oudere werknemer;
     url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
