@@ -5274,6 +5274,56 @@ articles:
       - id: ref1
         bwb_id: BWBR0004045
         hoofdstuk: II
+    # SKELETON: alleen relatie-structuur, geen volledige logica.
+    # PP = Proefplaatsing. Volledige logica vereist:
+    #   - werknemer heeft recht op WW-uitkering (hoofdstuk II)
+    #   - voorwaarden uit lid 3: geschikte werkzaamheden,
+    #     aansprakelijkheidsverzekering, niet eerder bij deze werkgever,
+    #     reëel uitzicht op dienstbetrekking >= 6 maanden
+    #   - termijn-bepaling (max 6 maanden, lid 1)
+    #   - onderbreking wegens ziekte (lid 4)
+    machine_readable:
+      definitions:
+        max_duur_proefplaatsing_weken:
+          value: 26
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: heeft_recht_op_ww_uitkering
+            type: boolean
+            required: true
+            description: Recht op WW-uitkering uit hoofdstuk II WW.
+          - name: aansprakelijkheidsverzekering_aanwezig
+            type: boolean
+            required: true
+            description: |-
+              Werkgever heeft aansprakelijkheidsverzekering ten behoeve van
+              werknemer (lid 3 onderdeel b).
+          - name: reeel_uitzicht_op_dienstbetrekking
+            type: boolean
+            required: true
+            description: |-
+              UWV oordeelt dat er reëel uitzicht is op een aansluitende
+              dienstbetrekking van >= 6 maanden (lid 3 onderdeel d).
+        output:
+          - name: mag_proefplaatsing_aangaan
+            type: boolean
+          - name: duur_proefplaatsing_weken
+            type: number
+            description: |-
+              Maximale duur in weken (lid 1: zes maanden = ~26 weken).
+        actions:
+          - output: mag_proefplaatsing_aangaan
+            value:
+              operation: AND
+              conditions:
+                - $heeft_recht_op_ww_uitkering
+                - $aansprakelijkheidsverzekering_aanwezig
+                - $reeel_uitzicht_op_dienstbetrekking
+          - output: duur_proefplaatsing_weken
+            value: $max_duur_proefplaatsing_weken
   - number: 76a.2
     text: |-
       Voor de werknemer, bedoeld in het eerste lid, blijft het recht op uitkering op grond van [hoofdstuk II][ref1]
