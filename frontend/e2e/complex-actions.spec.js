@@ -42,7 +42,7 @@ test.describe('Complex actions', () => {
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
     await page.goto('/editor/zorgtoeslagwet');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -51,7 +51,7 @@ test.describe('Complex actions', () => {
     await page.locator('[data-testid="add-action-btn"]').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
 
     // Set output
     const outputField = panel.locator('[data-testid="action-output-field"] input');
@@ -63,7 +63,7 @@ test.describe('Complex actions', () => {
 
     // New actions have value='' — no OperationSettings shown
     // We need to close and use YAML editing to set up the initial operation structure
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // Edit YAML directly to set up the AND operation with conditions
@@ -104,12 +104,12 @@ test.describe('Complex actions', () => {
     expect(action.value.conditions[1].value).toBe(true);
 
     // Now open the ActionSheet and verify the operation tree renders
-    const actionItem = page.locator('ndd-list-item:has(ndd-text-cell:has-text("heeft_recht_op_zorgtoeslag"))').last();
-    await actionItem.locator('ndd-button:has-text("Bewerk")').click();
+    const actionItem = page.locator('nldd-list-item:has(nldd-text-cell:has-text("heeft_recht_op_zorgtoeslag"))').last();
+    await actionItem.locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
     // ActionSheet should show the AND operation
-    const panel2 = page.locator('ndd-sheet');
+    const panel2 = page.locator('nldd-sheet');
     await expect(panel2).toBeVisible();
 
     // The ActionSheet initially selects the deepest operation in the tree.
@@ -123,7 +123,7 @@ test.describe('Complex actions', () => {
     await expect(panel2.locator('text=Bovenliggende operaties')).toBeVisible();
 
     // Close
-    await panel2.locator('ndd-button:has-text("Opslaan")').click();
+    await panel2.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(200);
   });
 
@@ -134,7 +134,7 @@ test.describe('Complex actions', () => {
       route.fulfill({ status: 200, contentType: 'text/yaml', body: fixtureYaml })
     );
     await page.goto('/editor/zorgtoeslagwet');
-    await page.waitForSelector('ndd-document-tab-bar-item', { timeout: 10_000 });
+    await page.waitForSelector('nldd-document-tab-bar-item', { timeout: 10_000 });
 
     await selectArticle(page, '2');
     await page.waitForTimeout(300);
@@ -161,11 +161,11 @@ test.describe('Complex actions', () => {
     await page.waitForTimeout(300);
 
     // Open the action sheet
-    const actionItem = page.locator('ndd-list-item:has(ndd-text-cell:has-text("hoogte_zorgtoeslag"))').last();
-    await actionItem.locator('ndd-button:has-text("Bewerk")').click();
+    const actionItem = page.locator('nldd-list-item:has(nldd-text-cell:has-text("hoogte_zorgtoeslag"))').last();
+    await actionItem.locator('nldd-button:has-text("Bewerk")').click();
     await page.waitForTimeout(300);
 
-    const panel = page.locator('ndd-sheet');
+    const panel = page.locator('nldd-sheet');
 
     // Click "Voeg operatie toe" to add a nested ADD (empty values[])
     await panel.locator('[data-testid="add-nested-op-btn"]').evaluate(el => el.click());
@@ -174,7 +174,7 @@ test.describe('Complex actions', () => {
     // Save should be rejected because the nested ADD has no values yet —
     // saving a structurally-incomplete operation would produce YAML the
     // engine cannot execute.
-    await panel.locator('ndd-button:has-text("Opslaan")').click();
+    await panel.locator('nldd-button:has-text("Opslaan")').click();
     await page.waitForTimeout(300);
 
     // The action sheet should still be open (save was blocked)

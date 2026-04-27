@@ -100,9 +100,9 @@ const rowCount = computed(() => rows.value.length);
     <!-- Header -->
     <button class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
       <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
-      <ndd-title size="5" style="flex: 1; text-align: left;">
+      <nldd-title size="5" style="flex: 1; text-align: left;">
         <span>{{ title }}</span>
-      </ndd-title>
+      </nldd-title>
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
 
@@ -115,23 +115,23 @@ const rowCount = computed(() => rows.value.length);
       <div v-for="(row, ri) in rows" :key="row._id ?? ri">
         <div v-if="rows.length > 1" class="ds-row-card-header">
           <span class="ds-row-card-label">Rij {{ ri + 1 }}</span>
-          <ndd-icon-button
+          <nldd-icon-button
             v-if="!readonly"
             icon="minus"
             title="Rij verwijderen"
             @click="removeRow(ri)"
-          ></ndd-icon-button>
+          ></nldd-icon-button>
         </div>
 
-        <ndd-list variant="box" class="ds-datasource-list">
-          <ndd-list-item v-for="col in allColumns" :key="col.name" size="md">
-            <ndd-text-cell :text="col.name" max-width="140" :class="{ 'ds-key-label': col.isKey }"></ndd-text-cell>
-            <ndd-cell>
+        <nldd-list variant="box" class="ds-datasource-list">
+          <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
+            <nldd-text-cell :text="col.name" max-width="140" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
+            <nldd-cell>
               <template v-if="readonly">
-                <ndd-text-field size="md" :value="String(row[col.name] ?? '')" readonly></ndd-text-field>
+                <nldd-text-field size="md" :value="String(row[col.name] ?? '')" readonly></nldd-text-field>
               </template>
               <template v-else-if="col.type === 'boolean'">
-                <ndd-dropdown size="md">
+                <nldd-dropdown size="md">
                   <select
                     :aria-label="col.name"
                     :value="String(row[col.name] || 'null')"
@@ -141,28 +141,28 @@ const rowCount = computed(() => rows.value.length);
                     <option value="false">false</option>
                     <option value="null">null</option>
                   </select>
-                </ndd-dropdown>
+                </nldd-dropdown>
               </template>
               <template v-else>
-                <ndd-text-field
+                <nldd-text-field
                   size="md"
                   :type="inputType(col.type)"
                   :value="String(row[col.name] ?? '')"
                   :placeholder="col.name"
                   @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
-                ></ndd-text-field>
+                ></nldd-text-field>
               </template>
-            </ndd-cell>
-          </ndd-list-item>
+            </nldd-cell>
+          </nldd-list-item>
 
           <!-- Single-row inline delete -->
-          <ndd-list-item v-if="!readonly && rows.length === 1" size="md">
-            <ndd-button size="md" full-width start-icon="minus" @click="removeRow(ri)" text="Rij verwijderen"></ndd-button>
-          </ndd-list-item>
-        </ndd-list>
+          <nldd-list-item v-if="!readonly && rows.length === 1" size="md">
+            <nldd-button size="md" full-width start-icon="minus" @click="removeRow(ri)" text="Rij verwijderen"></nldd-button>
+          </nldd-list-item>
+        </nldd-list>
       </div>
 
-      <ndd-button v-if="!readonly" size="md" full-width start-icon="plus-small" @click="addRow" text="Rij toevoegen"></ndd-button>
+      <nldd-button v-if="!readonly" size="md" full-width start-icon="plus-small" @click="addRow" text="Rij toevoegen"></nldd-button>
     </div>
   </div>
 </template>
@@ -239,20 +239,20 @@ const rowCount = computed(() => rows.value.length);
 </style>
 
 <style>
-/* Unscoped: ndd web components need global selectors */
-.ds-datasource-list ndd-text-cell {
+/* Unscoped: nldd web components need global selectors */
+.ds-datasource-list nldd-text-cell {
   width: 140px;
   min-width: 140px;
   flex-shrink: 0;
 }
 
-.ds-datasource-list ndd-cell {
+.ds-datasource-list nldd-cell {
   flex: 1;
   min-width: 0;
 }
 
-.ds-datasource-list ndd-text-field,
-.ds-datasource-list ndd-dropdown {
+.ds-datasource-list nldd-text-field,
+.ds-datasource-list nldd-dropdown {
   width: 100%;
 }
 </style>

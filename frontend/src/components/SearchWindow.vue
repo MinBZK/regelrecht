@@ -7,7 +7,6 @@ import { useAuth } from '../composables/useAuth.js';
 const props = defineProps({
   laws: { type: Array, default: () => [] },
   modelValue: { type: Boolean, default: false },
-  anchorRect: { type: Object, default: null },
 });
 
 const emit = defineEmits(['update:modelValue', 'select-law', 'harvest-available']);
@@ -24,6 +23,7 @@ const needsLogin = computed(() => oidcConfigured.value && !authenticated.value);
 
 const search = ref('');
 const searchFieldRef = ref(null);
+const windowRef = ref(null);
 
 function displayName(law) {
   if (law.name) return law.name;
@@ -41,11 +41,6 @@ const filteredLaws = computed(() => {
 
 const hasSearch = computed(() => search.value.length > 0);
 
-// Trigger BWB search when local results are empty. Always clear prior BWB
-// results on any query change — the harvest status for in-flight jobs is
-// tracked in module-level `harvestStatus`, so clearing `bwbResults` does
-// not lose the background poll; it just hides the stale list from a
-// different query.
 watch([search, filteredLaws], ([q, filtered]) => {
   clearBwb();
   if (!q || q.length < 3 || filtered.length > 0) return;
@@ -70,6 +65,10 @@ function bwbItemClick(result) {
 }
 
 function close() {
+  windowRef.value?.hide();
+}
+
+function onWindowClose() {
   search.value = '';
   clearBwb();
   emit('update:modelValue', false);
@@ -80,81 +79,55 @@ function selectLaw(lawId) {
   close();
 }
 
-function onKeydown(e) {
-  if (e.key === 'Escape') close();
-}
-
 watch(() => props.modelValue, async (open) => {
+  await nextTick();
   if (open) {
+    windowRef.value?.show();
     await nextTick();
     const input = searchFieldRef.value?.shadowRoot?.querySelector('input')
       ?? searchFieldRef.value?.querySelector('input');
     input?.focus();
+  } else {
+    windowRef.value?.hide();
   }
 });
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="modelValue" class="search-window-backdrop" @click="close"></div>
-    <div
-      v-if="modelValue"
-      class="search-window"
-      :style="anchorRect ? {
-        top: anchorRect.top + 'px',
-        left: anchorRect.left + 'px',
-        width: anchorRect.width + 'px',
-      } : {}"
-      @keydown="onKeydown"
+    <nldd-window
+      ref="windowRef"
+      accessible-label="Zoeken in wetten"
+      top="0"
+      left="calc(50vw - var(--components-window-default-width) / 2)"
+      @close="onWindowClose"
     >
-      <div class="search-window-header">
+      <nldd-container padding="16">
         <div class="search-window-search-row">
-          <ndd-search-field
+          <nldd-search-field
             ref="searchFieldRef"
             size="md"
             placeholder="Zoeken"
             :value="search"
             @input="search = $event.target.value"
-          ></ndd-search-field>
-          <ndd-button size="md" text="Sluit" @click="close"></ndd-button>
+          ></nldd-search-field>
+          <nldd-button size="md" text="Sluit" @click="close"></nldd-button>
         </div>
-        <div class="search-window-filters">
-          <ndd-button size="sm" expandable disabled text="Alle ministeries"></ndd-button>
-          <ndd-button size="sm" expandable disabled text="Alle regelgeving"></ndd-button>
-          <ndd-button size="sm" expandable disabled text="Alle onderdelen"></ndd-button>
-          <ndd-button size="sm" expandable disabled text="Alle periodes"></ndd-button>
-        </div>
-      </div>
 
-      <div v-if="hasSearch" class="search-window-results">
-        <ndd-list v-if="filteredLaws.length > 0" variant="simple">
-          <ndd-list-item
-            v-for="law in filteredLaws"
-            :key="law.law_id"
-            size="md"
-            type="button"
-            @click="selectLaw(law.law_id)"
-          >
-            <ndd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
-            </ndd-text-cell>
-          </ndd-list-item>
-        </ndd-list>
-
-        <!-- BWB external search results -->
-        <template v-if="filteredLaws.length === 0">
-          <div v-if="needsLogin && search.length >= MIN_QUERY_LENGTH" class="search-window-login-prompt">
+        <template v-if="hasSearch">
+          <nldd-spacer size="16"></nldd-spacer>
+          <div v-if="filteredLaws.length === 0 && needsLogin && search.length >= MIN_QUERY_LENGTH" class="search-window-login-prompt">
             <div class="search-window-empty-title">Log in om externe bronnen te doorzoeken</div>
             <div class="search-window-empty-subtitle">Inloggen is vereist om wetten op te halen van wetten.overheid.nl</div>
-            <ndd-spacer size="12"></ndd-spacer>
-            <ndd-button size="md" text="Inloggen" @click="login"></ndd-button>
+            <nldd-spacer size="12"></nldd-spacer>
+            <nldd-button size="md" text="Inloggen" @click="login"></nldd-button>
           </div>
-          <ndd-inline-dialog v-else-if="bwbLoading" text="Zoeken op wetten.overheid.nl..."></ndd-inline-dialog>
-          <template v-else-if="bwbResults.length > 0">
-            <ndd-spacer size="8"></ndd-spacer>
-            <ndd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></ndd-title>
-            <ndd-spacer size="8"></ndd-spacer>
-            <ndd-list variant="simple">
-              <ndd-list-item
+          <nldd-inline-dialog v-else-if="filteredLaws.length === 0 && bwbLoading" text="Zoeken op wetten.overheid.nl..."></nldd-inline-dialog>
+          <template v-else-if="filteredLaws.length === 0 && bwbResults.length > 0">
+            <nldd-title size="5"><h5>Resultaten van wetten.overheid.nl</h5></nldd-title>
+            <nldd-spacer size="8"></nldd-spacer>
+            <nldd-list variant="simple">
+              <nldd-list-item
                 v-for="result in bwbResults"
                 :key="result.bwb_id"
                 size="md"
@@ -164,87 +137,52 @@ watch(() => props.modelValue, async (open) => {
                   || undefined"
                 @click="bwbItemClick(result)"
               >
-                <ndd-text-cell
+                <nldd-text-cell
                   :text="result.title"
                   :supporting-text="statusText(result.bwb_id, `${result.type} \u2014 ${result.bwb_id}`)"
                 >
-                </ndd-text-cell>
-                <ndd-icon-cell slot="end" size="20">
-                  <ndd-icon :name="statusIcon(result.bwb_id)"></ndd-icon>
-                </ndd-icon-cell>
-              </ndd-list-item>
-            </ndd-list>
+                </nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-icon-cell size="20">
+                  <nldd-icon :name="statusIcon(result.bwb_id)"></nldd-icon>
+                </nldd-icon-cell>
+              </nldd-list-item>
+            </nldd-list>
           </template>
-          <div v-else-if="!needsLogin && search.length >= MIN_QUERY_LENGTH && !bwbLoading && filteredLaws.length === 0" class="search-window-empty">
-            <div class="search-window-empty-title">Geen resultaten gevonden</div>
-            <div class="search-window-empty-subtitle">Pas je zoektermen of voorkeuren aan</div>
-          </div>
+          <nldd-list
+            v-else
+            variant="simple"
+            empty-text="Geen resultaten gevonden"
+            empty-supporting-text="Pas je zoektermen of voorkeuren aan"
+          >
+            <nldd-list-item
+              v-for="law in filteredLaws"
+              :key="law.law_id"
+              size="md"
+              type="button"
+              @click="selectLaw(law.law_id)"
+            >
+              <nldd-text-cell :text="displayName(law)" :supporting-text="law.source_name">
+              </nldd-text-cell>
+            </nldd-list-item>
+          </nldd-list>
         </template>
-      </div>
-    </div>
+      </nldd-container>
+    </nldd-window>
   </Teleport>
 </template>
 
 <style>
-.search-window-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-}
-
-.search-window {
-  position: fixed;
-  max-height: calc(100vh - 100px);
-  display: flex;
-  flex-direction: column;
-  background: light-dark(
-    var(--primitives-color-neutral-0, #fff),
-    var(--primitives-color-neutral-950, #0c0e14)
-  );
-  border: 1px solid light-dark(
-    var(--primitives-color-neutral-200, #e2e8f0),
-    var(--primitives-color-neutral-800, #1e293b)
-  );
-  border-radius: var(--primitives-corner-radius-lg, 12px);
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 10px 15px -3px rgba(0, 0, 0, 0.2),
-    0 20px 25px -5px rgba(0, 0, 0, 0.15);
-  z-index: 201;
-  overflow: hidden;
-}
-
-.search-window-header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--primitives-space-8, 8px);
-  padding: var(--primitives-space-12, 12px);
-}
-
 .search-window-search-row {
   display: flex;
   align-items: center;
   gap: var(--primitives-space-8, 8px);
 }
 
-.search-window-search-row ndd-search-field {
+.search-window-search-row nldd-search-field {
   flex: 1;
 }
 
-.search-window-filters {
-  display: flex;
-  gap: var(--primitives-space-6, 6px);
-  flex-wrap: wrap;
-}
-
-.search-window-results {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 340px;
-  padding: 0 var(--primitives-space-12, 12px) var(--primitives-space-12, 12px);
-}
-
-.search-window-empty,
 .search-window-login-prompt {
   display: flex;
   flex-direction: column;

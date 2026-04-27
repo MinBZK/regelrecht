@@ -15,14 +15,14 @@ test.describe('Parameters and Outputs', () => {
     await page.waitForTimeout(300);
 
     // --- Add parameter: bsn (string, required) ---
-    await page.locator('ndd-button:has-text("Nieuwe parameter")').click();
+    await page.locator('nldd-button:has-text("Nieuwe parameter")').click();
     await waitForSheet(page);
 
     await fillSheetTextField(page, 'Naam', 'bsn');
 
     // Toggle required
-    const sheet = page.locator('ndd-sheet');
-    const requiredSwitch = sheet.locator('ndd-switch');
+    const sheet = page.locator('nldd-sheet');
+    const requiredSwitch = sheet.locator('nldd-switch');
     await requiredSwitch.evaluate(el => el.click());
     await page.waitForTimeout(100);
 
@@ -32,7 +32,7 @@ test.describe('Parameters and Outputs', () => {
     await expect(page.locator('[data-testid="machine-readable"]')).toContainText('bsn');
 
     // --- Add output: heeft_recht_op_zorgtoeslag (boolean) ---
-    await page.locator('ndd-button:has-text("Nieuwe output")').click();
+    await page.locator('nldd-button:has-text("Nieuwe output")').click();
     await waitForSheet(page);
 
     await fillSheetTextField(page, 'Naam', 'heeft_recht_op_zorgtoeslag');
@@ -40,7 +40,7 @@ test.describe('Parameters and Outputs', () => {
     await saveSheet(page);
 
     // --- Add output: hoogte_zorgtoeslag (amount) ---
-    await page.locator('ndd-button:has-text("Nieuwe output")').click();
+    await page.locator('nldd-button:has-text("Nieuwe output")').click();
     await waitForSheet(page);
 
     await fillSheetTextField(page, 'Naam', 'hoogte_zorgtoeslag');

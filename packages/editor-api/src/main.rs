@@ -64,12 +64,18 @@ async fn main() {
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let corpus_state = init_corpus(&static_dir).await;
 
-    let pipeline_api_url = env::var("PIPELINE_API_URL")
-        .ok()
-        .or_else(discover_pipeline_api_url_from_k8s);
+    let hostname = env::var("HOSTNAME").ok();
+    let pipeline_api_url =
+        resolve_pipeline_api_url(hostname.as_deref(), env::var("PIPELINE_API_URL").ok());
+    let hostname_log = hostname.as_deref().unwrap_or("<none>");
     match &pipeline_api_url {
-        Some(url) => tracing::info!(url = %url, "pipeline-api proxy target"),
-        None => tracing::info!("no pipeline-api URL configured, harvest proxy disabled"),
+        Some(url) => {
+            tracing::info!(url = %url, hostname = %hostname_log, "pipeline-api proxy target")
+        }
+        None => tracing::info!(
+            hostname = %hostname_log,
+            "no pipeline-api URL configured, harvest proxy disabled"
+        ),
     }
 
     let mut app_state = AppState {
@@ -453,33 +459,91 @@ fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
         .unwrap_or_else(|_| unreachable!())
 }
 
-/// Fallback when `PIPELINE_API_URL` is not set: discover pipelineapi from the
-/// pod's own HOSTNAME. ZAD's alias-based env injection is resolved at
-/// component-creation time, so it gets stuck with stale ports when the
-/// pipelineapi component is recreated. ZAD pod/Service names follow the
-/// convention `<deployment>-<component>`, so we derive the deployment from
-/// HOSTNAME's first segment and reach pipelineapi via cluster-internal DNS.
+/// Resolve the pipeline-api URL, preferring pod HOSTNAME over environment
+/// override.
 ///
-/// Gated on `KUBERNETES_SERVICE_HOST` so dev machines (where HOSTNAME is also
-/// set but maps to the machine name) fall through to `None` and harvest calls
-/// cleanly return 503 "not configured" instead of 502 network errors.
+/// Priority: `HOSTNAME` → `PIPELINE_API_URL` → `None`.
 ///
-/// Assumption: ZAD deployment names do not contain hyphens. If they did,
-/// splitting on `-` would pick up only the first segment (e.g. "mijn" from
-/// `mijn-regelrecht-editor-...`) and the resulting URL would silently point at
-/// the wrong service. Today all regel-k4c deployments follow single-word
-/// (`regelrecht`) or `pr<N>` naming. Set `PIPELINE_API_URL` explicitly if a
-/// multi-hyphen deployment ever lands.
-fn discover_pipeline_api_url_from_k8s() -> Option<String> {
-    env::var("KUBERNETES_SERVICE_HOST").ok()?;
-    let hostname = env::var("HOSTNAME").ok()?;
-    let deployment = hostname.split('-').next().filter(|s| !s.is_empty())?;
-    let url = format!("http://{deployment}-pipelineapi:8000");
-    tracing::info!(
-        hostname = %hostname,
-        deployment = %deployment,
-        url = %url,
-        "derived pipeline-api URL from HOSTNAME — if deployment name contains hyphens, set PIPELINE_API_URL explicitly",
-    );
-    Some(url)
+/// HOSTNAME wins because ZAD's alias-based env injection is resolved at
+/// component-creation time and gets stuck with stale values when the
+/// pipelineapi component is renamed or its port changes. The pod hostname
+/// is bound by Kubernetes and also cannot be inherited via ZAD's
+/// `clone-from`, so it is the only reliable "which deployment am I?" signal
+/// — matching the pattern `regelrecht_corpus::deployment_from_hostname`
+/// uses for corpus branch resolution (see PR #574 for the corpus rationale).
+///
+/// `PIPELINE_API_URL` remains as an explicit override for local dev where
+/// HOSTNAME doesn't match the `{deployment}-{component}-{rs}-{pod}` shape.
+///
+/// Edge case: a dev machine whose HOSTNAME happens to match that shape *and*
+/// starts with `regelrecht` or `pr<N>` would silently derive a cluster-internal
+/// URL that won't resolve locally. `deployment_from_hostname`'s whitelist is
+/// the sole guard here; the old `KUBERNETES_SERVICE_HOST` gate is gone.
+fn resolve_pipeline_api_url(hostname: Option<&str>, env_url: Option<String>) -> Option<String> {
+    hostname
+        .and_then(regelrecht_corpus::deployment_from_hostname)
+        .map(|deployment| format!("http://{deployment}-pipelineapi:8000"))
+        .or(env_url)
+}
+
+#[cfg(test)]
+mod pipeline_api_url_tests {
+    use super::resolve_pipeline_api_url;
+
+    #[test]
+    fn prod_pod_hostname_derives_regelrecht_pipelineapi() {
+        let url = resolve_pipeline_api_url(Some("regelrecht-editor-abc-xyz"), None);
+        assert_eq!(url.as_deref(), Some("http://regelrecht-pipelineapi:8000"));
+    }
+
+    #[test]
+    fn pr_preview_pod_hostname_derives_pr_pipelineapi() {
+        let url = resolve_pipeline_api_url(Some("pr123-editor-abc-xyz"), None);
+        assert_eq!(url.as_deref(), Some("http://pr123-pipelineapi:8000"));
+    }
+
+    /// Regression test: even with a stale `PIPELINE_API_URL` shadowing the
+    /// resolution (e.g. ZAD alias injection leftover pointing at an old
+    /// `pipelineapi-pr552:8001`), HOSTNAME must still win.
+    #[test]
+    fn hostname_wins_over_stale_env_var() {
+        let url = resolve_pipeline_api_url(
+            Some("regelrecht-editor-abc-xyz"),
+            Some("http://pipelineapi-pr552:8001".to_string()),
+        );
+        assert_eq!(url.as_deref(), Some("http://regelrecht-pipelineapi:8000"));
+    }
+
+    #[test]
+    fn dev_hostname_falls_back_to_env_override() {
+        let url = resolve_pipeline_api_url(
+            Some("tim-laptop"),
+            Some("http://localhost:8001".to_string()),
+        );
+        assert_eq!(url.as_deref(), Some("http://localhost:8001"));
+    }
+
+    /// A non-whitelisted pod-shaped hostname (≥3 hyphens but first segment is
+    /// not `regelrecht` or `pr<N>`) must not be trusted as a deployment name —
+    /// `deployment_from_hostname` returns `None` and we fall through to the
+    /// env override. Documents the whitelist boundary explicitly.
+    #[test]
+    fn non_whitelisted_pod_hostname_falls_back_to_env() {
+        let url = resolve_pipeline_api_url(
+            Some("feature-editor-abc-xyz"),
+            Some("http://localhost:8001".to_string()),
+        );
+        assert_eq!(url.as_deref(), Some("http://localhost:8001"));
+    }
+
+    #[test]
+    fn no_hostname_and_no_env_returns_none() {
+        assert!(resolve_pipeline_api_url(None, None).is_none());
+    }
+
+    #[test]
+    fn no_hostname_uses_env_override() {
+        let url = resolve_pipeline_api_url(None, Some("http://localhost:8001".to_string()));
+        assert_eq!(url.as_deref(), Some("http://localhost:8001"));
+    }
 }

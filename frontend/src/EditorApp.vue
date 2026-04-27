@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
@@ -9,47 +9,49 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
-import FeatureFlagSettings from './components/FeatureFlagSettings.vue';
+import SearchWindow from './components/SearchWindow.vue';
 import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
+import LawGraphView from './components/LawGraphView.vue';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
-const { isEnabled } = useFeatureFlags();
+const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 
-const settingsOpen = ref(false);
+const editorPanelFlags = [
+  ['panel.article_text', 'Tekst editor'],
+  ['panel.machine_readable', 'Machine editor'],
+  ['panel.scenario_form', 'Scenario editor'],
+  ['panel.yaml_editor', 'YAML editor'],
+  ['panel.law_graph', 'Wettengraaf'],
+];
 
-const showMiddlePane = computed(() => isEnabled('panel.scenario_form') || isEnabled('panel.yaml_editor'));
-const showFormOption = computed(() => isEnabled('panel.scenario_form'));
-const showYamlOption = computed(() => isEnabled('panel.yaml_editor'));
-const showResultOption = computed(() => isEnabled('panel.execution_trace'));
-const showMachineOption = computed(() => isEnabled('panel.machine_readable'));
-const showRightPane = computed(() => showResultOption.value || showMachineOption.value);
+const showTextPane = computed(() => isEnabled('panel.article_text'));
+const showFormPane = computed(() => isEnabled('panel.scenario_form'));
+const showYamlPane = computed(() => isEnabled('panel.yaml_editor'));
+const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
+const showGraphPane = computed(() => isEnabled('panel.law_graph'));
 
-// Compute visible pane count and slot assignments for split view
+// Compute visible pane count and slot assignments for split view.
 const visiblePanes = computed(() => {
   const panes = [];
-  if (isEnabled('panel.article_text')) panes.push('text');
-  if (showMiddlePane.value) panes.push('middle');
-  if (showRightPane.value) panes.push('trace');
-  return panes.length > 0 ? panes : ['text', 'middle', 'trace'];
+  if (showTextPane.value) panes.push('text');
+  if (showMachinePane.value) panes.push('machine');
+  if (showFormPane.value) panes.push('form');
+  if (showYamlPane.value) panes.push('yaml');
+  if (showGraphPane.value) panes.push('graph');
+  return panes.length > 0 ? panes : ['text', 'machine', 'form', 'yaml'];
 });
 const paneSlot = (name) => {
   const idx = visiblePanes.value.indexOf(name);
   return idx >= 0 ? `pane-${idx + 1}` : undefined;
 };
 
-// Redirect to login when OIDC is configured but user is not authenticated.
-// { immediate: true } is needed because in SPA navigation the auth state may
-// already be resolved by the time EditorApp mounts (useAuth is a singleton).
-watch([authLoading, oidcConfigured, authenticated], ([isLoading, oidc, authed]) => {
-  if (!isLoading && oidc && !authed) {
-    login();
-  }
-}, { immediate: true });
-
 // All edit operations are gated behind SSO. When OIDC is configured the user
 // must be authenticated; when OIDC is disabled the editor is fully open.
+// In practice the `requiresAuth` router guard already awaits the auth-check
+// and blocks unauthenticated users before this component mounts, so canEdit
+// is always true here — the computed remains as a safety net.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
 
 const route = useRoute();
@@ -72,19 +74,49 @@ const {
   saveLaw,
 } = useLaw(route.params.lawId, route.params.articleNumber);
 
-const middlePaneView = ref('form');
-const rightPaneView = ref('result');
+const resultSheetOpen = ref(false);
 
-const middlePaneTitle = computed(() => middlePaneView.value === 'yaml' ? 'YAML' : 'Scenario\u2019s');
-const rightPaneTitle = computed(() => rightPaneView.value === 'machine' ? 'Machine' : 'Resultaat');
+// --- Corpus search (reuse LibraryApp's SearchWindow) ---
+const corpusLaws = ref([]);
+const searchOpen = ref(false);
 
-function onRightPaneChange(event) {
-  const value = event.target?.value ?? event.detail?.[0];
-  if (value) rightPaneView.value = value;
+async function loadCorpusLaws() {
+  try {
+    const res = await fetch('/api/corpus/laws?limit=1000');
+    if (!res.ok) return;
+    const list = await res.json();
+    corpusLaws.value = list.sort((a, b) => a.law_id.localeCompare(b.law_id));
+  } catch { /* ignore — search is a convenience */ }
 }
+loadCorpusLaws();
+
+function openSearch() {
+  searchOpen.value = true;
+}
+
+function onSearchSelectLaw(lawId) {
+  router.push(`/editor/${encodeURIComponent(lawId)}`);
+}
+
+async function onSearchHarvestAvailable(slug) {
+  await fetch('/api/corpus/reload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ law_ids: [slug] }),
+  }).catch(() => {});
+  await loadCorpusLaws();
+  router.push(`/editor/${encodeURIComponent(slug)}`);
+}
+const resultSheetEl = ref(null);
+watch(resultSheetOpen, async (open) => {
+  await nextTick();
+  if (open) resultSheetEl.value?.show();
+  else resultSheetEl.value?.hide();
+});
 
 // --- Multi-law tab state (persisted in localStorage) ---
 const TABS_STORAGE_KEY = 'regelrecht-open-tabs';
+const ACTIVE_TAB_STORAGE_KEY = 'regelrecht-active-tab';
 
 function loadSavedTabs() {
   try {
@@ -96,6 +128,30 @@ function loadSavedTabs() {
 
 function saveTabs(tabs) {
   localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabs));
+}
+
+function loadSavedActiveTab() {
+  try {
+    const saved = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch { return null; }
+}
+
+function saveActiveTab(tab) {
+  if (!tab) localStorage.removeItem(ACTIVE_TAB_STORAGE_KEY);
+  else localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(tab));
+}
+
+// If the user lands on /editor without a lawId, restore the last tab
+// they had open before the refresh.
+if (!route.params.lawId) {
+  const last = loadSavedActiveTab();
+  if (last?.lawId) {
+    router.replace({
+      name: 'editor',
+      params: { lawId: last.lawId, articleNumber: last.articleNumber || undefined },
+    });
+  }
 }
 
 const openTabs = ref(loadSavedTabs());
@@ -125,6 +181,7 @@ watch([() => lawId.value, selectedArticle], ([id, article]) => {
     saveTabs(openTabs.value);
   }
   activeTab.value = { lawId: id, articleNumber: num };
+  saveActiveTab(activeTab.value);
   if (lawName.value) lawNames.value = { ...lawNames.value, [id]: lawName.value };
 });
 
@@ -180,23 +237,6 @@ Promise.all(uniqueLawIds.map(async (id) => {
   } catch { /* ignore */ }
 }));
 
-// Keep middlePaneView in sync with enabled options
-watch([showFormOption, showYamlOption], ([form, yaml]) => {
-  if (!form && middlePaneView.value === 'form' && yaml) middlePaneView.value = 'yaml';
-  if (!yaml && middlePaneView.value === 'yaml' && form) middlePaneView.value = 'form';
-}, { immediate: true });
-
-// Keep rightPaneView in sync with enabled options
-watch([showResultOption, showMachineOption], ([result, machine]) => {
-  if (!result && rightPaneView.value === 'result' && machine) rightPaneView.value = 'machine';
-  if (!machine && rightPaneView.value === 'machine' && result) rightPaneView.value = 'result';
-}, { immediate: true });
-
-function onMiddlePaneChange(event) {
-  const value = event.target?.value ?? event.detail?.[0];
-  if (value) middlePaneView.value = value;
-}
-
 // --- Engine ---
 const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
 initEngine().catch(() => {});
@@ -217,7 +257,7 @@ function handleScenarioExecuted({ result, traceText, error, expectations, scenar
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
-  if (showResultOption.value) rightPaneView.value = 'result';
+  resultSheetOpen.value = true;
 }
 
 // --- Editor state ---
@@ -623,51 +663,64 @@ function handleActionSave() {
 </script>
 
 <template>
-  <ndd-app-view>
-    <ndd-bar-split-view>
+  <nldd-app-view>
+    <nldd-bar-split-view>
       <!-- Primary Bar: App Toolbar + Document Tabs -->
-      <ndd-split-view-pane slot="primary-bar">
-      <ndd-container padding="8">
-          <ndd-toolbar size="md">
-            <ndd-toolbar-item slot="start">
-              <ndd-tab-bar size="md">
-                <ndd-tab-bar-item href="/library" @click.prevent="router.push('/library')" text="Bibliotheek"></ndd-tab-bar-item>
-                <ndd-tab-bar-item selected text="Editor"></ndd-tab-bar-item>
-              </ndd-tab-bar>
-            </ndd-toolbar-item>
-            <ndd-toolbar-item slot="end">
-              <ndd-button-bar size="md">
-                <ndd-button id="project-menu-btn" size="md" expandable text="RR Project" popovertarget="project-menu"></ndd-button>
-                <ndd-menu id="project-menu" anchor="project-menu-btn">
-                  <ndd-menu-item text="Instellingen"></ndd-menu-item>
-                  <ndd-menu-item text="Leden"></ndd-menu-item>
-                  <ndd-menu-divider></ndd-menu-divider>
-                  <ndd-menu-item text="Nieuw project"></ndd-menu-item>
-                </ndd-menu>
-                <ndd-icon-button size="md" icon="gear" title="Instellingen" @click="settingsOpen = true">
-                </ndd-icon-button>
-                <ndd-button-bar-divider></ndd-button-bar-divider>
-                <ndd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
-                </ndd-icon-button>
-                <ndd-menu id="account-menu" anchor="account-menu-btn">
+      <nldd-split-view-pane slot="primary-bar">
+      <nldd-container padding="8">
+          <nldd-toolbar size="md">
+            <nldd-toolbar-item slot="start">
+              <nldd-tab-bar size="md">
+                <nldd-tab-bar-item href="/library" @click.prevent="router.push('/library')" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
+              </nldd-tab-bar>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="center" min-width="240px" width="40%">
+              <nldd-search-field
+                size="md"
+                placeholder="Zoeken"
+                @focus="openSearch"
+                @click="openSearch"
+              ></nldd-search-field>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <nldd-button-bar size="md">
+                <nldd-button id="project-menu-btn" size="md" expandable text="RR Project" popovertarget="project-menu"></nldd-button>
+                <nldd-menu id="project-menu" anchor="project-menu-btn">
+                  <nldd-menu-item text="Instellingen"></nldd-menu-item>
+                  <nldd-menu-item text="Leden"></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item text="Nieuw project"></nldd-menu-item>
+                </nldd-menu>
+                <nldd-button-bar-divider></nldd-button-bar-divider>
+                <nldd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
+                </nldd-icon-button>
+                <nldd-menu id="account-menu" anchor="account-menu-btn">
                   <template v-if="!authLoading && authenticated">
-                    <ndd-menu-item :text="person?.name || person?.email" disabled></ndd-menu-item>
-                    <ndd-menu-divider></ndd-menu-divider>
-                    <ndd-menu-item text="Uitloggen" @click="logout"></ndd-menu-item>
+                    <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
+                    <nldd-menu-divider></nldd-menu-divider>
                   </template>
-                  <template v-else-if="!authLoading && oidcConfigured">
-                    <ndd-menu-item text="Inloggen" @click="login"></ndd-menu-item>
-                  </template>
-                </ndd-menu>
-              </ndd-button-bar>
-            </ndd-toolbar-item>
-          </ndd-toolbar>
+                  <nldd-menu-item
+                    v-for="[key, label] in editorPanelFlags"
+                    :key="key"
+                    type="checkbox"
+                    :selected="isEnabled(key) || undefined"
+                    :text="label"
+                    @select="toggleFlag(key)"
+                  ></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
+                  <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
+                </nldd-menu>
+              </nldd-button-bar>
+            </nldd-toolbar-item>
+          </nldd-toolbar>
 
-          <ndd-spacer size="8"></ndd-spacer>
+          <nldd-spacer size="8"></nldd-spacer>
 
           <!-- Document Tab Bar -->
-          <ndd-document-tab-bar v-if="openTabs.length > 0">
-            <ndd-document-tab-bar-item
+          <nldd-document-tab-bar v-if="openTabs.length > 0">
+            <nldd-document-tab-bar-item
               v-for="tab in openTabs"
               :key="tabKey(tab)"
               :text="`Artikel ${tab.articleNumber}`"
@@ -679,56 +732,50 @@ function handleActionSave() {
               @click="selectTab(tab)"
               @dismiss="closeTab(tab)"
             >
-            </ndd-document-tab-bar-item>
-          </ndd-document-tab-bar>
-        </ndd-container>
-      </ndd-split-view-pane>
+            </nldd-document-tab-bar-item>
+          </nldd-document-tab-bar>
+        </nldd-container>
+      </nldd-split-view-pane>
 
       <!-- Main content area -->
-      <ndd-split-view-pane slot="main">
+      <nldd-split-view-pane slot="main">
         <!-- Empty state: no tabs open -->
-        <ndd-page v-if="!activeTab">
-          <ndd-simple-section align="center">
-            <ndd-inline-dialog text="Open een artikel vanuit de bibliotheek om te bewerken"></ndd-inline-dialog>
-          </ndd-simple-section>
-        </ndd-page>
+        <nldd-page v-if="!activeTab">
+          <nldd-simple-section align="center">
+            <nldd-inline-dialog text="Open een artikel vanuit de bibliotheek om te bewerken"></nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
 
         <!-- Error state -->
-        <ndd-page v-else-if="error">
-          <ndd-simple-section align="center">
-            <ndd-inline-dialog variant="alert" text="Kon de wet niet laden" :supporting-text="error.message"></ndd-inline-dialog>
-          </ndd-simple-section>
-        </ndd-page>
+        <nldd-page v-else-if="error">
+          <nldd-simple-section align="center">
+            <nldd-inline-dialog variant="alert" text="Kon de wet niet laden" :supporting-text="error.message"></nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
 
         <!-- Dynamic column layout based on feature flags -->
-        <ndd-side-by-side-split-view v-else :panes="String(visiblePanes.length)">
+        <nldd-side-by-side-split-view v-else :panes="String(visiblePanes.length)">
           <!-- Left: Article Text -->
-          <ndd-split-view-pane v-if="isEnabled('panel.article_text')" :slot="paneSlot('text')" background="tinted">
-            <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" text="Tekst"></ndd-top-title-bar>
-              <ArticleText :article="selectedArticle" />
-            </ndd-page>
-          </ndd-split-view-pane>
+          <nldd-split-view-pane v-if="showTextPane" :slot="paneSlot('text')">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Tekst"></nldd-top-title-bar>
+              <nldd-simple-section :align="selectedArticle ? undefined : 'center'">
+                <ArticleText :article="selectedArticle" raw />
+              </nldd-simple-section>
+            </nldd-page>
+          </nldd-split-view-pane>
 
-          <!-- Middle: Form or YAML -->
-          <ndd-split-view-pane v-if="showMiddlePane" :slot="paneSlot('middle')">
-            <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" :text="showFormOption ? middlePaneTitle : 'YAML'">
-                <ndd-segmented-control v-if="showFormOption && showYamlOption" slot="toolbar" size="md" data-testid="middle-pane-toggle" :value="middlePaneView" @change="onMiddlePaneChange">
-                  <ndd-segmented-control-item value="form" text="Scenario's"></ndd-segmented-control-item>
-                  <ndd-segmented-control-item value="yaml" text="YAML"></ndd-segmented-control-item>
-                </ndd-segmented-control>
-                <span v-if="middlePaneView === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
-              </ndd-top-title-bar>
+          <!-- Scenarios -->
+          <nldd-split-view-pane v-if="showFormPane" :slot="paneSlot('form')">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Scenario's"></nldd-top-title-bar>
 
-              <!-- Form view: engine error -->
-              <ndd-simple-section v-if="showFormOption && middlePaneView === 'form' && engineInitError" align="center">
-                <ndd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></ndd-inline-dialog>
-              </ndd-simple-section>
+              <nldd-simple-section v-if="engineInitError" align="center">
+                <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
+              </nldd-simple-section>
 
-              <!-- Form view: scenario builder -->
               <ScenarioBuilder
-                v-else-if="showFormOption && middlePaneView === 'form'"
+                v-else
                 :law-id="lawId"
                 :law-yaml="currentLawYaml"
                 :engine="getEngine()"
@@ -736,9 +783,17 @@ function handleActionSave() {
                 :articles="articles"
                 @executed="handleScenarioExecuted"
               />
+            </nldd-page>
+          </nldd-split-view-pane>
 
-              <!-- YAML view -->
-              <div v-if="showYamlOption && middlePaneView === 'yaml'" class="editor-yaml-wrap">
+          <!-- YAML -->
+          <nldd-split-view-pane v-if="showYamlPane" :slot="paneSlot('yaml')">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="YAML">
+                <span v-if="parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
+              </nldd-top-title-bar>
+
+              <div class="editor-yaml-wrap">
                 <textarea
                   :value="yamlSource"
                   @input="onYamlInput"
@@ -750,30 +805,14 @@ function handleActionSave() {
                 ></textarea>
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </div>
-            </ndd-page>
-          </ndd-split-view-pane>
+            </nldd-page>
+          </nldd-split-view-pane>
 
-          <!-- Right: Execution Result or Machine Readable -->
-          <ndd-split-view-pane v-if="showRightPane" :slot="paneSlot('trace')">
-            <ndd-page sticky-header>
-              <ndd-top-title-bar slot="header" :text="rightPaneTitle">
-                <ndd-segmented-control v-if="showResultOption && showMachineOption" slot="toolbar" size="md" data-testid="right-pane-toggle" :value="rightPaneView" @change="onRightPaneChange">
-                  <ndd-segmented-control-item value="result" text="Resultaat"></ndd-segmented-control-item>
-                  <ndd-segmented-control-item value="machine" text="Machine"></ndd-segmented-control-item>
-                </ndd-segmented-control>
-              </ndd-top-title-bar>
-
-              <ExecutionTraceView
-                v-if="showResultOption && rightPaneView === 'result'"
-                :result="lastResult"
-                :trace-text="lastTraceText"
-                :error="lastError"
-                :expectations="lastExpectations"
-                :scenario-name="lastScenarioName"
-              />
-
-              <!-- Machine view: structured editor -->
-              <ndd-simple-section v-else-if="showMachineOption && rightPaneView === 'machine'">
+          <!-- Machine Readable -->
+          <nldd-split-view-pane v-if="showMachinePane" :slot="paneSlot('machine')">
+            <nldd-page sticky-header :sticky-footer="canEdit && (isMachineReadableDirty || lawSaving) || undefined">
+              <nldd-top-title-bar slot="header" text="Machine"></nldd-top-title-bar>
+              <nldd-simple-section>
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
@@ -787,17 +826,59 @@ function handleActionSave() {
                   @save="handleMachineReadableSave"
                   @delete="handleDelete"
                 />
-              </ndd-simple-section>
-            </ndd-page>
-          </ndd-split-view-pane>
-        </ndd-side-by-side-split-view>
-      </ndd-split-view-pane>
-    </ndd-bar-split-view>
-  </ndd-app-view>
+              </nldd-simple-section>
+              <nldd-container v-if="canEdit && (isMachineReadableDirty || lawSaving)" slot="footer" padding="16">
+                <nldd-button
+                  variant="primary"
+                  size="md"
+                  full-width
+                  data-testid="save-mr-btn"
+                  :disabled="lawSaving || undefined"
+                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
+                  @click="handleMachineReadableSave"
+                ></nldd-button>
+              </nldd-container>
+            </nldd-page>
+          </nldd-split-view-pane>
+
+          <!-- Law dependency graph -->
+          <nldd-split-view-pane v-if="showGraphPane" :slot="paneSlot('graph')">
+            <nldd-page sticky-header>
+              <nldd-top-title-bar slot="header" text="Wettengraaf"></nldd-top-title-bar>
+              <LawGraphView :law-id="lawId" />
+            </nldd-page>
+          </nldd-split-view-pane>
+        </nldd-side-by-side-split-view>
+      </nldd-split-view-pane>
+    </nldd-bar-split-view>
+  </nldd-app-view>
 
   <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" :article="editedArticle" @save="handleSave" @close="activeEditItem = null" />
-  <FeatureFlagSettings :open="settingsOpen" @close="settingsOpen = false" />
+  <SearchWindow
+    v-model="searchOpen"
+    :laws="corpusLaws"
+    @select-law="onSearchSelectLaw"
+    @harvest-available="onSearchHarvestAvailable"
+  />
+
+  <!-- Result of the most recently executed scenario, opened as a bottom sheet. -->
+  <nldd-sheet
+    ref="resultSheetEl"
+    placement="bottom"
+    @close="resultSheetOpen = false"
+  >
+    <nldd-page sticky-header>
+      <nldd-top-title-bar slot="header" text="Resultaat" dismiss-text="Sluit" @dismiss="resultSheetOpen = false"></nldd-top-title-bar>
+      <ExecutionTraceView
+        :result="lastResult"
+        :trace-text="lastTraceText"
+        :error="lastError"
+        :expectations="lastExpectations"
+        :scenario-name="lastScenarioName"
+      />
+    </nldd-page>
+  </nldd-sheet>
 </template>
 
 <style>
@@ -823,7 +904,7 @@ function handleActionSave() {
 .editor-yaml-wrap {
   display: flex;
   flex-direction: column;
-  /* Fill the pane body. ndd-page's body is the only ancestor between us
+  /* Fill the pane body. nldd-page's body is the only ancestor between us
    * and the viewport, so anchoring on viewport height minus the toolbar
    * + tab strip height gives a stable tall area regardless of how many
    * scenarios are loaded next door. */
