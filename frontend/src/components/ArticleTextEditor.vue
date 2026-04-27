@@ -78,7 +78,7 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
 
 <template>
   <div class="article-text-editor" data-testid="article-text-editor">
-    <nldd-toolbar size="md" class="article-text-editor__toolbar">
+    <nldd-toolbar v-if="article" size="md" class="article-text-editor__toolbar">
       <nldd-toolbar-item slot="start">
         <!-- Single-option panel-label dropdown; future revisions will let users switch the pane to other views (e.g. structured outline). Disabled today because there's only one option. -->
         <nldd-dropdown size="md">

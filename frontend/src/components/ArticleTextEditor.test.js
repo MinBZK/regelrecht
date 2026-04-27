@@ -49,6 +49,20 @@ describe('ArticleTextEditor', () => {
     expect(empty.find('nldd-inline-dialog').attributes('text')).toContain('Geen artikel geselecteerd');
   });
 
+  it('hides the formatting toolbar when no article is selected', () => {
+    // Toolbar buttons would otherwise stay clickable in the empty state and
+    // fire no-op/stale toggles on a tiptap editor whose mount point isn't in
+    // the DOM. The empty state should take over the whole pane.
+    const wrapper = mount(ArticleTextEditor, {
+      props: { article: null, editable: true, modelValue: '' },
+    });
+    expect(wrapper.find('.article-text-editor__toolbar').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="fmt-bold"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="fmt-italic"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="fmt-bullet-list"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="fmt-ordered-list"]').exists()).toBe(false);
+  });
+
   it('renders the save error dialog when saveError is set and editable', () => {
     const err = new Error('Forbidden: read-only backend');
     const wrapper = mountEditor({ saveError: err });
