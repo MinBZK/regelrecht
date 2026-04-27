@@ -20,7 +20,17 @@ const editor = useEditor({
   editable: props.editable,
   extensions: [
     StarterKit,
-    // Strict commonmark — HTML in source markdown is dropped rather than partially mapping into the schema.
+    // Strict commonmark — HTML embedded in source markdown is dropped rather
+    // than partially mapping into the prosemirror schema.
+    //
+    // Side effect: editing an article whose stored `text` already contains
+    // raw HTML (e.g. <em>, <sup>, <br> from a harvested corpus entry) will
+    // strip that HTML on first save. The engine ignores `text`, so this is
+    // functionally lossless, but it produces a larger first-save diff than
+    // the PR description's "numbered-prose normalization" implies. If the
+    // corpus grows HTML-heavy `text` fields later, revisit by either
+    // tolerating html: true with explicit schema mappings, or pre-stripping
+    // and surfacing a warning before the user starts typing.
     Markdown.configure({
       html: false,
       tightLists: true,
@@ -133,7 +143,7 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
     </nldd-toolbar>
 
     <div class="article-text-editor__body-wrap">
-      <template v-if="editable && saveError">
+      <template v-if="article && editable && saveError">
         <nldd-inline-dialog
           variant="alert"
           text="Opslaan mislukt"
