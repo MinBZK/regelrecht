@@ -77,6 +77,17 @@ describe('ArticleTextEditor', () => {
     expect(wrapper.find('[data-testid="save-text-error"]').exists()).toBe(false);
   });
 
+  it('does not render the save error dialog when no article is selected', () => {
+    // Without the article guard the error and the empty-state inline-dialog
+    // would render side-by-side after a save failure followed by a deselect.
+    const err = new Error('Forbidden: read-only backend');
+    const wrapper = mount(ArticleTextEditor, {
+      props: { article: null, editable: true, saveError: err, modelValue: '' },
+    });
+    expect(wrapper.find('[data-testid="save-text-error"]').exists()).toBe(false);
+    expect(wrapper.find('.article-text-editor__empty').exists()).toBe(true);
+  });
+
   // The remaining tests exercise tiptap under happy-dom. If the editor instance
   // doesn't initialise (e.g. because happy-dom lacks a DOM API tiptap depends
   // on), we skip the assertion rather than fail — the toolbar/empty-state
