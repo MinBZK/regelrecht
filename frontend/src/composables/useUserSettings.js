@@ -54,6 +54,12 @@ const settings = ref({
 });
 const loaded = ref(false);
 
+// Keys the user has touched locally before `loadSettings` resolved. The
+// initial fetch must NOT overwrite these — otherwise a toggle clicked
+// during the fetch latency window would briefly flip back to the stale
+// server value while the PUT is still in flight.
+const dirtyKeys = new Set();
+
 let fetchPromise = null;
 
 async function loadSettings() {
@@ -63,15 +69,21 @@ async function loadSettings() {
       const res = await fetch('/api/user/settings');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      settings.value = { ...DEFAULTS, ...data };
-      if (data.theme === 'light' || data.theme === 'dark') {
+      const merged = { ...DEFAULTS, ...data };
+      // Preserve values the user already set locally during this fetch.
+      for (const k of dirtyKeys) merged[k] = settings.value[k];
+      settings.value = merged;
+      if (!dirtyKeys.has('theme')
+          && (data.theme === 'light' || data.theme === 'dark')) {
         writeCachedTheme(data.theme);
       }
     } catch (e) {
       // 401 (auth off), 503 (no DB) and network errors all collapse to the
       // same outcome: use defaults and keep the editor loading.
       console.warn('Falling back to default user settings:', e.message);
-      settings.value = { ...DEFAULTS };
+      const fallback = { ...DEFAULTS };
+      for (const k of dirtyKeys) fallback[k] = settings.value[k];
+      settings.value = fallback;
     } finally {
       loaded.value = true;
     }
@@ -81,6 +93,7 @@ async function loadSettings() {
 
 async function setSetting(key, value) {
   const prev = settings.value[key];
+  dirtyKeys.add(key);
   settings.value = { ...settings.value, [key]: value };
   if (key === 'theme') writeCachedTheme(value);
 
