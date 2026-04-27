@@ -7,17 +7,13 @@ import { Markdown } from 'tiptap-markdown';
 const props = defineProps({
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
-  /** True when the in-memory text differs from the saved copy */
-  dirty: { type: Boolean, default: false },
-  /** True while a save PUT is in flight */
-  saving: { type: Boolean, default: false },
   /** Error from the most recent save attempt (Error instance or null) */
   saveError: { type: Object, default: null },
   /** Markdown source, v-model-bound to the parent editor state */
   modelValue: { type: String, default: '' },
 });
 
-const emit = defineEmits(['update:modelValue', 'save']);
+const emit = defineEmits(['update:modelValue']);
 
 const editor = useEditor({
   content: props.modelValue,
@@ -42,6 +38,9 @@ const selectionTick = ref(0);
 watch(editor, (inst) => {
   if (!inst) return;
   const bump = () => { selectionTick.value++; };
+  // Listeners are freed when `editor.destroy()` runs in onBeforeUnmount; we
+  // don't .off() explicitly because the editor instance is stable across the
+  // component's lifetime.
   inst.on('selectionUpdate', bump);
   inst.on('transaction', bump);
 }, { immediate: true });

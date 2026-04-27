@@ -1108,12 +1108,9 @@ function handleActionSave() {
                 <ArticleTextEditor
                   :article="selectedArticle"
                   :editable="canEdit"
-                  :dirty="isArticleTextDirty"
-                  :saving="lawSaving"
                   :save-error="lawSaveError"
                   :model-value="editedText"
                   @update:model-value="editedText = $event"
-                  @save="handleLawSave"
                 />
               </nldd-simple-section>
               <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
