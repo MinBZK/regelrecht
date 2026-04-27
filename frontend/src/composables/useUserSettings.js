@@ -115,6 +115,12 @@ async function setSetting(key, value) {
     if (key === 'theme' && (prev === 'light' || prev === 'dark')) {
       writeCachedTheme(prev);
     }
+  } finally {
+    // Once the PUT has settled either way, the key is no longer "in
+    // flight" — either the server has accepted our value or we've
+    // reverted. Keeping it in dirtyKeys would suppress the server
+    // value if loadSettings ever became re-entrant.
+    dirtyKeys.delete(key);
   }
 }
 
