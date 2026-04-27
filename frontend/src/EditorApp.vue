@@ -264,6 +264,19 @@ function handleScenarioExecuted({ result, traceText, error, expectations, scenar
   resultSheetOpen.value = true;
 }
 
+// Clear the captured trace whenever the active law changes — otherwise
+// LawGraphView would re-flatten the old trace under the new lawId,
+// misattribute every step to the new law, and pin the "▶ start" badge
+// to a leaf that just happens to share the previous output's name.
+watch(lawId, () => {
+  lastResult.value = null;
+  lastTraceText.value = null;
+  lastError.value = null;
+  lastExpectations.value = {};
+  lastScenarioName.value = '';
+  lastOutputName.value = null;
+});
+
 // --- Editor state ---
 const activeAction = ref(null);
 const activeEditItem = ref(null);

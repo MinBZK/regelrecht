@@ -82,6 +82,9 @@
  * stroke that impl/override/hook edges set so the trace path always wins. */
 .vue-flow__edge.trace-active path {
   stroke: #f59e0b !important;
+  /* Match the keyframe start so the first paint frame doesn't flash
+   * the inherited (thinner) edge width before the animation begins. */
+  stroke-width: 6 !important;
   stroke-dasharray: none !important;
   animation: trace-pulse 1.2s ease-in-out infinite;
 }
