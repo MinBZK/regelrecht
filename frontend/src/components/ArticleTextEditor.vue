@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, onBeforeUnmount } from 'vue';
+import { ref, watch } from 'vue';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
@@ -20,7 +20,9 @@ const editor = useEditor({
   editable: props.editable,
   extensions: [
     StarterKit,
+    // Strict commonmark — HTML in source markdown is dropped rather than partially mapping into the schema.
     Markdown.configure({
+      html: false,
       tightLists: true,
       bulletListMarker: '-',
       transformPastedText: true,
@@ -38,9 +40,9 @@ const selectionTick = ref(0);
 watch(editor, (inst) => {
   if (!inst) return;
   const bump = () => { selectionTick.value++; };
-  // Listeners are freed when `editor.destroy()` runs in onBeforeUnmount; we
-  // don't .off() explicitly because the editor instance is stable across the
-  // component's lifetime.
+  // Listeners are freed when `useEditor`'s built-in destroy runs on unmount;
+  // we don't .off() explicitly because the editor instance is stable across
+  // the component's lifetime.
   inst.on('selectionUpdate', bump);
   inst.on('transaction', bump);
 }, { immediate: true });
@@ -58,10 +60,6 @@ watch(() => props.modelValue, (next) => {
 
 watch(() => props.editable, (next) => {
   editor.value?.setEditable(next);
-});
-
-onBeforeUnmount(() => {
-  editor.value?.destroy();
 });
 
 function isActive(name, attrs) {
