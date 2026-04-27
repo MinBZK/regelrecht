@@ -6,6 +6,7 @@ import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
+import { useUserSettings } from './composables/useUserSettings.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -17,6 +18,7 @@ import LawGraphView from './components/LawGraphView.vue';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
+const { theme, toggleTheme } = useUserSettings();
 
 const editorPanelFlags = [
   ['panel.article_text', 'Tekst editor'],
@@ -707,6 +709,12 @@ function handleActionSave() {
                     :selected="isEnabled(key) || undefined"
                     :text="label"
                     @select="toggleFlag(key)"
+                  ></nldd-menu-item>
+                  <nldd-menu-item
+                    type="checkbox"
+                    :selected="theme === 'dark' || undefined"
+                    text="Donkere modus"
+                    @select="toggleTheme"
                   ></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>

@@ -24,6 +24,7 @@ mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod user_settings;
 
 use state::{AppState, CorpusState};
 
@@ -169,6 +170,11 @@ async fn main() {
         .route(
             "/api/feature-flags/{key}",
             axum::routing::put(feature_flags::update_feature_flag),
+        )
+        .route("/api/user/settings", get(user_settings::list))
+        .route(
+            "/api/user/settings/{key}",
+            axum::routing::put(user_settings::set),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
