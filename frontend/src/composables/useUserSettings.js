@@ -69,7 +69,12 @@ async function loadSettings() {
       const res = await fetch('/api/user/settings');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const merged = { ...DEFAULTS, ...data };
+      // Precedence: server > current settings (cached + user toggles) >
+      // DEFAULTS. Spreading settings.value before data prevents an empty
+      // `{}` response from overwriting a cached theme on a returning user
+      // whose server row was never written — same flicker the cache
+      // exists to prevent.
+      const merged = { ...DEFAULTS, ...settings.value, ...data };
       // Preserve values the user already set locally during this fetch.
       for (const k of dirtyKeys) merged[k] = settings.value[k];
       settings.value = merged;
