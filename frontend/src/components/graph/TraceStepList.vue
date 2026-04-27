@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch, nextTick } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import { formatValue } from '../../utils/outputFormat.js';
 
 const props = defineProps({
@@ -10,9 +10,16 @@ const props = defineProps({
 
 const emit = defineEmits(['select-step']);
 
+const listEl = ref(null);
+
+// Tag each visible step with its index in the unfiltered `steps` array
+// so the template can read it directly — avoids an O(n) `steps.indexOf`
+// per row, per render (the loop itself was O(visibleSteps × steps)).
 const visibleSteps = computed(() => {
-  if (props.filter === 'all') return props.steps;
-  return props.steps.filter((s) => s.edgeIds.length > 0 || s.nodeIds.length > 0);
+  const all = props.steps;
+  const entries = all.map((step, idx) => ({ step, idx }));
+  if (props.filter === 'all') return entries;
+  return entries.filter(({ step }) => step.edgeIds.length > 0 || step.nodeIds.length > 0);
 });
 
 function truncate(v) {
@@ -22,13 +29,16 @@ function truncate(v) {
 
 // Keep the active step in view when navigation moves it out of the
 // visible area. queueMicrotask in demo; Vue's nextTick is the idiomatic
-// equivalent.
+// equivalent. Scope the lookup to this component's root so a second
+// graph pane (e.g. during a route transition) can't be matched.
 watch(
   () => props.currentStepIdx,
   (idx) => {
     if (idx < 0) return;
     nextTick(() => {
-      const el = document.querySelector(`[data-step-idx="${idx}"]`);
+      const root = listEl.value;
+      if (!root) return;
+      const el = root.querySelector(`[data-step-idx="${idx}"]`);
       if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
   },
@@ -36,32 +46,32 @@ watch(
 </script>
 
 <template>
-  <div class="step-list">
+  <div ref="listEl" class="step-list">
     <button
-      v-for="step in visibleSteps"
-      :key="steps.indexOf(step)"
+      v-for="entry in visibleSteps"
+      :key="entry.idx"
       type="button"
       class="step-row"
-      :class="{ 'step-row--active': steps.indexOf(step) === currentStepIdx }"
-      :data-step-idx="steps.indexOf(step)"
-      :style="{ paddingLeft: `${step.depth * 10 + 12}px` }"
-      @click="emit('select-step', steps.indexOf(step))"
+      :class="{ 'step-row--active': entry.idx === currentStepIdx }"
+      :data-step-idx="entry.idx"
+      :style="{ paddingLeft: `${entry.step.depth * 10 + 12}px` }"
+      @click="emit('select-step', entry.idx)"
     >
       <div class="step-row__head">
-        <span class="step-row__idx">{{ steps.indexOf(step) + 1 }}.</span>
-        <span class="step-row__chip" :class="`node-type-${step.nodeType}`">
-          {{ step.nodeType.replace(/_/g, ' ') }}
+        <span class="step-row__idx">{{ entry.idx + 1 }}.</span>
+        <span class="step-row__chip" :class="`node-type-${entry.step.nodeType}`">
+          {{ entry.step.nodeType.replace(/_/g, ' ') }}
         </span>
-        <span class="step-row__name">{{ step.name }}</span>
-        <span v-if="step.resolveType" class="step-row__resolve">[{{ step.resolveType }}]</span>
+        <span class="step-row__name">{{ entry.step.name }}</span>
+        <span v-if="entry.step.resolveType" class="step-row__resolve">[{{ entry.step.resolveType }}]</span>
       </div>
-      <div v-if="step.result !== undefined && step.result !== null" class="step-row__result">
-        = {{ truncate(step.result) }}
+      <div v-if="entry.step.result !== undefined && entry.step.result !== null" class="step-row__result">
+        = {{ truncate(entry.step.result) }}
       </div>
-      <div v-if="step.message" class="step-row__message">{{ step.message }}</div>
-      <div v-if="step.edgeIds.length > 0 || step.nodeIds.length > 0" class="step-row__counts">
-        <template v-if="step.edgeIds.length > 0">→ {{ step.edgeIds.length }} edge{{ step.edgeIds.length === 1 ? '' : 's' }}</template>
-        <template v-if="step.nodeIds.length > 0">{{ step.edgeIds.length > 0 ? ', ' : '→ ' }}{{ step.nodeIds.length }} node{{ step.nodeIds.length === 1 ? '' : 's' }}</template>
+      <div v-if="entry.step.message" class="step-row__message">{{ entry.step.message }}</div>
+      <div v-if="entry.step.edgeIds.length > 0 || entry.step.nodeIds.length > 0" class="step-row__counts">
+        <template v-if="entry.step.edgeIds.length > 0">→ {{ entry.step.edgeIds.length }} edge{{ entry.step.edgeIds.length === 1 ? '' : 's' }}</template>
+        <template v-if="entry.step.nodeIds.length > 0">{{ entry.step.edgeIds.length > 0 ? ', ' : '→ ' }}{{ entry.step.nodeIds.length }} node{{ entry.step.nodeIds.length === 1 ? '' : 's' }}</template>
       </div>
     </button>
     <div v-if="visibleSteps.length === 0" class="step-list__empty">

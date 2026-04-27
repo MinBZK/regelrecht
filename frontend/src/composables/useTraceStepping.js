@@ -38,10 +38,15 @@ export function useTraceStepping({ result, nodes, edges, rootLawId, outputName }
     }));
   });
 
-  // Reset the pointer to step 0 when a fresh trace arrives; clear when the
-  // trace is cleared. Watching `steps` (not `result`) keeps the reset in
-  // sync with the enrichment — important because an in-flight graph build
-  // can produce an empty `steps` for a brief moment before nodes/edges land.
+  // Two watchers cooperate on the step pointer:
+  // - The first listens to `result`: when a fresh trace arrives we want
+  //   step 0 selected immediately, even before the graph has been
+  //   enriched. The pointer may briefly point at a step that does not
+  //   exist yet — that's fine, the second watcher clamps it once
+  //   `steps` updates.
+  // - The second listens to `steps`: when enrichment finishes, or the
+  //   graph rebuilds and `steps` shrinks, the pointer is clamped to a
+  //   valid index (or -1 when there's nothing to step through).
   watch(
     () => result.value,
     (r) => {
@@ -49,8 +54,6 @@ export function useTraceStepping({ result, nodes, edges, rootLawId, outputName }
     },
   );
 
-  // Pin to the last valid index if `steps` shrinks (e.g. the graph rebuilt
-  // and fewer edges matched), but never below 0 when there are steps.
   watch(steps, (list) => {
     if (list.length === 0) {
       currentStepIdx.value = -1;

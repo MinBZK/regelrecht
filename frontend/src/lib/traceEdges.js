@@ -143,6 +143,12 @@ export function edgeIdsForStep(step, edges) {
   switch (step.nodeType) {
     case 'cross_law_reference': {
       const [targetLaw, outputName] = splitQualifiedName(step.name);
+      // TODO(PR3): when the consumer renames the input locally
+      // (consumer-side `input.name` differs from `source_output`), this
+      // match fails because we use the producer's output name. A richer
+      // match would index `useLawGraph` edges by `data.refersToService`
+      // plus the consumer's local input name. Carrying over the demo
+      // limitation for now.
       const src = `${step.lawId}-input-${outputName}`;
       return edges
         .filter((e) => {
