@@ -789,12 +789,9 @@ function handleActionSave() {
               <ArticleTextEditor
                 :article="selectedArticle"
                 :editable="canEdit"
-                :dirty="isArticleTextDirty"
-                :saving="lawSaving"
                 :save-error="lawSaveError"
                 :model-value="editedText"
                 @update:model-value="editedText = $event"
-                @save="handleLawSave"
               />
               <nldd-container v-if="canEdit && (isArticleTextDirty || lawSaving)" slot="footer" padding="16">
                 <nldd-button
