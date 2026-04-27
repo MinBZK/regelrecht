@@ -56,7 +56,13 @@ pub async fn list(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-    Ok(Json(rows.into_iter().collect()))
+    // Filter through the same allowlist as `set` so a key removed from
+    // ALLOWED_KEYS in a future revision cannot leak its old row to clients.
+    let filtered = rows
+        .into_iter()
+        .filter(|(k, _)| ALLOWED_KEYS.contains(&k.as_str()))
+        .collect();
+    Ok(Json(filtered))
 }
 
 #[derive(Deserialize)]

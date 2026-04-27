@@ -21,7 +21,37 @@ const DEFAULTS = {
   theme: systemDark ? 'dark' : 'light',
 };
 
-const settings = ref({ ...DEFAULTS });
+// Cache the theme in localStorage so a returning user sees the right palette
+// immediately on next page load — without this the page mounts with the
+// prefers-color-scheme default and flips after the /api/user/settings fetch
+// resolves, which is a visible whole-page flicker. The server remains the
+// source of truth: a successful fetch always overwrites the cached value.
+const THEME_STORAGE_KEY = 'rr-user-settings-theme';
+
+function readCachedTheme() {
+  try {
+    const v = window.localStorage?.getItem(THEME_STORAGE_KEY);
+    return v === 'light' || v === 'dark' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedTheme(value) {
+  try {
+    window.localStorage?.setItem(THEME_STORAGE_KEY, value);
+  } catch {
+    // Ignore storage errors (private mode, quota, disabled) — flicker on
+    // next load is the only consequence.
+  }
+}
+
+const cachedTheme = typeof window !== 'undefined' ? readCachedTheme() : null;
+
+const settings = ref({
+  ...DEFAULTS,
+  ...(cachedTheme ? { theme: cachedTheme } : {}),
+});
 const loaded = ref(false);
 
 let fetchPromise = null;
@@ -34,6 +64,9 @@ async function loadSettings() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       settings.value = { ...DEFAULTS, ...data };
+      if (data.theme === 'light' || data.theme === 'dark') {
+        writeCachedTheme(data.theme);
+      }
     } catch (e) {
       // 401 (auth off), 503 (no DB) and network errors all collapse to the
       // same outcome: use defaults and keep the editor loading.
@@ -49,6 +82,7 @@ async function loadSettings() {
 async function setSetting(key, value) {
   const prev = settings.value[key];
   settings.value = { ...settings.value, [key]: value };
+  if (key === 'theme') writeCachedTheme(value);
 
   try {
     const res = await fetch(`/api/user/settings/${encodeURIComponent(key)}`, {
@@ -60,6 +94,9 @@ async function setSetting(key, value) {
   } catch (e) {
     console.warn('Revert user setting after failed PUT:', e.message);
     settings.value = { ...settings.value, [key]: prev };
+    if (key === 'theme' && (prev === 'light' || prev === 'dark')) {
+      writeCachedTheme(prev);
+    }
   }
 }
 

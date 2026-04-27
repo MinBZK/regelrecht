@@ -172,9 +172,13 @@ async fn main() {
             axum::routing::put(feature_flags::update_feature_flag),
         )
         .route("/api/user/settings", get(user_settings::list))
+        // 4 KiB is ample for `{"value":"<one allowed enum>"}` and stops a
+        // caller from streaming a much larger body that `validate` would only
+        // reject after deserialization.
         .route(
             "/api/user/settings/{key}",
-            axum::routing::put(user_settings::set),
+            axum::routing::put(user_settings::set)
+                .layer(axum::extract::DefaultBodyLimit::max(4096)),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
