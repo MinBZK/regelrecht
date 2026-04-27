@@ -23,6 +23,15 @@
  * the integration test in traceEdges.test.js is the tripwire.
  */
 
+/**
+ * Whether a step is rendered when the user has the "Met highlights"
+ * filter on. Centralised here so LawGraphView's nav and TraceStepList's
+ * row filter can't drift apart.
+ */
+export function stepHasHighlights(step) {
+  return step.edgeIds.length > 0 || step.nodeIds.length > 0;
+}
+
 const HIGHLIGHT_TYPES = new Set([
   'cross_law_reference',
   'open_term_resolution',
@@ -161,13 +170,19 @@ export function edgeIdsForStep(step, edges) {
         .map((e) => e.id);
     }
     case 'open_term_resolution': {
-      // name is the open_term id; lawId is the law that implements it.
+      // The step's `name` is the open_term id. `lawId` is ambiguous —
+      // `flattenTraceSteps` only switches `descendLawId` on
+      // cross_law_reference, so an open_term node carries whichever
+      // law was active when the engine emitted it (the higher law that
+      // *declared* the term, not the lower law that *implements* it).
+      // We therefore can't filter by `lawId` here; an
+      // `impl:${implLaw}:...->${higherLaw}:${openTerm}` edge is
+      // identified end-to-end by its `:${openTerm}` suffix. False
+      // positives are bounded: an open_term name is unique per
+      // declaring higher-law in practice.
       // Edge ID format: `impl:${implLawId}:${art}->${higherLaw}:${openTerm}`
       return edges
-        .filter(
-          (e) =>
-            e.id.startsWith(`impl:${step.lawId}:`) && e.id.endsWith(`:${step.name}`),
-        )
+        .filter((e) => e.id.startsWith('impl:') && e.id.endsWith(`:${step.name}`))
         .map((e) => e.id);
     }
     case 'hook_resolution': {
@@ -184,6 +199,11 @@ export function edgeIdsForStep(step, edges) {
     }
     case 'override_resolution': {
       // Edge ID format: `ovr:${lawA}:${art}->${lawB}:${article}`
+      // TODO(PR3): step.name carries the overridden output but goes
+      // unused — when one law overrides multiple outputs all `ovr:`
+      // edges from that law light up simultaneously. A precise match
+      // would also constrain by source/target output name once the
+      // engine starts emitting the output in the trace node.
       return edges
         .filter((e) => e.id.startsWith(`ovr:${step.lawId}:`))
         .map((e) => e.id);

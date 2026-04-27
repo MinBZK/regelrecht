@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch, nextTick } from 'vue';
 import { formatValue } from '../../utils/outputFormat.js';
+import { stepHasHighlights } from '../../lib/traceEdges.js';
 
 const props = defineProps({
   steps: { type: Array, required: true },
@@ -19,7 +20,7 @@ const visibleSteps = computed(() => {
   const all = props.steps;
   const entries = all.map((step, idx) => ({ step, idx }));
   if (props.filter === 'all') return entries;
-  return entries.filter(({ step }) => step.edgeIds.length > 0 || step.nodeIds.length > 0);
+  return entries.filter(({ step }) => stepHasHighlights(step));
 });
 
 function truncate(v) {

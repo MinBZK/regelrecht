@@ -123,10 +123,25 @@ describe('edgeIdsForStep', () => {
     ]);
   });
 
-  it('matches an open_term_resolution to its `impl:` edge', () => {
+  // open_term_resolution: step.lawId is ambiguous — flattenTraceSteps
+  // doesn't switch descendLawId on this node type, so the engine emits
+  // it under whichever law is currently active (typically the higher
+  // declaring law, e.g. wet_A). The matcher must work for either id.
+  it('matches an open_term_resolution edge regardless of step.lawId (higher law)', () => {
     const step = {
       nodeType: 'open_term_resolution',
-      lawId: 'wet_C',
+      lawId: 'wet_A', // higher / declaring law
+      name: 'gezinslid_norm',
+    };
+    expect(edgeIdsForStep(step, edges)).toEqual([
+      'impl:wet_C:5:3->wet_A:gezinslid_norm',
+    ]);
+  });
+
+  it('matches an open_term_resolution edge regardless of step.lawId (impl law)', () => {
+    const step = {
+      nodeType: 'open_term_resolution',
+      lawId: 'wet_C', // implementing law
       name: 'gezinslid_norm',
     };
     expect(edgeIdsForStep(step, edges)).toEqual([
@@ -164,13 +179,17 @@ describe('edgeIdsForStep', () => {
 });
 
 describe('graphNodeIdsForStep', () => {
+  // Realistic IoC topology: wet_A declares the open term (so it owns
+  // the `delegate-` leaf), wet_C implements it (so it owns the
+  // `impl-` leaf). useLawGraph never puts both leaves on the same law.
   const nodes = [
     { id: 'wet_A' },
     { id: 'wet_A-source-bsn' },
     { id: 'wet_A-input-output_x' },
     { id: 'wet_A-output-is_rechthebbende' },
-    { id: 'wet_A-impl-gezinslid_norm' },
     { id: 'wet_A-delegate-gezinslid_norm' },
+    { id: 'wet_C' },
+    { id: 'wet_C-impl-gezinslid_norm' },
     { id: 'wet_B' },
     { id: 'wet_B-output-output_x' },
   ];
@@ -224,15 +243,30 @@ describe('graphNodeIdsForStep', () => {
     );
   });
 
-  it('highlights impl + delegate leaves for open_term_resolution', () => {
+  // graphNodeIdsForStep is intentionally defensive against the same
+  // step.lawId ambiguity that edgeIdsForStep handles: only one of the
+  // two leaves exists per law in any real graph, so trying both
+  // candidate ids and letting `nodeSet.has` filter is correct.
+  it('highlights the delegate leaf when step.lawId is the higher law', () => {
     const step = {
       nodeType: 'open_term_resolution',
       lawId: 'wet_A',
       name: 'gezinslid_norm',
     };
-    expect(graphNodeIdsForStep(step, nodes)).toEqual(
-      expect.arrayContaining(['wet_A-impl-gezinslid_norm', 'wet_A-delegate-gezinslid_norm']),
-    );
+    const ids = graphNodeIdsForStep(step, nodes);
+    expect(ids).toContain('wet_A-delegate-gezinslid_norm');
+    expect(ids).not.toContain('wet_A-impl-gezinslid_norm'); // no such leaf on wet_A
+  });
+
+  it('highlights the impl leaf when step.lawId is the implementing law', () => {
+    const step = {
+      nodeType: 'open_term_resolution',
+      lawId: 'wet_C',
+      name: 'gezinslid_norm',
+    };
+    const ids = graphNodeIdsForStep(step, nodes);
+    expect(ids).toContain('wet_C-impl-gezinslid_norm');
+    expect(ids).not.toContain('wet_C-delegate-gezinslid_norm'); // no such leaf on wet_C
   });
 
   it('parses an article name like `${law} (${output})` and highlights the output', () => {

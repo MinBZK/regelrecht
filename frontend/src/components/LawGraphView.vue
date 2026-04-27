@@ -16,6 +16,7 @@ import TraceStepList from './graph/TraceStepList.vue';
 import TraceStepDetail from './graph/TraceStepDetail.vue';
 import { useLawGraph, rootOfId } from '../composables/useLawGraph.js';
 import { useTraceStepping } from '../composables/useTraceStepping.js';
+import { stepHasHighlights } from '../lib/traceEdges.js';
 
 const props = defineProps({
   lawId: { type: String, default: null },
@@ -71,7 +72,7 @@ const filter = ref('highlights'); // 'highlights' | 'all'
 
 function stepIsVisible(step) {
   if (filter.value === 'all') return true;
-  return step.edgeIds.length > 0 || step.nodeIds.length > 0;
+  return stepHasHighlights(step);
 }
 
 // Filter-aware nav: when the user has the "Met highlights" filter on,
