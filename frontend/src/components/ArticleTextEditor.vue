@@ -64,9 +64,6 @@ onBeforeUnmount(() => {
   editor.value?.destroy();
 });
 
-// eslint-disable-next-line no-unused-vars
-const _touch = selectionTick; // kept so template re-evaluates on bumps
-
 function isActive(name, attrs) {
   // eslint-disable-next-line no-unused-expressions
   selectionTick.value;
@@ -83,6 +80,7 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
   <div class="article-text-editor" data-testid="article-text-editor">
     <nldd-toolbar size="md" class="article-text-editor__toolbar">
       <nldd-toolbar-item slot="start">
+        <!-- Single-option panel-label dropdown; future revisions will let users switch the pane to other views (e.g. structured outline). Disabled today because there's only one option. -->
         <nldd-dropdown size="md">
           <select disabled aria-label="Paneel" data-testid="article-text-panel-label">
             <option value="tekst">Tekst</option>
