@@ -78,12 +78,12 @@ async function loadSettings() {
         writeCachedTheme(data.theme);
       }
     } catch (e) {
-      // 401 (auth off), 503 (no DB) and network errors all collapse to the
-      // same outcome: use defaults and keep the editor loading.
-      console.warn('Falling back to default user settings:', e.message);
-      const fallback = { ...DEFAULTS };
-      for (const k of dirtyKeys) fallback[k] = settings.value[k];
-      settings.value = fallback;
+      // 401 (auth off), 503 (no DB) and network errors all collapse to
+      // the same outcome: keep the editor loading on whatever's already
+      // in settings.value (cachedTheme + DEFAULTS + any user toggles).
+      // We have nothing better to merge — and resetting to DEFAULTS would
+      // re-introduce the flicker the localStorage cache exists to avoid.
+      console.warn('Keeping cached/default user settings:', e.message);
     } finally {
       loaded.value = true;
     }
