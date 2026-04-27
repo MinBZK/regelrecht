@@ -4,10 +4,16 @@
  * highlighting.
  *
  * Ported from demo/graph/src/routes/+page.svelte:984-1200 on branch
- * feature/demo-leenstelsel-tegemoetkoming. The enrichment (flattenTraceSteps
- * → edgeIdsForStep / graphNodeIdsForStep) runs once per (result, nodes,
- * edges) change and is cached in a computed, so `next`/`prev`/`goto`
- * stay O(1).
+ * feature/demo-leenstelsel-tegemoetkoming.
+ *
+ * Cost model:
+ *   - `steps`            — O(N) per (result, nodes, edges) change. Cached.
+ *   - `next`/`prev`/`goto` — O(1) on the pointer itself.
+ *   - `activeEdgeIds` / `activeNodeIds` — O(1) per `currentStepIdx` change.
+ *   - `visitedEdgeIds` / `visitedNodeIds` — O(currentStepIdx) per
+ *     `currentStepIdx` change. Forward traversal of an N-step trace is
+ *     therefore O(N²). Acceptable today (typical traces are <100 steps).
+ *     PR3 polish: amortise via mutated refs in next/prev/goto.
  */
 import { computed, ref, watch } from 'vue';
 import { flattenTraceSteps, edgeIdsForStep, graphNodeIdsForStep } from '../lib/traceEdges.js';

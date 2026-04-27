@@ -69,6 +69,44 @@ const {
 const hasTrace = computed(() => steps.value.length > 0);
 const filter = ref('highlights'); // 'highlights' | 'all'
 
+function stepIsVisible(step) {
+  if (filter.value === 'all') return true;
+  return step.edgeIds.length > 0 || step.nodeIds.length > 0;
+}
+
+// Filter-aware nav: when the user has the "Met highlights" filter on,
+// Vorige/Volgende must skip context-only steps that aren't rendered in
+// the list — otherwise the counter advances onto a row that the user
+// can't see and the step list looks frozen.
+function nextVisible() {
+  for (let i = currentStepIdx.value + 1; i < steps.value.length; i++) {
+    if (stepIsVisible(steps.value[i])) {
+      goto(i);
+      return;
+    }
+  }
+}
+function prevVisible() {
+  for (let i = currentStepIdx.value - 1; i >= 0; i--) {
+    if (stepIsVisible(steps.value[i])) {
+      goto(i);
+      return;
+    }
+  }
+}
+const hasNextVisible = computed(() => {
+  for (let i = currentStepIdx.value + 1; i < steps.value.length; i++) {
+    if (stepIsVisible(steps.value[i])) return true;
+  }
+  return false;
+});
+const hasPrevVisible = computed(() => {
+  for (let i = currentStepIdx.value - 1; i >= 0; i--) {
+    if (stepIsVisible(steps.value[i])) return true;
+  }
+  return false;
+});
+
 // --- Click-highlight state (PR1 feature, preserved) ---------------------
 
 // Which root law's edges are currently highlighted (inbound/outbound).
@@ -191,14 +229,14 @@ const currentStep = computed(() =>
           <button
             type="button"
             class="law-graph-trace__btn"
-            :disabled="currentStepIdx <= 0"
-            @click="prev"
+            :disabled="!hasPrevVisible"
+            @click="prevVisible"
           >◀ Vorige</button>
           <button
             type="button"
             class="law-graph-trace__btn"
-            :disabled="currentStepIdx >= steps.length - 1"
-            @click="next"
+            :disabled="!hasNextVisible"
+            @click="nextVisible"
           >Volgende ▶</button>
           <span class="law-graph-trace__counter">
             Stap <strong>{{ currentStepIdx + 1 }}</strong> / {{ steps.length }}
