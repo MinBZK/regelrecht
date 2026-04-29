@@ -39,6 +39,7 @@ const editorPanelFlags = [
       @select="toggleFlag(key)"
     ></nldd-menu-item>
     <nldd-menu-item
+      v-if="!authLoading && authenticated"
       type="checkbox"
       :selected="theme === 'dark' || undefined"
       text="Donkere modus"
