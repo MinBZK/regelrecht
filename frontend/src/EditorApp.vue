@@ -820,7 +820,7 @@ function handleActionSave() {
                     <nldd-menu-item
                       v-for="pane in enabledRightPanes"
                       :key="pane.key"
-                      type="checkbox"
+                      type="radio"
                       :selected="activeRightPane === pane.key || undefined"
                       :text="pane.label"
                       @select="activeRightPane = pane.key"
