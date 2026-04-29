@@ -49,7 +49,7 @@ watch(enabledRightPanes, (panes) => {
   }
 }, { immediate: true });
 watch(activeRightPane, (val) => {
-  if (val) localStorage.setItem(ACTIVE_RIGHT_PANE_KEY, val);
+  localStorage.setItem(ACTIVE_RIGHT_PANE_KEY, val);
 });
 const activeRightPaneLabel = computed(
   () => enabledRightPanes.value.find(p => p.key === activeRightPane.value)?.label ?? '',
