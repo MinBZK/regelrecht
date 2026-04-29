@@ -196,7 +196,7 @@ const currentStep = computed(() =>
 <template>
   <div class="law-graph-view">
     <div v-if="error" class="law-graph-error">
-      <nldd-inline-dialog variant="alert" text="Kon de wettengraaf niet opbouwen" :supporting-text="error"></nldd-inline-dialog>
+      <nldd-inline-dialog variant="alert" text="Kon de graaf niet opbouwen" :supporting-text="error"></nldd-inline-dialog>
     </div>
 
     <div v-else-if="!lawId" class="law-graph-empty">
