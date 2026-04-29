@@ -26,21 +26,42 @@ const editorPanelFlags = [
   ['panel.law_graph', 'Wettengraaf'],
 ];
 
+// Left and middle panes are specific named editors. The right pane is a
+// category — anything that isn't text or machine lives there, and when more
+// than one is enabled they share the slot via a dropdown switcher in the
+// header. Adding a new editor: append to RIGHT_PANES and render its body in
+// the right-pane v-if chain in the template.
 const showTextPane = computed(() => isEnabled('panel.article_text'));
-const showFormPane = computed(() => isEnabled('panel.scenario_form'));
-const showYamlPane = computed(() => isEnabled('panel.yaml_editor'));
 const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
-const showGraphPane = computed(() => isEnabled('panel.law_graph'));
 
-// Compute visible pane count and slot assignments for split view.
+const RIGHT_PANES = [
+  { key: 'form', flag: 'panel.scenario_form', label: "Scenario's" },
+  { key: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+  { key: 'graph', flag: 'panel.law_graph', label: 'Wettengraaf' },
+];
+const enabledRightPanes = computed(() => RIGHT_PANES.filter(p => isEnabled(p.flag)));
+
+const ACTIVE_RIGHT_PANE_KEY = 'regelrecht-active-right-pane';
+const activeRightPane = ref(localStorage.getItem(ACTIVE_RIGHT_PANE_KEY) || RIGHT_PANES[0].key);
+watch(enabledRightPanes, (panes) => {
+  if (panes.length > 0 && !panes.some(p => p.key === activeRightPane.value)) {
+    activeRightPane.value = panes[0].key;
+  }
+}, { immediate: true });
+watch(activeRightPane, (val) => {
+  localStorage.setItem(ACTIVE_RIGHT_PANE_KEY, val);
+});
+const activeRightPaneLabel = computed(
+  () => enabledRightPanes.value.find(p => p.key === activeRightPane.value)?.label ?? '',
+);
+
+// Compute visible pane count and slot assignments for the split view.
 const visiblePanes = computed(() => {
   const panes = [];
   if (showTextPane.value) panes.push('text');
   if (showMachinePane.value) panes.push('machine');
-  if (showFormPane.value) panes.push('form');
-  if (showYamlPane.value) panes.push('yaml');
-  if (showGraphPane.value) panes.push('graph');
-  return panes.length > 0 ? panes : ['text', 'machine', 'form', 'yaml'];
+  if (enabledRightPanes.value.length > 0) panes.push('right');
+  return panes.length > 0 ? panes : ['text', 'machine', 'right'];
 });
 const paneSlot = (name) => {
   const idx = visiblePanes.value.indexOf(name);
@@ -782,35 +803,52 @@ function handleActionSave() {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Scenarios -->
-          <nldd-split-view-pane v-if="showFormPane" :slot="paneSlot('form')">
+          <!-- Right pane: any non-text/non-machine editor. When more than one
+               is enabled they share this slot with a dropdown switcher. -->
+          <nldd-split-view-pane v-if="enabledRightPanes.length > 0" :slot="paneSlot('right')">
             <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="Scenario's"></nldd-top-title-bar>
-
-              <nldd-simple-section v-if="engineInitError" align="center">
-                <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
-              </nldd-simple-section>
-
-              <ScenarioBuilder
-                v-else
-                :law-id="lawId"
-                :law-yaml="currentLawYaml"
-                :engine="getEngine()"
-                :ready="engineReady"
-                :articles="articles"
-                @executed="handleScenarioExecuted"
-              />
-            </nldd-page>
-          </nldd-split-view-pane>
-
-          <!-- YAML -->
-          <nldd-split-view-pane v-if="showYamlPane" :slot="paneSlot('yaml')">
-            <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="YAML">
-                <span v-if="parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
+              <template v-if="enabledRightPanes.length > 1">
+                <div slot="header" class="right-pane-header">
+                  <nldd-button
+                    id="right-pane-menu-btn"
+                    size="md"
+                    expandable
+                    :text="activeRightPaneLabel"
+                    popovertarget="right-pane-menu"
+                  ></nldd-button>
+                  <nldd-menu id="right-pane-menu" anchor="right-pane-menu-btn">
+                    <nldd-menu-item
+                      v-for="pane in enabledRightPanes"
+                      :key="pane.key"
+                      type="radio"
+                      :selected="activeRightPane === pane.key || undefined"
+                      :text="pane.label"
+                      @select="activeRightPane = pane.key"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                  <span v-if="activeRightPane === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
+                </div>
+              </template>
+              <nldd-top-title-bar v-else slot="header" :text="activeRightPaneLabel">
+                <span v-if="activeRightPane === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
               </nldd-top-title-bar>
 
-              <div class="editor-yaml-wrap">
+              <template v-if="activeRightPane === 'form'">
+                <nldd-simple-section v-if="engineInitError" align="center">
+                  <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
+                </nldd-simple-section>
+                <ScenarioBuilder
+                  v-else
+                  :law-id="lawId"
+                  :law-yaml="currentLawYaml"
+                  :engine="getEngine()"
+                  :ready="engineReady"
+                  :articles="articles"
+                  @executed="handleScenarioExecuted"
+                />
+              </template>
+
+              <div v-else-if="activeRightPane === 'yaml'" class="editor-yaml-wrap">
                 <textarea
                   :value="yamlSource"
                   @input="onYamlInput"
@@ -822,6 +860,14 @@ function handleActionSave() {
                 ></textarea>
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </div>
+
+              <LawGraphView
+                v-else-if="activeRightPane === 'graph'"
+                :law-id="lawId"
+                :result="lastResult"
+                :output-name="lastOutputName"
+                :expectations="lastExpectations"
+              />
             </nldd-page>
           </nldd-split-view-pane>
 
@@ -858,18 +904,6 @@ function handleActionSave() {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Law dependency graph -->
-          <nldd-split-view-pane v-if="showGraphPane" :slot="paneSlot('graph')">
-            <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="Wettengraaf"></nldd-top-title-bar>
-              <LawGraphView
-                :law-id="lawId"
-                :result="lastResult"
-                :output-name="lastOutputName"
-                :expectations="lastExpectations"
-              />
-            </nldd-page>
-          </nldd-split-view-pane>
         </nldd-side-by-side-split-view>
       </nldd-split-view-pane>
     </nldd-bar-split-view>
@@ -921,6 +955,19 @@ function handleActionSave() {
   background: #eee;
   padding: 1px 4px;
   border-radius: 3px;
+}
+
+/* Header for the right pane when multiple right-pane editors are enabled:
+   dropdown button sits where the title would normally be, with the YAML
+   parse-error pill floating after it. Mirrors nldd-top-title-bar's compact
+   spacing so the row height matches the other panes' headers. */
+.right-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  min-height: 56px;
+  box-sizing: border-box;
 }
 
 .editor-yaml-wrap {
