@@ -30,7 +30,7 @@ const editorPanelFlags = [
 // category — anything that isn't text or machine lives there, and when more
 // than one is enabled they share the slot via a dropdown switcher in the
 // header. Adding a new editor: append to RIGHT_PANES and render its body in
-// the v-if chain below.
+// the right-pane v-if chain in the template.
 const showTextPane = computed(() => isEnabled('panel.article_text'));
 const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
 
@@ -41,7 +41,7 @@ const RIGHT_PANES = [
 ];
 const enabledRightPanes = computed(() => RIGHT_PANES.filter(p => isEnabled(p.flag)));
 
-const ACTIVE_RIGHT_PANE_KEY = 'regelrecht-active-output-tab';
+const ACTIVE_RIGHT_PANE_KEY = 'regelrecht-active-right-pane';
 const activeRightPane = ref(localStorage.getItem(ACTIVE_RIGHT_PANE_KEY) || RIGHT_PANES[0].key);
 watch(enabledRightPanes, (panes) => {
   if (panes.length > 0 && !panes.some(p => p.key === activeRightPane.value)) {
