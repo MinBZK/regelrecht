@@ -26,44 +26,42 @@ const editorPanelFlags = [
   ['panel.law_graph', 'Wettengraaf'],
 ];
 
+// Left and middle panes are specific named editors. The right pane is a
+// category — anything that isn't text or machine lives there, and when more
+// than one is enabled they share the slot via a dropdown switcher in the
+// header. Adding a new editor: append to RIGHT_PANES and render its body in
+// the v-if chain below.
 const showTextPane = computed(() => isEnabled('panel.article_text'));
-const showFormPane = computed(() => isEnabled('panel.scenario_form'));
-const showYamlPane = computed(() => isEnabled('panel.yaml_editor'));
 const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
-const showGraphPane = computed(() => isEnabled('panel.law_graph'));
 
-// Scenarios / YAML / Wettengraaf share one pane with a dropdown switcher when
-// more than one is enabled. With one enabled, that pane behaves like a regular
-// titled pane.
-const OUTPUT_TAB_LABELS = { form: "Scenario's", yaml: 'YAML', graph: 'Wettengraaf' };
-const groupedOutputKeys = computed(() => {
-  const keys = [];
-  if (showFormPane.value) keys.push('form');
-  if (showYamlPane.value) keys.push('yaml');
-  if (showGraphPane.value) keys.push('graph');
-  return keys;
-});
+const RIGHT_PANES = [
+  { key: 'form', flag: 'panel.scenario_form', label: "Scenario's" },
+  { key: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+  { key: 'graph', flag: 'panel.law_graph', label: 'Wettengraaf' },
+];
+const enabledRightPanes = computed(() => RIGHT_PANES.filter(p => isEnabled(p.flag)));
 
-const ACTIVE_OUTPUT_TAB_KEY = 'regelrecht-active-output-tab';
-const activeOutputTab = ref(localStorage.getItem(ACTIVE_OUTPUT_TAB_KEY) || 'form');
-watch(groupedOutputKeys, (keys) => {
-  if (keys.length > 0 && !keys.includes(activeOutputTab.value)) {
-    activeOutputTab.value = keys[0];
+const ACTIVE_RIGHT_PANE_KEY = 'regelrecht-active-output-tab';
+const activeRightPane = ref(localStorage.getItem(ACTIVE_RIGHT_PANE_KEY) || RIGHT_PANES[0].key);
+watch(enabledRightPanes, (panes) => {
+  if (panes.length > 0 && !panes.some(p => p.key === activeRightPane.value)) {
+    activeRightPane.value = panes[0].key;
   }
 }, { immediate: true });
-watch(activeOutputTab, (val) => {
-  if (val) localStorage.setItem(ACTIVE_OUTPUT_TAB_KEY, val);
+watch(activeRightPane, (val) => {
+  if (val) localStorage.setItem(ACTIVE_RIGHT_PANE_KEY, val);
 });
-const activeOutputTabLabel = computed(() => OUTPUT_TAB_LABELS[activeOutputTab.value] ?? '');
+const activeRightPaneLabel = computed(
+  () => enabledRightPanes.value.find(p => p.key === activeRightPane.value)?.label ?? '',
+);
 
-// Compute visible pane count and slot assignments for split view. The three
-// "output" sub-panes share one slot regardless of how many are enabled.
+// Compute visible pane count and slot assignments for the split view.
 const visiblePanes = computed(() => {
   const panes = [];
   if (showTextPane.value) panes.push('text');
   if (showMachinePane.value) panes.push('machine');
-  if (groupedOutputKeys.value.length > 0) panes.push('output');
-  return panes.length > 0 ? panes : ['text', 'machine', 'output'];
+  if (enabledRightPanes.value.length > 0) panes.push('right');
+  return panes.length > 0 ? panes : ['text', 'machine', 'right'];
 });
 const paneSlot = (name) => {
   const idx = visiblePanes.value.indexOf(name);
@@ -805,37 +803,37 @@ function handleActionSave() {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Output: Scenarios / YAML / Wettengraaf — share one pane with a
-               dropdown switcher in the header when more than one is enabled. -->
-          <nldd-split-view-pane v-if="groupedOutputKeys.length > 0" :slot="paneSlot('output')">
+          <!-- Right pane: any non-text/non-machine editor. When more than one
+               is enabled they share this slot with a dropdown switcher. -->
+          <nldd-split-view-pane v-if="enabledRightPanes.length > 0" :slot="paneSlot('right')">
             <nldd-page sticky-header>
-              <template v-if="groupedOutputKeys.length > 1">
-                <div slot="header" class="output-pane-header">
+              <template v-if="enabledRightPanes.length > 1">
+                <div slot="header" class="right-pane-header">
                   <nldd-button
-                    id="output-pane-menu-btn"
+                    id="right-pane-menu-btn"
                     size="md"
                     expandable
-                    :text="activeOutputTabLabel"
-                    popovertarget="output-pane-menu"
+                    :text="activeRightPaneLabel"
+                    popovertarget="right-pane-menu"
                   ></nldd-button>
-                  <nldd-menu id="output-pane-menu" anchor="output-pane-menu-btn">
+                  <nldd-menu id="right-pane-menu" anchor="right-pane-menu-btn">
                     <nldd-menu-item
-                      v-for="key in groupedOutputKeys"
-                      :key="key"
+                      v-for="pane in enabledRightPanes"
+                      :key="pane.key"
                       type="checkbox"
-                      :selected="activeOutputTab === key || undefined"
-                      :text="OUTPUT_TAB_LABELS[key]"
-                      @select="activeOutputTab = key"
+                      :selected="activeRightPane === pane.key || undefined"
+                      :text="pane.label"
+                      @select="activeRightPane = pane.key"
                     ></nldd-menu-item>
                   </nldd-menu>
-                  <span v-if="activeOutputTab === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
+                  <span v-if="activeRightPane === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
                 </div>
               </template>
-              <nldd-top-title-bar v-else slot="header" :text="activeOutputTabLabel">
-                <span v-if="activeOutputTab === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
+              <nldd-top-title-bar v-else slot="header" :text="activeRightPaneLabel">
+                <span v-if="activeRightPane === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
               </nldd-top-title-bar>
 
-              <template v-if="activeOutputTab === 'form'">
+              <template v-if="activeRightPane === 'form'">
                 <nldd-simple-section v-if="engineInitError" align="center">
                   <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
                 </nldd-simple-section>
@@ -850,7 +848,7 @@ function handleActionSave() {
                 />
               </template>
 
-              <div v-else-if="activeOutputTab === 'yaml'" class="editor-yaml-wrap">
+              <div v-else-if="activeRightPane === 'yaml'" class="editor-yaml-wrap">
                 <textarea
                   :value="yamlSource"
                   @input="onYamlInput"
@@ -864,7 +862,7 @@ function handleActionSave() {
               </div>
 
               <LawGraphView
-                v-else-if="activeOutputTab === 'graph'"
+                v-else-if="activeRightPane === 'graph'"
                 :law-id="lawId"
                 :result="lastResult"
                 :output-name="lastOutputName"
@@ -959,11 +957,11 @@ function handleActionSave() {
   border-radius: 3px;
 }
 
-/* Header for the merged Scenario's / YAML / Wettengraaf pane: dropdown button
-   sits where the title would normally be, with the YAML parse-error pill
-   floating after it. Mirrors nldd-top-title-bar's compact spacing so the row
-   height matches the other panes' headers. */
-.output-pane-header {
+/* Header for the right pane when multiple right-pane editors are enabled:
+   dropdown button sits where the title would normally be, with the YAML
+   parse-error pill floating after it. Mirrors nldd-top-title-bar's compact
+   spacing so the row height matches the other panes' headers. */
+.right-pane-header {
   display: flex;
   align-items: center;
   gap: 12px;
