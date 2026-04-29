@@ -32,15 +32,38 @@ const showYamlPane = computed(() => isEnabled('panel.yaml_editor'));
 const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
 const showGraphPane = computed(() => isEnabled('panel.law_graph'));
 
-// Compute visible pane count and slot assignments for split view.
+// Scenarios / YAML / Wettengraaf share one pane with a dropdown switcher when
+// more than one is enabled. With one enabled, that pane behaves like a regular
+// titled pane.
+const OUTPUT_TAB_LABELS = { form: "Scenario's", yaml: 'YAML', graph: 'Wettengraaf' };
+const groupedOutputKeys = computed(() => {
+  const keys = [];
+  if (showFormPane.value) keys.push('form');
+  if (showYamlPane.value) keys.push('yaml');
+  if (showGraphPane.value) keys.push('graph');
+  return keys;
+});
+
+const ACTIVE_OUTPUT_TAB_KEY = 'regelrecht-active-output-tab';
+const activeOutputTab = ref(localStorage.getItem(ACTIVE_OUTPUT_TAB_KEY) || 'form');
+watch(groupedOutputKeys, (keys) => {
+  if (keys.length > 0 && !keys.includes(activeOutputTab.value)) {
+    activeOutputTab.value = keys[0];
+  }
+}, { immediate: true });
+watch(activeOutputTab, (val) => {
+  if (val) localStorage.setItem(ACTIVE_OUTPUT_TAB_KEY, val);
+});
+const activeOutputTabLabel = computed(() => OUTPUT_TAB_LABELS[activeOutputTab.value] ?? '');
+
+// Compute visible pane count and slot assignments for split view. The three
+// "output" sub-panes share one slot regardless of how many are enabled.
 const visiblePanes = computed(() => {
   const panes = [];
   if (showTextPane.value) panes.push('text');
   if (showMachinePane.value) panes.push('machine');
-  if (showFormPane.value) panes.push('form');
-  if (showYamlPane.value) panes.push('yaml');
-  if (showGraphPane.value) panes.push('graph');
-  return panes.length > 0 ? panes : ['text', 'machine', 'form', 'yaml'];
+  if (groupedOutputKeys.value.length > 0) panes.push('output');
+  return panes.length > 0 ? panes : ['text', 'machine', 'output'];
 });
 const paneSlot = (name) => {
   const idx = visiblePanes.value.indexOf(name);
@@ -782,35 +805,52 @@ function handleActionSave() {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Scenarios -->
-          <nldd-split-view-pane v-if="showFormPane" :slot="paneSlot('form')">
+          <!-- Output: Scenarios / YAML / Wettengraaf — share one pane with a
+               dropdown switcher in the header when more than one is enabled. -->
+          <nldd-split-view-pane v-if="groupedOutputKeys.length > 0" :slot="paneSlot('output')">
             <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="Scenario's"></nldd-top-title-bar>
-
-              <nldd-simple-section v-if="engineInitError" align="center">
-                <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
-              </nldd-simple-section>
-
-              <ScenarioBuilder
-                v-else
-                :law-id="lawId"
-                :law-yaml="currentLawYaml"
-                :engine="getEngine()"
-                :ready="engineReady"
-                :articles="articles"
-                @executed="handleScenarioExecuted"
-              />
-            </nldd-page>
-          </nldd-split-view-pane>
-
-          <!-- YAML -->
-          <nldd-split-view-pane v-if="showYamlPane" :slot="paneSlot('yaml')">
-            <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="YAML">
-                <span v-if="parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
+              <template v-if="groupedOutputKeys.length > 1">
+                <div slot="header" class="output-pane-header">
+                  <nldd-button
+                    id="output-pane-menu-btn"
+                    size="md"
+                    expandable
+                    :text="activeOutputTabLabel"
+                    popovertarget="output-pane-menu"
+                  ></nldd-button>
+                  <nldd-menu id="output-pane-menu" anchor="output-pane-menu-btn">
+                    <nldd-menu-item
+                      v-for="key in groupedOutputKeys"
+                      :key="key"
+                      type="checkbox"
+                      :selected="activeOutputTab === key || undefined"
+                      :text="OUTPUT_TAB_LABELS[key]"
+                      @select="activeOutputTab = key"
+                    ></nldd-menu-item>
+                  </nldd-menu>
+                  <span v-if="activeOutputTab === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
+                </div>
+              </template>
+              <nldd-top-title-bar v-else slot="header" :text="activeOutputTabLabel">
+                <span v-if="activeOutputTab === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
               </nldd-top-title-bar>
 
-              <div class="editor-yaml-wrap">
+              <template v-if="activeOutputTab === 'form'">
+                <nldd-simple-section v-if="engineInitError" align="center">
+                  <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
+                </nldd-simple-section>
+                <ScenarioBuilder
+                  v-else
+                  :law-id="lawId"
+                  :law-yaml="currentLawYaml"
+                  :engine="getEngine()"
+                  :ready="engineReady"
+                  :articles="articles"
+                  @executed="handleScenarioExecuted"
+                />
+              </template>
+
+              <div v-else-if="activeOutputTab === 'yaml'" class="editor-yaml-wrap">
                 <textarea
                   :value="yamlSource"
                   @input="onYamlInput"
@@ -822,6 +862,14 @@ function handleActionSave() {
                 ></textarea>
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </div>
+
+              <LawGraphView
+                v-else-if="activeOutputTab === 'graph'"
+                :law-id="lawId"
+                :result="lastResult"
+                :output-name="lastOutputName"
+                :expectations="lastExpectations"
+              />
             </nldd-page>
           </nldd-split-view-pane>
 
@@ -858,18 +906,6 @@ function handleActionSave() {
             </nldd-page>
           </nldd-split-view-pane>
 
-          <!-- Law dependency graph -->
-          <nldd-split-view-pane v-if="showGraphPane" :slot="paneSlot('graph')">
-            <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="Wettengraaf"></nldd-top-title-bar>
-              <LawGraphView
-                :law-id="lawId"
-                :result="lastResult"
-                :output-name="lastOutputName"
-                :expectations="lastExpectations"
-              />
-            </nldd-page>
-          </nldd-split-view-pane>
         </nldd-side-by-side-split-view>
       </nldd-split-view-pane>
     </nldd-bar-split-view>
@@ -921,6 +957,19 @@ function handleActionSave() {
   background: #eee;
   padding: 1px 4px;
   border-radius: 3px;
+}
+
+/* Header for the merged Scenario's / YAML / Wettengraaf pane: dropdown button
+   sits where the title would normally be, with the YAML parse-error pill
+   floating after it. Mirrors nldd-top-title-bar's compact spacing so the row
+   height matches the other panes' headers. */
+.output-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  min-height: 56px;
+  box-sizing: border-box;
 }
 
 .editor-yaml-wrap {
