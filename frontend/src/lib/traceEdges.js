@@ -125,6 +125,62 @@ export function flattenTraceSteps(root, rootLawId) {
 }
 
 /**
+ * Pre-index edges so per-step matchers don't have to scan the full edge
+ * list. `useTraceStepping.steps` builds this once per (graph) change and
+ * passes it to every `edgeIdsForStep` call — cuts step enrichment from
+ * O(steps × edges) to O(steps).
+ *
+ * Buckets mirror the four switch arms in `edgeIdsForStep`:
+ *   - bySource           — `${law}-input-${name}` → edges with that source
+ *   - byImplOpenTerm     — open-term name → `impl:` edges ending `:${name}`
+ *   - byOvrSourceLaw     — law id → `ovr:${law}:` edges
+ *   - byHookPrefix       — `hook:${name}->` → edges with that prefix
+ */
+export function buildEdgeIndex(edges) {
+  const bySource = new Map();
+  const byImplOpenTerm = new Map();
+  const byOvrSourceLaw = new Map();
+  const byHookPrefix = new Map();
+
+  const push = (m, k, v) => {
+    const cur = m.get(k);
+    if (cur) cur.push(v); else m.set(k, [v]);
+  };
+
+  for (const e of edges) {
+    if (typeof e.source === 'string') push(bySource, e.source, e);
+    if (typeof e.id !== 'string') continue;
+    if (e.id.startsWith('impl:')) {
+      const colon = e.id.lastIndexOf(':');
+      if (colon !== -1) push(byImplOpenTerm, e.id.substring(colon + 1), e);
+    } else if (e.id.startsWith('ovr:')) {
+      // `ovr:${lawA}:${art}->${lawB}:${art}` — bucket by `lawA`
+      const head = e.id.indexOf(':');
+      const tail = e.id.indexOf(':', head + 1);
+      if (head !== -1 && tail !== -1) {
+        push(byOvrSourceLaw, e.id.substring(head + 1, tail), e);
+      }
+    } else if (e.id.startsWith('hook:')) {
+      const arrow = e.id.indexOf('->');
+      if (arrow !== -1) push(byHookPrefix, e.id.substring(0, arrow + 2), e);
+    }
+  }
+
+  return { bySource, byImplOpenTerm, byOvrSourceLaw, byHookPrefix };
+}
+
+/**
+ * Pre-build a Set of node IDs so `graphNodeIdsForStep` doesn't have to
+ * rebuild the same Set for every step. Hot enough on heavy graphs that
+ * the per-step `new Set(nodes.map(...))` dominated profiling.
+ */
+export function buildNodeIdSet(nodes) {
+  const out = new Set();
+  for (const n of nodes) out.add(n.id);
+  return out;
+}
+
+/**
  * Parse a trace node name into (targetLaw, localName) when it encodes a
  * cross-law target. Supports `law#output` and `law:article:lid` shapes.
  */
@@ -147,8 +203,14 @@ function splitQualifiedName(name) {
  * `target_law#output_name`; we extract the output name and match on the
  * source leaf `${sourceLaw}-input-${output}`. Multiple candidate edges all
  * get highlighted.
+ *
+ * Pass a pre-built `index` from `buildEdgeIndex(edges)` to skip the full
+ * edge scan — `useTraceStepping` does this for every step at once.
+ * Without it, a transient index is built locally so the function still
+ * works on its own (test-friendly).
  */
-export function edgeIdsForStep(step, edges) {
+export function edgeIdsForStep(step, edges, index) {
+  const idx = index || buildEdgeIndex(edges);
   switch (step.nodeType) {
     case 'cross_law_reference': {
       const [targetLaw, outputName] = splitQualifiedName(step.name);
@@ -159,43 +221,41 @@ export function edgeIdsForStep(step, edges) {
       // plus the consumer's local input name. Carrying over the demo
       // limitation for now.
       const src = `${step.lawId}-input-${outputName}`;
-      return edges
-        .filter((e) => {
-          if (e.source !== src) return false;
-          if (targetLaw && typeof e.target === 'string') {
-            return e.target.startsWith(`${targetLaw}-`);
-          }
-          return true;
-        })
-        .map((e) => e.id);
+      const bucket = idx.bySource.get(src);
+      if (!bucket) return [];
+      const out = [];
+      for (const e of bucket) {
+        if (targetLaw && typeof e.target === 'string'
+            && !e.target.startsWith(`${targetLaw}-`)) continue;
+        out.push(e.id);
+      }
+      return out;
     }
     case 'open_term_resolution': {
-      // The step's `name` is the open_term id. `lawId` is ambiguous —
-      // `flattenTraceSteps` only switches `descendLawId` on
-      // cross_law_reference, so an open_term node carries whichever
-      // law was active when the engine emitted it (the higher law that
-      // *declared* the term, not the lower law that *implements* it).
-      // We therefore can't filter by `lawId` here; an
-      // `impl:${implLaw}:...->${higherLaw}:${openTerm}` edge is
-      // identified end-to-end by its `:${openTerm}` suffix. False
-      // positives are bounded: an open_term name is unique per
-      // declaring higher-law in practice.
+      // `lawId` is ambiguous on open_term steps — `flattenTraceSteps`
+      // doesn't switch `descendLawId` on this node type, so the engine
+      // emits it under whichever law was active (typically the higher
+      // declaring law, not the implementing one). The `impl:` edge id
+      // ends `:${openTerm}` regardless of either side, so we look up
+      // by that suffix only. False positives are bounded: open_term
+      // names are unique per declaring higher-law in practice.
       // Edge ID format: `impl:${implLawId}:${art}->${higherLaw}:${openTerm}`
-      return edges
-        .filter((e) => e.id.startsWith('impl:') && e.id.endsWith(`:${step.name}`))
-        .map((e) => e.id);
+      const bucket = idx.byImplOpenTerm.get(step.name);
+      return bucket ? bucket.map((e) => e.id) : [];
     }
     case 'hook_resolution': {
       // The trace node's lawId is the producer law (where the hook fires).
       // The name is a qualified hook ref like `hookLaw:art`.
       // Edge ID format: `hook:${hookLaw}:${art}->${producerLaw}:${producerArt}`
       const hookPrefix = `hook:${step.name}->`;
-      return edges
-        .filter((e) => {
-          if (!e.id.startsWith(hookPrefix)) return false;
-          return e.id.includes(`->${step.lawId}:`);
-        })
-        .map((e) => e.id);
+      const bucket = idx.byHookPrefix.get(hookPrefix);
+      if (!bucket) return [];
+      const lawTail = `->${step.lawId}:`;
+      const out = [];
+      for (const e of bucket) {
+        if (e.id.includes(lawTail)) out.push(e.id);
+      }
+      return out;
     }
     case 'override_resolution': {
       // Edge ID format: `ovr:${lawA}:${art}->${lawB}:${article}`
@@ -204,9 +264,8 @@ export function edgeIdsForStep(step, edges) {
       // edges from that law light up simultaneously. A precise match
       // would also constrain by source/target output name once the
       // engine starts emitting the output in the trace node.
-      return edges
-        .filter((e) => e.id.startsWith(`ovr:${step.lawId}:`))
-        .map((e) => e.id);
+      const bucket = idx.byOvrSourceLaw.get(step.lawId);
+      return bucket ? bucket.map((e) => e.id) : [];
     }
     default:
       return [];
@@ -217,9 +276,13 @@ export function edgeIdsForStep(step, edges) {
  * Return graph node IDs that should light up for the given step. Matches
  * trace nodes to leaf nodes (parameter/input/output/delegate/impl) plus
  * the root law node so users can see which law is executing.
+ *
+ * Pass a pre-built `nodeIdSet` from `buildNodeIdSet(nodes)` to skip
+ * rebuilding the same Set per step. The fallback `findLeafByName` scan
+ * still iterates `nodes`; that's only used when the primary id miss-hits.
  */
-export function graphNodeIdsForStep(step, nodes) {
-  const nodeSet = new Set(nodes.map((n) => n.id));
+export function graphNodeIdsForStep(step, nodes, nodeIdSet) {
+  const nodeSet = nodeIdSet || buildNodeIdSet(nodes);
   const out = [];
   const add = (id) => {
     if (id && nodeSet.has(id) && !out.includes(id)) out.push(id);
@@ -232,7 +295,11 @@ export function graphNodeIdsForStep(step, nodes) {
    */
   const findLeafByName = (suffix, name) => {
     const tail = `-${suffix}-${name}`;
-    return nodes.map((n) => n.id).filter((id) => id.endsWith(tail));
+    const matches = [];
+    for (const n of nodes) {
+      if (n.id.endsWith(tail)) matches.push(n.id);
+    }
+    return matches;
   };
 
   // Always highlight the current law root so the user can track which law
