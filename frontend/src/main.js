@@ -1,5 +1,5 @@
-import '@minbzk/storybook';
-import '@minbzk/storybook/styles';
+import '@nldd/design-system';
+import '@nldd/design-system/styles';
 import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router.js';

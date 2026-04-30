@@ -9,9 +9,17 @@ import ActionSheet from './components/ActionSheet.vue';
 import SearchWindow from './components/SearchWindow.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
+import { useColorScheme } from './composables/useColorScheme.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
+const { colorScheme, setColorScheme } = useColorScheme();
+
+const colorSchemeOptions = [
+  ['auto', 'Automatisch'],
+  ['light', 'Licht'],
+  ['dark', 'Donker'],
+];
 
 // Kept in sync with EditorApp.editorPanelFlags so toggling from the library
 // affects the editor the next time it mounts.
@@ -332,6 +340,15 @@ loadIndex();
                     :selected="isEnabled(key) || undefined"
                     :text="label"
                     @select="toggleFlag(key)"
+                  ></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item
+                    v-for="[value, label] in colorSchemeOptions"
+                    :key="`scheme-${value}`"
+                    type="radio"
+                    :selected="colorScheme === value || undefined"
+                    :text="label"
+                    @select="setColorScheme(value)"
                   ></nldd-menu-item>
                   <nldd-menu-divider></nldd-menu-divider>
                   <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
