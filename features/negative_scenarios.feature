@@ -22,13 +22,16 @@ Feature: Boundary and edge-case scenarios
     Then the citizen has the right to bijstand
     And the uitkering_bedrag is "109171" eurocent
 
-  Scenario: WOO Art 5.3 without informatie_datum fails
+  Scenario: WOO Art 5.3 without informatie_datum returns null
     # Art 5.3 requires informatie_datum to compute age.
+    # When missing, AGE propagates null through the computation chain:
+    # informatie_leeftijd_jaren = null, verzwaarde_motiveringsplicht = null.
     Given the calculation date is "2025-03-01"
     And a query with the following data:
       | peildatum | 2025-03-01 |
     When the WOO motivation requirement is checked
-    Then the execution fails with "informatie_datum"
+    Then the output "informatie_leeftijd_jaren" is null
+    And the output "verzwaarde_motiveringsplicht" is null
 
   # ==========================================================================
   # Legal boundary conditions

@@ -25,10 +25,14 @@
 //! )?;
 //! ```
 
-use crate::article::{Article, ArticleBasedLaw, Execution, HookPoint, MachineReadable};
+use crate::article::{
+    Article, ArticleBasedLaw, Execution, HookPoint, Input, MachineReadable, SelectOnCriterion,
+};
 use crate::config;
 use crate::context::RuleContext;
-use crate::data_source::{DataSource, DataSourceRegistry, DictDataSource};
+use crate::data_source::{
+    DataSource, DataSourceRegistry, DictDataSource, RecordSetDataSource, SelectOn,
+};
 use crate::engine::{ArticleEngine, ArticleResult, OutputProvenance};
 use crate::error::{EngineError, Result};
 use crate::operations::ValueResolver;
@@ -36,8 +40,8 @@ use crate::priority;
 use crate::resolver::RuleResolver;
 use crate::trace::TraceBuilder;
 use crate::types::{
-    Connectivity, LegalStatus, PathNodeType, RegulatoryLayer, ResolveType, UntranslatableMode,
-    Value,
+    Connectivity, LegalStatus, ParameterType, PathNodeType, RegulatoryLayer, ResolveType,
+    UntranslatableMode, Value,
 };
 use crate::uri::RegelrechtUri;
 use chrono::NaiveDate;
@@ -70,8 +74,10 @@ struct CacheEntry {
 /// Uses a scoped push/pop pattern for the visited set to avoid
 /// cloning the HashSet on every cross-law descent.
 struct ResolutionContext<'a> {
-    /// Date for calculations (YYYY-MM-DD)
-    calculation_date: &'a str,
+    /// Date for calculations (YYYY-MM-DD). Owned because cross-law calls
+    /// with temporal qualifiers need to swap it for the duration of the
+    /// recursive descent (`with_shifted_date`).
+    calculation_date: String,
     /// Cached parsed date for version selection (parsed once at construction)
     reference_date: Option<NaiveDate>,
     /// Set of law#output keys already being resolved (cycle detection)
@@ -85,35 +91,57 @@ struct ResolutionContext<'a> {
     /// The law that initiated the current execution chain (for override scoping).
     /// Overrides only apply when declared by this law.
     contextual_law_id: Option<String>,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> ResolutionContext<'a> {
     /// Create a new resolution context.
-    fn new(calculation_date: &'a str) -> Self {
+    fn new(calculation_date: &str) -> Self {
         let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
         Self {
-            calculation_date,
+            calculation_date: calculation_date.to_string(),
             reference_date,
             visited: HashSet::new(),
             depth: 0,
             trace: None,
             cache: HashMap::new(),
             contextual_law_id: None,
+            _marker: std::marker::PhantomData,
         }
     }
 
     /// Create a new resolution context with trace builder.
-    fn with_trace(calculation_date: &'a str, trace: Rc<RefCell<TraceBuilder>>) -> Self {
+    fn with_trace(calculation_date: &str, trace: Rc<RefCell<TraceBuilder>>) -> Self {
         let reference_date = NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d").ok();
         Self {
-            calculation_date,
+            calculation_date: calculation_date.to_string(),
             reference_date,
             visited: HashSet::new(),
             depth: 0,
             trace: Some(trace),
             cache: HashMap::new(),
             contextual_law_id: None,
+            _marker: std::marker::PhantomData,
         }
+    }
+
+    /// Run a closure with a temporarily shifted calculation date.
+    ///
+    /// Used for cross-law calls with `temporal.reference` qualifiers
+    /// (e.g. `$prev_january_first` evaluates the target law against
+    /// January 1 of the previous year). The original date is restored
+    /// even if the closure panics, via the explicit Drop guard.
+    fn with_shifted_date<F, T>(&mut self, shifted: &str, f: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        let saved_date = std::mem::replace(&mut self.calculation_date, shifted.to_string());
+        let saved_ref = self.reference_date;
+        self.reference_date = NaiveDate::parse_from_str(shifted, "%Y-%m-%d").ok();
+        let result = f(self);
+        self.calculation_date = saved_date;
+        self.reference_date = saved_ref;
+        result
     }
 
     /// Return the cached parsed date for version selection.
@@ -252,6 +280,242 @@ fn hash_value(value: &Value, hasher: &mut impl Hasher) {
             construct.hash(hasher);
         }
     }
+}
+
+/// Type-appropriate default value for an unresolved input.
+///
+/// Mirrors the historic Python `_TYPE_DEFAULTS` table: missing numeric inputs
+/// fall back to zero, booleans to `false`, dates to a sentinel that pre-dates
+/// every realistic calculation, and arrays/objects to empty containers. The
+/// returned value lets downstream arithmetic and comparisons proceed instead
+/// of erroring out with a TypeMismatch on null.
+fn type_default(input_type: ParameterType) -> Value {
+    match input_type {
+        ParameterType::Number | ParameterType::Amount => Value::Int(0),
+        ParameterType::Boolean => Value::Bool(false),
+        ParameterType::String => Value::String(String::new()),
+        ParameterType::Date => Value::String("2000-01-01".to_string()),
+        ParameterType::Array => Value::Array(Vec::new()),
+        ParameterType::Object => Value::Object(BTreeMap::new()),
+    }
+}
+
+/// Resolve a single YAML `select_on` criterion against the current parameter
+/// scope, returning a runtime [`SelectOn`] suitable for the data source.
+///
+/// The criterion's `value` field is a `serde_yaml_ng::Value` that may be:
+/// - A `$variable` reference (string starting with `$`) — resolved against
+///   `parameters`. Dot notation like `$adres.postcode` reads a field from a
+///   nested object parameter.
+/// - A literal scalar (string, int, float, bool) — used as-is.
+/// - A `{operation: ..., values: ...}` map — currently unsupported and
+///   skipped (returns None). The full operation form is rare in practice.
+fn resolve_select_on_criterion(
+    crit: &SelectOnCriterion,
+    parameters: &BTreeMap<String, Value>,
+    resolved_inputs: &BTreeMap<String, Value>,
+) -> Option<SelectOn> {
+    let value = yaml_value_to_runtime_value(&crit.value, parameters, resolved_inputs)?;
+    Some(SelectOn {
+        field: crit.name.clone(),
+        value,
+    })
+}
+
+/// Convert a YAML scalar (or `$variable` reference) to a runtime [`Value`].
+fn yaml_value_to_runtime_value(
+    yaml: &serde_yaml_ng::Value,
+    parameters: &BTreeMap<String, Value>,
+    resolved_inputs: &BTreeMap<String, Value>,
+) -> Option<Value> {
+    use serde_yaml_ng::Value as YV;
+    match yaml {
+        YV::String(s) => {
+            if let Some(name) = s.strip_prefix('$') {
+                resolve_param_ref(name, parameters, resolved_inputs)
+            } else {
+                Some(Value::String(s.clone()))
+            }
+        }
+        YV::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Some(Value::Int(i))
+            } else {
+                n.as_f64().map(Value::Float)
+            }
+        }
+        YV::Bool(b) => Some(Value::Bool(*b)),
+        YV::Null => Some(Value::Null),
+        // Mapping (e.g. `{operation: IN, values: ...}`) and sequences are
+        // not supported in select_on values yet.
+        YV::Mapping(_) | YV::Sequence(_) | YV::Tagged(_) => None,
+    }
+}
+
+/// Resolve a `$variable` reference against the current parameter scope.
+/// Supports dot notation: `$obj.field` reads `field` from a nested object.
+/// Falls back to already-resolved inputs when the name is not a parameter —
+/// this allows later inputs to filter on earlier inputs via `select_on`.
+fn resolve_param_ref(
+    name: &str,
+    parameters: &BTreeMap<String, Value>,
+    resolved_inputs: &BTreeMap<String, Value>,
+) -> Option<Value> {
+    if let Some((var, field)) = name.split_once('.') {
+        let obj = parameters.get(var).or_else(|| resolved_inputs.get(var));
+        match obj {
+            Some(Value::Object(map)) => map.get(field).cloned(),
+            _ => None,
+        }
+    } else {
+        parameters
+            .get(name)
+            .cloned()
+            .or_else(|| resolved_inputs.get(name).cloned())
+    }
+}
+
+/// Extract a `$name` reference from a source-ref string.
+///
+/// `source.parameters`, `select_on[*].value`, and `temporal.reference` may
+/// carry a single `$name` reference or a literal. Returns `Some("name")`
+/// for the former (with any trailing `.field` stripped — dot notation reads
+/// a property off the base variable, so the dep is on the base), `None`
+/// otherwise.
+fn extract_var_name(s: &str) -> Option<&str> {
+    let stripped = s.strip_prefix('$')?;
+    // Dot notation: `$obj.field` depends on `obj`, not `field`.
+    Some(stripped.split('.').next().unwrap_or(stripped))
+}
+
+/// Extract a `$name` reference from a `select_on` YAML value.
+///
+/// The YAML value is typed as `serde_yaml_ng::Value`. Only string values
+/// starting with `$` count as variable references.
+fn extract_var_name_from_yaml(yaml: &serde_yaml_ng::Value) -> Option<&str> {
+    match yaml {
+        serde_yaml_ng::Value::String(s) => extract_var_name(s),
+        _ => None,
+    }
+}
+
+/// Collect all input names (within this article) that a given input depends on.
+///
+/// Walks `source.parameters` values, `source.select_on[*].value`, and
+/// `temporal.reference`, looking for `$name` references that name another
+/// input in the same article. References to runtime parameters or names
+/// not matching any input are ignored.
+fn collect_input_deps(input: &Input, input_index: &HashMap<&str, usize>) -> Vec<usize> {
+    let mut deps: Vec<usize> = Vec::new();
+
+    let add_dep = |name: &str, deps: &mut Vec<usize>| {
+        if let Some(&idx) = input_index.get(name) {
+            if !deps.contains(&idx) {
+                deps.push(idx);
+            }
+        }
+    };
+
+    if let Some(source) = &input.source {
+        if let Some(params) = &source.parameters {
+            for v in params.values() {
+                if let Some(name) = extract_var_name(v) {
+                    add_dep(name, &mut deps);
+                }
+            }
+        }
+        if let Some(select_on) = &source.select_on {
+            for crit in select_on {
+                if let Some(name) = extract_var_name_from_yaml(&crit.value) {
+                    add_dep(name, &mut deps);
+                }
+            }
+        }
+    }
+    if let Some(temporal) = &input.temporal {
+        if let Some(r) = &temporal.reference {
+            if let Some(name) = extract_var_name(r) {
+                add_dep(name, &mut deps);
+            }
+        }
+    }
+
+    deps
+}
+
+/// Topologically sort article inputs by `$input_name` dependencies.
+///
+/// Inputs in the same article can reference each other through
+/// `source.parameters`, `source.select_on[*].value`, and
+/// `temporal.reference`. The previous linear walk resolved inputs strictly
+/// in YAML order, so an input referencing a later-declared input saw it as
+/// Null (lenient resolution) and fed garbage into cross-law calls or
+/// data-source lookups.
+///
+/// Returns input indices in an order that respects these dependencies.
+/// YAML order is preserved where no edge constrains it. On cycle detection,
+/// falls back to full YAML order and logs a warning (no error, no panic).
+fn topo_sort_inputs(inputs: &[Input]) -> Vec<usize> {
+    if inputs.is_empty() {
+        return Vec::new();
+    }
+
+    // Map input name -> index. Last occurrence wins on duplicate names, which
+    // matches how `context.resolve` would later overwrite the earlier binding.
+    let mut name_to_idx: HashMap<&str, usize> = HashMap::with_capacity(inputs.len());
+    for (i, inp) in inputs.iter().enumerate() {
+        name_to_idx.insert(inp.name.as_str(), i);
+    }
+
+    let deps: Vec<Vec<usize>> = inputs
+        .iter()
+        .map(|inp| collect_input_deps(inp, &name_to_idx))
+        .collect();
+
+    // Iterative DFS topo-sort. States: 0 = unvisited, 1 = on stack (gray),
+    // 2 = finished (black). Roots are visited in YAML order so sibling
+    // inputs without a constraint keep their YAML order.
+    let n = inputs.len();
+    let mut state = vec![0u8; n];
+    let mut order: Vec<usize> = Vec::with_capacity(n);
+    let mut cycle_detected = false;
+
+    for start in 0..n {
+        if state[start] != 0 {
+            continue;
+        }
+        let mut stack: Vec<(usize, usize)> = vec![(start, 0)];
+        state[start] = 1;
+
+        while let Some(&mut (node, ref mut next)) = stack.last_mut() {
+            if *next < deps[node].len() {
+                let dep = deps[node][*next];
+                *next += 1;
+                match state[dep] {
+                    0 => {
+                        state[dep] = 1;
+                        stack.push((dep, 0));
+                    }
+                    1 => cycle_detected = true,
+                    _ => {}
+                }
+            } else {
+                state[node] = 2;
+                order.push(node);
+                stack.pop();
+            }
+        }
+    }
+
+    if cycle_detected {
+        tracing::warn!(
+            "Cycle detected in input dependency graph; \
+             falling back to YAML order for affected inputs"
+        );
+        return (0..n).collect();
+    }
+
+    order
 }
 
 /// Trait for resolving cross-law references.
@@ -1561,7 +1825,7 @@ impl LawExecutionService {
 
         // Create execution context — pass parameters by reference, only clone
         // into combined_params below when we need ownership.
-        let mut context = RuleContext::new(parameters.clone(), res_ctx.calculation_date)?;
+        let mut context = RuleContext::new(parameters.clone(), &res_ctx.calculation_date)?;
 
         // Attach trace builder if available
         if let Some(ref tb) = res_ctx.trace {
@@ -1612,14 +1876,14 @@ impl LawExecutionService {
         let mut result = if let Some(ref tb) = res_ctx.trace {
             engine.evaluate_with_trace(
                 combined_params,
-                res_ctx.calculation_date,
+                &res_ctx.calculation_date,
                 requested_output,
                 Rc::clone(tb),
             )?
         } else {
             engine.evaluate_with_output(
                 combined_params,
-                res_ctx.calculation_date,
+                &res_ctx.calculation_date,
                 requested_output,
             )?
         };
@@ -1663,24 +1927,57 @@ impl LawExecutionService {
         // Apply lex specialis overrides
         self.apply_overrides(&mut result, article, law, &post_params, res_ctx)?;
 
-        // Enforce TypeSpec: round eurocent outputs to integer.
-        // This applies only to top-level article outputs (the API boundary).
+        // Enforce TypeSpec on outputs at the article boundary.
         // Intermediate values within article logic remain as Float to preserve
         // precision during calculation; rounding happens here at the output edge.
+        //
+        // Rules:
+        // - `unit: eurocent` always rounds floats to integer (half-even),
+        //   matching the historic monetary-output behaviour. This wins over
+        //   `precision: 0` so eurocent stays bankers-rounded.
+        // - `precision: 0` (without eurocent) floors floats to integer.
+        // - `precision: N` (N > 0) rounds floats to N decimal places.
         if let Some(exec) = article.get_execution_spec() {
             if let Some(outputs) = &exec.output {
                 for output_spec in outputs {
-                    let is_eurocent = output_spec
-                        .type_spec
-                        .as_ref()
-                        .and_then(|ts| ts.unit.as_deref())
-                        == Some("eurocent");
+                    let ts = match output_spec.type_spec.as_ref() {
+                        Some(ts) => ts,
+                        None => continue,
+                    };
+                    let unit = ts.unit.as_deref();
+                    let precision = ts.precision;
+                    let is_eurocent = unit == Some("eurocent");
+
+                    // Eurocent: always half-even round to integer,
+                    // regardless of any precision annotation.
                     if is_eurocent {
                         if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
                             let rounded = crate::operations::f64_to_i64_safe(f.round())?;
                             result
                                 .outputs
                                 .insert(output_spec.name.clone(), Value::Int(rounded));
+                        }
+                        continue;
+                    }
+
+                    let Some(prec) = precision else {
+                        continue;
+                    };
+
+                    if prec == 0 {
+                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
+                            let rounded = crate::operations::f64_to_i64_safe(f.floor())?;
+                            result
+                                .outputs
+                                .insert(output_spec.name.clone(), Value::Int(rounded));
+                        }
+                    } else if prec > 0 {
+                        if let Some(Value::Float(f)) = result.outputs.get(&output_spec.name) {
+                            let factor = 10f64.powi(prec as i32);
+                            let rounded = (f * factor).round() / factor;
+                            result
+                                .outputs
+                                .insert(output_spec.name.clone(), Value::Float(rounded));
                         }
                     }
                 }
@@ -1909,7 +2206,7 @@ impl LawExecutionService {
 
                     let default_result = match engine.evaluate_with_output(
                         default_params,
-                        res_ctx.calculation_date,
+                        &res_ctx.calculation_date,
                         Some(&term.id),
                     ) {
                         Ok(r) => r,
@@ -1984,8 +2281,10 @@ impl LawExecutionService {
         res_ctx: &mut ResolutionContext<'_>,
     ) -> Result<()> {
         let inputs = article.get_inputs();
+        let order = topo_sort_inputs(inputs);
 
-        for input in inputs {
+        for &idx in &order {
+            let input = &inputs[idx];
             let source = match &input.source {
                 Some(s) => s,
                 None => continue,
@@ -1996,8 +2295,100 @@ impl LawExecutionService {
                 continue;
             }
 
-            // Check DataSourceRegistry before cross-law resolution
-            if self.data_registry.source_count() > 0 {
+            // Native data source path: when YAML declares
+            // `source.{table, field/fields, select_on}`, the engine reads
+            // those directly and queries the matching registered source
+            // without any external orchestration.
+            if let Some(table) = source.table.as_deref() {
+                if self.data_registry.source_count() > 0 {
+                    let resolved_inputs = context.resolved_inputs().clone();
+                    let select_on: Vec<SelectOn> = source
+                        .select_on
+                        .as_deref()
+                        .unwrap_or(&[])
+                        .iter()
+                        .filter_map(|c| {
+                            resolve_select_on_criterion(c, parameters, &resolved_inputs)
+                        })
+                        .collect();
+
+                    let as_array = matches!(input.input_type, crate::types::ParameterType::Array);
+
+                    if let Some(data_match) = self.data_registry.resolve_native(
+                        table,
+                        source.field.as_deref(),
+                        source.fields.as_deref(),
+                        &select_on,
+                        parameters,
+                        as_array,
+                    ) {
+                        tracing::debug!(
+                            input = %input.name,
+                            source = %data_match.source_name,
+                            table = %table,
+                            "Resolved input via native YAML metadata"
+                        );
+
+                        let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                        res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                        res_ctx.trace_set_result(data_match.value.clone());
+                        res_ctx.trace_set_message(format!(
+                            "Resolving from SOURCE {} (table={}): {}",
+                            data_match.source_name, table, data_match.value
+                        ));
+
+                        context.set_resolved_input(&input.name, data_match.value);
+                        continue;
+                    }
+                }
+                // No match for a native YAML-declared source — do NOT fall
+                // through to the legacy single-key path. That path scans every
+                // registered source for any column literally named the same as
+                // the input, which causes cross-table collisions. Example:
+                // wet_brp article 2.7 declares
+                // `source: {table: verblijfplaats, fields: [..., type]}` for
+                // input `adres`. An APV caller registers a
+                // `horecagebiedsplannen` source with a string `adres` column.
+                // Falling through would hand the wet_brp code a string where
+                // it expects an object. Instead, flow to the final else-branch
+                // where the engine type-defaults optional inputs (and leaves
+                // required inputs unresolved for claim collection), and emit
+                // a trace node so the dashboard shows the miss.
+                let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                res_ctx.trace_set_message(format!(
+                    "Native lookup missed: no record in table '{}' matching select_on",
+                    table
+                ));
+                drop(_guard);
+
+                let is_required = input.required.unwrap_or(false);
+                if !is_required {
+                    let default = type_default(input.input_type);
+                    context.set_resolved_input(&input.name, default);
+                }
+                continue;
+            }
+
+            // Legacy DataSourceRegistry resolution (single-key lookup by
+            // input name). Used when YAML doesn't declare table metadata.
+            //
+            // Skip this fallback entirely when the YAML declares an explicit
+            // cross-law source (`source.regulation`), internal reference
+            // (`source.output`), or native table metadata (`source.table`,
+            // handled above with an early `continue`). Otherwise a registered
+            // data source that happens to expose a column with the same name
+            // as the input would short-circuit the cross-law call and return
+            // the wrong-typed raw value. See kieswet: a boolean
+            // `nationaliteit` input cross-references
+            // wet_brp#heeft_nederlandse_nationaliteit, while the registered
+            // `personen` table has a string column `nationaliteit`
+            // ("NEDERLANDS").
+            if self.data_registry.source_count() > 0
+                && source.regulation.is_none()
+                && source.output.is_none()
+                && source.table.is_none()
+            {
                 if let Some(data_match) = self.data_registry.resolve(&input.name, parameters) {
                     tracing::debug!(
                         input = %input.name,
@@ -2025,16 +2416,103 @@ impl LawExecutionService {
             let output_name = source.output.as_deref().unwrap_or(&input.name);
 
             if let Some(regulation) = &source.regulation {
-                // External reference
-                let value = self.resolve_external_input_internal(
-                    regulation,
-                    output_name,
-                    source.parameters.as_ref(),
-                    context,
-                    res_ctx,
-                )?;
+                // Resolve any temporal qualifier on the input. When the
+                // qualifier shifts the date (e.g. $prev_january_first), the
+                // entire cross-law evaluation runs against that date so the
+                // target law also picks the right historical version.
+                let shifted_date = input
+                    .temporal
+                    .as_ref()
+                    .map(|t| t.resolved_date(&res_ctx.calculation_date));
 
-                context.set_resolved_input(&input.name, value);
+                let resolution = if let Some(shifted) =
+                    shifted_date.filter(|d| d != &res_ctx.calculation_date)
+                {
+                    res_ctx.with_shifted_date(&shifted, |ctx| {
+                        self.resolve_external_input_internal(
+                            regulation,
+                            output_name,
+                            source.parameters.as_ref(),
+                            context,
+                            ctx,
+                        )
+                    })
+                } else {
+                    // External reference
+                    self.resolve_external_input_internal(
+                        regulation,
+                        output_name,
+                        source.parameters.as_ref(),
+                        context,
+                        res_ctx,
+                    )
+                };
+
+                match resolution {
+                    Ok(value) if value.is_null() => {
+                        // Cross-law produced a null value (e.g., no matching
+                        // data row in the target law). Substitute a type
+                        // default for non-required numeric/boolean/array
+                        // inputs so downstream arithmetic stays well-defined.
+                        // String/date inputs are kept null so `IS_NULL` guards
+                        // can still detect "no value supplied".
+                        let is_required = input.required.unwrap_or(false);
+                        let supports_default = !matches!(
+                            input.input_type,
+                            ParameterType::String | ParameterType::Date
+                        );
+                        if !is_required && supports_default {
+                            let default = type_default(input.input_type);
+                            tracing::debug!(
+                                input = %input.name,
+                                regulation = %regulation,
+                                "Cross-law returned null, defaulting to {}",
+                                default
+                            );
+                            context.set_resolved_input(&input.name, default);
+                        } else {
+                            context.set_resolved_input(&input.name, Value::Null);
+                        }
+                    }
+                    Ok(value) => {
+                        context.set_resolved_input(&input.name, value);
+                    }
+                    Err(EngineError::OutputNotFound { .. })
+                    | Err(EngineError::ArticleNotFound { .. }) => {
+                        // The target law was reachable but did not produce the
+                        // requested output (typically because its own inputs
+                        // were missing). Treat the same as a null cross-law
+                        // result and apply a type default for optional
+                        // numeric/boolean/array inputs.
+                        let is_required = input.required.unwrap_or(false);
+                        let supports_default = !matches!(
+                            input.input_type,
+                            ParameterType::String | ParameterType::Date
+                        );
+                        if !is_required && supports_default {
+                            let default = type_default(input.input_type);
+                            tracing::debug!(
+                                input = %input.name,
+                                regulation = %regulation,
+                                "Cross-law output unavailable, defaulting to {}",
+                                default
+                            );
+                            let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                            res_ctx.trace_set_message(format!(
+                                "Cross-law {} → {} unavailable, defaulting",
+                                regulation, output_name
+                            ));
+                            res_ctx.trace_set_result(default.clone());
+                            context.set_resolved_input(&input.name, default);
+                        } else {
+                            // Leave unresolved (engine will treat as null);
+                            // hard-error variants like LawNotFound and
+                            // CircularReference still bubble up.
+                            context.set_resolved_input(&input.name, Value::Null);
+                        }
+                    }
+                    Err(err) => return Err(err),
+                }
             } else if source.output.is_some() {
                 // Internal reference (same-law) with output specified.
                 // Resolve through the service layer so cross-law inputs of the
@@ -2085,13 +2563,28 @@ impl LawExecutionService {
                     ));
                 }
             } else {
-                // Empty source (source: {}) — resolved from DataSourceRegistry only.
-                // If DataSourceRegistry didn't match above, leave unresolved.
-                let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
-                res_ctx.trace_set_message(format!(
-                    "Input '{}' has empty source and no data source match, left unresolved",
-                    input.name
-                ));
+                // Empty source (source: {}) or native YAML source that did not
+                // match any registered data — type-default optional inputs so
+                // downstream arithmetic and comparisons proceed. Required
+                // inputs remain unresolved so the caller can collect a claim.
+                let is_required = input.required.unwrap_or(false);
+                if !is_required {
+                    let default = type_default(input.input_type);
+                    let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                    res_ctx.trace_set_resolve_type(ResolveType::DataSource);
+                    res_ctx.trace_set_result(default.clone());
+                    res_ctx.trace_set_message(format!(
+                        "Input '{}' has no data source match, defaulting to {}",
+                        input.name, default
+                    ));
+                    context.set_resolved_input(&input.name, default);
+                } else {
+                    let _guard = res_ctx.trace_guard(&input.name, PathNodeType::Resolve);
+                    res_ctx.trace_set_message(format!(
+                        "Input '{}' is required but unresolved",
+                        input.name
+                    ));
+                }
             }
         }
 
@@ -2346,6 +2839,45 @@ impl LawExecutionService {
                 key_field, name
             ))),
         }
+    }
+
+    /// Register a record-set data source with multi-criteria filtering,
+    /// field aliases, and an optional array field for FOREACH iteration.
+    ///
+    /// # Arguments
+    /// * `name` - Source name
+    /// * `records` - Backing records
+    /// * `key_field` - Optional single-key field for fast lookup
+    /// * `select_on` - Optional list of criterion fields (multi-key filter)
+    /// * `aliases` - Optional input_name → column_name aliases
+    /// * `array_field` - Optional (input_name, projection) for whole-set arrays
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_record_set_source(
+        &mut self,
+        name: &str,
+        records: Vec<BTreeMap<String, Value>>,
+        key_field: Option<&str>,
+        select_on: Option<Vec<String>>,
+        aliases: Option<BTreeMap<String, String>>,
+        array_field: Option<(String, Vec<String>)>,
+    ) -> Result<()> {
+        let mut builder = RecordSetDataSource::builder(name, 10).records(records);
+        if let Some(kf) = key_field {
+            builder = builder.key_field(kf);
+        }
+        if let Some(so) = select_on {
+            builder = builder.select_on(so);
+        }
+        if let Some(al) = aliases {
+            builder = builder.aliases(al);
+        }
+        if let Some((field, proj)) = array_field {
+            let proj_refs: Vec<&str> = proj.iter().map(|s| s.as_str()).collect();
+            builder = builder.array_field(field, &proj_refs);
+        }
+        let source = builder.build().map_err(EngineError::DataSourceError)?;
+        self.data_registry.add_source(Box::new(source));
+        Ok(())
     }
 
     /// Get the number of registered data sources.
@@ -2925,16 +3457,16 @@ articles:
 
     #[test]
     fn test_data_registry_provides_input() {
-        // A law references a regulation for an input, but the data registry
-        // provides the value directly. The referenced regulation is NOT loaded,
-        // proving the registry short-circuits cross-law resolution.
+        // A law declares `source: {}` (no regulation/output) for an input and
+        // the data registry holds a matching key. The legacy single-key
+        // registry fallback should resolve it.
         let law = r#"
 $id: registry_test_law
 regulatory_layer: WET
 publication_date: '2025-01-01'
 articles:
   - number: '1'
-    text: Has external reference resolved by registry
+    text: Has empty source resolved by registry
     machine_readable:
       execution:
         parameters:
@@ -2944,11 +3476,7 @@ articles:
         input:
           - name: external_value
             type: number
-            source:
-              regulation: nonexistent_law
-              output: some_output
-              parameters:
-                BSN: $BSN
+            source: {}
         output:
           - name: result
             type: number
@@ -2983,6 +3511,45 @@ articles:
     }
 
     #[test]
+    fn test_cross_law_wins_over_registry_with_same_input_name() {
+        // Regression test for kieswet/wet_brp nationaliteit collision:
+        // when a YAML declares an explicit cross-law source
+        // (source.regulation + source.output), a registered data source that
+        // happens to expose a column with the same name as the input must
+        // NOT short-circuit the cross-law call.
+        //
+        // Setup: base_law outputs base_value=100. dependent_law references
+        // base_law#base_value. A registry entry also provides a column
+        // named `external_base` with value 7. The cross-law value (100) must
+        // win, not the registry value (7).
+        let mut service = LawExecutionService::new();
+        service.load_law(make_base_law()).unwrap();
+        service.load_law(make_dependent_law()).unwrap();
+
+        let mut record = BTreeMap::new();
+        record.insert("key".to_string(), Value::String("x".to_string()));
+        // Column name collides with the input name in dependent_law
+        record.insert("external_base".to_string(), Value::Int(7));
+
+        service
+            .register_dict_source("colliding_data", "key", vec![record])
+            .unwrap();
+
+        let result = service
+            .evaluate_law_output(
+                "dependent_law",
+                "doubled_value",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        // Cross-law base_value=100 → doubled=200. If the registry had won,
+        // doubled would be 14.
+        assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+    }
+
+    #[test]
     fn test_data_registry_fallback_to_cross_law() {
         // Registry has no matching field → cross-law resolution should still work
         let mut service = LawExecutionService::new();
@@ -3010,6 +3577,98 @@ articles:
 
         // doubled_value = base_value (100) * 2 = 200
         assert_eq!(result.outputs.get("doubled_value"), Some(&Value::Int(200)));
+    }
+
+    #[test]
+    fn test_native_table_miss_does_not_fall_through_to_legacy_registry() {
+        // Regression test for APV/wet_brp `adres` collision: when YAML declares
+        // `source: {table: X, field: Y, select_on: [...]}` and the native
+        // lookup finds no matching record, the engine must NOT fall through
+        // to the legacy single-key registry. The legacy path scans every
+        // registered source for a column literally named the same as the
+        // input, which causes cross-table collisions.
+        //
+        // Setup: source_a has column `x=5` (integer) but is filtered on
+        // `key=nonexistent` so select_on MISSES. source_b has column
+        // `x="not-a-number"` (string) registered under a different key. The
+        // input declares `source: {table: source_a, field: x, select_on: key}`
+        // with type number. The result must be the type default (0), NOT
+        // "not-a-number" from source_b.
+        let law = r#"
+$id: native_miss_test
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Input from native table that will miss select_on
+    machine_readable:
+      execution:
+        parameters:
+          - name: lookup_key
+            type: string
+        input:
+          - name: x
+            type: number
+            source:
+              table: source_a
+              field: x
+              select_on:
+                - name: key
+                  value: $lookup_key
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $x
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(law).unwrap();
+
+        // source_a keyed on `key=match_me` with x=5 (integer). The query uses
+        // key=nonexistent so this record will NOT match.
+        let mut rec_a = BTreeMap::new();
+        rec_a.insert("key".to_string(), Value::String("match_me".to_string()));
+        rec_a.insert("x".to_string(), Value::Int(5));
+        service
+            .register_record_set_source(
+                "source_a",
+                vec![rec_a],
+                None,
+                Some(vec!["key".to_string()]),
+                None,
+                None,
+            )
+            .unwrap();
+
+        // source_b has an unrelated column `x` of string type. If the engine
+        // wrongly falls through to the legacy path, this value would be
+        // returned and the numeric `result` would end up as "not-a-number".
+        let mut rec_b = BTreeMap::new();
+        rec_b.insert("other_key".to_string(), Value::String("b".to_string()));
+        rec_b.insert("x".to_string(), Value::String("not-a-number".to_string()));
+        service
+            .register_dict_source("source_b", "other_key", vec![rec_b])
+            .unwrap();
+
+        let mut params = BTreeMap::new();
+        params.insert(
+            "lookup_key".to_string(),
+            Value::String("nonexistent".to_string()),
+        );
+
+        let result = service
+            .evaluate_law_output("native_miss_test", "result", params, "2025-01-01")
+            .unwrap();
+
+        // Input `x` is optional (no required: true), type number. On native
+        // miss the engine type-defaults to 0. The wrong behavior would be
+        // Value::String("not-a-number") leaking through from source_b.
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(0)),
+            "Native table miss must type-default to 0, not fall through to source_b's string column"
+        );
     }
 
     #[test]
@@ -3403,5 +4062,735 @@ articles:
             Some(&Value::Int(220000)),
             "2026 calculation should use 2026 version"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // temporal.reference cross-law shift test (Fix 1)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn cross_law_temporal_prev_january_first_picks_previous_version() {
+        // Two versions of the same law: v1 valid from 2024-01-01 (value=100),
+        // v2 valid from 2025-01-01 (value=200). A consumer with
+        // `temporal.reference: $prev_january_first` evaluating on 2025-06-15
+        // should look up the cross-law value as of 2024-01-01 → v1 (100).
+        let base_v1 = r#"
+$id: temporal_base
+regulatory_layer: WET
+publication_date: '2024-01-01'
+valid_from: '2024-01-01'
+articles:
+  - number: '1'
+    text: Base value v1
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: 100
+      execution:
+        output:
+          - name: base_value
+            type: number
+        actions:
+          - output: base_value
+            value: $BASE_VALUE
+"#;
+        let base_v2 = r#"
+$id: temporal_base
+regulatory_layer: WET
+publication_date: '2025-01-01'
+valid_from: '2025-01-01'
+articles:
+  - number: '1'
+    text: Base value v2
+    machine_readable:
+      definitions:
+        BASE_VALUE:
+          value: 200
+      execution:
+        output:
+          - name: base_value
+            type: number
+        actions:
+          - output: base_value
+            value: $BASE_VALUE
+"#;
+        let consumer = r#"
+$id: temporal_consumer
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: References base via prev_january_first
+    machine_readable:
+      execution:
+        input:
+          - name: base_prev
+            type: number
+            source:
+              regulation: temporal_base
+              output: base_value
+            temporal:
+              type: point_in_time
+              reference: $prev_january_first
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $base_prev
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(base_v1).unwrap();
+        service.load_law(base_v2).unwrap();
+        service.load_law(consumer).unwrap();
+
+        // Evaluating on 2025-06-15 with prev_january_first should resolve to
+        // 2024-01-01 → v1 → 100. Without the shift it would pick v2 → 200.
+        let result = service
+            .evaluate_law_output("temporal_consumer", "result", BTreeMap::new(), "2025-06-15")
+            .unwrap();
+        assert_eq!(
+            result.outputs.get("result"),
+            Some(&Value::Int(100)),
+            "prev_january_first must select the law version active on Jan 1 of the previous year"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // type_spec.precision tests (Fix 4)
+    // -------------------------------------------------------------------------
+
+    fn precision_law(precision: &str, value: &str, unit: Option<&str>) -> String {
+        let unit_line = unit
+            .map(|u| format!("              unit: {}\n", u))
+            .unwrap_or_default();
+        format!(
+            r#"
+$id: precision_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Tests precision rounding
+    machine_readable:
+      execution:
+        output:
+          - name: result
+            type: number
+            type_spec:
+{unit_line}              precision: {precision}
+        actions:
+          - output: result
+            value: {value}
+"#,
+            unit_line = unit_line,
+            precision = precision,
+            value = value
+        )
+    }
+
+    #[test]
+    fn precision_zero_floors_float_to_int() {
+        // precision: 0 without an eurocent unit truncates the float, matching
+        // the Python `_round_to_output_precision` helper that previously did
+        // the same as a post-processing step.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&precision_law("0", "13.74", None))
+            .unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(13)));
+    }
+
+    #[test]
+    fn precision_zero_with_eurocent_rounds() {
+        // eurocent always uses half-even rounding regardless of precision
+        // because monetary outputs are bankers-rounded, not truncated.
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&precision_law("0", "13.6", Some("eurocent")))
+            .unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("result"), Some(&Value::Int(14)));
+    }
+
+    #[test]
+    fn precision_two_rounds_to_two_decimals() {
+        let mut service = LawExecutionService::new();
+        service
+            .load_law(&precision_law("2", "13.00205", None))
+            .unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        match result.outputs.get("result") {
+            Some(Value::Float(f)) => {
+                assert!((f - 13.00).abs() < 1e-9, "Expected ~13.00, got {}", f)
+            }
+            other => panic!("Expected Value::Float(13.00), got {:?}", other),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // FOREACH body CONCAT / outer-scope tests (Fix 2)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn foreach_body_concat_resolves_inside_iteration() {
+        // FOREACH body that builds a string per item via CONCAT must produce
+        // a fully-resolved Vec<String>, not raw operation dicts.
+        let yaml = r#"
+$id: foreach_concat_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Build labels for each registration
+    machine_readable:
+      definitions:
+        REGISTRATIONS:
+          value:
+            - naam: Alice
+            - naam: Bob
+      execution:
+        output:
+          - name: labels
+            type: array
+        actions:
+          - output: labels
+            value:
+              operation: FOREACH
+              collection: $REGISTRATIONS
+              as: current
+              body:
+                operation: CONCAT
+                values:
+                  - 'Boedel '
+                  - $current.naam
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "foreach_concat_law",
+                "labels",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+
+        let labels = result.outputs.get("labels").expect("labels output");
+        match labels {
+            Value::Array(items) => {
+                assert_eq!(items.len(), 2, "expected 2 items, got {:?}", items);
+                assert_eq!(items[0], Value::String("Boedel Alice".to_string()));
+                assert_eq!(items[1], Value::String("Boedel Bob".to_string()));
+            }
+            other => panic!("expected Value::Array, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn foreach_body_resolves_outer_scope_variable() {
+        // FOREACH body that is just `$outer_var` (no per-item references) must
+        // produce one copy of the outer value per iteration. The outer value
+        // is a definition declared at the article level.
+        let yaml = r#"
+$id: foreach_outer_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Repeat outer-scope value for each item
+    machine_readable:
+      definitions:
+        ROLE:
+          value: CURATOR_BOEDEL
+        REGISTRATIONS:
+          value:
+            - id: 1
+            - id: 2
+            - id: 3
+      execution:
+        output:
+          - name: roles
+            type: array
+        actions:
+          - output: roles
+            value:
+              operation: FOREACH
+              collection: $REGISTRATIONS
+              as: current
+              body: $ROLE
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output("foreach_outer_law", "roles", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+
+        let roles = result.outputs.get("roles").expect("roles output");
+        match roles {
+            Value::Array(items) => {
+                assert_eq!(items.len(), 3);
+                for item in items {
+                    assert_eq!(item, &Value::String("CURATOR_BOEDEL".to_string()));
+                }
+            }
+            other => panic!("expected Value::Array, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn foreach_body_concat_with_outer_parameter() {
+        // FOREACH body referring to a top-level parameter via CONCAT.
+        // Verifies that outer parameters survive into the per-item scope.
+        let yaml = r#"
+$id: foreach_param_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Prefix each id with the bsn parameter
+    machine_readable:
+      definitions:
+        IDS:
+          value:
+            - id: A
+            - id: B
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+        output:
+          - name: tagged
+            type: array
+        actions:
+          - output: tagged
+            value:
+              operation: FOREACH
+              collection: $IDS
+              as: row
+              body:
+                operation: CONCAT
+                values:
+                  - $bsn
+                  - '-'
+                  - $row.id
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let mut params = BTreeMap::new();
+        params.insert("bsn".to_string(), Value::String("123".to_string()));
+        let result = service
+            .evaluate_law_output("foreach_param_law", "tagged", params, "2025-01-01")
+            .unwrap();
+        let tagged = result.outputs.get("tagged").expect("tagged output");
+        match tagged {
+            Value::Array(items) => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0], Value::String("123-A".to_string()));
+                assert_eq!(items[1], Value::String("123-B".to_string()));
+            }
+            other => panic!("expected array, got {:?}", other),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // type-default unresolved input tests (Fix 3)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn unresolved_empty_source_number_input_defaults_to_zero() {
+        // Input with `source: {}` and no matching data registry record
+        // should default to 0 instead of leaving downstream arithmetic broken.
+        let yaml = r#"
+$id: defaults_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Adds five to a missing input
+    machine_readable:
+      execution:
+        input:
+          - name: missing_amount
+            type: number
+            source: {}
+        output:
+          - name: total
+            type: number
+        actions:
+          - output: total
+            operation: ADD
+            values:
+              - $missing_amount
+              - 5
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output("defaults_law", "total", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("total"), Some(&Value::Int(5)));
+    }
+
+    #[test]
+    fn unresolved_empty_source_boolean_defaults_to_false() {
+        let yaml = r#"
+$id: defaults_law_bool
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Bool default
+    machine_readable:
+      execution:
+        input:
+          - name: is_x
+            type: boolean
+            source: {}
+        output:
+          - name: ok
+            type: boolean
+        actions:
+          - output: ok
+            operation: NOT
+            value: $is_x
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output("defaults_law_bool", "ok", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        assert_eq!(result.outputs.get("ok"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn required_empty_source_input_is_not_defaulted() {
+        // A required input with `source: {}` must remain unresolved so the
+        // evaluation surfaces the missing data via resolved_inputs instead of
+        // silently inserting a type default.
+        let yaml = r#"
+$id: defaults_law_required
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Required missing input
+    machine_readable:
+      execution:
+        input:
+          - name: must_have
+            type: number
+            required: true
+            source: {}
+        output:
+          - name: echo
+            type: number
+        actions:
+          - output: echo
+            value: $must_have
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output(
+                "defaults_law_required",
+                "echo",
+                BTreeMap::new(),
+                "2025-01-01",
+            )
+            .unwrap();
+        // The engine treats unresolved variables as null when read, so the
+        // echoed output is null. Critically, the resolved_inputs map must NOT
+        // contain a defaulted zero for `must_have`.
+        assert!(
+            result.resolved_inputs.get("must_have").is_none()
+                || matches!(result.resolved_inputs.get("must_have"), Some(Value::Null)),
+            "required input must remain unresolved, got {:?}",
+            result.resolved_inputs.get("must_have")
+        );
+    }
+
+    #[test]
+    fn precision_absent_leaves_value_untouched() {
+        let yaml = r#"
+$id: precision_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: No precision spec
+    machine_readable:
+      execution:
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: 13.74
+"#;
+        let mut service = LawExecutionService::new();
+        service.load_law(yaml).unwrap();
+        let result = service
+            .evaluate_law_output("precision_law", "result", BTreeMap::new(), "2025-01-01")
+            .unwrap();
+        match result.outputs.get("result") {
+            Some(Value::Float(f)) => assert!((f - 13.74).abs() < 1e-9),
+            other => panic!("Expected unrounded float, got {:?}", other),
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Topological input ordering tests
+    // -------------------------------------------------------------------------
+
+    mod topo_sort {
+        use super::*;
+        use crate::article::{Input, SelectOnCriterion, Source, Temporal};
+        use crate::types::ParameterType;
+
+        fn mk_input(name: &str, source: Option<Source>, temporal: Option<Temporal>) -> Input {
+            Input {
+                name: name.to_string(),
+                input_type: ParameterType::String,
+                source,
+                type_spec: None,
+                description: None,
+                required: None,
+                temporal,
+            }
+        }
+
+        fn src_params(params: &[(&str, &str)]) -> Source {
+            Source {
+                regulation: Some("some_law".to_string()),
+                output: Some("x".to_string()),
+                parameters: Some(
+                    params
+                        .iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                ),
+                service: None,
+                table: None,
+                field: None,
+                fields: None,
+                select_on: None,
+                source_type: None,
+            }
+        }
+
+        fn src_select_on(criteria: &[(&str, &str)]) -> Source {
+            Source {
+                regulation: None,
+                output: None,
+                parameters: None,
+                service: None,
+                table: Some("some_table".to_string()),
+                field: Some("x".to_string()),
+                fields: None,
+                select_on: Some(
+                    criteria
+                        .iter()
+                        .map(|(n, v)| SelectOnCriterion {
+                            name: n.to_string(),
+                            value: serde_yaml_ng::Value::String(v.to_string()),
+                            description: None,
+                        })
+                        .collect(),
+                ),
+                source_type: None,
+            }
+        }
+
+        fn names(order: &[usize], inputs: &[Input]) -> Vec<String> {
+            order.iter().map(|&i| inputs[i].name.clone()).collect()
+        }
+
+        #[test]
+        fn empty_inputs_returns_empty() {
+            assert!(topo_sort_inputs(&[]).is_empty());
+        }
+
+        #[test]
+        fn no_deps_preserves_yaml_order() {
+            let inputs = vec![
+                mk_input("a", Some(src_params(&[("p", "literal")])), None),
+                mk_input("b", Some(src_params(&[("q", "another")])), None),
+                mk_input("c", None, None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b", "c"]);
+        }
+
+        #[test]
+        fn linear_dep_reorders_after_dependency() {
+            // B depends on A but A is declared after B in YAML.
+            let inputs = vec![
+                mk_input("b", Some(src_params(&[("x", "$a")])), None),
+                mk_input("a", Some(src_params(&[("p", "literal")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b"]);
+        }
+
+        #[test]
+        fn chain_reverse_order_topologically_sorts_to_abc() {
+            // C depends on B depends on A, declared as C, B, A.
+            let inputs = vec![
+                mk_input("c", Some(src_params(&[("x", "$b")])), None),
+                mk_input("b", Some(src_params(&[("x", "$a")])), None),
+                mk_input("a", Some(src_params(&[("p", "literal")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b", "c"]);
+        }
+
+        #[test]
+        fn select_on_ref_creates_dependency() {
+            // `bsn` has select_on: $kvk_nummer — but here kvk_nummer is
+            // declared as a *later* input, so the edge must reorder.
+            let inputs = vec![
+                mk_input(
+                    "bsn",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+                mk_input("kvk_nummer", Some(src_select_on(&[("id", "42")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["kvk_nummer", "bsn"]);
+        }
+
+        #[test]
+        fn temporal_reference_creates_dependency() {
+            // `age` depends on `verkiezingsdatum` via temporal.reference.
+            let inputs = vec![
+                mk_input(
+                    "age",
+                    Some(src_params(&[("bsn", "literal")])),
+                    Some(Temporal {
+                        kind: Some("point_in_time".to_string()),
+                        reference: Some("$verkiezingsdatum".to_string()),
+                        period_type: None,
+                        immutable_after: None,
+                    }),
+                ),
+                mk_input(
+                    "verkiezingsdatum",
+                    Some(src_select_on(&[("id", "1")])),
+                    None,
+                ),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["verkiezingsdatum", "age"]);
+        }
+
+        #[test]
+        fn runtime_parameter_ref_is_not_a_dep() {
+            // `leeftijd` references `$bsn`, which IS declared as an input → dep.
+            // `bsn` references `$kvk_nummer`, NOT declared as an input → no dep.
+            let inputs = vec![
+                mk_input("leeftijd", Some(src_params(&[("bsn", "$bsn")])), None),
+                mk_input(
+                    "bsn",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["bsn", "leeftijd"]);
+        }
+
+        #[test]
+        fn dot_notation_ref_depends_on_base_name() {
+            // `$obj.field` depends on `obj`.
+            let inputs = vec![
+                mk_input(
+                    "consumer",
+                    Some(src_params(&[("postcode", "$obj.postcode")])),
+                    None,
+                ),
+                mk_input("obj", Some(src_select_on(&[("id", "1")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["obj", "consumer"]);
+        }
+
+        #[test]
+        fn self_cycle_falls_back_to_yaml_order() {
+            let inputs = vec![
+                mk_input("a", Some(src_params(&[("x", "$a")])), None),
+                mk_input("b", Some(src_params(&[("y", "literal")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b"]);
+        }
+
+        #[test]
+        fn two_node_cycle_falls_back_to_yaml_order() {
+            let inputs = vec![
+                mk_input("a", Some(src_params(&[("x", "$b")])), None),
+                mk_input("b", Some(src_params(&[("y", "$a")])), None),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            assert_eq!(names(&order, &inputs), vec!["a", "b"]);
+        }
+
+        #[test]
+        fn alcoholwet_rotterdam_pattern() {
+            // Mirrors the real YAML pattern that triggered this fix:
+            // - leeftijd_exploitant depends on $bsn
+            // - voldoet_aan_nationale_eisen depends on $leeftijd_exploitant,
+            //   $vloeroppervlakte_horecalokaliteit, $type_bedrijf
+            // - bsn, vloeroppervlakte_horecalokaliteit, type_bedrijf are
+            //   later-declared data-source inputs keyed on $kvk_nummer
+            //   (a runtime parameter, not an input).
+            let inputs = vec![
+                mk_input(
+                    "leeftijd_exploitant",
+                    Some(src_params(&[("bsn", "$bsn")])),
+                    None,
+                ),
+                mk_input(
+                    "voldoet_aan_nationale_eisen",
+                    Some(src_params(&[
+                        ("leeftijd_leidinggevende", "$leeftijd_exploitant"),
+                        ("vloeroppervlakte", "$vloeroppervlakte_horecalokaliteit"),
+                        ("type_bedrijf", "$type_bedrijf"),
+                    ])),
+                    None,
+                ),
+                mk_input(
+                    "bsn",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+                mk_input(
+                    "vloeroppervlakte_horecalokaliteit",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+                mk_input(
+                    "type_bedrijf",
+                    Some(src_select_on(&[("kvk_nummer", "$kvk_nummer")])),
+                    None,
+                ),
+            ];
+            let order = topo_sort_inputs(&inputs);
+            let resolved = names(&order, &inputs);
+
+            let pos = |n: &str| resolved.iter().position(|s| s == n).unwrap();
+            assert!(pos("bsn") < pos("leeftijd_exploitant"));
+            assert!(pos("leeftijd_exploitant") < pos("voldoet_aan_nationale_eisen"));
+            assert!(pos("vloeroppervlakte_horecalokaliteit") < pos("voldoet_aan_nationale_eisen"));
+            assert!(pos("type_bedrijf") < pos("voldoet_aan_nationale_eisen"));
+        }
     }
 }

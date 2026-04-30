@@ -147,6 +147,38 @@ fn assert_output_value(world: &mut RegelrechtWorld, output_name: String, expecte
     }
 }
 
+#[then(regex = r#"^the output "([^"]+)" is null$"#)]
+fn assert_output_null(world: &mut RegelrechtWorld, output_name: String) {
+    assert!(
+        world.is_success(),
+        "Expected successful execution, got error: {:?}",
+        world.error_message()
+    );
+
+    let actual = world.get_output(&output_name);
+    match actual {
+        Some(value) => {
+            assert!(
+                value.is_null(),
+                "Output '{}': expected Null, got {:?}",
+                output_name,
+                value
+            );
+        }
+        None => {
+            let available: Vec<&String> = world
+                .result
+                .as_ref()
+                .map(|r| r.outputs.keys().collect())
+                .unwrap_or_default();
+            panic!(
+                "Output '{}' not found. Available outputs: {:?}",
+                output_name, available
+            );
+        }
+    }
+}
+
 // Multi-output privacy assertion
 
 #[then(regex = r#"^the result contains exactly the outputs "([^"]+)"$"#)]
