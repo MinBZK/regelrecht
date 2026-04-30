@@ -23,7 +23,7 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
-  ['panel.law_graph', 'Wettengraaf'],
+  ['panel.law_graph', 'Graaf'],
 ];
 
 // Left and middle panes are specific named editors. The right pane is a
@@ -37,7 +37,7 @@ const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
 const RIGHT_PANES = [
   { key: 'form', flag: 'panel.scenario_form', label: "Scenario's" },
   { key: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
-  { key: 'graph', flag: 'panel.law_graph', label: 'Wettengraaf' },
+  { key: 'graph', flag: 'panel.law_graph', label: 'Graaf' },
 ];
 const enabledRightPanes = computed(() => RIGHT_PANES.filter(p => isEnabled(p.flag)));
 

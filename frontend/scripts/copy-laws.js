@@ -73,23 +73,28 @@ function findFeatureFiles(dir) {
   return results;
 }
 
-/** Extract metadata from YAML using line-based parsing (no full parse). */
+/** Extract metadata from a corpus YAML.
+ *
+ * Uses js-yaml so block scalars (`>-`, `|`) and quoted strings are decoded
+ * correctly — the previous line-based parser captured the literal `>-`
+ * marker as the value, which broke the library entry for any YAML that
+ * folded its name across multiple lines.
+ */
 function extractMeta(content) {
-  const meta = {};
-  for (const line of content.split('\n')) {
-    if (line.startsWith('$id:')) {
-      meta.id = line.slice(4).trim().replace(/^['"]|['"]$/g, '');
-    } else if (line.startsWith('regulatory_layer:')) {
-      meta.regulatory_layer = line.slice(17).trim().replace(/^['"]|['"]$/g, '');
-    } else if (line.startsWith('publication_date:')) {
-      meta.publication_date = line.slice(17).trim().replace(/^['"]|['"]$/g, '');
-    } else if (line.startsWith('name:')) {
-      meta.name = line.slice(5).trim().replace(/^['"]|['"]$/g, '');
-    } else if (line.startsWith('officiele_titel:')) {
-      meta.officiele_titel = line.slice(16).trim().replace(/^['"]|['"]$/g, '');
-    }
+  try {
+    const doc = yaml.load(content);
+    if (!doc || typeof doc !== 'object') return {};
+    const trim = (v) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : v);
+    return {
+      id: trim(doc.$id),
+      regulatory_layer: trim(doc.regulatory_layer),
+      publication_date: trim(doc.publication_date),
+      name: trim(doc.name),
+      officiele_titel: trim(doc.officiele_titel),
+    };
+  } catch {
+    return {};
   }
-  return meta;
 }
 
 // --- Main ---
