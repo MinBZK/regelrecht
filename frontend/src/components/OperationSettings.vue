@@ -6,6 +6,7 @@ import {
   describeSubtitle,
   formatValueLabel,
 } from '../utils/operationTree.js';
+import { humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   operation: { type: Object, default: null },
@@ -348,11 +349,6 @@ function updateDropdownValue(val, event) {
   applyValueMutation(val, newVal);
 }
 
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
-}
 
 function variableLabel(ref) {
   for (const opts of variableGroups.value.values()) {

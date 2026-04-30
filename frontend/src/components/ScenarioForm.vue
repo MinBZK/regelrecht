@@ -1,14 +1,8 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
-import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
-
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
-}
 
 const props = defineProps({
   /** Scenario object from mapFeatureToForm() */
@@ -155,6 +149,9 @@ function execute() {
     // from a previous successful run.
     emit('executed', getExecutionData());
   }
+  // Return the data so callers can synchronously read the post-execution
+  // result without relying on Vue reactivity timing.
+  return getExecutionData();
 }
 
 /** Returns the current execution data for use by parent components */

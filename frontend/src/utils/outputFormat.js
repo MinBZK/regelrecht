@@ -9,6 +9,17 @@ export function formatValue(value) {
   return String(value);
 }
 
+/**
+ * Format YAML/engine identifiers for display: underscores → spaces,
+ * all-caps strings → lowercase (`BESCHIKKING` → `beschikking`).
+ * Mixed-case identifiers (e.g. `Artikel`) are left untouched.
+ */
+export function humanize(name) {
+  if (typeof name !== 'string') return name;
+  const spaced = name.replace(/_/g, ' ');
+  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
+}
+
 const EURO_FORMATTER = new Intl.NumberFormat('nl-NL', {
   style: 'currency',
   currency: 'EUR',

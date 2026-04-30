@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -81,12 +82,6 @@ function formatValue(val, unit) {
     }
   }
   return String(val);
-}
-
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
 }
 
 // Open edit sheet for existing items
