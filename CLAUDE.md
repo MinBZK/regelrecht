@@ -20,7 +20,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `landing/` - Static landing page (regelrecht.rijks.app)
 - `docs/` - Documentation site (VitePress)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
+- `corpus-demo/` - Demo-only corpus additions (personas, demo-index, optional demo-only YAML) for the burger-demo
 - `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
+- `frontend-demo/` - Burger-demo Vue-app (alleen RR-Components; WASM-engine)
+- `packages/demo-api/` - Axum LLM-proxy voor burger-demo (POST /api/explain)
 
 ## Development Setup
 
@@ -108,6 +111,15 @@ Write an RFC for:
 - Cross-cutting design patterns
 - Integration patterns between components
 
+## Burger-demo principes
+
+De burger-demo (`frontend-demo/` + `corpus-demo/` + `packages/demo-api/`) is bewust geïsoleerd van het hoofdcorpus: eigen corpus-directory, WASM-in-browser executie, en een aparte Axum LLM-uitlegproxy.
+
+- **Demo-YAML mag afwijken van de wet** mits iedere afwijking in een README bij de wet wordt gedocumenteerd.
+- **Law-faithful wetten niet kopiëren** — de demo-index (`corpus-demo/demo-index.yaml`) verwijst naar `corpus/regulation/`.
+- **Geen demo-hacks in de hoofd-engine of het hoofdcorpus.** Als de demo iets mist, wordt dat een issue op de engine, niet een uitzondering.
+- `just validate` raakt `corpus-demo/` niet.
+
 ## Code Reviews
 
 After completing significant code changes, proactively use the `code-reviewer` skill to review changes before committing.
@@ -138,6 +150,8 @@ CI runs via `.github/workflows/ci.yml`.
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
 | docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
+| demo | `regelrecht-demo` | `demo.regelrecht.rijks.app` |
+| demo-api | `regelrecht-demo-api` | `demoapi.regelrecht.rijks.app` |
 
 ### How It Works
 

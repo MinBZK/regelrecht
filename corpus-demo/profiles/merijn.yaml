@@ -1,0 +1,74 @@
+---
+# Persona voor de burger-demo. Synthetische BSN, gefingeerde inkomens.
+# Niet gebruiken voor echte testen.
+
+bsn: '100000001'
+name: Merijn van der Meer
+description: ZZP'er in thuiszorg, alleenstaande ouder, 2 kinderen
+avatar: 🩺
+
+data_sources:
+  - service: RVIG
+    table: personal_data
+    key: bsn
+    records:
+      - bsn: '100000001'
+        geboortedatum: '1989-05-15'
+        verblijfsadres: Amsterdam
+        land_verblijf: NEDERLAND
+
+  - service: RVIG
+    table: relationship_data
+    key: bsn
+    records:
+      - bsn: '100000001'
+        partnerschap_type: GEEN
+        partner_bsn: null
+
+  - service: RVZ
+    table: insurance
+    key: bsn
+    records:
+      - bsn: '100000001'
+        polis_status: ACTIEF
+        verdragsinschrijving: false
+
+  - service: BELASTINGDIENST
+    table: box1
+    key: bsn
+    records:
+      - bsn: '100000001'
+        loon_uit_dienstbetrekking: 0
+        uitkeringen_en_pensioenen: 0
+        winst_uit_onderneming: 3000000  # 30.000 euro (eurocent)
+        resultaat_overige_werkzaamheden: 0
+        eigen_woning: 0
+        buitenlands_inkomen: 0
+
+  - service: BELASTINGDIENST
+    table: box2
+    key: bsn
+    records:
+      - bsn: '100000001'
+        reguliere_voordelen: 0
+        vervreemdingsvoordelen: 0
+
+  - service: BELASTINGDIENST
+    table: box3
+    key: bsn
+    records:
+      - bsn: '100000001'
+        spaargeld: 500000  # 5.000 euro
+        beleggingen: 0
+        onroerend_goed: 0
+        schulden: 0
+
+  - service: DJI
+    table: detenties
+    key: bsn
+    records:
+      - bsn: '100000001'
+        detentiestatus: null
+        inrichting_type: null
+        zorgtype: null
+        juridische_grondslag: null

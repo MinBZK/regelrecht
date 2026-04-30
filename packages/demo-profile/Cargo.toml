@@ -1,0 +1,25 @@
+[package]
+name = "regelrecht-demo-profile"
+version = "0.1.0"
+edition = "2021"
+authors = ["MinBZK <noreply@minbzk.nl>"]
+description = "Demo-profile loader voor de burger-demo. Leest persona-YAML en registreert data-sources in de engine."
+license = "EUPL-1.2"
+repository = "https://github.com/MinBZK/regelrecht"
+publish = false
+
+[dependencies]
+regelrecht-engine = { path = "../engine" }
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml_ng = "0.10"
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"

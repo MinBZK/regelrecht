@@ -19,6 +19,9 @@
 node_modules/
 frontend/dist/
 frontend/public/wasm/pkg/
+frontend-demo/dist/
+frontend-demo/public/wasm/pkg/
+frontend-demo/public/demo-assets/
 packages/admin/static/
 
 # Rust
