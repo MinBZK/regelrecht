@@ -40,6 +40,9 @@ impl OidcAppState for AppState {
     fn http_client(&self) -> &reqwest::Client {
         &self.http_client
     }
+    fn is_test_sso_enabled(&self) -> bool {
+        self.config.test_sso
+    }
 }
 
 /// State for the corpus subsystem.

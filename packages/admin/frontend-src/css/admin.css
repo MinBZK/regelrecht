@@ -322,3 +322,47 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
+
+
+/* ============================================================
+   Login choice screen (preview deployments only)
+   ============================================================ */
+
+.login-choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--primitives-space-24);
+  background: var(--semantics-background-color, #f5f5f5);
+}
+
+.login-choice__card {
+  max-width: 420px;
+  width: 100%;
+  padding: var(--primitives-space-32, 32px);
+  background: #fff;
+  border: 1px solid var(--semantics-border-color, #e5e7eb);
+  border-radius: var(--primitives-corner-radius-md, 8px);
+  text-align: center;
+}
+
+.login-choice__title {
+  margin: 0 0 var(--primitives-space-8, 8px);
+  font-family: var(--primitives-font-family-body);
+  font-size: var(--primitives-font-size-140, 20px);
+  font-weight: var(--primitives-font-weight-body-extra-bold);
+  color: var(--semantics-content-color);
+}
+
+.login-choice__subtitle {
+  margin: 0 0 var(--primitives-space-24, 24px);
+  font-size: var(--primitives-font-size-80, 14px);
+  color: var(--semantics-content-secondary-color);
+}
+
+.login-choice__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--primitives-space-8, 8px);
+}

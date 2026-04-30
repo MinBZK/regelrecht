@@ -3,6 +3,7 @@ import { ref } from 'vue';
 const authenticated = ref(false);
 const person = ref(null);
 const oidcConfigured = ref(false);
+const testSsoAvailable = ref(false);
 const loading = ref(true);
 let fetched = false;
 
@@ -12,8 +13,10 @@ async function checkAuth() {
     if (!response.ok) return;
     const status = await response.json();
     authenticated.value = status.authenticated;
-    oidcConfigured.value = status.oidc_configured;
     person.value = status.person || null;
+    // Set test SSO before OIDC so the watcher sees both atomically.
+    testSsoAvailable.value = status.test_sso_available || false;
+    oidcConfigured.value = status.oidc_configured;
   } catch {
     // Auth check failed — leave as unauthenticated
   } finally {
@@ -36,5 +39,8 @@ export function useAuth() {
     checkAuth();
   }
 
-  return { authenticated, person, oidcConfigured, loading, logout, redirectToLogin };
+  return {
+    authenticated, person, oidcConfigured, testSsoAvailable,
+    loading, logout, redirectToLogin,
+  };
 }
