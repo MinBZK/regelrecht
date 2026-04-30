@@ -1,19 +1,19 @@
 ---
 name: local-stack
-description: "Run a regelrecht branch locally end-to-end (worktree + Docker stack + DB), with the workarounds needed when developing inside the claude-dev container against Docker Desktop. Accepts a branch name or a PR number. Subcommands: bare arg = start, `stop <arg>` = shut down, `clean <arg>` = shut down and remove worktree."
+description: "Run a regelrecht branch locally end-to-end (worktree + Docker stack + DB), with the workarounds needed when developing inside the dev container against Docker Desktop. Accepts a branch name or a PR number. Subcommands: bare arg = start, `stop <arg>` = shut down, `clean <arg>` = shut down and remove worktree."
 user_invocable: true
 ---
 
 # Local Stack
 
-Spin up a regelrecht branch in a self-contained Docker stack so the user can test it from their browser. Works on any branch — a PR number is just a convenient way to look one up. Handles the quirks that show up when Claude Code is running inside the claude-dev container against Docker Desktop on Windows.
+Spin up a regelrecht branch in a self-contained Docker stack so the user can test it from their browser. Works on any branch — a PR number is just a convenient way to look one up. Handles the quirks that show up when Claude Code is running inside the dev container against Docker Desktop on Windows.
 
 ## Context: why this skill exists
 
-`just local` (introduced in PR #274) assumes you run it on a host Docker daemon — when you run it from the claude-dev container against Docker Desktop, three things bite:
+`just local` (introduced in PR #274) assumes you run it on a host Docker daemon — when you run it from the dev container against Docker Desktop, three things bite:
 
-1. **Bind mounts break for `prometheus` + `grafana`.** Docker Desktop's daemon doesn't see paths under `/workspace/...` (claude-dev's filesystem); it silently creates empty directories at the mount source. The two services that bind-mount config files (`./dev/prometheus.yml`, `./dev/grafana-datasource-local.yaml`, the dashboards/alerting dirs) crash on start. The other services have no bind mounts.
-2. **Ports 7100-7300, 3000-3001, 8000 are already claimed** by the claude-dev container on the Windows host, so any `docker-compose` `ports:` mapping in those ranges fails with "port is already allocated". We use 18000+ instead (free on the Windows host, reachable from Windows).
+1. **Bind mounts break for `prometheus` + `grafana`.** Docker Desktop's daemon doesn't see paths under `/workspace/...` (the dev container's filesystem); it silently creates empty directories at the mount source. The two services that bind-mount config files (`./dev/prometheus.yml`, `./dev/grafana-datasource-local.yaml`, the dashboards/alerting dirs) crash on start. The other services have no bind mounts.
+2. **Ports 7100-7300, 3000-3001, 8000 are already claimed** by the dev container on the Windows host, so any `docker-compose` `ports:` mapping in those ranges fails with "port is already allocated". We use 18000+ instead (free on the Windows host, reachable from Windows).
 3. **`~/.docker/config.json` may reference a `credsStore` helper** that doesn't exist inside this container (e.g. `dev-containers-...`). Even pulling a public image then fails with `error getting credentials - err: exit status 255`.
 
 ## Instructions
@@ -182,7 +182,7 @@ If the worktree has uncommitted changes, **stop and ask** before removing — th
 ## What this skill does **not** do
 
 - Doesn't enable OIDC locally. If the user wants to test auth-gated behavior, they need real OIDC creds + a Keycloak client whose redirect URI includes `http://localhost:<frontend>/auth/callback`. That's out of scope here.
-- Doesn't run prometheus/grafana. If observability is needed, that's a separate workflow (e.g. `just dev` on a host Docker daemon outside the claude-dev container).
+- Doesn't run prometheus/grafana. If observability is needed, that's a separate workflow (e.g. `just dev` on a host Docker daemon outside the dev container).
 - Doesn't run the test suite, lint, or formatters — use `just check` or the relevant `just` recipes for that.
 - Doesn't push, comment, or modify the PR. Read-only locally.
 
