@@ -69,7 +69,7 @@ machine-bekende informatie is, niet alleen documentatie.
    langs — telkens wijzen op:
    - de *parameters* (wat de aanvrager invult)
    - de *conditions* / *gates* (lid-niveau OR/AND)
-   - de *outputs* (wat de werkgever terugkrijgt)
+   - de *outputs* (wat de werkgever of werknemer terugkrijgt)
 4. Wijs op de **untranslatables** per regeling — dat zijn de plekken
    waar jurist-input nodig is.
 
