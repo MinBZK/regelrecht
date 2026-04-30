@@ -1,0 +1,412 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$id: kwijtscheldingsregeling_waterschapsbelastingen_hhnk
+regulatory_layer: WATERSCHAPS_VERORDENING
+publication_date: '2022-12-14'
+valid_from: '2023-01-01'
+waterschap_code: WS0155
+officiele_titel: Kwijtscheldingsregeling waterschapsbelastingen HHNK 2023
+url: https://lokaleregelgeving.overheid.nl/CVDR686061
+name: Kwijtscheldingsregeling waterschapsbelastingen HHNK 2023
+articles:
+  - number: '1'
+    text: |-
+      **Reikwijdte**
+
+      Kwijtschelding kan worden verleend voor de volgende waterschapsbelastingen:
+
+      a. watersysteemheffing ingezetenen (artikel 117, aanhef en onder a, van de Waterschapswet);
+
+      b. watersysteemheffing gebouwd (artikel 117, aanhef en onder d, van de Waterschapswet), voor zover de heffing wordt
+      geheven van degene die krachtens eigendom, bezit of beperkt recht het genot heeft van een gebouwde onroerende zaak die
+      geheel of gedeeltelijk bij hem in gebruik is als woonruimte;
+
+      c. zuiveringsheffing woonruimte (artikel 122d, lid 2, onder a van de Waterschapswet);
+
+      d. verontreinigingsheffing woonruimte (artikel 7.2, lid 3, onder a, van de Waterwet).
+
+      e. wegenheffing ingezetenen (artikel 122a, lid 2, onder a, van de Waterschapswet);
+
+      f. wegenheffing gebouwd (artikel 122a, lid 2, onder d, van de Waterschapswet), voor zover de heffing wordt geheven van
+      degene die krachtens eigendom, bezit of beperkt recht het genot heeft van een gebouwde onroerende zaak die geheel of
+      gedeeltelijk bij hem in gebruik is als woonruimte;
+    url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_1
+    machine_readable:
+      definitions:
+        belastingsoorten_in_scope:
+          value:
+            - watersysteemheffing_ingezetenen
+            - watersysteemheffing_gebouwd_woonruimte
+            - zuiveringsheffing_woonruimte
+            - verontreinigingsheffing_woonruimte
+            - wegenheffing_ingezetenen
+            - wegenheffing_gebouwd_woonruimte
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: true
+          - name: belastingsoort
+            type: string
+            required: true
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: netto_besteedbaar_inkomen_partner_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: inboedel_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_onmisbaar
+            type: boolean
+            required: true
+          - name: onroerend_goed_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: andere_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: hoger_bevoorrechte_schulden
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: liquide_middelen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: aanslagbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: kinderopvang_nettokosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Nettokosten van kinderopvang per maand. Per HHNK art 3 jo URI art 28 lid 3 worden
+              deze als uitgaven meegenomen in de berekening van netto-besteedbaar inkomen (artikel 14-15 URI).
+              Verlaagt de betalingscapaciteit. Default 0.
+          - name: is_ondernemer
+            type: boolean
+            required: true
+          - name: belasting_zakelijk
+            type: boolean
+            required: true
+          - name: gegevens_onvolledig_of_onjuist
+            type: boolean
+            required: false
+          - name: bezwaar_of_beroep_aanhangig
+            type: boolean
+            required: false
+          - name: zekerheid_gesteld
+            type: boolean
+            required: false
+          - name: meerdere_belastingschuldigen
+            type: boolean
+            required: false
+          - name: derde_aansprakelijk_gesteld
+            type: boolean
+            required: false
+          - name: verwijtbaarheid_belastingschuld
+            type: boolean
+            required: false
+          - name: in_faillissement_of_surseance_zonder_akkoord
+            type: boolean
+            required: false
+        input:
+          - name: ondernemer_komt_in_aanmerking
+            type: boolean
+            source:
+              output: ondernemer_komt_in_aanmerking
+              parameters:
+                is_ondernemer: $is_ondernemer
+                belasting_zakelijk: $belasting_zakelijk
+          - name: uitgesloten_van_kwijtschelding
+            type: boolean
+            source:
+              regulation: leidraad_invordering_2008
+              output: uitgesloten_van_kwijtschelding
+              parameters:
+                gegevens_onvolledig_of_onjuist: $gegevens_onvolledig_of_onjuist
+                bezwaar_of_beroep_aanhangig: $bezwaar_of_beroep_aanhangig
+                zekerheid_gesteld: $zekerheid_gesteld
+                meerdere_belastingschuldigen: $meerdere_belastingschuldigen
+                derde_aansprakelijk_gesteld: $derde_aansprakelijk_gesteld
+                verwijtbaarheid_belastingschuld: $verwijtbaarheid_belastingschuld
+                in_faillissement_of_surseance_zonder_akkoord: $in_faillissement_of_surseance_zonder_akkoord
+          - name: vermogen_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
+              output: vermogen_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                inboedel_waarde: $inboedel_waarde
+                auto_waarde: $auto_waarde
+                auto_onmisbaar: $auto_onmisbaar
+                onroerend_goed_waarde: $onroerend_goed_waarde
+                andere_bezittingen: $andere_bezittingen
+                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
+                liquide_middelen: $liquide_middelen
+          - name: kan_kwijtschelding_verleend_uri
+            type: boolean
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
+              output: kan_kwijtschelding_worden_verleend
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                vermogen: $vermogen_bedrag
+                extra_uitgaven_maand: $kinderopvang_nettokosten_maand
+                aanslagbedrag: $aanslagbedrag
+          - name: hoogte_kwijtschelding_uri
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              regulation: uitvoeringsregeling_invorderingswet_1990
+              output: hoogte_kwijtschelding
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                vermogen: $vermogen_bedrag
+                extra_uitgaven_maand: $kinderopvang_nettokosten_maand
+                aanslagbedrag: $aanslagbedrag
+        output:
+          - name: belastingsoort_in_scope
+            type: boolean
+          - name: kan_kwijtschelding_worden_verleend
+            type: boolean
+          - name: hoogte_kwijtschelding
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: belastingsoort_in_scope
+            value:
+              operation: IN
+              subject: $belastingsoort
+              value: $belastingsoorten_in_scope
+          - output: kan_kwijtschelding_worden_verleend
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $belastingsoort_in_scope
+                  value: true
+                - operation: EQUALS
+                  subject: $ondernemer_komt_in_aanmerking
+                  value: true
+                - operation: EQUALS
+                  subject: $uitgesloten_van_kwijtschelding
+                  value: false
+                - operation: EQUALS
+                  subject: $kan_kwijtschelding_verleend_uri
+                  value: true
+          - output: hoogte_kwijtschelding
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $kan_kwijtschelding_worden_verleend
+                    value: true
+                  then: $hoogte_kwijtschelding_uri
+              default: 0
+
+  - number: '2'
+    text: |-
+      **Kosten van bestaan**
+
+      1. Bij de kwijtschelding van de in artikel 1 genoemde waterschapsbelastingen wordt, voor wat betreft de kosten van
+      bestaan, aangesloten bij artikel 16 van de Uitvoeringsregeling Invorderingswet 1990, met dien verstande dat bij de
+      berekening van deze kosten wordt uitgegaan van een percentage van 100% van de bijstandsnorm.
+
+      2. In afwijking van het eerste lid worden voor pensioengerechtigde personen de kosten van bestaan gesteld op 100% van
+      de in artikel 3 van de Regeling kwijtschelding belastingen medeoverheden bedoelde netto-ouderdomspensioen.
+    url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_2
+    machine_readable:
+      implements:
+        - law: uitvoeringsregeling_invorderingswet_1990
+          article: '16'
+          open_term: kostennorm_percentage
+          gelet_op: Gelet op artikel 2 van de Regeling kwijtschelding belastingen medeoverheden
+      execution:
+        output:
+          - name: kostennorm_percentage
+            type: number
+            description: |
+              Implementeert lid 1: 100% van de bijstandsnorm (afwijking van federale 90% per art 2 Regeling
+              kwijtschelding belastingen medeoverheden). Lid 2 (pensioengerechtigden: 100% van
+              netto-ouderdomspensioen per Regeling medeoverheden art 3) wordt automatisch afgedekt wanneer de
+              caller is_pensioengerechtigd=true zet: URI art 16 gebruikt dan de definitions
+              netto_ouderdomspensioen_alleenstaand/echtgenoten (exacte SVB-bedragen 2026) in plaats van
+              bijstandsnorm_aow_*, ook met kostennorm_percentage=1.0.
+        actions:
+          - output: kostennorm_percentage
+            value: 1.0
+
+  - number: '3'
+    text: |-
+      **Nettokosten kinderopvang**
+
+      Bij de kwijtschelding van de in artikel 1 genoemde waterschapsbelastingen worden overeenkomstig het bepaalde in artikel
+      28, lid 3, van de Uitvoeringsregeling Invorderingswet 1990 als uitgaven mede in aanmerking genomen de nettokosten van
+      kinderopvang.
+    url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_3
+    machine_readable:
+      execution:
+        output:
+          - name: kinderopvang_in_aanmerking
+            type: boolean
+            description: |
+              Documenteert dat HHNK artikel 28 lid 3 URI 1990 activeert voor deze kwijtscheldingsregeling:
+              nettokosten kinderopvang zijn uitgaven in de zin van artikel 15 URI en verlagen dus het
+              netto-besteedbaar inkomen (artikel 14 URI). Operationeel verwerkt via de parameter
+              'kinderopvang_nettokosten_maand' op HHNK art 1, die als extra_uitgaven_maand wordt doorgegeven
+              aan URI art 13.
+        actions:
+          - output: kinderopvang_in_aanmerking
+            value: true
+
+  - number: '4'
+    text: |-
+      **Extra toegestane financiële middelen**
+
+      Bij de kwijtschelding van de in artikel 1 genoemde waterschapsbelastingen wordt in afwijking van artikel 12, tweede
+      lid, onderdeel d, van de Uitvoeringsregeling Invorderingswet 1990 het totale bedrag aan financiële middelen, bedoeld in
+      dat onderdeel, verhoogd met:
+
+      a. € 2.000 voor de belastingschuldige en echtgenoot;
+
+      b. € 1.800 voor een alleenstaande ouder; en
+
+      c. € 1.500 voor een alleenstaande.
+    url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_4
+    machine_readable:
+      implements:
+        - law: uitvoeringsregeling_invorderingswet_1990
+          article: '12'
+          open_term: verhoging_financiele_middelen_vrijstelling
+          gelet_op: Gelet op artikel 4 van de Regeling kwijtschelding belastingen medeoverheden
+      execution:
+        parameters:
+          - name: huishoudtype
+            type: string
+            required: true
+        output:
+          - name: verhoging_financiele_middelen_vrijstelling
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: verhoging_financiele_middelen_vrijstelling
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: echtgenoten
+                  then: 200000
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: alleenstaande_ouder
+                  then: 180000
+                - when:
+                    operation: EQUALS
+                    subject: $huishoudtype
+                    value: alleenstaande
+                  then: 150000
+              default: 0
+
+  - number: '5'
+    text: |-
+      **Kwijtschelding ondernemers**
+
+      Deze regeling vindt mede toepassing op verzoeken om kwijtschelding van waterschapsbelastingen, die geen verband houden
+      met de uitoefening van een bedrijf of beroep, verschuldigd door een natuurlijk persoon die een bedrijf of zelfstandig
+      een beroep uitoefent.
+    url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_5
+    machine_readable:
+      execution:
+        parameters:
+          - name: is_ondernemer
+            type: boolean
+            required: true
+          - name: belasting_zakelijk
+            type: boolean
+            required: true
+        output:
+          - name: ondernemer_komt_in_aanmerking
+            type: boolean
+        actions:
+          - output: ondernemer_komt_in_aanmerking
+            value:
+              operation: OR
+              conditions:
+                - operation: EQUALS
+                  subject: $is_ondernemer
+                  value: false
+                - operation: EQUALS
+                  subject: $belasting_zakelijk
+                  value: false
+
+  - number: '6'
+    text: |-
+      **Citeertitel en inwerkingtreding**
+
+      1. Deze regeling kan worden aangehaald als 'Kwijtscheldingsregeling waterschapsbelastingen HHNK 2023' of
+      'Kwijtscheldingsregeling waterschapsbelastingen Hoogheemraadschap Hollands Noorderkwartier 2023'.
+
+      2. Deze regeling treedt in werking met ingang van 1 januari 2023.
+
+      3. De 'Kwijtscheldingsregeling Hoogheemraadschap Hollands Noorderkwartier 2019' wordt ingetrokken, met dien verstande
+      dat deze van toepassing blijft op belastingaanslagen, waarvan de dagtekening is gelegen voor de in het tweede lid
+      genoemde datum.
+    url: https://lokaleregelgeving.overheid.nl/CVDR686061/1#artikel_6
