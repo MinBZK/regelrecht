@@ -1,8 +1,8 @@
 /**
  * Microbenchmark for the trace-edge enrichment hot path.
  *
- * Constructs a synthetic graph (~60 laws, ~600 nodes, ~600 edges) and a
- * trace of 200 steps mixing every node type the matcher handles, then
+ * Constructs a synthetic graph (60 laws, ~480 nodes, ~395 edges) and a
+ * trace of 500 steps mixing every node type the matcher handles, then
  * measures how long it takes to enrich each step with `edgeIds` and
  * `nodeIds`. This is the work `useTraceStepping.steps` does once per
  * (result, graph) change — the user-perceived hang after running a
