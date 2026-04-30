@@ -150,7 +150,7 @@ watch(() => props.modelValue, async (open) => {
             </nldd-list>
           </template>
           <nldd-list
-            v-else
+            v-else-if="filteredLaws.length > 0 || search.length >= MIN_QUERY_LENGTH"
             variant="simple"
             empty-text="Geen resultaten gevonden"
             empty-supporting-text="Pas je zoektermen of voorkeuren aan"

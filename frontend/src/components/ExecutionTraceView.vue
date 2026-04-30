@@ -1,12 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
-
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
-}
+import { formatValue, formatOutputValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   /** Execution result with outputs */
