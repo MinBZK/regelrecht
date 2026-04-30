@@ -151,7 +151,12 @@ export function buildEdgeIndex(edges) {
     if (typeof e.source === 'string') push(bySource, e.source, e);
     if (typeof e.id !== 'string') continue;
     if (e.id.startsWith('impl:')) {
-      const colon = e.id.lastIndexOf(':');
+      // Bucket by the open-term name that follows `->...:`. Reading the
+      // colon from the *right-hand* side of the arrow (not `lastIndexOf`)
+      // preserves the original `endsWith(':${name}')` semantics if an
+      // open-term id ever contains a literal colon.
+      const arrow = e.id.indexOf('->');
+      const colon = arrow !== -1 ? e.id.indexOf(':', arrow + 2) : -1;
       if (colon !== -1) push(byImplOpenTerm, e.id.substring(colon + 1), e);
     } else if (e.id.startsWith('ovr:')) {
       // `ovr:${lawA}:${art}->${lawB}:${art}` — bucket by `lawA`
