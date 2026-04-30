@@ -108,8 +108,6 @@ onUnmounted(() => {
 
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
-          <nldd-title size="5"><h5>Bovenliggende operaties</h5></nldd-title>
-          <nldd-spacer size="4"></nldd-spacer>
           <nldd-list variant="box">
             <nldd-list-item
               v-for="op in parentOperations"
@@ -119,25 +117,23 @@ onUnmounted(() => {
               :type="editable ? undefined : 'button'"
               @click="!editable && selectOperation(op)"
             >
+              <template v-if="!editable">
+                <nldd-icon-cell size="20">
+                  <nldd-icon name="chevron-left"></nldd-icon>
+                </nldd-icon-cell>
+                <nldd-spacer-cell size="12"></nldd-spacer-cell>
+              </template>
               <nldd-text-cell :text="`${op.number}. ${op.title}`" :supporting-text="op.subtitle">
               </nldd-text-cell>
               <nldd-cell v-if="editable">
                 <nldd-button :data-testid="`parent-op-${op.number}-edit-btn`" @click="selectOperation(op)" text="Bewerk"></nldd-button>
               </nldd-cell>
-              <template v-else>
-                <nldd-spacer-cell size="12"></nldd-spacer-cell>
-                <nldd-icon-cell size="20">
-                  <nldd-icon name="chevron-up"></nldd-icon>
-                </nldd-icon-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              </template>
             </nldd-list-item>
           </nldd-list>
-
-          <nldd-spacer size="8"></nldd-spacer>
         </template>
 
         <!-- Section B: Operation Settings -->
+        <nldd-spacer v-if="parentOperations.length && selectedOperation" size="24"></nldd-spacer>
         <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" :editable="editable" @select-operation="selectOperationByNode" />
       </nldd-simple-section>
 

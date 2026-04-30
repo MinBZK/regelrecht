@@ -424,10 +424,12 @@ function addNestedOperation() {
 
 <template>
   <template v-if="operation">
-    <nldd-title size="4" class="operation-settings__title">
-      <h4>Instellingen operatie {{ operation.number }}</h4>
-    </nldd-title>
-    <nldd-spacer size="12"></nldd-spacer>
+    <template v-if="String(operation.number).includes('.')">
+      <nldd-title size="4" class="operation-settings__title">
+        <h4>Operatie {{ operation.number }}</h4>
+      </nldd-title>
+      <nldd-spacer size="12"></nldd-spacer>
+    </template>
     <nldd-list variant="box" class="settings-list">
       <!-- Titel -->
       <nldd-list-item size="md">
@@ -440,7 +442,6 @@ function addNestedOperation() {
           <template v-if="hasClickableRow">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20"></nldd-icon-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
         </template>
       </nldd-list-item>
@@ -460,7 +461,6 @@ function addNestedOperation() {
           <template v-if="hasClickableRow">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20"></nldd-icon-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
         </template>
       </nldd-list-item>
@@ -526,9 +526,8 @@ function addNestedOperation() {
           <template v-if="hasClickableRow">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20">
-              <nldd-icon v-if="isNestedOperation(val._value)" name="chevron-down"></nldd-icon>
+              <nldd-icon v-if="isNestedOperation(val._value)" name="chevron-right"></nldd-icon>
             </nldd-icon-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
         </template>
       </nldd-list-item>

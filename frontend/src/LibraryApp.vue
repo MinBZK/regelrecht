@@ -298,8 +298,8 @@ loadIndex();
 <template>
   <nldd-app-view>
     <nldd-bar-split-view>
-      <!-- Primary Bar: App Toolbar -->
-      <nldd-split-view-pane slot="primary-bar">
+      <!-- Primary Bar: App Toolbar (md+) -->
+      <nldd-split-view-pane slot="primary-bar" above="md">
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
@@ -480,6 +480,56 @@ loadIndex();
           </nldd-split-view-pane>
 
         </nldd-navigation-split-view>
+      </nldd-split-view-pane>
+
+      <!-- Mobile Bar (sm only): tab bar + icon-buttons for search and account -->
+      <nldd-split-view-pane slot="mobile-bar" only="sm">
+        <nldd-container padding="8">
+          <nldd-toolbar size="md">
+            <nldd-toolbar-item slot="start">
+              <nldd-tab-bar compact>
+                <nldd-tab-bar-item selected icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item href="/editor" @click.prevent="router.push('/editor')" icon="edit" text="Editor"></nldd-tab-bar-item>
+              </nldd-tab-bar>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <span>
+                <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
+              </span>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <span>
+                <nldd-icon-button id="account-menu-mobile-btn" size="lg" icon="person-circle" text="Account" :accessible-label="person?.name || 'Account'" popovertarget="account-menu-mobile"></nldd-icon-button>
+              </span>
+              <nldd-menu id="account-menu-mobile" anchor="account-menu-mobile-btn">
+                  <template v-if="!authLoading && authenticated">
+                    <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
+                    <nldd-menu-divider></nldd-menu-divider>
+                  </template>
+                  <nldd-menu-item
+                    v-for="[key, label] in editorPanelFlags"
+                    :key="key"
+                    type="checkbox"
+                    :selected="isEnabled(key) || undefined"
+                    :text="label"
+                    @select="toggleFlag(key)"
+                  ></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item
+                    v-for="[value, label] in colorSchemeOptions"
+                    :key="`scheme-mobile-${value}`"
+                    type="radio"
+                    :selected="colorScheme === value || undefined"
+                    :text="label"
+                    @select="setColorScheme(value)"
+                  ></nldd-menu-item>
+                  <nldd-menu-divider></nldd-menu-divider>
+                  <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
+                  <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
+                </nldd-menu>
+            </nldd-toolbar-item>
+          </nldd-toolbar>
+        </nldd-container>
       </nldd-split-view-pane>
     </nldd-bar-split-view>
   </nldd-app-view>
