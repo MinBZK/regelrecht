@@ -14,17 +14,10 @@ import MachineReadable from './components/MachineReadable.vue';
 import ScenarioBuilder from './components/ScenarioBuilder.vue';
 import ExecutionTraceView from './components/ExecutionTraceView.vue';
 import LawGraphView from './components/LawGraphView.vue';
+import AccountMenu from './components/AccountMenu.vue';
 
-const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
-const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
-
-const editorPanelFlags = [
-  ['panel.article_text', 'Tekst editor'],
-  ['panel.machine_readable', 'Machine editor'],
-  ['panel.scenario_form', 'Scenario editor'],
-  ['panel.yaml_editor', 'YAML editor'],
-  ['panel.law_graph', 'Wettengraaf'],
-];
+const { authenticated, oidcConfigured } = useAuth();
+const { isEnabled } = useFeatureFlags();
 
 // Left and middle panes are specific named editors. The right pane is a
 // category — anything that isn't text or machine lives there, and when more
@@ -731,25 +724,7 @@ function handleActionSave() {
                   <nldd-menu-item text="Nieuw project"></nldd-menu-item>
                 </nldd-menu>
                 <nldd-button-bar-divider></nldd-button-bar-divider>
-                <nldd-icon-button id="account-menu-btn" size="md" icon="person-circle" expandable :title="person?.name || 'Account'" popovertarget="account-menu">
-                </nldd-icon-button>
-                <nldd-menu id="account-menu" anchor="account-menu-btn">
-                  <template v-if="!authLoading && authenticated">
-                    <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                    <nldd-menu-divider></nldd-menu-divider>
-                  </template>
-                  <nldd-menu-item
-                    v-for="[key, label] in editorPanelFlags"
-                    :key="key"
-                    type="checkbox"
-                    :selected="isEnabled(key) || undefined"
-                    :text="label"
-                    @select="toggleFlag(key)"
-                  ></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                  <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
-                  <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
-                </nldd-menu>
+                <AccountMenu />
               </nldd-button-bar>
             </nldd-toolbar-item>
           </nldd-toolbar>
