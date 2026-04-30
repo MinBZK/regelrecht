@@ -126,6 +126,34 @@ fn execute_healthcare_allowance(world: &mut RegelrechtWorld) {
     world.execute_law("zorgtoeslagwet", "hoogte_zorgtoeslag");
 }
 
+// =============================================================================
+// Termijnenwet steps
+// =============================================================================
+
+#[when("the termijnenwet holiday check is executed")]
+fn execute_termijnenwet_holiday(world: &mut RegelrechtWorld) {
+    world.execute_law("algemene_termijnenwet", "is_feestdag");
+}
+
+#[when("the termijnenwet deadline extension is executed")]
+fn execute_termijnenwet_extension(world: &mut RegelrechtWorld) {
+    world.execute_law("algemene_termijnenwet", "verlengde_einddatum");
+}
+
+#[when("the termijnenwet scope check is executed")]
+fn execute_termijnenwet_scope(world: &mut RegelrechtWorld) {
+    world.execute_law("algemene_termijnenwet", "termijnenwet_van_toepassing");
+}
+
+// =============================================================================
+// Omgevingswet steps
+// =============================================================================
+
+#[when("the omgevingswet beslistermijn is executed")]
+fn execute_omgevingswet_beslistermijn(world: &mut RegelrechtWorld) {
+    world.execute_law("omgevingswet", "beslistermijn_weken");
+}
+
 fn register_if_present(
     service: &mut regelrecht_engine::LawExecutionService,
     name: &str,

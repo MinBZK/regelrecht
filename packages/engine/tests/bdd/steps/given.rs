@@ -4,8 +4,49 @@
 
 use cucumber::{gherkin::Step, given};
 
+use std::path::PathBuf;
+
 use crate::helpers::value_conversion::{convert_gherkin_value, parse_table_to_params};
 use crate::world::RegelrechtWorld;
+
+fn context_base_path() -> PathBuf {
+    std::env::var("CONTEXT_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("..")
+                .join("..")
+                .join("corpus")
+                .join("context")
+        })
+}
+
+// =============================================================================
+// Context data steps (corpus/context/)
+// =============================================================================
+
+#[given(expr = "the holiday calendar for year {string}")]
+fn load_holiday_calendar(world: &mut RegelrechtWorld, year: String) {
+    let calendar_path = context_base_path()
+        .join("nl")
+        .join("calendar")
+        .join(format!("{}.yaml", year));
+    let content = std::fs::read_to_string(&calendar_path)
+        .unwrap_or_else(|e| panic!("Failed to read calendar {}: {}", calendar_path.display(), e));
+    let calendar: serde_yaml_ng::Value = serde_yaml_ng::from_str(&content)
+        .unwrap_or_else(|e| panic!("Failed to parse calendar: {}", e));
+
+    if let Some(holidays) = calendar.get("holidays").and_then(|h| h.as_mapping()) {
+        for (key, value) in holidays {
+            if let (Some(name), Some(date_str)) = (key.as_str(), value.as_str()) {
+                world.parameters.insert(
+                    name.to_string(),
+                    regelrecht_engine::Value::String(date_str.to_string()),
+                );
+            }
+        }
+    }
+}
 
 // =============================================================================
 // Background steps
