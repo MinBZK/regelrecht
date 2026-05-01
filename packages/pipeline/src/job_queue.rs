@@ -83,9 +83,9 @@ pub async fn claim_job<'e, E>(executor: E, job_type: Option<JobType>) -> Result<
 where
     E: sqlx::PgExecutor<'e>,
 {
-    // The single query handles both the "any job type" and "specific job
-    // type" cases via a NULL-tolerant filter on $1 — Postgres short-circuits
-    // `$1::job_type IS NULL` per row, so the planner picks the same indexes.
+    // The single query handles both cases via a NULL-tolerant filter on $1:
+    // NULL matches every pending job, a non-NULL value filters to that
+    // job_type. Replaces the previous match-on-Option two-branch SQL.
     let job = sqlx::query_as::<_, Job>(
         r#"
         UPDATE jobs

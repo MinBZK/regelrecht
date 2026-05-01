@@ -5,62 +5,13 @@ RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install wasm-bindgen-cli@0.2.114 --locked
 WORKDIR /build
-COPY packages/Cargo.lock ./
-COPY <<'EOF' /build/Cargo.toml
-[workspace]
-resolver = "2"
-members = [
-    "packages/engine",
-    "packages/shared",
-]
-
-[workspace.lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
-
-[workspace.dependencies]
-async-trait = "0.1"
-axum = "0.8"
-base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
-openidconnect = "4.0"
-regex = "1.11"
-roxmltree = "0.21"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml_ng = "0.10"
-sha2 = "0.10"
-sqlx = "0.8"
-strum = { version = "0.28", features = ["derive"] }
-subtle = "2"
-thiserror = "2.0"
-time = "0.3"
-tokio = "1"
-tower-http = "0.6"
-tower-sessions = "0.14"
-tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-url = "2"
-urlencoding = "2"
-uuid = { version = "1", features = ["serde"] }
-walkdir = "2"
-http-body-util = "0.1"
-pretty_assertions = "1.4"
-rsa = "0.9"
-tempfile = "3"
-testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
-tower = "0.5"
-tower-sessions-memory-store = "0.14"
-wiremock = "0.6"
-
-[patch.crates-io]
-testcontainers = { git = "https://github.com/testcontainers/testcontainers-rs", rev = "0f5ee81c18683cf2882fb5a23461cf41fa5e3768" }
-EOF
-COPY packages/engine/ packages/engine/
-COPY packages/shared/ packages/shared/
+COPY packages/Cargo.lock packages/Cargo.toml ./
+# Trim workspace members to engine + shared (the only crates the wasm build
+# needs); everything else is dropped so chef does not try to resolve their
+# source paths.
+RUN sed -i '/^    "admin",$/d; /^    "auth",$/d; /^    "corpus",$/d; /^    "editor-api",$/d; /^    "harvester",$/d; /^    "pipeline",$/d; /^    "tui",$/d' Cargo.toml
+COPY packages/engine/ engine/
+COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
     wasm-bindgen --target web --out-dir /wasm-pkg \
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
@@ -83,72 +34,17 @@ WORKDIR /build
 
 # Stage 3: Plan dependencies
 FROM chef AS planner
-COPY packages/Cargo.lock ./
-COPY <<'EOF' /build/Cargo.toml
-[workspace]
-resolver = "2"
-members = [
-    "packages/auth",
-    "packages/editor-api",
-    "packages/corpus",
-    "packages/engine",
-    "packages/harvester",
-    "packages/pipeline",
-    "packages/shared",
-]
-
-[workspace.lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
-
-[workspace.dependencies]
-async-trait = "0.1"
-axum = "0.8"
-base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
-openidconnect = "4.0"
-regex = "1.11"
-roxmltree = "0.21"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml_ng = "0.10"
-sha2 = "0.10"
-sqlx = "0.8"
-strum = { version = "0.28", features = ["derive"] }
-subtle = "2"
-thiserror = "2.0"
-time = "0.3"
-tokio = "1"
-tower-http = "0.6"
-tower-sessions = "0.14"
-tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-url = "2"
-urlencoding = "2"
-uuid = { version = "1", features = ["serde"] }
-walkdir = "2"
-http-body-util = "0.1"
-pretty_assertions = "1.4"
-rsa = "0.9"
-tempfile = "3"
-testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
-tower = "0.5"
-tower-sessions-memory-store = "0.14"
-wiremock = "0.6"
-
-[patch.crates-io]
-testcontainers = { git = "https://github.com/testcontainers/testcontainers-rs", rev = "0f5ee81c18683cf2882fb5a23461cf41fa5e3768" }
-EOF
-COPY packages/auth/ packages/auth/
-COPY packages/editor-api/ packages/editor-api/
-COPY packages/corpus/ packages/corpus/
-COPY packages/engine/ packages/engine/
-COPY packages/harvester/ packages/harvester/
-COPY packages/pipeline/ packages/pipeline/
-COPY packages/shared/ packages/shared/
+COPY packages/Cargo.lock packages/Cargo.toml ./
+# Trim workspace members to those actually built by this Dockerfile so chef
+# does not try to resolve crates whose source we do not COPY.
+RUN sed -i '/^    "admin",$/d; /^    "tui",$/d' Cargo.toml
+COPY packages/auth/ auth/
+COPY packages/editor-api/ editor-api/
+COPY packages/corpus/ corpus/
+COPY packages/engine/ engine/
+COPY packages/harvester/ harvester/
+COPY packages/pipeline/ pipeline/
+COPY packages/shared/ shared/
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 4: Build Rust binary (deps cached separately from source)
@@ -158,16 +54,16 @@ COPY --from=planner /build/Cargo.toml ./Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
-COPY packages/auth/ packages/auth/
-COPY packages/editor-api/ packages/editor-api/
-COPY packages/corpus/ packages/corpus/
-COPY packages/engine/ packages/engine/
-COPY packages/harvester/ packages/harvester/
-COPY packages/pipeline/ packages/pipeline/
-COPY packages/shared/ packages/shared/
+COPY packages/auth/ auth/
+COPY packages/editor-api/ editor-api/
+COPY packages/corpus/ corpus/
+COPY packages/engine/ engine/
+COPY packages/harvester/ harvester/
+COPY packages/pipeline/ pipeline/
+COPY packages/shared/ shared/
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
-RUN find packages -name '*.rs' -exec touch {} + && \
+RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-editor-api
 
 # Stage 5: Runtime
