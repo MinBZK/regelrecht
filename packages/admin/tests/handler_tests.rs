@@ -226,7 +226,7 @@ async fn create_harvest_job_with_priority_and_date() {
                 .uri("/api/harvest-jobs")
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    r#"{"bwb_id": "BWBR0018451", "priority": 80, "date": "2026-01-01"}"#,
+                    r#"{"bwb_id": "BWBR0018451", "priority": 80, "date": "2024-01-01"}"#,
                 ))
                 .unwrap(),
         )
