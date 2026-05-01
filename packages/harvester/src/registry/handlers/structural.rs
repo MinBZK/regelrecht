@@ -58,6 +58,32 @@ impl ElementHandler for LiNrHandler {
     }
 }
 
+/// Recurse into element children whose tag is not in `skip_tags`, joining
+/// non-empty results with `separator`. Shared body for [`LidHandler`] and
+/// [`LiHandler`].
+fn join_children_excluding<'a, 'input>(
+    node: Node<'a, 'input>,
+    context: &mut ParseContext<'_>,
+    recurse: &RecurseFn<'a, 'input>,
+    skip_tags: &[&str],
+    separator: &str,
+) -> ParseResult {
+    let mut parts: Vec<String> = Vec::new();
+    for child in node.children() {
+        if !child.is_element() {
+            continue;
+        }
+        if skip_tags.contains(&get_tag_name(child)) {
+            continue;
+        }
+        let result = recurse(child, context);
+        if !result.text.is_empty() {
+            parts.push(result.text);
+        }
+    }
+    ParseResult::new(parts.join(separator).trim().to_string())
+}
+
 /// Handler for `<lid>` (paragraph/subdivision) elements.
 ///
 /// Extracts text from a lid, processing all child `<al>` elements.
@@ -75,27 +101,7 @@ impl ElementHandler for LidHandler {
         context: &mut ParseContext<'_>,
         recurse: &RecurseFn<'a, 'input>,
     ) -> ParseResult {
-        let mut parts: Vec<String> = Vec::new();
-
-        for child in node.children() {
-            if !child.is_element() {
-                continue;
-            }
-
-            let child_tag = get_tag_name(child);
-
-            // Skip lidnr (handled separately for numbering)
-            if child_tag == "lidnr" || child_tag == "meta-data" {
-                continue;
-            }
-
-            let result = recurse(child, context);
-            if !result.text.is_empty() {
-                parts.push(result.text);
-            }
-        }
-
-        ParseResult::new(parts.join(" ").trim().to_string())
+        join_children_excluding(node, context, recurse, &["lidnr", "meta-data"], " ")
     }
 }
 
@@ -148,27 +154,7 @@ impl ElementHandler for LiHandler {
         context: &mut ParseContext<'_>,
         recurse: &RecurseFn<'a, 'input>,
     ) -> ParseResult {
-        let mut parts: Vec<String> = Vec::new();
-
-        for child in node.children() {
-            if !child.is_element() {
-                continue;
-            }
-
-            let child_tag = get_tag_name(child);
-
-            // Skip li.nr (handled separately for numbering)
-            if child_tag == "li.nr" {
-                continue;
-            }
-
-            let result = recurse(child, context);
-            if !result.text.is_empty() {
-                parts.push(result.text);
-            }
-        }
-
-        ParseResult::new(parts.join(" ").trim().to_string())
+        join_children_excluding(node, context, recurse, &["li.nr"], " ")
     }
 }
 

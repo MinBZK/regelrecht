@@ -1,8 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
-use ratatui::widgets::{
-    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-};
+use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use regelrecht_engine::{PathNode, PathNodeType, ResolveType, Value};
 use std::cell::Cell;
 use std::collections::HashSet;
@@ -95,10 +93,7 @@ impl TraceView {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         if self.trace.is_none() {
-            let block = Block::default().borders(Borders::ALL).title(Span::styled(
-                " Execution Trace ",
-                Style::default().add_modifier(Modifier::BOLD),
-            ));
+            let block = super::common::titled_block(" Execution Trace ");
             let content = Paragraph::new(vec![
                 Line::from(""),
                 Line::from("  No trace loaded."),
@@ -181,10 +176,7 @@ impl TraceView {
         let title =
             format!(" Execution Trace ({total} nodes) — Space:toggle  e:expand  c:collapse ");
 
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            title,
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(&title);
 
         let paragraph = Paragraph::new(lines).block(block);
         frame.render_widget(paragraph, area);

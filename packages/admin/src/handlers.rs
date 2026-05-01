@@ -12,6 +12,18 @@ use crate::error::ApiError;
 use crate::models::{Job, LawEntry, PaginatedResponse};
 use crate::state::AppState;
 
+/// Map a sqlx error to a 500 ApiError, logging the cause with `op` so the log
+/// names which query failed. Centralises ~17 copy-pasted `.map_err(|e| {
+/// tracing::error!(error = %e, "<op>"); ApiError::Internal("internal server
+/// error".into()) })` blocks. Internal-only — the user always sees the
+/// generic "internal server error" message.
+fn db_err(op: &'static str) -> impl FnOnce(sqlx::Error) -> ApiError {
+    move |e: sqlx::Error| {
+        tracing::error!(error = %e, "{op}");
+        ApiError::Internal("internal server error".to_string())
+    }
+}
+
 // --- Platform info ---
 
 #[derive(Serialize)]
@@ -100,18 +112,12 @@ pub async fn list_law_entries(
             .bind(status)
             .fetch_one(pool)
             .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "count query failed");
-                ApiError::Internal("internal server error".to_string())
-            })?
+            .map_err(db_err("count query failed"))?
     } else {
         sqlx::query_scalar("SELECT COUNT(*) FROM law_entries")
             .fetch_one(pool)
             .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "count query failed");
-                ApiError::Internal("internal server error".to_string())
-            })?
+            .map_err(db_err("count query failed"))?
     };
 
     // Data query — sort column is validated against an allowlist above, so
@@ -141,20 +147,14 @@ pub async fn list_law_entries(
             .bind(offset)
             .fetch_all(pool)
             .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "data query failed");
-                ApiError::Internal("internal server error".to_string())
-            })?
+            .map_err(db_err("data query failed"))?
     } else {
         sqlx::query_as::<_, LawEntry>(&query_str)
             .bind(limit)
             .bind(offset)
             .fetch_all(pool)
             .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "data query failed");
-                ApiError::Internal("internal server error".to_string())
-            })?
+            .map_err(db_err("data query failed"))?
     };
 
     Ok(Json(PaginatedResponse {
@@ -270,10 +270,10 @@ pub async fn list_jobs(
         count_query = count_query.bind(law_id);
     }
 
-    let total: i64 = count_query.fetch_one(pool).await.map_err(|e| {
-        tracing::error!(error = %e, "count query failed");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    let total: i64 = count_query
+        .fetch_one(pool)
+        .await
+        .map_err(db_err("count query failed"))?;
 
     // Data query — sort column is validated against an allowlist above, so
     // interpolating it into the query string is safe.
@@ -299,10 +299,10 @@ pub async fn list_jobs(
     }
     data_query = data_query.bind(limit).bind(offset);
 
-    let data: Vec<Job> = data_query.fetch_all(pool).await.map_err(|e| {
-        tracing::error!(error = %e, "data query failed");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    let data: Vec<Job> = data_query
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("data query failed"))?;
 
     Ok(Json(PaginatedResponse {
         data,
@@ -360,10 +360,10 @@ pub async fn list_jobs_summary(
         count_query = count_query.bind(job_type);
     }
 
-    let total: i64 = count_query.fetch_one(pool).await.map_err(|e| {
-        tracing::error!(error = %e, "count query failed");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    let total: i64 = count_query
+        .fetch_one(pool)
+        .await
+        .map_err(db_err("count query failed"))?;
 
     // Data query — sort column is validated against an allowlist above, so
     // interpolating it into the query string is safe.
@@ -392,10 +392,10 @@ pub async fn list_jobs_summary(
     }
     data_query = data_query.bind(limit).bind(offset);
 
-    let data: Vec<JobSummary> = data_query.fetch_all(pool).await.map_err(|e| {
-        tracing::error!(error = %e, "data query failed");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    let data: Vec<JobSummary> = data_query
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("data query failed"))?;
 
     Ok(Json(PaginatedResponse {
         data,
@@ -448,20 +448,22 @@ pub async fn create_harvest_job(
     let law_id = raw_id;
 
     if let Some(ref date) = body.date {
-        if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() {
-            tracing::debug!(date, "rejected invalid date");
-            return Err(ApiError::BadRequest(
-                "invalid date format: expected YYYY-MM-DD".to_string(),
-            ));
-        }
+        // Use harvester's validator so admin and harvester agree on what
+        // counts as valid: format check, real date, and not in the future.
+        // Previously admin only checked format, so it accepted dates the
+        // harvester would later reject.
+        regelrecht_harvester::validate_date(date).map_err(|e| {
+            tracing::debug!(date, error = %e, "rejected invalid date");
+            ApiError::BadRequest(format!("invalid date: {e}"))
+        })?;
     }
 
     let pool = &state.pool;
 
-    let mut tx = pool.begin().await.map_err(|e| {
-        tracing::error!(error = %e, "failed to begin transaction");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(db_err("failed to begin transaction"))?;
 
     // Acquire an advisory lock keyed on the law_id to serialize concurrent requests
     // for the same law. This prevents the TOCTOU race where two requests both see
@@ -548,10 +550,9 @@ pub async fn create_harvest_job(
         ApiError::Internal("failed to link harvest job to law entry".to_string())
     })?;
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!(error = %e, "failed to commit transaction");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    tx.commit()
+        .await
+        .map_err(db_err("failed to commit transaction"))?;
 
     tracing::info!(job_id = %job.id, law_id = %law_id, "created harvest job");
 
@@ -590,10 +591,10 @@ pub async fn create_enrich_jobs(
 
     let pool = &state.pool;
 
-    let mut tx = pool.begin().await.map_err(|e| {
-        tracing::error!(error = %e, "failed to begin transaction");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(db_err("failed to begin transaction"))?;
 
     // Advisory lock to serialize concurrent requests for the same law.
     sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
@@ -707,10 +708,9 @@ pub async fn create_enrich_jobs(
             })?;
     }
 
-    tx.commit().await.map_err(|e| {
-        tracing::error!(error = %e, "failed to commit transaction");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    tx.commit()
+        .await
+        .map_err(db_err("failed to commit transaction"))?;
 
     tracing::info!(law_id = %law_id, jobs = ?job_ids, "created enrich jobs");
 
@@ -814,10 +814,10 @@ pub async fn reset_exhausted(
 ) -> Result<StatusCode, ApiError> {
     let pool = &state.pool;
 
-    let mut tx = pool.begin().await.map_err(|e| {
-        tracing::error!(error = %e, "failed to begin transaction");
-        ApiError::Internal("internal server error".to_string())
-    })?;
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(db_err("failed to begin transaction"))?;
 
     // Read status inside the transaction to prevent TOCTOU race.
     let law = match regelrecht_pipeline::law_status::get_law(&mut *tx, &law_id).await {

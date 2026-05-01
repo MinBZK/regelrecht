@@ -1,7 +1,7 @@
 use crate::backend::corpus_scanner;
 use crossterm::event::KeyEvent;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Wrap};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -214,10 +214,7 @@ impl DashboardView {
             }
         }
 
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            " Dashboard ",
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(" Dashboard ");
 
         let paragraph = Paragraph::new(lines)
             .block(block)

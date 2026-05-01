@@ -1,8 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
-use ratatui::widgets::{
-    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-};
+use ratatui::widgets::{Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState};
 use std::collections::VecDeque;
 
 const MAX_LINES: usize = 10_000;
@@ -137,10 +135,7 @@ impl LogsView {
             )
         };
 
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            title,
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(&title);
 
         if self.lines.is_empty() {
             let content = Paragraph::new(vec![

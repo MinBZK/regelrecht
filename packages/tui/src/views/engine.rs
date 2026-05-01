@@ -356,10 +356,7 @@ impl EngineView {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         if !self.loaded {
-            let block = Block::default().borders(Borders::ALL).title(Span::styled(
-                " Interactive Engine ",
-                Style::default().add_modifier(Modifier::BOLD),
-            ));
+            let block = super::common::titled_block(" Interactive Engine ");
             let content = Paragraph::new("  Loading laws from corpus...").block(block);
             frame.render_widget(content, area);
             return;

@@ -56,31 +56,26 @@ static AFDELING_PATTERN: LazyLock<Regex> =
 ///
 /// All fragment values are sanitized to prevent injection of problematic characters.
 fn convert_jci_to_url(jci_ref: &str) -> String {
-    if let Some(bwb_match) = BWB_PATTERN.find(jci_ref) {
-        let bwb_id = bwb_match.as_str();
+    let Some(bwb_match) = BWB_PATTERN.find(jci_ref) else {
+        return jci_ref.to_string();
+    };
+    let bwb_id = bwb_match.as_str();
 
-        // Check anchors in priority order
-        // Sanitize all fragment values to prevent injection of problematic characters
-        if let Some(caps) = ARTIKEL_PATTERN.captures(jci_ref) {
-            let artikel = sanitize_fragment(&caps[1].replace(' ', "_"));
-            return format!("https://wetten.overheid.nl/{bwb_id}#Artikel{artikel}");
+    // Anchor priority order: first match wins. Sanitised before interpolation
+    // so user-controlled JCI fragments cannot break out of the URL fragment.
+    let anchors: &[(&LazyLock<Regex>, &str)] = &[
+        (&ARTIKEL_PATTERN, "Artikel"),
+        (&HOOFDSTUK_PATTERN, "Hoofdstuk"),
+        (&AFDELING_PATTERN, "Afdeling"),
+        (&PARAGRAAF_PATTERN, "Paragraaf"),
+    ];
+    for (pattern, prefix) in anchors {
+        if let Some(caps) = pattern.captures(jci_ref) {
+            let value = sanitize_fragment(&caps[1].replace(' ', "_"));
+            return format!("https://wetten.overheid.nl/{bwb_id}#{prefix}{value}");
         }
-        if let Some(caps) = HOOFDSTUK_PATTERN.captures(jci_ref) {
-            let hoofdstuk = sanitize_fragment(&caps[1].replace(' ', "_"));
-            return format!("https://wetten.overheid.nl/{bwb_id}#Hoofdstuk{hoofdstuk}");
-        }
-        if let Some(caps) = AFDELING_PATTERN.captures(jci_ref) {
-            let afdeling = sanitize_fragment(&caps[1].replace(' ', "_"));
-            return format!("https://wetten.overheid.nl/{bwb_id}#Afdeling{afdeling}");
-        }
-        if let Some(caps) = PARAGRAAF_PATTERN.captures(jci_ref) {
-            let paragraaf = sanitize_fragment(&caps[1].replace(' ', "_"));
-            return format!("https://wetten.overheid.nl/{bwb_id}#Paragraaf{paragraaf}");
-        }
-
-        return format!("https://wetten.overheid.nl/{bwb_id}");
     }
-    jci_ref.to_string()
+    format!("https://wetten.overheid.nl/{bwb_id}")
 }
 
 /// Extract first capture group from a regex match.

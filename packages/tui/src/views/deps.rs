@@ -1,7 +1,7 @@
 use crate::backend::corpus_scanner;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -141,10 +141,7 @@ impl DepsView {
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         if !self.scanned {
-            let block = Block::default().borders(Borders::ALL).title(Span::styled(
-                " Dependencies ",
-                Style::default().add_modifier(Modifier::BOLD),
-            ));
+            let block = super::common::titled_block(" Dependencies ");
             let content = Paragraph::new("  Scanning corpus...").block(block);
             frame.render_widget(content, area);
             return;
@@ -186,10 +183,7 @@ impl DepsView {
         let edges: usize = self.nodes.iter().map(|n| n.depends_on.len()).sum();
         let title = format!(" Laws ({}) — {} cross-references ", self.nodes.len(), edges);
 
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            title,
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(&title);
 
         let list = List::new(items)
             .block(block)
@@ -290,10 +284,7 @@ impl DepsView {
             .take(inner_height)
             .collect();
 
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            " Detail (J/K to scroll) ",
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(" Detail (J/K to scroll) ");
 
         let paragraph = Paragraph::new(visible).block(block);
         frame.render_widget(paragraph, area);
