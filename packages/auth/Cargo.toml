@@ -8,29 +8,29 @@ license = "EUPL-1.2"
 repository = "https://github.com/MinBZK/regelrecht"
 
 [dependencies]
-axum = "0.8"
-openidconnect = "4.0"
-tower-sessions = "0.14"
+axum.workspace = true
+openidconnect.workspace = true
+tower-sessions.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-urlencoding = "2"
-base64 = "0.22"
-subtle = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
-tower-http = { version = "0.6", features = ["fs"] }
-url = "2"
+urlencoding.workspace = true
+base64.workspace = true
+subtle.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tower-http = { workspace = true, features = ["fs"] }
+url.workspace = true
 
 [dev-dependencies]
-tower = "0.5"
-tower-sessions-memory-store = "0.14"
-wiremock = "0.6"
-rsa = "0.9"
-sha2 = "0.10"
-uuid = { version = "1", features = ["v4"] }
-chrono = "0.4"
-http-body-util = "0.1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower.workspace = true
+tower-sessions-memory-store.workspace = true
+wiremock.workspace = true
+rsa.workspace = true
+sha2.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+chrono.workspace = true
+http-body-util.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true
