@@ -1,0 +1,1596 @@
+---
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/tags/schema-v0.5.2/schema/v0.5.2/schema.json
+$id: uitvoeringsregeling_invorderingswet_1990
+regulatory_layer: MINISTERIELE_REGELING
+publication_date: '2025-07-11'
+valid_from: '2026-01-01'
+bwb_id: BWBR0004766
+url: https://wetten.overheid.nl/BWBR0004766/2026-01-01
+name: Uitvoeringsregeling Invorderingswet 1990
+competent_authority:
+  name: Minister van Financiën
+legal_basis:
+  - law_id: invorderingswet_1990
+    article: '26'
+articles:
+  - number: '10'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel10
+    text: |
+      Deze afdeling heeft betrekking op kwijtschelding van inkomstenbelasting verschuldigd door natuurlijke personen die geen
+      bedrijf of niet zelfstandig een beroep uitoefenen, van loonbelasting verschuldigd door werknemers alsmede van
+      motorrijtuigenbelasting, belasting zware motorrijtuigen, erfbelasting, schenkbelasting, recht van overgang en
+      belastingen van rechtsverkeer verschuldigd door natuurlijke personen.
+  - number: '11'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel11
+    text: |
+      Kwijtschelding wordt verleend voor:
+
+      a. het gehele op de belastingaanslag openstaande bedrag indien geen vermogen en geen betalingscapaciteit aanwezig is;
+
+      b. het openstaande bedrag van de belastingaanslag dat resteert nadat:
+
+      1°. het aanwezige vermogen is aangewend ter voldoening van de belastingaanslag;
+
+      2°. ten minste 80 percent van de betalingscapaciteit is aangewend;
+
+      een en ander onverminderd het bepaalde in artikel 8 en artikel 18.
+    machine_readable:
+      # Artikel 11 is de top-level orchestrator van de kwijtscheldingsbeschikking. De
+      # formule "aanslag − vermogen − 0.8·betalingscapaciteit" leeft hier en
+      # nergens anders. De inputs vermogen_bedrag en betalingscapaciteit worden via
+      # `source:` opgehaald uit respectievelijk artikel 12 en artikel 13. Lagere
+      # regelingen (medeoverheden-regeling, waterschapsverordening) vullen via
+      # `open_terms` op die artikelen specifieke parameters in (zoals de
+      # verhoging van de financiële-middelen-vrijstelling op art 12) zonder dat
+      # art 11 daar iets van weet.
+      execution:
+        produces:
+          legal_character: BESCHIKKING
+          decision_type: TOEKENNING
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          # Inkomens-keten — doorgegeven naar art 13 via source-resolution
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: netto_besteedbaar_inkomen_partner_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: extra_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          # Vermogen-keten — doorgegeven naar art 12 via source-resolution
+          - name: inboedel_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Het deel van de inboedel-waarde dat door de ontvanger als bovenmatig is
+              beoordeeld (art 12 lid 2 onderdeel a). Doorgegeven aan art 12.
+          - name: auto_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_onmisbaar
+            type: boolean
+            required: true
+          - name: onroerend_goed_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: andere_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: hoger_bevoorrechte_schulden
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: liquide_middelen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          # Uitgaven-componenten voor de art 12 d financiele-middelen-vrijstelling
+          # (b/c/g uit art 15 — via source-resolution doorgegeven)
+          - name: bruto_woonlasten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: huursubsidie_ontvangen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: premies_ziektekosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: kindgebonden_budget_tekort_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: is_geboren_voor_1935
+            type: boolean
+            required: true
+            description: |
+              True indien de belastingschuldige op of voor 31-12-1934 is geboren (op 31-12-1999
+              65 jaar of ouder). Doorgegeven aan art 12 voor de aanvullende vrijstelling van
+              EUR 3.350 op grond van lid 2 onderdeel f. Caller moet dit expliciet zetten — een
+              krimpend cohort 90+'ers waarvoor het overgangsrecht nog geldt. Voor de meeste
+              callers: false.
+          - name: is_partner_geboren_voor_1935
+            type: boolean
+            required: true
+            description: |
+              True indien de echtgenoot ook op of voor 31-12-1934 is geboren. Lid 2 onderdeel f
+              werkt "per persoon" — bij twee qualificerende echtgenoten dubbelt de EUR 3.350.
+              Voor de meeste callers: false.
+          # Aanslag waarvoor kwijtschelding wordt verzocht
+          - name: aanslagbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          # Art 16 (kostennorm) parameters — doorgegeven via source-keten naar art 12/13/16.
+          # Voor de meeste federal-only callers: alle vier hieronder default-leeg.
+          - name: is_kostendeler
+            type: boolean
+            required: true
+            description: Pw art 22a kostendeler-flag (zie art 16 lid 2 b/d). Default false.
+          - name: kostendelersnorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Pw art 22a-bedrag wanneer is_kostendeler=true. Default 0.
+          - name: woont_buiten_nederland
+            type: boolean
+            required: true
+            description: Art 16 lid 4 woonlandbeginsel — default false.
+          - name: woonland_factor
+            type: number
+            required: true
+            description: Aanpassingsfactor woonlandbeginsel (art 16 lid 4). Default 1.0.
+          # Art 15 (uitgaven) overige parameters — vereist door art 12's source naar art 15
+          # voor gemiddelde_uitgaven_b_c_g_maand. Engine evalueert eager alle art-15 outputs
+          # ook al gebruikt art 12 alleen b/c/g, dus a/d/e/f/h moeten meereizen.
+          - name: betalingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: betaalde_alimentatie_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: aflossingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: kostgangerskosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: overige_noodzakelijke_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+        input:
+          - name: betalingscapaciteit
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Betalingscapaciteit — gesourced van URI artikel 13 (positief verschil tussen
+              netto-besteedbaar inkomen en kosten van bestaan, over 12 maanden vanaf het verzoek).
+            source:
+              output: betalingscapaciteit
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                gemeente_code: $gemeente_code
+                netto_besteedbaar_inkomen_maand: $netto_besteedbaar_inkomen_maand
+                netto_besteedbaar_inkomen_partner_maand: $netto_besteedbaar_inkomen_partner_maand
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                extra_uitgaven_maand: $extra_uitgaven_maand
+                is_kostendeler: $is_kostendeler
+                kostendelersnorm_bedrag: $kostendelersnorm_bedrag
+                woont_buiten_nederland: $woont_buiten_nederland
+                woonland_factor: $woonland_factor
+          - name: vermogen_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Vermogen — gesourced van URI artikel 12 (waarde in het economische verkeer
+              van de bezittingen, verminderd met hoger-bevoorrechte schulden, met de wettelijke
+              vrijstellingen). De `verhoging_financiele_middelen_vrijstelling` is een open_term op
+              art 12 die door de waterschapsverordening (HHNK Kwijtscheldingsregeling art 4) wordt
+              ingevuld via `implements:` — daarom hoeft art 11 die niet expliciet door te geven.
+            source:
+              output: vermogen_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                gemeente_code: $gemeente_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                inboedel_waarde: $inboedel_waarde
+                auto_waarde: $auto_waarde
+                auto_onmisbaar: $auto_onmisbaar
+                onroerend_goed_waarde: $onroerend_goed_waarde
+                andere_bezittingen: $andere_bezittingen
+                hoger_bevoorrechte_schulden: $hoger_bevoorrechte_schulden
+                liquide_middelen: $liquide_middelen
+                bruto_woonlasten_maand: $bruto_woonlasten_maand
+                huursubsidie_ontvangen_maand: $huursubsidie_ontvangen_maand
+                premies_ziektekosten_maand: $premies_ziektekosten_maand
+                kindgebonden_budget_tekort_maand: $kindgebonden_budget_tekort_maand
+                is_geboren_voor_1935: $is_geboren_voor_1935
+                is_partner_geboren_voor_1935: $is_partner_geboren_voor_1935
+                is_kostendeler: $is_kostendeler
+                kostendelersnorm_bedrag: $kostendelersnorm_bedrag
+                woont_buiten_nederland: $woont_buiten_nederland
+                woonland_factor: $woonland_factor
+                betalingen_belastingschulden_maand: $betalingen_belastingschulden_maand
+                betaalde_alimentatie_maand: $betaalde_alimentatie_maand
+                aflossingen_belastingschulden_maand: $aflossingen_belastingschulden_maand
+                kostgangerskosten_maand: $kostgangerskosten_maand
+                overige_noodzakelijke_uitgaven_maand: $overige_noodzakelijke_uitgaven_maand
+        output:
+          - name: aanwendbare_betalingscapaciteit
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: 80% van de betalingscapaciteit (art 11 onderdeel b sub 2°).
+          - name: hoogte_kwijtschelding
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Het kwijtgescholden bedrag, ten hoogste de aanslag, ten minste 0.
+          - name: kan_kwijtschelding_worden_verleend
+            type: boolean
+            description: True indien er na aanwending van vermogen en 80% van de betalingscapaciteit
+              nog een resterend bedrag is om kwijt te schelden.
+        actions:
+          - output: aanwendbare_betalingscapaciteit
+            value:
+              operation: MULTIPLY
+              values:
+                - 0.8
+                - $betalingscapaciteit
+          - output: hoogte_kwijtschelding
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - operation: SUBTRACT
+                      values:
+                        - $aanslagbedrag
+                        - $vermogen_bedrag
+                    - $aanwendbare_betalingscapaciteit
+          - output: kan_kwijtschelding_worden_verleend
+            value:
+              operation: GREATER_THAN
+              subject: $hoogte_kwijtschelding
+              value: 0
+      untranslatables:
+        - construct: |
+            "Onverminderd het bepaalde in artikel 8 en artikel 18" — slotzin van artikel 11
+          reason: |
+            Art 8 bevat lex-specialis-uitsluitingen voor specifieke belastingsoorten en art 18
+            sluit kwijtschelding uit als binnen 1-2 jaar verbetering verwacht wordt. Beide zijn
+            procedurele/discretionaire gates die niet zonder verlies in de hoogte-formule te
+            vangen zijn; ze blokkeren of beperken de kwijtschelding op aparte grondslagen.
+            Caller moet art 8 / art 18 separaat raadplegen voordat hij op art 11 vertrouwt.
+          accepted: true
+  - number: '12'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel12
+    text: |
+      1. Onder vermogen als bedoeld in artikel 11 wordt verstaan de waarde in het economische verkeer van de bezittingen van
+      de belastingschuldige en van zijn echtgenoot, bedoeld in artikel 3 van de Participatiewet, verminderd met de schulden
+      van de belastingschuldige en deze persoon die hoger bevoorrecht zijn dan de rijksbelastingen.
+
+      2. Onder bezittingen wordt niet begrepen:
+
+      a. de inboedel voor zover deze niet bovenmatig is;
+
+      b. rechten op kapitaalsuitkeringen of prestaties uit levensverzekering, uitsluitend bestaande uit een kapitaaluitkering
+      bij overlijden van de belastingschuldige of zijn echtgenoot, mits deze kapitaaluitkering is bestemd voor de verzorging
+      van de uitvaart van de belastingschuldige of zijn echtgenoot, dan wel op prestaties in natura ter zake van de
+      verzorging van een uitvaart van de belastingschuldige of zijn echtgenoot;
+
+      c. een auto die op het moment van het verzoek een waarde heeft van € 3.350 of minder; een auto met een waarde van meer
+      dan € 3.350 wordt niet als vermogen beschouwd indien jegens de ontvanger aannemelijk kan worden gemaakt dat die auto
+      absoluut onmisbaar is voor de uitoefening van een beroep dan wel absoluut onmisbaar is in verband met invaliditeit;
+
+      d. het totale bedrag aan financiële middelen, andere dan de onder f bedoelde, voor zover dat bedrag de ingevolge
+      artikel 16 in aanmerking te nemen kosten van bestaan vermeerderd met een bedrag ter grootte van het per maand
+      gemiddelde bedrag van de uitgaven bedoeld in artikel 15, eerste lid, onderdelen b, c en g, niet te boven gaat, met dien
+      verstande dat geen rekening wordt gehouden met de in die onderdelen bedoelde vermindering met ontvangen huurtoeslag of
+      woonkostentoeslag, zorgtoeslag, onderscheidenlijk kindgebonden budget;
+
+      e. het bedrag op een bankrekening dat in het kader van de Wet studiefinanciering 2000 of de Wet tegemoetkoming
+      onderwijsbijdrage en schoolkosten is verkregen in de vorm van leningen;
+
+      f. een bedrag van € 3.350 aan financiële middelen per persoon voor personen die op 31 december 1999 de leeftijd van 65
+      jaar hebben bereikt;
+
+      g. de ingevolge een levensloopregeling opgebouwde voorziening;
+
+      h. een oudedagsvoorziening in de vorm van een levens- of spaarverzekering of lijfrente voor zover deze niet bovenmatig
+      is.
+
+      3. Onder waarde, bedoeld in het tweede lid, onderdeel c, wordt verstaan de prijs die de autohandel bereid is te betalen
+      bij inkoop zonder gelijktijdige verkoop van een andere auto.
+
+      4. Indien de uitgaven, bedoeld in artikel 15, eerste lid, onderdelen b en c, verschuldigd zijn over een termijn van
+      langer dan een maand wordt in plaats van het per maand gemiddelde bedrag in aanmerking genomen het deel van het
+      termijnbedrag voor zover dat, gelet op de vervaldatum van de termijnbetaling, op het moment van het verzoek om
+      kwijtschelding redelijkerwijs kan worden aangemerkt als reservering voor die termijnbetaling.
+    machine_readable:
+      # Artikel 12 definieert wat "vermogen" is: bezittingen − bevoorrechte schulden, met
+      # een lijst uitzonderingen (lid 2 onderdelen a–h). De financiele-middelen-vrijstelling
+      # in onderdeel d verwijst expliciet naar artikel 16 (kosten van bestaan) plus de
+      # "uitgaven onderdelen b, c en g" uit artikel 15. Vandaar de source-link naar art 16
+      # voor `kostennorm_bedrag` en de open_term `verhoging_financiele_middelen_vrijstelling`
+      # die door een waterschapsverordening kan worden ingevuld (HHNK art 4 → €2000/€1800/€1500).
+      definitions:
+        drempelwaarde_auto:
+          description: Drempelwaarde (eurocent) waarboven een auto als vermogen wordt beschouwd, artikel 12 tweede
+            lid onderdeel c. Per regelingswijziging Stcrt. 2024 verhoogd van EUR 2269 (oorspronkelijk f 5000) naar
+            EUR 3350 = 335000 eurocent.
+          value: 335000
+        vrijstelling_65plus_bedrag:
+          description: |
+            Aanvullende vrijstelling (eurocent) op de financiele middelen voor personen die op 31
+            december 1999 de leeftijd van 65 jaar hebben bereikt (art 12 lid 2 onderdeel f). EUR
+            3.350 = 335000 eurocent. Geldt per persoon en wordt toegepast bovenop onderdeel d
+            (kostennorm + gemiddelde uitgaven b/c/g). Historisch overgangsrecht uit 2000 — alleen
+            van toepassing voor belastingschuldigen geboren op of voor 31 december 1934.
+          value: 335000
+      open_terms:
+        - id: verhoging_financiele_middelen_vrijstelling
+          description: |
+            Verhoging (eurocent) van de financiele-middelen-vrijstelling bovenop kostennorm en
+            gemiddelde maand-uitgaven. Op grond van artikel 4 Regeling kwijtschelding belastingen
+            medeoverheden mag een waterschapsverordening, gemeentelijke verordening of provinciale
+            verordening dit bedrag verhogen. HHNK Kwijtscheldingsregeling art 4 vult dit in via
+            `implements:` (€2000 echtgenoten / €1800 alleenstaande ouder / €1500 alleenstaande).
+          type: amount
+          required: false
+          delegated_to: provincie, gemeente of waterschap
+          delegation_type: WATERSCHAPS_VERORDENING
+          legal_basis: artikel 4 Regeling kwijtschelding belastingen medeoverheden
+          default:
+            actions:
+              - output: verhoging_financiele_middelen_vrijstelling
+                value: 0
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: inboedel_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: |
+              Inboedel-waarde die als vermogen telt (lid 2 onderdeel a). SEMANTISCH VERANDERD:
+              sinds de regelingswijziging is de oude EUR 2269-drempel vervallen en is het criterium
+              "voor zover de inboedel niet bovenmatig is" — een open begrip. Caller dient hier alleen
+              het deel van de inboedel-waarde aan te leveren dat door de ontvanger als bovenmatig
+              is beoordeeld; standaard inboedel telt niet mee. Parameter-naam behouden voor backward
+              compatibility met callers (HHNK-leidraad 2026 art 26).
+          - name: auto_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: auto_onmisbaar
+            type: boolean
+            required: true
+          - name: onroerend_goed_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: andere_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: hoger_bevoorrechte_schulden
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: liquide_middelen
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: levensloopvoorziening_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: |
+              Waarde van een ingevolge een levensloopregeling opgebouwde voorziening (lid 2
+              onderdeel g). Per wet integraal vrijgesteld — niet meegenomen in totaal_bezittingen
+              en niet in andere actions. Parameter wordt geaccepteerd voor audit-traceability
+              (callers kunnen de hoeveelheid vastleggen) maar heeft geen invloed op vermogen_bedrag.
+              Default 0.
+          - name: oudedagsvoorziening_waarde
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: |
+              Waarde van een oudedagsvoorziening in de vorm van een levens- of spaarverzekering
+              of lijfrente, voor zover niet bovenmatig (lid 2 onderdeel h). Per wet integraal
+              vrijgesteld zolang niet bovenmatig — caller bepaalt zelf de "niet bovenmatig"-grens.
+              Niet meegenomen in totaal_bezittingen, niet in andere actions. Parameter wordt
+              geaccepteerd voor audit-traceability maar heeft geen invloed op vermogen_bedrag.
+              Default 0.
+          - name: is_geboren_voor_1935
+            type: boolean
+            required: true
+            description: |
+              True indien de belastingschuldige op of voor 31 december 1934 is geboren (op
+              31 december 1999 65 jaar of ouder). Activeert de aanvullende vrijstelling van
+              EUR 3.350 op grond van art 12 lid 2 onderdeel f, bovenop onderdeel d.
+              Historisch overgangsrecht — alleen relevant voor een krimpend cohort 90+'ers.
+              Voor de meeste callers: false.
+          - name: is_partner_geboren_voor_1935
+            type: boolean
+            required: true
+            description: |
+              True indien de echtgenoot van de belastingschuldige op of voor 31-12-1934 is
+              geboren. Lid 2 onderdeel f spreekt expliciet "per persoon" — bij echtgenoten
+              waarvan beiden voor 1935 geboren zijn dubbelt de EUR 3.350-vrijstelling. Voor
+              de meeste callers: false.
+          # Onderstaande parameters zijn nodig om gemiddelde_uitgaven_b_c_g_maand uit art 15 te
+          # source'n; ze worden alleen via source-forwarding doorgegeven.
+          - name: bruto_woonlasten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: huursubsidie_ontvangen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: premies_ziektekosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: kindgebonden_budget_tekort_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          # Forwarding-parameters voor art 16 (kostennorm-pad). Niet gebruikt in art 12 zelf;
+          # alleen meegenomen om door te geven aan art 16 via de kostennorm_bedrag-source.
+          - name: is_kostendeler
+            type: boolean
+            required: true
+          - name: kostendelersnorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: woont_buiten_nederland
+            type: boolean
+            required: true
+          - name: woonland_factor
+            type: number
+            required: true
+          # Forwarding-parameters voor art 15 (uitgaven a/d/e/f/h). Engine evalueert eager
+          # alle art-15 outputs, ook al sourced art 12 alleen gemiddelde_uitgaven_b_c_g_maand.
+          - name: betalingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: betaalde_alimentatie_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: aflossingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: kostgangerskosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: overige_noodzakelijke_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+        input:
+          - name: kostennorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Kosten van bestaan (90% bijstandsnorm) — gesourced van URI artikel 16.
+            source:
+              output: kostennorm_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                gemeente_code: $gemeente_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                is_kostendeler: $is_kostendeler
+                kostendelersnorm_bedrag: $kostendelersnorm_bedrag
+                woont_buiten_nederland: $woont_buiten_nederland
+                woonland_factor: $woonland_factor
+          - name: gemiddelde_uitgaven_b_c_g_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |
+              Gemiddelde maand-uitgaven voor onderdelen b (woonlasten in aanmerking), c
+              (ziektekostenpremies) en g (kindgebonden-budget-tekort) — gesourced van URI artikel
+              15. Zie aldaar voor de bruto/netto-caveat (lid 2 onderdeel d schrijft strikt-bruto
+              voor; default-resolution is netto).
+            source:
+              output: gemiddelde_uitgaven_b_c_g_maand
+              parameters:
+                bruto_woonlasten_maand: $bruto_woonlasten_maand
+                huursubsidie_ontvangen_maand: $huursubsidie_ontvangen_maand
+                premies_ziektekosten_maand: $premies_ziektekosten_maand
+                kindgebonden_budget_tekort_maand: $kindgebonden_budget_tekort_maand
+                betalingen_belastingschulden_maand: $betalingen_belastingschulden_maand
+                betaalde_alimentatie_maand: $betaalde_alimentatie_maand
+                aflossingen_belastingschulden_maand: $aflossingen_belastingschulden_maand
+                kostgangerskosten_maand: $kostgangerskosten_maand
+                overige_noodzakelijke_uitgaven_maand: $overige_noodzakelijke_uitgaven_maand
+        output:
+          - name: inboedel_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: auto_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: financiele_middelen_vrijstelling
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: liquide_als_vermogen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: totaal_bezittingen
+            type: amount
+            type_spec:
+              unit: eurocent
+          - name: vermogen_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: inboedel_als_vermogen
+            value: $inboedel_waarde
+          - output: auto_als_vermogen
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: AND
+                    conditions:
+                      - operation: GREATER_THAN
+                        subject: $auto_waarde
+                        value: $drempelwaarde_auto
+                      - operation: EQUALS
+                        subject: $auto_onmisbaar
+                        value: false
+                  then: $auto_waarde
+              default: 0
+          # Vrijstelling per art 12 lid 2 onderdeel d:
+          #   = kostennorm (art 16) + gemiddelde maand-uitgaven b/c/g (art 15)
+          #     + verhoging (open_term, gevuld door waterschapsverordening art 4)
+          #     + vrijstelling_65plus (onderdeel f — per persoon EUR 3.350, dus
+          #       max 2× wanneer beide echtgenoten op 31-12-1999 65 jaar of ouder waren)
+          - output: financiele_middelen_vrijstelling
+            value:
+              operation: ADD
+              values:
+                - $kostennorm_bedrag
+                - operation: ADD
+                  values:
+                    - $gemiddelde_uitgaven_b_c_g_maand
+                    - operation: ADD
+                      values:
+                        - $verhoging_financiele_middelen_vrijstelling
+                        - operation: ADD
+                          values:
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $is_geboren_voor_1935
+                                    value: true
+                                  then: $vrijstelling_65plus_bedrag
+                              default: 0
+                            - operation: IF
+                              cases:
+                                - when:
+                                    operation: EQUALS
+                                    subject: $is_partner_geboren_voor_1935
+                                    value: true
+                                  then: $vrijstelling_65plus_bedrag
+                              default: 0
+          - output: liquide_als_vermogen
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $liquide_middelen
+                    - $financiele_middelen_vrijstelling
+          - output: totaal_bezittingen
+            value:
+              operation: ADD
+              values:
+                - $inboedel_als_vermogen
+                - operation: ADD
+                  values:
+                    - $auto_als_vermogen
+                    - operation: ADD
+                      values:
+                        - $onroerend_goed_waarde
+                        - operation: ADD
+                          values:
+                            - $liquide_als_vermogen
+                            - $andere_bezittingen
+          - output: vermogen_bedrag
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $totaal_bezittingen
+                    - $hoger_bevoorrechte_schulden
+  - number: '13'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel13
+    text: |
+      1. Onder betalingscapaciteit, bedoeld in artikel 11, wordt verstaan het positieve verschil in de periode van 12 maanden
+      vanaf de datum waarop het verzoek om kwijtschelding is ingediend van het gemiddeld per maand te verwachten
+      netto-besteedbare inkomen van de belastingschuldige in die periode en de gemiddeld per maand te verwachten kosten van
+      bestaan in die periode.
+
+      2. Het netto-besteedbare inkomen van de belastingschuldige, bedoeld in het eerste lid, wordt vermeerderd met het
+      gemiddeld per maand te verwachten netto-besteedbare inkomen in de periode van twaalf maanden vanaf de datum waarop het
+      verzoek om kwijtschelding is ingediend van zijn echtgenoot, bedoeld in artikel 3 van de Participatiewet.
+    machine_readable:
+      # Artikel 13 definieert betalingscapaciteit als positief verschil tussen netto-besteedbaar
+      # inkomen (gedefinieerd in art 14, met aftrek van uitgaven uit art 15) en kosten van bestaan
+      # (gedefinieerd in art 16). De `kostennorm_bedrag` wordt via `source:` opgehaald uit art 16,
+      # waar de Regeling kwijtschelding medeoverheden art 2 via een open_term het percentage
+      # (default 90%, max 100%) kan ophogen.
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: netto_besteedbaar_inkomen_partner_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: huishoudtype
+            type: string
+            required: true
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+          - name: extra_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Aanvullende maandelijkse uitgaven die niet al zijn verwerkt in netto_besteedbaar_inkomen,
+              maar wel op grond van artikel 15 (eventueel via een verordening zoals artikel 3 van HHNK
+              Kwijtscheldingsregeling + artikel 28 lid 3 URI 1990 voor netto kinderopvangkosten) in aanmerking worden
+              genomen. Verlaagt betalingscapaciteit. Default 0.
+          # Forwarding-parameters voor art 16 (kostennorm-pad). Niet gebruikt in art 13 zelf.
+          - name: is_kostendeler
+            type: boolean
+            required: true
+          - name: kostendelersnorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+          - name: woont_buiten_nederland
+            type: boolean
+            required: true
+          - name: woonland_factor
+            type: number
+            required: true
+        input:
+          - name: kostennorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            source:
+              output: kostennorm_bedrag
+              parameters:
+                bsn: $bsn
+                waterschap_code: $waterschap_code
+                gemeente_code: $gemeente_code
+                huishoudtype: $huishoudtype
+                is_pensioengerechtigd: $is_pensioengerechtigd
+                is_kostendeler: $is_kostendeler
+                kostendelersnorm_bedrag: $kostendelersnorm_bedrag
+                woont_buiten_nederland: $woont_buiten_nederland
+                woonland_factor: $woonland_factor
+        output:
+          - name: betalingscapaciteit
+            type: amount
+            type_spec:
+              unit: eurocent
+        actions:
+          - output: betalingscapaciteit
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: MULTIPLY
+                  values:
+                    - 12
+                    - operation: SUBTRACT
+                      values:
+                        - operation: SUBTRACT
+                          values:
+                            - operation: ADD
+                              values:
+                                - $netto_besteedbaar_inkomen_maand
+                                - $netto_besteedbaar_inkomen_partner_maand
+                            - $extra_uitgaven_maand
+                        - $kostennorm_bedrag
+  - number: '14'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel14
+    text: |
+      1. Onder het netto-besteedbare inkomen, bedoeld in artikel 13, wordt verstaan het met de in artikel 15, eerste lid,
+      vermelde uitgaven verminderde gezamenlijke bedrag van:
+
+      a. de aan inhouding van loonbelasting/premie voor de volksverzekeringen onderworpen inkomsten verminderd met de
+      wettelijke inhoudingen, zonder rekening te houden met de daarbij eventueel in mindering gebrachte
+      jonggehandicaptenkorting, bedoeld in hoofdstuk 8 van de Wet inkomstenbelasting 2001, en de ingehouden pensioenpremies,
+      bijdragen ingevolge een levensloopregeling en premies ziektekostenverzekering;
+
+      b. uitkeringen voor levensonderhoud ingevolge de artikelen 157, 158 of 404 van Boek 1 van het Burgerlijk Wetboek;
+
+      c. overige inkomsten met uitzondering van:
+
+      1°. de uitkeringen ingevolge de Algemene Kinderbijslagwet;
+
+      2°. [Vervallen;]
+
+      3°. de kinderopvangtoeslag, bedoeld in hoofdstuk 1, afdeling 2, van de Wet kinderopvang en kwaliteitseisen
+      peuterspeelzalen, en de tegemoetkomingen ingevolge de Wet kinderopvang en kwaliteitseisen peuterspeelzalen;
+
+      4°. de premie, bedoeld in artikel 31, tweede lid, onderdeel j, van de Participatiewet, alsmede een daarmee naar aard,
+      strekking en omvang overeenkomende premie;
+
+      5°. de individuele inkomenstoeslag, bedoeld in artikel 36 van de Participatiewet;
+
+      6°. de vergoeding voor de verzorging en opvoeding van een pleegkind in het kader van de Jeugdwet;
+
+      7°. het kindgebonden budget, bedoeld in de Wet op het kindgebonden budget;
+
+      8°. de huurtoeslag, bedoeld in artikel 1, onderdeel e, van de Wet op de huurtoeslag, de krachtens de Participatiewet
+      ontvangen woonkostentoeslag en de zorgtoeslag, bedoeld in artikel 1, onderdeel e, van de Wet op de zorgtoeslag;
+
+      9°. de inkomsten uit arbeid, bedoeld in artikel 31, tweede lid, onderdelen n en r, van de Participatiewet;
+
+      10°. een kostenvergoeding voor het verrichten van vrijwilligerswerk tot ten hoogste de bedragen, genoemd in artikel 2,
+      zesde lid, van de Wet op de loonbelasting 1964.
+
+      2. Tot de inkomsten, bedoeld in het eerste lid, onderdeel c, wordt ook gerekend de voorlopige teruggaaf, bedoeld in
+      artikel 13, tweede lid, van de Algemene wet inzake rijksbelastingen, daaronder begrepen de aanspraak op een zodanige
+      teruggaaf.
+    machine_readable:
+      execution:
+        parameters:
+          - name: loonbelastingplichtig_inkomen_netto_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: true
+            description: Netto inkomen onderworpen aan loonbelasting/premie volksverzekeringen (lid 1
+              onder a), dus bruto minus wettelijke inhoudingen, pensioenpremies en premies
+              ziektekostenverzekering.
+          - name: alimentatie_levensonderhoud_ontvangen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Ontvangen uitkeringen voor levensonderhoud op grond van artikel 157, 158 of 404
+              Boek 1 BW (lid 1 onder b). Default 0.
+          - name: overige_inkomsten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: |
+              Overige inkomsten (lid 1 onder c) na aftrek van de wettelijke uitzonderingen:
+              - 1° Algemene Kinderbijslagwet,
+              - 3° kinderopvangtoeslag (Wet kinderopvang),
+              - 4° premie art 31 lid 2 onder j Participatiewet,
+              - 5° individuele inkomenstoeslag art 36 Pw,
+              - 6° pleegzorg-vergoeding Jeugdwet,
+              - 7° kindgebonden budget,
+              - 8° huurtoeslag/woonkostentoeslag/zorgtoeslag,
+              - 9° inkomsten uit arbeid art 31 lid 2 onder n en r Pw,
+              - 10° vrijwilligersvergoeding tot bedrag art 2 lid 6 Wet LB 1964.
+              Caller dient reeds deze uitzonderingen af te trekken. Default 0.
+              TODO: explicit modellering van onderdelen 3°-10° als aparte parameters.
+          - name: voorlopige_teruggaaf_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Voorlopige teruggaaf IB (lid 2), inclusief de aanspraak op een zodanige
+              teruggaaf. Gemiddeld per maand. Default 0.
+          # Onderstaande parameters worden via source-forwarding doorgegeven aan art 15.
+          # art 14 zelf gebruikt ze niet rechtstreeks; ze zijn nodig om de keten te
+          # voltooien (caller geeft de raw bedragen, art 15 berekent uitgaven_totaal).
+          - name: betalingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: bruto_woonlasten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: huursubsidie_ontvangen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: premies_ziektekosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: betaalde_alimentatie_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: aflossingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: kostgangerskosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: kindgebonden_budget_tekort_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+          - name: overige_noodzakelijke_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+        input:
+          - name: uitgaven_totaal_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Uitgaven per artikel 15 (in aanmerking te nemen uitgaven a t/m h). Caller
+              levert achterliggende bedragen; art 15 berekent het totaal (met netto-woonlastencap).
+            source:
+              output: uitgaven_totaal_maand
+              parameters:
+                betalingen_belastingschulden_maand: $betalingen_belastingschulden_maand
+                bruto_woonlasten_maand: $bruto_woonlasten_maand
+                huursubsidie_ontvangen_maand: $huursubsidie_ontvangen_maand
+                premies_ziektekosten_maand: $premies_ziektekosten_maand
+                betaalde_alimentatie_maand: $betaalde_alimentatie_maand
+                aflossingen_belastingschulden_maand: $aflossingen_belastingschulden_maand
+                kostgangerskosten_maand: $kostgangerskosten_maand
+                kindgebonden_budget_tekort_maand: $kindgebonden_budget_tekort_maand
+                overige_noodzakelijke_uitgaven_maand: $overige_noodzakelijke_uitgaven_maand
+        output:
+          - name: totaal_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Gezamenlijk inkomen (lid 1 onder a+b+c plus lid 2/4 aanvullingen), voor aftrek
+              van uitgaven uit artikel 15.
+          - name: netto_besteedbaar_inkomen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |
+              Netto-besteedbaar inkomen per maand = totaal inkomen minus uitgaven (artikel 15). Dit is
+              de input voor artikel 13 (betalingscapaciteit). Als de caller deze waarde reeds berekend
+              aanlevert aan art 13, fungeert dit artikel als documentatie van de formule.
+        actions:
+          - output: totaal_inkomen_maand
+            value:
+              operation: ADD
+              values:
+                - $loonbelastingplichtig_inkomen_netto_maand
+                - operation: ADD
+                  values:
+                    - $alimentatie_levensonderhoud_ontvangen_maand
+                    - operation: ADD
+                      values:
+                        - $overige_inkomsten_maand
+                        - $voorlopige_teruggaaf_maand
+          - output: netto_besteedbaar_inkomen_maand
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $totaal_inkomen_maand
+                    - $uitgaven_totaal_maand
+      untranslatables:
+        - construct: verordeningsoptie AOW-netto als kostennorm-basis voor pensioengerechtigden
+          reason: |
+            Artikel 3 Regeling kwijtschelding belastingen medeoverheden staat toe dat een verordening
+            voor pensioengerechtigden het netto-ouderdomspensioen in plaats van de bijstandsnorm
+            hanteert; URI art 16 heeft hiervoor de alternatieve definities (netto_ouderdomspensioen_*)
+            maar de keuze welk pad te nemen ligt bij de verordening. Deze configuratie per verordening
+            is niet in het huidige engine-operation-set te representeren zonder dynamic dispatch per
+            waterschap/gemeente/provincie.
+          accepted: true
+  - number: '15'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel15
+    text: |
+      1. Als uitgaven als bedoeld in artikel 14, eerste lid, worden in aanmerking genomen:
+
+      a. betalingen op belastingschulden, met uitzondering van die genoemd in artikel 8, tweede lid, en betalingen op
+      terugvorderingen van tegemoetkomingen als bedoeld in artikel 2, eerste lid, aanhef en onderdeel h, van de Algemene wet
+      inkomensafhankelijke regelingen;
+
+      b. het bedrag van de voor rekening van de belastingschuldige komende nettowoonlasten tot maximaal het bedrag, genoemd
+      in artikel 13, eerste lid, onderdeel a, van de Wet op de huurtoeslag, voorzover dit meer is dan het bedrag dat gelijk
+      is aan de basishuur, genoemd in artikel 16 van die wet, waarbij deze basishuur is gebaseerd op het bedrag, genoemd in
+      artikel 17, tweede lid, van die wet, met in achtneming van een correctie op de basishuur als bedoeld in artikel 1 van
+      de Wet verlaging eigen bijdrage huurtoeslag;
+
+      c. de niet door de werkgever ingehouden premies ziektekostenverzekering, de premie voor een zorgverzekering als
+      bedoeld in artikel 1, onderdeel d, van de Zorgverzekeringswet en de premie voor verzekering ingevolge de Wet
+      langdurige zorg, verminderd met de normpremie, bedoeld in artikel 2 van de Wet op de zorgtoeslag, voor zover reeds
+      begrepen in de bijstandsnorm zoals die voor de belastingschuldige geldt ingevolge artikel 16, en met de krachtens de
+      Wet op de zorgtoeslag ontvangen zorgtoeslag;
+
+      d. betaalde uitkeringen voor levensonderhoud ingevolge de artikelen 157, 158 of 404 van Boek 1 van het Burgerlijk
+      Wetboek;
+
+      e. aflossingen op leningen voor zover die zijn aangewend voor de betaling van belastingschulden, met uitzondering van
+      die genoemd in artikel 8, tweede lid;
+
+      f. de met het houden van kostgangers verbonden kosten tot een totaal van € 15,35 per dag, met dien verstande dat bij
+      de bepaling van het aantal dagen een volle maand op 30 dagen wordt gesteld;
+
+      g. uitgaven voor het levensonderhoud van kinderen, vastgesteld op het verschil tussen het maximale bedrag waarop de
+      belastingschuldige, zijn toetsingsinkomen buiten beschouwing latend, op grond van artikel 2 van de Wet op het
+      kindgebonden budget aanspraak zou kunnen maken en het bedrag van de krachtens die wet te ontvangen kindgebonden
+      budget;
+
+      h. andere uitgaven van de belastingschuldige dan genoemd in dit lid, die naar het oordeel van de ontvanger
+      redelijkerwijs niet buiten beschouwing kunnen worden gelaten bij het vaststellen van het netto-besteedbare inkomen,
+      omdat deze uitgaven door de ontvanger noodzakelijk worden geacht.
+
+      2. Onder betalingen op belastingschulden wordt mede begrepen een betaling ter zake van premie voor de
+      volksverzekeringen en ter zake van de inkomensafhankelijke bijdrage, bedoeld in artikel 41 van de Zorgverzekeringswet.
+
+      3. Onder nettowoonlasten wordt verstaan: de op de belastingschuldige drukkende huurprijs, bedoeld in artikel 5, eerste
+      lid, van de Wet op de huurtoeslag, dan wel hypotheekrente en erfpachtcanon ter zake van een door hem bewoonde woning
+      voor zover deze hem voor gebruik ter beschikking staat, verminderd met de te ontvangen huurtoeslag, bedoeld in artikel
+      1, onderdeel e, van die wet, of met de te ontvangen woonkostentoeslag.
+
+      4. Indien de belastingschuldige zijn woning deelt met een of meer personen op wie de norm, bedoeld in artikel 22a van
+      de Participatiewet, van toepassing is, worden de nettowoonlasten, bedoeld in het eerste lid, onderdeel b, geacht
+      gelijkelijk over ieder van deze personen te zijn verdeeld.
+    machine_readable:
+      definitions:
+        woonlasten_maximum_maand:
+          description: |
+            Bovengrens voor in aanmerking te nemen netto-woonlasten per maand (eurocent). Verwijst
+            naar artikel 13, eerste lid, onderdeel a, van de Wet op de huurtoeslag (de
+            rekenhuur-maxima zoals jaarlijks vastgesteld door de minister van BZK).
+            Waarde 2026: EUR 879,66 = 87966 eurocent.
+          value: 87966
+        woonlasten_drempel_maand:
+          description: |
+            Ondergrens voor in aanmerking te nemen netto-woonlasten per maand (eurocent). Gebaseerd
+            op de basishuur ex artikel 16 Wht (zelf gebaseerd op artikel 17, tweede lid, Wht), met
+            inachtneming van de correctie op de basishuur ex artikel 1 Wet verlaging eigen bijdrage
+            huurtoeslag. Alleen het deel boven deze drempel telt mee.
+            Waarde 2026: EUR 258,15 = 25815 eurocent.
+          value: 25815
+        kostgangers_forfait_per_dag:
+          description: |
+            Forfaitair maximum (eurocent) voor met kostgangers verbonden kosten per dag (lid 1
+            onderdeel f). Per regelingswijziging vervangen door één vast forfait i.p.v. de oude
+            verwijzing naar art 32/34 Uitvoeringsregeling loonbelasting 2001. EUR 15,35 = 1535
+            eurocent. Bij bepaling aantal dagen wordt een volle maand op 30 dagen gesteld.
+
+            REFERENTIEWAARDE — niet rechtstreeks gebruikt in de actions; de caller ziet/levert
+            kostgangerskosten_maand reeds gecapped (≤ 30 × 1535 = 46050 eurocent per maand). Deze
+            definitie staat hier voor caller-side toepassing en documentatie. Een toekomstige
+            refactor kan caller een `aantal_dagen_kostgangers` laten leveren en de cap intern doen.
+          value: 1535
+      execution:
+        parameters:
+          - name: betalingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Betalingen op belastingschulden (onder a), m.u.v. de aanslag waarvoor
+              kwijtschelding wordt gevraagd (art 8 tweede lid). Default 0.
+          - name: bruto_woonlasten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Op belastingschuldige drukkende huurprijs (art 5 Wet op de huurtoeslag) of
+              hypotheekrente + erfpachtcanon t.z.v. een door hem bewoonde woning (lid 3). Default 0.
+          - name: huursubsidie_ontvangen_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Te ontvangen huurtoeslag (art 1 onder e Wht) of woonkostentoeslag (lid 3).
+              Default 0.
+          - name: premies_ziektekosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Niet door werkgever ingehouden premies ziektekostenverzekering, premie Zvw
+              (art 1 onder d) en premie Wlz, na aftrek van de normpremie zorgtoeslag (art 2 Wzt) voor
+              zover reeds in de bijstandsnorm begrepen, en aftrek van ontvangen zorgtoeslag (lid 1
+              onderdeel c). Default 0.
+          - name: betaalde_alimentatie_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Betaalde uitkeringen voor levensonderhoud (art 157, 158 of 404 Boek 1 BW,
+              onder d). Default 0.
+          - name: aflossingen_belastingschulden_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: Aflossingen op leningen aangewend voor betaling van belastingschulden (onder
+              e), m.u.v. de aanslag waarvoor kwijtschelding wordt gevraagd. Default 0.
+          - name: kostgangerskosten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: |
+              Met het houden van kostgangers verbonden kosten (lid 1 onderdeel f), reeds
+              gecapped aan EUR 15,35 per dag (forfait kostgangers_forfait_per_dag, volle maand = 30
+              dagen). Default 0.
+              TODO refactor — caller-input is nu reeds gecapped; zou kunnen verschuiven naar
+              `aantal_dagen_kostgangers` + interne MULTIPLY met forfait.
+          - name: kindgebonden_budget_tekort_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: |
+              Verschil tussen het maximale kindgebonden budget waarop de belastingschuldige (zijn
+              toetsingsinkomen buiten beschouwing latend) op grond van artikel 2 Wet op het
+              kindgebonden budget aanspraak zou kunnen maken, en het bedrag van het krachtens die
+              wet daadwerkelijk te ontvangen kindgebonden budget (lid 1 onderdeel g). Caller berekent
+              dit verschil. Default 0.
+          - name: overige_noodzakelijke_uitgaven_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: |
+              Andere uitgaven die naar het oordeel van de ontvanger redelijkerwijs niet buiten
+              beschouwing kunnen worden gelaten (lid 1 onderdeel h). Discretionaire post — caller
+              levert het door de ontvanger goedgekeurde bedrag. Default 0.
+        output:
+          - name: netto_woonlasten_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Netto-woonlasten = bruto-woonlasten − huursubsidie. Basis voor cap-berekening.
+          - name: woonlasten_in_aanmerking_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |
+              In aanmerking te nemen woonlasten per maand, na toepassing cap: alleen het deel boven
+              de basishuur (art 16 Wht, gecorrigeerd ex art 1 Wet verlaging eigen bijdrage huurtoeslag)
+              en tot maximaal het bedrag van art 13 lid 1 onderdeel a Wht. Niet-negatief.
+              TODO — lid 4 (woonlasten gelijkelijk verdelen bij kostendelers) niet gemodelleerd.
+          - name: gemiddelde_uitgaven_b_c_g_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: |
+              Gemiddelde maand-uitgaven van de onderdelen b (woonlasten in aanmerking), c
+              (ziektekostenpremies) en g (kindgebonden-budget-tekort) — gespecialiseerde output
+              voor URI artikel 12 lid 2 onderdeel d (financiele-middelen-vrijstelling).
+              N.B.: art 12 lid 2 onderdeel d schrijft voor dat hierbij geen rekening wordt gehouden
+              met de verminderingen met huurtoeslag/woonkostentoeslag/zorgtoeslag/kindgebonden
+              budget. Strikt genomen zou hier dus de "bruto"-versie van b/c/g gebruikt moeten
+              worden. Met de huidige parameters is dat niet exact te realiseren — woonlasten
+              gebruikt wel de cap (kan-gevolg) maar de aftrek van huursubsidie gebeurt voor
+              netto_woonlasten_maand. Caller die strikt-bruto wil moet huursubsidie_ontvangen_maand
+              op 0 zetten en de bruto premies_ziektekosten + max kindgebonden budget aanleveren.
+              TODO — bruto/netto-onderscheid expliciet maken via aparte parameters.
+          - name: uitgaven_totaal_maand
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Totaal van in aanmerking te nemen uitgaven (som a t/m h), input voor art 14.
+        actions:
+          - output: netto_woonlasten_maand
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - $bruto_woonlasten_maand
+                    - $huursubsidie_ontvangen_maand
+          - output: woonlasten_in_aanmerking_maand
+            value:
+              operation: MAX
+              values:
+                - 0
+                - operation: SUBTRACT
+                  values:
+                    - operation: MIN
+                      values:
+                        - $netto_woonlasten_maand
+                        - $woonlasten_maximum_maand
+                    - $woonlasten_drempel_maand
+          - output: gemiddelde_uitgaven_b_c_g_maand
+            value:
+              operation: ADD
+              values:
+                - $woonlasten_in_aanmerking_maand
+                - operation: ADD
+                  values:
+                    - $premies_ziektekosten_maand
+                    - $kindgebonden_budget_tekort_maand
+          - output: uitgaven_totaal_maand
+            value:
+              operation: ADD
+              values:
+                - $betalingen_belastingschulden_maand
+                - operation: ADD
+                  values:
+                    - $woonlasten_in_aanmerking_maand
+                    - operation: ADD
+                      values:
+                        - $premies_ziektekosten_maand
+                        - operation: ADD
+                          values:
+                            - $betaalde_alimentatie_maand
+                            - operation: ADD
+                              values:
+                                - $aflossingen_belastingschulden_maand
+                                - operation: ADD
+                                  values:
+                                    - $kostgangerskosten_maand
+                                    - operation: ADD
+                                      values:
+                                        - $kindgebonden_budget_tekort_maand
+                                        - $overige_noodzakelijke_uitgaven_maand
+  - number: '16'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel16
+    text: |
+      1. De kosten van bestaan, bedoeld in artikel 13, eerste lid, bedragen voor een belastingschuldige die wordt aangemerkt
+      als:
+
+      a. een echtgenoot als bedoeld in artikel 3 van de Participatiewet: 90 percent van de bijstandsnorm, bedoeld in artikel
+      21, onderdeel b, van die wet;
+
+      b. een alleenstaande of een alleenstaande ouder als bedoeld in artikel 4, eerste lid, onderdeel a, onderscheidenlijk
+      onderdeel b, van de Participatiewet: 90 percent van de bijstandsnorm, bedoeld in artikel 21, onderdeel a, van die wet.
+
+      2. De kosten van bestaan, bedoeld in artikel 13, eerste lid, bedragen, in afwijking van het eerste lid, voor een
+      belastingschuldige die wordt aangemerkt als:
+
+      a. een echtgenoot als bedoeld in artikel 3 van de Participatiewet, die, afgezien van zijn echtgenoot, niet met een of
+      meer andere personen op wie de kostendelersnorm, bedoeld in artikel 22a van die wet, van toepassing is, in dezelfde
+      woning zijn hoofdverblijf heeft en:
+
+      1°. die tezamen met zijn echtgenoot de pensioengerechtigde leeftijd, bedoeld in artikel 7a, eerste lid, van de
+      Algemene Ouderdomswet, heeft bereikt: 90 percent van de norm, bedoeld in artikel 22, onderdeel b, van de
+      Participatiewet;
+
+      2°. die alleen of waarvan de echtgenoot de pensioengerechtigde leeftijd, bedoeld in artikel 7a, eerste lid, van de
+      Algemene Ouderdomswet, heeft bereikt: 90 percent van de norm, bedoeld in artikel 22, onderdeel c, van de
+      Participatiewet;
+
+      b. een echtgenoot als bedoeld in artikel 3 van de Participatiewet, die zijn woning deelt met zijn echtgenoot en met
+      een of meer andere personen op wie de norm, bedoeld in artikel 22a van die wet, van toepassing is: 90 percent van de
+      som van de norm, bedoeld in artikel 22a, eerste lid, van die wet, die voor ieder van de echtgenoten afzonderlijk
+      geldt;
+
+      c. een alleenstaande of een alleenstaande ouder als bedoeld in artikel 4, eerste lid, onderdeel a, onderscheidenlijk
+      onderdeel b, van de Participatiewet, die niet met een of meer personen op wie de norm, bedoeld in artikel 22a van die
+      wet, van toepassing is, in dezelfde woning zijn hoofdverblijf heeft en die de pensioengerechtigde leeftijd, bedoeld in
+      artikel 7a, eerste lid, van de Algemene Ouderdomswet, heeft bereikt: 90 percent van de norm, bedoeld in artikel 22,
+      onderdeel a, van de Participatiewet;
+
+      d. een alleenstaande of een alleenstaande ouder als bedoeld in artikel 4, eerste lid, onderdeel a, onderscheidenlijk
+      onderdeel b, van de Participatiewet, die zijn woning deelt met een of meer personen op wie de norm, bedoeld in artikel
+      22a van die wet, van toepassing is: 90 percent van de norm, bedoeld in artikel 22a, eerste lid, van die wet.
+
+      3. De kosten van bestaan, bedoeld in artikel 13, eerste lid, bedragen, in afwijking van de vorige leden, voor de
+      belastingschuldige die ter verzorging of verpleging in een daartoe bestemde inrichting is opgenomen: de prijs die is
+      verschuldigd voor verzorging dan wel verpleging, verhoogd met twee derden van de op hem van toepassing zijnde
+      bijstandsnorm, genoemd in artikel 23 van de Participatiewet.
+
+      4. De kosten van bestaan, bedoeld in artikel 13, eerste lid, worden voor de belastingschuldige die buiten Nederland
+      woont aangepast met het percentage dat in artikel 1 van de Regeling woonlandbeginsel in de sociale zekerheid 2012 en
+      de bijlage bij die regeling is opgenomen voor het woonland van de belastingschuldige.
+    machine_readable:
+      definitions:
+        bijstandsnorm_alleenstaand:
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor een alleenstaande
+            van 21 jaar of ouder en jonger dan de pensioengerechtigde leeftijd.
+            Normatieve bron is Participatiewet art 21 onderdeel a; URI zou dit via
+            `source:` moeten opvragen, maar doet dat niet zodat URI op 2026-waarden
+            kan draaien terwijl Pw-YAML nog 2022-waarden bevat. Bedrag per 1 januari
+            2026 inclusief 5% vakantie-uitkering. Kandidaat voor source-refactor
+            zodra Participatiewet geactualiseerd is.
+          value: 140150
+        bijstandsnorm_alleenstaande_ouder:
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor een alleenstaande
+            ouder. Sinds de Participatiewet-hervorming per 1 januari 2015 is de
+            afzonderlijke alleenstaande-ouder-norm afgeschaft; de aanvullende
+            bijstand voor alleenstaande ouders is vervangen door het kindgebonden
+            budget. De norm is daarom gelijk aan die van de alleenstaande
+            (Participatiewet art 21 onderdeel a). Normatieve bron Pw; hardcoded
+            hier voor dezelfde 2026-snapshot-reden als bijstandsnorm_alleenstaand.
+          value: 140150
+        bijstandsnorm_echtgenoten:
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor gehuwden/
+            samenwonenden waarvan beide echtgenoten 21 jaar of ouder zijn en jonger
+            dan de pensioengerechtigde leeftijd. Normatieve bron Participatiewet
+            art 21 onderdeel b; hardcoded hier voor 2026. Bedrag inclusief 5%
+            vakantie-uitkering. Kandidaat voor source-refactor.
+          value: 200213
+        bijstandsnorm_aow_alleenstaand:
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor een alleenstaande
+            die de pensioengerechtigde leeftijd heeft bereikt. Normatieve bron
+            Participatiewet art 22 onderdeel a; hardcoded hier voor 2026.
+            Kandidaat voor source-refactor.
+          value: 156469
+        bijstandsnorm_aow_echtgenoten:
+          description: >-
+            SHORTCUT — bijstandsnorm (eurocent per maand) voor gehuwden/
+            samenwonenden waarvan ten minste een echtgenoot de pensioengerechtigde
+            leeftijd heeft bereikt. Normatieve bron Participatiewet art 22 onderdeel
+            b; hardcoded hier voor 2026. Kandidaat voor source-refactor.
+          value: 214416
+        netto_ouderdomspensioen_alleenstaand:
+          description: >-
+            SHORTCUT — netto-ouderdomspensioen (eurocent per maand) voor een
+            ongehuwde pensioengerechtigde, AOW art 9 lid 1 onderdeel a. De
+            normatieve *formule* staat in Regeling kwijtschelding belastingen
+            medeoverheden art 3 lid 3 (bruto AOW − loonbelasting − premies
+            volksverzekeringen − Zvw-bijdrage art 41). URI slaat die formule hier
+            over en hardcodet de uitkomst: bruto-bedrag 2026 per SVB-publicatie
+            Staatscourant 2025 inclusief 5% vakantie-uitkering; netto-omrekening op
+            basis van tarieven eerste schijf loonbelasting 2026. Kandidaat voor
+            source-refactor naar Regeling medeoverheden art 3.
+          value: 155815
+        netto_ouderdomspensioen_echtgenoten:
+          description: >-
+            SHORTCUT — netto-ouderdomspensioen (eurocent per maand, gezamenlijk)
+            voor twee gehuwde pensioengerechtigden (tweemaal het netto-AOW-bedrag
+            voor een gehuwde pensioengerechtigde per AOW art 9 lid 1 onderdeel b).
+            Conform Regeling kwijtschelding belastingen medeoverheden art 3 lid 2
+            onderdeel a. Bedrag per 1 januari 2026 per SVB-publicatie inclusief 5%
+            vakantie-uitkering. Net als _alleenstaand: hardcoded uitkomst van de
+            formule die in Regeling medeoverheden art 3 leeft; kandidaat voor
+            source-refactor.
+          value: 213540
+      open_terms:
+        - id: kostennorm_percentage
+          description: Percentage van de bijstandsnorm dat als kosten van bestaan geldt. Bij ministeriele regeling (Regeling
+            kwijtschelding belastingen medeoverheden, artikel 2) kan een verordening van een medeoverheid dit verhogen tot
+            maximaal 100 procent.
+          type: number
+          required: false
+          delegated_to: provincie, gemeente of waterschap
+          delegation_type: WATERSCHAPS_VERORDENING
+          legal_basis: artikel 2 Regeling kwijtschelding belastingen medeoverheden
+          default:
+            actions:
+              - output: kostennorm_percentage
+                value: 0.9
+      execution:
+        parameters:
+          - name: bsn
+            type: string
+            required: true
+          - name: waterschap_code
+            type: string
+            required: false
+          - name: gemeente_code
+            type: string
+            required: false
+          - name: huishoudtype
+            type: string
+            required: true
+            description: |
+              Huishoudtype: 'alleenstaand', 'alleenstaande_ouder', of 'echtgenoten'.
+              Wordt in lid 1 gebruikt om de Pw art 21-norm te kiezen. In lid 2 (gedeelde
+              woning met andere personen op wie art 22a Pw van toepassing is) wordt het
+              huishoudtype overschreven door is_kostendeler + kostendelersnorm_bedrag.
+          - name: is_pensioengerechtigd
+            type: boolean
+            required: true
+            description: |
+              True indien de belastingschuldige de pensioengerechtigde leeftijd ex artikel
+              7a, eerste lid, AOW heeft bereikt (lid 2 onderdelen a, c). Parameter-naam
+              behouden voor backward compatibility met callers; semantisch is "AOW-leeftijd
+              bereikt" bedoeld, niet meer "65 jaar of ouder" zoals in de pre-2015 tekst.
+          - name: is_kostendeler
+            type: boolean
+            required: false
+            description: |
+              True indien de belastingschuldige zijn woning deelt met een of meer andere
+              personen op wie de kostendelersnorm bedoeld in artikel 22a van de Participatiewet
+              van toepassing is (art 16 lid 2 onderdelen b, d). In dat geval prevaleert
+              `kostendelersnorm_bedrag` boven de huishoudtype-gebaseerde bijstandsnorm.
+              Default false.
+          - name: kostendelersnorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            required: false
+            description: |
+              Bijstandsnorm onder de kostendelersregel ex artikel 22a Pw, per maand. De
+              berekening van dit bedrag (afhankelijk van aantal kostendelers en hun
+              hoedanigheid) is niet triviaal en wordt aan de caller gedelegeerd. URI
+              gebruikt dit bedrag direct als basis voor lid 2 onderdelen b en d. Default 0
+              (alleen relevant indien is_kostendeler=true).
+
+              INTERACTIE PENSIOENGERECHTIGD — wanneer is_kostendeler=true en de belasting-
+              schuldige (of zijn echtgenoot) ook pensioengerechtigd is, gelden de Pw art 22a-
+              formules met AOW-tarieven. De caller moet dan zelf het Pw-art-22a-bedrag voor
+              pensioengerechtigden leveren; URI 1990 art 16 schakelt op basis van is_kostendeler
+              direct naar dit bedrag (de pensioengerechtigd-tak met netto_ouderdomspensioen_*
+              wordt overgeslagen wanneer is_kostendeler=true).
+              TODO — interne berekening op basis van `aantal_kostendelers` + Pw art 22a-formule.
+          - name: woont_buiten_nederland
+            type: boolean
+            required: false
+            description: |
+              True indien de belastingschuldige buiten Nederland woont (art 16 lid 4). Activeert
+              de woonland-aanpassing met `woonland_factor`. Default false (Nederland).
+          - name: woonland_factor
+            type: number
+            required: false
+            description: |
+              Aanpassingsfactor voor de belastingschuldige die buiten Nederland woont (art
+              16 lid 4). Per artikel 1 Regeling woonlandbeginsel in de sociale zekerheid 2012
+              wordt het percentage uit de bijlage bij die regeling toegepast op de kosten
+              van bestaan. Alleen gebruikt als woont_buiten_nederland=true.
+        output:
+          - name: kostennorm_basis
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Kostennorm (90% × bijstandsnorm) vóór woonland-correctie. Lid 1 t/m 2.
+          - name: kostennorm_bedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Kostennorm na eventuele woonland-correctie (lid 4). Output voor art 13.
+        actions:
+          - output: kostennorm_basis
+            value:
+              operation: MULTIPLY
+              values:
+                - $kostennorm_percentage
+                - operation: IF
+                  cases:
+                    # Lid 2 — kostendelers: caller-berekend kostendelersnorm_bedrag
+                    - when:
+                        operation: EQUALS
+                        subject: $is_kostendeler
+                        value: true
+                      then: $kostendelersnorm_bedrag
+                    # Lid 1 / lid 2 onderdelen a, c — pensioengerechtigd
+                    # N.B. de alleenstaande_ouder-categorie valt na de Pw-hervorming 2015
+                    # samen met alleenstaande (zelfde norm — de aanvullende bijstand voor
+                    # alleenstaande ouders is vervangen door het kindgebonden budget).
+                    # In de pensioengerechtigd-tak wordt daarom voor zowel alleenstaande
+                    # als alleenstaande_ouder netto_ouderdomspensioen_alleenstaand gehanteerd.
+                    - when:
+                        operation: EQUALS
+                        subject: $is_pensioengerechtigd
+                        value: true
+                      then:
+                        operation: IF
+                        cases:
+                          - when:
+                              operation: EQUALS
+                              subject: $huishoudtype
+                              value: echtgenoten
+                            then: $netto_ouderdomspensioen_echtgenoten
+                        default: $netto_ouderdomspensioen_alleenstaand
+                  default:
+                    # Lid 1 — niet-pensioengerechtigd, geen kostendelers
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $huishoudtype
+                          value: echtgenoten
+                        then: $bijstandsnorm_echtgenoten
+                      - when:
+                          operation: EQUALS
+                          subject: $huishoudtype
+                          value: alleenstaande_ouder
+                        then: $bijstandsnorm_alleenstaande_ouder
+                    default: $bijstandsnorm_alleenstaand
+          # Lid 4 — woonlandbeginsel: alleen toepassen als belastingschuldige
+          # daadwerkelijk buiten Nederland woont. In Nederland (default) is
+          # kostennorm_bedrag = kostennorm_basis (geen aanpassing).
+          - output: kostennorm_bedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $woont_buiten_nederland
+                    value: true
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $kostennorm_basis
+                      - $woonland_factor
+              default: $kostennorm_basis
+  - number: '27'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel27
+    text: |
+      Deze afdeling heeft betrekking op:
+
+      a. provinciale belastingen als bedoeld in hoofdstuk XV, paragraaf 2, van de Provinciewet alsmede belastingen waarvan de
+      heffing krachtens andere wetten door de provincie geschiedt;
+
+      b. gemeentelijke belastingen als bedoeld in hoofdstuk XV, paragraaf 2 en 3, van de Gemeentewet alsmede belastingen
+      waarvan de heffing krachtens andere wetten door de gemeente geschiedt;
+
+      c. waterschapsbelastingen als bedoeld in hoofdstuk XVI van de Waterschapswet alsmede belastingen waarvan de heffing
+      krachtens bijzondere wetten door het waterschap geschiedt;
+
+      d. de geluidsheffing burgerluchtvaart ingevolge artikel 8a.38 van de Wet luchtvaart;
+
+      e. de verontreinigingsheffing ingevolge artikel 7.2, eerste lid, van de Waterwet;
+
+      alsmede op de daarmee samenhangende bestuurlijke boeten.
+  - number: '28'
+    url: https://wetten.overheid.nl/BWBR0004766/2026-01-01#Artikel28
+    text: |
+      1. Met betrekking tot een verzoek om kwijtschelding van de in artikel 27 genoemde belastingen en heffingen verschuldigd
+      door:
+
+      a. een natuurlijk persoon die geen bedrijf of niet zelfstandig een beroep uitoefent, zijn de afdelingen 1, 2 en 5 van
+      overeenkomstige toepassing;
+
+      b. een natuurlijk persoon die een bedrijf of zelfstandig een beroep uitoefent, zijn de afdelingen 1, 3, 4 en 5 van
+      overeenkomstige toepassing, met dien verstande dat indien door de provinciale staten, de gemeenteraad of het algemeen
+      bestuur van het waterschap daartoe is besloten, met betrekking tot een verzoek om kwijtschelding van de in artikel 27,
+      onderdeel a, onderdeel b, onderscheidenlijk onderdeel c, bedoelde belastingen en heffingen die geen verband houden met
+      de uitoefening van dat bedrijf of beroep, de afdelingen 1, 2 en 5 van overeenkomstige toepassing zijn;
+
+      c. een rechtspersoon zijn de afdelingen 1, 3 en 5 van overeenkomstige toepassing.
+
+      2. Waar in artikel 9, tweede lid, en in afdeling 5 sprake is van directeur wordt voor:
+
+      a. provinciale belastingen gelezen: gedeputeerde staten;
+
+      b. gemeentelijke belastingen gelezen: het college van burgemeester en wethouders;
+
+      c. waterschapsbelastingen gelezen: het dagelijks bestuur;
+
+      d. de geluidsheffing burgerluchtvaart gelezen: de inspecteur-generaal van de Inspectie Verkeer en Waterstaat.
+
+      3. Indien door de provinciale staten, de gemeenteraad of het algemeen bestuur van het waterschap daartoe is besloten,
+      worden met betrekking tot een verzoek om kwijtschelding van de in artikel 27, onderdeel a, onderdeel b,
+      onderscheidenlijk onderdeel c, bedoelde belastingen en heffingen in afwijking van het eerste lid, onderdelen a en b,
+      als uitgaven als bedoeld in artikel 15, eerste lid, mede in aanmerking genomen de overeenkomstig artikel 1.7, eerste
+      en tweede lid, van de Wet kinderopvang en kwaliteitseisen peuterspeelzalen bepaalde kosten van kinderopvang verminderd
+      met de kinderopvangtoeslag of met de tegemoetkoming van de gemeente of het Uitvoeringsinstituut werknemersverzekeringen
+      in de te betalen kosten van kinderopvang, bedoeld in hoofdstuk 1, afdeling 2, van die wet.
