@@ -79,7 +79,7 @@ version = "0.31"
 optional = true
 
 [dev-dependencies]
-cucumber = "0.22"
+cucumber = "0.23"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 walkdir = "2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
