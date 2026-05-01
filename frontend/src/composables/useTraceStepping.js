@@ -16,7 +16,13 @@
  *     PR3 polish: amortise via mutated refs in next/prev/goto.
  */
 import { computed, ref, watch } from 'vue';
-import { flattenTraceSteps, edgeIdsForStep, graphNodeIdsForStep } from '../lib/traceEdges.js';
+import {
+  flattenTraceSteps,
+  edgeIdsForStep,
+  graphNodeIdsForStep,
+  buildEdgeIndex,
+  buildNodeIdSet,
+} from '../lib/traceEdges.js';
 
 /**
  * @param {object} opts
@@ -31,16 +37,23 @@ export function useTraceStepping({ result, nodes, edges, rootLawId, outputName }
 
   // Raw trace → enriched steps (with edgeIds / nodeIds resolved against the
   // current graph). Recomputes when the trace, graph, or root law changes.
+  //
+  // Build the edge index + node id set ONCE per recompute and pass them
+  // through to every per-step matcher. Without this, each call would
+  // rebuild a Set of all node ids and rescan the full edge array, which
+  // dominated profiling on heavy laws (O(steps × (edges + nodes))).
   const steps = computed(() => {
     const trace = result.value?.trace;
     if (!trace || !rootLawId.value) return [];
     const flat = flattenTraceSteps(trace, rootLawId.value);
     const ns = nodes.value || [];
     const es = edges.value || [];
+    const edgeIndex = buildEdgeIndex(es);
+    const nodeIdSet = buildNodeIdSet(ns);
     return flat.map((s) => ({
       ...s,
-      edgeIds: edgeIdsForStep(s, es),
-      nodeIds: graphNodeIdsForStep(s, ns),
+      edgeIds: edgeIdsForStep(s, es, edgeIndex),
+      nodeIds: graphNodeIdsForStep(s, ns, nodeIdSet),
     }));
   });
 
