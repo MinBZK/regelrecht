@@ -8,7 +8,62 @@ WORKDIR /build
 # Stage 2: Plan dependencies
 FROM chef AS planner
 COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/engine",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY <<'EOF' /build/Cargo.toml
+[workspace]
+resolver = "2"
+members = [
+    "packages/corpus",
+    "packages/engine",
+    "packages/harvester",
+    "packages/pipeline",
+    "packages/shared",
+]
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+
+[workspace.dependencies]
+async-trait = "0.1"
+axum = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+openidconnect = "4.0"
+regex = "1.11"
+roxmltree = "0.21"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml_ng = "0.10"
+sha2 = "0.10"
+sqlx = "0.8"
+strum = { version = "0.28", features = ["derive"] }
+subtle = "2"
+thiserror = "2.0"
+time = "0.3"
+tokio = "1"
+tower-http = "0.6"
+tower-sessions = "0.14"
+tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2"
+urlencoding = "2"
+uuid = { version = "1", features = ["serde"] }
+walkdir = "2"
+http-body-util = "0.1"
+pretty_assertions = "1.4"
+rsa = "0.9"
+tempfile = "3"
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
+tower = "0.5"
+tower-sessions-memory-store = "0.14"
+wiremock = "0.6"
+
+[patch.crates-io]
+testcontainers = { git = "https://github.com/testcontainers/testcontainers-rs", rev = "0f5ee81c18683cf2882fb5a23461cf41fa5e3768" }
+EOF
 COPY packages/corpus/ packages/corpus/
 COPY packages/engine/ packages/engine/
 COPY packages/pipeline/ packages/pipeline/
@@ -19,11 +74,12 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Stage 3: Build (deps cached separately from source)
 FROM chef AS builder
 COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/corpus",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY --from=planner /build/Cargo.toml ./Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY packages/corpus/ packages/corpus/
+COPY packages/engine/ packages/engine/
 COPY packages/pipeline/ packages/pipeline/
 COPY packages/harvester/ packages/harvester/
 COPY packages/shared/ packages/shared/
