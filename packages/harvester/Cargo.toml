@@ -19,7 +19,7 @@ name = "regelrecht_harvester"
 path = "src/lib.rs"
 
 [dependencies]
-regelrecht-shared = { path = "../shared" }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 serde.workspace = true
 serde_yaml_ng.workspace = true
 thiserror.workspace = true

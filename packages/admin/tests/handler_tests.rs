@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-mod common;
-
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -19,6 +17,7 @@ use regelrecht_admin::metrics;
 use regelrecht_admin::metrics::fetch_metrics;
 use regelrecht_admin::state::AppState;
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
+use regelrecht_pipeline::test_utils::TestDb;
 use regelrecht_pipeline::JobType;
 
 fn test_app(pool: sqlx::PgPool) -> Router {
@@ -55,7 +54,7 @@ async fn body_json(response: axum::http::Response<Body>) -> Value {
 
 #[tokio::test]
 async fn create_harvest_job_returns_created() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -79,7 +78,7 @@ async fn create_harvest_job_returns_created() {
 
 #[tokio::test]
 async fn create_harvest_job_links_harvest_job_id() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -111,7 +110,7 @@ async fn create_harvest_job_links_harvest_job_id() {
 
 #[tokio::test]
 async fn create_harvest_job_rejects_duplicate() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let pool = db.pool.clone();
     let app = test_app(pool.clone());
 
@@ -148,7 +147,7 @@ async fn create_harvest_job_rejects_duplicate() {
 
 #[tokio::test]
 async fn create_harvest_job_allows_after_completion() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let pool = db.pool.clone();
     let app = test_app(pool.clone());
 
@@ -197,7 +196,7 @@ async fn create_harvest_job_allows_after_completion() {
 
 #[tokio::test]
 async fn create_harvest_job_rejects_empty_bwb_id() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -217,7 +216,7 @@ async fn create_harvest_job_rejects_empty_bwb_id() {
 
 #[tokio::test]
 async fn create_harvest_job_with_priority_and_date() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -247,7 +246,7 @@ async fn create_harvest_job_with_priority_and_date() {
 
 #[tokio::test]
 async fn create_harvest_job_rejects_invalid_bwb_id() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -267,7 +266,7 @@ async fn create_harvest_job_rejects_invalid_bwb_id() {
 
 #[tokio::test]
 async fn create_harvest_job_rejects_invalid_date() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -289,7 +288,7 @@ async fn create_harvest_job_rejects_invalid_date() {
 
 #[tokio::test]
 async fn create_harvest_job_rejects_impossible_date() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -313,7 +312,7 @@ async fn create_harvest_job_rejects_impossible_date() {
 
 #[tokio::test]
 async fn list_jobs_empty() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -334,7 +333,7 @@ async fn list_jobs_empty() {
 
 #[tokio::test]
 async fn list_law_entries_empty() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let app = test_app(db.pool.clone());
 
     let response = app
@@ -354,7 +353,7 @@ async fn list_law_entries_empty() {
 
 #[tokio::test]
 async fn list_jobs_after_creation() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let pool = db.pool.clone();
 
     // Create a job via the handler
@@ -394,7 +393,7 @@ async fn list_jobs_after_creation() {
 
 #[tokio::test]
 async fn fetch_metrics_on_empty_db() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let snapshot = fetch_metrics(&db.pool).await.unwrap();
 
     assert!(snapshot.jobs_by_status.is_empty());
@@ -404,7 +403,7 @@ async fn fetch_metrics_on_empty_db() {
 
 #[tokio::test]
 async fn fetch_metrics_with_only_pending_jobs() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let pool = db.pool.clone();
 
     // Create a pending job but don't complete it - AVG query returns NULL
@@ -427,7 +426,7 @@ async fn fetch_metrics_with_only_pending_jobs() {
 
 #[tokio::test]
 async fn fetch_metrics_avg_duration_with_completed_jobs() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
     let pool = db.pool.clone();
 
     // Create and complete a job so AVG(EXTRACT(EPOCH ...)) returns a value.

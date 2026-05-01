@@ -15,7 +15,6 @@ use tower_http::trace::TraceLayer;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{ExpiredDeletion, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
-use tracing_subscriber::EnvFilter;
 
 mod config;
 mod corpus_handlers;
@@ -43,11 +42,7 @@ async fn health(State(state): State<AppState>) -> Result<&'static str, StatusCod
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    regelrecht_shared::telemetry::init_subscriber("info");
 
     let app_config = AppConfig::from_env();
 

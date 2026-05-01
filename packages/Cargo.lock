@@ -3608,6 +3608,7 @@ dependencies = [
  "regelrecht-corpus",
  "regelrecht-harvester",
  "regelrecht-pipeline",
+ "regelrecht-shared",
  "reqwest 0.12.28",
  "rsa",
  "serde",
@@ -3616,8 +3617,6 @@ dependencies = [
  "sqlx",
  "strum 0.28.0",
  "subtle",
- "testcontainers",
- "testcontainers-modules",
  "time",
  "tokio",
  "tower",
@@ -3684,6 +3683,7 @@ dependencies = [
  "regelrecht-auth",
  "regelrecht-corpus",
  "regelrecht-pipeline",
+ "regelrecht-shared",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3761,6 +3761,8 @@ dependencies = [
  "pretty_assertions",
  "regelrecht-corpus",
  "regelrecht-harvester",
+ "regelrecht-pipeline",
+ "regelrecht-shared",
  "reqwest 0.13.2",
  "roxmltree",
  "serde",
@@ -3788,6 +3790,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "tracing-subscriber",
 ]
 
 [[package]]

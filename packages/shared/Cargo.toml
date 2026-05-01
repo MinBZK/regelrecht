@@ -11,6 +11,11 @@ keywords = ["law", "legal", "dutch", "regelrecht", "types"]
 
 [dependencies]
 serde.workspace = true
+tracing-subscriber = { workspace = true, optional = true }
+
+[features]
+default = []
+telemetry = ["dep:tracing-subscriber"]
 
 [dev-dependencies]
 serde_json.workspace = true

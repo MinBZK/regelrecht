@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 axum.workspace = true
 regelrecht-auth = { path = "../auth" }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono"] }
 regelrecht-corpus = { path = "../corpus", default-features = false }
 regelrecht-harvester = { path = "../harvester" }
@@ -44,12 +45,11 @@ subtle.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
+regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
 tower.workspace = true
 tower-sessions-memory-store.workspace = true
 wiremock.workspace = true
 rsa.workspace = true
-testcontainers.workspace = true
-testcontainers-modules.workspace = true
 http-body-util.workspace = true
 pretty_assertions.workspace = true
 

@@ -1,5 +1,3 @@
-mod common;
-
 use std::time::Duration;
 
 use pretty_assertions::assert_eq;
@@ -7,11 +5,12 @@ use serde_json::json;
 
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::models::{JobStatus, JobType, Priority};
+use regelrecht_pipeline::test_utils::TestDb;
 use regelrecht_pipeline::PipelineError;
 
 #[tokio::test]
 async fn test_create_and_get_job() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840");
     let job = job_queue::create_job(&db.pool, req).await.unwrap();
@@ -29,7 +28,7 @@ async fn test_create_and_get_job() {
 
 #[tokio::test]
 async fn test_create_job_with_payload() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let payload = json!({"url": "https://wetten.overheid.nl/BWBR0001840"});
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload.clone());
@@ -40,7 +39,7 @@ async fn test_create_job_with_payload() {
 
 #[tokio::test]
 async fn test_max_attempts_clamped_to_minimum_1() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_max_attempts(0);
     let job = job_queue::create_job(&db.pool, req).await.unwrap();
@@ -53,7 +52,7 @@ async fn test_max_attempts_clamped_to_minimum_1() {
 
 #[tokio::test]
 async fn test_claim_job_priority_ordering() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let low = CreateJobRequest::new(JobType::Harvest, "low").with_priority(Priority::new(10));
     let high = CreateJobRequest::new(JobType::Harvest, "high").with_priority(Priority::new(90));
@@ -80,7 +79,7 @@ async fn test_claim_job_priority_ordering() {
 
 #[tokio::test]
 async fn test_claim_job_by_type() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let harvest = CreateJobRequest::new(JobType::Harvest, "law1");
     let enrich = CreateJobRequest::new(JobType::Enrich, "law2");
@@ -109,7 +108,7 @@ async fn test_claim_job_by_type() {
 
 #[tokio::test]
 async fn test_complete_job() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840");
     let job = job_queue::create_job(&db.pool, req).await.unwrap();
@@ -128,7 +127,7 @@ async fn test_complete_job() {
 
 #[tokio::test]
 async fn test_complete_job_not_processing() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840");
     let job = job_queue::create_job(&db.pool, req).await.unwrap();
@@ -139,7 +138,7 @@ async fn test_complete_job_not_processing() {
 
 #[tokio::test]
 async fn test_fail_job_with_retry() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_max_attempts(3);
     let job = job_queue::create_job(&db.pool, req).await.unwrap();
@@ -172,7 +171,7 @@ async fn test_fail_job_with_retry() {
 
 #[tokio::test]
 async fn test_list_jobs() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req1 = CreateJobRequest::new(JobType::Harvest, "law1");
     let req2 = CreateJobRequest::new(JobType::Enrich, "law2");
@@ -197,7 +196,7 @@ async fn test_list_jobs() {
 
 #[tokio::test]
 async fn test_reap_orphaned_jobs_resets_to_pending() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_max_attempts(3);
     let job = job_queue::create_job(&db.pool, req).await.unwrap();
@@ -227,7 +226,7 @@ async fn test_reap_orphaned_jobs_resets_to_pending() {
 
 #[tokio::test]
 async fn test_reap_orphaned_jobs_permanently_fails_exhausted() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_max_attempts(1);
     let job = job_queue::create_job(&db.pool, req).await.unwrap();
@@ -255,7 +254,7 @@ async fn test_reap_orphaned_jobs_permanently_fails_exhausted() {
 
 #[tokio::test]
 async fn test_reap_orphaned_jobs_returns_zero_when_none_orphaned() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     // No jobs at all
     let count = job_queue::reap_orphaned_jobs(&db.pool, Duration::from_secs(60))
@@ -276,7 +275,7 @@ async fn test_reap_orphaned_jobs_returns_zero_when_none_orphaned() {
 
 #[tokio::test]
 async fn test_create_harvest_job_if_not_exists_creates_new() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840")
@@ -295,7 +294,7 @@ async fn test_create_harvest_job_if_not_exists_creates_new() {
 
 #[tokio::test]
 async fn test_create_harvest_job_if_not_exists_skips_duplicate() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let payload = json!({"bwb_id": "BWBR0001840", "date": "2025-01-01"});
     let req = CreateJobRequest::new(JobType::Harvest, "BWBR0001840").with_payload(payload.clone());
@@ -312,7 +311,7 @@ async fn test_create_harvest_job_if_not_exists_skips_duplicate() {
 
 #[tokio::test]
 async fn test_create_harvest_job_if_not_exists_skips_dateless_job() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     // Simulate admin-created job without a date (payload has no "date" key)
     let payload = json!({"bwb_id": "BWBR0001840"});
@@ -335,7 +334,7 @@ async fn test_create_harvest_job_if_not_exists_skips_dateless_job() {
 
 #[tokio::test]
 async fn test_concurrent_claim_safety() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let req = CreateJobRequest::new(JobType::Harvest, "contested");
     job_queue::create_job(&db.pool, req).await.unwrap();

@@ -25,6 +25,7 @@ path = "src/bin/pipeline_api.rs"
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 regelrecht-harvester = { path = "../harvester" }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }
 serde.workspace = true
@@ -44,10 +45,16 @@ axum.workspace = true
 tower-http = { workspace = true, features = ["trace"] }
 roxmltree.workspace = true
 url.workspace = true
+testcontainers = { workspace = true, optional = true }
+testcontainers-modules = { workspace = true, optional = true }
+
+[features]
+# Exposes regelrecht_pipeline::test_utils with helpers (e.g. TestDb) used by
+# integration tests in this crate and downstream crates (admin).
+test-utils = ["dep:testcontainers", "dep:testcontainers-modules"]
 
 [dev-dependencies]
-testcontainers.workspace = true
-testcontainers-modules.workspace = true
+regelrecht-pipeline = { path = ".", features = ["test-utils"] }
 pretty_assertions.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
 tempfile.workspace = true
