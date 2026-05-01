@@ -199,7 +199,7 @@ const rowCount = computed(() => rows.value.length);
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 4px;
-  background: #154273;
+  background: var(--color-primary);
   color: white;
   flex-shrink: 0;
 }

@@ -264,7 +264,7 @@ function dataSourceToTableProps(ds) {
   font-size: 10px;
   font-family: 'SF Mono', 'Fira Code', monospace;
   background: #e8eef5;
-  color: #154273;
+  color: var(--color-primary);
   border-radius: 3px;
   white-space: nowrap;
 }
@@ -428,7 +428,7 @@ function dataSourceToTableProps(ds) {
 
 .sv-unmatched-kw {
   font-weight: 700;
-  color: #154273;
+  color: var(--color-primary);
 }
 
 /* Engine trace — collapsed by default */
@@ -451,7 +451,7 @@ function dataSourceToTableProps(ds) {
 }
 
 .sv-trace-toggle:hover {
-  color: #154273;
+  color: var(--color-primary);
 }
 
 .sv-trace-body {

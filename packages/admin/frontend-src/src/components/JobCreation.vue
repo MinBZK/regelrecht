@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { redirectToLogin } from '../composables/useAuth.js';
+import { authedFetch } from '../composables/useAuth.js';
 
 const emit = defineEmits(['job-created']);
 const inputRef = ref(null);
@@ -34,15 +34,12 @@ async function onSubmit() {
   buttonLabel.value = 'Submitting\u2026';
 
   try {
-    const response = await fetch('api/harvest-jobs', {
+    const response = await authedFetch('api/harvest-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ law_id: lawId }),
     });
-    if (response.status === 401) {
-      redirectToLogin();
-      return;
-    }
+    if (!response) return;
     if (response.status === 409) {
       alert('A harvest job for this law is already pending or processing.');
       return;
