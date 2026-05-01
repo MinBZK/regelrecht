@@ -321,43 +321,54 @@ impl<T: Into<Value>> From<Option<T>> for Value {
     }
 }
 
+/// Coerce whole-number JSON floats to Int for consistency.
+fn json_number_to_value(n: &serde_json::Number) -> Value {
+    if let Some(i) = n.as_i64() {
+        Value::Int(i)
+    } else if let Some(f) = n.as_f64() {
+        if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
+            Value::Int(f as i64)
+        } else {
+            Value::Float(f)
+        }
+    } else {
+        Value::Null
+    }
+}
+
+/// If the JSON object carries the Untranslatable marker, build the variant.
+fn json_object_as_untranslatable(
+    obj: &serde_json::Map<String, serde_json::Value>,
+) -> Option<Value> {
+    if obj.get(UNTRANSLATABLE_KEY) != Some(&serde_json::Value::Bool(true)) {
+        return None;
+    }
+    let article = obj
+        .get("article")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let construct = obj
+        .get("construct")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    Some(Value::Untranslatable { article, construct })
+}
+
 impl From<serde_json::Value> for Value {
     fn from(v: serde_json::Value) -> Self {
         match v {
             serde_json::Value::Null => Value::Null,
             serde_json::Value::Bool(b) => Value::Bool(b),
-            serde_json::Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    Value::Int(i)
-                } else if let Some(f) = n.as_f64() {
-                    // Coerce whole-number floats to Int for consistency
-                    if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-                        Value::Int(f as i64)
-                    } else {
-                        Value::Float(f)
-                    }
-                } else {
-                    Value::Null
-                }
-            }
+            serde_json::Value::Number(n) => json_number_to_value(&n),
             serde_json::Value::String(s) => Value::String(s),
             serde_json::Value::Array(arr) => {
                 Value::Array(arr.into_iter().map(Value::from).collect())
             }
             serde_json::Value::Object(obj) => {
-                // Check for Untranslatable marker
-                if obj.get(UNTRANSLATABLE_KEY) == Some(&serde_json::Value::Bool(true)) {
-                    let article = obj
-                        .get("article")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let construct = obj
-                        .get("construct")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    return Value::Untranslatable { article, construct };
+                if let Some(u) = json_object_as_untranslatable(&obj) {
+                    return u;
                 }
                 let map: BTreeMap<String, Value> =
                     obj.into_iter().map(|(k, v)| (k, Value::from(v))).collect();
@@ -372,35 +383,12 @@ impl From<&serde_json::Value> for Value {
         match v {
             serde_json::Value::Null => Value::Null,
             serde_json::Value::Bool(b) => Value::Bool(*b),
-            serde_json::Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    Value::Int(i)
-                } else if let Some(f) = n.as_f64() {
-                    if f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64 {
-                        Value::Int(f as i64)
-                    } else {
-                        Value::Float(f)
-                    }
-                } else {
-                    Value::Null
-                }
-            }
+            serde_json::Value::Number(n) => json_number_to_value(n),
             serde_json::Value::String(s) => Value::String(s.clone()),
             serde_json::Value::Array(arr) => Value::Array(arr.iter().map(Value::from).collect()),
             serde_json::Value::Object(obj) => {
-                // Check for Untranslatable marker
-                if obj.get(UNTRANSLATABLE_KEY) == Some(&serde_json::Value::Bool(true)) {
-                    let article = obj
-                        .get("article")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let construct = obj
-                        .get("construct")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    return Value::Untranslatable { article, construct };
+                if let Some(u) = json_object_as_untranslatable(obj) {
+                    return u;
                 }
                 let map: BTreeMap<String, Value> = obj
                     .iter()

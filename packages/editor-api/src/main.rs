@@ -325,12 +325,12 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
             }
             Err(e) => {
                 tracing::warn!(error = %e, "failed to load corpus registry, using empty");
-                empty_registry()
+                regelrecht_corpus::CorpusRegistry::empty()
             }
         }
     } else {
         tracing::info!("no corpus-registry.yaml found, corpus endpoints will return empty results");
-        empty_registry()
+        regelrecht_corpus::CorpusRegistry::empty()
     };
 
     let favorites = load_favorites(static_dir);
@@ -452,11 +452,6 @@ fn load_favorites(static_dir: &str) -> HashSet<String> {
             HashSet::new()
         }
     }
-}
-
-fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
-    regelrecht_corpus::CorpusRegistry::from_yaml("schema_version: '1.0'\nsources: []\n")
-        .unwrap_or_else(|_| unreachable!())
 }
 
 /// Resolve the pipeline-api URL, preferring pod HOSTNAME over environment

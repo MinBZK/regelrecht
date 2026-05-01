@@ -264,17 +264,12 @@ fn init_corpus() -> state::CorpusState {
             }
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to load corpus registry, using empty");
-                regelrecht_corpus::CorpusRegistry::from_yaml("schema_version: '1.0'\nsources: []\n")
-                    .unwrap_or_else(|_| {
-                        // This YAML is hardcoded and always valid
-                        unreachable!()
-                    })
+                regelrecht_corpus::CorpusRegistry::empty()
             }
         }
     } else {
         tracing::info!("No corpus-registry.yaml found, corpus endpoints will return empty results");
-        regelrecht_corpus::CorpusRegistry::from_yaml("schema_version: '1.0'\nsources: []\n")
-            .unwrap_or_else(|_| unreachable!())
+        regelrecht_corpus::CorpusRegistry::empty()
     };
 
     let source_map = match registry.load_local_sources() {

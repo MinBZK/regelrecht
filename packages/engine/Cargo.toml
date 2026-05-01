@@ -118,7 +118,5 @@ lto = true
 opt-level = "z"
 
 
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+[lints]
+workspace = true

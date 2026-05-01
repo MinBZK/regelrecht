@@ -289,6 +289,14 @@ where
     Ok(entries)
 }
 
+/// Column name on `law_entries` holding the consecutive fail counter for a job type.
+fn fail_count_column(job_type: crate::models::JobType) -> &'static str {
+    match job_type {
+        crate::models::JobType::Harvest => "harvest_fail_count",
+        crate::models::JobType::Enrich => "enrich_fail_count",
+    }
+}
+
 /// Increment the consecutive fail count for a job type. Returns the new count.
 #[tracing::instrument(skip(executor))]
 pub async fn increment_fail_count<'e, E>(
@@ -299,10 +307,7 @@ pub async fn increment_fail_count<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let column = match job_type {
-        crate::models::JobType::Harvest => "harvest_fail_count",
-        crate::models::JobType::Enrich => "enrich_fail_count",
-    };
+    let column = fail_count_column(job_type);
     // Column name is from a match on an enum, not user input — safe to interpolate.
     let sql = format!(
         "UPDATE law_entries SET {column} = {column} + 1, updated_at = now() \
@@ -327,10 +332,7 @@ pub async fn reset_fail_count<'e, E>(
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let column = match job_type {
-        crate::models::JobType::Harvest => "harvest_fail_count",
-        crate::models::JobType::Enrich => "enrich_fail_count",
-    };
+    let column = fail_count_column(job_type);
     let sql = format!("UPDATE law_entries SET {column} = 0, updated_at = now() WHERE law_id = $1");
     sqlx::query(&sql).bind(law_id).execute(executor).await?;
 

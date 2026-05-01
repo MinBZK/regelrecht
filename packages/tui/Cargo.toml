@@ -34,7 +34,5 @@ chrono = "0.4"
 # Logging
 tracing = "0.1"
 
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+[lints]
+workspace = true

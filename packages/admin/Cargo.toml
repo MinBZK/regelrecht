@@ -54,7 +54,5 @@ testcontainers-modules = { version = "0.15", features = ["postgres"] }
 http-body-util = "0.1"
 pretty_assertions = "1"
 
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+[lints]
+workspace = true
