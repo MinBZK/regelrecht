@@ -53,6 +53,10 @@ COPY packages/Cargo.lock ./
 COPY --from=planner /build/Cargo.toml ./Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
+# `cargo chef cook` rewrites the workspace Cargo.toml without
+# `[workspace.lints]`, which breaks members that declare `[lints] workspace
+# = true`. Re-COPY the real workspace manifest before the final build.
+COPY --from=planner /build/Cargo.toml ./Cargo.toml
 
 COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
