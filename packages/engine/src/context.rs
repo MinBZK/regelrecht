@@ -188,34 +188,30 @@ impl RuleContext {
 
     /// Create a child context for nested evaluation (e.g., FOREACH).
     ///
-    /// The child inherits definitions, parameters, resolved_inputs, and outputs,
-    /// but starts with an **empty local scope**. This ensures that FOREACH loop
-    /// variables from a parent context don't leak into child iterations.
+    /// The child inherits definitions, parameters, resolved_inputs, outputs,
+    /// **and the parent's local scope** (so nested FOREACH bodies can still
+    /// reach outer iteration variables). The child can shadow inherited
+    /// locals via `set_local`, since the new entry overwrites the inherited
+    /// one in its own `BTreeMap`.
     ///
     /// # Design Note
     ///
-    /// This behavior differs from the Python implementation, which copies the
-    /// local scope to child contexts. The Rust implementation intentionally
-    /// clears local scope to:
-    ///
-    /// 1. **Prevent variable pollution**: Loop variables shouldn't accidentally
-    ///    affect nested operations
-    /// 2. **Explicit is better**: If you need values in a child context, pass
-    ///    them explicitly via parameters or outputs
-    /// 3. **Safety**: Reduces the risk of subtle bugs from shared mutable state
-    ///
-    /// If Python compatibility is required for specific use cases, pass the
-    /// needed values explicitly via parameters before evaluation.
+    /// Earlier revisions cleared the local scope on every child to prevent
+    /// variable pollution. That broke law specifications where a FOREACH
+    /// body uses an outer-scope variable (post-processed in Python by
+    /// `_postprocess_outputs`). Inheriting the parent's locals matches the
+    /// Python implementation while still allowing each iteration to override
+    /// the binding via `set_local`.
     pub fn create_child(&self) -> Self {
         Self {
             definitions: Rc::clone(&self.definitions),
             parameters: Rc::clone(&self.parameters),
             outputs: Rc::clone(&self.outputs),
-            local: BTreeMap::new(), // Child starts with empty local scope
+            local: self.local.clone(),
             resolved_inputs: Rc::clone(&self.resolved_inputs),
             reference_date: self.reference_date,
             reference_date_value: self.reference_date_value.clone(),
-            trace: self.trace.clone(), // Share the same trace builder
+            trace: self.trace.clone(),
         }
     }
 
@@ -388,8 +384,8 @@ impl RuleContext {
             return Ok(value.clone());
         }
 
-        // Not found
-        Err(EngineError::VariableNotFound(path.to_string()))
+        // Not found — return Null (lenient resolution for missing variables)
+        Ok(Value::Null)
     }
 }
 
@@ -420,6 +416,20 @@ impl ValueResolver for RuleContext {
 
     fn has_trace(&self) -> bool {
         RuleContext::has_trace(self)
+    }
+
+    fn execute_foreach_op(
+        &self,
+        collection: &crate::article::ActionValue,
+        as_name: &str,
+        body: &crate::article::ActionValue,
+        filter: Option<&crate::article::ActionValue>,
+        combine: Option<&crate::article::CombineOp>,
+        depth: usize,
+    ) -> Option<Result<Value>> {
+        Some(crate::operations::execute_foreach(
+            collection, as_name, body, filter, combine, self, depth,
+        ))
     }
 }
 
@@ -464,22 +474,26 @@ fn get_property(value: &Value, property_path: &str, depth: usize) -> Result<Valu
     }
 
     match value {
-        Value::Object(obj) => obj
-            .get(property_path)
-            .cloned()
-            .ok_or_else(|| EngineError::VariableNotFound(format!(".{}", property_path))),
+        // Null propagation: accessing a property on Null returns Null
+        Value::Null => Ok(Value::Null),
+        Value::Object(obj) => Ok(obj.get(property_path).cloned().unwrap_or(Value::Null)),
         Value::Array(arr) => {
-            // Support numeric indexing for arrays
+            // Numeric paths index into the array (e.g. arr.0, arr.1).
             if let Ok(index) = property_path.parse::<usize>() {
-                arr.get(index)
-                    .cloned()
-                    .ok_or_else(|| EngineError::VariableNotFound(format!("[{}]", index)))
-            } else {
-                Err(EngineError::TypeMismatch {
-                    expected: "object".to_string(),
-                    actual: "array".to_string(),
-                })
+                return Ok(arr.get(index).cloned().unwrap_or(Value::Null));
             }
+            // Field projection: `$people.name` returns the array of `name`
+            // values for each element. Mirrors the Python `_resolve_value`
+            // helper that flattens `$array.field` patterns. Non-object
+            // elements project to Null so the array length is preserved.
+            let projected: Vec<Value> = arr
+                .iter()
+                .map(|item| match item {
+                    Value::Object(obj) => obj.get(property_path).cloned().unwrap_or(Value::Null),
+                    _ => Value::Null,
+                })
+                .collect();
+            Ok(Value::Array(projected))
         }
         _ => Err(EngineError::TypeMismatch {
             expected: "object".to_string(),
@@ -561,7 +575,7 @@ mod tests {
     fn test_resolve_not_found() {
         let ctx = make_context();
         let result = ctx.resolve("nonexistent");
-        assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     // -------------------------------------------------------------------------
@@ -708,7 +722,7 @@ mod tests {
         ctx.set_output("person", Value::Object(person));
 
         let result = ctx.resolve("person.nonexistent");
-        assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     #[test]
@@ -719,6 +733,29 @@ mod tests {
         // Can't access property on integer
         let result = ctx.resolve("value.something");
         assert!(matches!(result, Err(EngineError::TypeMismatch { .. })));
+    }
+
+    #[test]
+    fn test_dot_notation_null_propagation() {
+        let mut ctx = make_context();
+        ctx.set_output("nullable", Value::Null);
+
+        // Accessing a property on Null should return Null, not error
+        let result = ctx.resolve("nullable.something");
+        assert!(matches!(result, Ok(Value::Null)));
+
+        // Nested dot-notation on Null should also propagate
+        let result = ctx.resolve("nullable.deeply.nested.path");
+        assert!(matches!(result, Ok(Value::Null)));
+    }
+
+    #[test]
+    fn test_dot_notation_null_missing_base() {
+        let ctx = make_context();
+
+        // Accessing a property on a variable that doesn't exist (resolves to Null)
+        let result = ctx.resolve("nonexistent.property");
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     // -------------------------------------------------------------------------
@@ -756,27 +793,28 @@ mod tests {
 
         // Child's changes shouldn't affect parent
         assert_eq!(ctx.resolve("shared").unwrap(), Value::Int(100));
-        assert!(ctx.resolve("child_only").is_err());
+        assert_eq!(ctx.resolve("child_only").unwrap(), Value::Null);
 
         // Child should see its own value
         assert_eq!(child.resolve("shared").unwrap(), Value::Int(200));
     }
 
     #[test]
-    fn test_child_context_empty_local_scope() {
+    fn test_child_context_inherits_local_scope() {
         let mut ctx = make_context();
         ctx.set_local("parent_loop_var", Value::Int(999));
         ctx.set_local("index", Value::Int(5));
 
-        // Create child - should NOT inherit parent's local variables
-        let child = ctx.create_child();
+        // Child inherits the parent's locals so nested FOREACH bodies can
+        // still reach outer iteration variables.
+        let mut child = ctx.create_child();
 
-        // Child should NOT see parent's loop variables
-        assert!(child.resolve("parent_loop_var").is_err());
-        assert!(child.resolve("index").is_err());
+        assert_eq!(child.resolve("parent_loop_var").unwrap(), Value::Int(999));
+        assert_eq!(child.resolve("index").unwrap(), Value::Int(5));
 
-        // But parent should still have them
-        assert_eq!(ctx.resolve("parent_loop_var").unwrap(), Value::Int(999));
+        // Child can shadow inherited locals without affecting the parent.
+        child.set_local("index", Value::Int(42));
+        assert_eq!(child.resolve("index").unwrap(), Value::Int(42));
         assert_eq!(ctx.resolve("index").unwrap(), Value::Int(5));
     }
 
@@ -795,7 +833,7 @@ mod tests {
     fn test_empty_context() {
         let ctx = RuleContext::with_defaults(BTreeMap::new());
         let result = ctx.resolve("anything");
-        assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+        assert!(matches!(result, Ok(Value::Null)));
     }
 
     #[test]

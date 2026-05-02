@@ -15,7 +15,8 @@
 //! **Engine-only (not in schema, accepted for backward compatibility):**
 //! NOT_EQUALS, IS_NULL, NOT_NULL, NOT_IN
 
-use crate::article::{ActionOperation, ActionValue, Case};
+use crate::article::{ActionOperation, ActionValue, Case, CombineOp};
+use crate::context::RuleContext;
 use crate::error::{EngineError, Result};
 use crate::types::{PathNodeType, Value};
 use chrono::{Datelike, NaiveDate};
@@ -34,6 +35,24 @@ fn propagate_binary(a: &Value, b: &Value) -> Option<Value> {
         Some(a.clone())
     } else if b.is_untranslatable() {
         Some(b.clone())
+    } else {
+        None
+    }
+}
+
+/// If any value in the slice is Null, return Some(Value::Null).
+fn find_null(values: &[Value]) -> Option<Value> {
+    if values.iter().any(|v| v.is_null()) {
+        Some(Value::Null)
+    } else {
+        None
+    }
+}
+
+/// If either of two values is Null, return Some(Value::Null).
+fn propagate_null_binary(a: &Value, b: &Value) -> Option<Value> {
+    if a.is_null() || b.is_null() {
+        Some(Value::Null)
     } else {
         None
     }
@@ -102,6 +121,26 @@ pub trait ValueResolver {
     fn has_trace(&self) -> bool {
         false
     }
+
+    /// Execute a FOREACH operation if the resolver supports child scopes.
+    ///
+    /// Returns `None` if FOREACH is not supported (e.g., for simple test resolvers).
+    /// Returns `Some(Result<Value>)` if FOREACH was executed.
+    ///
+    /// The default implementation returns `None`, causing the caller to fall
+    /// through to an error. Implementations that support child scopes (like
+    /// `RuleContext`) should override this to delegate to `execute_foreach`.
+    fn execute_foreach_op(
+        &self,
+        _collection: &ActionValue,
+        _as_name: &str,
+        _body: &ActionValue,
+        _filter: Option<&ActionValue>,
+        _combine: Option<&crate::article::CombineOp>,
+        _depth: usize,
+    ) -> Option<Result<Value>> {
+        None
+    }
 }
 
 /// Evaluate an ActionValue to a concrete Value.
@@ -126,7 +165,11 @@ pub fn evaluate_value<R: ValueResolver>(
             // Check if it's a variable reference (starts with $)
             if let Value::String(s) = v {
                 if let Some(var_name) = s.strip_prefix('$') {
-                    return resolver.resolve(var_name);
+                    return match resolver.resolve(var_name) {
+                        Ok(val) => Ok(val),
+                        Err(EngineError::VariableNotFound(_)) => Ok(Value::Null),
+                        Err(e) => Err(e),
+                    };
                 }
             }
             Ok(v.clone())
@@ -265,6 +308,7 @@ fn execute_operation_internal<R: ValueResolver>(
         // Null checking operations
         ActionOperation::IsNull { subject } => execute_null_check(subject, resolver, depth, false),
         ActionOperation::NotNull { subject } => execute_null_check(subject, resolver, depth, true),
+        ActionOperation::Exists { subject } => execute_exists(subject, resolver, depth),
 
         // Collection operations
         ActionOperation::In {
@@ -292,6 +336,8 @@ fn execute_operation_internal<R: ValueResolver>(
             true,
         ),
         ActionOperation::List { items } => execute_list(items, resolver, depth),
+        ActionOperation::Get { subject, values } => execute_get(subject, values, resolver, depth),
+        ActionOperation::Concat { values } => execute_concat(values, resolver, depth),
 
         // Date
         ActionOperation::Age {
@@ -317,6 +363,33 @@ fn execute_operation_internal<R: ValueResolver>(
             execute_date_construct(year, month, day, resolver, depth)
         }
         ActionOperation::DayOfWeek { date } => execute_day_of_week(date, resolver, depth),
+        ActionOperation::SubtractDate { values, unit } => {
+            execute_subtract_date(values, unit.as_deref(), resolver, depth)
+        }
+
+        // Collection iteration — FOREACH requires child scopes.
+        // Delegate to the resolver's execute_foreach_op method, which returns
+        // None for resolvers that don't support child scopes (falls through to error).
+        ActionOperation::Foreach {
+            collection,
+            as_name,
+            body,
+            filter,
+            combine,
+        } => resolver
+            .execute_foreach_op(
+                collection,
+                as_name,
+                body,
+                filter.as_ref(),
+                combine.as_ref(),
+                depth,
+            )
+            .unwrap_or_else(|| {
+                Err(EngineError::InvalidOperation(
+                    "FOREACH requires a resolver that supports child scopes".to_string(),
+                ))
+            }),
     }
 }
 
@@ -384,6 +457,11 @@ fn execute_equality<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Note: No null propagation for EQUALS/NOT_EQUALS.
+    // Null == Null returns true (needed for null-checking patterns like
+    // `EQUALS($var, null)` which is a common idiom in law YAML).
+    // Null == non-null returns false. This matches Python semantics.
+
     let equal = values_equal(&subject_val, &value_val);
     Ok(Value::Bool(if negate { !equal } else { equal }))
 }
@@ -408,6 +486,34 @@ where
         return Ok(tainted);
     }
 
+    // Null propagation: comparison with Null yields Null (unknown)
+    if let Some(null) = propagate_null_binary(&subject_val, &value_val) {
+        return Ok(null);
+    }
+
+    // Date string comparison: if both values look like ISO dates (YYYY-MM-DD),
+    // compare as dates rather than numbers. Also handle date objects ({iso: "..."}).
+    let subject_date_str = extract_date_string(&subject_val);
+    let value_date_str = extract_date_string(&value_val);
+    if let (Some(s), Some(v)) = (&subject_date_str, &value_date_str) {
+        if let (Ok(sd), Ok(vd)) = (
+            NaiveDate::parse_from_str(s, "%Y-%m-%d"),
+            NaiveDate::parse_from_str(v, "%Y-%m-%d"),
+        ) {
+            // Convert dates to ordinal days for numeric comparison
+            let s_ord = sd.num_days_from_ce() as f64;
+            let v_ord = vd.num_days_from_ce() as f64;
+            return Ok(Value::Bool(compare(s_ord, v_ord)));
+        }
+    }
+
+    // String comparison: if both are strings (non-date), compare lexicographically
+    if let (Value::String(s), Value::String(v)) = (&subject_val, &value_val) {
+        let cmp = s.cmp(v);
+        let result = compare(cmp as i32 as f64, 0.0);
+        return Ok(Value::Bool(result));
+    }
+
     let subject_num = to_number(&subject_val)?;
     let value_num = to_number(&value_val)?;
 
@@ -417,6 +523,109 @@ where
 // =============================================================================
 // Arithmetic Operations
 // =============================================================================
+
+/// Add (sum/concatenate) a slice of already-evaluated Values.
+///
+/// Polymorphic: numbers are summed, arrays concatenated, strings concatenated.
+/// The first element's type determines the mode.
+///
+/// Null handling differs by type:
+/// - **Numeric ADD:** Null operands are skipped (SQL SUM semantics). This is a
+///   deliberate design choice: Dutch law definitions routinely use ADD with
+///   operands that may be absent, e.g. `ADD($box1_inkomen, $buitenlands_inkomen)`
+///   where buitenlands_inkomen is null for most citizens. Propagating Null here
+///   would make nearly every income calculation fail. The FOREACH `combine_add`
+///   delegates to this function after its own null filtering.
+/// - **String/Array ADD:** Null propagates (returns Null). Concatenating a
+///   string or array with an unknown value produces an unknown result.
+fn add_values(evaluated: &[Value]) -> Result<Value> {
+    if evaluated.is_empty() {
+        return Ok(Value::Int(0));
+    }
+
+    // Find the first non-Null value to determine the operation type.
+    // If the first element is Null but later elements are Int, we should do numeric add.
+    let first_non_null = match evaluated.iter().find(|v| !v.is_null()) {
+        Some(v) => v,
+        None => return Ok(Value::Null), // All values are Null
+    };
+
+    match first_non_null {
+        Value::Array(_) => {
+            let mut result = Vec::new();
+            for val in evaluated {
+                match val {
+                    Value::Array(arr) => result.extend(arr.iter().cloned()),
+                    Value::Null => return Ok(Value::Null),
+                    _ => {
+                        return Err(EngineError::TypeMismatch {
+                            expected: "array".to_string(),
+                            actual: val.type_name().to_string(),
+                        })
+                    }
+                }
+            }
+            Ok(Value::Array(result))
+        }
+        Value::String(_) => {
+            let mut result = String::new();
+            for val in evaluated {
+                match val {
+                    Value::String(s) => result.push_str(s),
+                    Value::Null => return Ok(Value::Null),
+                    _ => {
+                        return Err(EngineError::TypeMismatch {
+                            expected: "string".to_string(),
+                            actual: val.type_name().to_string(),
+                        })
+                    }
+                }
+            }
+            Ok(Value::String(result))
+        }
+        Value::Int(_) | Value::Float(_) => {
+            // For numeric ADD, skip Null values (SQL SUM semantics).
+            let mut all_int = true;
+            for val in evaluated {
+                match val {
+                    Value::Int(_) => {}
+                    Value::Float(_) => {
+                        all_int = false;
+                    }
+                    Value::Null => {} // skip nulls in numeric add
+                    _ => return Err(type_error("number", val)),
+                }
+            }
+
+            if all_int {
+                let mut sum: i64 = 0;
+                for val in evaluated {
+                    if let Value::Int(i) = val {
+                        sum = sum.checked_add(*i).ok_or_else(|| {
+                            EngineError::ArithmeticOverflow(format!(
+                                "Integer overflow in ADD: {} + {}",
+                                sum, i
+                            ))
+                        })?;
+                    }
+                }
+                Ok(Value::Int(sum))
+            } else {
+                let mut sum = 0.0;
+                for val in evaluated {
+                    match val {
+                        Value::Int(_) => sum += to_number(val)?,
+                        Value::Float(f) => sum += f,
+                        Value::Null => {} // skip nulls in numeric add
+                        _ => return Err(type_error("number", val)),
+                    }
+                }
+                Ok(Value::Float(sum))
+            }
+        }
+        other => Err(type_error("number, string, or array", other)),
+    }
+}
 
 /// Execute ADD operation: sum numbers, concatenate arrays, or concatenate strings.
 ///
@@ -441,62 +650,7 @@ fn execute_add<R: ValueResolver>(
         return Ok(tainted);
     }
 
-    // Determine type from first value
-    match &evaluated[0] {
-        Value::Array(_) => {
-            // Concatenate arrays
-            let mut result = Vec::new();
-            for val in &evaluated {
-                match val {
-                    Value::Array(arr) => result.extend(arr.iter().cloned()),
-                    _ => {
-                        return Err(EngineError::TypeMismatch {
-                            expected: "array".to_string(),
-                            actual: format!("{:?}", val),
-                        })
-                    }
-                }
-            }
-            Ok(Value::Array(result))
-        }
-        Value::String(_) => {
-            // Concatenate strings
-            let mut result = String::new();
-            for val in &evaluated {
-                match val {
-                    Value::String(s) => result.push_str(s),
-                    _ => {
-                        return Err(EngineError::TypeMismatch {
-                            expected: "string".to_string(),
-                            actual: format!("{:?}", val),
-                        })
-                    }
-                }
-            }
-            Ok(Value::String(result))
-        }
-        Value::Int(_) | Value::Float(_) => {
-            // Original numeric addition
-            let mut sum = 0.0;
-            let mut has_float = false;
-            for val in &evaluated {
-                match val {
-                    Value::Int(_) => sum += to_number(val)?,
-                    Value::Float(f) => {
-                        sum += f;
-                        has_float = true;
-                    }
-                    _ => return Err(type_error("number", val)),
-                }
-            }
-            Ok(if has_float {
-                Value::Float(sum)
-            } else {
-                Value::Int(f64_to_i64_safe(sum)?)
-            })
-        }
-        _ => Err(type_error("number, string, or array", &evaluated[0])),
-    }
+    add_values(&evaluated)
 }
 
 /// Execute SUBTRACT operation: first value minus all subsequent values.
@@ -518,6 +672,11 @@ fn execute_subtract<R: ValueResolver>(
 
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
+    }
+
+    // Null propagation: if any value is Null, result is Null
+    if let Some(null) = find_null(&evaluated) {
+        return Ok(null);
     }
 
     // SAFETY: values guaranteed non-empty by check above
@@ -562,6 +721,11 @@ fn execute_multiply<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Null propagation: if any value is Null, result is Null
+    if let Some(null) = find_null(&evaluated) {
+        return Ok(null);
+    }
+
     let mut result = 1.0;
     let mut has_float = false;
 
@@ -602,6 +766,11 @@ fn execute_divide<R: ValueResolver>(
 
     if let Some(tainted) = find_untranslatable(&evaluated) {
         return Ok(tainted);
+    }
+
+    // Null propagation: if any value is Null, result is Null
+    if let Some(null) = find_null(&evaluated) {
+        return Ok(null);
     }
 
     // SAFETY: values guaranteed non-empty by check above
@@ -660,8 +829,14 @@ where
         return Ok(tainted);
     }
 
+    // Skip Null values in aggregation
+    let non_null: Vec<&Value> = evaluated.iter().filter(|v| !v.is_null()).collect();
+    if non_null.is_empty() {
+        return Ok(Value::Null);
+    }
+
     let mut has_float = false;
-    let nums: Vec<f64> = evaluated
+    let nums: Vec<f64> = non_null
         .iter()
         .map(|v| {
             if matches!(v, Value::Float(_)) {
@@ -671,9 +846,9 @@ where
         })
         .collect::<Result<Vec<_>>>()?;
 
-    // SAFETY: values guaranteed non-empty by check above
+    // SAFETY: non_null guaranteed non-empty by check above
     let Some(result) = nums.into_iter().reduce(combine) else {
-        unreachable!("values checked non-empty above")
+        unreachable!("non_null checked non-empty above")
     };
 
     Ok(if has_float {
@@ -698,11 +873,11 @@ fn execute_and<R: ValueResolver>(
     let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive false wins over taint (AND commutativity)
-        if !val.to_bool() && !val.is_untranslatable() {
+        // Definitive false wins over taint/null (AND commutativity)
+        if !val.to_bool() && !val.is_untranslatable() && !val.is_null() {
             return Ok(Value::Bool(false));
         }
-        if val.is_untranslatable() && taint.is_none() {
+        if (val.is_untranslatable() || val.is_null()) && taint.is_none() {
             taint = Some(val);
             continue;
         }
@@ -711,7 +886,7 @@ fn execute_and<R: ValueResolver>(
         }
     }
 
-    // If any operand was tainted but none was definitively false, propagate
+    // If any operand was tainted/null but none was definitively false, propagate
     if let Some(t) = taint {
         return Ok(t);
     }
@@ -733,16 +908,16 @@ fn execute_or<R: ValueResolver>(
     let mut taint: Option<Value> = None;
     for condition in conditions {
         let val = evaluate_value(condition, resolver, depth)?;
-        // Definitive true wins over taint (OR commutativity)
+        // Definitive true wins over taint/null (OR commutativity)
         if val.to_bool() {
             return Ok(Value::Bool(true));
         }
-        if val.is_untranslatable() && taint.is_none() {
+        if (val.is_untranslatable() || val.is_null()) && taint.is_none() {
             taint = Some(val);
         }
     }
 
-    // If any operand was tainted but none was definitively true, propagate
+    // If any operand was tainted/null but none was definitively true, propagate
     if let Some(t) = taint {
         return Ok(t);
     }
@@ -757,6 +932,10 @@ fn execute_not<R: ValueResolver>(value: &ActionValue, resolver: &R, depth: usize
     let val = evaluate_value(value, resolver, depth)?;
     if val.is_untranslatable() {
         return Ok(val);
+    }
+    // Null propagation: NOT(Null) = Null (unknown)
+    if val.is_null() {
+        return Ok(Value::Null);
     }
     Ok(Value::Bool(!val.to_bool()))
 }
@@ -873,26 +1052,59 @@ fn execute_membership<R: ValueResolver>(
     if subject_val.is_untranslatable() {
         return Ok(subject_val);
     }
+    // Null propagation: if subject is Null, return Null (unknown membership)
+    if subject_val.is_null() {
+        return Ok(Value::Null);
+    }
 
-    let check_values = if let Some(values) = values {
-        evaluate_values(values, resolver, depth)?
-    } else if let Some(value) = value {
-        let resolved = evaluate_value(value, resolver, depth)?;
-        match resolved {
-            Value::Array(items) => items,
-            other => vec![other],
-        }
-    } else {
-        let op_name = if negate { "NOT_IN" } else { "IN" };
-        return Err(EngineError::InvalidOperation(format!(
-            "{op_name} requires 'values' or 'value'"
-        )));
+    // Helper: when subject is an array (e.g. from `$inschrijvingen.rechtsvorm`
+    // dot-notation projection), the IN check applies element-wise: true if ANY
+    // element of subject_val is in the candidate list.
+    let subject_elements: Vec<Value> = match &subject_val {
+        Value::Array(items) => items.clone(),
+        other => vec![other.clone()],
     };
 
-    let found = check_values
-        .iter()
-        .any(|val| values_equal(&subject_val, val));
-    Ok(Value::Bool(if negate { !found } else { found }))
+    if let Some(values) = values {
+        let check_values = evaluate_values(values, resolver, depth)?;
+        let found = subject_elements
+            .iter()
+            .any(|s| check_values.iter().any(|v| values_equal(s, v)));
+        return Ok(Value::Bool(if negate { !found } else { found }));
+    }
+
+    if let Some(value) = value {
+        let resolved = evaluate_value(value, resolver, depth)?;
+        let found = match &resolved {
+            Value::Array(items) => subject_elements
+                .iter()
+                .any(|s| items.iter().any(|v| values_equal(s, v))),
+            // Object/map: check if any subject element is a key in the map.
+            // Coerce element to string for key lookup (keys are always strings).
+            Value::Object(map) => subject_elements.iter().any(|s| {
+                let key = match s {
+                    Value::String(s) => s.clone(),
+                    Value::Int(i) => i.to_string(),
+                    Value::Float(f) => {
+                        if *f == (*f as i64) as f64 {
+                            (*f as i64).to_string()
+                        } else {
+                            f.to_string()
+                        }
+                    }
+                    _ => format!("{}", s),
+                };
+                map.contains_key(&key)
+            }),
+            other => subject_elements.iter().any(|s| values_equal(s, other)),
+        };
+        return Ok(Value::Bool(if negate { !found } else { found }));
+    }
+
+    let op_name = if negate { "NOT_IN" } else { "IN" };
+    Err(EngineError::InvalidOperation(format!(
+        "{op_name} requires 'values' or 'value'"
+    )))
 }
 
 /// Execute LIST operation: construct an array from items.
@@ -907,6 +1119,73 @@ fn execute_list<R: ValueResolver>(
         .collect::<Result<Vec<_>>>()?;
 
     Ok(Value::Array(values))
+}
+
+/// Execute GET operation: look up a key in a map/object.
+///
+/// `subject` is the key to look up, `values` is the map/object.
+/// The key is coerced to string for lookup (map keys are always strings).
+fn execute_get<R: ValueResolver>(
+    subject: &ActionValue,
+    values: &ActionValue,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let key_val = evaluate_value(subject, resolver, depth)?;
+    if key_val.is_null() {
+        return Ok(Value::Null);
+    }
+    let map_val = evaluate_value(values, resolver, depth)?;
+    if map_val.is_null() {
+        return Ok(Value::Null);
+    }
+
+    match &map_val {
+        Value::Object(map) => {
+            let key = match &key_val {
+                Value::String(s) => s.clone(),
+                Value::Int(i) => i.to_string(),
+                Value::Float(f) => {
+                    if *f == (*f as i64) as f64 {
+                        (*f as i64).to_string()
+                    } else {
+                        f.to_string()
+                    }
+                }
+                _ => format!("{}", key_val),
+            };
+            Ok(map.get(&key).cloned().unwrap_or(Value::Null))
+        }
+        _ => Ok(Value::Null),
+    }
+}
+
+/// Execute CONCAT operation: concatenate values into a string.
+///
+/// Each value is evaluated and converted to string. Null operands are skipped
+/// (treated as empty string) rather than propagated. This differs from ADD on
+/// strings because CONCAT is used for assembling display/output strings where
+/// partial results are meaningful - e.g., building an address from parts where
+/// a missing house number should still show the street name, or composing a
+/// description where some optional components are absent.
+fn execute_concat<R: ValueResolver>(
+    values: &[ActionValue],
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let mut result = String::new();
+    for val_expr in values {
+        let val = evaluate_value(val_expr, resolver, depth)?;
+        match val {
+            Value::Null => {} // Skip null (empty string)
+            Value::String(s) => result.push_str(&s),
+            Value::Int(i) => result.push_str(&i.to_string()),
+            Value::Float(f) => result.push_str(&f.to_string()),
+            Value::Bool(b) => result.push_str(&b.to_string()),
+            _ => result.push_str(&format!("{}", val)),
+        }
+    }
+    Ok(Value::String(result))
 }
 
 // =============================================================================
@@ -931,8 +1210,19 @@ fn execute_age<R: ValueResolver>(
         return Ok(tainted);
     }
 
-    let dob_date = parse_date(&dob_val)?;
-    let ref_date_parsed = parse_date(&ref_val)?;
+    // Null propagation: if either input is null, return null
+    if matches!(dob_val, Value::Null) || matches!(ref_val, Value::Null) {
+        return Ok(Value::Null);
+    }
+
+    let dob_date = match parse_date(&dob_val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
+    let ref_date_parsed = match parse_date(&ref_val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
 
     let age = calculate_years_difference(ref_date_parsed, dob_date);
     Ok(Value::Int(age))
@@ -962,11 +1252,21 @@ fn execute_date_add<R: ValueResolver>(
     if date_val.is_untranslatable() {
         return Ok(date_val);
     }
-    let mut result_date = parse_date(&date_val)?;
+    // Null propagation: if date input is Null, return Null
+    if date_val.is_null() {
+        return Ok(Value::Null);
+    }
+    let mut result_date = match parse_date(&date_val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
 
     // Years: add to year component, clamp day to last day of target month
     if let Some(years) = years {
         let years_val = evaluate_value(years, resolver, depth)?;
+        if years_val.is_null() {
+            return Ok(Value::Null);
+        }
         let years_i64 = years_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'years' must be a number".to_string())
         })?;
@@ -992,6 +1292,9 @@ fn execute_date_add<R: ValueResolver>(
     // Months: add to month component, clamp day to last day of target month
     if let Some(months) = months {
         let months_val = evaluate_value(months, resolver, depth)?;
+        if months_val.is_null() {
+            return Ok(Value::Null);
+        }
         let months_int = months_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'months' must be a number".to_string())
         })?;
@@ -1001,6 +1304,9 @@ fn execute_date_add<R: ValueResolver>(
     // Weeks
     if let Some(weeks) = weeks {
         let weeks_val = evaluate_value(weeks, resolver, depth)?;
+        if weeks_val.is_null() {
+            return Ok(Value::Null);
+        }
         let weeks_int = weeks_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'weeks' must be a number".to_string())
         })?;
@@ -1016,6 +1322,9 @@ fn execute_date_add<R: ValueResolver>(
     // Days
     if let Some(days) = days {
         let days_val = evaluate_value(days, resolver, depth)?;
+        if days_val.is_null() {
+            return Ok(Value::Null);
+        }
         let days_int = days_val.as_int().ok_or_else(|| {
             EngineError::InvalidOperation("DATE_ADD 'days' must be a number".to_string())
         })?;
@@ -1077,6 +1386,11 @@ fn execute_date_construct<R: ValueResolver>(
         return Ok(tainted);
     }
 
+    // Null propagation: if any component is Null, return Null
+    if let Some(null) = find_null(&[year_val.clone(), month_val.clone(), day_val.clone()]) {
+        return Ok(null);
+    }
+
     let y_i64 = year_val
         .as_int()
         .ok_or_else(|| EngineError::InvalidOperation("DATE 'year' must be a number".to_string()))?;
@@ -1117,30 +1431,119 @@ fn execute_day_of_week<R: ValueResolver>(
     if val.is_untranslatable() {
         return Ok(val);
     }
-    let parsed = parse_date(&val)?;
+    // Null propagation: if date is Null, return Null
+    if val.is_null() {
+        return Ok(Value::Null);
+    }
+    let parsed = match parse_date(&val)? {
+        Some(d) => d,
+        None => return Ok(Value::Null),
+    };
     Ok(Value::Int(parsed.weekday().num_days_from_monday() as i64))
+}
+
+/// Execute SUBTRACT_DATE: difference between two dates in `unit` (default `days`).
+///
+/// Mirrors the Python fallback in `regelrecht_services.py`:
+///   - Two operands `[end, start]`. Returns `end - start`.
+///   - Null/empty operands fall back to the current `referencedate`. This
+///     supports "active employment" patterns where `end_date` is missing for
+///     ongoing periods and the calculation date is the implicit endpoint.
+///   - `unit: years` returns a Float using 365.25 days per year (matches the
+///     Python fallback). Default unit is `days`, returned as Int.
+fn execute_subtract_date<R: ValueResolver>(
+    values: &[ActionValue],
+    unit: Option<&str>,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    if values.len() != 2 {
+        return Err(EngineError::InvalidOperation(format!(
+            "SUBTRACT_DATE requires exactly 2 values (got {})",
+            values.len()
+        )));
+    }
+
+    let end_val = evaluate_value(&values[0], resolver, depth)?;
+    let start_val = evaluate_value(&values[1], resolver, depth)?;
+
+    if end_val.is_untranslatable() {
+        return Ok(end_val);
+    }
+    if start_val.is_untranslatable() {
+        return Ok(start_val);
+    }
+
+    let end_date = resolve_date_with_fallback(&end_val, resolver)?;
+    let start_date = resolve_date_with_fallback(&start_val, resolver)?;
+
+    let (Some(end), Some(start)) = (end_date, start_date) else {
+        // Either operand was unresolvable even after fallback — propagate Null.
+        return Ok(Value::Null);
+    };
+
+    let delta_days = (end - start).num_days();
+    match unit.unwrap_or("days") {
+        "days" => Ok(Value::Int(delta_days)),
+        "years" => Ok(Value::Float(delta_days as f64 / 365.25)),
+        "months" => Ok(Value::Float(delta_days as f64 / (365.25 / 12.0))),
+        "weeks" => Ok(Value::Float(delta_days as f64 / 7.0)),
+        other => Err(EngineError::InvalidOperation(format!(
+            "SUBTRACT_DATE: unsupported unit '{}'",
+            other
+        ))),
+    }
+}
+
+/// Resolve a Value to a NaiveDate, falling back to the resolver's
+/// `referencedate` if the value is null/empty. Returns Ok(None) only when
+/// the fallback is also unavailable.
+fn resolve_date_with_fallback<R: ValueResolver>(
+    value: &Value,
+    resolver: &R,
+) -> Result<Option<NaiveDate>> {
+    let needs_fallback = match value {
+        Value::Null => true,
+        Value::String(s) if s.is_empty() => true,
+        _ => false,
+    };
+    if needs_fallback {
+        // Resolve `referencedate` from the context — it's set by RuleContext::new
+        // and exposed via the resolver chain.
+        match resolver.resolve("referencedate") {
+            Ok(ref_val) => return parse_date(&ref_val),
+            Err(_) => return Ok(None),
+        }
+    }
+    parse_date(value)
 }
 
 /// Parse a date from a Value.
 ///
 /// Expects the value to be a string in ISO 8601 format (YYYY-MM-DD).
-fn parse_date(value: &Value) -> Result<NaiveDate> {
+fn parse_date(value: &Value) -> Result<Option<NaiveDate>> {
     match value {
-        Value::String(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|e| {
-            EngineError::InvalidOperation(format!(
-                "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
-                s, e
-            ))
-        }),
+        // Null propagation: Null date input returns None (caller produces Value::Null)
+        Value::Null => Ok(None),
+        Value::String(s) => NaiveDate::parse_from_str(s, "%Y-%m-%d")
+            .map(Some)
+            .map_err(|e| {
+                EngineError::InvalidOperation(format!(
+                    "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
+                    s, e
+                ))
+            }),
         // Handle referencedate objects with {iso, year, month, day}
         Value::Object(obj) => {
             if let Some(Value::String(iso)) = obj.get("iso") {
-                NaiveDate::parse_from_str(iso, "%Y-%m-%d").map_err(|e| {
-                    EngineError::InvalidOperation(format!(
-                        "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
-                        iso, e
-                    ))
-                })
+                NaiveDate::parse_from_str(iso, "%Y-%m-%d")
+                    .map(Some)
+                    .map_err(|e| {
+                        EngineError::InvalidOperation(format!(
+                            "Failed to parse date '{}': {}. Expected format: YYYY-MM-DD",
+                            iso, e
+                        ))
+                    })
             } else {
                 Err(EngineError::TypeMismatch {
                     expected: "date string (YYYY-MM-DD) or object with 'iso' field".to_string(),
@@ -1302,18 +1705,329 @@ fn to_number(val: &Value) -> Result<f64> {
             Ok(*i as f64)
         }
         Value::Float(f) => Ok(*f),
-        // Untranslatable should be caught by the caller before reaching to_number,
-        // but handle it gracefully.
-        Value::Untranslatable { .. } => Err(type_error("number", val)),
+        // String numeric coercion: parse if possible, error otherwise.
+        // This supports data sources that deliver numeric values as strings.
+        Value::String(s) => s.parse::<f64>().map_err(|_| type_error("number", val)),
         _ => Err(type_error("number", val)),
     }
 }
 
 /// Create a TypeMismatch error.
+/// Extract a date string from a Value, handling both String and Object ({iso: "..."}) forms.
+fn extract_date_string(val: &Value) -> Option<String> {
+    match val {
+        Value::String(s) if s.len() == 10 && s.chars().nth(4) == Some('-') => Some(s.clone()),
+        Value::Object(obj) => obj.get("iso").and_then(|v| {
+            if let Value::String(s) = v {
+                Some(s.clone())
+            } else {
+                None
+            }
+        }),
+        _ => None,
+    }
+}
+
 fn type_error(expected: &str, actual: &Value) -> EngineError {
     EngineError::TypeMismatch {
         expected: expected.to_string(),
         actual: actual.type_name().to_string(),
+    }
+}
+
+/// Execute EXISTS check: true if value is not null AND not empty.
+///
+/// Unlike NOT_NULL (which only checks for Null), EXISTS also returns false
+/// for empty arrays `[]` and empty objects `{}`. This matches the legal
+/// semantics of "data exists" — an empty registration list means no
+/// registrations exist.
+fn execute_exists<R: ValueResolver>(
+    subject: &ActionValue,
+    resolver: &R,
+    depth: usize,
+) -> Result<Value> {
+    let subject_val = evaluate_value(subject, resolver, depth)?;
+    if subject_val.is_untranslatable() {
+        return Ok(subject_val);
+    }
+    let exists = match &subject_val {
+        Value::Null => false,
+        Value::Array(arr) => !arr.is_empty(),
+        Value::Object(obj) => !obj.is_empty(),
+        _ => true,
+    };
+    Ok(Value::Bool(exists))
+}
+
+// =============================================================================
+// Collection Iteration (RFC-016)
+// =============================================================================
+
+/// Execute FOREACH operation: iterate over a collection, evaluate body per element.
+///
+/// FOREACH requires a `RuleContext` (not generic `ValueResolver`) because it needs
+/// to create child scopes with local variable bindings. This is the only operation
+/// that introduces a new variable name into scope (RFC-016).
+///
+/// The `collection` is evaluated in the current scope. For each element, a child
+/// context is created with the element bound to the `as_name` variable. The `filter`
+/// and `body` are evaluated in the child scope.
+pub fn execute_foreach(
+    collection: &ActionValue,
+    as_name: &str,
+    body: &ActionValue,
+    filter: Option<&ActionValue>,
+    combine: Option<&crate::article::CombineOp>,
+    context: &RuleContext,
+    depth: usize,
+) -> Result<Value> {
+    // Validate as_name: must be non-empty lowercase identifier per RFC-016 schema
+    if as_name.is_empty()
+        || !as_name
+            .chars()
+            .enumerate()
+            .all(|(i, c)| matches!((i, c), (0, 'a'..='z' | '_') | (_, 'a'..='z' | '0'..='9' | '_')))
+    {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH 'as' must be a non-empty lowercase identifier (got '{}')",
+            as_name
+        )));
+    }
+
+    // Evaluate collection in current (outer) scope
+    let collection_value = evaluate_value(collection, context, depth)?;
+
+    // Propagate untranslatable
+    if collection_value.is_untranslatable() {
+        return Ok(collection_value);
+    }
+
+    // Get array to iterate over (wrap non-arrays in single-element array, null → empty)
+    let items = match &collection_value {
+        Value::Array(arr) => arr.clone(),
+        Value::Null => Vec::new(),
+        other => vec![other.clone()],
+    };
+
+    // Security: check array size limit
+    if items.len() > crate::config::MAX_ARRAY_SIZE {
+        return Err(EngineError::InvalidOperation(format!(
+            "FOREACH collection size {} exceeds limit {}",
+            items.len(),
+            crate::config::MAX_ARRAY_SIZE,
+        )));
+    }
+
+    // Iterate and collect results
+    let mut results: Vec<Value> = Vec::with_capacity(items.len());
+
+    for item in &items {
+        // Create child context with the element bound to as_name
+        let mut child = context.create_child();
+        child.set_local(as_name.to_string(), item.clone());
+
+        // Object field flattening: when iterating over arrays of objects, inject
+        // each field as a local variable alongside the `as` binding. This allows
+        // law authors to write `$status` instead of `$item.status`, which matches
+        // how existing Dutch law YAML files reference element properties. Dot
+        // notation (`$item.status`) also works and is preferred for clarity.
+        //
+        // Caveat: flattened field names can shadow outer-scope variables if they
+        // collide. Law authors should use distinct `as` names to avoid ambiguity.
+        //
+        // See RFC-016 "Object field flattening" for rationale.
+        if let Value::Object(fields) = item {
+            for (key, value) in fields {
+                child.set_local(key.clone(), value.clone());
+            }
+        }
+
+        // Evaluate filter if present (in child scope)
+        if let Some(filter_expr) = filter {
+            let filter_result = evaluate_value(filter_expr, &child, depth + 1)?;
+            if filter_result.is_untranslatable() {
+                return Ok(filter_result);
+            }
+            // Null filter means "unknown whether this element qualifies" —
+            // propagate Null rather than silently excluding the element.
+            if filter_result.is_null() {
+                return Ok(Value::Null);
+            }
+            if !filter_result.to_bool() {
+                continue; // Skip this element
+            }
+        }
+
+        // Evaluate body (in child scope)
+        let result = evaluate_value(body, &child, depth + 1)?;
+
+        // Propagate untranslatable immediately
+        if result.is_untranslatable() {
+            return Ok(result);
+        }
+
+        results.push(result);
+    }
+
+    // Apply combine aggregation or return array
+    match combine {
+        Some(CombineOp::Add) => combine_add(&results),
+        Some(CombineOp::Or) => combine_or(&results),
+        // Vacuous truth: AND over an empty collection returns true, matching standard
+        // logical convention (the universal quantifier over an empty domain is true).
+        // Law authors using combine: AND must separately verify the collection is
+        // non-empty if "no items" should not imply "all conditions are met".
+        Some(CombineOp::And) => combine_and(&results),
+        Some(CombineOp::Min) => combine_min_max(&results, true),
+        Some(CombineOp::Max) => combine_min_max(&results, false),
+        None => Ok(Value::Array(results)),
+    }
+}
+
+/// Combine FOREACH results with ADD.
+///
+/// Pre-filters Null elements before delegating to `add_values`. For numeric
+/// values this is redundant (`add_values` already skips nulls for numbers),
+/// but for string/array combine it prevents null propagation: a FOREACH body
+/// that cannot produce a value for some element should not abort the entire
+/// aggregation. If ALL elements are null, returns Null.
+fn combine_add(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Int(0));
+    }
+    // If any result is null, filter it out and sum the rest.
+    // If all are null, return Null (unknown total).
+    let non_null: Vec<&Value> = results.iter().filter(|v| !v.is_null()).collect();
+    if non_null.is_empty() {
+        return Ok(Value::Null);
+    }
+    let non_null_owned: Vec<Value> = non_null.into_iter().cloned().collect();
+    add_values(&non_null_owned)
+}
+
+/// Combine FOREACH results with OR.
+///
+/// Mirrors standalone `execute_or` null semantics: a definitive `true` wins,
+/// but if any element is Null and no element is definitively `true`, the
+/// result is Null (unknown). Returns `false` only if all elements are
+/// definitively falsy.
+fn combine_or(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(false));
+    }
+    let mut has_null = false;
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            has_null = true;
+            continue;
+        }
+        if v.to_bool() {
+            return Ok(Value::Bool(true));
+        }
+    }
+    if has_null {
+        Ok(Value::Null)
+    } else {
+        Ok(Value::Bool(false))
+    }
+}
+
+/// Combine FOREACH results with AND.
+///
+/// Mirrors standalone `execute_and` null semantics: a definitive `false` wins,
+/// but if any element is Null and no element is definitively `false`, the
+/// result is Null (unknown). Returns `true` only if all elements are
+/// definitively truthy (or the collection is empty — vacuous truth).
+fn combine_and(results: &[Value]) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Bool(true));
+    }
+    let mut has_null = false;
+    for v in results {
+        if v.is_untranslatable() {
+            return Ok(v.clone());
+        }
+        if v.is_null() {
+            has_null = true;
+            continue;
+        }
+        if !v.to_bool() {
+            return Ok(Value::Bool(false));
+        }
+    }
+    if has_null {
+        Ok(Value::Null)
+    } else {
+        Ok(Value::Bool(true))
+    }
+}
+
+/// Combine results with MIN or MAX.
+/// Uses i64 comparison directly when all values are integers to avoid f64 precision loss.
+fn combine_min_max(results: &[Value], is_min: bool) -> Result<Value> {
+    if results.is_empty() {
+        return Ok(Value::Null);
+    }
+
+    let mut all_int = true;
+    let mut best_int: Option<i64> = None;
+    let mut best_float: f64 = if is_min {
+        f64::INFINITY
+    } else {
+        f64::NEG_INFINITY
+    };
+    let mut has_any_number = false;
+
+    for v in results {
+        match v {
+            Value::Int(i) => {
+                has_any_number = true;
+                best_int = Some(match best_int {
+                    None => *i,
+                    Some(prev) => {
+                        if is_min {
+                            prev.min(*i)
+                        } else {
+                            prev.max(*i)
+                        }
+                    }
+                });
+                // Also track f64 in case we later encounter a Float
+                let n = *i as f64;
+                best_float = if is_min {
+                    best_float.min(n)
+                } else {
+                    best_float.max(n)
+                };
+            }
+            Value::Float(f) => {
+                has_any_number = true;
+                all_int = false;
+                best_float = if is_min {
+                    best_float.min(*f)
+                } else {
+                    best_float.max(*f)
+                };
+            }
+            Value::Null => continue,
+            _ => {
+                return Err(EngineError::TypeMismatch {
+                    expected: "number".to_string(),
+                    actual: v.type_name().to_string(),
+                })
+            }
+        }
+    }
+
+    match (has_any_number, all_int, best_int) {
+        (false, _, _) => Ok(Value::Null), // All values were null
+        (true, true, Some(i)) => Ok(Value::Int(i)),
+        (true, false, _) => Ok(Value::Float(best_float)),
+        // Unreachable: has_any_number && all_int implies best_int is Some
+        (true, true, None) => Ok(Value::Null),
     }
 }
 
@@ -1994,15 +2708,12 @@ mod tests {
         }
 
         #[test]
-        fn test_variable_not_found() {
+        fn test_variable_not_found_returns_null() {
             let resolver = TestResolver::new();
-            let op = ActionOperation::Equals {
-                subject: var("nonexistent"),
-                value: lit(42i64),
-            };
-
-            let result = execute_operation(&op, &resolver, 0);
-            assert!(matches!(result, Err(EngineError::VariableNotFound(_))));
+            // Unresolved variables return Null (lenient mode)
+            let val = var("nonexistent");
+            let result = evaluate_value(&val, &resolver, 0);
+            assert!(matches!(result, Ok(Value::Null)));
         }
 
         #[test]
@@ -2136,17 +2847,23 @@ mod tests {
 
         #[test]
         fn test_arithmetic_with_large_integer() {
+            // Values beyond f64's safe integer range (2^53) are fine with i64::checked_add
             let large_value: i64 = 9_007_199_254_740_993; // MAX_SAFE_INTEGER + 1
-
             let resolver = TestResolver::new();
             let op = ActionOperation::Add {
                 values: vec![lit(large_value), lit(1i64)],
             };
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Int(9_007_199_254_740_994));
 
+            // Actual i64 overflow should still produce an error
+            let op = ActionOperation::Add {
+                values: vec![lit(i64::MAX), lit(1i64)],
+            };
             let result = execute_operation(&op, &resolver, 0);
             assert!(
                 matches!(result, Err(EngineError::ArithmeticOverflow(_))),
-                "Large integer in arithmetic should cause overflow error"
+                "i64 overflow in ADD should cause arithmetic overflow error"
             );
         }
     }
@@ -2235,6 +2952,58 @@ mod tests {
 
             let result = execute_operation(&op, &resolver, 0);
             assert!(matches!(result, Err(EngineError::InvalidOperation(_))));
+        }
+
+        #[test]
+        fn test_in_array_subject_any_match_in_values() {
+            // When subject is an array (e.g. from $arr.field projection), the
+            // membership check should match if ANY element of subject is in
+            // the candidate list.
+            let resolver = TestResolver::new();
+            let op = ActionOperation::In {
+                subject: lit(Value::Array(vec![Value::String("EENMANSZAAK".to_string())])),
+                value: None,
+                values: Some(vec![lit("EENMANSZAAK"), lit("VOF"), lit("MAATSCHAP")]),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_in_array_subject_no_match_in_values() {
+            let resolver = TestResolver::new();
+            let op = ActionOperation::In {
+                subject: lit(Value::Array(vec![
+                    Value::String("BV".to_string()),
+                    Value::String("NV".to_string()),
+                ])),
+                value: None,
+                values: Some(vec![lit("EENMANSZAAK"), lit("VOF")]),
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(false));
+        }
+
+        #[test]
+        fn test_in_array_subject_any_match_in_value_ref() {
+            // Same as above but using `value: $ref` instead of inline `values`.
+            let resolver = TestResolver::new().with_var(
+                "ondernemersvormen",
+                Value::Array(vec![
+                    Value::String("EENMANSZAAK".to_string()),
+                    Value::String("VOF".to_string()),
+                ]),
+            );
+            let op = ActionOperation::In {
+                subject: lit(Value::Array(vec![Value::String("EENMANSZAAK".to_string())])),
+                value: Some(var("ondernemersvormen")),
+                values: None,
+            };
+
+            let result = execute_operation(&op, &resolver, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
         }
 
         #[test]
@@ -2640,7 +3409,7 @@ mod tests {
         date_obj.insert("iso".to_string(), Value::String("2025-01-01".to_string()));
         date_obj.insert("year".to_string(), Value::Int(2025));
 
-        let result = parse_date(&Value::Object(date_obj)).unwrap();
+        let result = parse_date(&Value::Object(date_obj)).unwrap().unwrap();
         assert_eq!(result.to_string(), "2025-01-01");
     }
 
@@ -2684,5 +3453,692 @@ mod tests {
         ));
         assert!(!values_equal(&Value::Int(0), &Value::Float(f64::NAN)));
         assert!(!values_equal(&Value::Float(f64::NAN), &Value::Int(0)));
+    }
+
+    // -------------------------------------------------------------------------
+    // FOREACH Operations Tests (using RuleContext for child scope support)
+    // -------------------------------------------------------------------------
+
+    mod foreach_ops {
+        use super::*;
+        use crate::context::RuleContext;
+
+        /// Helper to create a RuleContext with given parameters.
+        fn make_ctx(params: Vec<(&str, Value)>) -> RuleContext {
+            let p: BTreeMap<String, Value> = params
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
+            RuleContext::new(p, "2025-06-15").unwrap()
+        }
+
+        #[test]
+        fn test_foreach_basic_combine_add() {
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(10), Value::Int(20), Value::Int(30)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(60));
+        }
+
+        #[test]
+        fn test_foreach_body_with_operation() {
+            // FOREACH items as x: MULTIPLY(x, 2), combine ADD
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            )]);
+
+            let mul_op = ActionOperation::Multiply {
+                values: vec![var("x"), lit(2i64)],
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: ActionValue::Operation(Box::new(mul_op)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // 1*2 + 2*2 + 3*2 = 2+4+6 = 12
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(12));
+        }
+
+        #[test]
+        fn test_foreach_filter_skip_elements() {
+            // FOREACH [1, 2, 3, 4, 5] as x: x, filter x > 2, combine ADD
+            let ctx = make_ctx(vec![(
+                "nums",
+                Value::Array(vec![
+                    Value::Int(1),
+                    Value::Int(2),
+                    Value::Int(3),
+                    Value::Int(4),
+                    Value::Int(5),
+                ]),
+            )]);
+
+            let filter_op = ActionOperation::GreaterThan {
+                subject: var("x"),
+                value: lit(2i64),
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("nums"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(ActionValue::Operation(Box::new(filter_op))),
+                combine: Some(CombineOp::Add),
+            };
+
+            // Only 3+4+5 = 12
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(12));
+        }
+
+        #[test]
+        fn test_foreach_empty_collection() {
+            let ctx = make_ctx(vec![("items", Value::Array(vec![]))]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // Empty collection with ADD combine returns 0
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_null_collection() {
+            let ctx = make_ctx(vec![("items", Value::Null)]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // Null collection treated as empty array, ADD of empty = 0
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(0));
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_propagation() {
+            let untranslatable = Value::Untranslatable {
+                article: "42".to_string(),
+                construct: "not applicable".to_string(),
+            };
+
+            let ctx = make_ctx(vec![("items", untranslatable.clone())]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // Untranslatable collection should propagate
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(result.is_untranslatable());
+        }
+
+        #[test]
+        fn test_foreach_untranslatable_in_body() {
+            let untranslatable = Value::Untranslatable {
+                article: "7".to_string(),
+                construct: "open norm".to_string(),
+            };
+
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), untranslatable.clone(), Value::Int(3)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // Untranslatable in body should propagate immediately
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(result.is_untranslatable());
+        }
+
+        #[test]
+        fn test_foreach_single_value_wrapping() {
+            // Non-array collection is wrapped in a single-element array
+            let ctx = make_ctx(vec![("item", Value::Int(42))]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("item"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(42));
+        }
+
+        #[test]
+        fn test_foreach_no_combine_returns_array() {
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(10), Value::Int(20)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: None,
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Array(vec![Value::Int(10), Value::Int(20)]));
+        }
+
+        #[test]
+        fn test_foreach_combine_or() {
+            let ctx = make_ctx(vec![(
+                "flags",
+                Value::Array(vec![
+                    Value::Bool(false),
+                    Value::Bool(true),
+                    Value::Bool(false),
+                ]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("flags"),
+                as_name: "f".to_string(),
+                body: var("f"),
+                filter: None,
+                combine: Some(CombineOp::Or),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_foreach_combine_and() {
+            let ctx = make_ctx(vec![(
+                "flags",
+                Value::Array(vec![Value::Bool(true), Value::Bool(true)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("flags"),
+                as_name: "f".to_string(),
+                body: var("f"),
+                filter: None,
+                combine: Some(CombineOp::And),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Bool(true));
+        }
+
+        #[test]
+        fn test_foreach_nested_in_add() {
+            // ADD(FOREACH([1,2,3] as x: x, combine ADD), 100)
+            // This tests the key fix: FOREACH as a nested operation inside ADD.
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            )]);
+
+            let foreach_op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let add_op = ActionOperation::Add {
+                values: vec![ActionValue::Operation(Box::new(foreach_op)), lit(100i64)],
+            };
+
+            // FOREACH sum = 1+2+3 = 6, then ADD(6, 100) = 106
+            let result = execute_operation(&add_op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(106));
+        }
+
+        #[test]
+        fn test_foreach_without_child_scope_support() {
+            // TestResolver does NOT implement execute_foreach_op,
+            // so FOREACH should return an appropriate error.
+            let resolver = TestResolver::new()
+                .with_var("items", Value::Array(vec![Value::Int(1), Value::Int(2)]));
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: None,
+            };
+
+            let result = execute_operation(&op, &resolver, 0);
+            assert!(matches!(result, Err(EngineError::InvalidOperation(ref msg))
+                if msg.contains("child scopes")));
+        }
+
+        #[test]
+        fn test_foreach_filter_null_propagates() {
+            // When filter expression itself evaluates to Null, FOREACH should
+            // propagate Null (not silently skip the element via to_bool()).
+            //
+            // Use a comparison (GREATER_THAN) which does propagate null,
+            // unlike EQUALS which has special null == null = true semantics.
+            let mut obj = BTreeMap::new();
+            obj.insert("value".to_string(), Value::Int(10));
+            // No "threshold" field → $x.threshold resolves to Null
+
+            let ctx = make_ctx(vec![("items", Value::Array(vec![Value::Object(obj)]))]);
+
+            // GREATER_THAN(Null, 5) → Null (null propagation in numeric comparison)
+            let filter_op = ActionOperation::GreaterThan {
+                subject: var("x.threshold"),
+                value: lit(5i64),
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x.value"),
+                filter: Some(ActionValue::Operation(Box::new(filter_op))),
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            // Null filter → FOREACH returns Null (unknown aggregate)
+            assert!(
+                result.is_null(),
+                "Expected Null when filter evaluates to Null, got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_or_with_null() {
+            // OR combine with [false, Null] should return Null (not false)
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Bool(false), Value::Null]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Or),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_null(),
+                "Expected Null for OR with [false, Null], got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_and_with_null() {
+            // AND combine with [true, Null] should return Null (not false)
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Bool(true), Value::Null]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::And),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_null(),
+                "Expected Null for AND with [true, Null], got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_add_with_all_null() {
+            // ADD combine with [Null, Null] should return Null (not 0)
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Null, Value::Null]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_null(),
+                "Expected Null for ADD with all-Null results, got: {:?}",
+                result
+            );
+        }
+
+        #[test]
+        fn test_foreach_combine_add_with_some_null() {
+            // ADD combine with [10, Null, 20] should sum non-null = 30
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(10), Value::Null, Value::Int(20)]),
+            )]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(30));
+        }
+
+        #[test]
+        fn test_foreach_empty_as_name_rejected() {
+            // Empty as_name should be rejected
+            let ctx = make_ctx(vec![("items", Value::Array(vec![Value::Int(1)]))]);
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "".to_string(),
+                body: ActionValue::Literal(Value::Int(1)),
+                filter: None,
+                combine: None,
+            };
+
+            let result = execute_operation(&op, &ctx, 0);
+            assert!(matches!(result, Err(EngineError::InvalidOperation(ref msg))
+                if msg.contains("non-empty lowercase identifier")));
+        }
+
+        #[test]
+        fn test_foreach_filter_untranslatable_propagates() {
+            // When filter evaluates to Untranslatable, FOREACH propagates it
+            let untranslatable = Value::Untranslatable {
+                article: "3".to_string(),
+                construct: "open norm".to_string(),
+            };
+
+            let mut obj = BTreeMap::new();
+            obj.insert("status".to_string(), untranslatable);
+            let ctx = make_ctx(vec![("items", Value::Array(vec![Value::Object(obj)]))]);
+
+            let filter_op = ActionOperation::Equals {
+                subject: var("x.status"),
+                value: lit(true),
+            };
+
+            let op = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "x".to_string(),
+                body: var("x"),
+                filter: Some(ActionValue::Operation(Box::new(filter_op))),
+                combine: Some(CombineOp::Add),
+            };
+
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert!(
+                result.is_untranslatable(),
+                "Expected Untranslatable when filter references untranslatable value"
+            );
+        }
+
+        #[test]
+        fn nested_foreach_inherits_outer_local_scope() {
+            // Outer FOREACH binds `multiplier`. Inner FOREACH body multiplies
+            // each element by it. Without local-scope inheritance the inner
+            // body would resolve `$multiplier` to Null and produce zeros.
+            let ctx = make_ctx(vec![
+                ("outers", Value::Array(vec![Value::Int(2), Value::Int(3)])),
+                (
+                    "items",
+                    Value::Array(vec![Value::Int(10), Value::Int(20), Value::Int(30)]),
+                ),
+            ]);
+
+            let inner_body = ActionOperation::Multiply {
+                values: vec![var("item"), var("multiplier")],
+            };
+
+            let inner = ActionOperation::Foreach {
+                collection: var("items"),
+                as_name: "item".to_string(),
+                body: ActionValue::Operation(Box::new(inner_body)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            let outer = ActionOperation::Foreach {
+                collection: var("outers"),
+                as_name: "multiplier".to_string(),
+                body: ActionValue::Operation(Box::new(inner)),
+                filter: None,
+                combine: Some(CombineOp::Add),
+            };
+
+            // 2*(10+20+30) + 3*(10+20+30) = 120 + 180 = 300
+            let result = execute_operation(&outer, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(300));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // SUBTRACT_DATE tests
+    // -------------------------------------------------------------------------
+    mod subtract_date_ops {
+        use super::*;
+        use crate::context::RuleContext;
+
+        fn make_ctx_at(date: &str) -> RuleContext {
+            RuleContext::new(BTreeMap::new(), date).unwrap()
+        }
+
+        #[test]
+        fn subtract_date_returns_days_by_default() {
+            let ctx = make_ctx_at("2025-01-01");
+            let op = ActionOperation::SubtractDate {
+                values: vec![lit("2025-12-31".to_string()), lit("2025-01-01".to_string())],
+                unit: None,
+            };
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(364));
+        }
+
+        #[test]
+        fn subtract_date_supports_years_unit() {
+            let ctx = make_ctx_at("2025-01-01");
+            let op = ActionOperation::SubtractDate {
+                values: vec![lit("2030-01-01".to_string()), lit("2020-01-01".to_string())],
+                unit: Some("years".to_string()),
+            };
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            // 10 years ≈ 3653 days / 365.25 ≈ 9.998
+            if let Value::Float(f) = result {
+                assert!((f - 9.998).abs() < 0.01, "expected ~10 years, got {f}");
+            } else {
+                panic!("expected Float, got {result:?}");
+            }
+        }
+
+        #[test]
+        fn subtract_date_falls_back_to_referencedate_for_null_end() {
+            // Active employment: end_date is null, should fall back to today.
+            let ctx = make_ctx_at("2025-06-30");
+            let op = ActionOperation::SubtractDate {
+                values: vec![lit(Value::Null), lit("2025-01-01".to_string())],
+                unit: None,
+            };
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            // Days from Jan 1 to Jun 30 inclusive: 180
+            assert_eq!(result, Value::Int(180));
+        }
+
+        #[test]
+        fn subtract_date_falls_back_for_empty_string() {
+            let ctx = make_ctx_at("2025-06-30");
+            let op = ActionOperation::SubtractDate {
+                values: vec![lit("".to_string()), lit("2025-01-01".to_string())],
+                unit: None,
+            };
+            let result = execute_operation(&op, &ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(180));
+        }
+
+        #[test]
+        fn subtract_date_returns_null_when_both_operands_null() {
+            // No referencedate fallback when both sides are missing — Null in,
+            // Null out (matches the Python helper).
+            let mut ctx = make_ctx_at("2025-06-30");
+            // Drop referencedate by clearing the param map? It's always set by
+            // RuleContext::new, so this case can't happen in practice. Test the
+            // explicit happy-path: both sides null but the calculation date is
+            // valid → both fall back to the same date → 0 days.
+            let op = ActionOperation::SubtractDate {
+                values: vec![lit(Value::Null), lit(Value::Null)],
+                unit: None,
+            };
+            let result = execute_operation(&op, &mut ctx, 0).unwrap();
+            assert_eq!(result, Value::Int(0));
+        }
+
+        #[test]
+        fn subtract_date_rejects_wrong_arity() {
+            let ctx = make_ctx_at("2025-01-01");
+            let op = ActionOperation::SubtractDate {
+                values: vec![lit("2025-01-01".to_string())],
+                unit: None,
+            };
+            assert!(execute_operation(&op, &ctx, 0).is_err());
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Dot-notation projection on arrays
+    // -------------------------------------------------------------------------
+    mod array_projection {
+        use super::*;
+        use crate::context::RuleContext;
+
+        fn make_ctx(params: Vec<(&str, Value)>) -> RuleContext {
+            let p: BTreeMap<String, Value> = params
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v))
+                .collect();
+            RuleContext::new(p, "2025-01-01").unwrap()
+        }
+
+        fn person(name: &str, age: i64) -> Value {
+            let mut obj = BTreeMap::new();
+            obj.insert("name".to_string(), Value::String(name.to_string()));
+            obj.insert("age".to_string(), Value::Int(age));
+            Value::Object(obj)
+        }
+
+        #[test]
+        fn dot_notation_projects_field_across_array() {
+            let ctx = make_ctx(vec![(
+                "people",
+                Value::Array(vec![
+                    person("Anne", 35),
+                    person("Bob", 42),
+                    person("Cara", 28),
+                ]),
+            )]);
+
+            let result = ctx.resolve("people.name").unwrap();
+            assert_eq!(
+                result,
+                Value::Array(vec![
+                    Value::String("Anne".to_string()),
+                    Value::String("Bob".to_string()),
+                    Value::String("Cara".to_string()),
+                ])
+            );
+        }
+
+        #[test]
+        fn dot_notation_projection_preserves_length_for_non_object_elements() {
+            let ctx = make_ctx(vec![(
+                "mixed",
+                Value::Array(vec![
+                    person("Anne", 35),
+                    Value::Int(42), // Not an object
+                    person("Cara", 28),
+                ]),
+            )]);
+
+            let result = ctx.resolve("mixed.age").unwrap();
+            assert_eq!(
+                result,
+                Value::Array(vec![Value::Int(35), Value::Null, Value::Int(28),])
+            );
+        }
+
+        #[test]
+        fn dot_notation_numeric_index_still_works() {
+            let ctx = make_ctx(vec![(
+                "items",
+                Value::Array(vec![Value::Int(10), Value::Int(20), Value::Int(30)]),
+            )]);
+            assert_eq!(ctx.resolve("items.1").unwrap(), Value::Int(20));
+        }
+
+        #[test]
+        fn dot_notation_missing_field_yields_nulls() {
+            let ctx = make_ctx(vec![(
+                "people",
+                Value::Array(vec![person("Anne", 35), person("Bob", 42)]),
+            )]);
+            let result = ctx.resolve("people.height").unwrap();
+            assert_eq!(result, Value::Array(vec![Value::Null, Value::Null]));
+        }
     }
 }

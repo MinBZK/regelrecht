@@ -39,6 +39,11 @@ optional = true
 version = "0.6"
 optional = true
 
+[dependencies.pyo3]
+version = "0.23"
+features = ["extension-module"]
+optional = true
+
 [[bin]]
 name = "validate"
 path = "src/bin/validate.rs"
@@ -54,6 +59,7 @@ harness = false
 
 [features]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
+python = ["dep:pyo3"]
 validate = ["dep:jsonschema"]
 otel = ["dep:tracing-opentelemetry", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-subscriber"]
 

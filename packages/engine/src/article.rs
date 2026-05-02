@@ -14,6 +14,7 @@
 use crate::config;
 use crate::error::{EngineError, Result};
 use crate::types::{Operation, ParameterType, RegulatoryLayer, Value};
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -40,20 +41,54 @@ pub struct LegalBasis {
 
 /// Type specification for input/output fields.
 ///
-/// Currently only contains unit specification, but may be extended
-/// with additional type metadata (precision, range, format) as the schema evolves.
+/// Carries optional metadata about a field's domain: unit of measurement,
+/// numeric precision, and inclusive value range. The engine reads `unit`
+/// for cosmetic rounding (eurocent → integer at the article boundary) and
+/// `precision` to enforce a fixed number of decimals on numeric outputs.
+/// `min` / `max` are accepted but not enforced; downstream tools may use them.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TypeSpec {
     /// Unit of measurement (e.g., "eurocent", "days", "percentage")
     #[serde(default)]
     pub unit: Option<String>,
+    /// Number of decimal places to round to. `0` rounds to an integer
+    /// (floor for eurocent, half-to-even otherwise). `None` leaves the
+    /// numeric value untouched.
+    #[serde(default)]
+    pub precision: Option<i64>,
+    /// Optional inclusive lower bound. Accepted but not enforced by the engine.
+    #[serde(default)]
+    pub min: Option<f64>,
+    /// Optional inclusive upper bound. Accepted but not enforced by the engine.
+    #[serde(default)]
+    pub max: Option<f64>,
+}
+
+/// A single `select_on` filter criterion as declared in YAML.
+///
+/// Each criterion narrows the rows of the named `table` before the engine
+/// projects out the requested field. The `value` may be either a literal
+/// (string, number, bool) or a `$variable` reference resolved at evaluation
+/// time against the law's parameters/context.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SelectOnCriterion {
+    /// Column name in `table` to filter on.
+    pub name: String,
+    /// Filter value: a literal scalar or a `$variable` reference.
+    pub value: serde_yaml_ng::Value,
+    /// Optional human-readable description for the criterion.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Source specification for input fields
 ///
 /// Defines where an input value comes from. Can be:
-/// - Simple regulation reference: `regulation: "other_law"` + `output: "field_name"`
+/// - Cross-law reference: `regulation: "other_law"` + `output: "field_name"`
 /// - Same-law reference: `output: "field_name"` (resolved within the same law)
+/// - Native data source: `table: "..."` + (`field` or `fields`) + optional
+///   `select_on` filter criteria. Resolved by the engine via the
+///   `DataSourceRegistry` without any external Python orchestration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Source {
     /// Simple cross-law reference (law ID)
@@ -66,6 +101,62 @@ pub struct Source {
     /// Parameters to pass to the source execution
     #[serde(default)]
     pub parameters: Option<BTreeMap<String, String>>,
+    /// Service identifier for cross-law calls. Used by the data source
+    /// registry and registry-based resolvers.
+    #[serde(default)]
+    pub service: Option<String>,
+    /// Name of the data source table to read from for native data source
+    /// resolution.
+    #[serde(default)]
+    pub table: Option<String>,
+    /// Name of the column in `table` to project as this input's value.
+    /// Mutually exclusive with `fields` (which produces an object input).
+    #[serde(default)]
+    pub field: Option<String>,
+    /// List of column names from `table` to bundle into a single object
+    /// input. Used for inputs of type `object` that combine multiple columns.
+    #[serde(default)]
+    pub fields: Option<Vec<String>>,
+    /// Filter criteria applied to `table` before projecting `field`/`fields`.
+    /// Each entry is a `{name, value}` pair where `value` may be a literal
+    /// or a `$variable` reference resolved at evaluation time.
+    #[serde(default)]
+    pub select_on: Option<Vec<SelectOnCriterion>>,
+    /// Optional kind of native source: `claim`, `cases`, `events`, `laws`,
+    /// `reference_data`, or a service code (e.g. `KVK`, `RVO`,
+    /// `GEMEENTE_ROTTERDAM`). Currently informational; the engine routes
+    /// strictly by `table` name.
+    #[serde(default)]
+    pub source_type: Option<String>,
+}
+
+/// Temporal qualifier for an input declaration.
+///
+/// Lets law authors specify that the data for this input should be retrieved
+/// (or computed by a referenced law) at a different point in time than the
+/// current calculation date. The most common pattern is income data which is
+/// established for the previous tax year, requiring `$prev_january_first`.
+///
+/// # Supported references
+/// - `$referencedate` / `$calculation_date`: the active calculation date
+/// - `$january_first`: January 1 of the current calculation year
+/// - `$prev_january_first`: January 1 of the year before the calculation date
+///
+/// Unrecognized references fall back to the active calculation date.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Temporal {
+    /// Kind of temporal qualifier (e.g. "point_in_time", "period")
+    #[serde(rename = "type", default)]
+    pub kind: Option<String>,
+    /// Reference expression (e.g. "$prev_january_first")
+    #[serde(default)]
+    pub reference: Option<String>,
+    /// For period-typed temporal qualifiers (e.g. "month", "year")
+    #[serde(default)]
+    pub period_type: Option<String>,
+    /// ISO-8601 immutability window (e.g. "P2Y")
+    #[serde(default)]
+    pub immutable_after: Option<String>,
 }
 
 /// Parameter definition in execution spec
@@ -92,6 +183,51 @@ pub struct Input {
     pub type_spec: Option<TypeSpec>,
     #[serde(default)]
     pub description: Option<String>,
+    /// Whether the input is mandatory. Required inputs that cannot be
+    /// resolved are NOT type-defaulted; the engine surfaces a missing-input
+    /// signal so callers can collect a claim from the citizen.
+    #[serde(default)]
+    pub required: Option<bool>,
+    /// Optional temporal qualifier. When the reference resolves to a date
+    /// different from the calculation date, cross-law lookups for this input
+    /// are evaluated against the shifted date.
+    #[serde(default)]
+    pub temporal: Option<Temporal>,
+}
+
+impl Temporal {
+    /// Resolve the temporal reference to an actual ISO date string.
+    ///
+    /// `calculation_date` must be in `YYYY-MM-DD` form. Returns the original
+    /// `calculation_date` for missing or unrecognized references — this lets
+    /// the engine treat temporal qualifiers as best-effort hints rather than
+    /// strict validations.
+    pub fn resolved_date(&self, calculation_date: &str) -> String {
+        let Some(ref reference) = self.reference else {
+            return calculation_date.to_string();
+        };
+        let Some(name) = reference.strip_prefix('$') else {
+            return calculation_date.to_string();
+        };
+        let Ok(date) = chrono::NaiveDate::parse_from_str(calculation_date, "%Y-%m-%d") else {
+            return calculation_date.to_string();
+        };
+        match name {
+            "referencedate" | "calculation_date" => calculation_date.to_string(),
+            "january_first" => date
+                .with_month(1)
+                .and_then(|d| d.with_day(1))
+                .map(|d| d.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| calculation_date.to_string()),
+            "prev_january_first" => date
+                .with_year(date.year() - 1)
+                .and_then(|d| d.with_month(1))
+                .and_then(|d| d.with_day(1))
+                .map(|d| d.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| calculation_date.to_string()),
+            _ => calculation_date.to_string(),
+        }
+    }
 }
 
 /// Output definition in execution spec
@@ -224,6 +360,10 @@ pub enum ActionOperation {
     IsNull { subject: ActionValue },
     #[serde(rename = "NOT_NULL")]
     NotNull { subject: ActionValue },
+    /// EXISTS: true if value is not null AND not an empty array/object.
+    /// Semantics: "this data exists and has content" — stricter than NOT_NULL.
+    #[serde(rename = "EXISTS")]
+    Exists { subject: ActionValue },
 
     // Collection
     #[serde(rename = "IN")]
@@ -244,6 +384,15 @@ pub enum ActionOperation {
     },
     #[serde(rename = "LIST")]
     List { items: Vec<ActionValue> },
+    /// GET: look up a key in a map/object. subject=key, values=map.
+    #[serde(rename = "GET")]
+    Get {
+        subject: ActionValue,
+        values: ActionValue,
+    },
+    /// CONCAT: concatenate values into a string.
+    #[serde(rename = "CONCAT")]
+    Concat { values: Vec<ActionValue> },
 
     // Date
     #[serde(rename = "AGE")]
@@ -271,6 +420,50 @@ pub enum ActionOperation {
     },
     #[serde(rename = "DAY_OF_WEEK")]
     DayOfWeek { date: ActionValue },
+    /// SUBTRACT_DATE: difference between two dates in the requested unit.
+    /// Falls back to the calculation date for null/empty operands so that
+    /// "active employment" patterns (no end_date) can still compute a span.
+    #[serde(rename = "SUBTRACT_DATE")]
+    SubtractDate {
+        values: Vec<ActionValue>,
+        #[serde(default)]
+        unit: Option<String>,
+    },
+
+    // Collection iteration
+    #[serde(rename = "FOREACH")]
+    Foreach {
+        #[serde(alias = "subject")]
+        collection: ActionValue,
+        #[serde(default = "default_foreach_as")]
+        #[serde(rename = "as")]
+        as_name: String,
+        #[serde(alias = "value")]
+        body: ActionValue,
+        #[serde(default)]
+        #[serde(alias = "where")]
+        filter: Option<ActionValue>,
+        #[serde(default)]
+        combine: Option<CombineOp>,
+    },
+}
+
+/// Aggregation operations for FOREACH combine.
+///
+/// Using a typed enum ensures invalid combine values are rejected at
+/// deserialization time (schema validation), not at execution time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum CombineOp {
+    Add,
+    Or,
+    And,
+    Min,
+    Max,
+}
+
+fn default_foreach_as() -> String {
+    "item".to_string()
 }
 
 impl ActionOperation {
@@ -294,14 +487,19 @@ impl ActionOperation {
             ActionOperation::Not { .. } => "NOT",
             ActionOperation::If { .. } => "IF",
             ActionOperation::IsNull { .. } => "IS_NULL",
+            ActionOperation::Exists { .. } => "EXISTS",
             ActionOperation::NotNull { .. } => "NOT_NULL",
             ActionOperation::In { .. } => "IN",
             ActionOperation::NotIn { .. } => "NOT_IN",
             ActionOperation::List { .. } => "LIST",
+            ActionOperation::Get { .. } => "GET",
+            ActionOperation::Concat { .. } => "CONCAT",
             ActionOperation::Age { .. } => "AGE",
             ActionOperation::DateAdd { .. } => "DATE_ADD",
             ActionOperation::Date { .. } => "DATE",
             ActionOperation::DayOfWeek { .. } => "DAY_OF_WEEK",
+            ActionOperation::SubtractDate { .. } => "SUBTRACT_DATE",
+            ActionOperation::Foreach { .. } => "FOREACH",
         }
     }
 }
@@ -325,6 +523,9 @@ pub struct Action {
     /// Conditions for AND/OR operations
     #[serde(default)]
     pub conditions: Option<Vec<ActionValue>>,
+    /// Legal basis metadata (not used in computation, preserved for traceability)
+    #[serde(default)]
+    pub legal_basis: Option<serde_yaml_ng::Value>,
 }
 
 /// Execution specification within machine_readable section
@@ -1459,6 +1660,75 @@ articles:
     }
 
     #[test]
+    fn test_parse_input_with_native_data_source() {
+        let yaml = r#"
+$id: test
+regulatory_layer: WET
+publication_date: '2024-01-01'
+articles:
+  - number: '1'
+    text: Test
+    machine_readable:
+      execution:
+        input:
+          - name: income
+            type: number
+            source:
+              source_type: data_frame
+              table: persons
+              field: jaarinkomen
+              select_on:
+                - name: bsn
+                  value: $BSN
+                - name: year
+                  value: 2024
+          - name: address
+            type: object
+            source:
+              table: addresses
+              fields:
+                - street
+                - city
+              select_on:
+                - name: bsn
+                  value: $BSN
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $income
+"#;
+        let law = ArticleBasedLaw::from_yaml_str(yaml).unwrap();
+        let exec = law.articles[0].get_execution_spec().unwrap();
+        let inputs = exec.input.as_ref().unwrap();
+        assert_eq!(inputs.len(), 2);
+
+        let scalar_source = inputs[0].source.as_ref().unwrap();
+        assert_eq!(scalar_source.source_type, Some("data_frame".to_string()));
+        assert_eq!(scalar_source.table, Some("persons".to_string()));
+        assert_eq!(scalar_source.field, Some("jaarinkomen".to_string()));
+        let scalar_select = scalar_source.select_on.as_ref().unwrap();
+        assert_eq!(scalar_select.len(), 2);
+        assert_eq!(scalar_select[0].name, "bsn");
+        assert_eq!(
+            scalar_select[0].value,
+            serde_yaml_ng::Value::String("$BSN".to_string())
+        );
+        assert_eq!(scalar_select[1].name, "year");
+        assert_eq!(
+            scalar_select[1].value,
+            serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(2024))
+        );
+
+        let object_source = inputs[1].source.as_ref().unwrap();
+        assert_eq!(object_source.table, Some("addresses".to_string()));
+        assert!(object_source.field.is_none());
+        let fields = object_source.fields.as_ref().unwrap();
+        assert_eq!(fields, &vec!["street".to_string(), "city".to_string()]);
+    }
+
+    #[test]
     fn test_action_value_literal_fallback() {
         // Verify that objects without 'operation' field correctly fall through to Literal
         // This tests the safety of the #[serde(untagged)] enum ordering
@@ -1927,6 +2197,110 @@ articles:
                 config::MAX_YAML_SIZE <= 10_000_000,
                 "MAX_YAML_SIZE should not exceed 10MB"
             );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Temporal qualifier tests
+    // -------------------------------------------------------------------------
+    mod temporal {
+        use super::*;
+
+        fn temporal_with_reference(reference: &str) -> Temporal {
+            Temporal {
+                kind: Some("point_in_time".to_string()),
+                reference: Some(reference.to_string()),
+                period_type: None,
+                immutable_after: None,
+            }
+        }
+
+        #[test]
+        fn prev_january_first_shifts_to_previous_year() {
+            let t = temporal_with_reference("$prev_january_first");
+            assert_eq!(t.resolved_date("2025-06-15"), "2024-01-01");
+        }
+
+        #[test]
+        fn prev_january_first_handles_january_input() {
+            let t = temporal_with_reference("$prev_january_first");
+            assert_eq!(t.resolved_date("2025-01-15"), "2024-01-01");
+        }
+
+        #[test]
+        fn january_first_shifts_to_current_year_january() {
+            let t = temporal_with_reference("$january_first");
+            assert_eq!(t.resolved_date("2025-09-30"), "2025-01-01");
+        }
+
+        #[test]
+        fn referencedate_returns_calculation_date() {
+            let t = temporal_with_reference("$referencedate");
+            assert_eq!(t.resolved_date("2025-06-15"), "2025-06-15");
+        }
+
+        #[test]
+        fn unknown_reference_falls_back_to_calculation_date() {
+            let t = temporal_with_reference("$something_unknown");
+            assert_eq!(t.resolved_date("2025-06-15"), "2025-06-15");
+        }
+
+        #[test]
+        fn missing_reference_falls_back_to_calculation_date() {
+            let t = Temporal {
+                kind: Some("period".to_string()),
+                reference: None,
+                period_type: Some("month".to_string()),
+                immutable_after: None,
+            };
+            assert_eq!(t.resolved_date("2025-06-15"), "2025-06-15");
+        }
+
+        #[test]
+        fn invalid_calculation_date_returns_input() {
+            let t = temporal_with_reference("$prev_january_first");
+            assert_eq!(t.resolved_date("not-a-date"), "not-a-date");
+        }
+
+        #[test]
+        fn input_deserializes_temporal_block() {
+            let yaml = r#"
+$id: temporal_law
+regulatory_layer: WET
+publication_date: '2025-01-01'
+articles:
+  - number: '1'
+    text: Test
+    machine_readable:
+      execution:
+        input:
+          - name: inkomen
+            type: number
+            source:
+              regulation: belastingdienst
+              service: BD
+              parameters:
+                bsn: $bsn
+            temporal:
+              type: point_in_time
+              reference: $prev_january_first
+        output:
+          - name: result
+            type: number
+        actions:
+          - output: result
+            value: $inkomen
+"#;
+            let law = ArticleBasedLaw::from_yaml_str(yaml).expect("yaml should parse");
+            let inputs = law.articles[0].get_inputs();
+            assert_eq!(inputs.len(), 1);
+            let input = &inputs[0];
+            let temporal = input.temporal.as_ref().expect("temporal must be set");
+            assert_eq!(temporal.reference.as_deref(), Some("$prev_january_first"));
+            assert_eq!(temporal.kind.as_deref(), Some("point_in_time"));
+
+            let source = input.source.as_ref().expect("source must be set");
+            assert_eq!(source.service.as_deref(), Some("BD"));
         }
     }
 }
