@@ -10,10 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{CorpusRegistry, SourceMap, SourceType};
 
-/// Default page size for list endpoints.
-pub const DEFAULT_LIMIT: usize = 100;
-/// Maximum page size accepted on list endpoints.
-pub const MAX_LIMIT: usize = 1000;
+/// Default page size for list endpoints. Internal — callers go through
+/// [`PaginationParams::effective_limit`].
+const DEFAULT_LIMIT: usize = 100;
+/// Maximum page size accepted on list endpoints. Internal — callers go
+/// through [`PaginationParams::effective_limit`].
+const MAX_LIMIT: usize = 1000;
 
 /// Pagination query parameters.
 #[derive(Debug, Deserialize)]

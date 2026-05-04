@@ -9,7 +9,7 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to engine + shared (the only crates the wasm build
 # needs); everything else is dropped so chef does not try to resolve their
 # source paths.
-RUN sed -i '/^    "admin",$/d; /^    "auth",$/d; /^    "corpus",$/d; /^    "editor-api",$/d; /^    "harvester",$/d; /^    "pipeline",$/d; /^    "tui",$/d' Cargo.toml
+RUN sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
 COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
@@ -37,7 +37,7 @@ FROM chef AS planner
 COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to those actually built by this Dockerfile so chef
 # does not try to resolve crates whose source we do not COPY.
-RUN sed -i '/^    "admin",$/d; /^    "tui",$/d' Cargo.toml
+RUN sed -i '/"admin"/d; /"tui"/d' Cargo.toml
 COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/

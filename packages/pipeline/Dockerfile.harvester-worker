@@ -10,7 +10,7 @@ FROM chef AS planner
 COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to those actually built by this Dockerfile so chef
 # does not try to resolve crates whose source we do not COPY.
-RUN sed -i '/^    "admin",$/d; /^    "auth",$/d; /^    "editor-api",$/d; /^    "tui",$/d' Cargo.toml
+RUN sed -i '/"admin"/d; /"auth"/d; /"editor-api"/d; /"tui"/d' Cargo.toml
 COPY packages/corpus/ corpus/
 COPY packages/engine/ engine/
 COPY packages/pipeline/ pipeline/
