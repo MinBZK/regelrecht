@@ -387,6 +387,21 @@ const sectionLabels = {
                 <nldd-cell v-if="values.controlType === 'boolean'">
                   <nldd-switch-field :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</nldd-switch-field>
                 </nldd-cell>
+                <nldd-cell v-else-if="values.controlType === 'currency' || values.controlType === 'percentage' || values.controlType === 'number'">
+                  <!-- number-field with hide-spin-buttons: keeps numeric input
+                       validation (rejects non-numeric, handles locale) without
+                       the visual clutter that felt out of place for "fixed
+                       value from law" semantics. The plain text-field used
+                       previously silently produced NaN on Dutch comma input
+                       and 0 on cleared field. -->
+                  <nldd-number-field
+                    :value="values.displayValue"
+                    :step="values.controlType === 'currency' ? '0.01' : (values.controlType === 'percentage' ? '0.001' : undefined)"
+                    full-width
+                    hide-spin-buttons
+                    @change="values.displayValue = $event.detail?.value ?? values.displayValue"
+                  ></nldd-number-field>
+                </nldd-cell>
                 <nldd-cell v-else>
                   <nldd-text-field size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></nldd-text-field>
                 </nldd-cell>
@@ -585,7 +600,8 @@ const sectionLabels = {
   min-width: 0;
 }
 .edit-settings-list nldd-text-field,
-.edit-settings-list nldd-dropdown {
+.edit-settings-list nldd-dropdown,
+.edit-settings-list nldd-number-field {
   width: 100%;
 }
 </style>

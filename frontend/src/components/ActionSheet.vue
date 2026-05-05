@@ -162,7 +162,7 @@ onUnmounted(() => {
             <nldd-text-cell horizontal-alignment="right" :text="action.output || '(leeg)'"></nldd-text-cell>
           </nldd-list-item>
           <nldd-list-item size="md">
-            <nldd-text-cell text="Value" max-width="120px"></nldd-text-cell>
+            <nldd-text-cell text="Waarde" max-width="120px"></nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-text-cell horizontal-alignment="right" :text="directValue.label"></nldd-text-cell>
           </nldd-list-item>
