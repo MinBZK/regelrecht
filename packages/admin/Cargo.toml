@@ -24,7 +24,7 @@ regelrecht-corpus = { path = "../corpus", default-features = false }
 regelrecht-harvester = { path = "../harvester" }
 regelrecht-pipeline = { path = "../pipeline" }
 chrono.workspace = true
-uuid = { workspace = true, features = ["v4"] }
+uuid.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower-http = { workspace = true, features = ["fs", "trace"] }
 serde.workspace = true
