@@ -37,6 +37,19 @@ watch(() => props.action, async (action) => {
 
 const selectedOperation = computed(() => operationTree.value[selectedOpIndex.value] ?? null);
 
+// When the action has no operation (e.g. `value: $PERCENTAGE_LID_5`), the
+// operation tree is empty and the sheet would otherwise show a blank body.
+// Show the value verbatim from the YAML — `$VAR` refs stay in their CAPS +
+// underscore form because the `$` is a code-marker that pairs visually
+// with code-style identifiers (humanizing them to `$percentage lid 5`
+// reads inconsistently).
+const directValue = computed(() => {
+  if (selectedOperation.value) return null;
+  const v = props.action?.value;
+  if (v == null) return null;
+  return { label: String(v) };
+});
+
 const parentOperations = computed(() => {
   const selected = selectedOperation.value;
   if (!selected) return [];
@@ -96,7 +109,8 @@ onUnmounted(() => {
         <template v-if="editable && action">
           <nldd-list variant="box" class="settings-list" data-testid="action-output-binding">
             <nldd-list-item size="md">
-              <nldd-text-cell text="Output" max-width="120"></nldd-text-cell>
+              <nldd-text-cell text="Output" max-width="120px"></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
               <nldd-cell>
                 <nldd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></nldd-text-field>
               </nldd-cell>
@@ -125,6 +139,7 @@ onUnmounted(() => {
               </template>
               <nldd-text-cell :text="`${op.number}. ${op.title}`" :supporting-text="op.subtitle">
               </nldd-text-cell>
+              <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
               <nldd-cell v-if="editable">
                 <nldd-button :data-testid="`parent-op-${op.number}-edit-btn`" @click="selectOperation(op)" text="Bewerk"></nldd-button>
               </nldd-cell>
@@ -135,6 +150,23 @@ onUnmounted(() => {
         <!-- Section B: Operation Settings -->
         <nldd-spacer v-if="parentOperations.length && selectedOperation" size="24"></nldd-spacer>
         <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" :editable="editable" @select-operation="selectOperationByNode" />
+
+        <!-- Direct value: action has no operation, just outputs a value
+             (literal or $VAR reference). Mirror OperationSettings' Titel +
+             Waarde layout so the sheet body isn't blank and the user sees
+             which action they're looking at. -->
+        <nldd-list v-if="directValue" variant="box">
+          <nldd-list-item size="md">
+            <nldd-text-cell text="Output" max-width="120px"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell horizontal-alignment="right" :text="action.output || '(leeg)'"></nldd-text-cell>
+          </nldd-list-item>
+          <nldd-list-item size="md">
+            <nldd-text-cell text="Value" max-width="120px"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell horizontal-alignment="right" :text="directValue.label"></nldd-text-cell>
+          </nldd-list-item>
+        </nldd-list>
       </nldd-simple-section>
 
       <nldd-container slot="footer" padding="16">

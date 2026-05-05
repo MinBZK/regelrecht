@@ -35,11 +35,11 @@ const overallStatus = computed(() => {
 </script>
 
 <template>
-  <nldd-simple-section v-if="!hasContent" align="center">
+  <nldd-simple-section v-if="!hasContent">
     <nldd-inline-dialog text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></nldd-inline-dialog>
   </nldd-simple-section>
 
-  <nldd-simple-section v-else-if="error && !result && !traceText" align="center">
+  <nldd-simple-section v-else-if="error && !result && !traceText">
     <nldd-inline-dialog variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
   </nldd-simple-section>
 

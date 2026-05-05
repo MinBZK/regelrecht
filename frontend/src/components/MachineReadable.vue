@@ -1,6 +1,9 @@
 <script setup>
 import { computed } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
+import { useCorpusLaws } from '../composables/useCorpusLaws.js';
+
+const { displayName: lawDisplayName } = useCorpusLaws();
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -190,7 +193,7 @@ function addOutput() {
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
-          <nldd-text-cell :text="`${humanize(def.name)} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+          <nldd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editDef(def.name)" text="Bewerk"></nldd-button>
@@ -218,7 +221,7 @@ function addOutput() {
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
-          <nldd-text-cell :text="`${humanize(param.name)} (${param.type})`"></nldd-text-cell>
+          <nldd-text-cell :text="`${param.name} (${param.type})`"></nldd-text-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editParam(index)" text="Bewerk"></nldd-button>
@@ -246,7 +249,10 @@ function addOutput() {
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
-          <nldd-text-cell :text="`${humanize(input.name)} (${input.type})${input.source ? ` — ${humanize(input.source)}` : ''}`"></nldd-text-cell>
+          <nldd-text-cell
+            :text="`${input.name} (${input.type})`"
+            :supporting-text="input.source ? lawDisplayName(input.source) : undefined"
+          ></nldd-text-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></nldd-button>
@@ -274,7 +280,7 @@ function addOutput() {
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
-          <nldd-text-cell :text="`${humanize(output.name)} (${output.type})`"></nldd-text-cell>
+          <nldd-text-cell :text="`${output.name} (${output.type})`"></nldd-text-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editOutput(index)" text="Bewerk"></nldd-button>
@@ -308,7 +314,7 @@ function addOutput() {
           :type="editable ? undefined : 'button'"
           @click="!editable && emit('open-action', action)"
         >
-          <nldd-text-cell :text="humanize(action.output)"></nldd-text-cell>
+          <nldd-text-cell :text="action.output"></nldd-text-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" text="Bewerk"></nldd-button>

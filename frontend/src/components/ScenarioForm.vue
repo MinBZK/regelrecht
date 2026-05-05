@@ -246,13 +246,15 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
     <nldd-list variant="box" class="sf-input-list">
       <nldd-list-item size="md">
-        <nldd-text-cell text="Datum" max-width="140"></nldd-text-cell>
+        <nldd-text-cell text="Datum" max-width="140px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-cell>
           <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
         </nldd-cell>
       </nldd-list-item>
       <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-        <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140"></nldd-text-cell>
+        <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-cell>
           <nldd-text-field
             size="md"

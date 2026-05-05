@@ -42,7 +42,7 @@ function onModeChange(event) {
 <template>
   <div class="scenario-panel">
     <!-- Init error -->
-    <nldd-simple-section v-if="initError" align="center">
+    <nldd-simple-section v-if="initError">
       <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${initError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
     </nldd-simple-section>
 
