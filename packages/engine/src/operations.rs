@@ -497,7 +497,7 @@ fn execute_add<R: ValueResolver>(
 
 /// Wrap a numeric arithmetic result so all-int inputs return `Int` and any
 /// `Float` input promotes the result to `Float`. Centralises the
-/// `f64_to_i64_safe` overflow guard shared by SUBTRACT/MULTIPLY.
+/// `f64_to_i64_safe` overflow guard shared by ADD/SUBTRACT/MULTIPLY.
 fn int_or_float_result(result: f64, has_float: bool) -> Result<Value> {
     Ok(if has_float {
         Value::Float(result)

@@ -3625,7 +3625,6 @@ dependencies = [
  "tower-sessions-memory-store",
  "tower-sessions-sqlx-store",
  "tracing",
- "tracing-subscriber",
  "url",
  "urlencoding",
  "uuid",
@@ -3695,7 +3694,6 @@ dependencies = [
  "tower-sessions-memory-store",
  "tower-sessions-sqlx-store",
  "tracing",
- "tracing-subscriber",
  "url",
 ]
 
@@ -3779,7 +3777,6 @@ dependencies = [
  "tokio-util",
  "tower-http",
  "tracing",
- "tracing-subscriber",
  "url",
  "uuid",
 ]
