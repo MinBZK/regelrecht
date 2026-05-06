@@ -83,45 +83,26 @@ pub async fn claim_job<'e, E>(executor: E, job_type: Option<JobType>) -> Result<
 where
     E: sqlx::PgExecutor<'e>,
 {
-    let job = match job_type {
-        Some(jt) => {
-            sqlx::query_as::<_, Job>(
-                r#"
-                UPDATE jobs
-                SET status = 'processing', started_at = now(), attempts = attempts + 1
-                WHERE id = (
-                    SELECT id FROM jobs
-                    WHERE status = 'pending' AND job_type = $1
-                    ORDER BY priority DESC, created_at ASC
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED
-                )
-                RETURNING *
-                "#,
-            )
-            .bind(jt)
-            .fetch_optional(executor)
-            .await?
-        }
-        None => {
-            sqlx::query_as::<_, Job>(
-                r#"
-                UPDATE jobs
-                SET status = 'processing', started_at = now(), attempts = attempts + 1
-                WHERE id = (
-                    SELECT id FROM jobs
-                    WHERE status = 'pending'
-                    ORDER BY priority DESC, created_at ASC
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED
-                )
-                RETURNING *
-                "#,
-            )
-            .fetch_optional(executor)
-            .await?
-        }
-    };
+    // The single query handles both cases via a NULL-tolerant filter on $1:
+    // NULL matches every pending job, a non-NULL value filters to that
+    // job_type. Replaces the previous match-on-Option two-branch SQL.
+    let job = sqlx::query_as::<_, Job>(
+        r#"
+        UPDATE jobs
+        SET status = 'processing', started_at = now(), attempts = attempts + 1
+        WHERE id = (
+            SELECT id FROM jobs
+            WHERE status = 'pending' AND ($1::job_type IS NULL OR job_type = $1)
+            ORDER BY priority DESC, created_at ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        )
+        RETURNING *
+        "#,
+    )
+    .bind(job_type)
+    .fetch_optional(executor)
+    .await?;
 
     if let Some(ref j) = job {
         tracing::info!(job_id = %j.id, law_id = %j.law_id, attempt = j.attempts, "job claimed");

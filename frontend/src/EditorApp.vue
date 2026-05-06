@@ -365,7 +365,7 @@ watch(selectedArticle, (article) => {
   activeAction.value = null;
   activeEditItem.value = null;
   const mr = article?.machine_readable;
-  machineReadable.value = mr ? JSON.parse(JSON.stringify(mr)) : null;
+  machineReadable.value = mr ? structuredClone(mr) : null;
   yamlSource.value = mr ? yaml.dump(mr, dumpOpts) : '';
   parseError.value = null;
 }, { immediate: true });
@@ -517,7 +517,7 @@ async function handleMachineReadableSave() {
     // `machineReadable` explicitly from the freshly-parsed article so the
     // dirty flag clears synchronously with the save.
     const fresh = selectedArticle.value?.machine_readable ?? null;
-    machineReadable.value = fresh ? JSON.parse(JSON.stringify(fresh)) : null;
+    machineReadable.value = fresh ? structuredClone(fresh) : null;
     yamlSource.value = fresh ? yaml.dump(fresh, dumpOpts) : '';
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
@@ -539,7 +539,7 @@ function onYamlInput(event) {
 
 function handleSave({ section, key, newKey, index, data }) {
   const mr = machineReadable.value
-    ? JSON.parse(JSON.stringify(machineReadable.value))
+    ? structuredClone(machineReadable.value)
     : {};
 
   if (!mr.definitions) mr.definitions = {};
@@ -579,7 +579,7 @@ function handleSave({ section, key, newKey, index, data }) {
 // stale event from the UI can never crash.
 function handleDelete({ section, key, index }) {
   const mr = machineReadable.value
-    ? JSON.parse(JSON.stringify(machineReadable.value))
+    ? structuredClone(machineReadable.value)
     : null;
   if (!mr) return;
 
@@ -761,7 +761,7 @@ function handleActionSave() {
   actionSnapshot = null;
   activeAction.value = null;
   // Re-assign to trigger reactivity + re-dump YAML
-  machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
+  machineReadable.value = structuredClone(machineReadable.value);
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
 }

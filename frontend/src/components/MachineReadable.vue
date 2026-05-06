@@ -91,22 +91,22 @@ function formatValue(val, unit) {
 function editDef(name) {
   const rawDef = mr.value?.definitions?.[name];
   if (rawDef == null) return;
-  emit('open-edit', { section: 'definition', key: name, rawDef: JSON.parse(JSON.stringify(rawDef)) });
+  emit('open-edit', { section: 'definition', key: name, rawDef: structuredClone(rawDef) });
 }
 
 function editParam(index) {
   const p = execution.value?.parameters?.[index];
-  if (p) emit('open-edit', { section: 'parameter', index, data: JSON.parse(JSON.stringify(p)) });
+  if (p) emit('open-edit', { section: 'parameter', index, data: structuredClone(p) });
 }
 
 function editInput(index) {
   const raw = execution.value?.input?.[index];
-  if (raw) emit('open-edit', { section: 'input', index, data: JSON.parse(JSON.stringify(raw)) });
+  if (raw) emit('open-edit', { section: 'input', index, data: structuredClone(raw) });
 }
 
 function editOutput(index) {
   const raw = execution.value?.output?.[index];
-  if (raw) emit('open-edit', { section: 'output', index, data: JSON.parse(JSON.stringify(raw)) });
+  if (raw) emit('open-edit', { section: 'output', index, data: structuredClone(raw) });
 }
 
 // Delete handlers — emit a delete event with the section + identity of

@@ -25,34 +25,38 @@ path = "src/bin/pipeline_api.rs"
 [dependencies]
 regelrecht-corpus = { path = "../corpus" }
 regelrecht-harvester = { path = "../harvester" }
-sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml_ng = "0.10"
-thiserror = "2.0"
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-strum = { version = "0.28", features = ["derive"] }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "migrate"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs", "net", "io-util"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+strum.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
-sha2 = "0.10"
+sha2.workspace = true
 tokio-util = "0.7"
-async-trait = "0.1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-axum = "0.8"
-tower-http = { version = "0.6", features = ["trace"] }
-roxmltree = "0.21"
-url = "2"
+async-trait.workspace = true
+tracing.workspace = true
+axum.workspace = true
+tower-http = { workspace = true, features = ["trace"] }
+roxmltree.workspace = true
+url.workspace = true
+testcontainers = { workspace = true, optional = true }
+testcontainers-modules = { workspace = true, optional = true }
+
+[features]
+# Exposes regelrecht_pipeline::test_utils with helpers (e.g. TestDb) used by
+# integration tests in this crate and downstream crates (admin).
+test-utils = ["dep:testcontainers", "dep:testcontainers-modules"]
 
 [dev-dependencies]
-testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
-pretty_assertions = "1.4"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
-tempfile = "3"
+regelrecht-pipeline = { path = ".", features = ["test-utils"] }
+pretty_assertions.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "process", "time", "fs"] }
+tempfile.workspace = true
 
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+[lints]
+workspace = true

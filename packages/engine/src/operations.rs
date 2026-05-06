@@ -489,14 +489,21 @@ fn execute_add<R: ValueResolver>(
                     _ => return Err(type_error("number", val)),
                 }
             }
-            Ok(if has_float {
-                Value::Float(sum)
-            } else {
-                Value::Int(f64_to_i64_safe(sum)?)
-            })
+            int_or_float_result(sum, has_float)
         }
         _ => Err(type_error("number, string, or array", &evaluated[0])),
     }
+}
+
+/// Wrap a numeric arithmetic result so all-int inputs return `Int` and any
+/// `Float` input promotes the result to `Float`. Centralises the
+/// `f64_to_i64_safe` overflow guard shared by ADD/SUBTRACT/MULTIPLY.
+fn int_or_float_result(result: f64, has_float: bool) -> Result<Value> {
+    Ok(if has_float {
+        Value::Float(result)
+    } else {
+        Value::Int(f64_to_i64_safe(result)?)
+    })
 }
 
 /// Execute SUBTRACT operation: first value minus all subsequent values.
@@ -534,11 +541,7 @@ fn execute_subtract<R: ValueResolver>(
         }
     }
 
-    Ok(if has_float {
-        Value::Float(result)
-    } else {
-        Value::Int(f64_to_i64_safe(result)?)
-    })
+    int_or_float_result(result, has_float)
 }
 
 /// Execute MULTIPLY operation: product of all values.
@@ -576,11 +579,7 @@ fn execute_multiply<R: ValueResolver>(
         }
     }
 
-    Ok(if has_float {
-        Value::Float(result)
-    } else {
-        Value::Int(f64_to_i64_safe(result)?)
-    })
+    int_or_float_result(result, has_float)
 }
 
 /// Execute DIVIDE operation: first value divided by all subsequent values.

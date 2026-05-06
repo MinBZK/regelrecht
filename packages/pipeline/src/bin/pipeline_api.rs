@@ -1,18 +1,13 @@
 use axum::routing::{get, post};
 use axum::Router;
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::EnvFilter;
 
 use regelrecht_pipeline::api::{bwb_search, harvest, status};
 use regelrecht_pipeline::ApiState;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    regelrecht_shared::telemetry::init_subscriber("info");
 
     let database_url = std::env::var("DATABASE_URL")
         .or_else(|_| std::env::var("DATABASE_SERVER_FULL"))

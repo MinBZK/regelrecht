@@ -184,7 +184,7 @@ watch(() => props.item, async (item) => {
       displayValue: item.isNew ? 0 : toDisplay(val, ct),
       controlType: ct,
       unit,
-      rawDef: item.rawDef != null ? JSON.parse(JSON.stringify(item.rawDef)) : { value: 0 },
+      rawDef: item.rawDef != null ? structuredClone(item.rawDef) : { value: 0 },
     };
   } else if (s === 'parameter' || s === 'add-parameter') {
     values.value = {

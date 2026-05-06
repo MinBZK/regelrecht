@@ -280,7 +280,7 @@ function stepIcon(status) {
 
 .scenario-run-btn {
   padding: 6px 16px;
-  background: #154273;
+  background: var(--color-primary);
   color: white;
   border: none;
   border-radius: 6px;
@@ -325,9 +325,9 @@ function stepIcon(status) {
 }
 
 .scenario-toggle-btn.active {
-  background: #154273;
+  background: var(--color-primary);
   color: white;
-  border-color: #154273;
+  border-color: var(--color-primary);
 }
 
 /* Visual mode */
@@ -347,7 +347,7 @@ function stepIcon(status) {
 }
 
 .scenario-visual-error a {
-  color: #154273;
+  color: var(--color-primary);
   text-decoration: underline;
 }
 

@@ -6,9 +6,12 @@ pub mod enrich;
 pub mod error;
 pub mod feature_flags;
 pub mod harvest;
+pub mod health;
 pub mod job_queue;
 pub mod law_status;
 pub mod models;
+#[cfg(feature = "test-utils")]
+pub mod test_utils;
 pub mod worker;
 
 pub use api_state::ApiState;

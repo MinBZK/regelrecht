@@ -3,8 +3,7 @@ use crate::backend::process_runner::{ProcessMessage, ProcessMessageKind, Process
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::prelude::*;
 use ratatui::widgets::{
-    Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
-    ScrollbarState, Wrap,
+    List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
 };
 use std::path::{Path, PathBuf};
 
@@ -167,10 +166,7 @@ impl ValidationView {
             invalid_count
         );
 
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            title,
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(&title);
 
         let list = List::new(items)
             .block(block)
@@ -197,10 +193,7 @@ impl ValidationView {
             " Output — a/Enter:validate all "
         };
 
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            title,
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(title);
 
         let paragraph = Paragraph::new(visible)
             .block(block)

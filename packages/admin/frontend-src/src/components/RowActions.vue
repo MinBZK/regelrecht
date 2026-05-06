@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { RE_HARVESTABLE_STATUSES, ENRICHABLE_STATUSES } from '../constants.js';
-import { redirectToLogin } from '../composables/useAuth.js';
+import { authedFetch } from '../composables/useAuth.js';
 
 const props = defineProps({
   row: { type: Object, required: true },
@@ -21,15 +21,12 @@ async function onHarvest() {
   harvestLabel.value = 'Submitting\u2026';
 
   try {
-    const response = await fetch('api/harvest-jobs', {
+    const response = await authedFetch('api/harvest-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bwb_id: props.row.law_id }),
     });
-    if (response.status === 401) {
-      redirectToLogin();
-      return;
-    }
+    if (!response) return;
     if (response.status === 409) {
       const text = await response.text().catch(() => '');
       alert(text || 'A harvest job for this law is already pending or processing.');
@@ -55,15 +52,12 @@ async function onEnrich() {
   enrichLabel.value = 'Submitting\u2026';
 
   try {
-    const response = await fetch('api/enrich-jobs', {
+    const response = await authedFetch('api/enrich-jobs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ law_id: props.row.law_id }),
     });
-    if (response.status === 401) {
-      redirectToLogin();
-      return;
-    }
+    if (!response) return;
     if (response.status === 409) {
       const text = await response.text().catch(() => '');
       alert(text || 'Enrich jobs for this law are already pending or processing.');
@@ -89,13 +83,10 @@ async function onResetExhausted() {
   resetLabel.value = 'Resetting\u2026';
 
   try {
-    const response = await fetch(`api/law_entries/${encodeURIComponent(props.row.law_id)}/reset-exhausted`, {
+    const response = await authedFetch(`api/law_entries/${encodeURIComponent(props.row.law_id)}/reset-exhausted`, {
       method: 'POST',
     });
-    if (response.status === 401) {
-      redirectToLogin();
-      return;
-    }
+    if (!response) return;
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       throw new Error(text || `HTTP ${response.status}`);

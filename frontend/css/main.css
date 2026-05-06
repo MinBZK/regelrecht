@@ -1,6 +1,13 @@
 /* Main CSS - Minimal app-level styles */
 /* Component styles are provided by @minbzk/storybook (imported in JS entry points) */
 
+:root {
+  /* Rijksoverheid donkerblauw — used by accent UI in editor components.
+     Same value already tokenised in landing/, frontend-lawmaking/, and the
+     docs site; kept here so `#154273` doesn't keep cropping up inline. */
+  --color-primary: #154273;
+}
+
 html,
 body {
   height: 100%;
