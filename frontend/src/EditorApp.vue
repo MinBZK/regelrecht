@@ -31,7 +31,6 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
-  ['panel.law_graph', 'Graaf'],
 ];
 
 // Left and middle panes are specific named editors. The right pane is a
@@ -45,7 +44,6 @@ const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
 const RIGHT_PANES = [
   { key: 'form', flag: 'panel.scenario_form', label: "Scenario's" },
   { key: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
-  { key: 'graph', flag: 'panel.law_graph', label: 'Graaf' },
 ];
 const enabledRightPanes = computed(() => RIGHT_PANES.filter(p => isEnabled(p.flag)));
 
@@ -320,9 +318,15 @@ const lastResult = ref(null);
 const lastError = ref(null);
 const lastExpectations = ref({});
 const lastScenarioName = ref('');
-// The scenario's entry output (e.g. "is_rechthebbende"). The graph pane
+// The scenario's entry output (e.g. "is_rechthebbende"). The graph view
 // uses this to pin its "▶ start" marker to the right leaf.
 const lastOutputName = ref(null);
+
+const RESULT_SHEET_VIEW_KEY = 'regelrecht-result-sheet-view';
+const resultSheetView = ref(localStorage.getItem(RESULT_SHEET_VIEW_KEY) || 'trace');
+watch(resultSheetView, (val) => {
+  localStorage.setItem(RESULT_SHEET_VIEW_KEY, val);
+});
 
 function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName }) {
   lastResult.value = result;
@@ -971,14 +975,6 @@ function handleActionSave() {
                 ></textarea>
                 <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
               </div>
-
-              <LawGraphView
-                v-else-if="activeRightPane === 'graph'"
-                :law-id="lawId"
-                :result="lastResult"
-                :output-name="lastOutputName"
-                :expectations="lastExpectations"
-              />
             </nldd-page>
           </nldd-split-view-pane>
 
@@ -1087,12 +1083,32 @@ function handleActionSave() {
   >
     <nldd-page sticky-header>
       <nldd-top-title-bar slot="header" text="Resultaat" dismiss-text="Sluit" @dismiss="resultSheetOpen = false"></nldd-top-title-bar>
+      <nldd-tab-bar size="md">
+        <nldd-tab-bar-item
+          :selected="resultSheetView === 'trace' || undefined"
+          text="Trace"
+          @click="resultSheetView = 'trace'"
+        ></nldd-tab-bar-item>
+        <nldd-tab-bar-item
+          :selected="resultSheetView === 'graph' || undefined"
+          text="Graaf"
+          @click="resultSheetView = 'graph'"
+        ></nldd-tab-bar-item>
+      </nldd-tab-bar>
       <ExecutionTraceView
+        v-if="resultSheetView === 'trace'"
         :result="lastResult"
         :trace-text="lastTraceText"
         :error="lastError"
         :expectations="lastExpectations"
         :scenario-name="lastScenarioName"
+      />
+      <LawGraphView
+        v-else-if="resultSheetView === 'graph'"
+        :law-id="lawId"
+        :result="lastResult"
+        :output-name="lastOutputName"
+        :expectations="lastExpectations"
       />
     </nldd-page>
   </nldd-sheet>
