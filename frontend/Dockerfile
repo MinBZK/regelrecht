@@ -8,11 +8,11 @@ WORKDIR /build
 COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to engine + shared (the only crates the wasm build
 # needs); everything else is dropped so chef does not try to resolve their
-# source paths. Patterns assume each member is on its own line in
-# packages/Cargo.toml — if that file is ever reformatted to a compact array
-# these `sed` commands will silently no-op and the build will fail downstream
-# when chef tries to resolve a missing crate path.
-RUN sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
+# source paths. The `grep` assertion fails the build loudly if
+# packages/Cargo.toml is ever reformatted away from a multi-line members
+# array — without it the `sed` patterns would silently no-op.
+RUN grep -qE '^members = \[$' Cargo.toml && \
+    sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
 COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
@@ -39,9 +39,11 @@ WORKDIR /build
 FROM chef AS planner
 COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to those actually built by this Dockerfile so chef
-# does not try to resolve crates whose source we do not COPY. Patterns
-# assume each member is on its own line in packages/Cargo.toml.
-RUN sed -i '/"admin"/d; /"tui"/d' Cargo.toml
+# does not try to resolve crates whose source we do not COPY. The `grep`
+# assertion ensures the multi-line members format is intact; otherwise the
+# `sed` patterns would silently no-op.
+RUN grep -qE '^members = \[$' Cargo.toml && \
+    sed -i '/"admin"/d; /"tui"/d' Cargo.toml
 COPY packages/auth/ auth/
 COPY packages/editor-api/ editor-api/
 COPY packages/corpus/ corpus/

@@ -19,9 +19,11 @@ WORKDIR /build
 FROM chef AS planner
 COPY packages/Cargo.lock packages/Cargo.toml ./
 # Trim workspace members to those actually built by this Dockerfile so chef
-# does not try to resolve crates whose source we do not COPY. Patterns
-# assume each member is on its own line in packages/Cargo.toml.
-RUN sed -i '/"editor-api"/d; /"tui"/d' Cargo.toml
+# does not try to resolve crates whose source we do not COPY. The `grep`
+# assertion ensures the multi-line members format is intact; otherwise the
+# `sed` patterns would silently no-op.
+RUN grep -qE '^members = \[$' Cargo.toml && \
+    sed -i '/"editor-api"/d; /"tui"/d' Cargo.toml
 COPY packages/admin/ admin/
 COPY packages/auth/ auth/
 COPY packages/corpus/ corpus/
