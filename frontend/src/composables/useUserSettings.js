@@ -94,7 +94,6 @@ async function loadSettings() {
 }
 
 async function setSetting(key, value) {
-  const prev = settings.value[key];
   dirtyKeys.add(key);
   settings.value = { ...settings.value, [key]: value };
   if (key === 'theme') writeCachedTheme(value);
@@ -105,18 +104,19 @@ async function setSetting(key, value) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ value }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  } catch (e) {
-    console.warn('Revert user setting after failed PUT:', e.message);
-    settings.value = { ...settings.value, [key]: prev };
-    if (key === 'theme' && VALID_THEMES.includes(prev)) {
-      writeCachedTheme(prev);
+    if (!res.ok) {
+      // 401 (anonymous), 503 (no DB), 5xx all collapse to "local-only mode":
+      // keep the value in settings.value + localStorage so the picker remains
+      // functional. Do not revert — the documented contract is that anonymous
+      // users still get a working picker via the localStorage cache.
+      console.warn(`User setting PUT not persisted (HTTP ${res.status})`);
     }
+  } catch (e) {
+    console.warn('User setting PUT failed (network error):', e.message);
   } finally {
-    // Once the PUT has settled either way, the key is no longer "in
-    // flight" — either the server has accepted our value or we've
-    // reverted. Keeping it in dirtyKeys would suppress the server
-    // value if loadSettings ever became re-entrant.
+    // Once the PUT has settled, the key is no longer "in flight". Keeping
+    // it in dirtyKeys would suppress the server value if loadSettings ever
+    // became re-entrant.
     dirtyKeys.delete(key);
   }
 }

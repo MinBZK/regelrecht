@@ -19,8 +19,8 @@ fn validate(key: &str, value: &str) -> Result<(), StatusCode> {
         return Err(StatusCode::BAD_REQUEST);
     }
     match key {
-        "theme" if !matches!(value, "auto" | "light" | "dark") => Err(StatusCode::BAD_REQUEST),
-        _ => Ok(()),
+        "theme" if matches!(value, "auto" | "light" | "dark") => Ok(()),
+        _ => Err(StatusCode::BAD_REQUEST),
     }
 }
 
