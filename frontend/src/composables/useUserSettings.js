@@ -67,17 +67,26 @@ async function loadSettings() {
       const res = await fetch('/api/user/settings');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      // Drop server-supplied values that don't pass client-side validation
+      // before they reach `settings.value`. The backend validates writes,
+      // but a stale row predating tightened validation could still produce
+      // an invalid `theme`, which the watchEffect would otherwise apply as
+      // `data-scheme=<garbage>` until the next user action.
+      const sanitized = { ...data };
+      if (sanitized.theme !== undefined && !VALID_THEMES.includes(sanitized.theme)) {
+        delete sanitized.theme;
+      }
       // Precedence: server > current settings (cached + user toggles) >
       // DEFAULTS. Spreading settings.value before data prevents an empty
       // `{}` response from overwriting a cached theme on a returning user
       // whose server row was never written — same flicker the cache
       // exists to prevent.
-      const merged = { ...DEFAULTS, ...settings.value, ...data };
+      const merged = { ...DEFAULTS, ...settings.value, ...sanitized };
       // Preserve values the user already set locally during this fetch.
       for (const k of dirtyKeys) merged[k] = settings.value[k];
       settings.value = merged;
-      if (!dirtyKeys.has('theme') && VALID_THEMES.includes(data.theme)) {
-        writeCachedTheme(data.theme);
+      if (!dirtyKeys.has('theme') && VALID_THEMES.includes(sanitized.theme)) {
+        writeCachedTheme(sanitized.theme);
       }
     } catch (e) {
       // 401 (auth off), 503 (no DB) and network errors all collapse to
