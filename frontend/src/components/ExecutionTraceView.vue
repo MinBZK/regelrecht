@@ -1,12 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { formatValue, formatOutputValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
-
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
-}
+import { formatValue, formatOutputValue, formatOutputValueParts, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 
 const props = defineProps({
   /** Execution result with outputs */
@@ -41,11 +35,11 @@ const overallStatus = computed(() => {
 </script>
 
 <template>
-  <nldd-simple-section v-if="!hasContent" align="center">
+  <nldd-simple-section v-if="!hasContent">
     <nldd-inline-dialog text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></nldd-inline-dialog>
   </nldd-simple-section>
 
-  <nldd-simple-section v-else-if="error && !result && !traceText" align="center">
+  <nldd-simple-section v-else-if="error && !result && !traceText">
     <nldd-inline-dialog variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
   </nldd-simple-section>
 

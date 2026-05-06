@@ -4,7 +4,7 @@ import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
-import { matchStatus } from '../utils/outputFormat.js';
+import { matchStatus, humanize } from '../utils/outputFormat.js';
 import { buildArticleMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 
@@ -59,12 +59,6 @@ watch(isDirty, (val) => emit('dirty-change', val));
 
 function markDirty() {
   if (!isDirty.value) isDirty.value = true;
-}
-
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
 }
 
 function scenarioExpectations(index) {
@@ -287,8 +281,9 @@ async function onSaveAndShow() {
   await nextTick();
   const formRef = scenarioRefs.value[idx];
   if (formRef?.execute) {
-    formRef.execute();
-    const data = formRef.getExecutionData?.();
+    // execute() returns the post-execution data synchronously; use the
+    // return value directly so we never fall back to the pre-save cache.
+    const data = formRef.execute();
     if (data) onScenarioResult(idx, data);
   }
   onShowDetails(idx);

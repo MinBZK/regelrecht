@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, watchEffect, nextTick } from 'vue';
 import { collectAvailableVariables } from '../utils/operationTree.js';
 
 const props = defineProps({
@@ -10,8 +10,8 @@ const props = defineProps({
 const emit = defineEmits(['save', 'close']);
 
 const sheetEl = ref(null);
-const searchFieldEl = ref(null);
-const inputWrapperEl = ref(null);
+const lawComboBoxEl = ref(null);
+const outputComboBoxEl = ref(null);
 const values = ref({});
 
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
@@ -51,8 +51,6 @@ async function fetchLawsList() {
 }
 
 const allLaws = ref([]);
-const lawSearchQuery = ref('');
-const showLawResults = ref(false);
 const availableOutputs = ref([]);
 const outputsLoading = ref(false);
 
@@ -62,19 +60,8 @@ function displayName(law) {
   return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-const filteredLaws = computed(() => {
-  const q = lawSearchQuery.value.toLowerCase().trim();
-  if (!q) return allLaws.value.slice(0, 20);
-  return allLaws.value.filter(law =>
-    displayName(law).toLowerCase().includes(q) ||
-    law.law_id.toLowerCase().includes(q),
-  ).slice(0, 20);
-});
-
-function onLawSearchInput(event) {
-  lawSearchQuery.value = event.target?.value ?? event.detail?.value ?? '';
-  showLawResults.value = true;
-  nextTick(() => updateResultsPosition());
+function outputDisplayName(out) {
+  return `${out.name} (${out.output_type})`;
 }
 
 async function fetchOutputsForLaw(lawId) {
@@ -97,15 +84,35 @@ async function fetchOutputsForLaw(lawId) {
   }
 }
 
-async function selectLaw(law) {
-  values.value.sourceRegulation = law.law_id;
-  lawSearchQuery.value = displayName(law);
-  showLawResults.value = false;
+// Combo-box has no value→displayValue sync (display is internal @state, only
+// updated by user actions). Keep them aligned manually whenever the form's
+// sourceRegulation changes OR allLaws finishes loading. Without this, an
+// existing input opened in the sheet would show an empty input until the
+// user typed.
+watchEffect(() => {
+  const lawId = values.value?.sourceRegulation;
+  if (!lawComboBoxEl.value) return;
+  const match = allLaws.value.find(l => l.law_id === lawId);
+  lawComboBoxEl.value._displayValue = match ? displayName(match) : (lawId || '');
+});
+
+watchEffect(() => {
+  const outName = values.value?.sourceOutput;
+  if (!outputComboBoxEl.value) return;
+  const match = availableOutputs.value.find(o => o.name === outName);
+  outputComboBoxEl.value._displayValue = match ? outputDisplayName(match) : (outName || '');
+});
+
+async function onLawComboChange(event) {
+  const next = event.detail?.value ?? '';
+  if (next === values.value.sourceRegulation) return;
+  values.value.sourceRegulation = next;
   values.value.sourceOutput = '';
-  await fetchOutputsForLaw(law.law_id);
+  await fetchOutputsForLaw(next);
 }
 
-function onOutputSelected(outputName) {
+function onOutputComboChange(event) {
+  const outputName = event.detail?.value ?? '';
   values.value.sourceOutput = outputName;
   if (!outputName) return;
   const match = availableOutputs.value.find(o => o.name === outputName);
@@ -123,20 +130,6 @@ function onOutputSelected(outputName) {
       makeParamRow(p.name, ''),
     );
   }
-}
-
-function closeLawResults() {
-  // Delay to allow click on results to register before closing
-  setTimeout(() => { showLawResults.value = false; }, 200);
-}
-
-const resultsTopPx = ref(0);
-
-function updateResultsPosition() {
-  if (!searchFieldEl.value || !inputWrapperEl.value) return;
-  const fieldRect = searchFieldEl.value.getBoundingClientRect();
-  const wrapperRect = inputWrapperEl.value.getBoundingClientRect();
-  resultsTopPx.value = fieldRect.bottom - wrapperRect.top;
 }
 
 // Monotonic counter for stable v-for keys on the source.parameters rows.
@@ -241,19 +234,14 @@ watch(() => props.item, async (item) => {
       sourceParametersOverflow: overflowParams,
     };
 
-    // Load law list for search and pre-populate outputs if editing existing input
-    showLawResults.value = false;
+    // Load law list for the combo-box menu and pre-populate outputs if
+    // editing an existing input. The watchEffect above handles syncing the
+    // combo-box's display once allLaws + sourceRegulation are both set.
     availableOutputs.value = [];
     fetchLawsList().then(laws => {
       allLaws.value = laws;
       const reg = item.data?.source?.regulation;
-      if (reg) {
-        const match = laws.find(l => l.law_id === reg);
-        lawSearchQuery.value = match ? displayName(match) : reg;
-        fetchOutputsForLaw(reg);
-      } else {
-        lawSearchQuery.value = '';
-      }
+      if (reg) fetchOutputsForLaw(reg);
     });
   } else if (s === 'output' || s === 'add-output') {
     values.value = {
@@ -383,26 +371,44 @@ const sectionLabels = {
           <template v-if="item.section === 'definition' || item.section === 'add-definition'">
             <nldd-list variant="box" class="edit-settings-list">
               <nldd-list-item size="md">
-                <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
+                <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
                   <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
                 </nldd-cell>
               </nldd-list-item>
               <nldd-list-item size="md">
-                <nldd-text-cell text="Waarde" max-width="140"></nldd-text-cell>
-                <nldd-cell>
-                  <div v-if="values.controlType === 'currency'" class="edit-sheet-value-group">
-                    <span class="edit-sheet-unit">&euro;</span>
-                    <nldd-number-field :value="values.displayValue" step="0.01" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></nldd-number-field>
-                  </div>
-                  <div v-else-if="values.controlType === 'percentage'" class="edit-sheet-value-group">
-                    <nldd-number-field :value="values.displayValue" step="0.001" full-width @change="values.displayValue = $event.detail?.value ?? values.displayValue"></nldd-number-field>
-                    <span class="edit-sheet-unit">%</span>
-                  </div>
-                  <nldd-switch-field v-else-if="values.controlType === 'boolean'" :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</nldd-switch-field>
-                  <nldd-number-field v-else-if="values.controlType === 'number'" :value="values.displayValue" full-width hide-spin-buttons @change="values.displayValue = $event.detail?.value ?? values.displayValue"></nldd-number-field>
-                  <nldd-text-field v-else size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></nldd-text-field>
+                <nldd-text-cell text="Waarde" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <template v-if="values.controlType === 'currency'">
+                  <nldd-text-cell text="€" width="fit-content"></nldd-text-cell>
+                  <nldd-spacer-cell size="6"></nldd-spacer-cell>
+                </template>
+                <nldd-cell v-if="values.controlType === 'boolean'">
+                  <nldd-switch-field :checked="values.displayValue ? true : undefined" @change="values.displayValue = Boolean($event.detail?.checked)">Waarde</nldd-switch-field>
                 </nldd-cell>
+                <nldd-cell v-else-if="values.controlType === 'currency' || values.controlType === 'percentage' || values.controlType === 'number'">
+                  <!-- number-field with hide-spin-buttons: keeps numeric input
+                       validation (rejects non-numeric, handles locale) without
+                       the visual clutter that felt out of place for "fixed
+                       value from law" semantics. The plain text-field used
+                       previously silently produced NaN on Dutch comma input
+                       and 0 on cleared field. -->
+                  <nldd-number-field
+                    :value="values.displayValue"
+                    :step="values.controlType === 'currency' ? '0.01' : (values.controlType === 'percentage' ? '0.001' : undefined)"
+                    full-width
+                    hide-spin-buttons
+                    @change="values.displayValue = $event.detail?.value ?? values.displayValue"
+                  ></nldd-number-field>
+                </nldd-cell>
+                <nldd-cell v-else>
+                  <nldd-text-field size="md" :value="String(values.displayValue)" @input="values.displayValue = $event.target?.value ?? $event.detail?.value ?? values.displayValue"></nldd-text-field>
+                </nldd-cell>
+                <template v-if="values.controlType === 'percentage'">
+                  <nldd-spacer-cell size="6"></nldd-spacer-cell>
+                  <nldd-text-cell text="%" width="fit-content"></nldd-text-cell>
+                </template>
               </nldd-list-item>
             </nldd-list>
           </template>
@@ -411,13 +417,15 @@ const sectionLabels = {
           <template v-if="item.section === 'parameter' || item.section === 'add-parameter'">
             <nldd-list variant="box" class="edit-settings-list">
               <nldd-list-item size="md">
-                <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
+                <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
                   <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
                 </nldd-cell>
               </nldd-list-item>
               <nldd-list-item size="md">
-                <nldd-text-cell text="Type" max-width="140"></nldd-text-cell>
+                <nldd-text-cell text="Type" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
                   <nldd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
@@ -427,7 +435,8 @@ const sectionLabels = {
                 </nldd-cell>
               </nldd-list-item>
               <nldd-list-item size="md">
-                <nldd-text-cell text="Verplicht" max-width="140"></nldd-text-cell>
+                <nldd-text-cell text="Verplicht" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
                   <nldd-switch :checked="values.required ? true : undefined" @change="values.required = Boolean($event.detail?.checked)"></nldd-switch>
                 </nldd-cell>
@@ -437,71 +446,78 @@ const sectionLabels = {
 
           <!-- Input -->
           <template v-if="item.section === 'input' || item.section === 'add-input'">
-            <div class="input-fields-wrapper" ref="inputWrapperEl">
-              <nldd-list variant="box" class="edit-settings-list">
-                <nldd-list-item size="md">
-                  <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
-                  <nldd-cell>
-                    <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
-                  </nldd-cell>
-                </nldd-list-item>
-                <nldd-list-item v-if="!values.sourceOutput" size="md">
-                  <nldd-text-cell text="Type" max-width="140"></nldd-text-cell>
-                  <nldd-cell>
-                    <nldd-dropdown size="md">
-                      <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
-                        <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
-                      </select>
-                    </nldd-dropdown>
-                  </nldd-cell>
-                </nldd-list-item>
-                <nldd-list-item size="md">
-                  <nldd-text-cell text="Bron regelgeving" max-width="140"></nldd-text-cell>
-                  <nldd-cell>
-                    <nldd-search-field
-                      ref="searchFieldEl"
-                      size="md"
-                      placeholder="Zoek regelgeving..."
-                      :value="lawSearchQuery"
-                      data-testid="law-search-field"
-                      @input="onLawSearchInput($event)"
-                      @focus="showLawResults = true; nextTick(() => updateResultsPosition())"
-                      @focusout="closeLawResults"
-                    ></nldd-search-field>
-                  </nldd-cell>
-                </nldd-list-item>
-                <nldd-list-item size="md">
-                  <nldd-text-cell text="Bron output" max-width="140"></nldd-text-cell>
-                  <nldd-cell>
-                    <nldd-dropdown v-if="availableOutputs.length > 0" size="md" data-testid="output-dropdown">
-                      <select :value="values.sourceOutput" @change="onOutputSelected($event.target.value)" aria-label="Bron output">
-                        <option value="">Selecteer output...</option>
-                        <option v-for="out in availableOutputs" :key="out.name" :value="out.name">{{ out.name }} ({{ out.output_type }})</option>
-                      </select>
-                    </nldd-dropdown>
-                    <nldd-text-field v-else size="md" :value="values.sourceOutput" data-testid="output-text-field" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></nldd-text-field>
-                  </nldd-cell>
-                </nldd-list-item>
-              </nldd-list>
-
-              <!-- Absolute overlay: rendered outside the nldd-list to escape
-                   shadow DOM overflow clipping, but positioned over the
-                   controls below (Bron output, parameters) via z-index. -->
-              <div v-if="showLawResults && filteredLaws.length > 0" class="law-search-results" :style="{ top: resultsTopPx + 'px' }" data-testid="law-search-results">
-                <nldd-list variant="box">
-                  <nldd-list-item
-                    v-for="law in filteredLaws"
-                    :key="law.law_id"
-                    size="sm"
-                    class="law-search-result-item"
-                    :data-testid="`law-result-${law.law_id}`"
-                    @mousedown.prevent="selectLaw(law)"
+            <nldd-list variant="box" class="edit-settings-list">
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-cell>
+                  <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
+                </nldd-cell>
+              </nldd-list-item>
+              <nldd-list-item v-if="!values.sourceOutput" size="md">
+                <nldd-text-cell text="Type" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-cell>
+                  <nldd-dropdown size="md">
+                    <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
+                      <option v-for="t in typeOptions" :key="t" :value="t">{{ t }}</option>
+                    </select>
+                  </nldd-dropdown>
+                </nldd-cell>
+              </nldd-list-item>
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Bron regelgeving" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-cell>
+                  <nldd-combo-box
+                    ref="lawComboBoxEl"
+                    size="md"
+                    placeholder="Zoek regelgeving..."
+                    accessible-label="Bron regelgeving"
+                    :value="values.sourceRegulation"
+                    data-testid="law-combo-box"
+                    @change="onLawComboChange"
                   >
-                    <nldd-text-cell :text="displayName(law)" :supporting-text="law.law_id"></nldd-text-cell>
-                  </nldd-list-item>
-                </nldd-list>
-              </div>
-            </div>
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="law in allLaws"
+                        :key="law.law_id"
+                        :text="displayName(law)"
+                        :aliases="law.law_id"
+                        :value="law.law_id"
+                        :data-testid="`law-result-${law.law_id}`"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-combo-box>
+                </nldd-cell>
+              </nldd-list-item>
+              <nldd-list-item size="md">
+                <nldd-text-cell text="Bron output" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                <nldd-cell>
+                  <nldd-combo-box
+                    v-if="availableOutputs.length > 0"
+                    ref="outputComboBoxEl"
+                    size="md"
+                    placeholder="Selecteer output..."
+                    accessible-label="Bron output"
+                    :value="values.sourceOutput"
+                    data-testid="output-combo-box"
+                    @change="onOutputComboChange"
+                  >
+                    <nldd-menu>
+                      <nldd-menu-item
+                        v-for="out in availableOutputs"
+                        :key="out.name"
+                        :text="outputDisplayName(out)"
+                        :value="out.name"
+                      ></nldd-menu-item>
+                    </nldd-menu>
+                  </nldd-combo-box>
+                  <nldd-text-field v-else size="md" :value="values.sourceOutput" data-testid="output-text-field" @input="values.sourceOutput = $event.target?.value ?? $event.detail?.value ?? values.sourceOutput"></nldd-text-field>
+                </nldd-cell>
+              </nldd-list-item>
+            </nldd-list>
 
             <nldd-spacer size="12"></nldd-spacer>
             <nldd-title size="6"><h6>Bron parameters</h6></nldd-title>
@@ -512,15 +528,12 @@ const sectionLabels = {
                 :key="param._rowId"
                 size="md"
               >
-                <nldd-cell>
-                  <nldd-text-field
-                    size="md"
-                    placeholder="naam"
-                    :value="param.key"
-                    readonly
-                    :data-testid="`source-param-key-${param._rowId}`"
-                  ></nldd-text-field>
-                </nldd-cell>
+                <nldd-text-cell
+                  :text="param.key"
+                  max-width="140px"
+                  :data-testid="`source-param-key-${param._rowId}`"
+                ></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
                   <nldd-dropdown size="md" :data-testid="`source-param-value-${param._rowId}`">
                     <select :value="param.value" :aria-label="`Waarde voor ${param.key}`" @change="param.value = $event.target.value">
@@ -540,13 +553,15 @@ const sectionLabels = {
           <template v-if="item.section === 'output' || item.section === 'add-output'">
             <nldd-list variant="box" class="edit-settings-list">
               <nldd-list-item size="md">
-                <nldd-text-cell text="Naam" max-width="140"></nldd-text-cell>
+                <nldd-text-cell text="Naam" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
                   <nldd-text-field size="md" :value="values.name" @input="values.name = $event.target?.value ?? $event.detail?.value ?? values.name"></nldd-text-field>
                 </nldd-cell>
               </nldd-list-item>
               <nldd-list-item size="md">
-                <nldd-text-cell text="Type" max-width="140"></nldd-text-cell>
+                <nldd-text-cell text="Type" max-width="140px"></nldd-text-cell>
+                <nldd-spacer-cell size="8"></nldd-spacer-cell>
                 <nldd-cell>
                   <nldd-dropdown size="md">
                     <select :value="values.type" @change="values.type = $event.target.value" aria-label="Type">
@@ -588,39 +603,5 @@ const sectionLabels = {
 .edit-settings-list nldd-dropdown,
 .edit-settings-list nldd-number-field {
   width: 100%;
-}
-.edit-sheet-value-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-}
-.edit-sheet-value-group nldd-number-field {
-  flex: 1;
-  min-width: 0;
-}
-.edit-sheet-unit {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--semantics-text-secondary-color, #6B7280);
-  flex-shrink: 0;
-}
-.input-fields-wrapper {
-  position: relative;
-}
-.law-search-results {
-  position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  max-height: 240px;
-  overflow-y: auto;
-  background: var(--semantics-surface-primary-color, #fff);
-  border: 1px solid var(--semantics-border-primary-color, #d1d5db);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-.law-search-result-item {
-  cursor: pointer;
 }
 </style>

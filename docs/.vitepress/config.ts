@@ -7,6 +7,10 @@ export default withMermaid(
     description: 'Machine-readable Dutch law execution',
     lang: 'en',
 
+    head: [
+      ['link', { rel: 'icon', type: 'image/svg+xml', href: '/regelrecht-icon.svg' }],
+    ],
+
     ignoreDeadLinks: [
       /^https?:\/\/localhost/,
     ],
