@@ -60,11 +60,13 @@ pub(crate) async fn list(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-    // Filter through the same allowlist as `set` so a key removed from
-    // ALLOWED_KEYS in a future revision cannot leak its old row to clients.
+    // Re-run the write-side validator on each row so a key removed from
+    // ALLOWED_KEYS — or a stale row written before per-value validation
+    // tightened — cannot leak to clients. Read and write contracts stay
+    // symmetric: `list` only surfaces values `set` would accept today.
     let filtered = rows
         .into_iter()
-        .filter(|(k, _)| ALLOWED_KEYS.contains(&k.as_str()))
+        .filter(|(k, v)| validate(k, v).is_ok())
         .collect();
     Ok(Json(filtered))
 }
@@ -125,5 +127,27 @@ mod tests {
     fn validate_rejects_unknown_key() {
         assert_eq!(validate("foo", "anything"), Err(StatusCode::BAD_REQUEST));
         assert_eq!(validate("", "anything"), Err(StatusCode::BAD_REQUEST));
+    }
+
+    /// Catches drift between `ALLOWED_KEYS` and `validate`'s match arms:
+    /// adding a key to `ALLOWED_KEYS` without a matching arm makes every
+    /// PUT for that key fail with 400, with no compile-time signal. This
+    /// fixture must list one valid value per allowed key — adding a key
+    /// to `ALLOWED_KEYS` without updating the fixture fails the assert.
+    #[test]
+    fn every_allowed_key_has_a_validator_arm() {
+        let samples: &[(&str, &str)] = &[("theme", "auto")];
+        let allowed: std::collections::HashSet<&str> = ALLOWED_KEYS.iter().copied().collect();
+        let sampled: std::collections::HashSet<&str> = samples.iter().map(|(k, _)| *k).collect();
+        assert_eq!(
+            allowed, sampled,
+            "every entry in ALLOWED_KEYS must have a sample valid value here"
+        );
+        for (k, v) in samples {
+            assert!(
+                validate(k, v).is_ok(),
+                "validate must accept {v:?} for key {k:?} — missing match arm?"
+            );
+        }
     }
 }
