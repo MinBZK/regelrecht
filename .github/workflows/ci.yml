@@ -35,6 +35,7 @@ jobs:
               - packages/engine/**
               - packages/harvester/**
               - packages/pipeline/**
+              - frontend/**
               - features/**
               - corpus/regulation/**
               - schema/**
@@ -300,6 +301,27 @@ jobs:
       - name: Run all tests
         if: needs.changes.outputs.ci == 'true'
         run: just test-all
+
+      - name: Setup Node.js
+        if: needs.changes.outputs.ci == 'true'
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6
+        with:
+          node-version: '22'
+          registry-url: https://npm.pkg.github.com
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        if: needs.changes.outputs.ci == 'true'
+        working-directory: frontend
+        run: npm ci
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run frontend tests
+        if: needs.changes.outputs.ci == 'true'
+        working-directory: frontend
+        run: npm test
 
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.ci != 'true'
