@@ -87,26 +87,31 @@ function formatValue(val, unit) {
   return String(val);
 }
 
+// structuredClone throws DataCloneError on Vue reactive proxies; YAML data is JSON-safe.
+function snapshot(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 // Open edit sheet for existing items
 function editDef(name) {
   const rawDef = mr.value?.definitions?.[name];
   if (rawDef == null) return;
-  emit('open-edit', { section: 'definition', key: name, rawDef: structuredClone(rawDef) });
+  emit('open-edit', { section: 'definition', key: name, rawDef: snapshot(rawDef) });
 }
 
 function editParam(index) {
   const p = execution.value?.parameters?.[index];
-  if (p) emit('open-edit', { section: 'parameter', index, data: structuredClone(p) });
+  if (p) emit('open-edit', { section: 'parameter', index, data: snapshot(p) });
 }
 
 function editInput(index) {
   const raw = execution.value?.input?.[index];
-  if (raw) emit('open-edit', { section: 'input', index, data: structuredClone(raw) });
+  if (raw) emit('open-edit', { section: 'input', index, data: snapshot(raw) });
 }
 
 function editOutput(index) {
   const raw = execution.value?.output?.[index];
-  if (raw) emit('open-edit', { section: 'output', index, data: structuredClone(raw) });
+  if (raw) emit('open-edit', { section: 'output', index, data: snapshot(raw) });
 }
 
 // Delete handlers — emit a delete event with the section + identity of
