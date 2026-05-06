@@ -46,7 +46,7 @@ const hasSearch = computed(() => search.value.length > 0);
 
 watch([search, filteredLaws], ([q, filtered]) => {
   clearBwb();
-  if (!q || q.length < 3 || filtered.length > 0) return;
+  if (!q || q.length < MIN_QUERY_LENGTH || filtered.length > 0) return;
   if (needsLogin.value) return;
   searchBwb(q);
 });

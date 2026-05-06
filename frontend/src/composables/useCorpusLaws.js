@@ -15,13 +15,22 @@ let fetchPromise = null;
 function ensureFetched() {
   if (fetchPromise) return fetchPromise;
   fetchPromise = fetch('/api/corpus/laws?limit=1000')
-    .then(r => (r.ok ? r.json() : []))
+    .then(r => {
+      // Throw on non-ok so the catch below resets fetchPromise — otherwise
+      // a transient 500/404 at first call would lock us into the empty-list
+      // fallback for the rest of the session, since later useCorpusLaws()
+      // calls would see the (already-resolved) promise and skip refetch.
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
     .then(list => {
       laws.value = Array.isArray(list) ? list : [];
       return laws.value;
     })
     .catch(() => {
       laws.value = [];
+      // Reset so the next consumer mount triggers a fresh fetch.
+      fetchPromise = null;
       return [];
     });
   return fetchPromise;
