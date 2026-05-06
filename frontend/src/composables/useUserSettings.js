@@ -123,9 +123,14 @@ async function setSetting(key, value) {
   } catch (e) {
     console.warn('User setting PUT failed (network error):', e.message);
   } finally {
-    // Once the PUT has settled, the key is no longer "in flight". Keeping
-    // it in dirtyKeys would suppress the server value if loadSettings ever
-    // became re-entrant.
+    // Hold the dirty guard until the initial GET has merged. If the PUT
+    // resolves before the GET, dropping the guard here would let the GET's
+    // (possibly pre-PUT) snapshot clobber the user's just-confirmed value
+    // when `loadSettings` reads `dirtyKeys`. After initial load the await
+    // is free — `fetchPromise` is already resolved.
+    if (fetchPromise) {
+      try { await fetchPromise; } catch { /* GET error already handled */ }
+    }
     dirtyKeys.delete(key);
   }
 }

@@ -12,6 +12,10 @@ use crate::state::AppState;
 
 /// Keys the editor accepts as user settings. Unknown keys are rejected so the
 /// table cannot be used as a catch-all key/value store for client-supplied data.
+///
+/// When adding a key here, add a matching arm in `validate` below — otherwise
+/// `PUT` will return 400 for the new key and `list` will surface stale rows
+/// without value-level filtering.
 const ALLOWED_KEYS: &[&str] = &["theme"];
 
 fn validate(key: &str, value: &str) -> Result<(), StatusCode> {
@@ -39,7 +43,7 @@ fn get_pool(state: &AppState) -> Result<&sqlx::PgPool, StatusCode> {
 /// GET /api/user/settings — return the authenticated user's settings.
 /// An empty map is returned for a user who has never written a setting;
 /// the frontend merges this with its client-side defaults.
-pub async fn list(
+pub(crate) async fn list(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<Json<HashMap<String, String>>, StatusCode> {
@@ -66,13 +70,13 @@ pub async fn list(
 }
 
 #[derive(Deserialize)]
-pub struct SetBody {
-    pub value: String,
+pub(crate) struct SetBody {
+    value: String,
 }
 
 /// PUT /api/user/settings/{key} — idempotent upsert. The first write for a
 /// user creates the row; subsequent writes update the value in place.
-pub async fn set(
+pub(crate) async fn set(
     State(state): State<AppState>,
     session: Session,
     Path(key): Path<String>,
