@@ -17,11 +17,18 @@ const DB_UNAVAILABLE_RESPONSE: &[u8] =
     b"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 14\r\n\r\nDB unreachable";
 
 /// Resolve the health endpoint port from `HEALTH_PORT`, falling back to 8000.
+///
+/// If `HEALTH_PORT` is set but unparseable, logs a warning and uses 8000 so
+/// the misconfiguration shows up in worker logs rather than silently
+/// diverging from the operator's configured probe target.
 pub fn health_port() -> u16 {
-    std::env::var("HEALTH_PORT")
-        .ok()
-        .and_then(|v| v.parse::<u16>().ok())
-        .unwrap_or(8000)
+    match std::env::var("HEALTH_PORT") {
+        Err(_) => 8000,
+        Ok(raw) => raw.parse::<u16>().unwrap_or_else(|e| {
+            tracing::warn!("ignoring invalid HEALTH_PORT={raw:?} ({e}); falling back to 8000");
+            8000
+        }),
+    }
 }
 
 /// Bind the health endpoint and spawn its accept loop. The bind is performed
