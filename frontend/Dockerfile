@@ -11,6 +11,8 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # source paths. The `grep` assertion fails the build loudly if
 # packages/Cargo.toml is ever reformatted away from a multi-line members
 # array — without it the `sed` patterns would silently no-op.
+# When adding a new workspace member that this image does NOT build, add it
+# to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
     sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
 COPY packages/engine/ engine/
@@ -42,6 +44,8 @@ COPY packages/Cargo.lock packages/Cargo.toml ./
 # does not try to resolve crates whose source we do not COPY. The `grep`
 # assertion ensures the multi-line members format is intact; otherwise the
 # `sed` patterns would silently no-op.
+# When adding a new workspace member that this image does NOT build, add it
+# to this exclusion list as well; otherwise chef will fail to find its source.
 RUN grep -qE '^members = \[$' Cargo.toml && \
     sed -i '/"admin"/d; /"tui"/d' Cargo.toml
 COPY packages/auth/ auth/
