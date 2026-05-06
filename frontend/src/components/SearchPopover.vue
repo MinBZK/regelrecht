@@ -28,7 +28,23 @@ const useCenteredPosition = ref(true);
 // and lg (centered overlay) the user needs an explicit way to close.
 const isAnchored = ref(false);
 
+// Source of truth: @nldd/design-system's `assets/styles/breakpoints.ts`
+// (smMax: 640px, mdMin: 641px, mdMax: 1007px, lgMin: 1008px). Keep in
+// sync until the design system exports breakpoints publicly — currently
+// the file isn't listed in the package's `exports` field, so a deep
+// import isn't supported. The previous values used `696` for mdMin
+// which didn't match the design-system at all (probably a typo); aligned
+// with mdMin=641 so the popover's anchored-vs-centered transition fires
+// at the same width as bar-split-view's md/lg switch.
+const BREAKPOINT_MD_MIN = 641;
+const BREAKPOINT_LG_MIN = 1008;
+
 function displayName(law) {
+  // Prefer the API's resolved `display_name`: laws can have a dynamic
+  // `name: "#output_ref"` in YAML that the backend resolves via the
+  // matching action output. Without this check we'd render the raw
+  // `#output_ref` string for those laws.
+  if (law.display_name) return law.display_name;
   if (law.name) return law.name;
   return law.law_id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -120,8 +136,8 @@ async function show(anchorEl, initialSearch = '') {
   // On md it anchors below the trigger button (Floating UI placement),
   // matching the smaller toolbar's button-as-trigger feel.
   // On sm the popover renders as a full-height sheet (CSS-driven).
-  useCenteredPosition.value = window.matchMedia('(min-width: 1008px)').matches;
-  isAnchored.value = window.matchMedia('(min-width: 696px) and (max-width: 1007px)').matches;
+  useCenteredPosition.value = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`).matches;
+  isAnchored.value = window.matchMedia(`(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`).matches;
   // Wait for Vue to propagate the new `centered` / `top` / `width` props
   // onto the popover element before opening — otherwise the first
   // reposition() inside the popover's toggle handler runs against the

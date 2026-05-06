@@ -143,6 +143,11 @@ watchEffect(() => {
 });
 
 function displayName(law) {
+  // Prefer the API's resolved `display_name`: laws can have a dynamic
+  // `name: "#output_ref"` in YAML that the backend resolves via the
+  // matching action output. Without this check we'd render the raw
+  // `#output_ref` string for those laws.
+  if (law.display_name) return law.display_name;
   if (law.name) return law.name;
   return humanizeLawId(law.law_id);
 }

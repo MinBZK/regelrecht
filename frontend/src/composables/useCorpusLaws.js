@@ -12,9 +12,17 @@ import { ref, computed } from 'vue';
 const laws = ref([]);
 let fetchPromise = null;
 
+// Backend hard-caps `?limit` at 1000 (see editor-api/corpus_handlers.rs
+// MAX_LIMIT). With the current curated Test Corpus this is far above
+// what's loaded, but if the corpus ever grows past 1000, MachineReadable
+// input rows that reference an overflow law would silently fall back to
+// the title-cased snake_case identifier. Warn loudly when we hit the cap
+// so the gap is visible rather than silently broken.
+const FETCH_LIMIT = 1000;
+
 function ensureFetched() {
   if (fetchPromise) return fetchPromise;
-  fetchPromise = fetch('/api/corpus/laws?limit=1000')
+  fetchPromise = fetch(`/api/corpus/laws?limit=${FETCH_LIMIT}`)
     .then(r => {
       // Throw on non-ok so the catch below resets fetchPromise — otherwise
       // a transient 500/404 at first call would lock us into the empty-list
@@ -25,6 +33,12 @@ function ensureFetched() {
     })
     .then(list => {
       laws.value = Array.isArray(list) ? list : [];
+      if (laws.value.length >= FETCH_LIMIT) {
+        console.warn(
+          `useCorpusLaws: hit the ${FETCH_LIMIT}-law cap — laws beyond this won't resolve to display names. ` +
+          `Pagination needs to be added if the corpus has grown past ${FETCH_LIMIT} entries.`,
+        );
+      }
       return laws.value;
     })
     .catch(() => {
