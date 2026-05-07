@@ -10,6 +10,7 @@ import SearchPopover from './components/SearchPopover.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
+import { SUPPORT_EMAIL } from './constants.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
@@ -117,12 +118,27 @@ const lawName = computed(() => {
   return humanizeLawId(selectedLaw.value.$id || selectedLaw.value.law_id || '');
 });
 
+// Display name resolved from the index. Used in the load-error state where
+// `selectedLaw` is null and `lawName` would be empty.
+const indexedLawName = computed(() => {
+  if (!selectedLawId.value) return '';
+  const law = laws.value.find(l => l.law_id === selectedLawId.value);
+  return law ? displayName(law) : humanizeLawId(selectedLawId.value);
+});
+
 const selectedArticle = computed(() => {
   if (!selectedArticleNumber.value) return null;
   return articles.value.find(
     (a) => String(a.number) === String(selectedArticleNumber.value)
   ) ?? null;
 });
+
+// True when the URL points at an article that doesn't exist in the
+// loaded law. Distinct from "no article selected" (where no article
+// number is in the URL).
+const articleNotFound = computed(() =>
+  !!(selectedLaw.value && selectedArticleNumber.value && !selectedArticle.value)
+);
 
 // Reflect navigation depth in the document title:
 //   "Art. 5 · Wet op de zorgtoeslag · RegelRecht"
@@ -136,7 +152,10 @@ const selectedArticle = computed(() => {
 watchEffect(() => {
   const detail = [];
   if (selectedArticle.value) detail.push(`Art. ${selectedArticle.value.number}`);
-  if (lawName.value) detail.push(lawName.value);
+  // Fall back to indexedLawName so the title reflects the URL even when the
+  // law itself failed to load.
+  const name = lawName.value || indexedLawName.value;
+  if (name) detail.push(name);
   document.title = detail.length > 0
     ? `${detail.join(' · ')} · RegelRecht`
     : 'Bibliotheek · RegelRecht';
@@ -233,16 +252,10 @@ async function loadLaw(lawId) {
     if (gen !== loadLawGeneration) return; // stale response, discard
     const text = await res.text();
     selectedLaw.value = yaml.load(text);
-    if (articles.value.length > 0) {
-      // Use article from route if valid; otherwise show nothing (empty state).
-      const routeArticle = route.params.articleNumber;
-      if (routeArticle && articles.value.some(a => String(a.number) === String(routeArticle))) {
-        selectedArticleNumber.value = String(routeArticle);
-      } else if (routeArticle) {
-        // Route had an invalid article number — strip it so the URL reflects the empty state.
-        router.replace({ name: 'library', params: { lawId } });
-      }
-    }
+    // selectedArticleNumber is set from the route on initial mount and via
+    // onBeforeRouteUpdate; we don't validate here so an invalid number
+    // surfaces as the articleNotFound error state instead of being silently
+    // stripped from the URL.
   } catch (e) {
     if (gen !== loadLawGeneration) return;
     selectedLaw.value = null;
@@ -252,6 +265,12 @@ async function loadLaw(lawId) {
       selectedLawLoading.value = false;
     }
   }
+}
+
+function retryLoadLaw() {
+  if (!selectedLawId.value) return;
+  lawError.value = null;
+  loadLaw(selectedLawId.value);
 }
 
 function editInEditor() {
@@ -312,7 +331,7 @@ function onPaneBack(e) {
   const pane = path.find(el => el.tagName === 'NLDD-SPLIT-VIEW-PANE');
   if (!pane) return;
   const slot = pane.getAttribute('slot');
-  if (slot === 'main') return goToLawRoot();
+  if (slot === 'main') return lawError.value ? goToLibraryRoot() : goToLawRoot();
   if (slot === 'secondary-sidebar') return goToLibraryRoot();
 }
 
@@ -373,6 +392,9 @@ async function onHarvestAvailable(slug) {
 // Initial load from route
 if (route.params.lawId) {
   selectedLawId.value = route.params.lawId;
+  if (route.params.articleNumber) {
+    selectedArticleNumber.value = String(route.params.articleNumber);
+  }
   loadLaw(route.params.lawId);
 }
 loadIndex();
@@ -487,7 +509,7 @@ loadIndex();
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
-              <nldd-simple-section full-width :align="loading || indexError ? 'center' : undefined">
+              <nldd-simple-section full-width>
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
@@ -518,20 +540,19 @@ loadIndex();
                selected. When deselected the pane is removed from the DOM
                so the navigation-split-view reflows to spatial mode and
                shows the sidebar (Wetten Browser) alongside main. -->
-          <nldd-split-view-pane v-if="selectedLawId" slot="secondary-sidebar" has-content>
+          <nldd-split-view-pane v-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
-                :text="lawName || 'Selecteer een wet'"
+                :text="lawName || indexedLawName || 'Selecteer een wet'"
                 :back-text="LIBRARY_HOME_TITLE"
                 collapse-anchor="wet-titel"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section full-width :align="selectedLawLoading || lawError || !selectedLaw ? 'center' : undefined">
+              <nldd-simple-section full-width>
                 <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
-                <nldd-inline-dialog v-else-if="lawError" variant="alert" text="Fout bij laden" :supporting-text="lawError.message"></nldd-inline-dialog>
                 <nldd-inline-dialog v-else-if="!selectedLaw" text="Selecteer een wet"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
                   <nldd-list-item
@@ -555,18 +576,38 @@ loadIndex();
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle ? true : undefined">
+          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
                 :supporting-text="selectedArticle ? lawName : undefined"
-                :back-text="lawName || 'Terug'"
+                :back-text="lawError ? LIBRARY_HOME_TITLE : (lawName || 'Terug')"
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
               <nldd-simple-section full-width v-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
+              </nldd-simple-section>
+              <nldd-simple-section full-width v-else-if="lawError">
+                <nldd-inline-dialog
+                  variant="alert"
+                  :text="`${indexedLawName} is niet geladen`"
+                  supporting-text="De gegevens konden niet worden opgehaald."
+                >
+                  <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+                  <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+                </nldd-inline-dialog>
+              </nldd-simple-section>
+              <nldd-simple-section full-width v-else-if="articleNotFound">
+                <nldd-inline-dialog
+                  variant="alert"
+                  :text="`Artikel ${selectedArticleNumber} van ${lawName || indexedLawName} bestaat niet`"
+                  supporting-text="Mogelijk klopt de URL niet. Neem contact op als je verwacht dat dit artikel wel bestaat."
+                >
+                  <nldd-button slot="actions" class="article-not-found__back-button" variant="primary" text="Bekijk artikelen" @click="goToLawRoot"></nldd-button>
+                  <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+                </nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section full-width v-else-if="!selectedArticle">
                 <nldd-inline-dialog text="Selecteer een artikel"></nldd-inline-dialog>
@@ -666,3 +707,11 @@ loadIndex();
     @harvest-available="onHarvestAvailable"
   />
 </template>
+
+<style>
+/* "Bekijk artikelen" alleen tonen wanneer de artikelenlijst niet naast
+   de main pane zichtbaar is (full-stack mode = single pane op mobile). */
+nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
+  display: none;
+}
+</style>

@@ -912,7 +912,7 @@ function handleActionSave() {
           <nldd-split-view-pane v-if="showTextPane" :slot="paneSlot('text')">
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" text="Tekst"></nldd-top-title-bar>
-              <nldd-simple-section full-width :align="selectedArticle ? undefined : 'center'">
+              <nldd-simple-section full-width>
                 <ArticleText :article="selectedArticle" raw />
               </nldd-simple-section>
             </nldd-page>
