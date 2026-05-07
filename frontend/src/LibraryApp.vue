@@ -368,7 +368,11 @@ function onPaneBack(e) {
   const pane = path.find(el => el.tagName === 'NLDD-SPLIT-VIEW-PANE');
   if (!pane) return;
   const slot = pane.getAttribute('slot');
-  if (slot === 'main') return lawError.value ? goToLibraryRoot() : goToLawRoot();
+  // On any error state — corpus load failed (indexError) or this
+  // specific law failed (lawError) — back from the main pane should
+  // return to the library root, not /library/<lawId>. The latter would
+  // route the user back into the same error they just dismissed.
+  if (slot === 'main') return (lawError.value || indexError.value) ? goToLibraryRoot() : goToLawRoot();
   if (slot === 'secondary-sidebar') return goToLibraryRoot();
 }
 
