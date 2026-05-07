@@ -592,7 +592,12 @@ async function handleMachineReadableSave() {
 }
 
 function onYamlInput(event) {
-  const text = event.target.value;
+  // nldd-code-editor dispatches a CustomEvent with the new value in
+  // event.detail.value (see the design-system 0.8.41 component). The
+  // host's `value` property is updated before dispatch so
+  // event.target.value would also work, but reading from detail keeps
+  // the contract explicit and matches how the storybook docs the API.
+  const text = event.detail?.value ?? event.target?.value ?? '';
   yamlSource.value = text;
   try {
     const parsed = yaml.load(text);
