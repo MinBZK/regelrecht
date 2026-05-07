@@ -208,7 +208,9 @@ watch(
 );
 
 // --- Details handler: emit to right panel ---
-function onShowDetails(index) {
+// `view` indicates which sheet the parent should open: 'trace' for
+// the execution-trace sheet (default), 'graph' for the law-graph sheet.
+function onShowDetails(index, view = 'trace') {
   // Prefer fresh data from the form ref, but its state may have been reset
   // after a save/reload — fall back to the cached result in that case.
   const formRef = scenarioRefs.value[index];
@@ -226,6 +228,7 @@ function onShowDetails(index) {
       // Forward the scenario's entry output so the graph view can pin
       // its "▶ start" marker to the right output leaf.
       outputName: data.outputName || null,
+      view,
     });
   }
 }
@@ -359,7 +362,12 @@ defineExpose({ save: onSave });
                   variant="primary"
                   :disabled="!scenarioResults.get(i) || undefined"
                   text="Toon resultaat"
-                  @click="onShowDetails(i)"
+                  @click="onShowDetails(i, 'trace')"
+                ></nldd-button>
+                <nldd-button
+                  :disabled="!scenarioResults.get(i) || undefined"
+                  text="Graaf"
+                  @click="onShowDetails(i, 'graph')"
                 ></nldd-button>
                 <nldd-button
                   text="Bewerk"
@@ -385,6 +393,7 @@ defineExpose({ save: onSave });
       ref="scenarioSheetEl"
       placement="right"
       width="640px"
+      full-height
       @close="cancelEdits"
     >
       <nldd-page sticky-header :sticky-footer="isDirty || undefined">

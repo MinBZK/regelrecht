@@ -132,6 +132,7 @@ const {
 } = useLaw(route.params.lawId, route.params.articleNumber);
 
 const resultSheetOpen = ref(false);
+const graphSheetOpen = ref(false);
 
 // --- Corpus search (reuse LibraryApp's SearchPopover) ---
 const corpusLaws = ref([]);
@@ -186,6 +187,12 @@ watch(resultSheetOpen, async (open) => {
   await nextTick();
   if (open) resultSheetEl.value?.show();
   else resultSheetEl.value?.hide();
+});
+const graphSheetEl = ref(null);
+watch(graphSheetOpen, async (open) => {
+  await nextTick();
+  if (open) graphSheetEl.value?.show();
+  else graphSheetEl.value?.hide();
 });
 
 // --- Multi-law tab state (persisted in localStorage) ---
@@ -352,20 +359,18 @@ const lastScenarioName = ref('');
 // uses this to pin its "▶ start" marker to the right leaf.
 const lastOutputName = ref(null);
 
-const RESULT_SHEET_VIEW_KEY = 'regelrecht-result-sheet-view';
-const resultSheetView = ref(localStorage.getItem(RESULT_SHEET_VIEW_KEY) || 'trace');
-watch(resultSheetView, (val) => {
-  localStorage.setItem(RESULT_SHEET_VIEW_KEY, val);
-});
-
-function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName }) {
+function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName, view }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
   lastOutputName.value = outputName || null;
-  resultSheetOpen.value = true;
+  if (view === 'graph') {
+    graphSheetOpen.value = true;
+  } else {
+    resultSheetOpen.value = true;
+  }
 }
 
 // Clear the captured trace whenever the active law changes — otherwise
@@ -1105,10 +1110,13 @@ function handleActionSave() {
     @harvest-available="onSearchHarvestAvailable"
   />
 
-  <!-- Result of the most recently executed scenario, opened as a bottom sheet. -->
+  <!-- Trace sheet — execution trace + expected outcomes for the most
+       recently executed scenario. Opened from a scenario card's "Toon
+       resultaat" button. -->
   <nldd-sheet
     ref="resultSheetEl"
     placement="bottom"
+    full-height
     @close="resultSheetOpen = false"
   >
     <nldd-page sticky-header>
@@ -1116,35 +1124,33 @@ function handleActionSave() {
       <nldd-simple-section full-width>
         <nldd-title id="result-scenario-title" size="4"><h3>{{ lastScenarioName ? `Resultaat: ${lastScenarioName}` : 'Resultaat' }}</h3></nldd-title>
         <nldd-spacer size="16"></nldd-spacer>
-        <nldd-tab-bar size="md">
-          <nldd-tab-bar-item
-            :selected="resultSheetView === 'trace' || undefined"
-            text="Trace"
-            @click="resultSheetView = 'trace'"
-          ></nldd-tab-bar-item>
-          <nldd-tab-bar-item
-            :selected="resultSheetView === 'graph' || undefined"
-            text="Graaf"
-            @click="resultSheetView = 'graph'"
-          ></nldd-tab-bar-item>
-        </nldd-tab-bar>
-        <nldd-spacer size="16"></nldd-spacer>
         <ExecutionTraceView
-          v-if="resultSheetView === 'trace'"
           :result="lastResult"
           :trace-text="lastTraceText"
           :error="lastError"
           :expectations="lastExpectations"
           :scenario-name="lastScenarioName"
         />
-        <LawGraphView
-          v-else-if="resultSheetView === 'graph'"
-          :law-id="lawId"
-          :result="lastResult"
-          :output-name="lastOutputName"
-          :expectations="lastExpectations"
-        />
       </nldd-simple-section>
+    </nldd-page>
+  </nldd-sheet>
+
+  <!-- Graph sheet — visual law graph with the scenario's trace overlay.
+       Opened from a scenario card's "Graaf" button. -->
+  <nldd-sheet
+    ref="graphSheetEl"
+    placement="bottom"
+    full-height
+    @close="graphSheetOpen = false"
+  >
+    <nldd-page sticky-header>
+      <nldd-top-title-bar slot="header" :text="lastScenarioName ? `Graaf: ${lastScenarioName}` : 'Graaf'" dismiss-text="Sluit" @dismiss="graphSheetOpen = false"></nldd-top-title-bar>
+      <LawGraphView
+        :law-id="lawId"
+        :result="lastResult"
+        :output-name="lastOutputName"
+        :expectations="lastExpectations"
+      />
     </nldd-page>
   </nldd-sheet>
 </template>
