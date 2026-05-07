@@ -365,6 +365,7 @@ defineExpose({ save: onSave });
                   @click="onShowDetails(i, 'trace')"
                 ></nldd-button>
                 <nldd-button
+                  variant="secondary"
                   :disabled="!scenarioResults.get(i) || undefined"
                   text="Graaf"
                   @click="onShowDetails(i, 'graph')"
