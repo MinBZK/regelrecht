@@ -179,6 +179,13 @@ function confirmDelete() {
 }
 
 function cancelDelete() {
+  // Idempotent guard: the Behoud button's @click and the modal's @close
+  // both wire to this handler. Clicking Behoud sets pendingDelete = null,
+  // the watcher then calls el.hide(), which fires @close → cancelDelete
+  // again. Vue's ref equality check makes the second assignment a no-op
+  // today, but a future side-effect would silently double-fire without
+  // this early return.
+  if (pendingDelete.value === null) return;
   pendingDelete.value = null;
 }
 
