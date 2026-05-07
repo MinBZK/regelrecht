@@ -745,7 +745,14 @@ loadIndex();
 </template>
 
 <style>
-/* "Bekijk artikelen" alleen tonen wanneer de artikelenlijst niet naast
+/* Unscoped on purpose: nldd-navigation-split-view is a custom element
+   with its own shadow root, but the `.full-stack` class is reflected on
+   the host element from light-DOM space, so a scoped selector here
+   wouldn't match any longer than the scoping attribute the Vue compiler
+   would inject. The class name is namespaced (`article-not-found__…`)
+   to make accidental collisions outside this view unlikely.
+
+   "Bekijk artikelen" alleen tonen wanneer de artikelenlijst niet naast
    de main pane zichtbaar is (full-stack mode = single pane op mobile). */
 nldd-navigation-split-view:not(.full-stack) .article-not-found__back-button {
   display: none;
