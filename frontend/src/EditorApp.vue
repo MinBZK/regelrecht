@@ -1188,7 +1188,13 @@ function handleActionSave() {
   >
     <nldd-page sticky-header>
       <nldd-top-title-bar slot="header" :text="lastScenarioName ? `Graaf: ${lastScenarioName}` : 'Graaf'" dismiss-text="Sluit" @dismiss="graphSheetOpen = false"></nldd-top-title-bar>
+      <!-- Lazy-mount: building the Vue Flow graph for laws with many
+           cross-law references is non-trivial and the sheet is hidden
+           by default. Render only while the sheet is open; the remount
+           cost on each subsequent open is acceptable next to dragging
+           an unused Vue Flow tree behind every editor session. -->
       <LawGraphView
+        v-if="graphSheetOpen"
         :law-id="lawId"
         :result="lastResult"
         :output-name="lastOutputName"
