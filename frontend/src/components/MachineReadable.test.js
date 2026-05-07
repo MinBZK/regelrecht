@@ -82,6 +82,7 @@ const ADD_BTN_TESTID = {
   parameter: 'add-param-btn',
   input: 'add-input-btn',
   output: 'add-output-btn',
+  action: 'add-action-btn',
 };
 function findAddButton(wrapper, section) {
   return wrapper.find(`[data-testid="${ADD_BTN_TESTID[section]}"]`);
