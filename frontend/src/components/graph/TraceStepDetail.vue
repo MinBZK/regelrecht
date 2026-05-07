@@ -90,14 +90,16 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
 .step-detail {
   overflow-y: auto;
   padding: 12px;
-  background: var(--semantics-surfaces-tinted-background-color, #f9fafb);
+  background: var(--semantics-surfaces-tinted-background-color);
+  color: var(--semantics-content-color);
   font-size: 12px;
 }
 
 .step-detail__card {
   margin-bottom: 12px;
-  border: 1px solid #fcd34d;
-  background: #fef3c7;
+  border: 1px solid var(--primitives-color-donkergeel-300);
+  background: var(--primitives-color-donkergeel-100);
+  color: var(--primitives-color-donkergeel-900);
   border-radius: 6px;
   padding: 8px;
 }
@@ -137,30 +139,30 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
 }
 .step-detail__row dt {
   width: 80px;
-  color: #6b7280;
+  color: var(--semantics-content-secondary-color);
   flex-shrink: 0;
 }
 .step-detail__row dd {
   margin: 0;
-  color: #111827;
+  color: var(--semantics-content-color);
   min-width: 0;
   word-break: break-word;
 }
 
 .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
-.indigo { color: #4f46e5; }
-.emerald { color: #047857; }
-.italic { font-style: italic; color: #6b7280; }
+.indigo { color: var(--primitives-color-paars-700); }
+.emerald { color: var(--primitives-color-mintgroen-700); }
+.italic { font-style: italic; color: var(--semantics-content-secondary-color); }
 
 .step-detail__section-title {
   margin: 8px 0 4px;
   font-size: 12px;
   font-weight: 600;
-  color: #374151;
+  color: var(--semantics-content-color);
 }
 
 .step-detail__empty {
-  color: #9ca3af;
+  color: var(--semantics-content-secondary-color);
   font-style: italic;
   font-size: 11px;
 }
@@ -183,7 +185,7 @@ const expectationEntries = computed(() => Object.entries(props.expectations || {
   font-weight: 700;
 }
 .step-detail__marker.pass,
-.pass { color: #047857; }
+.pass { color: var(--primitives-color-mintgroen-700); }
 .step-detail__marker.fail,
-.fail { color: #dc2626; }
+.fail { color: var(--primitives-color-rood-600); }
 </style>

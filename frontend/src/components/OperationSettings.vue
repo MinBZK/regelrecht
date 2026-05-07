@@ -533,8 +533,8 @@ function addNestedOperation() {
       <!-- Add value -->
       <nldd-list-item v-if="canAddValue || canAddNestedOperation" size="md">
         <div class="add-value-buttons">
-          <nldd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></nldd-button>
-          <nldd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Voeg operatie toe"></nldd-button>
+          <nldd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Waarde toevoegen"></nldd-button>
+          <nldd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Operatie toevoegen"></nldd-button>
         </div>
       </nldd-list-item>
     </nldd-list>

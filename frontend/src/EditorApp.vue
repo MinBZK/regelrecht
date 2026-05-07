@@ -7,6 +7,8 @@ import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
+import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
+import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -33,46 +35,98 @@ const editorPanelFlags = [
   ['panel.yaml_editor', 'YAML editor'],
 ];
 
-// Left and middle panes are specific named editors. The right pane is a
-// category — anything that isn't text or machine lives there, and when more
-// than one is enabled they share the slot via a dropdown switcher in the
-// header. Adding a new editor: append to RIGHT_PANES and render its body in
-// the right-pane v-if chain in the template.
-const showTextPane = computed(() => isEnabled('panel.article_text'));
-const showMachinePane = computed(() => isEnabled('panel.machine_readable'));
-
-const RIGHT_PANES = [
-  { key: 'form', flag: 'panel.scenario_form', label: "Scenario's" },
-  { key: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+// Per-pane view selection. Each pane independently picks one of the
+// available views (Tekst, Machine, Scenario's, YAML). Same view can be
+// in multiple panes (e.g. two YAML panes for diff). Layout always has
+// one pane per view; nldd-side-by-side-split-view auto-hides panes
+// from the right when the viewport is too narrow, so left = highest
+// priority. Visibility flags via panel.* feature flags filter what's
+// pickable in the menu.
+const VIEW_DEFINITIONS = [
+  { id: 'text', flag: 'panel.article_text', label: 'Tekst' },
+  { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
+  { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
+  { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
 ];
-const enabledRightPanes = computed(() => RIGHT_PANES.filter(p => isEnabled(p.flag)));
 
-const ACTIVE_RIGHT_PANE_KEY = 'regelrecht-active-right-pane';
-const activeRightPane = ref(localStorage.getItem(ACTIVE_RIGHT_PANE_KEY) || RIGHT_PANES[0].key);
-watch(enabledRightPanes, (panes) => {
-  if (panes.length > 0 && !panes.some(p => p.key === activeRightPane.value)) {
-    activeRightPane.value = panes[0].key;
+const availableViews = computed(() => VIEW_DEFINITIONS.filter(v => isEnabled(v.flag)));
+
+function viewLabel(viewId) {
+  return VIEW_DEFINITIONS.find(v => v.id === viewId)?.label ?? viewId;
+}
+
+const PANE_VIEWS_KEY = 'regelrecht-pane-views';
+const paneViews = ref(loadPaneViews());
+
+function loadPaneViews() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PANE_VIEWS_KEY) ?? 'null');
+    // Only accept entries we still recognise — a stale value left over
+    // from a removed view (e.g. 'form' before scenario was renamed) or
+    // an externally injected string would otherwise produce a pane with
+    // no v-if branch matching it, briefly flashing an empty body before
+    // the availableViews watcher corrects it on the next tick.
+    const knownIds = new Set(VIEW_DEFINITIONS.map(v => v.id));
+    if (
+      Array.isArray(stored) &&
+      stored.length > 0 &&
+      stored.every(v => typeof v === 'string' && knownIds.has(v))
+    ) {
+      return stored;
+    }
+  } catch {
+    /* fall through to default */
+  }
+  return VIEW_DEFINITIONS.map(v => v.id);
+}
+
+// Every paneViews mutation goes through `paneViews.value = next`
+// (setPaneView, the availableViews sync watcher), so the top-level ref
+// identity always changes. No deep:true needed; in-place mutations are
+// not used and shouldn't be relied on.
+watch(paneViews, (val) => {
+  localStorage.setItem(PANE_VIEWS_KEY, JSON.stringify(val));
+});
+
+// Sync paneViews with availableViews when a flag flips:
+// - Drop panes whose view is no longer available (flag off → pane gone)
+// - Append a pane for any view that was JUST enabled by this change
+//   (in current available, not in previous) — so re-enabling a flag
+//   brings the pane back instead of silently leaving the user without
+//   it. The previous version compared "missing from paneViews" against
+//   the full available set, which spuriously appended every available
+//   view a user happened not to have open whenever any unrelated flag
+//   flipped.
+// When everything is filtered out, reset to one pane per available view
+// as the safe default.
+watch(availableViews, (views, oldViews) => {
+  const allowedIds = new Set(views.map(v => v.id));
+  const filtered = paneViews.value.filter(v => allowedIds.has(v));
+  // On the very first run (immediate: true) oldViews is undefined; treat
+  // it as "no diff" so we don't append every available view on top of
+  // whatever the user had restored from localStorage.
+  const previousIds = new Set((oldViews ?? []).map(v => v.id));
+  const newlyEnabled = views
+    .filter(v => oldViews !== undefined && !previousIds.has(v.id))
+    .map(v => v.id);
+  const next = [...filtered, ...newlyEnabled];
+  if (next.length === 0 && views.length > 0) {
+    paneViews.value = views.map(v => v.id);
+    return;
+  }
+  if (
+    next.length !== paneViews.value.length ||
+    next.some((v, i) => v !== paneViews.value[i])
+  ) {
+    paneViews.value = next;
   }
 }, { immediate: true });
-watch(activeRightPane, (val) => {
-  localStorage.setItem(ACTIVE_RIGHT_PANE_KEY, val);
-});
-const activeRightPaneLabel = computed(
-  () => enabledRightPanes.value.find(p => p.key === activeRightPane.value)?.label ?? '',
-);
 
-// Compute visible pane count and slot assignments for the split view.
-const visiblePanes = computed(() => {
-  const panes = [];
-  if (showTextPane.value) panes.push('text');
-  if (showMachinePane.value) panes.push('machine');
-  if (enabledRightPanes.value.length > 0) panes.push('right');
-  return panes.length > 0 ? panes : ['text', 'machine', 'right'];
-});
-const paneSlot = (name) => {
-  const idx = visiblePanes.value.indexOf(name);
-  return idx >= 0 ? `pane-${idx + 1}` : undefined;
-};
+function setPaneView(idx, viewId) {
+  const next = [...paneViews.value];
+  next[idx] = viewId;
+  paneViews.value = next;
+}
 
 // All edit operations are gated behind SSO. When OIDC is configured the user
 // must be authenticated; when OIDC is disabled the editor is fully open.
@@ -102,6 +156,7 @@ const {
 } = useLaw(route.params.lawId, route.params.articleNumber);
 
 const resultSheetOpen = ref(false);
+const graphSheetOpen = ref(false);
 
 // --- Corpus search (reuse LibraryApp's SearchPopover) ---
 const corpusLaws = ref([]);
@@ -119,6 +174,27 @@ loadCorpusLaws();
 
 function openSearch(e, initialSearch = '') {
   searchPopoverRef.value?.show(e?.currentTarget, initialSearch);
+}
+
+/**
+ * Display name for the failed law on the error inline-dialog. Tries the
+ * corpus index (loaded for the search popover) first; falls back to the
+ * URL slug so the user always sees a concrete identifier.
+ */
+const failedLawName = computed(() => {
+  const id = lawId.value;
+  if (!id) return '';
+  return corpusLaws.value.find(l => l.law_id === id)?.name || id;
+});
+
+/**
+ * Retry the failed law fetch. switchLaw clears `error` and re-runs the
+ * fetch; failed responses don't enter the cache so a retry actually hits
+ * the network again.
+ */
+function retryLoadLaw() {
+  if (!lawId.value) return;
+  switchLaw(lawId.value, selectedArticleNumber.value);
 }
 
 /**
@@ -156,6 +232,12 @@ watch(resultSheetOpen, async (open) => {
   await nextTick();
   if (open) resultSheetEl.value?.show();
   else resultSheetEl.value?.hide();
+});
+const graphSheetEl = ref(null);
+watch(graphSheetOpen, async (open) => {
+  await nextTick();
+  if (open) graphSheetEl.value?.show();
+  else graphSheetEl.value?.hide();
 });
 
 // --- Multi-law tab state (persisted in localStorage) ---
@@ -322,26 +404,32 @@ const lastScenarioName = ref('');
 // uses this to pin its "▶ start" marker to the right leaf.
 const lastOutputName = ref(null);
 
-const RESULT_SHEET_VIEW_KEY = 'regelrecht-result-sheet-view';
-const resultSheetView = ref(localStorage.getItem(RESULT_SHEET_VIEW_KEY) || 'trace');
-watch(resultSheetView, (val) => {
-  localStorage.setItem(RESULT_SHEET_VIEW_KEY, val);
-});
-
-function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName }) {
+function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName, view }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
   lastError.value = error || null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
   lastOutputName.value = outputName || null;
-  resultSheetOpen.value = true;
+  // Open exactly one of the two sheets — opening the second on top of
+  // the first would leave the previous one as a stale layer that
+  // re-appears when the user dismisses the foreground sheet.
+  if (view === 'graph') {
+    resultSheetOpen.value = false;
+    graphSheetOpen.value = true;
+  } else {
+    graphSheetOpen.value = false;
+    resultSheetOpen.value = true;
+  }
 }
 
 // Clear the captured trace whenever the active law changes — otherwise
 // LawGraphView would re-flatten the old trace under the new lawId,
 // misattribute every step to the new law, and pin the "▶ start" badge
 // to a leaf that just happens to share the previous output's name.
+// The trace and graph sheets close along with the trace they were
+// showing: leaving them open over an empty graph or a fresh law the
+// user just navigated into is more confusing than auto-dismissing.
 watch(lawId, () => {
   lastResult.value = null;
   lastTraceText.value = null;
@@ -349,6 +437,8 @@ watch(lawId, () => {
   lastExpectations.value = {};
   lastScenarioName.value = '';
   lastOutputName.value = null;
+  resultSheetOpen.value = false;
+  graphSheetOpen.value = false;
 });
 
 // --- Editor state ---
@@ -526,7 +616,23 @@ async function handleMachineReadableSave() {
 }
 
 function onYamlInput(event) {
-  const text = event.target.value;
+  // nldd-code-editor dispatches a CustomEvent with the new value in
+  // event.detail.value (see the design-system 0.8.41 component). The
+  // host's `value` property is updated before dispatch so
+  // event.target.value would also work, but reading from detail keeps
+  // the contract explicit and matches how the storybook docs the API.
+  // `??` skips only null/undefined — a deliberate empty string passes
+  // through as a valid "user cleared the editor" input.
+  const text = event.detail?.value ?? event.target?.value;
+  if (text == null) {
+    // Structurally broken event (no detail, no value on target). Don't
+    // touch yamlSource — silently overwriting with the previous value
+    // would swallow keystrokes a user can see in the textarea but
+    // never sees committed to the reactive source. Surface it loudly
+    // instead so the regression is obvious in dev console.
+    console.warn('onYamlInput: unexpected event shape, ignoring', event);
+    return;
+  }
   yamlSource.value = text;
   try {
     const parsed = yaml.load(text);
@@ -778,7 +884,7 @@ function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
-                <nldd-tab-bar-item href="/library" @click.prevent="router.push('/library')" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -824,7 +930,7 @@ function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
-                <nldd-tab-bar-item href="/library" @click.prevent="router.push('/library')" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -892,97 +998,91 @@ function handleActionSave() {
 
       <!-- Main content area -->
       <nldd-split-view-pane slot="main">
-        <!-- Empty state: no tabs open -->
+        <!-- Empty state: no tabs open. The CTA points back to the library
+             since that's the only way to create new tabs; mention the tab
+             bar too because closed tabs may still be visible alongside this
+             empty state on the next pane. -->
         <nldd-page v-if="!activeTab">
           <nldd-simple-section full-width>
-            <nldd-inline-dialog text="Open een artikel vanuit de bibliotheek om te bewerken"></nldd-inline-dialog>
+            <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
+              <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+            </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Error state -->
+        <!-- Error state — mirrors the library's law-load failure pattern. -->
         <nldd-page v-else-if="error">
           <nldd-simple-section full-width>
-            <nldd-inline-dialog variant="alert" text="Kon de wet niet laden" :supporting-text="error.message"></nldd-inline-dialog>
+            <nldd-inline-dialog
+              variant="alert"
+              :text="`${failedLawName} is niet geladen`"
+              supporting-text="De gegevens konden niet worden opgehaald."
+            >
+              <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+            </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Dynamic column layout based on feature flags -->
-        <nldd-side-by-side-split-view v-else :panes="String(visiblePanes.length)">
-          <!-- Left: Article Text -->
-          <nldd-split-view-pane v-if="showTextPane" :slot="paneSlot('text')">
-            <nldd-page sticky-header>
-              <nldd-top-title-bar slot="header" text="Tekst"></nldd-top-title-bar>
-              <nldd-simple-section full-width :align="selectedArticle ? undefined : 'center'">
+        <!-- All editor flags off — paneViews is empty so the
+             side-by-side view would render zero pane slots. Surface an
+             explicit empty-state with a CTA to the settings menu so
+             the user understands the editor isn't broken. -->
+        <nldd-page v-else-if="paneViews.length === 0">
+          <nldd-simple-section full-width>
+            <nldd-inline-dialog text="Geen editors actief. Schakel ten minste één editor in via Instellingen."></nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
+        <!-- One pane per entry in `paneViews`. Each pane independently
+             picks its view via the dropdown in its header. The split-view
+             auto-hides panes from the right when the viewport is too narrow.
+             Hidden panes stay in the DOM so state is preserved when the
+             viewport widens. -->
+        <nldd-side-by-side-split-view v-else :panes="String(paneViews.length)">
+          <!-- Compound key: when a flag flip shifts which view sits at a
+               given index, Vue would otherwise patch the existing pane in
+               place — leaking ScenarioBuilder form state and engine
+               results into a different view. Re-keying on the view id
+               forces an unmount + remount on identity change, at the
+               (acceptable) cost of losing pane scroll position. -->
+          <nldd-split-view-pane
+            v-for="(view, idx) in paneViews"
+            :key="`${view}-${idx}`"
+            :slot="`pane-${idx + 1}`"
+          >
+            <nldd-page
+              sticky-header
+              :sticky-footer="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
+            >
+              <div slot="header" class="pane-header">
+                <nldd-button
+                  :id="`pane-view-btn-${idx}`"
+                  size="md"
+                  expandable
+                  :text="viewLabel(view)"
+                  :popovertarget="`pane-view-menu-${idx}`"
+                ></nldd-button>
+                <nldd-menu :id="`pane-view-menu-${idx}`" :anchor="`pane-view-btn-${idx}`">
+                  <nldd-menu-item
+                    v-for="opt in availableViews"
+                    :key="opt.id"
+                    type="radio"
+                    :selected="view === opt.id || undefined"
+                    :text="opt.label"
+                    @select="setPaneView(idx, opt.id)"
+                  ></nldd-menu-item>
+                </nldd-menu>
+                <span v-if="view === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
+              </div>
+
+              <!-- Tekst -->
+              <nldd-simple-section v-if="view === 'text'" full-width>
                 <ArticleText :article="selectedArticle" raw />
               </nldd-simple-section>
-            </nldd-page>
-          </nldd-split-view-pane>
 
-          <!-- Right pane: any non-text/non-machine editor. When more than one
-               is enabled they share this slot with a dropdown switcher. -->
-          <nldd-split-view-pane v-if="enabledRightPanes.length > 0" :slot="paneSlot('right')">
-            <nldd-page sticky-header>
-              <template v-if="enabledRightPanes.length > 1">
-                <div slot="header" class="right-pane-header">
-                  <nldd-button
-                    id="right-pane-menu-btn"
-                    size="md"
-                    expandable
-                    :text="activeRightPaneLabel"
-                    popovertarget="right-pane-menu"
-                  ></nldd-button>
-                  <nldd-menu id="right-pane-menu" anchor="right-pane-menu-btn">
-                    <nldd-menu-item
-                      v-for="pane in enabledRightPanes"
-                      :key="pane.key"
-                      type="radio"
-                      :selected="activeRightPane === pane.key || undefined"
-                      :text="pane.label"
-                      @select="activeRightPane = pane.key"
-                    ></nldd-menu-item>
-                  </nldd-menu>
-                  <span v-if="activeRightPane === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
-                </div>
-              </template>
-              <nldd-top-title-bar v-else slot="header" :text="activeRightPaneLabel">
-                <span v-if="activeRightPane === 'yaml' && parseError" slot="toolbar" class="editor-parse-error">YAML parse error</span>
-              </nldd-top-title-bar>
-
-              <template v-if="activeRightPane === 'form'">
-                <nldd-simple-section full-width v-if="engineInitError">
-                  <nldd-inline-dialog variant="alert" text="WASM engine niet geladen" :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"></nldd-inline-dialog>
-                </nldd-simple-section>
-                <ScenarioBuilder
-                  v-else
-                  :law-id="lawId"
-                  :law-yaml="currentLawYaml"
-                  :engine="getEngine()"
-                  :ready="engineReady"
-                  :articles="articles"
-                  @executed="handleScenarioExecuted"
-                />
-              </template>
-
-              <div v-else-if="activeRightPane === 'yaml'" class="editor-yaml-wrap">
-                <textarea
-                  :value="yamlSource"
-                  @input="onYamlInput"
-                  class="editor-yaml-textarea"
-                  spellcheck="false"
-                  autocomplete="off"
-                  autocorrect="off"
-                  autocapitalize="off"
-                ></textarea>
-                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
-              </div>
-            </nldd-page>
-          </nldd-split-view-pane>
-
-          <!-- Machine Readable -->
-          <nldd-split-view-pane v-if="showMachinePane" :slot="paneSlot('machine')">
-            <nldd-page sticky-header :sticky-footer="canEdit && (isMachineReadableDirty || lawSaving) || undefined">
-              <nldd-top-title-bar slot="header" text="Machine"></nldd-top-title-bar>
-              <nldd-simple-section full-width>
+              <!-- Machine readable -->
+              <nldd-simple-section v-else-if="view === 'machine'" full-width>
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
@@ -997,7 +1097,14 @@ function handleActionSave() {
                   @delete="handleDelete"
                 />
               </nldd-simple-section>
-              <nldd-container v-if="canEdit && (isMachineReadableDirty || lawSaving)" slot="footer" padding="16">
+              <!-- Footer + Save button only on the first machine pane.
+                   Duplicates would render redundant Save buttons over
+                   the same shared dirty state — not broken, just noisy. -->
+              <nldd-container
+                v-if="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
+                slot="footer"
+                padding="16"
+              >
                 <nldd-button
                   variant="primary"
                   size="md"
@@ -1008,9 +1115,39 @@ function handleActionSave() {
                   @click="handleMachineReadableSave"
                 ></nldd-button>
               </nldd-container>
+
+              <!-- Scenario builder -->
+              <template v-else-if="view === 'scenario'">
+                <nldd-simple-section v-if="engineInitError" full-width>
+                  <nldd-inline-dialog
+                    variant="alert"
+                    text="WASM engine niet geladen"
+                    :supporting-text="`${engineInitError.message} — voer 'just wasm-build' uit om de WASM module te bouwen.`"
+                  ></nldd-inline-dialog>
+                </nldd-simple-section>
+                <ScenarioBuilder
+                  v-else
+                  :law-id="lawId"
+                  :law-yaml="currentLawYaml"
+                  :engine="getEngine()"
+                  :ready="engineReady"
+                  :articles="articles"
+                  @executed="handleScenarioExecuted"
+                />
+              </template>
+
+              <!-- YAML -->
+              <nldd-simple-section v-else-if="view === 'yaml'" full-width>
+                <nldd-code-editor
+                  resize="none"
+                  accessible-label="YAML"
+                  :value="yamlSource"
+                  @input="onYamlInput"
+                ></nldd-code-editor>
+                <div v-if="parseError" class="editor-parse-error-detail">{{ parseError }}</div>
+              </nldd-simple-section>
             </nldd-page>
           </nldd-split-view-pane>
-
         </nldd-side-by-side-split-view>
       </nldd-split-view-pane>
 
@@ -1020,7 +1157,7 @@ function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar compact>
-                <nldd-tab-bar-item href="/library" @click.prevent="router.push('/library')" icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -1075,36 +1212,47 @@ function handleActionSave() {
     @harvest-available="onSearchHarvestAvailable"
   />
 
-  <!-- Result of the most recently executed scenario, opened as a bottom sheet. -->
+  <!-- Trace sheet — execution trace + expected outcomes for the most
+       recently executed scenario. Opened from a scenario card's "Toon
+       resultaat" button. -->
   <nldd-sheet
     ref="resultSheetEl"
     placement="bottom"
+    full-height
     @close="resultSheetOpen = false"
   >
     <nldd-page sticky-header>
-      <nldd-top-title-bar slot="header" text="Resultaat" dismiss-text="Sluit" @dismiss="resultSheetOpen = false"></nldd-top-title-bar>
-      <nldd-tab-bar size="md">
-        <nldd-tab-bar-item
-          :selected="resultSheetView === 'trace' || undefined"
-          text="Trace"
-          @click="resultSheetView = 'trace'"
-        ></nldd-tab-bar-item>
-        <nldd-tab-bar-item
-          :selected="resultSheetView === 'graph' || undefined"
-          text="Graaf"
-          @click="resultSheetView = 'graph'"
-        ></nldd-tab-bar-item>
-      </nldd-tab-bar>
-      <ExecutionTraceView
-        v-if="resultSheetView === 'trace'"
-        :result="lastResult"
-        :trace-text="lastTraceText"
-        :error="lastError"
-        :expectations="lastExpectations"
-        :scenario-name="lastScenarioName"
-      />
+      <nldd-top-title-bar slot="header" :text="lastScenarioName ? `Resultaat: ${lastScenarioName}` : 'Resultaat'" collapse-anchor="result-scenario-title" dismiss-text="Sluit" @dismiss="resultSheetOpen = false"></nldd-top-title-bar>
+      <nldd-simple-section full-width>
+        <nldd-title id="result-scenario-title" size="4"><h3>{{ lastScenarioName ? `Resultaat: ${lastScenarioName}` : 'Resultaat' }}</h3></nldd-title>
+        <nldd-spacer size="16"></nldd-spacer>
+        <ExecutionTraceView
+          :result="lastResult"
+          :trace-text="lastTraceText"
+          :error="lastError"
+          :expectations="lastExpectations"
+        />
+      </nldd-simple-section>
+    </nldd-page>
+  </nldd-sheet>
+
+  <!-- Graph sheet — visual law graph with the scenario's trace overlay.
+       Opened from a scenario card's "Graaf" button. -->
+  <nldd-sheet
+    ref="graphSheetEl"
+    placement="bottom"
+    full-height
+    @close="graphSheetOpen = false"
+  >
+    <nldd-page sticky-header>
+      <nldd-top-title-bar slot="header" :text="lastScenarioName ? `Graaf: ${lastScenarioName}` : 'Graaf'" dismiss-text="Sluit" @dismiss="graphSheetOpen = false"></nldd-top-title-bar>
+      <!-- Lazy-mount: building the Vue Flow graph for laws with many
+           cross-law references is non-trivial and the sheet is hidden
+           by default. Render only while the sheet is open; the remount
+           cost on each subsequent open is acceptable next to dragging
+           an unused Vue Flow tree behind every editor session. -->
       <LawGraphView
-        v-else-if="resultSheetView === 'graph'"
+        v-if="graphSheetOpen"
         :law-id="lawId"
         :result="lastResult"
         :output-name="lastOutputName"
@@ -1134,11 +1282,11 @@ function handleActionSave() {
   border-radius: 3px;
 }
 
-/* Header for the right pane when multiple right-pane editors are enabled:
-   dropdown button sits where the title would normally be, with the YAML
-   parse-error pill floating after it. Mirrors nldd-top-title-bar's compact
-   spacing so the row height matches the other panes' headers. */
-.right-pane-header {
+/* Per-pane header: view-picker dropdown sits where the title would
+   normally be, with the YAML parse-error pill floating after it.
+   Mirrors nldd-top-title-bar's compact spacing so the row height
+   matches other panes' headers. */
+.pane-header {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1147,44 +1295,7 @@ function handleActionSave() {
   box-sizing: border-box;
 }
 
-.editor-yaml-wrap {
-  display: flex;
-  flex-direction: column;
-  /* Fill the pane body. nldd-page's body is the only ancestor between us
-   * and the viewport, so anchoring on viewport height minus the toolbar
-   * + tab strip height gives a stable tall area regardless of how many
-   * scenarios are loaded next door. */
-  height: calc(100vh - 180px);
-  padding: 16px;
-  box-sizing: border-box;
-}
 
-.editor-yaml-textarea {
-  flex: 1;
-  width: 100%;
-  min-height: 0;
-  /* Match the library/zorgtoeslagwet/2 YamlView look: tinted background,
-   * rounded corners, monospace, comfortable padding. The library version
-   * is read-only <pre><code>; this is the editable counterpart with the
-   * same skin so the eye doesn't have to context-switch. */
-  background: var(--semantics-surfaces-tinted-background-color, #F4F6F9);
-  color: var(--semantics-text-default-color, #1F2937);
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
-  font-size: 13px;
-  line-height: 1.5;
-  padding: 16px;
-  border: 1px solid var(--semantics-borders-default-color, #DDE0E4);
-  border-radius: 12px;
-  outline: none;
-  resize: none;
-  tab-size: 2;
-  white-space: pre;
-  overflow: auto;
-}
-
-.editor-yaml-textarea:focus {
-  border-color: var(--semantics-borders-focus-color, #007BC7);
-}
 
 .editor-parse-error {
   font-size: 12px;

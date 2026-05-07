@@ -343,18 +343,18 @@ function save() {
 
 const sectionLabels = {
   'definition': 'Definitie',
-  'add-definition': 'Nieuwe definitie',
+  'add-definition': 'Definitie toevoegen',
   'parameter': 'Parameter',
-  'add-parameter': 'Nieuwe parameter',
+  'add-parameter': 'Parameter toevoegen',
   'input': 'Input',
-  'add-input': 'Nieuwe input',
+  'add-input': 'Input toevoegen',
   'output': 'Output',
-  'add-output': 'Nieuwe output',
+  'add-output': 'Output toevoegen',
 };
 </script>
 
 <template>
-  <nldd-sheet ref="sheetEl" placement="right" width="640px" @close="emit('close')">
+  <nldd-sheet ref="sheetEl" placement="right" width="640px" full-height @close="emit('close')">
     <!-- `:key` forces nldd-page to remount whenever the section changes.
          nldd-page captures the sticky-header height ONCE per mount via
          requestAnimationFrame; if the header text changes after that

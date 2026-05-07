@@ -16,6 +16,7 @@ import TraceStepList from './graph/TraceStepList.vue';
 import TraceStepDetail from './graph/TraceStepDetail.vue';
 import { useLawGraph, rootOfId } from '../composables/useLawGraph.js';
 import { useTraceStepping } from '../composables/useTraceStepping.js';
+import { useColorScheme } from '../composables/useColorScheme.js';
 import { stepHasHighlights } from '../lib/traceEdges.js';
 
 const props = defineProps({
@@ -182,8 +183,32 @@ function handleNodeClick({ node, event }) {
   selectedRoot.value = selectedRoot.value === node.id ? null : node.id;
 }
 
+// Vue Flow's MiniMap takes a flat colour string (not a CSS variable),
+// so the palette token has to be resolved through getComputedStyle.
+// That call is one-shot and untracked — wrapping it in a computed
+// would need a fragile "touch colorScheme to register a dep" trick.
+// Instead, push the resolved value into a plain ref from a watcher:
+// the colorScheme dependency is now visible in the watch() argument
+// list, so a future cleanup can't accidentally drop it.
+//
+// OS-level scheme changes while colorScheme === 'auto' aren't tracked
+// (the composable doesn't expose that). Acceptable — the marker is
+// decorative and the next graph re-render picks the new value up.
+const { colorScheme } = useColorScheme();
+const miniMapMarkerColor = ref('#ccc');
+
+function resolveMiniMapMarkerColor() {
+  miniMapMarkerColor.value =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue('--primitives-color-coolgray-400').trim() || '#ccc';
+}
+
+resolveMiniMapMarkerColor();
+watch(colorScheme, resolveMiniMapMarkerColor);
+
 function miniMapNodeColor(node) {
-  return node.class?.includes('root') && !node.hidden ? '#ccc' : 'transparent';
+  if (!(node.class?.includes('root') && !node.hidden)) return 'transparent';
+  return miniMapMarkerColor.value;
 }
 
 const currentStep = computed(() =>
@@ -284,15 +309,14 @@ const currentStep = computed(() =>
 
 <style scoped>
 .law-graph-view {
-  /* Fill the pane. nldd-page gives us a flex body; claim the viewport
-   * minus toolbar + tab-bar chrome (mirrors the YAML textarea).
-   * 180px = primary toolbar (~48px) + document tab bar (~56px) +
-   * right-pane title bar (~48px) + spacer (~28px). Update this if the
-   * chrome layout changes (e.g. a new toolbar row is added). */
-  height: calc(100vh - 180px);
+  /* Fill the pane. nldd-page wraps slotted content in a flex column,
+   * so flex-grow + min-height: 0 lets us claim every pixel the parent
+   * gives us — works equally inside a side pane and inside a bottom
+   * sheet, no chrome-height arithmetic needed. */
   display: flex;
   flex-direction: column;
-  min-height: 400px;
+  flex-grow: 1;
+  min-height: 0;
 }
 
 .law-graph-container {
@@ -313,14 +337,14 @@ const currentStep = computed(() =>
 }
 
 .law-graph-loading {
-  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
-  color: var(--semantics-text-color-secondary, #666);
+  background: var(--semantics-surfaces-tinted-background-color);
+  color: var(--semantics-content-secondary-color);
 }
 
 .law-graph-warning {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
+  background: var(--primitives-color-donkergeel-100);
+  color: var(--primitives-color-donkergeel-800);
+  border: 1px solid var(--primitives-color-donkergeel-300);
   cursor: help;
 }
 
@@ -336,8 +360,9 @@ const currentStep = computed(() =>
   flex-direction: column;
   flex: 0 0 40vh;
   min-height: 220px;
-  border-top: 2px solid #f59e0b;
-  background: white;
+  border-top: 2px solid var(--primitives-color-donkergeel-500);
+  background: var(--semantics-surfaces-background-color);
+  color: var(--semantics-content-color);
   font-size: 13px;
 }
 
@@ -347,14 +372,15 @@ const currentStep = computed(() =>
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fef3c7;
+  border-bottom: 1px solid var(--semantics-dividers-color);
+  background: var(--primitives-color-donkergeel-100);
 }
 
 .law-graph-trace__btn,
 .law-graph-trace__toggle {
-  border: 1px solid #9ca3af;
-  background: white;
+  border: 1px solid var(--primitives-color-coolgray-400);
+  background: var(--semantics-surfaces-background-color);
+  color: var(--semantics-content-color);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 12px;
@@ -362,16 +388,17 @@ const currentStep = computed(() =>
   font-family: inherit;
 }
 .law-graph-trace__btn:hover:not(:disabled),
-.law-graph-trace__toggle:hover { background: #f9fafb; }
+.law-graph-trace__toggle:hover { background: var(--semantics-surfaces-tinted-background-color); }
 .law-graph-trace__btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .law-graph-trace__toggle--active {
-  border-color: #f59e0b;
-  background: #fef3c7;
+  border-color: var(--primitives-color-donkergeel-500);
+  background: var(--primitives-color-donkergeel-100);
+  color: var(--primitives-color-donkergeel-800);
   font-weight: 600;
 }
 
-.law-graph-trace__counter { color: #4b5563; }
+.law-graph-trace__counter { color: var(--semantics-content-secondary-color); }
 
 .law-graph-trace__filter {
   margin-left: auto;
@@ -379,7 +406,7 @@ const currentStep = computed(() =>
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--semantics-content-secondary-color);
 }
 
 .law-graph-trace__body {
@@ -389,7 +416,7 @@ const currentStep = computed(() =>
 }
 .law-graph-trace__list {
   flex: 1;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid var(--semantics-dividers-color);
   min-width: 0;
   overflow: hidden;
 }
