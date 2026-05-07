@@ -997,7 +997,7 @@ function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :sticky-footer="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) || undefined"
+              :sticky-footer="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving)"
             >
               <div slot="header" class="pane-header">
                 <nldd-button
