@@ -82,12 +82,16 @@ const detailView = computed({
   set(value) {
     // Reject anything we don't recognise rather than silently stripping
     // the hash — every call site today hard-codes a literal, so an
-    // unknown value is a programmer error, not a user-supplied string.
-    // Bail silently: no production code path can reach this branch, and
-    // a console.warn would just be noise if a future tab gets added
-    // without updating VIEW_TO_HASH.
+    // unknown value is a programmer error. Warn in dev so a future
+    // contributor adding a tab without updating VIEW_TO_HASH catches
+    // it immediately; production silently no-ops to avoid console noise.
     const hash = VIEW_TO_HASH[value];
-    if (!hash) return;
+    if (!hash) {
+      if (import.meta.env.DEV) {
+        console.warn(`[detailView] ignoring unknown value: ${value}`);
+      }
+      return;
+    }
     if (hash !== route.hash) {
       router.replace({ path: route.path, query: route.query, hash });
     }
