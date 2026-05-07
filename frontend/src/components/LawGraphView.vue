@@ -284,15 +284,14 @@ const currentStep = computed(() =>
 
 <style scoped>
 .law-graph-view {
-  /* Fill the pane. nldd-page gives us a flex body; claim the viewport
-   * minus toolbar + tab-bar chrome (mirrors the YAML textarea).
-   * 180px = primary toolbar (~48px) + document tab bar (~56px) +
-   * right-pane title bar (~48px) + spacer (~28px). Update this if the
-   * chrome layout changes (e.g. a new toolbar row is added). */
-  height: calc(100vh - 180px);
+  /* Fill the pane. nldd-page wraps slotted content in a flex column,
+   * so flex-grow + min-height: 0 lets us claim every pixel the parent
+   * gives us — works equally inside a side pane and inside a bottom
+   * sheet, no chrome-height arithmetic needed. */
   display: flex;
   flex-direction: column;
-  min-height: 400px;
+  flex-grow: 1;
+  min-height: 0;
 }
 
 .law-graph-container {
