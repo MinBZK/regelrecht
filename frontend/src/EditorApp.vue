@@ -990,9 +990,15 @@ function handleActionSave() {
              Hidden panes stay in the DOM so state is preserved when the
              viewport widens. -->
         <nldd-side-by-side-split-view v-else :panes="String(paneViews.length)">
+          <!-- Compound key: when a flag flip shifts which view sits at a
+               given index, Vue would otherwise patch the existing pane in
+               place — leaking ScenarioBuilder form state and engine
+               results into a different view. Re-keying on the view id
+               forces an unmount + remount on identity change, at the
+               (acceptable) cost of losing pane scroll position. -->
           <nldd-split-view-pane
             v-for="(view, idx) in paneViews"
-            :key="idx"
+            :key="`${view}-${idx}`"
             :slot="`pane-${idx + 1}`"
           >
             <nldd-page
