@@ -183,27 +183,28 @@ function handleNodeClick({ node, event }) {
   selectedRoot.value = selectedRoot.value === node.id ? null : node.id;
 }
 
-// Resolve the palette token whenever the user-controlled colour scheme
-// changes. Vue Flow's MiniMap takes a flat colour string (not a CSS
-// variable), and getComputedStyle is one-shot — without a reactive
-// dependency the marker would otherwise stay frozen at its mount-time
-// value when the user toggles light/dark. This doesn't catch OS-level
-// scheme changes while colorScheme === 'auto', which is acceptable
-// (the next graph re-render will pick the new value up; the minimap
-// marker is decorative).
+// Vue Flow's MiniMap takes a flat colour string (not a CSS variable),
+// so the palette token has to be resolved through getComputedStyle.
+// That call is one-shot and untracked — wrapping it in a computed
+// would need a fragile "touch colorScheme to register a dep" trick.
+// Instead, push the resolved value into a plain ref from a watcher:
+// the colorScheme dependency is now visible in the watch() argument
+// list, so a future cleanup can't accidentally drop it.
+//
+// OS-level scheme changes while colorScheme === 'auto' aren't tracked
+// (the composable doesn't expose that). Acceptable — the marker is
+// decorative and the next graph re-render picks the new value up.
 const { colorScheme } = useColorScheme();
-const miniMapMarkerColor = computed(() => {
-  // DO NOT remove this `void` line: it's the only thing tying the
-  // computed to colorScheme reactivity. Without it the read below uses
-  // getComputedStyle (one-shot, untracked) and the marker freezes at
-  // its mount-time value forever. The actual colour comes from the CSS
-  // token so the palette's light-dark() resolution stays the source of
-  // truth; this line just forces the computed to re-evaluate on scheme
-  // change.
-  void colorScheme.value;
-  return getComputedStyle(document.documentElement)
-    .getPropertyValue('--primitives-color-coolgray-400').trim() || '#ccc';
-});
+const miniMapMarkerColor = ref('#ccc');
+
+function resolveMiniMapMarkerColor() {
+  miniMapMarkerColor.value =
+    getComputedStyle(document.documentElement)
+      .getPropertyValue('--primitives-color-coolgray-400').trim() || '#ccc';
+}
+
+resolveMiniMapMarkerColor();
+watch(colorScheme, resolveMiniMapMarkerColor);
 
 function miniMapNodeColor(node) {
   if (!(node.class?.includes('root') && !node.hidden)) return 'transparent';
