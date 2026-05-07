@@ -80,9 +80,13 @@ function loadPaneViews() {
   return VIEW_DEFINITIONS.map(v => v.id);
 }
 
+// Every paneViews mutation goes through `paneViews.value = next`
+// (setPaneView, the availableViews sync watcher), so the top-level ref
+// identity always changes. No deep:true needed; in-place mutations are
+// not used and shouldn't be relied on.
 watch(paneViews, (val) => {
   localStorage.setItem(PANE_VIEWS_KEY, JSON.stringify(val));
-}, { deep: true });
+});
 
 // Sync paneViews with availableViews when a flag flips:
 // - Drop panes whose view is no longer available (flag off → pane gone)
