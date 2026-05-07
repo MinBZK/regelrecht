@@ -11,8 +11,6 @@ const props = defineProps({
   expectations: { type: Object, default: () => ({}) },
   /** Error message if execution failed */
   error: { type: String, default: null },
-  /** Name of the scenario being displayed */
-  scenarioName: { type: String, default: '' },
 });
 
 function matchStatus(outputName, actualValue) {

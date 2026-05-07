@@ -1224,7 +1224,6 @@ function handleActionSave() {
           :trace-text="lastTraceText"
           :error="lastError"
           :expectations="lastExpectations"
-          :scenario-name="lastScenarioName"
         />
       </nldd-simple-section>
     </nldd-page>
