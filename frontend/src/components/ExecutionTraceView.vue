@@ -35,23 +35,12 @@ const overallStatus = computed(() => {
 </script>
 
 <template>
-  <nldd-simple-section v-if="!hasContent">
-    <nldd-inline-dialog text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></nldd-inline-dialog>
-  </nldd-simple-section>
+  <nldd-inline-dialog v-if="!hasContent" text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></nldd-inline-dialog>
 
-  <nldd-simple-section v-else-if="error && !result && !traceText">
-    <nldd-inline-dialog variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
-  </nldd-simple-section>
+  <nldd-inline-dialog v-else-if="error && !result && !traceText" variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
 
-  <nldd-simple-section v-else>
-    <template v-if="result && scenarioName">
-      <nldd-title size="4"><span>{{ scenarioName }}</span></nldd-title>
-      <nldd-spacer size="16"></nldd-spacer>
-    </template>
-
+  <template v-else>
     <template v-if="result && Object.keys(expectations).length">
-      <nldd-title size="5" class="etv-section-title"><span>Verwachte uitkomsten</span></nldd-title>
-      <nldd-spacer size="4"></nldd-spacer>
       <nldd-list variant="simple">
         <nldd-list-item size="md">
           <nldd-text-cell size="md" color="secondary" text=""></nldd-text-cell>
@@ -105,29 +94,14 @@ const overallStatus = computed(() => {
 
     <template v-if="result && traceText">
       <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
-      <nldd-spacer size="4"></nldd-spacer>
-      <pre class="etv-trace-text">{{ traceText }}</pre>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-code>{{ traceText }}</nldd-code>
     </template>
 
     <template v-if="error && traceText && !result">
       <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
-      <nldd-spacer size="4"></nldd-spacer>
-      <pre class="etv-trace-text">{{ traceText }}</pre>
+      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-code>{{ traceText }}</nldd-code>
     </template>
-  </nldd-simple-section>
+  </template>
 </template>
-
-<style scoped>
-.etv-trace-text {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  padding: 8px;
-  background: #1e1e2e;
-  color: #cdd6f4;
-  border-radius: 6px;
-  overflow-x: auto;
-  white-space: pre;
-  margin: 0;
-}
-</style>

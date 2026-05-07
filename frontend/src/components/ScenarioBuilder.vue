@@ -373,7 +373,7 @@ defineExpose({ save: onSave });
 
       <nldd-inline-dialog
         v-else-if="!scenariosLoading && !depsLoading"
-        text="Geen scenario's beschikbaar voor deze wet."
+        text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
 

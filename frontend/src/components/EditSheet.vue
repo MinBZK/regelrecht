@@ -343,13 +343,13 @@ function save() {
 
 const sectionLabels = {
   'definition': 'Definitie',
-  'add-definition': 'Nieuwe definitie',
+  'add-definition': 'Definitie toevoegen',
   'parameter': 'Parameter',
-  'add-parameter': 'Nieuwe parameter',
+  'add-parameter': 'Parameter toevoegen',
   'input': 'Input',
-  'add-input': 'Nieuwe input',
+  'add-input': 'Input toevoegen',
   'output': 'Output',
-  'add-output': 'Nieuwe output',
+  'add-output': 'Output toevoegen',
 };
 </script>
 

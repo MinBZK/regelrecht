@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import LibraryApp from './LibraryApp.vue';
 import { ensureAuthReady, useAuth } from './composables/useAuth.js';
+import { recordLastVisited } from './composables/useLastVisitedRoute.js';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -52,6 +53,12 @@ router.beforeEach(async (to) => {
     return false;
   }
   return true;
+});
+
+// Track the last fullPath per route name so the Bibliotheek/Editor tab
+// switch can restore the user's prior position in each section.
+router.afterEach((to) => {
+  recordLastVisited(to.name, to.fullPath);
 });
 
 // Note: document.title is owned by the route components (LibraryApp, EditorApp)

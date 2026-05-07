@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
 
@@ -114,27 +114,64 @@ function editOutput(index) {
   if (raw) emit('open-edit', { section: 'output', index, data: snapshot(raw) });
 }
 
-// Delete handlers — emit a delete event with the section + identity of
-// the row. The parent (EditorApp) is the source of truth for
-// machineReadable, so all mutations live there.
+// Delete handlers — stage a confirmation in `pendingDelete`, then on
+// confirm emit the delete event with the section + identity of the row.
+// The parent (EditorApp) is the source of truth for machineReadable,
+// so all mutations live there. The modal-dialog confirmation is here
+// because there is no undo yet.
+const SECTION_LABELS = {
+  definition: 'definitie',
+  parameter: 'parameter',
+  input: 'input',
+  output: 'output',
+  action: 'actie',
+};
+
+const pendingDelete = ref(null);
+const deleteModalEl = ref(null);
+const pendingSectionLabel = computed(
+  () => (pendingDelete.value ? SECTION_LABELS[pendingDelete.value.section] ?? '' : ''),
+);
+
+watch(pendingDelete, async (val) => {
+  await nextTick();
+  if (val) deleteModalEl.value?.show();
+  else deleteModalEl.value?.hide();
+});
+
 function deleteDef(name) {
-  emit('delete', { section: 'definition', key: name });
+  pendingDelete.value = { section: 'definition', key: name, label: `definitie '${name}'` };
 }
 
 function deleteParam(index) {
-  emit('delete', { section: 'parameter', index });
+  const p = parameters.value[index];
+  pendingDelete.value = { section: 'parameter', index, label: `parameter '${p?.name ?? index}'` };
 }
 
 function deleteInput(index) {
-  emit('delete', { section: 'input', index });
+  const i = inputs.value[index];
+  pendingDelete.value = { section: 'input', index, label: `input '${i?.name ?? index}'` };
 }
 
 function deleteOutput(index) {
-  emit('delete', { section: 'output', index });
+  const o = outputs.value[index];
+  pendingDelete.value = { section: 'output', index, label: `output '${o?.name ?? index}'` };
 }
 
 function deleteAction(index) {
-  emit('delete', { section: 'action', index });
+  const a = actions.value[index];
+  pendingDelete.value = { section: 'action', index, label: `actie '${a?.output ?? index}'` };
+}
+
+function confirmDelete() {
+  if (!pendingDelete.value) return;
+  const { label, ...payload } = pendingDelete.value;
+  emit('delete', payload);
+  pendingDelete.value = null;
+}
+
+function cancelDelete() {
+  pendingDelete.value = null;
 }
 
 // Open edit sheet for new items
@@ -199,6 +236,7 @@ function addOutput() {
       <nldd-list variant="box">
         <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
           <nldd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editDef(def.name)" text="Bewerk"></nldd-button>
@@ -213,7 +251,7 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Nieuwe definitie"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Definitie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -227,6 +265,7 @@ function addOutput() {
       <nldd-list variant="box">
         <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
           <nldd-text-cell :text="`${param.name} (${param.type})`"></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editParam(index)" text="Bewerk"></nldd-button>
@@ -241,7 +280,7 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Nieuwe parameter"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Parameter toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -258,6 +297,7 @@ function addOutput() {
             :text="`${input.name} (${input.type})`"
             :supporting-text="input.source ? lawDisplayName(input.source) : undefined"
           ></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></nldd-button>
@@ -272,7 +312,7 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Nieuwe input"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Input toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -286,6 +326,7 @@ function addOutput() {
       <nldd-list variant="box">
         <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
           <nldd-text-cell :text="`${output.name} (${output.type})`"></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editOutput(index)" text="Bewerk"></nldd-button>
@@ -300,7 +341,7 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Nieuwe output"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Output toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -320,6 +361,7 @@ function addOutput() {
           @click="!editable && emit('open-action', action)"
         >
           <nldd-text-cell :text="action.output"></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" text="Bewerk"></nldd-button>
@@ -340,12 +382,23 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Voeg actie toe"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Actie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
     </template>
   </div>
+
+  <nldd-modal-dialog
+    ref="deleteModalEl"
+    variant="alert"
+    :text="pendingDelete ? `Weet je zeker dat je ${pendingDelete.label} wilt verwijderen?` : ''"
+    supporting-text="Deze actie kan niet ongedaan gemaakt worden."
+    @close="cancelDelete"
+  >
+    <nldd-button slot="actions" variant="primary" :text="`Behoud ${pendingSectionLabel}`" @click="cancelDelete"></nldd-button>
+    <nldd-button slot="actions" variant="destructive" text="Verwijder" @click="confirmDelete"></nldd-button>
+  </nldd-modal-dialog>
 </template>
 
 <style scoped>

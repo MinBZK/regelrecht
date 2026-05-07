@@ -11,6 +11,7 @@ import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { SUPPORT_EMAIL } from './constants.js';
+import { lastEditorPath } from './composables/useLastVisitedRoute.js';
 
 const { authenticated, loading: authLoading, oidcConfigured, person, login, logout } = useAuth();
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
@@ -68,7 +69,23 @@ const selectedLaw = shallowRef(null);
 const selectedLawLoading = ref(false);
 const lawError = ref(null);
 const selectedArticleNumber = ref(null);
-const detailView = ref('tekst');
+// Detail view (tekst/machine/yaml) is reflected in the URL hash so the
+// state is bookmarkable and shareable. English keys in the hash because
+// they're stable identifiers, not labels.
+const VIEW_TO_HASH = { tekst: '#text', machine: '#machine', yaml: '#yaml' };
+const HASH_TO_VIEW = { '#text': 'tekst', '#machine': 'machine', '#yaml': 'yaml' };
+
+const detailView = computed({
+  get() {
+    return HASH_TO_VIEW[route.hash] ?? 'tekst';
+  },
+  set(value) {
+    const hash = VIEW_TO_HASH[value] ?? '';
+    if (hash !== route.hash) {
+      router.replace({ path: route.path, query: route.query, hash });
+    }
+  },
+});
 const activeAction = ref(null);
 
 const sidebarLaws = computed(() => {
@@ -304,7 +321,7 @@ function selectArticle(number) {
   if (articleStr === selectedArticleNumber.value) return;
   selectedArticleNumber.value = articleStr;
   activeAction.value = null;
-  router.replace({ name: 'library', params: { lawId: selectedLawId.value, articleNumber: articleStr } });
+  router.replace({ name: 'library', params: { lawId: selectedLawId.value, articleNumber: articleStr }, hash: route.hash });
 }
 
 /**
@@ -405,7 +422,7 @@ loadIndex();
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
                 <nldd-tab-bar-item selected text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item href="/editor" @click.prevent="router.push('/editor')" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -451,7 +468,7 @@ loadIndex();
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar size="md">
                 <nldd-tab-bar-item selected text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item href="/editor" @click.prevent="router.push('/editor')" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%">
@@ -623,7 +640,7 @@ loadIndex();
                       </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
-                      <nldd-button v-if="selectedLawId" variant="primary" text="Bewerk" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)"></nldd-button>
+                      <nldd-button v-if="selectedLawId" variant="secondary" text="Bewerken" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)"></nldd-button>
                     </nldd-toolbar-item>
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
@@ -647,7 +664,7 @@ loadIndex();
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar compact>
                 <nldd-tab-bar-item selected icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item href="/editor" @click.prevent="router.push('/editor')" icon="edit" text="Editor"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
