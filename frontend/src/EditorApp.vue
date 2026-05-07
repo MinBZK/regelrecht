@@ -397,9 +397,14 @@ function handleScenarioExecuted({ result, traceText, error, expectations, scenar
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
   lastOutputName.value = outputName || null;
+  // Open exactly one of the two sheets — opening the second on top of
+  // the first would leave the previous one as a stale layer that
+  // re-appears when the user dismisses the foreground sheet.
   if (view === 'graph') {
+    resultSheetOpen.value = false;
     graphSheetOpen.value = true;
   } else {
+    graphSheetOpen.value = false;
     resultSheetOpen.value = true;
   }
 }
