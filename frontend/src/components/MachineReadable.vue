@@ -135,8 +135,16 @@ const pendingSectionLabel = computed(
 
 watch(pendingDelete, async (val) => {
   await nextTick();
-  if (val) deleteModalEl.value?.show();
-  else deleteModalEl.value?.hide();
+  // Guard against test envs where the modal-dialog custom element isn't
+  // upgraded — the ref then holds a plain HTMLElement without show/hide.
+  // Optional-chaining on `?.show()` would still throw because it only
+  // skips when `.value` is nullish, not when `.show` itself is undefined.
+  const el = deleteModalEl.value;
+  if (val) {
+    if (typeof el?.show === 'function') el.show();
+  } else {
+    if (typeof el?.hide === 'function') el.hide();
+  }
 });
 
 function deleteDef(name) {

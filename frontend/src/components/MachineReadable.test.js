@@ -74,8 +74,24 @@ async function clickBewerk(wrapper, index) {
   await buttons[index].trigger('click');
 }
 
-function findAddButton(wrapper, text) {
-  return wrapper.findAll('nldd-button').find((b) => b.attributes('text')?.includes(`Nieuwe ${text}`));
+// Add buttons all carry a stable data-testid (`add-{section}-btn`); using
+// it sidesteps copy churn — we changed labels from "Nieuwe X" to
+// "X toevoegen" and don't want the test to break on the next reword.
+const ADD_BTN_TESTID = {
+  definitie: 'add-def-btn',
+  parameter: 'add-param-btn',
+  input: 'add-input-btn',
+  output: 'add-output-btn',
+};
+function findAddButton(wrapper, section) {
+  return wrapper.find(`[data-testid="${ADD_BTN_TESTID[section]}"]`);
+}
+
+// The destructive button in the confirm modal that actually emits the
+// delete event. There's one per pendingDelete (the modal renders only
+// when something is staged) so a single global lookup is fine.
+function findConfirmDeleteButton(wrapper) {
+  return wrapper.find('nldd-button[variant="destructive"][text="Verwijder"]');
 }
 
 describe('MachineReadable', () => {
@@ -221,7 +237,8 @@ describe('MachineReadable', () => {
       const wrapper = mount(MachineReadable, {
         props: { article: createArticle(), editable: false },
       });
-      const addButtons = wrapper.findAll('nldd-button').filter((b) => b.attributes('text')?.includes('Nieuwe'));
+      // No add-X-btn data-testid should be present in read-only mode.
+      const addButtons = wrapper.findAll('[data-testid^="add-"][data-testid$="-btn"]');
       expect(addButtons.length).toBe(0);
     });
 
@@ -317,38 +334,53 @@ describe('MachineReadable', () => {
       expect(wrapper.findAll('[data-testid$="-delete-btn"]')).toHaveLength(0);
     });
 
-    it('emits delete with definition payload when the def minus is clicked', async () => {
+    // The minus icon now stages a confirmation in `pendingDelete` and the
+    // destructive button in the modal-dialog is what actually emits the
+    // delete event. Each test exercises that two-step flow so we cover the
+    // user-facing contract, not the internal staging state.
+    async function clickDeleteAndConfirm(wrapper, testid) {
+      await findDeleteByTestId(wrapper, testid).trigger('click');
+      await findConfirmDeleteButton(wrapper).trigger('click');
+    }
+
+    it('emits delete with definition payload after confirming', async () => {
       const wrapper = mountEditable();
-      await findDeleteByTestId(wrapper, 'def-drempelinkomen-delete-btn').trigger('click');
+      await clickDeleteAndConfirm(wrapper, 'def-drempelinkomen-delete-btn');
       const events = wrapper.emitted('delete');
       expect(events).toHaveLength(1);
       expect(events[0][0]).toEqual({ section: 'definition', key: 'drempelinkomen' });
     });
 
-    it('emits delete with parameter index payload', async () => {
+    it('does not emit delete on the minus click alone (waits for confirmation)', async () => {
       const wrapper = mountEditable();
-      await findDeleteByTestId(wrapper, 'param-bsn-delete-btn').trigger('click');
+      await findDeleteByTestId(wrapper, 'def-drempelinkomen-delete-btn').trigger('click');
+      expect(wrapper.emitted('delete')).toBeUndefined();
+    });
+
+    it('emits delete with parameter index payload after confirming', async () => {
+      const wrapper = mountEditable();
+      await clickDeleteAndConfirm(wrapper, 'param-bsn-delete-btn');
       const events = wrapper.emitted('delete');
       expect(events[0][0]).toEqual({ section: 'parameter', index: 0 });
     });
 
-    it('emits delete with input index payload', async () => {
+    it('emits delete with input index payload after confirming', async () => {
       const wrapper = mountEditable();
-      await findDeleteByTestId(wrapper, 'input-leeftijd-delete-btn').trigger('click');
+      await clickDeleteAndConfirm(wrapper, 'input-leeftijd-delete-btn');
       const events = wrapper.emitted('delete');
       expect(events[0][0]).toEqual({ section: 'input', index: 0 });
     });
 
-    it('emits delete with output index payload', async () => {
+    it('emits delete with output index payload after confirming', async () => {
       const wrapper = mountEditable();
-      await findDeleteByTestId(wrapper, 'output-heeft_recht-delete-btn').trigger('click');
+      await clickDeleteAndConfirm(wrapper, 'output-heeft_recht-delete-btn');
       const events = wrapper.emitted('delete');
       expect(events[0][0]).toEqual({ section: 'output', index: 0 });
     });
 
-    it('emits delete with action index payload', async () => {
+    it('emits delete with action index payload after confirming', async () => {
       const wrapper = mountEditable();
-      await findDeleteByTestId(wrapper, 'action-hoogte-delete-btn').trigger('click');
+      await clickDeleteAndConfirm(wrapper, 'action-hoogte-delete-btn');
       const events = wrapper.emitted('delete');
       expect(events[0][0]).toEqual({ section: 'action', index: 0 });
     });
