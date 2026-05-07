@@ -16,6 +16,13 @@
  * stay dark on light bg / light on dark bg; -100 backgrounds stay pale
  * on light / deep-tinted on dark. Both flip together so the contrast
  * pattern survives the scheme switch without per-mode forks.
+ *
+ * Browser floor: light-dark() (Chrome 123+/FF 120+/Safari 17.5+) is
+ * already the design system's minimum. The color-mix(in oklch, …) glow
+ * effects below need only Chrome 111+/FF 113+/Safari 16.2+, so they're
+ * strictly inside that floor. On the rare browser old enough to skip
+ * the glow but still load this stylesheet, the trace highlight outline
+ * + background remain — the missing shadow degrades cleanly.
  */
 
 .vue-flow .root {
