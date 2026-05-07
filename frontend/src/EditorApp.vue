@@ -621,11 +621,18 @@ function onYamlInput(event) {
   // host's `value` property is updated before dispatch so
   // event.target.value would also work, but reading from detail keeps
   // the contract explicit and matches how the storybook docs the API.
-  // Final fallback to yamlSource only catches a structurally broken
-  // event (no detail, no value on target) — `??` skips null/undefined
-  // but lets a deliberate `''` through, which is what we want when the
-  // user clears the editor.
-  const text = event.detail?.value ?? event.target?.value ?? yamlSource.value;
+  // `??` skips only null/undefined — a deliberate empty string passes
+  // through as a valid "user cleared the editor" input.
+  const text = event.detail?.value ?? event.target?.value;
+  if (text == null) {
+    // Structurally broken event (no detail, no value on target). Don't
+    // touch yamlSource — silently overwriting with the previous value
+    // would swallow keystrokes a user can see in the textarea but
+    // never sees committed to the reactive source. Surface it loudly
+    // instead so the regression is obvious in dev console.
+    console.warn('onYamlInput: unexpected event shape, ignoring', event);
+    return;
+  }
   yamlSource.value = text;
   try {
     const parsed = yaml.load(text);
