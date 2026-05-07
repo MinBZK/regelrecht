@@ -71,11 +71,6 @@ const selectedArticleNumber = ref(null);
 const detailView = ref('tekst');
 const activeAction = ref(null);
 
-function onDetailViewChange(event) {
-  const value = event.target?.value ?? event.detail?.[0];
-  if (value) detailView.value = value;
-}
-
 const sidebarLaws = computed(() => {
   const list = laws.value;
   if (favorites.value) {
@@ -621,11 +616,11 @@ loadIndex();
                   <nldd-spacer size="16"></nldd-spacer>
                   <nldd-toolbar>
                     <nldd-toolbar-item slot="start">
-                      <nldd-segmented-control size="md" :value="detailView" @change="onDetailViewChange">
-                        <nldd-segmented-control-item value="tekst" text="Tekst"></nldd-segmented-control-item>
-                        <nldd-segmented-control-item value="machine" text="Machine"></nldd-segmented-control-item>
-                        <nldd-segmented-control-item value="yaml" text="YAML"></nldd-segmented-control-item>
-                      </nldd-segmented-control>
+                      <nldd-tab-bar size="md">
+                        <nldd-tab-bar-item :selected="detailView === 'tekst' || undefined" text="Tekst" @click="detailView = 'tekst'"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item :selected="detailView === 'machine' || undefined" text="Machine" @click="detailView = 'machine'"></nldd-tab-bar-item>
+                        <nldd-tab-bar-item :selected="detailView === 'yaml' || undefined" text="YAML" @click="detailView = 'yaml'"></nldd-tab-bar-item>
+                      </nldd-tab-bar>
                     </nldd-toolbar-item>
                     <nldd-toolbar-item slot="end">
                       <nldd-button v-if="selectedLawId" variant="primary" text="Bewerk" :href="`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`" @click.prevent="router.push(`/editor/${encodeURIComponent(selectedLawId)}/${encodeURIComponent(selectedArticleNumber)}`)"></nldd-button>
