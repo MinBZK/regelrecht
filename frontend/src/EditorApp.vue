@@ -76,17 +76,26 @@ watch(paneViews, (val) => {
 
 // Sync paneViews with availableViews when a flag flips:
 // - Drop panes whose view is no longer available (flag off → pane gone)
-// - Append a pane for any view that was just enabled and isn't already
-//   shown — so re-enabling a flag brings the pane back instead of
-//   silently leaving the user without it
+// - Append a pane for any view that was JUST enabled by this change
+//   (in current available, not in previous) — so re-enabling a flag
+//   brings the pane back instead of silently leaving the user without
+//   it. The previous version compared "missing from paneViews" against
+//   the full available set, which spuriously appended every available
+//   view a user happened not to have open whenever any unrelated flag
+//   flipped.
 // When everything is filtered out, reset to one pane per available view
 // as the safe default.
-watch(availableViews, (views) => {
+watch(availableViews, (views, oldViews) => {
   const allowedIds = new Set(views.map(v => v.id));
   const filtered = paneViews.value.filter(v => allowedIds.has(v));
-  const shown = new Set(filtered);
-  const missing = views.filter(v => !shown.has(v.id)).map(v => v.id);
-  const next = [...filtered, ...missing];
+  // On the very first run (immediate: true) oldViews is undefined; treat
+  // it as "no diff" so we don't append every available view on top of
+  // whatever the user had restored from localStorage.
+  const previousIds = new Set((oldViews ?? []).map(v => v.id));
+  const newlyEnabled = views
+    .filter(v => oldViews !== undefined && !previousIds.has(v.id))
+    .map(v => v.id);
+  const next = [...filtered, ...newlyEnabled];
   if (next.length === 0 && views.length > 0) {
     paneViews.value = views.map(v => v.id);
     return;
