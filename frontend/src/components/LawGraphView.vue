@@ -16,6 +16,7 @@ import TraceStepList from './graph/TraceStepList.vue';
 import TraceStepDetail from './graph/TraceStepDetail.vue';
 import { useLawGraph, rootOfId } from '../composables/useLawGraph.js';
 import { useTraceStepping } from '../composables/useTraceStepping.js';
+import { useColorScheme } from '../composables/useColorScheme.js';
 import { stepHasHighlights } from '../lib/traceEdges.js';
 
 const props = defineProps({
@@ -182,13 +183,27 @@ function handleNodeClick({ node, event }) {
   selectedRoot.value = selectedRoot.value === node.id ? null : node.id;
 }
 
-function miniMapNodeColor(node) {
-  if (!(node.class?.includes('root') && !node.hidden)) return 'transparent';
-  // Resolve the palette token at call time so the marker swaps with the
-  // colour scheme — Vue Flow's MiniMap takes a flat colour string, not a
-  // CSS variable, so the var() can't live in the SVG attribute itself.
+// Resolve the palette token whenever the user-controlled colour scheme
+// changes. Vue Flow's MiniMap takes a flat colour string (not a CSS
+// variable), and getComputedStyle is one-shot — without a reactive
+// dependency the marker would otherwise stay frozen at its mount-time
+// value when the user toggles light/dark. This doesn't catch OS-level
+// scheme changes while colorScheme === 'auto', which is acceptable
+// (the next graph re-render will pick the new value up; the minimap
+// marker is decorative).
+const { colorScheme } = useColorScheme();
+const miniMapMarkerColor = computed(() => {
+  // Touch colorScheme so the computed re-runs when the user picks a
+  // different scheme; the actual value is read from CSS so the token's
+  // light-dark() resolution stays the source of truth.
+  void colorScheme.value;
   return getComputedStyle(document.documentElement)
     .getPropertyValue('--primitives-color-coolgray-400').trim() || '#ccc';
+});
+
+function miniMapNodeColor(node) {
+  if (!(node.class?.includes('root') && !node.hidden)) return 'transparent';
+  return miniMapMarkerColor.value;
 }
 
 const currentStep = computed(() =>
