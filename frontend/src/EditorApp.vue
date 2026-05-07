@@ -8,6 +8,7 @@ import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
+import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -150,6 +151,27 @@ loadCorpusLaws();
 
 function openSearch(e, initialSearch = '') {
   searchPopoverRef.value?.show(e?.currentTarget, initialSearch);
+}
+
+/**
+ * Display name for the failed law on the error inline-dialog. Tries the
+ * corpus index (loaded for the search popover) first; falls back to the
+ * URL slug so the user always sees a concrete identifier.
+ */
+const failedLawName = computed(() => {
+  const id = lawId.value;
+  if (!id) return '';
+  return corpusLaws.value.find(l => l.law_id === id)?.name || id;
+});
+
+/**
+ * Retry the failed law fetch. switchLaw clears `error` and re-runs the
+ * fetch; failed responses don't enter the cache so a retry actually hits
+ * the network again.
+ */
+function retryLoadLaw() {
+  if (!lawId.value) return;
+  switchLaw(lawId.value, selectedArticleNumber.value);
 }
 
 /**
@@ -927,17 +949,29 @@ function handleActionSave() {
 
       <!-- Main content area -->
       <nldd-split-view-pane slot="main">
-        <!-- Empty state: no tabs open -->
+        <!-- Empty state: no tabs open. The CTA points back to the library
+             since that's the only way to create new tabs; mention the tab
+             bar too because closed tabs may still be visible alongside this
+             empty state on the next pane. -->
         <nldd-page v-if="!activeTab">
           <nldd-simple-section full-width>
-            <nldd-inline-dialog text="Open een artikel vanuit de bibliotheek om te bewerken"></nldd-inline-dialog>
+            <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
+              <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+            </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Error state -->
+        <!-- Error state — mirrors the library's law-load failure pattern. -->
         <nldd-page v-else-if="error">
           <nldd-simple-section full-width>
-            <nldd-inline-dialog variant="alert" text="Kon de wet niet laden" :supporting-text="error.message"></nldd-inline-dialog>
+            <nldd-inline-dialog
+              variant="alert"
+              :text="`${failedLawName} is niet geladen`"
+              supporting-text="De gegevens konden niet worden opgehaald."
+            >
+              <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+            </nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
 

@@ -285,6 +285,12 @@ function retryLoadLaw() {
   loadLaw(selectedLawId.value);
 }
 
+function retryLoadCorpus() {
+  indexError.value = null;
+  loading.value = true;
+  loadIndex();
+}
+
 function editInEditor() {
   if (!selectedLawId.value || !selectedArticleNumber.value) return;
   activeAction.value = null;
@@ -516,8 +522,10 @@ loadIndex();
       <nldd-split-view-pane slot="main">
         <nldd-navigation-split-view @back="onPaneBack">
 
-          <!-- Sidebar: Wetten Browser -->
-          <nldd-split-view-pane slot="sidebar" has-content>
+          <!-- Sidebar: Wetten Browser. Hidden on corpus load failure so the
+               navigation-split-view collapses and the main pane carries the
+               error state on its own (mirrors the law-load failure pattern). -->
+          <nldd-split-view-pane v-if="!indexError" slot="sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
@@ -525,7 +533,6 @@ loadIndex();
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
-                <nldd-inline-dialog v-else-if="indexError" variant="alert" text="Fout bij laden" :supporting-text="indexError.message"></nldd-inline-dialog>
                 <nldd-list v-else variant="simple">
                   <nldd-list-item
                     v-for="law in sidebarLaws"
@@ -552,7 +559,7 @@ loadIndex();
                selected. When deselected the pane is removed from the DOM
                so the navigation-split-view reflows to spatial mode and
                shows the sidebar (Wetten Browser) alongside main. -->
-          <nldd-split-view-pane v-if="selectedLawId && !lawError" slot="secondary-sidebar" has-content>
+          <nldd-split-view-pane v-if="selectedLawId && !lawError && !indexError" slot="secondary-sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
@@ -588,17 +595,27 @@ loadIndex();
           </nldd-split-view-pane>
 
           <!-- Main: Artikel Detail -->
-          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound ? true : undefined">
+          <nldd-split-view-pane slot="main" :has-content="selectedArticle || lawError || articleNotFound || indexError ? true : undefined">
             <nldd-page sticky-header>
               <nldd-top-title-bar
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
                 :supporting-text="selectedArticle ? lawName : undefined"
-                :back-text="lawError ? LIBRARY_HOME_TITLE : (lawName || 'Terug')"
+                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_TITLE : (lawName || 'Terug'))"
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section full-width v-if="!selectedLawId">
+              <nldd-simple-section full-width v-if="indexError">
+                <nldd-inline-dialog
+                  variant="alert"
+                  text="Wetten en regels zijn niet geladen"
+                  supporting-text="De gegevens konden niet worden opgehaald."
+                >
+                  <nldd-button slot="actions" variant="primary" text="Probeer opnieuw" @click="retryLoadCorpus"></nldd-button>
+                  <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
+                </nldd-inline-dialog>
+              </nldd-simple-section>
+              <nldd-simple-section full-width v-else-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section full-width v-else-if="lawError">
