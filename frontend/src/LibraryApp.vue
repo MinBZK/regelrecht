@@ -80,7 +80,14 @@ const detailView = computed({
     return HASH_TO_VIEW[route.hash] ?? 'tekst';
   },
   set(value) {
-    const hash = VIEW_TO_HASH[value] ?? '';
+    // Reject anything we don't recognise rather than silently stripping
+    // the hash — every call site today hard-codes a literal, so an
+    // unknown value is a programmer error, not a user-supplied string.
+    const hash = VIEW_TO_HASH[value];
+    if (!hash) {
+      console.warn(`[detailView] ignoring unknown value: ${value}`);
+      return;
+    }
     if (hash !== route.hash) {
       router.replace({ path: route.path, query: route.query, hash });
     }
