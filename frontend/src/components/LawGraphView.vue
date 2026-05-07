@@ -193,9 +193,13 @@ function handleNodeClick({ node, event }) {
 // marker is decorative).
 const { colorScheme } = useColorScheme();
 const miniMapMarkerColor = computed(() => {
-  // Touch colorScheme so the computed re-runs when the user picks a
-  // different scheme; the actual value is read from CSS so the token's
-  // light-dark() resolution stays the source of truth.
+  // DO NOT remove this `void` line: it's the only thing tying the
+  // computed to colorScheme reactivity. Without it the read below uses
+  // getComputedStyle (one-shot, untracked) and the marker freezes at
+  // its mount-time value forever. The actual colour comes from the CSS
+  // token so the palette's light-dark() resolution stays the source of
+  // truth; this line just forces the computed to re-evaluate on scheme
+  // change.
   void colorScheme.value;
   return getComputedStyle(document.documentElement)
     .getPropertyValue('--primitives-color-coolgray-400').trim() || '#ccc';
