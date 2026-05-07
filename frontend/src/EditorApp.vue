@@ -617,9 +617,10 @@ function onYamlInput(event) {
   // host's `value` property is updated before dispatch so
   // event.target.value would also work, but reading from detail keeps
   // the contract explicit and matches how the storybook docs the API.
-  // Final fallback is the current yamlSource so a misfired event (no
-  // detail, no value on target) becomes a no-op instead of silently
-  // wiping the user's content.
+  // Final fallback to yamlSource only catches a structurally broken
+  // event (no detail, no value on target) — `??` skips null/undefined
+  // but lets a deliberate `''` through, which is what we want when the
+  // user clears the editor.
   const text = event.detail?.value ?? event.target?.value ?? yamlSource.value;
   yamlSource.value = text;
   try {
