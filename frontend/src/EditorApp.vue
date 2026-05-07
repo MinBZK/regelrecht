@@ -61,7 +61,17 @@ const paneViews = ref(loadPaneViews());
 function loadPaneViews() {
   try {
     const stored = JSON.parse(localStorage.getItem(PANE_VIEWS_KEY) ?? 'null');
-    if (Array.isArray(stored) && stored.length > 0 && stored.every(v => typeof v === 'string')) {
+    // Only accept entries we still recognise — a stale value left over
+    // from a removed view (e.g. 'form' before scenario was renamed) or
+    // an externally injected string would otherwise produce a pane with
+    // no v-if branch matching it, briefly flashing an empty body before
+    // the availableViews watcher corrects it on the next tick.
+    const knownIds = new Set(VIEW_DEFINITIONS.map(v => v.id));
+    if (
+      Array.isArray(stored) &&
+      stored.length > 0 &&
+      stored.every(v => typeof v === 'string' && knownIds.has(v))
+    ) {
       return stored;
     }
   } catch {
