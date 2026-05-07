@@ -235,8 +235,15 @@ function addOutput() {
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
-          <nldd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
-          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
+          <template v-if="editable">
+            <nldd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          </template>
+          <template v-else>
+            <nldd-text-cell :text="def.name"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="formatValue(def.value, def.unit)"></nldd-text-cell>
+          </template>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editDef(def.name)" text="Bewerk"></nldd-button>
