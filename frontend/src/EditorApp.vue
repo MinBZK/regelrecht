@@ -408,6 +408,9 @@ function handleScenarioExecuted({ result, traceText, error, expectations, scenar
 // LawGraphView would re-flatten the old trace under the new lawId,
 // misattribute every step to the new law, and pin the "▶ start" badge
 // to a leaf that just happens to share the previous output's name.
+// The trace and graph sheets close along with the trace they were
+// showing: leaving them open over an empty graph or a fresh law the
+// user just navigated into is more confusing than auto-dismissing.
 watch(lawId, () => {
   lastResult.value = null;
   lastTraceText.value = null;
@@ -415,6 +418,8 @@ watch(lawId, () => {
   lastExpectations.value = {};
   lastScenarioName.value = '';
   lastOutputName.value = null;
+  resultSheetOpen.value = false;
+  graphSheetOpen.value = false;
 });
 
 // --- Editor state ---
