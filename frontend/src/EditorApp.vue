@@ -1012,6 +1012,16 @@ function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
+        <!-- All editor flags off — paneViews is empty so the
+             side-by-side view would render zero pane slots. Surface an
+             explicit empty-state with a CTA to the settings menu so
+             the user understands the editor isn't broken. -->
+        <nldd-page v-else-if="paneViews.length === 0">
+          <nldd-simple-section full-width>
+            <nldd-inline-dialog text="Geen editors actief. Schakel ten minste één editor in via Instellingen."></nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
         <!-- One pane per entry in `paneViews`. Each pane independently
              picks its view via the dropdown in its header. The split-view
              auto-hides panes from the right when the viewport is too narrow.
