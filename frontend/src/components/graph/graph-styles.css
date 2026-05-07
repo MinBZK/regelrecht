@@ -10,45 +10,54 @@
  *
  * Trace-stepping highlights (.trace-active, .trace-visited, .trace-start)
  * are applied via the `class` prop on nodes/edges from useTraceStepping.
+ *
+ * Dark-mode strategy: every color is sourced from the design-system
+ * palette tokens, which use light-dark() under the hood. -700 borders
+ * stay dark on light bg / light on dark bg; -100 backgrounds stay pale
+ * on light / deep-tinted on dark. Both flip together so the contrast
+ * pattern survives the scheme switch without per-mode forks.
  */
 
 .vue-flow .root {
-  border-radius: 6px;
-  border: 1px solid black;
-  padding: 8px;
+	border-radius: 6px;
+	border: 1px solid var(--semantics-content-color);
+	padding: 8px;
+	color: var(--semantics-content-color);
 }
 
 /* Service colors — one per regulatory_layer index (see LAYER_COLOR_INDEX
- * in useLawGraph.js). Chosen from Tailwind's palette so the editor and
- * the demo read the same. */
-.vue-flow .service-0.root { border-color: #1e40af; background: #eff6ff; }
-.vue-flow .service-0.property-group { border: 1px solid #1e40af; background: #dbeafe; }
-.vue-flow .service-1.root { border-color: #9d174d; background: #fdf2f8; }
-.vue-flow .service-1.property-group { border: 1px solid #9d174d; background: #fce7f3; }
-.vue-flow .service-2.root { border-color: #065f46; background: #ecfdf5; }
-.vue-flow .service-2.property-group { border: 1px solid #065f46; background: #d1fae5; }
-.vue-flow .service-3.root { border-color: #92400e; background: #fffbeb; }
-.vue-flow .service-3.property-group { border: 1px solid #92400e; background: #fef3c7; }
-.vue-flow .service-4.root { border-color: #6b21a8; background: #faf5ff; }
-.vue-flow .service-4.property-group { border: 1px solid #6b21a8; background: #f3e8ff; }
-.vue-flow .service-5.root { border-color: #854d0e; background: #fefce8; }
-.vue-flow .service-5.property-group { border: 1px solid #854d0e; background: #fef9c3; }
-.vue-flow .service-6.root { border-color: #1e293b; background: #f8fafc; }
-.vue-flow .service-6.property-group { border: 1px solid #1e293b; background: #f1f5f9; }
+ * in useLawGraph.js). Each hue maps to a NLDD palette family; the -700
+ * border + -100 background combo auto-flips for dark mode through the
+ * baked-in light-dark() in palettes.generated.css. */
+.vue-flow .service-0.root { border-color: var(--primitives-color-lintblauw-700); background: var(--primitives-color-lintblauw-100); }
+.vue-flow .service-0.property-group { border: 1px solid var(--primitives-color-lintblauw-700); background: var(--primitives-color-lintblauw-200); }
+.vue-flow .service-1.root { border-color: var(--primitives-color-violet-700); background: var(--primitives-color-violet-100); }
+.vue-flow .service-1.property-group { border: 1px solid var(--primitives-color-violet-700); background: var(--primitives-color-violet-200); }
+.vue-flow .service-2.root { border-color: var(--primitives-color-mintgroen-700); background: var(--primitives-color-mintgroen-100); }
+.vue-flow .service-2.property-group { border: 1px solid var(--primitives-color-mintgroen-700); background: var(--primitives-color-mintgroen-200); }
+.vue-flow .service-3.root { border-color: var(--primitives-color-donkergeel-700); background: var(--primitives-color-donkergeel-100); }
+.vue-flow .service-3.property-group { border: 1px solid var(--primitives-color-donkergeel-700); background: var(--primitives-color-donkergeel-200); }
+.vue-flow .service-4.root { border-color: var(--primitives-color-paars-700); background: var(--primitives-color-paars-100); }
+.vue-flow .service-4.property-group { border: 1px solid var(--primitives-color-paars-700); background: var(--primitives-color-paars-200); }
+.vue-flow .service-5.root { border-color: var(--primitives-color-geel-700); background: var(--primitives-color-geel-100); }
+.vue-flow .service-5.property-group { border: 1px solid var(--primitives-color-geel-700); background: var(--primitives-color-geel-200); }
+.vue-flow .service-6.root { border-color: var(--primitives-color-coolgray-700); background: var(--primitives-color-coolgray-100); }
+.vue-flow .service-6.property-group { border: 1px solid var(--primitives-color-coolgray-700); background: var(--primitives-color-coolgray-200); }
 
 .vue-flow .property-group,
 .vue-flow .vue-flow__node-input,
 .vue-flow .vue-flow__node-source,
 .vue-flow .vue-flow__node-output {
-  cursor: grab;
-  overflow: hidden;
-  text-overflow: ellipsis;
+	cursor: grab;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--semantics-content-color);
 }
 
 .vue-flow {
-  --vf-edge-stroke: #3b82f6;
-  --vf-edge-stroke-selected: #1d4ed8;
-  --vf-edge-stroke-width: 3;
+	--vf-edge-stroke: var(--primitives-color-lintblauw-500);
+	--vf-edge-stroke-selected: var(--primitives-color-lintblauw-700);
+	--vf-edge-stroke-width: 3;
 }
 
 /* Arrowhead color is set per-edge via `markerEnd.color` in useLawGraph.js
@@ -57,23 +66,23 @@
  * arrowhead to sky-blue regardless of stroke. */
 
 .vue-flow__edge.selected {
-  --vf-edge-stroke-width: 5;
+	--vf-edge-stroke-width: 5;
 }
 
 /* Click-highlight: inbound = edges that come into the clicked law,
  * outbound = edges that leave it. Thicker + color-swapped so the
  * direction is unambiguous at a glance. */
 .vue-flow__edge.inbound path {
-  stroke: #ef4444 !important;
-  stroke-width: 5 !important;
+	stroke: var(--primitives-color-rood-500) !important;
+	stroke-width: 5 !important;
 }
 .vue-flow__edge.outbound path {
-  stroke: #22c55e !important;
-  stroke-width: 5 !important;
+	stroke: var(--primitives-color-groen-500) !important;
+	stroke-width: 5 !important;
 }
 .vue-flow__edge.inbound path:first-child,
 .vue-flow__edge.outbound path:first-child {
-  marker-end: none;
+	marker-end: none;
 }
 
 /* --- Trace stepping highlights -------------------------------------- */
@@ -81,90 +90,98 @@
 /* Active edge pulses amber. !important overrides the per-edge inline
  * stroke that impl/override/hook edges set so the trace path always wins. */
 .vue-flow__edge.trace-active path {
-  stroke: #f59e0b !important;
-  /* Match the keyframe start so the first paint frame doesn't flash
-   * the inherited (thinner) edge width before the animation begins. */
-  stroke-width: 6 !important;
-  stroke-dasharray: none !important;
-  animation: trace-pulse 1.2s ease-in-out infinite;
+	stroke: var(--primitives-color-donkergeel-500) !important;
+	/* Match the keyframe start so the first paint frame doesn't flash
+	 * the inherited (thinner) edge width before the animation begins. */
+	stroke-width: 6 !important;
+	stroke-dasharray: none !important;
+	animation: trace-pulse 1.2s ease-in-out infinite;
 }
 .vue-flow__edge.trace-visited path {
-  stroke: #fbbf24 !important;
-  stroke-width: 4 !important;
-  opacity: 0.75;
+	stroke: var(--primitives-color-donkergeel-300) !important;
+	stroke-width: 4 !important;
+	opacity: 0.75;
 }
 @keyframes trace-pulse {
-  0%, 100% { stroke-width: 6; }
-  50% { stroke-width: 10; }
+	0%, 100% { stroke-width: 6; }
+	50% { stroke-width: 10; }
 }
 
 /* Active node: leaves get a solid amber fill; law/group containers get
  * an outline + glow so nested content stays visible. */
 .vue-flow__node.trace-active {
-  z-index: 10;
+	z-index: 10;
 }
 .vue-flow__node-leaf.trace-active {
-  background: #f59e0b !important;
-  color: #1f2937 !important;
-  font-weight: 700 !important;
-  outline: 3px solid #b45309 !important;
-  outline-offset: 0 !important;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.8) !important;
+	background: var(--primitives-color-donkergeel-500) !important;
+	color: var(--primitives-color-donkergeel-900) !important;
+	font-weight: 700 !important;
+	outline: 3px solid var(--primitives-color-donkergeel-700) !important;
+	outline-offset: 0 !important;
+	box-shadow: 0 0 20px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 20%) !important;
 }
 .vue-flow__node-law.trace-active,
 .vue-flow__node-default.trace-active {
-  outline: 4px solid #f59e0b !important;
-  outline-offset: 2px !important;
-  box-shadow: 0 0 24px rgba(245, 158, 11, 0.75) !important;
+	outline: 4px solid var(--primitives-color-donkergeel-500) !important;
+	outline-offset: 2px !important;
+	box-shadow: 0 0 24px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 25%) !important;
 }
 
 .vue-flow__node-leaf.trace-visited {
-  background: #fde68a !important;
-  color: #78350f !important;
+	background: var(--primitives-color-donkergeel-200) !important;
+	color: var(--primitives-color-donkergeel-800) !important;
 }
 .vue-flow__node-law.trace-visited,
 .vue-flow__node-default.trace-visited {
-  outline: 2px solid #fbbf24 !important;
-  outline-offset: 1px !important;
+	outline: 2px solid var(--primitives-color-donkergeel-300) !important;
+	outline-offset: 1px !important;
 }
 
 /* Start point — sticky dashed blue outline + "▶ start" label on the
  * scenario's root law and initial output leaf. Stays visible across
  * all steps so users can always see where the trace began. */
 .vue-flow__node.trace-start {
-  outline: 3px dashed #2563eb;
-  outline-offset: 4px;
-  z-index: 9;
+	outline: 3px dashed var(--primitives-color-lintblauw-600);
+	outline-offset: 4px;
+	z-index: 9;
 }
 .vue-flow__node.trace-start::before {
-  content: '▶ start';
-  position: absolute;
-  top: -18px;
-  left: -4px;
-  background: #2563eb;
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 1px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.04em;
-  pointer-events: none;
-  z-index: 11;
+	content: '▶ start';
+	position: absolute;
+	top: -18px;
+	left: -4px;
+	background: var(--primitives-color-lintblauw-600);
+	/* Use neutral-0 so the label stays white-on-blue in light mode and
+	 * picks up the auto-flipped near-black on light-blue in dark mode —
+	 * both retain comfortable contrast against the auto-adjusted bg. */
+	color: var(--primitives-color-neutral-0);
+	font-size: 10px;
+	font-weight: 700;
+	padding: 1px 6px;
+	border-radius: 3px;
+	letter-spacing: 0.04em;
+	pointer-events: none;
+	z-index: 11;
 }
 /* Combine outlines cleanly when a start node is also active. */
 .vue-flow__node.trace-start.trace-active {
-  outline: 3px solid #f59e0b;
-  box-shadow: 0 0 0 7px rgba(37, 99, 235, 0.35), 0 0 16px rgba(245, 158, 11, 0.55);
+	outline: 3px solid var(--primitives-color-donkergeel-500);
+	box-shadow:
+		0 0 0 7px color-mix(in oklch, var(--primitives-color-lintblauw-600), transparent 65%),
+		0 0 16px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 45%);
 }
 
-/* Step-type chips used by the left-side step list. */
-.node-type-article { background: #bfdbfe; color: #1e3a8a; }
-.node-type-action { background: #a7f3d0; color: #065f46; }
-.node-type-requirement { background: #bae6fd; color: #0c4a6e; }
-.node-type-resolve { background: #e2e8f0; color: #334155; }
-.node-type-operation { background: #e5e7eb; color: #374151; }
-.node-type-cached { background: #f3f4f6; color: #4b5563; }
-.node-type-cross_law_reference { background: #fde68a; color: #92400e; }
-.node-type-open_term_resolution { background: #bbf7d0; color: #166534; }
-.node-type-hook_resolution { background: #e9d5ff; color: #5b21b6; }
-.node-type-override_resolution { background: #fecaca; color: #991b1b; }
+/* Step-type chips used by the left-side step list. Each chip uses the
+ * same hue at -200 (pale tint) for background and -800 (saturated) for
+ * text. Both flip together in dark mode, keeping the legibility pattern
+ * intact without writing a separate dark theme. */
+.node-type-article { background: var(--primitives-color-lintblauw-200); color: var(--primitives-color-lintblauw-800); }
+.node-type-action { background: var(--primitives-color-mintgroen-200); color: var(--primitives-color-mintgroen-800); }
+.node-type-requirement { background: var(--primitives-color-donkerblauw-200); color: var(--primitives-color-donkerblauw-800); }
+.node-type-resolve { background: var(--primitives-color-coolgray-200); color: var(--primitives-color-coolgray-800); }
+.node-type-operation { background: var(--primitives-color-coolgray-100); color: var(--primitives-color-coolgray-700); }
+.node-type-cached { background: var(--primitives-color-coolgray-100); color: var(--primitives-color-coolgray-600); }
+.node-type-cross_law_reference { background: var(--primitives-color-donkergeel-200); color: var(--primitives-color-donkergeel-800); }
+.node-type-open_term_resolution { background: var(--primitives-color-groen-200); color: var(--primitives-color-groen-800); }
+.node-type-hook_resolution { background: var(--primitives-color-paars-200); color: var(--primitives-color-paars-800); }
+.node-type-override_resolution { background: var(--primitives-color-rood-200); color: var(--primitives-color-rood-800); }

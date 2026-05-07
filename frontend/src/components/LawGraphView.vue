@@ -183,7 +183,12 @@ function handleNodeClick({ node, event }) {
 }
 
 function miniMapNodeColor(node) {
-  return node.class?.includes('root') && !node.hidden ? '#ccc' : 'transparent';
+  if (!(node.class?.includes('root') && !node.hidden)) return 'transparent';
+  // Resolve the palette token at call time so the marker swaps with the
+  // colour scheme — Vue Flow's MiniMap takes a flat colour string, not a
+  // CSS variable, so the var() can't live in the SVG attribute itself.
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue('--primitives-color-coolgray-400').trim() || '#ccc';
 }
 
 const currentStep = computed(() =>
@@ -312,14 +317,14 @@ const currentStep = computed(() =>
 }
 
 .law-graph-loading {
-  background: var(--semantics-surfaces-tinted-background-color, #f5f5f5);
-  color: var(--semantics-text-color-secondary, #666);
+  background: var(--semantics-surfaces-tinted-background-color);
+  color: var(--semantics-content-secondary-color);
 }
 
 .law-graph-warning {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fde68a;
+  background: var(--primitives-color-donkergeel-100);
+  color: var(--primitives-color-donkergeel-800);
+  border: 1px solid var(--primitives-color-donkergeel-300);
   cursor: help;
 }
 
@@ -335,8 +340,9 @@ const currentStep = computed(() =>
   flex-direction: column;
   flex: 0 0 40vh;
   min-height: 220px;
-  border-top: 2px solid #f59e0b;
-  background: white;
+  border-top: 2px solid var(--primitives-color-donkergeel-500);
+  background: var(--semantics-surfaces-background-color);
+  color: var(--semantics-content-color);
   font-size: 13px;
 }
 
@@ -346,14 +352,15 @@ const currentStep = computed(() =>
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #fef3c7;
+  border-bottom: 1px solid var(--semantics-dividers-color);
+  background: var(--primitives-color-donkergeel-100);
 }
 
 .law-graph-trace__btn,
 .law-graph-trace__toggle {
-  border: 1px solid #9ca3af;
-  background: white;
+  border: 1px solid var(--primitives-color-coolgray-400);
+  background: var(--semantics-surfaces-background-color);
+  color: var(--semantics-content-color);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 12px;
@@ -361,16 +368,17 @@ const currentStep = computed(() =>
   font-family: inherit;
 }
 .law-graph-trace__btn:hover:not(:disabled),
-.law-graph-trace__toggle:hover { background: #f9fafb; }
+.law-graph-trace__toggle:hover { background: var(--semantics-surfaces-tinted-background-color); }
 .law-graph-trace__btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .law-graph-trace__toggle--active {
-  border-color: #f59e0b;
-  background: #fef3c7;
+  border-color: var(--primitives-color-donkergeel-500);
+  background: var(--primitives-color-donkergeel-100);
+  color: var(--primitives-color-donkergeel-800);
   font-weight: 600;
 }
 
-.law-graph-trace__counter { color: #4b5563; }
+.law-graph-trace__counter { color: var(--semantics-content-secondary-color); }
 
 .law-graph-trace__filter {
   margin-left: auto;
@@ -378,7 +386,7 @@ const currentStep = computed(() =>
   align-items: center;
   gap: 4px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--semantics-content-secondary-color);
 }
 
 .law-graph-trace__body {
@@ -388,7 +396,7 @@ const currentStep = computed(() =>
 }
 .law-graph-trace__list {
   flex: 1;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid var(--semantics-dividers-color);
   min-width: 0;
   overflow: hidden;
 }

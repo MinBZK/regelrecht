@@ -30,9 +30,13 @@ defineProps({
   float: right;
   cursor: pointer;
   border-radius: 6px;
-  background: rgba(2, 6, 23, 0.65);
+  /* Translucent ink so the close button sits on any service colour
+   * (light or dark mode) without a per-mode override. color-mix on
+   * --semantics-content-color picks up the theme's high-contrast
+   * ink — black-ish in light, white-ish in dark — at 65% opacity. */
+  background: color-mix(in oklch, var(--semantics-content-color), transparent 35%);
   padding: 4px;
-  color: white;
+  color: var(--semantics-surfaces-background-color);
   border: 0;
   line-height: 0;
 }
