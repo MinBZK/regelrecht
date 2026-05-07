@@ -19,10 +19,10 @@
  */
 
 .vue-flow .root {
-	border-radius: 6px;
-	border: 1px solid var(--semantics-content-color);
-	padding: 8px;
-	color: var(--semantics-content-color);
+  border-radius: 6px;
+  border: 1px solid var(--semantics-content-color);
+  padding: 8px;
+  color: var(--semantics-content-color);
 }
 
 /* Service colors — one per regulatory_layer index (see LAYER_COLOR_INDEX
@@ -48,16 +48,16 @@
 .vue-flow .vue-flow__node-input,
 .vue-flow .vue-flow__node-source,
 .vue-flow .vue-flow__node-output {
-	cursor: grab;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	color: var(--semantics-content-color);
+  cursor: grab;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--semantics-content-color);
 }
 
 .vue-flow {
-	--vf-edge-stroke: var(--primitives-color-lintblauw-500);
-	--vf-edge-stroke-selected: var(--primitives-color-lintblauw-700);
-	--vf-edge-stroke-width: 3;
+  --vf-edge-stroke: var(--primitives-color-lintblauw-500);
+  --vf-edge-stroke-selected: var(--primitives-color-lintblauw-700);
+  --vf-edge-stroke-width: 3;
 }
 
 /* Arrowhead color is set per-edge via `markerEnd.color` in useLawGraph.js
@@ -66,23 +66,23 @@
  * arrowhead to sky-blue regardless of stroke. */
 
 .vue-flow__edge.selected {
-	--vf-edge-stroke-width: 5;
+  --vf-edge-stroke-width: 5;
 }
 
 /* Click-highlight: inbound = edges that come into the clicked law,
  * outbound = edges that leave it. Thicker + color-swapped so the
  * direction is unambiguous at a glance. */
 .vue-flow__edge.inbound path {
-	stroke: var(--primitives-color-rood-500) !important;
-	stroke-width: 5 !important;
+  stroke: var(--primitives-color-rood-500) !important;
+  stroke-width: 5 !important;
 }
 .vue-flow__edge.outbound path {
-	stroke: var(--primitives-color-groen-500) !important;
-	stroke-width: 5 !important;
+  stroke: var(--primitives-color-groen-500) !important;
+  stroke-width: 5 !important;
 }
 .vue-flow__edge.inbound path:first-child,
 .vue-flow__edge.outbound path:first-child {
-	marker-end: none;
+  marker-end: none;
 }
 
 /* --- Trace stepping highlights -------------------------------------- */
@@ -90,85 +90,85 @@
 /* Active edge pulses amber. !important overrides the per-edge inline
  * stroke that impl/override/hook edges set so the trace path always wins. */
 .vue-flow__edge.trace-active path {
-	stroke: var(--primitives-color-donkergeel-500) !important;
-	/* Match the keyframe start so the first paint frame doesn't flash
-	 * the inherited (thinner) edge width before the animation begins. */
-	stroke-width: 6 !important;
-	stroke-dasharray: none !important;
-	animation: trace-pulse 1.2s ease-in-out infinite;
+  stroke: var(--primitives-color-donkergeel-500) !important;
+  /* Match the keyframe start so the first paint frame doesn't flash
+   * the inherited (thinner) edge width before the animation begins. */
+  stroke-width: 6 !important;
+  stroke-dasharray: none !important;
+  animation: trace-pulse 1.2s ease-in-out infinite;
 }
 .vue-flow__edge.trace-visited path {
-	stroke: var(--primitives-color-donkergeel-300) !important;
-	stroke-width: 4 !important;
-	opacity: 0.75;
+  stroke: var(--primitives-color-donkergeel-300) !important;
+  stroke-width: 4 !important;
+  opacity: 0.75;
 }
 @keyframes trace-pulse {
-	0%, 100% { stroke-width: 6; }
-	50% { stroke-width: 10; }
+  0%, 100% { stroke-width: 6; }
+  50% { stroke-width: 10; }
 }
 
 /* Active node: leaves get a solid amber fill; law/group containers get
  * an outline + glow so nested content stays visible. */
 .vue-flow__node.trace-active {
-	z-index: 10;
+  z-index: 10;
 }
 .vue-flow__node-leaf.trace-active {
-	background: var(--primitives-color-donkergeel-500) !important;
-	color: var(--primitives-color-donkergeel-900) !important;
-	font-weight: 700 !important;
-	outline: 3px solid var(--primitives-color-donkergeel-700) !important;
-	outline-offset: 0 !important;
-	box-shadow: 0 0 20px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 20%) !important;
+  background: var(--primitives-color-donkergeel-500) !important;
+  color: var(--primitives-color-donkergeel-900) !important;
+  font-weight: 700 !important;
+  outline: 3px solid var(--primitives-color-donkergeel-700) !important;
+  outline-offset: 0 !important;
+  box-shadow: 0 0 20px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 20%) !important;
 }
 .vue-flow__node-law.trace-active,
 .vue-flow__node-default.trace-active {
-	outline: 4px solid var(--primitives-color-donkergeel-500) !important;
-	outline-offset: 2px !important;
-	box-shadow: 0 0 24px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 25%) !important;
+  outline: 4px solid var(--primitives-color-donkergeel-500) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 24px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 25%) !important;
 }
 
 .vue-flow__node-leaf.trace-visited {
-	background: var(--primitives-color-donkergeel-200) !important;
-	color: var(--primitives-color-donkergeel-800) !important;
+  background: var(--primitives-color-donkergeel-200) !important;
+  color: var(--primitives-color-donkergeel-800) !important;
 }
 .vue-flow__node-law.trace-visited,
 .vue-flow__node-default.trace-visited {
-	outline: 2px solid var(--primitives-color-donkergeel-300) !important;
-	outline-offset: 1px !important;
+  outline: 2px solid var(--primitives-color-donkergeel-300) !important;
+  outline-offset: 1px !important;
 }
 
 /* Start point — sticky dashed blue outline + "▶ start" label on the
  * scenario's root law and initial output leaf. Stays visible across
  * all steps so users can always see where the trace began. */
 .vue-flow__node.trace-start {
-	outline: 3px dashed var(--primitives-color-lintblauw-600);
-	outline-offset: 4px;
-	z-index: 9;
+  outline: 3px dashed var(--primitives-color-lintblauw-600);
+  outline-offset: 4px;
+  z-index: 9;
 }
 .vue-flow__node.trace-start::before {
-	content: '▶ start';
-	position: absolute;
-	top: -18px;
-	left: -4px;
-	background: var(--primitives-color-lintblauw-600);
-	/* Use neutral-0 so the label stays white-on-blue in light mode and
-	 * picks up the auto-flipped near-black on light-blue in dark mode —
-	 * both retain comfortable contrast against the auto-adjusted bg. */
-	color: var(--primitives-color-neutral-0);
-	font-size: 10px;
-	font-weight: 700;
-	padding: 1px 6px;
-	border-radius: 3px;
-	letter-spacing: 0.04em;
-	pointer-events: none;
-	z-index: 11;
+  content: '▶ start';
+  position: absolute;
+  top: -18px;
+  left: -4px;
+  background: var(--primitives-color-lintblauw-600);
+  /* Use neutral-0 so the label stays white-on-blue in light mode and
+   * picks up the auto-flipped near-black on light-blue in dark mode —
+   * both retain comfortable contrast against the auto-adjusted bg. */
+  color: var(--primitives-color-neutral-0);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  z-index: 11;
 }
 /* Combine outlines cleanly when a start node is also active. */
 .vue-flow__node.trace-start.trace-active {
-	outline: 3px solid var(--primitives-color-donkergeel-500);
-	box-shadow:
-		0 0 0 7px color-mix(in oklch, var(--primitives-color-lintblauw-600), transparent 65%),
-		0 0 16px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 45%);
+  outline: 3px solid var(--primitives-color-donkergeel-500);
+  box-shadow:
+    0 0 0 7px color-mix(in oklch, var(--primitives-color-lintblauw-600), transparent 65%),
+    0 0 16px color-mix(in oklch, var(--primitives-color-donkergeel-500), transparent 45%);
 }
 
 /* Step-type chips used by the left-side step list. Each chip uses the
