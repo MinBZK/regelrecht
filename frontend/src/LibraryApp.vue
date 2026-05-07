@@ -294,6 +294,11 @@ function retryLoadLaw() {
 
 function retryLoadCorpus() {
   indexError.value = null;
+  // loadIndex only flips loading back to false in its finally block —
+  // it never sets it to true. So after the first failure (loading is
+  // false, indexError is truthy) we have to flip the spinner back on
+  // here, otherwise the retry shows the error pane until the next
+  // round-trip resolves.
   loading.value = true;
   loadIndex();
 }
