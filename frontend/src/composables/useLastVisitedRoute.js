@@ -29,7 +29,10 @@ function save() {
 
 export function recordLastVisited(routeName, fullPath) {
   if (!routeName) return;
-  _lastVisited.value = { ..._lastVisited.value, [routeName]: fullPath };
+  // Mutate in place rather than re-spreading. The ref wraps a reactive
+  // object so a property assignment still notifies the lastLibraryPath /
+  // lastEditorPath computeds. Avoids GC churn if the section list grows.
+  _lastVisited.value[routeName] = fullPath;
   save();
 }
 
