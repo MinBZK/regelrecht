@@ -1046,7 +1046,7 @@ function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :sticky-footer="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving)"
+              :sticky-footer="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
             >
               <div slot="header" class="pane-header">
                 <nldd-button
@@ -1090,8 +1090,11 @@ function handleActionSave() {
                   @delete="handleDelete"
                 />
               </nldd-simple-section>
+              <!-- Footer + Save button only on the first machine pane.
+                   Duplicates would render redundant Save buttons over
+                   the same shared dirty state — not broken, just noisy. -->
               <nldd-container
-                v-if="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving)"
+                v-if="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
                 slot="footer"
                 padding="16"
               >
