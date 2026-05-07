@@ -288,6 +288,13 @@ async function loadLaw(lawId) {
 
 function retryLoadLaw() {
   if (!selectedLawId.value) return;
+  // No explicit selectedLawLoading.value = true here (unlike
+  // retryLoadCorpus → loadIndex): loadLaw sets it as the first
+  // statement inside its try block, which runs synchronously before
+  // any await yields. The next reactivity flush sees both
+  // lawError = null and selectedLawLoading = true together, so the
+  // template can't briefly fall through to the "Selecteer een wet"
+  // empty state.
   lawError.value = null;
   loadLaw(selectedLawId.value);
 }
