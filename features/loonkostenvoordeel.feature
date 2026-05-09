@@ -4,7 +4,7 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
   Zodat ik per uur tegemoetkoming krijg op de loonkosten van een
   werknemer uit een doelgroep
 
-  # Bron: Wtl artikel 2.1 (verzoek), 2.7/2.9/2.13/2.17 (hoogte per
+  # Bron: Wtl artikel 2.1 (verzoek), 2.5/2.9/2.13/2.17 (hoogte per
   # categorie), BWBR0037522. Peildatum 2024-01-01.
   #
   # 2024-tarieven:
@@ -12,6 +12,9 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
   #   - arbeidsgehandicapt (b):         305 cent/uur, max 600000 cent
   #   - banenafspraak (c):              101 cent/uur, max 200000 cent
   #   - herplaatsen arbeidsgehandicapt (d): 305 cent/uur, max 600000 cent
+  #
+  # Pensioengerechtigde leeftijd sluit alle vier categorieën uit
+  # (art. 2.2 lid 2.a, 2.6 lid 3.a, 2.10 lid 2.a, 2.14 lid 2.a).
 
   Background:
     Given the calculation date is "2024-06-01"
@@ -26,6 +29,7 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
       | is_arbeidsgehandicapte_werknemer             | true      |
       | is_herplaatsen_arbeidsgehandicapte           | false     |
       | is_doelgroep_banenafspraak                   | false     |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
       | heeft_loonaangifte_verzoek_ingediend         | true      |
     When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,bedrag_per_uur_eurocent,maximum_per_jaar_eurocent,hoogte_lkv_per_jaar_eurocent"
     Then the execution succeeds
@@ -45,6 +49,7 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
       | is_arbeidsgehandicapte_werknemer             | false     |
       | is_herplaatsen_arbeidsgehandicapte           | false     |
       | is_doelgroep_banenafspraak                   | true      |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
       | heeft_loonaangifte_verzoek_ingediend         | true      |
     When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,hoogte_lkv_per_jaar_eurocent"
     Then the execution succeeds
@@ -61,6 +66,7 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
       | is_arbeidsgehandicapte_werknemer             | false     |
       | is_herplaatsen_arbeidsgehandicapte           | false     |
       | is_doelgroep_banenafspraak                   | true      |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
       | heeft_loonaangifte_verzoek_ingediend         | true      |
     When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "categorie_lkv,bedrag_per_uur_eurocent"
     Then the execution succeeds
@@ -75,6 +81,7 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
       | is_arbeidsgehandicapte_werknemer             | false     |
       | is_herplaatsen_arbeidsgehandicapte           | false     |
       | is_doelgroep_banenafspraak                   | false     |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
       | heeft_loonaangifte_verzoek_ingediend         | true      |
     When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,categorie_lkv,hoogte_lkv_per_jaar_eurocent"
     Then the execution succeeds
@@ -90,7 +97,26 @@ Feature: Loonkostenvoordeel (Wtl artikel 2.1 — vier categorieën)
       | is_arbeidsgehandicapte_werknemer             | false     |
       | is_herplaatsen_arbeidsgehandicapte           | false     |
       | is_doelgroep_banenafspraak                   | false     |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | false     |
       | heeft_loonaangifte_verzoek_ingediend         | false     |
+    When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,hoogte_lkv_per_jaar_eurocent"
+    Then the execution succeeds
+    And the output "heeft_recht_op_lkv" is "false"
+    And the output "hoogte_lkv_per_jaar_eurocent" is "0"
+
+  # Pensioengerechtigde werknemer is uitgesloten van alle vier
+  # categorieën (art. 2.2 lid 2.a / 2.6 lid 3.a / 2.10 lid 2.a /
+  # 2.14 lid 2.a).
+  Scenario: Pensioengerechtigde oudere werknemer is uitgesloten van LKV
+    Given a citizen with the following data:
+      | bsn                                          | 999990065 |
+      | verloonde_uren                               | 1500      |
+      | is_oudere_werknemer                          | true      |
+      | is_arbeidsgehandicapte_werknemer             | false     |
+      | is_herplaatsen_arbeidsgehandicapte           | false     |
+      | is_doelgroep_banenafspraak                   | false     |
+      | heeft_pensioengerechtigde_leeftijd_bereikt   | true      |
+      | heeft_loonaangifte_verzoek_ingediend         | true      |
     When the law "wet_tegemoetkomingen_loondomein" is executed for outputs "heeft_recht_op_lkv,hoogte_lkv_per_jaar_eurocent"
     Then the execution succeeds
     And the output "heeft_recht_op_lkv" is "false"

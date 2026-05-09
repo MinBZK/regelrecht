@@ -110,7 +110,7 @@ articles:
     url: https://wetten.overheid.nl/BWBR0037522/2024-01-01#Artikel2.1
     # LKV — Loonkostenvoordelen, Wtl artikel 2.1 (verzoek) +
     # 4 categorieën uit hoofdstuk 2 Wtl:
-    #   a. oudere werknemer (art. 2.2 voorwaarden, art. 2.7 hoogte
+    #   a. oudere werknemer (art. 2.2 voorwaarden, art. 2.5 hoogte
     #      € 3,05/uur, max € 6.000/jaar)
     #   b. arbeidsgehandicapte werknemer (art. 2.6 voorwaarden,
     #      art. 2.9 hoogte € 3,05/uur, max € 6.000/jaar)
@@ -168,6 +168,14 @@ articles:
               scholingsbelemmerden. Doelgroepregister UWV.
               In een latere iteratie te koppelen aan participatiewet
               cross-law source (art. 1 doelgroepstub).
+          - name: heeft_pensioengerechtigde_leeftijd_bereikt
+            type: boolean
+            required: true
+            description: |-
+              Uitsluitingsgrond voor alle vier categorieën
+              (art. 2.2 lid 2.a, 2.6 lid 3.a, 2.10 lid 2.a, 2.14 lid 2.a):
+              werknemer heeft pensioengerechtigde leeftijd bereikt
+              (artikel 7a lid 1 AOW).
           - name: heeft_loonaangifte_verzoek_ingediend
             type: boolean
             required: true
@@ -221,6 +229,8 @@ articles:
               operation: AND
               conditions:
                 - $heeft_loonaangifte_verzoek_ingediend
+                - operation: NOT
+                  value: $heeft_pensioengerechtigde_leeftijd_bereikt
                 - operation: OR
                   conditions:
                     - $is_oudere_werknemer
@@ -230,7 +240,11 @@ articles:
               legal_basis:
                 law: Wet tegemoetkomingen loondomein
                 bwb_id: BWBR0037522
-                article: '2.1'
+                article: '2.1, 2.2, 2.6, 2.10, 2.14'
+                explanation: |-
+                  Verzoek (art. 2.1) + minstens één categorie (a/b/c/d)
+                  + niet pensioengerechtigd (art. 2.2 lid 2.a, 2.6 lid 3.a,
+                  2.10 lid 2.a, 2.14 lid 2.a).
           - output: bedrag_per_uur_eurocent
             value:
               operation: IF
@@ -244,7 +258,7 @@ articles:
               legal_basis:
                 law: Wet tegemoetkomingen loondomein
                 bwb_id: BWBR0037522
-                article: '2.7, 2.9, 2.13, 2.17'
+                article: '2.5, 2.9, 2.13, 2.17'
                 explanation: |-
                   € 3,05 per uur voor oudere/arbeidsgehandicapte/
                   herplaatsing; € 1,01 per uur voor banenafspraak.
@@ -261,7 +275,7 @@ articles:
               legal_basis:
                 law: Wet tegemoetkomingen loondomein
                 bwb_id: BWBR0037522
-                article: '2.7, 2.9, 2.13, 2.17'
+                article: '2.5, 2.9, 2.13, 2.17'
                 explanation: |-
                   € 6.000 per werknemer per jaar voor oudere/
                   arbeidsgehandicapte/herplaatsing; € 2.000 voor

@@ -52,8 +52,9 @@ Feature: No-risk polis (Ziektewet artikel 29b)
     And the output "heeft_recht_op_no_risk_polis" is "false"
     And the output "duur_no_risk_polis_jaren" is "0"
 
-  # Randgeval: lid 2 (banenafspraak) — duur is 0 (gemodelleerd als
-  # niet-tijdsgebonden, zie untranslatable in machine_readable van 29b.1).
+  # Randgeval: lid 2 (banenafspraak) — duur is -1 (sentinel voor
+  # 'onbeperkt', zie untranslatable in machine_readable van 29b.1).
+  # Zo wint lid 2 ook bij overlap met lid 1 of lid 4 als langste termijn.
   Scenario: Doelgroep banenafspraak (lid 2 e) heeft recht op no-risk polis zonder vaste duur
     Given a citizen with the following data:
       | bsn                              | 999990012 |
@@ -71,4 +72,4 @@ Feature: No-risk polis (Ziektewet artikel 29b)
     When the law "ziektewet" is executed for outputs "heeft_recht_op_no_risk_polis,duur_no_risk_polis_jaren"
     Then the execution succeeds
     And the output "heeft_recht_op_no_risk_polis" is "true"
-    And the output "duur_no_risk_polis_jaren" is "0"
+    And the output "duur_no_risk_polis_jaren" is "-1"

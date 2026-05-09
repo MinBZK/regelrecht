@@ -3114,7 +3114,7 @@ articles:
               operation: IF
               cases:
                 - when: $voldoet_aan_lid_2
-                  then: 0
+                  then: -1
                 - when: $voldoet_aan_lid_1
                   then: $duur_no_risk_polis_lid_1_jaren
                 - when: $voldoet_aan_lid_4
@@ -3125,11 +3125,12 @@ articles:
                 bwb_id: BWBR0001888
                 article: 29b
                 explanation: |-
-                  Lid 1 (a t/m d): 5 jaar vanaf indiensttreding (zie
-                  onderdeel b 4°: "binnen vijf jaar na die dag");
-                  lid 4: 5 jaar na vaststelling WIA-recht; lid 2:
-                  onbeperkt zolang dienstbetrekking voortduurt
-                  (gemodelleerd als 0 = niet-tijdsgebonden, untranslatable).
+                  Bij overlap geldt de langste termijn. Lid 2 (Wajong,
+                  Wsw, banenafspraak, beschut werk) kent geen maximum-duur
+                  en wint daarom altijd: gemodelleerd als sentinel -1
+                  ('onbeperkt'). Lid 1 (a t/m d): 5 jaar vanaf
+                  indiensttreding ("binnen vijf jaar na die dag"); lid 4:
+                  5 jaar na vaststelling WIA-recht. Default 0 = geen recht.
       untranslatables:
         - construct: vijfjaarstermijn bij onderbroken dienstverbanden
           reason: |-
@@ -3147,12 +3148,10 @@ articles:
           reason: |-
             Voor doelgroepen lid 2 (Wajong, Wsw, banenafspraak, beschut
             werk) kent het artikel geen maximum-duur. De engine
-            modelleert dit als 0 (niet-tijdsgebonden), maar dat verschilt
-            semantisch van een eindige duur en kan bij downstream-gebruik
-            verwarring geven.
-          suggestion: |-
-            Een aparte boolean-output 'tijdsgebonden_duur' toevoegen, of
-            een speciale waarde voor 'onbeperkt' (bijv. -1 of null).
+            modelleert dit als sentinel -1 ('onbeperkt'), zodat lid 2
+            ook bij overlap met lid 1 of lid 4 als langste termijn wint.
+            Downstream consumers moeten -1 als 'onbeperkt' interpreteren
+            (niet als negatieve looptijd).
           accepted: true
         - construct: samenloop met loonkostenvoordelen (LKV)
           reason: |-
