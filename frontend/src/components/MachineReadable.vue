@@ -1,5 +1,9 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, watch, nextTick } from 'vue';
+import { humanize } from '../utils/outputFormat.js';
+import { useCorpusLaws } from '../composables/useCorpusLaws.js';
+
+const { displayName: lawDisplayName } = useCorpusLaws();
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -83,55 +87,106 @@ function formatValue(val, unit) {
   return String(val);
 }
 
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
+// structuredClone throws DataCloneError on Vue reactive proxies; YAML data is JSON-safe.
+function snapshot(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 // Open edit sheet for existing items
 function editDef(name) {
   const rawDef = mr.value?.definitions?.[name];
   if (rawDef == null) return;
-  emit('open-edit', { section: 'definition', key: name, rawDef: JSON.parse(JSON.stringify(rawDef)) });
+  emit('open-edit', { section: 'definition', key: name, rawDef: snapshot(rawDef) });
 }
 
 function editParam(index) {
   const p = execution.value?.parameters?.[index];
-  if (p) emit('open-edit', { section: 'parameter', index, data: JSON.parse(JSON.stringify(p)) });
+  if (p) emit('open-edit', { section: 'parameter', index, data: snapshot(p) });
 }
 
 function editInput(index) {
   const raw = execution.value?.input?.[index];
-  if (raw) emit('open-edit', { section: 'input', index, data: JSON.parse(JSON.stringify(raw)) });
+  if (raw) emit('open-edit', { section: 'input', index, data: snapshot(raw) });
 }
 
 function editOutput(index) {
   const raw = execution.value?.output?.[index];
-  if (raw) emit('open-edit', { section: 'output', index, data: JSON.parse(JSON.stringify(raw)) });
+  if (raw) emit('open-edit', { section: 'output', index, data: snapshot(raw) });
 }
 
-// Delete handlers — emit a delete event with the section + identity of
-// the row. The parent (EditorApp) is the source of truth for
-// machineReadable, so all mutations live there.
+// Delete handlers — stage a confirmation in `pendingDelete`, then on
+// confirm emit the delete event with the section + identity of the row.
+// The parent (EditorApp) is the source of truth for machineReadable,
+// so all mutations live there. The modal-dialog confirmation is here
+// because there is no undo yet.
+const SECTION_LABELS = {
+  definition: 'definitie',
+  parameter: 'parameter',
+  input: 'input',
+  output: 'output',
+  action: 'actie',
+};
+
+const pendingDelete = ref(null);
+const deleteModalEl = ref(null);
+const pendingSectionLabel = computed(
+  () => (pendingDelete.value ? SECTION_LABELS[pendingDelete.value.section] ?? '' : ''),
+);
+
+watch(pendingDelete, async (val) => {
+  await nextTick();
+  // Guard against test envs where the modal-dialog custom element isn't
+  // upgraded — the ref then holds a plain HTMLElement without show/hide.
+  // Optional-chaining on `?.show()` would still throw because it only
+  // skips when `.value` is nullish, not when `.show` itself is undefined.
+  const el = deleteModalEl.value;
+  if (val) {
+    if (typeof el?.show === 'function') el.show();
+  } else {
+    if (typeof el?.hide === 'function') el.hide();
+  }
+});
+
 function deleteDef(name) {
-  emit('delete', { section: 'definition', key: name });
+  pendingDelete.value = { section: 'definition', key: name, label: `definitie '${name}'` };
 }
 
 function deleteParam(index) {
-  emit('delete', { section: 'parameter', index });
+  const p = parameters.value[index];
+  pendingDelete.value = { section: 'parameter', index, label: `parameter '${p?.name ?? index}'` };
 }
 
 function deleteInput(index) {
-  emit('delete', { section: 'input', index });
+  const i = inputs.value[index];
+  pendingDelete.value = { section: 'input', index, label: `input '${i?.name ?? index}'` };
 }
 
 function deleteOutput(index) {
-  emit('delete', { section: 'output', index });
+  const o = outputs.value[index];
+  pendingDelete.value = { section: 'output', index, label: `output '${o?.name ?? index}'` };
 }
 
 function deleteAction(index) {
-  emit('delete', { section: 'action', index });
+  const a = actions.value[index];
+  pendingDelete.value = { section: 'action', index, label: `actie '${a?.output ?? index}'` };
+}
+
+function confirmDelete() {
+  if (!pendingDelete.value) return;
+  const { label, ...payload } = pendingDelete.value;
+  emit('delete', payload);
+  pendingDelete.value = null;
+}
+
+function cancelDelete() {
+  // Idempotent guard: the Behoud button's @click and the modal's @close
+  // both wire to this handler. Clicking Behoud sets pendingDelete = null,
+  // the watcher then calls el.hide(), which fires @close → cancelDelete
+  // again. Vue's ref equality check makes the second assignment a no-op
+  // today, but a future side-effect would silently double-fire without
+  // this early return.
+  if (pendingDelete.value === null) return;
+  pendingDelete.value = null;
 }
 
 // Open edit sheet for new items
@@ -153,11 +208,9 @@ function addOutput() {
 </script>
 
 <template>
-  <div v-if="!mr" data-testid="no-machine-readable">
-    <nldd-inline-dialog text="Geen machine-leesbare gegevens voor dit artikel">
-      <nldd-button v-if="editable" slot="actions" variant="primary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Initialiseer machine readable versie"></nldd-button>
-    </nldd-inline-dialog>
-  </div>
+  <nldd-inline-dialog v-if="!mr" data-testid="no-machine-readable" text="Geen machine-leesbare gegevens voor dit artikel">
+    <nldd-button v-if="editable" slot="actions" variant="primary" size="md" data-testid="init-mr-btn" @click="emit('init-mr')" text="Initialiseer machine readable versie"></nldd-button>
+  </nldd-inline-dialog>
 
   <div v-else data-testid="machine-readable">
     <!-- Save error surfaces inline; the actual save button lives in the
@@ -190,15 +243,22 @@ function addOutput() {
       </nldd-list-item>
     </nldd-list>
 
-    <nldd-spacer v-if="produces" size="12"></nldd-spacer>
-
     <!-- Definities -->
     <template v-if="definitions.length || editable">
+      <nldd-spacer size="24"></nldd-spacer>
       <nldd-title size="5" data-testid="section-definitions"><h5>Definities</h5></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
-          <nldd-text-cell :text="`${humanize(def.name)} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+          <template v-if="editable">
+            <nldd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          </template>
+          <template v-else>
+            <nldd-text-cell :text="def.name"></nldd-text-cell>
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="formatValue(def.value, def.unit)"></nldd-text-cell>
+          </template>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editDef(def.name)" text="Bewerk"></nldd-button>
@@ -213,20 +273,21 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Nieuwe definitie"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Definitie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
-      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Parameters -->
     <template v-if="parameters.length || editable">
+      <nldd-spacer size="24"></nldd-spacer>
       <nldd-title size="5" data-testid="section-parameters"><h5>Parameters</h5></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
-          <nldd-text-cell :text="`${humanize(param.name)} (${param.type})`"></nldd-text-cell>
+          <nldd-text-cell :text="`${param.name} (${param.type})`"></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editParam(index)" text="Bewerk"></nldd-button>
@@ -241,20 +302,24 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Nieuwe parameter"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Parameter toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
-      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Inputs -->
     <template v-if="inputs.length || editable">
+      <nldd-spacer size="24"></nldd-spacer>
       <nldd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
-          <nldd-text-cell :text="`${humanize(input.name)} (${input.type})${input.source ? ` — ${humanize(input.source)}` : ''}`"></nldd-text-cell>
+          <nldd-text-cell
+            :text="`${input.name} (${input.type})`"
+            :supporting-text="input.source ? lawDisplayName(input.source) : undefined"
+          ></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></nldd-button>
@@ -269,20 +334,21 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Nieuwe input"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Input toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
-      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Outputs -->
     <template v-if="outputs.length || editable">
+      <nldd-spacer size="24"></nldd-spacer>
       <nldd-title size="5" data-testid="section-outputs"><h5>Outputs</h5></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
-          <nldd-text-cell :text="`${humanize(output.name)} (${output.type})`"></nldd-text-cell>
+          <nldd-text-cell :text="`${output.name} (${output.type})`"></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button @click="editOutput(index)" text="Bewerk"></nldd-button>
@@ -297,17 +363,17 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Nieuwe output"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Output toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
-      <nldd-spacer size="16"></nldd-spacer>
     </template>
 
     <!-- Acties -->
     <template v-if="actions.length || editable">
+      <nldd-spacer size="24"></nldd-spacer>
       <nldd-title size="5" data-testid="section-actions"><h5>Acties</h5></nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item
           v-for="(action, index) in actions"
@@ -316,7 +382,8 @@ function addOutput() {
           :type="editable ? undefined : 'button'"
           @click="!editable && emit('open-action', action)"
         >
-          <nldd-text-cell :text="humanize(action.output)"></nldd-text-cell>
+          <nldd-text-cell :text="action.output"></nldd-text-cell>
+          <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
               <nldd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" text="Bewerk"></nldd-button>
@@ -337,13 +404,23 @@ function addOutput() {
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
           <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Voeg actie toe"></nldd-button>
+            <nldd-button full-width start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Actie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
-      <nldd-spacer size="16"></nldd-spacer>
     </template>
   </div>
+
+  <nldd-modal-dialog
+    ref="deleteModalEl"
+    variant="alert"
+    :text="pendingDelete ? `Weet je zeker dat je ${pendingDelete.label} wilt verwijderen?` : ''"
+    supporting-text="Deze actie kan niet ongedaan gemaakt worden."
+    @close="cancelDelete"
+  >
+    <nldd-button slot="actions" variant="primary" :text="`Behoud ${pendingSectionLabel}`" @click="cancelDelete"></nldd-button>
+    <nldd-button slot="actions" variant="destructive" text="Verwijder" @click="confirmDelete"></nldd-button>
+  </nldd-modal-dialog>
 </template>
 
 <style scoped>

@@ -83,7 +83,7 @@ describe('OperationSettings — AGE op', () => {
       const wrapper = mountOp(node);
 
       // Simulate the dropdown change. The handler reads event.target.value.
-      wrapper.vm.changeOperationType({ target: { value: 'AGE' } });
+      wrapper.vm.changeOperationType('AGE');
       await nextTick();
 
       expect(node.operation).toBe('AGE');
@@ -103,7 +103,7 @@ describe('OperationSettings — AGE op', () => {
       const wrapper = mountOp(node);
 
       // Switching to the same op type is a no-op (early return).
-      wrapper.vm.changeOperationType({ target: { value: 'AGE' } });
+      wrapper.vm.changeOperationType('AGE');
       await nextTick();
 
       expect(node.date_of_birth).toBe('$geboortedatum');
@@ -118,7 +118,7 @@ describe('OperationSettings — AGE op', () => {
       };
       const wrapper = mountOp(node);
 
-      wrapper.vm.changeOperationType({ target: { value: 'EQUALS' } });
+      wrapper.vm.changeOperationType('EQUALS');
       await nextTick();
 
       expect(node.operation).toBe('EQUALS');
@@ -145,7 +145,7 @@ describe('OperationSettings — AGE op', () => {
       };
       const wrapper = mountOp(node);
 
-      wrapper.vm.changeOperationType({ target: { value: newType } });
+      wrapper.vm.changeOperationType(newType);
       await nextTick();
 
       expect(node.operation).toBe(newType);

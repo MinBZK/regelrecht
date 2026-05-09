@@ -11,25 +11,23 @@ keywords = ["law", "legal", "corpus", "dutch", "regelrecht"]
 categories = ["development-tools"]
 
 [dependencies]
-async-trait = "0.1"
-tokio = { version = "1", features = ["process", "fs"] }
-tracing = "0.1"
-thiserror = "2.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_yaml_ng = "0.10"
+async-trait.workspace = true
+tokio = { workspace = true, features = ["process", "fs"] }
+tracing.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_yaml_ng.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
-walkdir = "2"
+walkdir.workspace = true
 
 [features]
 default = ["github"]
 github = ["dep:reqwest"]
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "fs"] }
-tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process", "fs"] }
+tempfile.workspace = true
 regelrecht-engine = { path = "../engine" }
 
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+[lints]
+workspace = true

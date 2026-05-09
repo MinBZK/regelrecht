@@ -17,24 +17,22 @@ ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
 
 # Async runtime
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "process", "fs", "io-util", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "process", "fs", "io-util", "time"] }
 
 # Workspace crates
 regelrecht-engine = { path = "../engine" }
 
 # File system
-walkdir = "2"
+walkdir.workspace = true
 
 # Error handling
 anyhow = "1"
 
 # Date handling
-chrono = "0.4"
+chrono.workspace = true
 
 # Logging
-tracing = "0.1"
+tracing.workspace = true
 
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+[lints]
+workspace = true

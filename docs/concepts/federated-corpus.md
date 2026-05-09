@@ -50,7 +50,25 @@ The `implements` mechanism from [Inversion of Control](./inversion-of-control) w
 
 ## Local overrides
 
-Developers can add a `corpus-registry.local.yaml` (gitignored) to add personal sources during development. This file extends the main registry without affecting the shared configuration.
+Developers can add a `corpus-registry.local.yaml` (gitignored) at the project root to add personal sources during development. It extends the main registry without affecting the shared configuration.
+
+A common use case is wiring a sibling checkout of a private corpus repository into the editor without copying files or committing paths:
+
+```yaml
+schema_version: "1.0"
+sources:
+  - id: my-private-corpus
+    name: "Private corpus (local checkout)"
+    type: local
+    local:
+      path: ../regelrecht-private/corpus/regulation/nl
+    scopes: []
+    priority: 0
+```
+
+Paths in `local.path` resolve relative to the project root; absolute paths also work.
+
+After adding sources or changing files in an external source, re-run `node frontend/scripts/copy-laws.js` (or restart the frontend so the `predev` hook fires) to refresh `frontend/public/data/`.
 
 ## Authentication
 

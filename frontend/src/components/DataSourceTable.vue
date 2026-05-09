@@ -125,33 +125,32 @@ const rowCount = computed(() => rows.value.length);
 
         <nldd-list variant="box" class="ds-datasource-list">
           <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
-            <nldd-text-cell :text="col.name" max-width="140" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
-            <nldd-cell>
-              <template v-if="readonly">
-                <nldd-text-field size="md" :value="String(row[col.name] ?? '')" readonly></nldd-text-field>
-              </template>
-              <template v-else-if="col.type === 'boolean'">
-                <nldd-dropdown size="md">
-                  <select
-                    :aria-label="col.name"
-                    :value="String(row[col.name] || 'null')"
-                    @change="updateCell(ri, col.name, $event.target.value)"
-                  >
-                    <option value="true">true</option>
-                    <option value="false">false</option>
-                    <option value="null">null</option>
-                  </select>
-                </nldd-dropdown>
-              </template>
-              <template v-else>
-                <nldd-text-field
-                  size="md"
-                  :type="inputType(col.type)"
-                  :value="String(row[col.name] ?? '')"
-                  :placeholder="col.name"
-                  @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
-                ></nldd-text-field>
-              </template>
+            <nldd-text-cell :text="col.name" max-width="140px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
+            <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
+            <template v-if="readonly">
+              <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
+            </template>
+            <nldd-cell v-else-if="col.type === 'boolean'">
+              <nldd-dropdown size="md">
+                <select
+                  :aria-label="col.name"
+                  :value="String(row[col.name] || 'null')"
+                  @change="updateCell(ri, col.name, $event.target.value)"
+                >
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                  <option value="null">null</option>
+                </select>
+              </nldd-dropdown>
+            </nldd-cell>
+            <nldd-cell v-else>
+              <nldd-text-field
+                size="md"
+                :type="inputType(col.type)"
+                :value="String(row[col.name] ?? '')"
+                :placeholder="col.name"
+                @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
+              ></nldd-text-field>
             </nldd-cell>
           </nldd-list-item>
 
@@ -200,7 +199,7 @@ const rowCount = computed(() => rows.value.length);
   font-weight: 700;
   padding: 1px 6px;
   border-radius: 4px;
-  background: #154273;
+  background: var(--color-primary);
   color: white;
   flex-shrink: 0;
 }

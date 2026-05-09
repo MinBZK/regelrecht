@@ -30,6 +30,27 @@ impl ElementHandler for WijHandler {
     }
 }
 
+/// Recurse into all element children, joining non-empty results with
+/// `separator`. Shared body for handlers that just delegate every element
+/// child to the dispatcher (`<considerans>`, `<aanhef>`).
+fn join_all_element_children<'a, 'input>(
+    node: Node<'a, 'input>,
+    context: &mut ParseContext<'_>,
+    recurse: &RecurseFn<'a, 'input>,
+    separator: &str,
+) -> ParseResult {
+    let mut parts: Vec<String> = Vec::new();
+    for child in node.children() {
+        if child.is_element() {
+            let result = recurse(child, context);
+            if !result.text.is_empty() {
+                parts.push(result.text);
+            }
+        }
+    }
+    ParseResult::new(parts.join(separator))
+}
+
 /// Handler for `<considerans>` (considerations) elements.
 ///
 /// Contains the legal considerations for the law.
@@ -46,18 +67,7 @@ impl ElementHandler for ConsideransHandler {
         context: &mut ParseContext<'_>,
         recurse: &RecurseFn<'a, 'input>,
     ) -> ParseResult {
-        let mut parts: Vec<String> = Vec::new();
-
-        for child in node.children() {
-            if child.is_element() {
-                let result = recurse(child, context);
-                if !result.text.is_empty() {
-                    parts.push(result.text);
-                }
-            }
-        }
-
-        ParseResult::new(parts.join("\n\n"))
+        join_all_element_children(node, context, recurse, "\n\n")
     }
 }
 
@@ -122,18 +132,7 @@ impl ElementHandler for AanhefHandler {
         context: &mut ParseContext<'_>,
         recurse: &RecurseFn<'a, 'input>,
     ) -> ParseResult {
-        let mut parts: Vec<String> = Vec::new();
-
-        for child in node.children() {
-            if child.is_element() {
-                let result = recurse(child, context);
-                if !result.text.is_empty() {
-                    parts.push(result.text);
-                }
-            }
-        }
-
-        ParseResult::new(parts.join("\n\n"))
+        join_all_element_children(node, context, recurse, "\n\n")
     }
 }
 

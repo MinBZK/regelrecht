@@ -1,5 +1,5 @@
 import { ref, onUnmounted } from 'vue';
-import { redirectToLogin } from './useAuth.js';
+import { authedFetch } from './useAuth.js';
 
 export function usePollingFetch(buildUrl, options = {}) {
   const { interval = 20_000 } = options;
@@ -20,12 +20,8 @@ export function usePollingFetch(buildUrl, options = {}) {
     if (initialLoad) loading.value = true;
 
     try {
-      const response = await fetch(url);
-
-      if (response.status === 401) {
-        redirectToLogin();
-        return;
-      }
+      const response = await authedFetch(url);
+      if (!response) return;
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');

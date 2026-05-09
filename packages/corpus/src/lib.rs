@@ -2,6 +2,7 @@ pub mod auth;
 pub mod backend;
 pub mod client;
 pub mod config;
+pub mod dto;
 pub mod error;
 #[cfg(feature = "github")]
 pub mod github;

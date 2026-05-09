@@ -4,7 +4,7 @@ import { useDependencies } from '../composables/useDependencies.js';
 import { useScenarios } from '../composables/useScenarios.js';
 import { parseFeature } from '../gherkin/parser.js';
 import { mapFeatureToForm, getEffectiveSetup, formStateToGherkin, syncEditedValues } from '../gherkin/formMapper.js';
-import { matchStatus } from '../utils/outputFormat.js';
+import { matchStatus, humanize } from '../utils/outputFormat.js';
 import { buildArticleMap } from '../utils/articleMapping.js';
 import ScenarioForm from './ScenarioForm.vue';
 
@@ -59,12 +59,6 @@ watch(isDirty, (val) => emit('dirty-change', val));
 
 function markDirty() {
   if (!isDirty.value) isDirty.value = true;
-}
-
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
 }
 
 function scenarioExpectations(index) {
@@ -214,7 +208,9 @@ watch(
 );
 
 // --- Details handler: emit to right panel ---
-function onShowDetails(index) {
+// `view` indicates which sheet the parent should open: 'trace' for
+// the execution-trace sheet (default), 'graph' for the law-graph sheet.
+function onShowDetails(index, view = 'trace') {
   // Prefer fresh data from the form ref, but its state may have been reset
   // after a save/reload — fall back to the cached result in that case.
   const formRef = scenarioRefs.value[index];
@@ -229,6 +225,10 @@ function onShowDetails(index) {
       error: data.error,
       expectations: data.expectations || {},
       scenarioName,
+      // Forward the scenario's entry output so the graph view can pin
+      // its "▶ start" marker to the right output leaf.
+      outputName: data.outputName || null,
+      view,
     });
   }
 }
@@ -284,8 +284,9 @@ async function onSaveAndShow() {
   await nextTick();
   const formRef = scenarioRefs.value[idx];
   if (formRef?.execute) {
-    formRef.execute();
-    const data = formRef.getExecutionData?.();
+    // execute() returns the post-execution data synchronously; use the
+    // return value directly so we never fall back to the pre-save cache.
+    const data = formRef.execute();
     if (data) onScenarioResult(idx, data);
   }
   onShowDetails(idx);
@@ -361,7 +362,13 @@ defineExpose({ save: onSave });
                   variant="primary"
                   :disabled="!scenarioResults.get(i) || undefined"
                   text="Toon resultaat"
-                  @click="onShowDetails(i)"
+                  @click="onShowDetails(i, 'trace')"
+                ></nldd-button>
+                <nldd-button
+                  variant="secondary"
+                  :disabled="!scenarioResults.get(i) || undefined"
+                  text="Graaf"
+                  @click="onShowDetails(i, 'graph')"
                 ></nldd-button>
                 <nldd-button
                   text="Bewerk"
@@ -375,7 +382,7 @@ defineExpose({ save: onSave });
 
       <nldd-inline-dialog
         v-else-if="!scenariosLoading && !depsLoading"
-        text="Geen scenario's beschikbaar voor deze wet."
+        text="Geen scenario's beschikbaar voor dit artikel."
       ></nldd-inline-dialog>
     </nldd-simple-section>
 
@@ -387,6 +394,7 @@ defineExpose({ save: onSave });
       ref="scenarioSheetEl"
       placement="right"
       width="640px"
+      full-height
       @close="cancelEdits"
     >
       <nldd-page sticky-header :sticky-footer="isDirty || undefined">

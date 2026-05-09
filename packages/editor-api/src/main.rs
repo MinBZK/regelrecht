@@ -15,7 +15,6 @@ use tower_sessions::Expiry;
 use tower_sessions::SessionManagerLayer;
 use tower_sessions_memory_store::MemoryStore;
 use tower_sessions_sqlx_store::PostgresStore;
-use tracing_subscriber::EnvFilter;
 
 mod config;
 mod corpus_handlers;
@@ -24,16 +23,13 @@ mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod user_settings;
 
 use state::{AppState, CorpusState};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    regelrecht_shared::telemetry::init_subscriber("info");
 
     let app_config = config::AppConfig::from_env();
 
@@ -169,6 +165,15 @@ async fn main() {
         .route(
             "/api/feature-flags/{key}",
             axum::routing::put(feature_flags::update_feature_flag),
+        )
+        .route("/api/user/settings", get(user_settings::list))
+        // 4 KiB is ample for `{"value":"<one allowed enum>"}` and stops a
+        // caller from streaming a much larger body that `validate` would only
+        // reject after deserialization.
+        .route(
+            "/api/user/settings/{key}",
+            axum::routing::put(user_settings::set)
+                .layer(axum::extract::DefaultBodyLimit::max(4096)),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -325,12 +330,12 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
             }
             Err(e) => {
                 tracing::warn!(error = %e, "failed to load corpus registry, using empty");
-                empty_registry()
+                regelrecht_corpus::CorpusRegistry::empty()
             }
         }
     } else {
         tracing::info!("no corpus-registry.yaml found, corpus endpoints will return empty results");
-        empty_registry()
+        regelrecht_corpus::CorpusRegistry::empty()
     };
 
     let favorites = load_favorites(static_dir);
@@ -452,11 +457,6 @@ fn load_favorites(static_dir: &str) -> HashSet<String> {
             HashSet::new()
         }
     }
-}
-
-fn empty_registry() -> regelrecht_corpus::CorpusRegistry {
-    regelrecht_corpus::CorpusRegistry::from_yaml("schema_version: '1.0'\nsources: []\n")
-        .unwrap_or_else(|_| unreachable!())
 }
 
 /// Resolve the pipeline-api URL, preferring pod HOSTNAME over environment

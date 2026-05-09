@@ -1,14 +1,8 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
-import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus } from '../utils/outputFormat.js';
+import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
-
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
-}
 
 const props = defineProps({
   /** Scenario object from mapFeatureToForm() */
@@ -155,6 +149,9 @@ function execute() {
     // from a previous successful run.
     emit('executed', getExecutionData());
   }
+  // Return the data so callers can synchronously read the post-execution
+  // result without relying on Vue reactivity timing.
+  return getExecutionData();
 }
 
 /** Returns the current execution data for use by parent components */
@@ -164,6 +161,9 @@ function getExecutionData() {
     traceText: result.value?.trace_text || errorTraceText.value || null,
     error: error.value,
     expectations: expectations.value,
+    // Expose the scenario's entry output so the graph view can mark the
+    // starting leaf (see useTraceStepping.startNodeIds).
+    outputName: props.scenario.execution?.outputName || selectedOutputs.value[0] || null,
   };
 }
 
@@ -246,13 +246,15 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
     <nldd-list variant="box" class="sf-input-list">
       <nldd-list-item size="md">
-        <nldd-text-cell text="Datum" max-width="140"></nldd-text-cell>
+        <nldd-text-cell text="Datum" max-width="140px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-cell>
           <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
         </nldd-cell>
       </nldd-list-item>
       <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-        <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140"></nldd-text-cell>
+        <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
         <nldd-cell>
           <nldd-text-field
             size="md"

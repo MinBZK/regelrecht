@@ -1,6 +1,6 @@
 use crossterm::event::KeyEvent;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::Paragraph;
 
 pub struct PipelineView {
     connected: bool,
@@ -19,10 +19,7 @@ impl PipelineView {
     }
 
     pub fn render(&self, frame: &mut Frame, area: Rect) {
-        let block = Block::default().borders(Borders::ALL).title(Span::styled(
-            " Pipeline Monitor ",
-            Style::default().add_modifier(Modifier::BOLD),
-        ));
+        let block = super::common::titled_block(" Pipeline Monitor ");
 
         if !self.connected {
             let content = Paragraph::new(vec![

@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod bdd;
+pub mod common;
 pub mod corpus;
 pub mod dashboard;
 pub mod deps;

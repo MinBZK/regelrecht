@@ -16,45 +16,41 @@ name = "regelrecht-admin"
 path = "src/main.rs"
 
 [dependencies]
-axum = "0.8"
+axum.workspace = true
 regelrecht-auth = { path = "../auth" }
-sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono"] }
+regelrecht-shared = { path = "../shared", features = ["telemetry"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono"] }
 regelrecht-corpus = { path = "../corpus", default-features = false }
 regelrecht-harvester = { path = "../harvester" }
 regelrecht-pipeline = { path = "../pipeline" }
-chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["serde"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-tower-http = { version = "0.6", features = ["fs", "trace"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-openidconnect = "4.0"
-tower-sessions = "0.14"
-tower-sessions-sqlx-store = { version = "0.15", features = ["postgres"] }
+chrono.workspace = true
+uuid.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower-http = { workspace = true, features = ["fs", "trace"] }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+openidconnect.workspace = true
+tower-sessions.workspace = true
+tower-sessions-sqlx-store.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-url = "2"
-urlencoding = "2"
-base64 = "0.22"
-time = "0.3"
+url.workspace = true
+urlencoding.workspace = true
+base64.workspace = true
+time.workspace = true
 prometheus-client = "0.24"
-strum = "0.28"
-subtle = "2"
-sha2 = "0.10"
+strum.workspace = true
+subtle.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
-tower = "0.5"
-tower-sessions-memory-store = "0.14"
-wiremock = "0.6"
-rsa = "0.9"
-uuid = { version = "1", features = ["v4"] }
-testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
-http-body-util = "0.1"
-pretty_assertions = "1"
+regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
+tower.workspace = true
+tower-sessions-memory-store.workspace = true
+wiremock.workspace = true
+rsa.workspace = true
+http-body-util.workspace = true
+pretty_assertions.workspace = true
 
-[lints.clippy]
-unwrap_used = "warn"
-expect_used = "warn"
-panic = "warn"
+[lints]
+workspace = true

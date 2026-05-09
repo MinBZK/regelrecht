@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import LibraryApp from './LibraryApp.vue';
 import { ensureAuthReady, useAuth } from './composables/useAuth.js';
+import { recordLastVisited } from './composables/useLastVisitedRoute.js';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -54,10 +55,18 @@ router.beforeEach(async (to) => {
   return true;
 });
 
+// Track the last fullPath per route name so the Bibliotheek/Editor tab
+// switch can restore the user's prior position in each section.
 router.afterEach((to) => {
-  document.title = to.meta.title
-    ? `${to.meta.title} \u00b7 RegelRecht`
-    : 'RegelRecht';
+  recordLastVisited(to.name, to.fullPath);
 });
+
+// Note: document.title is owned by the route components (LibraryApp, EditorApp)
+// via watchEffect \u2014 they reflect law + article state. router.afterEach used to
+// set a static title here, but it ran AFTER the component's reactive update
+// (vue's effect flush is sync; afterEach is one microtask later), so a
+// tab-switch or article-select would set "Editor: Art. 5 \u00b7 ..." and then
+// immediately get clobbered back to "Editor \u00b7 RegelRecht". Letting the
+// components own the title avoids the race.
 
 export default router;

@@ -5,10 +5,18 @@ RUN apk add --no-cache musl-dev
 RUN rustup target add wasm32-unknown-unknown
 RUN cargo install wasm-bindgen-cli@0.2.114 --locked
 WORKDIR /build
-COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/engine",\n    "packages/shared",\n]\n' > Cargo.toml
-COPY packages/engine/ packages/engine/
-COPY packages/shared/ packages/shared/
+COPY packages/Cargo.lock packages/Cargo.toml ./
+# Trim workspace members to engine + shared (the only crates the wasm build
+# needs); everything else is dropped so chef does not try to resolve their
+# source paths. The `grep` assertion fails the build loudly if
+# packages/Cargo.toml is ever reformatted away from a multi-line members
+# array — without it the `sed` patterns would silently no-op.
+# When adding a new workspace member that this image does NOT build, add it
+# to this exclusion list as well; otherwise chef will fail to find its source.
+RUN grep -qE '^members = \[$' Cargo.toml && \
+    sed -i '/"admin"/d; /"auth"/d; /"corpus"/d; /"editor-api"/d; /"harvester"/d; /"pipeline"/d; /"tui"/d' Cargo.toml
+COPY packages/engine/ engine/
+COPY packages/shared/ shared/
 RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p regelrecht-engine && \
     wasm-bindgen --target web --out-dir /wasm-pkg \
       target/wasm32-unknown-unknown/release/regelrecht_engine.wasm
@@ -31,34 +39,45 @@ WORKDIR /build
 
 # Stage 3: Plan dependencies
 FROM chef AS planner
-COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/auth",\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
-COPY packages/auth/ packages/auth/
-COPY packages/editor-api/ packages/editor-api/
-COPY packages/corpus/ packages/corpus/
-COPY packages/engine/ packages/engine/
-COPY packages/harvester/ packages/harvester/
-COPY packages/pipeline/ packages/pipeline/
-COPY packages/shared/ packages/shared/
+COPY packages/Cargo.lock packages/Cargo.toml ./
+# Trim workspace members to those actually built by this Dockerfile so chef
+# does not try to resolve crates whose source we do not COPY. The `grep`
+# assertion ensures the multi-line members format is intact; otherwise the
+# `sed` patterns would silently no-op.
+# When adding a new workspace member that this image does NOT build, add it
+# to this exclusion list as well; otherwise chef will fail to find its source.
+RUN grep -qE '^members = \[$' Cargo.toml && \
+    sed -i '/"admin"/d; /"tui"/d' Cargo.toml
+COPY packages/auth/ auth/
+COPY packages/editor-api/ editor-api/
+COPY packages/corpus/ corpus/
+COPY packages/engine/ engine/
+COPY packages/harvester/ harvester/
+COPY packages/pipeline/ pipeline/
+COPY packages/shared/ shared/
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 4: Build Rust binary (deps cached separately from source)
 FROM chef AS builder
 COPY packages/Cargo.lock ./
-RUN printf '[workspace]\nresolver = "2"\nmembers = [\n    "packages/auth",\n    "packages/editor-api",\n    "packages/corpus",\n    "packages/engine",\n    "packages/harvester",\n    "packages/pipeline",\n    "packages/shared",\n]\n' > Cargo.toml
+COPY --from=planner /build/Cargo.toml ./Cargo.toml
 COPY --from=planner /build/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
+# `cargo chef cook` rewrites the workspace Cargo.toml without
+# `[workspace.lints]`, which breaks members that declare `[lints] workspace
+# = true`. Re-COPY the real workspace manifest before the final build.
+COPY --from=planner /build/Cargo.toml ./Cargo.toml
 
-COPY packages/auth/ packages/auth/
-COPY packages/editor-api/ packages/editor-api/
-COPY packages/corpus/ packages/corpus/
-COPY packages/engine/ packages/engine/
-COPY packages/harvester/ packages/harvester/
-COPY packages/pipeline/ packages/pipeline/
-COPY packages/shared/ packages/shared/
+COPY packages/auth/ auth/
+COPY packages/editor-api/ editor-api/
+COPY packages/corpus/ corpus/
+COPY packages/engine/ engine/
+COPY packages/harvester/ harvester/
+COPY packages/pipeline/ pipeline/
+COPY packages/shared/ shared/
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
-RUN find packages -name '*.rs' -exec touch {} + && \
+RUN find . -name '*.rs' -exec touch {} + && \
     cargo build --release --bin regelrecht-editor-api
 
 # Stage 5: Runtime

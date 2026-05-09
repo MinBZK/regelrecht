@@ -4,9 +4,8 @@ import {
   OPERATION_LABELS,
   collectAvailableVariables,
   describeSubtitle,
-  formatValueLabel,
+  derivedTitle,
 } from '../utils/operationTree.js';
-
 const props = defineProps({
   operation: { type: Object, default: null },
   article: { type: Object, default: null },
@@ -29,7 +28,7 @@ const variableGroups = computed(() => {
     if (!groups.has(v.category)) groups.set(v.category, []);
     groups.get(v.category).push({
       value: v.ref,
-      label: v.name.replace(/_/g, ' '),
+      label: v.name,
     });
   }
   for (const opts of groups.values()) {
@@ -136,8 +135,8 @@ const operationValues = computed(() => {
     if (Array.isArray(node.cases)) {
       node.cases.forEach((c, i) => {
         const prefix = isSwitch ? `Geval ${i + 1} — ` : '';
-        if (c?.when !== undefined) vals.push({ _label: `${prefix}als`, _value: c.when, _kind: 'case-when', _caseIndex: i });
-        if (c?.then !== undefined) vals.push({ _label: `${prefix}dan`, _value: c.then, _kind: 'case-then', _caseIndex: i });
+        if (c?.when !== undefined) vals.push({ _label: `${prefix}Als`, _value: c.when, _kind: 'case-when', _caseIndex: i });
+        if (c?.then !== undefined) vals.push({ _label: `${prefix}Dan`, _value: c.then, _kind: 'case-then', _caseIndex: i });
       });
     }
     if (node.default !== undefined) vals.push({ _label: isSwitch ? 'Standaard' : 'Anders', _value: node.default, _kind: 'default' });
@@ -171,7 +170,7 @@ function isLiteralValue(val) {
 
 function valueDropdownNestedOption(val) {
   if (!isNestedOperation(val)) return null;
-  return { value: '__nested__', label: formatValueLabel(val) + ' (operatie)' };
+  return { value: '__nested__', label: `${derivedTitle(val)} (operatie)` };
 }
 
 function currentDropdownValue(val) {
@@ -190,12 +189,11 @@ function parseInputValue(str) {
   return str;
 }
 
-function changeOperationType(event) {
+function changeOperationType(newType) {
   const node = props.operation?.node;
   if (!node) return;
-  const newType = event.target.value;
   const oldType = node.operation;
-  if (newType === oldType) return;
+  if (!newType || newType === oldType) return;
 
   node.operation = newType;
 
@@ -348,26 +346,25 @@ function updateDropdownValue(val, event) {
   applyValueMutation(val, newVal);
 }
 
-function humanize(name) {
-  if (typeof name !== 'string') return name;
-  const spaced = name.replace(/_/g, ' ');
-  return /[A-Z]/.test(spaced) && spaced === spaced.toUpperCase() ? spaced.toLowerCase() : spaced;
-}
-
-function variableLabel(ref) {
-  for (const opts of variableGroups.value.values()) {
-    const hit = opts.find(o => o.value === ref);
-    if (hit) return humanize(hit.label);
-  }
-  return humanize(ref);
-}
 
 function readonlyValueText(val) {
   const v = val._value;
-  if (v === null || v === undefined || v === '') return '—';
-  if (isNestedOperation(v)) return formatValueLabel(v) + ' (operatie)';
-  if (typeof v === 'string' && v.startsWith('$')) return variableLabel(v);
-  return humanize(String(v));
+  if (v === null || v === undefined || v === '') return '(leeg)';
+  // For a nested op: prefer the user-supplied title; fall back to the
+  // derived expression. Mirrors the buildOperationTree title rule so the
+  // Waarde row reads identically to the Titel row after clicking in.
+  if (isNestedOperation(v)) return v.title ?? derivedTitle(v);
+  return String(v);
+}
+
+// Supporting-text for a Waarde row holding a nested op: only show the
+// derived expression when a user-title masked it as the primary text.
+// Without a user-title the row text IS the derived expression, so a
+// supporting-text would just repeat it.
+function nestedSupportingText(val) {
+  const v = val._value;
+  if (!isNestedOperation(v) || !v.title) return undefined;
+  return derivedTitle(v);
 }
 
 function removeValue(val) {
@@ -428,43 +425,39 @@ function addNestedOperation() {
 
 <template>
   <template v-if="operation">
-    <nldd-title size="4" class="operation-settings__title">
-      <h4>Instellingen operatie {{ operation.number }}</h4>
-    </nldd-title>
-    <nldd-spacer size="12"></nldd-spacer>
+    <template v-if="String(operation.number).includes('.')">
+      <nldd-title size="4" class="operation-settings__title">
+        <h4>Operatie {{ operation.number }}</h4>
+      </nldd-title>
+      <nldd-spacer size="12"></nldd-spacer>
+    </template>
     <nldd-list variant="box" class="settings-list">
       <!-- Titel -->
       <nldd-list-item size="md">
-        <nldd-text-cell text="Titel" max-width="120"></nldd-text-cell>
-        <nldd-cell v-if="editable">
-          <nldd-text-field size="md" :value="operation.title" readonly></nldd-text-field>
-        </nldd-cell>
-        <template v-else>
-          <nldd-text-cell horizontal-alignment="right" :text="operation.title || '—'"></nldd-text-cell>
-          <template v-if="hasClickableRow">
-            <nldd-spacer-cell size="12"></nldd-spacer-cell>
-            <nldd-icon-cell size="20"></nldd-icon-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          </template>
+        <nldd-text-cell text="Titel" max-width="120px"></nldd-text-cell>
+        <nldd-text-cell horizontal-alignment="right" :text="operation.title || '(leeg)'"></nldd-text-cell>
+        <template v-if="!editable && hasClickableRow">
+          <nldd-spacer-cell size="12"></nldd-spacer-cell>
+          <nldd-icon-cell size="20"></nldd-icon-cell>
         </template>
       </nldd-list-item>
 
       <!-- Type -->
       <nldd-list-item size="md">
-        <nldd-text-cell text="Type" max-width="120"></nldd-text-cell>
+        <nldd-text-cell text="Type" max-width="120px"></nldd-text-cell>
+        <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
         <nldd-cell v-if="editable">
           <nldd-dropdown size="md" data-testid="operation-type-dropdown">
-            <select aria-label="Operatie type" :value="operation.operation" @change="changeOperationType($event)">
+            <select aria-label="Operatie type" :value="operation.operation" @change="changeOperationType($event.target.value)">
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value" :selected="opt.value === operation.operation">{{ opt.label }}</option>
             </select>
           </nldd-dropdown>
         </nldd-cell>
         <template v-else>
-          <nldd-text-cell horizontal-alignment="right" :text="OPERATION_LABELS[operation.operation] || operation.operation || '—'"></nldd-text-cell>
+          <nldd-text-cell horizontal-alignment="right" :text="OPERATION_LABELS[operation.operation] || operation.operation || '(leeg)'"></nldd-text-cell>
           <template v-if="hasClickableRow">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20"></nldd-icon-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
         </template>
       </nldd-list-item>
@@ -478,7 +471,8 @@ function addNestedOperation() {
         :type="!editable && isNestedOperation(val._value) ? 'button' : undefined"
         @click="!editable && isNestedOperation(val._value) && emit('select-operation', val._value)"
       >
-        <nldd-text-cell :text="val._label" max-width="120"></nldd-text-cell>
+        <nldd-text-cell :text="val._label" max-width="120px"></nldd-text-cell>
+        <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
         <nldd-cell v-if="editable">
           <div class="value-row">
             <!-- Subject/date fields show a dropdown of available variables.
@@ -525,14 +519,13 @@ function addNestedOperation() {
           <nldd-text-cell
             horizontal-alignment="right"
             :text="readonlyValueText(val)"
-            :supporting-text="isNestedOperation(val._value) ? describeSubtitle(val._value) : ''"
+            :supporting-text="nestedSupportingText(val)"
           ></nldd-text-cell>
           <template v-if="hasClickableRow">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20">
-              <nldd-icon v-if="isNestedOperation(val._value)" name="chevron-down"></nldd-icon>
+              <nldd-icon v-if="isNestedOperation(val._value)" name="chevron-right"></nldd-icon>
             </nldd-icon-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
         </template>
       </nldd-list-item>
@@ -540,8 +533,8 @@ function addNestedOperation() {
       <!-- Add value -->
       <nldd-list-item v-if="canAddValue || canAddNestedOperation" size="md">
         <div class="add-value-buttons">
-          <nldd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></nldd-button>
-          <nldd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Voeg operatie toe"></nldd-button>
+          <nldd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Waarde toevoegen"></nldd-button>
+          <nldd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Operatie toevoegen"></nldd-button>
         </div>
       </nldd-list-item>
     </nldd-list>

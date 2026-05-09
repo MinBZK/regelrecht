@@ -424,7 +424,8 @@ describe('EditSheet', () => {
     });
   });
 
-  describe('input — law search/select', () => {
+  // Tests drive the combo-box change handlers directly; filter/search UX lives in nldd-combo-box.
+  describe('input — law combo-box flow', () => {
     const mockLaws = [
       { law_id: 'wet_basisregistratie_personen', name: null, display_name: 'Wet basisregistratie personen', source_id: 'local', source_name: 'Local' },
       { law_id: 'zorgtoeslagwet', name: null, display_name: 'Wet op de zorgtoeslag', source_id: 'local', source_name: 'Local' },
@@ -453,86 +454,96 @@ describe('EditSheet', () => {
       fetchSpy.mockRestore();
     });
 
-    it('selectLaw sets sourceRegulation and fetches outputs', async () => {
+    it('onLawComboChange sets sourceRegulation, clears sourceOutput, and fetches outputs', async () => {
       const wrapper = mountSheet();
       await setItem(wrapper, { section: 'add-input', isNew: true });
       // Wait for fetchLawsList to complete
       await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
 
-      await wrapper.vm.selectLaw(mockLaws[0]);
+      // sourceOutput is cleared on law change so we can detect it
+      wrapper.vm.values.sourceOutput = 'stale';
+      await wrapper.vm.onLawComboChange({ detail: { value: 'wet_basisregistratie_personen' } });
       await nextTick();
 
       expect(wrapper.vm.values.sourceRegulation).toBe('wet_basisregistratie_personen');
-      expect(wrapper.vm.lawSearchQuery).toBe('Wet basisregistratie personen');
-      expect(wrapper.vm.showLawResults).toBe(false);
-      // Outputs should be fetched
+      expect(wrapper.vm.values.sourceOutput).toBe('');
+      // Outputs are fetched and populated
       await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
       expect(wrapper.vm.availableOutputs).toEqual(mockOutputs);
     });
 
-    it('onOutputSelected auto-populates name, type, and parameters', async () => {
+    it('onOutputComboChange auto-populates name, type, and parameters', async () => {
       const wrapper = mountSheet();
       await setItem(wrapper, { section: 'add-input', isNew: true });
       await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
 
-      // Set up outputs
-      await wrapper.vm.selectLaw(mockLaws[0]);
+      // Pick a law so availableOutputs is populated
+      await wrapper.vm.onLawComboChange({ detail: { value: 'wet_basisregistratie_personen' } });
       await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
 
-      // Name is empty, type is default 'string'
+      // Name is empty, type defaults to 'string'
       expect(wrapper.vm.values.name).toBe('');
-      wrapper.vm.onOutputSelected('leeftijd');
+      wrapper.vm.onOutputComboChange({ detail: { value: 'leeftijd' } });
+
+      expect(wrapper.vm.values.sourceOutput).toBe('leeftijd');
       expect(wrapper.vm.values.name).toBe('leeftijd');
       expect(wrapper.vm.values.type).toBe('number');
-      // Parameters pre-populated from the output's article
+      // Parameters pre-populated from the selected output
       const paramKeys = wrapper.vm.values.sourceParameters.map(p => p.key);
       expect(paramKeys).toEqual(['bsn', 'peildatum']);
     });
 
-    it('onOutputSelected does NOT overwrite user-edited name', async () => {
+    it('onOutputComboChange does NOT overwrite user-edited name', async () => {
       const wrapper = mountSheet();
       await setItem(wrapper, { section: 'add-input', isNew: true });
       await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
 
-      await wrapper.vm.selectLaw(mockLaws[0]);
+      await wrapper.vm.onLawComboChange({ detail: { value: 'wet_basisregistratie_personen' } });
       await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
 
       // User already set a custom name
       wrapper.vm.values.name = 'custom_input';
-      wrapper.vm.onOutputSelected('leeftijd');
+      wrapper.vm.onOutputComboChange({ detail: { value: 'leeftijd' } });
       expect(wrapper.vm.values.name).toBe('custom_input');
+      // Type is still updated — it's determined by the source output, not the user
+      expect(wrapper.vm.values.type).toBe('number');
     });
 
-    it('filteredLaws filters by display name', async () => {
+    it('onOutputComboChange resets parameter rows even when switching to an output with fewer params', async () => {
       const wrapper = mountSheet();
       await setItem(wrapper, { section: 'add-input', isNew: true });
       await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
-
-      wrapper.vm.lawSearchQuery = 'zorgtoeslag';
-      await nextTick();
-      expect(wrapper.vm.filteredLaws.length).toBe(1);
-      expect(wrapper.vm.filteredLaws[0].law_id).toBe('zorgtoeslagwet');
-    });
-
-    it('filteredLaws also matches on law_id', async () => {
-      const wrapper = mountSheet();
-      await setItem(wrapper, { section: 'add-input', isNew: true });
-      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
-
-      wrapper.vm.lawSearchQuery = 'kieswet';
-      await nextTick();
-      expect(wrapper.vm.filteredLaws.length).toBe(1);
-      expect(wrapper.vm.filteredLaws[0].law_id).toBe('kieswet');
-    });
-
-    it('save emits correct data after search/select flow', async () => {
-      const wrapper = mountSheet();
-      await setItem(wrapper, { section: 'add-input', isNew: true });
-      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
-
-      await wrapper.vm.selectLaw(mockLaws[0]);
+      await wrapper.vm.onLawComboChange({ detail: { value: 'wet_basisregistratie_personen' } });
       await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
-      wrapper.vm.onOutputSelected('leeftijd');
+
+      // First select leeftijd (2 params), then switch to heeft_partner (1 param).
+      // Stale rows from the first selection must not leak into the second.
+      wrapper.vm.onOutputComboChange({ detail: { value: 'leeftijd' } });
+      expect(wrapper.vm.values.sourceParameters.map(p => p.key)).toEqual(['bsn', 'peildatum']);
+      wrapper.vm.onOutputComboChange({ detail: { value: 'heeft_partner' } });
+      expect(wrapper.vm.values.sourceParameters.map(p => p.key)).toEqual(['bsn']);
+    });
+
+    it('allLaws is exposed for the combo-box menu', async () => {
+      // The nldd-combo-box does its own search/filter via menu-item aliases;
+      // this component just needs to expose the full law list and a stable
+      // displayName helper. (filteredLaws / lawSearchQuery are gone.)
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      const ids = wrapper.vm.allLaws.map((l) => l.law_id);
+      expect(ids).toEqual(['wet_basisregistratie_personen', 'zorgtoeslagwet', 'kieswet']);
+    });
+
+    it('save emits correct data after combo-box select flow', async () => {
+      const wrapper = mountSheet();
+      await setItem(wrapper, { section: 'add-input', isNew: true });
+      await vi.waitFor(() => expect(wrapper.vm.allLaws.length).toBeGreaterThan(0));
+
+      await wrapper.vm.onLawComboChange({ detail: { value: 'wet_basisregistratie_personen' } });
+      await vi.waitFor(() => expect(wrapper.vm.availableOutputs.length).toBeGreaterThan(0));
+      wrapper.vm.onOutputComboChange({ detail: { value: 'leeftijd' } });
 
       wrapper.vm.save();
       await nextTick();

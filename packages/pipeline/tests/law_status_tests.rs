@@ -1,14 +1,13 @@
-mod common;
-
 use pretty_assertions::assert_eq;
 
 use regelrecht_pipeline::job_queue::{self, CreateJobRequest};
 use regelrecht_pipeline::law_status;
 use regelrecht_pipeline::models::{JobType, LawStatusValue};
+use regelrecht_pipeline::test_utils::TestDb;
 
 #[tokio::test]
 async fn test_upsert_law() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let entry = law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
         .await
@@ -28,7 +27,7 @@ async fn test_upsert_law() {
 
 #[tokio::test]
 async fn test_upsert_law_without_name() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "test_law", Some("Test Law"), None)
         .await
@@ -42,7 +41,7 @@ async fn test_upsert_law_without_name() {
 
 #[tokio::test]
 async fn test_upsert_law_slug_preserved() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let entry = law_status::upsert_law(&db.pool, "slug_law", Some("Slug Law"), Some("slug_law"))
         .await
@@ -64,7 +63,7 @@ async fn test_upsert_law_slug_preserved() {
 
 #[tokio::test]
 async fn test_update_status() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
@@ -83,7 +82,7 @@ async fn test_update_status() {
 
 #[tokio::test]
 async fn test_update_status_not_found() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let result = law_status::update_status(&db.pool, "nonexistent", LawStatusValue::Queued).await;
     assert!(result.is_err());
@@ -91,7 +90,7 @@ async fn test_update_status_not_found() {
 
 #[tokio::test]
 async fn test_set_job_links() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
@@ -122,7 +121,7 @@ async fn test_set_job_links() {
 
 #[tokio::test]
 async fn test_set_coverage_score() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
@@ -136,7 +135,7 @@ async fn test_set_coverage_score() {
 
 #[tokio::test]
 async fn test_set_coverage_score_validation() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "test_law", None, None)
         .await
@@ -170,7 +169,7 @@ async fn test_set_coverage_score_validation() {
 
 #[tokio::test]
 async fn test_get_law() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "zorgtoeslagwet", Some("Zorgtoeslagwet"), None)
         .await
@@ -184,7 +183,7 @@ async fn test_get_law() {
 
 #[tokio::test]
 async fn test_get_law_not_found() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let result = law_status::get_law(&db.pool, "nonexistent").await;
     assert!(result.is_err());
@@ -192,7 +191,7 @@ async fn test_get_law_not_found() {
 
 #[tokio::test]
 async fn test_list_laws() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     law_status::upsert_law(&db.pool, "law_a", Some("Law A"), None)
         .await
@@ -223,7 +222,7 @@ async fn test_list_laws() {
 
 #[tokio::test]
 async fn test_transaction_atomicity() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     let mut tx = db.pool.begin().await.unwrap();
 
@@ -252,7 +251,7 @@ async fn test_transaction_atomicity() {
 
 #[tokio::test]
 async fn test_transaction_rollback() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     {
         let mut tx = db.pool.begin().await.unwrap();
@@ -280,7 +279,7 @@ async fn test_transaction_rollback() {
 
 #[tokio::test]
 async fn test_update_status_unless_any_protects_multiple_statuses() {
-    let db = common::TestDb::new().await;
+    let db = TestDb::new().await;
 
     // Mirrors the production protected set in api::harvest::create_harvest_job.
     let protected = &[

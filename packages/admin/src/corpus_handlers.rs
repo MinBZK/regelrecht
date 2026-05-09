@@ -1,33 +1,11 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use serde::{Deserialize, Serialize};
+use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
+use serde::Serialize;
 
 use crate::error::ApiError;
 use crate::state::AppState;
-
-/// Default and maximum page size for list endpoints.
-const DEFAULT_LIMIT: usize = 100;
-const MAX_LIMIT: usize = 1000;
-
-/// Pagination query parameters.
-#[derive(Debug, Deserialize)]
-pub struct PaginationParams {
-    #[serde(default)]
-    pub offset: usize,
-    #[serde(default)]
-    pub limit: Option<usize>,
-}
-
-/// Summary of a corpus source.
-#[derive(Debug, Serialize)]
-pub struct SourceSummary {
-    pub id: String,
-    pub name: String,
-    pub source_type: String,
-    pub priority: u32,
-    pub law_count: usize,
-}
 
 /// A law entry with source provenance.
 #[derive(Debug, Serialize)]
@@ -43,34 +21,10 @@ pub async fn list_sources(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<SourceSummary>>, ApiError> {
     let corpus = state.corpus.read().await;
-
-    let summaries: Vec<SourceSummary> = corpus
-        .registry
-        .sources()
-        .iter()
-        .map(|source| {
-            let law_count = corpus
-                .source_map
-                .laws()
-                .filter(|law| law.source_id == source.id)
-                .count();
-
-            let source_type = match &source.source_type {
-                regelrecht_corpus::SourceType::Local { .. } => "local",
-                regelrecht_corpus::SourceType::GitHub { .. } => "github",
-            };
-
-            SourceSummary {
-                id: source.id.clone(),
-                name: source.name.clone(),
-                source_type: source_type.to_string(),
-                priority: source.priority,
-                law_count,
-            }
-        })
-        .collect();
-
-    Ok(Json(summaries))
+    Ok(Json(build_source_summaries(
+        &corpus.registry,
+        &corpus.source_map,
+    )))
 }
 
 /// GET /api/corpus/laws — list loaded laws with source metadata.
@@ -82,7 +36,7 @@ pub async fn list_corpus_laws(
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<Vec<CorpusLawEntry>>, ApiError> {
     let corpus = state.corpus.read().await;
-    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+    let limit = params.effective_limit();
 
     let mut entries: Vec<CorpusLawEntry> = corpus
         .source_map

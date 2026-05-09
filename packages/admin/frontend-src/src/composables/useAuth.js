@@ -30,6 +30,20 @@ export function redirectToLogin() {
   window.location.href = '/auth/login?return_url=' + encodeURIComponent(returnUrl);
 }
 
+/**
+ * Like fetch(), but redirects to the login page on 401 and returns `null`
+ * so callers can `return` early. For other statuses the Response is
+ * returned unchanged — call sites still own 4xx/5xx body handling.
+ */
+export async function authedFetch(input, init) {
+  const response = await fetch(input, init);
+  if (response.status === 401) {
+    redirectToLogin();
+    return null;
+  }
+  return response;
+}
+
 export function useAuth() {
   if (!fetched) {
     fetched = true;
