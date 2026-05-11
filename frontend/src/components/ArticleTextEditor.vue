@@ -60,12 +60,18 @@ watch(editor, (inst) => {
 // Re-seed content when the parent swaps articles or a save completes. Skip if
 // the markdown already matches what the editor holds — calling setContent on
 // every keystroke would reset the cursor.
+//
+// When we do replace the content (typically an article switch), also reset
+// the selection to the start of the document. Without this, ProseMirror
+// keeps the previous cursor offset, which can land in the middle of the
+// new article (or out of range, snapping to the end) and confuses the user.
 watch(() => props.modelValue, (next) => {
   const inst = editor.value;
   if (!inst) return;
   const current = inst.storage.markdown.getMarkdown();
   if (current === next) return;
   inst.commands.setContent(next || '', { emitUpdate: false });
+  inst.commands.setTextSelection(0);
 });
 
 watch(() => props.editable, (next) => {

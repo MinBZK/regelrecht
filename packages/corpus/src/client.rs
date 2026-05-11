@@ -240,6 +240,26 @@ impl CorpusClient {
                 .await?;
         }
 
+        // Snapshot the dirty paths in memory BEFORE the checkout so we can
+        // restore them on top of `start_point`. Without this snapshot,
+        // `checkout -B branch <start_point>` would fail with "Your local
+        // changes would be overwritten" when the session branch was deleted
+        // upstream (start_point flips to origin/<base>) and the working
+        // tree's dirty file content conflicts with the base. A missing
+        // file in the snapshot means the caller invoked `delete_file`; we
+        // record `None` and replay by removing the file post-checkout so
+        // deletes survive the rebase onto `start_point`.
+        let mut snapshots: Vec<(PathBuf, Option<Vec<u8>>)> = Vec::with_capacity(paths.len());
+        for p in paths {
+            match tokio::fs::read(p).await {
+                Ok(bytes) => snapshots.push((p.clone(), Some(bytes))),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    snapshots.push((p.clone(), None));
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
         // Position on the session branch. `-B` resets-or-creates. Safe
         // because the session branch is single-writer per session UUID and
         // the editor-api process serialises persists for one session via
@@ -250,8 +270,39 @@ impl CorpusClient {
         } else {
             format!("origin/{base_branch}")
         };
+        // Remove the snapshot paths from disk so the subsequent
+        // `checkout -B` can never fail on "would be overwritten". We then
+        // replay the snapshot to put the user's edits back on top of
+        // `start_point`. Removing the file directly (rather than `git
+        // reset --hard`) avoids clobbering any *other* in-flight
+        // sibling-session edits in the same working tree.
+        for (path, _) in &snapshots {
+            match tokio::fs::remove_file(path).await {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
         self.run_git(&["checkout", "-B", branch, &start_point])
             .await?;
+
+        // Replay the snapshot: write back tracked content, remove paths
+        // that were marked for deletion.
+        for (path, content) in &snapshots {
+            match content {
+                Some(bytes) => {
+                    if let Some(parent) = path.parent() {
+                        tokio::fs::create_dir_all(parent).await?;
+                    }
+                    tokio::fs::write(path, bytes).await?;
+                }
+                None => match tokio::fs::remove_file(path).await {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(e.into()),
+                },
+            }
+        }
 
         // Stage the explicitly provided paths. Anything else dirty in the
         // working tree (left over from a previous sibling-session write)
@@ -1384,6 +1435,104 @@ mod tests {
         let out = String::from_utf8_lossy(&log.stdout);
         assert!(out.contains("first edit"), "missing first commit: {out}");
         assert!(out.contains("second edit"), "missing second commit: {out}");
+    }
+
+    /// Regression test: when the session branch is force-deleted upstream
+    /// while the working tree still carries dirty edits for files that
+    /// also exist on `base_branch` with different content, the next
+    /// `commit_and_push_to_branch` must NOT fail with "Your local changes
+    /// would be overwritten". The snapshot-then-replay path preserves
+    /// the user's edits across the rebase onto `origin/<base>`.
+    #[tokio::test]
+    async fn commit_and_push_to_branch_recovers_after_session_branch_deleted_upstream() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Seed development with a file that the editor will later edit.
+        let seed = repo_path.join("article.md");
+        tokio::fs::write(&seed, "original").await.unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "seed"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&repo_path)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // First save creates the session branch upstream.
+        tokio::fs::write(&seed, "edit 1").await.unwrap();
+        client
+            .commit_and_push_to_branch(
+                "editor/session-rolled",
+                "development",
+                &[seed.clone()],
+                "first edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Simulate upstream force-deletion of the session branch.
+        Command::new("git")
+            .args(["branch", "-D", "editor/session-rolled"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+
+        // User edits again — working tree now diverges from origin/development.
+        tokio::fs::write(&seed, "edit 2").await.unwrap();
+
+        // This previously failed with "Your local changes would be
+        // overwritten" because the session branch was gone, `start_point`
+        // flipped to origin/development, and the dirty working tree
+        // conflicted with the base. The fix snapshots the dirty content
+        // before resetting and replays it after.
+        client
+            .commit_and_push_to_branch(
+                "editor/session-rolled",
+                "development",
+                &[seed.clone()],
+                "second edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // The recovered session branch on the remote contains the second
+        // edit (no first edit, because it died with the force-deleted
+        // branch).
+        let log = Command::new("git")
+            .args(["log", "editor/session-rolled", "--oneline"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&log.stdout);
+        assert!(out.contains("second edit"), "missing second edit: {out}");
+
+        // And the file content on the recovered branch reflects the
+        // user's most recent edit, not the base-branch version.
+        let show = Command::new("git")
+            .args(["show", "editor/session-rolled:article.md"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let content = String::from_utf8_lossy(&show.stdout);
+        assert_eq!(content.trim(), "edit 2");
     }
 
     #[tokio::test]

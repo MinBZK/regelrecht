@@ -447,6 +447,15 @@ fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (Status
 // Save / Delete scenario endpoints
 // ---------------------------------------------------------------------------
 
+/// Maximum accepted length of the `X-Editor-Session` header value.
+///
+/// The header ends up as a path segment on disk
+/// (`/tmp/regelrecht-editor-sessions/.../<session_id>`) and as a git ref
+/// name (`editor/session-<id>`). 128 bytes comfortably fits a UUID, hex,
+/// or other opaque identifier the frontend mints, while rejecting a
+/// pathological client that sends a multi-kilobyte value.
+const EDITOR_SESSION_MAX_LEN: usize = 128;
+
 /// Read the editor session id from the `X-Editor-Session` header.
 ///
 /// Required on every editor write. We deliberately accept-then-validate
@@ -472,6 +481,15 @@ fn require_editor_session(headers: &HeaderMap) -> Result<String, (StatusCode, St
         return Err((
             StatusCode::BAD_REQUEST,
             format!("{} header is empty", EDITOR_SESSION_HEADER),
+        ));
+    }
+    if trimmed.len() > EDITOR_SESSION_MAX_LEN {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{} header exceeds {} characters",
+                EDITOR_SESSION_HEADER, EDITOR_SESSION_MAX_LEN
+            ),
         ));
     }
     if !trimmed
@@ -900,4 +918,103 @@ pub struct ReloadRequest {
 #[derive(Debug, Serialize)]
 pub struct ReloadResponse {
     pub law_count: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests for the small, pure helpers in this module: header validation,
+    //! error mapping, and response shaping. The full save/delete handlers
+    //! require an axum harness with sessions + sqlx + a real source map
+    //! and live behind separate integration tests.
+    use super::*;
+    use axum::http::HeaderValue;
+    use regelrecht_corpus::backend::PrInfo;
+
+    fn headers_with(value: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(EDITOR_SESSION_HEADER, HeaderValue::from_str(value).unwrap());
+        h
+    }
+
+    #[test]
+    fn require_editor_session_missing_header_is_400() {
+        let h = HeaderMap::new();
+        let err = require_editor_session(&h).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("Missing"));
+    }
+
+    #[test]
+    fn require_editor_session_empty_value_is_400() {
+        let h = headers_with("   ");
+        let err = require_editor_session(&h).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("empty"));
+    }
+
+    #[test]
+    fn require_editor_session_invalid_chars_is_400() {
+        // Slashes are not allowed in a git ref segment and must be rejected.
+        let h = headers_with("foo/bar");
+        let err = require_editor_session(&h).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn require_editor_session_oversized_value_is_400() {
+        // Defence against pathological clients sending a megabyte-long
+        // header — that would end up as a branch name on disk.
+        let h = headers_with(&"a".repeat(1024));
+        let err = require_editor_session(&h).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn require_editor_session_accepts_uuid_shape() {
+        let h = headers_with("abc123-def4567890");
+        let session_id = require_editor_session(&h).unwrap();
+        assert_eq!(session_id, "abc123-def4567890");
+    }
+
+    #[test]
+    fn session_resolve_error_source_not_found_is_404() {
+        let err = session_resolve_error("law_x", SessionResolveError::SourceNotFound("src".into()));
+        assert_eq!(err.0, StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn session_resolve_error_no_token_is_403() {
+        let err = session_resolve_error("law_x", SessionResolveError::NoToken("src".into()));
+        assert_eq!(err.0, StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn session_resolve_error_other_is_500() {
+        let err = session_resolve_error("law_x", SessionResolveError::Other("boom".into()));
+        assert_eq!(err.0, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn save_response_from_local_source_has_no_pr() {
+        // PersistOutcome.pr is None for local-source saves; the response
+        // must mirror that shape so the frontend hides the PR badge.
+        let out = PersistOutcome { pr: None };
+        let body = save_response_from(out, "sess-abc");
+        assert!(body.pr.is_none());
+    }
+
+    #[test]
+    fn save_response_from_github_source_carries_pr_with_session_branch() {
+        let out = PersistOutcome {
+            pr: Some(PrInfo {
+                number: 42,
+                html_url: "https://github.com/x/y/pull/42".to_string(),
+            }),
+        };
+        let body = save_response_from(out, "sess-abc");
+        let pr = body.pr.expect("session-pr response must carry pr");
+        assert_eq!(pr.number, 42);
+        assert_eq!(pr.url, "https://github.com/x/y/pull/42");
+        assert_eq!(pr.branch, "editor/session-sess-abc");
+    }
 }

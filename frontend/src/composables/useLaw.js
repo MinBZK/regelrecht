@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
-import { getEditorSessionId } from './useEditorSession.js';
+import { getEditorSessionId, lastSavedPr } from './useEditorSession.js';
 
 // --- Shared law cache ---
 const lawCache = new Map();
@@ -50,11 +50,14 @@ export function useLaw(lawParam, articleParam) {
   const saving = ref(false);
   const saveError = ref(null);
   // PR opened or updated by the most recent successful save through the
-  // federated write-back path (RFC-010 phase 6). Stays populated across
-  // saves in the same editor session — every successful save returns the
-  // same PR info from the backend until the session ends or the PR is
-  // merged/closed. Null for local-source saves (no upstream PR).
-  const lastSavedPr = ref(null);
+  // federated write-back path (RFC-010 phase 6). Imported as a
+  // module-shared ref from useEditorSession so the badge in EditorApp
+  // reflects the most recent save regardless of which composable issued
+  // it (law-content saves via useLaw, scenario saves via useScenarios).
+  // Stays populated across saves in the same editor session — every
+  // successful save returns the same PR info from the backend until the
+  // session ends or the PR is merged/closed. Null for local-source saves
+  // (no upstream PR).
 
   const articles = computed(() => law.value?.articles ?? []);
 

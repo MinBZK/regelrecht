@@ -9,7 +9,7 @@ use regelrecht_corpus::config::CorpusConfig;
 use regelrecht_corpus::models::SourceType;
 use regelrecht_corpus::{CorpusClient, SourceMap};
 use sqlx::PgPool;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, OnceCell, RwLock};
 
 use crate::config::AppConfig;
 
@@ -129,10 +129,18 @@ type SharedBackend = Arc<Mutex<Box<dyn RepoBackend>>>;
 /// process lifetime; restart loses the in-memory map and a fresh save will
 /// re-clone, finding any prior session branch on the remote and continuing
 /// from there.
+///
+/// Each map entry is an [`Arc<OnceCell<SharedBackend>>`]. The registry
+/// write lock is held only long enough to insert the placeholder cell;
+/// the actual clone runs against the per-key cell so two callers on
+/// **different** keys never block each other on the slow path. Concurrent
+/// callers on the **same** key serialise inside the cell's `get_or_try_init`
+/// — which is the desired behaviour for that case.
 #[derive(Default)]
 pub struct SessionRegistry {
-    /// Backends keyed by `(session_id, source_id)`.
-    backends: RwLock<HashMap<SessionBackendKey, SharedBackend>>,
+    /// Backends keyed by `(session_id, source_id)`. The cells are
+    /// initialised lazily by the first caller for each key.
+    backends: RwLock<HashMap<SessionBackendKey, Arc<OnceCell<SharedBackend>>>>,
 }
 
 impl SessionRegistry {
@@ -176,79 +184,92 @@ impl SessionRegistry {
             SourceType::GitHub { github } => {
                 let key = (session_id.to_string(), source_id.to_string());
 
-                // Fast path: backend already exists for this session+source.
-                if let Some(existing) = self.backends.read().await.get(&key) {
-                    return Ok(ResolvedSessionBackend {
-                        backend: existing.clone(),
-                        uses_session_pr: true,
-                    });
+                // Fast path: backend already exists and is initialised for
+                // this session+source.
+                if let Some(cell) = self.backends.read().await.get(&key) {
+                    if let Some(existing) = cell.get() {
+                        return Ok(ResolvedSessionBackend {
+                            backend: existing.clone(),
+                            uses_session_pr: true,
+                        });
+                    }
                 }
 
-                // Slow path: build the backend under a write lock. We
-                // re-check inside the write lock to avoid two racing
-                // creators producing two backends for the same key.
-                let mut map = self.backends.write().await;
-                if let Some(existing) = map.get(&key) {
-                    return Ok(ResolvedSessionBackend {
-                        backend: existing.clone(),
-                        uses_session_pr: true,
-                    });
-                }
+                // Get or insert a per-key OnceCell under the write lock,
+                // then release the lock immediately. The slow `ensure_ready`
+                // (which does a full `git clone`) runs against the cell
+                // outside the registry lock, so callers writing to a
+                // **different** (session, source) key are never blocked
+                // by a clone in flight elsewhere.
+                let cell = {
+                    let mut map = self.backends.write().await;
+                    map.entry(key)
+                        .or_insert_with(|| Arc::new(OnceCell::new()))
+                        .clone()
+                };
 
-                let token = resolve_token_for_source(
-                    source_id,
-                    source.auth_ref.as_deref(),
-                    corpus.auth_file.as_deref(),
-                )
-                .map_err(|e| SessionResolveError::Other(e.to_string()))?
-                .ok_or_else(|| SessionResolveError::NoToken(source_id.to_string()))?;
+                // `get_or_try_init` runs the init future exactly once per
+                // cell; concurrent callers on the SAME key serialise here,
+                // which is what we want — they all need the same backend.
+                let backend = cell
+                    .get_or_try_init(|| async {
+                        let token = resolve_token_for_source(
+                            source_id,
+                            source.auth_ref.as_deref(),
+                            corpus.auth_file.as_deref(),
+                        )
+                        .map_err(|e| SessionResolveError::Other(e.to_string()))?
+                        .ok_or_else(|| SessionResolveError::NoToken(source_id.to_string()))?;
 
-                // Per-(session, source) clone path: keeps each session
-                // isolated so a checkout for session A doesn't disturb
-                // session B's working tree mid-persist. Trade disk for
-                // simplicity — cleanup on session expiry is a follow-up.
-                let host_id = std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
-                let repo_path = std::env::temp_dir()
-                    .join("regelrecht-editor-sessions")
-                    .join(host_id)
-                    .join(source_id)
-                    .join(session_id);
+                        // Per-(session, source) clone path: keeps each session
+                        // isolated so a checkout for session A doesn't disturb
+                        // session B's working tree mid-persist. Trade disk for
+                        // simplicity — cleanup on session expiry is a follow-up.
+                        let host_id =
+                            std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
+                        let repo_path = std::env::temp_dir()
+                            .join("regelrecht-editor-sessions")
+                            .join(host_id)
+                            .join(source_id)
+                            .join(session_id);
 
-                let repo_url = format!("https://github.com/{}/{}.git", github.owner, github.repo);
-                let mut config = CorpusConfig::new(&repo_url, &repo_path);
-                config.branch = github.effective_ref().to_string();
-                config = config.with_token(&token);
-                let client = CorpusClient::new(config);
+                        let repo_url =
+                            format!("https://github.com/{}/{}.git", github.owner, github.repo);
+                        let mut config = CorpusConfig::new(&repo_url, &repo_path);
+                        config.branch = github.effective_ref().to_string();
+                        config = config.with_token(&token);
+                        let client = CorpusClient::new(config);
 
-                let session_branch = format!("editor/session-{session_id}");
-                let mut backend: Box<dyn RepoBackend> = Box::new(
-                    SessionGitBackend::new(
-                        client,
-                        github.path.clone(),
-                        session_branch,
-                        github.effective_ref().to_string(),
-                        github.owner.clone(),
-                        github.repo.clone(),
-                        token,
-                    )
-                    .map_err(|e| SessionResolveError::Other(e.to_string()))?,
-                );
+                        let session_branch = format!("editor/session-{session_id}");
+                        let mut backend: Box<dyn RepoBackend> = Box::new(
+                            SessionGitBackend::new(
+                                client,
+                                github.path.clone(),
+                                session_branch,
+                                github.effective_ref().to_string(),
+                                github.owner.clone(),
+                                github.repo.clone(),
+                                token,
+                            )
+                            .map_err(|e| SessionResolveError::Other(e.to_string()))?,
+                        );
 
-                // Clone the source on first use of this (session, source).
-                // ensure_ready may take a second or two; the write lock
-                // means concurrent saves on the SAME (session, source)
-                // serialise here — that's fine, those callers literally
-                // need this backend.
-                backend
-                    .ensure_ready()
-                    .await
-                    .map_err(|e| SessionResolveError::Other(e.to_string()))?;
+                        // Clone the source on first use of this (session, source).
+                        // ensure_ready may take a second or two; runs **without**
+                        // the registry write lock held so other keys are
+                        // unaffected.
+                        backend
+                            .ensure_ready()
+                            .await
+                            .map_err(|e| SessionResolveError::Other(e.to_string()))?;
 
-                let arc = Arc::new(Mutex::new(backend));
-                map.insert(key, arc.clone());
+                        Ok::<SharedBackend, SessionResolveError>(Arc::new(Mutex::new(backend)))
+                    })
+                    .await?
+                    .clone();
 
                 Ok(ResolvedSessionBackend {
-                    backend: arc,
+                    backend,
                     uses_session_pr: true,
                 })
             }
@@ -288,3 +309,104 @@ impl std::fmt::Display for SessionResolveError {
 }
 
 impl std::error::Error for SessionResolveError {}
+
+#[cfg(test)]
+mod tests {
+    //! SessionRegistry resolution tests. The GitHub-source happy path
+    //! (the actual `git clone` + PR open) is covered by
+    //! `SessionGitBackend` integration tests in `regelrecht-corpus`; here
+    //! we lock down the routing decisions (local pass-through, source-
+    //! not-found, no-token mapping).
+    use super::*;
+
+    fn registry_yaml_for(source_yaml: &str) -> String {
+        format!("schema_version: '1'\nsources:\n{source_yaml}")
+    }
+
+    fn corpus_state_from_yaml(yaml: &str) -> CorpusState {
+        let registry = regelrecht_corpus::CorpusRegistry::from_yaml(yaml).unwrap();
+        CorpusState {
+            registry,
+            source_map: SourceMap::new(),
+            backends: HashMap::new(),
+            auth_file: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_unknown_source_returns_source_not_found() {
+        let yaml = registry_yaml_for(
+            r"  - id: known
+    name: Known
+    type: local
+    local:
+      path: /tmp/does-not-matter
+    priority: 1
+",
+        );
+        let corpus = corpus_state_from_yaml(&yaml);
+        let reg = SessionRegistry::new();
+        let result = reg
+            .resolve_session_backend(&corpus, "sess-1", "unknown")
+            .await;
+        match result {
+            Err(SessionResolveError::SourceNotFound(id)) => assert_eq!(id, "unknown"),
+            Err(other) => panic!("expected SourceNotFound, got {other:?}"),
+            Ok(_) => panic!("expected SourceNotFound, got Ok"),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_local_source_without_registered_backend_is_source_not_found() {
+        // Source is declared in the registry but no backend was registered
+        // for it. The handler maps SourceNotFound → 404, which is correct
+        // because the source is effectively unusable for writes.
+        let yaml = registry_yaml_for(
+            r"  - id: local-src
+    name: Local
+    type: local
+    local:
+      path: /tmp/does-not-matter
+    priority: 1
+",
+        );
+        let corpus = corpus_state_from_yaml(&yaml);
+        let reg = SessionRegistry::new();
+        let result = reg
+            .resolve_session_backend(&corpus, "sess-1", "local-src")
+            .await;
+        match result {
+            Err(SessionResolveError::SourceNotFound(_)) => {}
+            Err(other) => panic!("expected SourceNotFound, got {other:?}"),
+            Ok(_) => panic!("expected SourceNotFound, got Ok"),
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_github_source_without_token_is_no_token() {
+        // No auth_ref and no auth_file → resolve_token_for_source returns
+        // Ok(None), which the registry must surface as NoToken so the
+        // handler can map it to 403 (not silently fall back).
+        let yaml = registry_yaml_for(
+            r"  - id: gh-src
+    name: GH
+    type: github
+    github:
+      owner: minbzk
+      repo: test
+      branch: main
+    priority: 1
+",
+        );
+        let corpus = corpus_state_from_yaml(&yaml);
+        let reg = SessionRegistry::new();
+        let result = reg
+            .resolve_session_backend(&corpus, "sess-1", "gh-src")
+            .await;
+        match result {
+            Err(SessionResolveError::NoToken(id)) => assert_eq!(id, "gh-src"),
+            Err(other) => panic!("expected NoToken, got {other:?}"),
+            Ok(_) => panic!("expected NoToken, got Ok"),
+        }
+    }
+}

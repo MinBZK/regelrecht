@@ -581,12 +581,13 @@ impl RepoBackend for GitBackend {
 /// edit reached upstream).
 ///
 /// File ops mirror `GitBackend`: read/write/delete/list go through the
-/// shared local checkout (`CorpusClient.repo_path()`). Session backends
-/// for the same source share the on-disk clone but write to different
-/// branches; the editor-api serialises persists per session via the
-/// surrounding mutex on this backend so two sessions for the same source
-/// never run `commit_and_push_to_branch` concurrently against the same
-/// working tree.
+/// local checkout owned by this backend's `CorpusClient`
+/// (`CorpusClient.repo_path()`). The editor-api gives **each** `(editor
+/// session, source)` pair its own on-disk clone (see
+/// `SessionRegistry::resolve_session_backend`), so two sessions writing
+/// to the same source do not share a working tree — the per-session
+/// mutex on this backend exists to serialise concurrent saves issued
+/// against the *same* session.
 #[cfg(feature = "github")]
 pub struct SessionGitBackend {
     client: CorpusClient,
@@ -673,10 +674,21 @@ impl SessionGitBackend {
         let mut body = String::new();
         body.push_str("Bewerkingen aangebracht via de Regelrecht-editor.\n\n");
         if let Some(author) = &ctx.author {
-            // \n is intentional — GitHub renders this on a new line.
+            // The OIDC display name and email come from an upstream IdP
+            // and are not under our control. Strip control characters
+            // before splicing into the Markdown body so a hostile name
+            // can't break PR layout (extra newlines flipping the trailing
+            // line into a heading, NUL bytes confusing GitHub's renderer,
+            // etc.). Plain Markdown special characters are left alone —
+            // GitHub sanitises HTML/script on its end, and stripping `*`
+            // / `_` would mangle legitimate names with diacritics-adjacent
+            // punctuation.
+            //
+            // \n at end is intentional — GitHub renders the next line below.
             body.push_str(&format!(
                 "Ingediend door: {} <{}>\n",
-                author.name, author.email
+                sanitize_pr_body_value(&author.name),
+                sanitize_pr_body_value(&author.email),
             ));
         }
         body.push_str(
@@ -684,6 +696,28 @@ impl SessionGitBackend {
         );
         (title, body)
     }
+}
+
+/// Strip ASCII / Unicode control characters from a value before splicing
+/// it into the PR body Markdown. Whitespace runs are collapsed to a
+/// single space so a trailing newline can't break the surrounding
+/// formatting.
+#[cfg(feature = "github")]
+fn sanitize_pr_body_value(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut last_was_space = false;
+    for c in s.chars() {
+        if c.is_control() {
+            if !last_was_space {
+                out.push(' ');
+                last_was_space = true;
+            }
+        } else {
+            out.push(c);
+            last_was_space = false;
+        }
+    }
+    out.trim().to_string()
 }
 
 #[cfg(feature = "github")]
@@ -1298,6 +1332,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(second.pr.unwrap().number, 99);
+    }
+
+    #[cfg(feature = "github")]
+    #[test]
+    fn sanitize_pr_body_value_strips_control_chars() {
+        // Newlines, tabs, NUL bytes in an OIDC display name must not bleed
+        // into the PR body Markdown — they could break layout (extra
+        // headings) or confuse GitHub's renderer.
+        let dirty = "Anne\nSchuth\u{0000}\t<X>";
+        let clean = sanitize_pr_body_value(dirty);
+        assert!(!clean.contains('\n'));
+        assert!(!clean.contains('\t'));
+        assert!(!clean.contains('\u{0000}'));
+        // Display characters survive, and consecutive control chars are
+        // collapsed to a single space rather than a run of spaces.
+        assert_eq!(clean, "Anne Schuth <X>");
+    }
+
+    #[cfg(feature = "github")]
+    #[test]
+    fn sanitize_pr_body_value_preserves_unicode_letters() {
+        // Diacritics and non-ASCII letters must pass through unchanged.
+        let s = "Renée Müller";
+        assert_eq!(sanitize_pr_body_value(s), s);
     }
 
     #[cfg(feature = "github")]

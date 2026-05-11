@@ -19,7 +19,19 @@
  * name short and human-readable when it shows up on GitHub.
  */
 
+import { ref } from 'vue';
+
 const STORAGE_KEY = 'regelrecht-editor-session-id';
+
+/**
+ * Module-level shared ref so every composable that performs a save
+ * (useLaw, useScenarios, …) updates the same value — and EditorApp's
+ * "Bekijk op GitHub" badge picks up the most recent PR regardless of
+ * which pane triggered the save. Mirrors the "one PR per editor session"
+ * contract: every save in the same browser tab lands on the same upstream
+ * branch, so a single shared ref is exactly what the badge needs.
+ */
+export const lastSavedPr = ref(null);
 
 /**
  * Returns this tab's editor session id, minting + persisting one on first

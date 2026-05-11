@@ -2,7 +2,7 @@
  * useScenarios — fetch, manage, and save scenario files for a law.
  */
 import { ref, watch } from 'vue';
-import { getEditorSessionId } from './useEditorSession.js';
+import { getEditorSessionId, lastSavedPr } from './useEditorSession.js';
 
 export function useScenarios(lawId) {
   const scenarios = ref([]);
@@ -12,10 +12,10 @@ export function useScenarios(lawId) {
   const saving = ref(false);
   const error = ref(null);
   const saveError = ref(null);
-  // Same shape as useLaw's `lastSavedPr` — the editor renders one PR link
-  // for both law-content and scenario edits because every save in a
-  // session lands on the same upstream feature branch.
-  const lastSavedPr = ref(null);
+  // `lastSavedPr` is imported as a module-shared ref from useEditorSession
+  // so scenario saves and law-content saves both update the same value,
+  // and EditorApp's "Bekijk op GitHub" badge stays in sync regardless of
+  // which pane the user pressed Save in.
 
   async function fetchScenarios() {
     if (!lawId.value) return;
