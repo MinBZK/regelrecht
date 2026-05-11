@@ -83,6 +83,7 @@ async fn main() {
         pool: None, // set below when auth is enabled
         pipeline_api_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
+        sessions: Arc::new(state::SessionRegistry::new()),
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");

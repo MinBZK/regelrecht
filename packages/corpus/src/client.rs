@@ -203,6 +203,95 @@ impl CorpusClient {
         Err(last_error.unwrap_or_else(|| CorpusError::Git("push failed after retries".into())))
     }
 
+    /// Stage paths, commit, and push to a session branch (not the configured
+    /// branch). Used by the editor write-back path: each editor session owns
+    /// its own branch on the source repo, and `persist` calls land as
+    /// fast-forward commits on that branch (which a PR then surfaces).
+    ///
+    /// The session branch is single-writer per (session UUID, source). On
+    /// the first call it is created from `origin/{base_branch}`; on
+    /// subsequent calls it picks up wherever `origin/{branch}` left off so
+    /// the editor-api can restart between saves without losing progress
+    /// (the branch is the source of truth, not the in-memory state).
+    ///
+    /// Push is **not** force: if a second writer ever races us, the second
+    /// push fails with non-fast-forward and the user retries. Force-pushing
+    /// would silently drop the racing commit.
+    ///
+    /// `co_authored_by` is `(name, email)`; when present it gets appended
+    /// as a `Co-authored-by` trailer so GitHub credits the human editor on
+    /// the commit even though the git author/committer stays the service
+    /// identity.
+    pub async fn commit_and_push_to_branch(
+        &self,
+        branch: &str,
+        base_branch: &str,
+        paths: &[PathBuf],
+        message: &str,
+        co_authored_by: Option<(&str, &str)>,
+    ) -> Result<()> {
+        // Make sure we have the latest base, and the session branch tip
+        // when one already exists on the remote.
+        self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
+            .await?;
+        let session_remote_exists = self.remote_branch_exists(branch).await?;
+        if session_remote_exists {
+            self.run_git(&["fetch", "--depth", "1", "origin", branch])
+                .await?;
+        }
+
+        // Position on the session branch. `-B` resets-or-creates. Safe
+        // because the session branch is single-writer per session UUID and
+        // the editor-api process serialises persists for one session via
+        // the SessionRegistry mutex; the local checkout is just a workspace
+        // we keep moving onto whichever session branch is being written.
+        let start_point = if session_remote_exists {
+            format!("origin/{branch}")
+        } else {
+            format!("origin/{base_branch}")
+        };
+        self.run_git(&["checkout", "-B", branch, &start_point])
+            .await?;
+
+        // Stage the explicitly provided paths. Anything else dirty in the
+        // working tree (left over from a previous sibling-session write)
+        // stays unstaged and won't be committed.
+        let mut add_args = vec!["add", "--"];
+        let path_strings: Vec<String> = paths
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        for p in &path_strings {
+            add_args.push(p);
+        }
+        self.run_git(&add_args).await?;
+
+        // Skip empty commits — the user may have hit Save without changes.
+        let status = self.run_git_output(&["status", "--porcelain"]).await?;
+        if status.trim().is_empty() {
+            tracing::debug!(branch = %branch, "no changes to commit on session branch");
+            return Ok(());
+        }
+
+        let commit_message = match co_authored_by {
+            Some((name, email)) => format!("{message}\n\nCo-authored-by: {name} <{email}>"),
+            None => message.to_string(),
+        };
+        self.run_git(&["commit", "-m", &commit_message]).await?;
+
+        // First push of a new session branch needs `-u` to set upstream;
+        // after that the remote tracking is in place. Use `-u` always for
+        // safety — git is idempotent here.
+        self.run_git(&["push", "-u", "origin", branch]).await?;
+
+        tracing::info!(
+            branch = %branch,
+            base = %base_branch,
+            "pushed editor session commit"
+        );
+        Ok(())
+    }
+
     async fn git_clone(&self) -> Result<()> {
         let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
@@ -1187,5 +1276,145 @@ mod tests {
             .unwrap();
         let branches = String::from_utf8_lossy(&output.stdout);
         assert!(branches.contains("pr999"));
+    }
+
+    #[tokio::test]
+    async fn commit_and_push_to_branch_creates_session_branch_with_trailer() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Configure the client against `development` (the base) — the test
+        // covers the case where the session branch does NOT yet exist on
+        // the remote.
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        let edit = repo_path.join("article.md");
+        tokio::fs::write(&edit, "edit 1").await.unwrap();
+
+        client
+            .commit_and_push_to_branch(
+                "editor/session-test1",
+                "development",
+                &[edit.clone()],
+                "Update article.md",
+                Some(("Anne Schuth", "anne@example.gov")),
+            )
+            .await
+            .unwrap();
+
+        // Session branch should exist on the bare remote
+        let branches = Command::new("git")
+            .args(["branch"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            out.contains("editor/session-test1"),
+            "session branch missing from remote: {out}"
+        );
+
+        // The commit on that branch should carry the Co-authored-by trailer
+        let log = Command::new("git")
+            .args(["log", "editor/session-test1", "--format=%B", "-1"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let body = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            body.contains("Co-authored-by: Anne Schuth <anne@example.gov>"),
+            "missing trailer in commit body: {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_and_push_to_branch_appends_to_existing_session_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // First commit on the session branch
+        let f1 = repo_path.join("a.md");
+        tokio::fs::write(&f1, "first").await.unwrap();
+        client
+            .commit_and_push_to_branch(
+                "editor/session-multi",
+                "development",
+                &[f1],
+                "first edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Second commit on the SAME session branch
+        let f2 = repo_path.join("b.md");
+        tokio::fs::write(&f2, "second").await.unwrap();
+        client
+            .commit_and_push_to_branch(
+                "editor/session-multi",
+                "development",
+                &[f2],
+                "second edit",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Both commits should be on the session branch on the remote
+        let log = Command::new("git")
+            .args(["log", "editor/session-multi", "--oneline"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&log.stdout);
+        assert!(out.contains("first edit"), "missing first commit: {out}");
+        assert!(out.contains("second edit"), "missing second commit: {out}");
+    }
+
+    #[tokio::test]
+    async fn commit_and_push_to_branch_no_changes_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // Empty paths and clean tree → should not error and should not
+        // create the branch on the remote.
+        client
+            .commit_and_push_to_branch("editor/session-empty", "development", &[], "no-op", None)
+            .await
+            .unwrap();
+
+        let branches = Command::new("git")
+            .args(["branch"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            !out.contains("editor/session-empty"),
+            "no-op should not create remote branch: {out}"
+        );
     }
 }

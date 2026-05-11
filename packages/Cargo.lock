@@ -3656,12 +3656,14 @@ dependencies = [
  "regelrecht-engine",
  "reqwest 0.13.2",
  "serde",
+ "serde_json",
  "serde_yaml_ng",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "walkdir",
+ "wiremock",
 ]
 
 [[package]]

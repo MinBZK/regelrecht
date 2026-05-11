@@ -153,6 +153,7 @@ const {
   saving: lawSaving,
   saveError: lawSaveError,
   saveLaw,
+  lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber);
 
 const resultSheetOpen = ref(false);
@@ -915,6 +916,19 @@ function handleActionSave() {
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
+            <nldd-toolbar-item v-if="lastSavedPr" slot="end">
+              <!-- Federated write-back indicator. Stays visible across pane
+                   switches so the user always knows where their edits are
+                   accumulating. New tab so the editor state isn't lost. -->
+              <nldd-button
+                size="md"
+                start-icon="external-link"
+                :text="`PR #${lastSavedPr.number}`"
+                :href="lastSavedPr.url"
+                target="_blank"
+                rel="noopener"
+              ></nldd-button>
+            </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
             </nldd-toolbar-item>
@@ -968,6 +982,17 @@ function handleActionSave() {
                 @click="openSearch"
                 @keydown="onBarSearchKeydown"
               ></nldd-search-field>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item v-if="lastSavedPr" slot="end">
+              <!-- Same federated write-back indicator as the md toolbar. -->
+              <nldd-button
+                size="md"
+                start-icon="external-link"
+                :text="`PR #${lastSavedPr.number}`"
+                :href="lastSavedPr.url"
+                target="_blank"
+                rel="noopener"
+              ></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>

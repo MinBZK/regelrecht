@@ -7,15 +7,63 @@ use crate::config::CorpusConfig;
 use crate::error::{CorpusError, Result};
 use crate::models::{Source, SourceType};
 
+/// Identifies the human editor behind a write — surfaced as a
+/// `Co-Authored-By` trailer on the commit and named in the PR body.
+///
+/// Optional because non-editor write paths (harvester, enrich worker) have
+/// no human in the loop. The git author/committer stays the service
+/// identity in all cases — this is a *credit* line, not an authentication
+/// claim.
+#[derive(Debug, Clone)]
+pub struct EditorUser {
+    /// Display name for the trailer. Should be a real human-readable name
+    /// when available; falls back to `email`'s local-part otherwise.
+    pub name: String,
+    /// Email used in the trailer. GitHub matches this to a user account if
+    /// it's registered as a verified email on someone's profile.
+    pub email: String,
+}
+
 /// Metadata for a write operation (used as commit message for git backends).
 pub struct WriteContext {
     pub message: String,
+    /// Human editor to credit on the resulting commit / PR. `None` for
+    /// non-editor paths (harvester etc.) which keep the existing
+    /// service-only attribution.
+    pub author: Option<EditorUser>,
 }
 
 /// A file entry returned by list operations.
 pub struct FileEntry {
     /// Filename only (not a full path), e.g. "eligibility.feature".
     pub name: String,
+}
+
+/// Identifies a PR opened or updated as part of a [`RepoBackend::persist`]
+/// call. Returned via [`PersistOutcome`] so the editor-api can surface the
+/// URL to the frontend after a save.
+///
+/// Lives on `backend` (not `pr_client`) so the type is available even when
+/// the `github` feature is disabled — keeps the [`PersistOutcome`] shape
+/// uniform across builds.
+#[derive(Debug, Clone)]
+pub struct PrInfo {
+    /// PR number on the source repo. Used to construct the title in
+    /// subsequent updates and to build the GitHub URL.
+    pub number: u64,
+    /// User-facing HTML URL of the PR.
+    pub html_url: String,
+}
+
+/// Result of a [`RepoBackend::persist`] call.
+///
+/// Most backends return [`PersistOutcome::default()`] (`pr: None`). The
+/// session-mode `GitBackend` populates `pr` with the PR it opened or
+/// updated; the editor-api forwards this to the save-response JSON so the
+/// frontend can render a "Bekijk op GitHub" link.
+#[derive(Debug, Default)]
+pub struct PersistOutcome {
+    pub pr: Option<PrInfo>,
 }
 
 /// Abstraction over different corpus storage backends.
@@ -41,9 +89,11 @@ pub trait RepoBackend: Send + Sync {
 
     /// Persist pending changes.
     ///
-    /// No-op for local backends. For git backends this commits dirty files and
-    /// pushes to the remote.
-    async fn persist(&self, ctx: &WriteContext) -> Result<()>;
+    /// No-op for local backends. For git backends this commits dirty files
+    /// and pushes to the remote. Returns a [`PersistOutcome`] describing
+    /// any side-effects the caller may want to surface (e.g. the PR opened
+    /// by a session-mode `GitBackend`).
+    async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome>;
 
     /// Prepare the backend for use (validate directories, clone repos, etc.).
     async fn ensure_ready(&mut self) -> Result<()>;
@@ -227,9 +277,9 @@ impl RepoBackend for LocalBackend {
         Ok(entries)
     }
 
-    async fn persist(&self, _ctx: &WriteContext) -> Result<()> {
+    async fn persist(&self, _ctx: &WriteContext) -> Result<PersistOutcome> {
         // Local writes are immediate — nothing to persist.
-        Ok(())
+        Ok(PersistOutcome::default())
     }
 
     async fn ensure_ready(&mut self) -> Result<()> {
@@ -454,14 +504,14 @@ impl RepoBackend for GitBackend {
         Ok(entries)
     }
 
-    async fn persist(&self, ctx: &WriteContext) -> Result<()> {
+    async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
         let paths: Vec<PathBuf> = {
             let mut dirty = self.dirty_files.lock().await;
             std::mem::take(&mut *dirty)
         };
 
         if paths.is_empty() {
-            return Ok(());
+            return Ok(PersistOutcome::default());
         }
 
         let result = if self.local_only {
@@ -496,7 +546,11 @@ impl RepoBackend for GitBackend {
             return Err(e);
         }
 
-        Ok(())
+        // The harvester / non-session GitBackend doesn't open PRs — it
+        // pushes to the configured branch directly. PR info is only
+        // populated by the session-mode `GitBackend` (see
+        // `SessionGitBackend`).
+        Ok(PersistOutcome::default())
     }
 
     async fn ensure_ready(&mut self) -> Result<()> {
@@ -507,6 +561,261 @@ impl RepoBackend for GitBackend {
     /// mode (no push token) edits are committed to a local session branch.
     /// "Writable" here means "the backend will accept `write_file` calls",
     /// not "the backend will push to a remote".
+    fn is_writable(&self) -> bool {
+        true
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SessionGitBackend
+// ---------------------------------------------------------------------------
+
+/// Backend used by the editor write-back path (RFC-010 phase 6).
+///
+/// Each `(editor session, source repo)` pair gets its own
+/// `SessionGitBackend`. `persist` always pushes to a per-session feature
+/// branch and ensures an open PR exists against the source's configured
+/// branch — never pushes straight to the source's main branch and never
+/// silently degrades to local-only when no token is configured (a write
+/// without a push destination would mislead the user into thinking the
+/// edit reached upstream).
+///
+/// File ops mirror `GitBackend`: read/write/delete/list go through the
+/// shared local checkout (`CorpusClient.repo_path()`). Session backends
+/// for the same source share the on-disk clone but write to different
+/// branches; the editor-api serialises persists per session via the
+/// surrounding mutex on this backend so two sessions for the same source
+/// never run `commit_and_push_to_branch` concurrently against the same
+/// working tree.
+#[cfg(feature = "github")]
+pub struct SessionGitBackend {
+    client: CorpusClient,
+    repo_subpath: Option<String>,
+    dirty_files: tokio::sync::Mutex<Vec<PathBuf>>,
+    pr_client: crate::pr_client::PullRequestClient,
+    /// GitHub coordinates of the source — used for PR API calls.
+    github_owner: String,
+    github_repo: String,
+    /// Branch the PR targets (the source's configured branch).
+    base_branch: String,
+    /// Per-session feature branch this backend pushes to.
+    session_branch: String,
+    /// Bearer token used for both git push (already on `client`) and PR
+    /// API calls. Empty token is rejected at construction time.
+    pr_token: String,
+    /// Memoised PR info from the most recent successful persist.
+    /// Surfaced via `persist()`'s `PersistOutcome.pr` so subsequent saves
+    /// in the same session can keep returning the same URL without an
+    /// extra round-trip.
+    last_pr: tokio::sync::Mutex<Option<PrInfo>>,
+}
+
+#[cfg(feature = "github")]
+impl SessionGitBackend {
+    /// Build a session backend. Returns an error when `pr_token` is empty
+    /// — without a token there is no way to open the PR upstream and the
+    /// editor must surface that as a 403 rather than silently dropping
+    /// the edit.
+    pub fn new(
+        client: CorpusClient,
+        repo_subpath: Option<String>,
+        session_branch: String,
+        base_branch: String,
+        github_owner: String,
+        github_repo: String,
+        pr_token: String,
+    ) -> Result<Self> {
+        if pr_token.is_empty() {
+            return Err(CorpusError::Config(
+                "session GitBackend requires a non-empty PR token".to_string(),
+            ));
+        }
+        Ok(Self {
+            client,
+            repo_subpath,
+            dirty_files: tokio::sync::Mutex::new(Vec::new()),
+            pr_client: crate::pr_client::PullRequestClient::new()?,
+            github_owner,
+            github_repo,
+            base_branch,
+            session_branch,
+            pr_token,
+            last_pr: tokio::sync::Mutex::new(None),
+        })
+    }
+
+    /// Test-only: swap the PR client for one pointed at a wiremock server.
+    #[cfg(test)]
+    pub(crate) fn with_pr_client(mut self, pr_client: crate::pr_client::PullRequestClient) -> Self {
+        self.pr_client = pr_client;
+        self
+    }
+
+    fn resolve(&self, relative: &Path) -> Result<PathBuf> {
+        validate_relative_path(relative)?;
+        let base = match &self.repo_subpath {
+            Some(sub) => self.client.repo_path().join(sub),
+            None => self.client.repo_path().to_path_buf(),
+        };
+        Ok(base.join(relative))
+    }
+
+    /// Build the PR title and body. Recomputed on every persist so a
+    /// subsequent edit can refresh the body to reflect new context (the
+    /// PATCH side of `ensure_pr` carries this through).
+    fn pr_title_body(&self, ctx: &WriteContext) -> (String, String) {
+        let session_id = self
+            .session_branch
+            .strip_prefix("editor/session-")
+            .unwrap_or(&self.session_branch);
+        let title = format!("Editor session {session_id}");
+
+        let mut body = String::new();
+        body.push_str("Bewerkingen aangebracht via de Regelrecht-editor.\n\n");
+        if let Some(author) = &ctx.author {
+            // \n is intentional — GitHub renders this on a new line.
+            body.push_str(&format!(
+                "Ingediend door: {} <{}>\n",
+                author.name, author.email
+            ));
+        }
+        body.push_str(
+            "\n_Branch wordt automatisch bijgewerkt zolang dezelfde editor-sessie open blijft._\n",
+        );
+        (title, body)
+    }
+}
+
+#[cfg(feature = "github")]
+#[async_trait]
+impl RepoBackend for SessionGitBackend {
+    async fn read_file(&self, relative_path: &Path) -> Result<Option<String>> {
+        let abs = self.resolve(relative_path)?;
+        match tokio::fs::read_to_string(&abs).await {
+            Ok(content) => Ok(Some(content)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn write_file(&self, relative_path: &Path, content: &str) -> Result<()> {
+        let abs = self.resolve(relative_path)?;
+        if let Some(parent) = abs.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&abs, content).await?;
+        self.dirty_files.lock().await.push(abs);
+        Ok(())
+    }
+
+    async fn delete_file(&self, relative_path: &Path) -> Result<()> {
+        let abs = self.resolve(relative_path)?;
+        match tokio::fs::remove_file(&abs).await {
+            Ok(()) => {
+                self.dirty_files.lock().await.push(abs);
+                Ok(())
+            }
+            // Idempotent: missing-file delete is a no-op and does NOT
+            // enqueue a dirty entry, so a clean tree → empty persist →
+            // no commit / no push (consistent with `GitBackend`).
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn list_files(&self, dir: &Path, extension: Option<&str>) -> Result<Vec<FileEntry>> {
+        let abs = self.resolve(dir)?;
+        let mut entries = Vec::new();
+
+        let mut read_dir = match tokio::fs::read_dir(&abs).await {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) => return Err(e.into()),
+        };
+
+        while let Some(entry) = read_dir.next_entry().await? {
+            let ft = entry.file_type().await?;
+            if !ft.is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if let Some(ext) = extension {
+                if path.extension().is_none_or(|e| e != ext) {
+                    continue;
+                }
+            }
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                entries.push(FileEntry {
+                    name: name.to_string(),
+                });
+            }
+        }
+
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(entries)
+    }
+
+    async fn persist(&self, ctx: &WriteContext) -> Result<PersistOutcome> {
+        let paths: Vec<PathBuf> = {
+            let mut dirty = self.dirty_files.lock().await;
+            std::mem::take(&mut *dirty)
+        };
+
+        if paths.is_empty() {
+            // Nothing to commit. If we already opened a PR earlier in the
+            // session, return that — the editor still wants the link.
+            return Ok(PersistOutcome {
+                pr: self.last_pr.lock().await.clone(),
+            });
+        }
+
+        let co_authored_by = ctx
+            .author
+            .as_ref()
+            .map(|a| (a.name.as_str(), a.email.as_str()));
+
+        if let Err(e) = self
+            .client
+            .commit_and_push_to_branch(
+                &self.session_branch,
+                &self.base_branch,
+                &paths,
+                &ctx.message,
+                co_authored_by,
+            )
+            .await
+        {
+            // Restore dirty files so the next save can retry. Note we do
+            // NOT restore them on PR-API failure below: at that point the
+            // commit + push succeeded so the data is upstream; only the
+            // PR open/update failed and the next persist would create a
+            // duplicate commit.
+            self.dirty_files.lock().await.extend(paths);
+            return Err(e);
+        }
+
+        let (title, body) = self.pr_title_body(ctx);
+        let pr = self
+            .pr_client
+            .ensure_pr(
+                &self.github_owner,
+                &self.github_repo,
+                &self.session_branch,
+                &self.base_branch,
+                &title,
+                &body,
+                &self.pr_token,
+            )
+            .await?;
+
+        *self.last_pr.lock().await = Some(pr.clone());
+        Ok(PersistOutcome { pr: Some(pr) })
+    }
+
+    async fn ensure_ready(&mut self) -> Result<()> {
+        self.client.ensure_repo().await
+    }
+
     fn is_writable(&self) -> bool {
         true
     }
@@ -584,6 +893,7 @@ mod tests {
         backend
             .persist(&WriteContext {
                 message: "test".to_string(),
+                author: None,
             })
             .await
             .unwrap();
@@ -735,6 +1045,7 @@ mod tests {
         backend
             .persist(&WriteContext {
                 message: "add test scenario".to_string(),
+                author: None,
             })
             .await
             .unwrap();
@@ -770,5 +1081,244 @@ mod tests {
             .unwrap();
         let remote_str = String::from_utf8_lossy(&remote_log.stdout);
         assert!(!remote_str.contains("add test scenario"));
+    }
+
+    /// Set up a bare repo on `development` and a checkout. Returns
+    /// (bare_path, working_repo_path, bare_url).
+    #[cfg(feature = "github")]
+    async fn setup_bare_with_checkout(dir: &Path) -> (PathBuf, PathBuf, String) {
+        use tokio::process::Command;
+
+        let bare_path = dir.join("bare.git");
+        Command::new("git")
+            .args(["init", "--bare", "--initial-branch=development"])
+            .arg(&bare_path)
+            .output()
+            .await
+            .unwrap();
+
+        let bare_url = format!("file://{}", bare_path.display());
+
+        // Seed initial commit on development
+        let seed = dir.join("seed");
+        Command::new("git")
+            .args(["clone", &bare_url])
+            .arg(&seed)
+            .output()
+            .await
+            .unwrap();
+        for args in [
+            vec!["config", "user.name", "test"],
+            vec!["config", "user.email", "test@test.nl"],
+            vec!["commit", "--allow-empty", "-m", "init"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&seed)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        // Working checkout the SessionGitBackend will use
+        let work = dir.join("work");
+        Command::new("git")
+            .args(["clone", "--branch", "development", &bare_url])
+            .arg(&work)
+            .output()
+            .await
+            .unwrap();
+        for args in [
+            vec!["config", "user.name", "Editor Service"],
+            vec!["config", "user.email", "editor@regelrecht.local"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&work)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        (bare_path, work, bare_url)
+    }
+
+    #[cfg(feature = "github")]
+    #[tokio::test]
+    async fn session_backend_persists_then_opens_pr() {
+        use crate::pr_client::PullRequestClient;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let dir = TempDir::new().unwrap();
+        let (bare_path, work, bare_url) = setup_bare_with_checkout(dir.path()).await;
+
+        // Mock GitHub Pulls API.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/minbzk/test-source/pulls"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/minbzk/test-source/pulls"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "number": 12,
+                "html_url": "https://github.com/minbzk/test-source/pull/12",
+            })))
+            .mount(&server)
+            .await;
+
+        // Build the session backend.
+        let mut config = CorpusConfig::new(&bare_url, &work);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        let pr_client = PullRequestClient::new()
+            .unwrap()
+            .with_base_url(server.uri());
+
+        let backend = SessionGitBackend::new(
+            client,
+            None,
+            "editor/session-abc123".to_string(),
+            "development".to_string(),
+            "minbzk".to_string(),
+            "test-source".to_string(),
+            "test-token".to_string(),
+        )
+        .unwrap()
+        .with_pr_client(pr_client);
+
+        // Edit + persist.
+        backend
+            .write_file(Path::new("article.md"), "edited body")
+            .await
+            .unwrap();
+
+        let outcome = backend
+            .persist(&WriteContext {
+                message: "Update article.md".to_string(),
+                author: Some(EditorUser {
+                    name: "Anne Schuth".to_string(),
+                    email: "anne@example.gov".to_string(),
+                }),
+            })
+            .await
+            .unwrap();
+
+        // PR returned to caller
+        let pr = outcome.pr.expect("persist should return PR info");
+        assert_eq!(pr.number, 12);
+        assert_eq!(pr.html_url, "https://github.com/minbzk/test-source/pull/12");
+
+        // Session branch exists on remote with our commit + trailer
+        let log = tokio::process::Command::new("git")
+            .args(["log", "editor/session-abc123", "--format=%B", "-1"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let body = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            body.contains("Update article.md"),
+            "missing message in commit: {body}"
+        );
+        assert!(
+            body.contains("Co-authored-by: Anne Schuth <anne@example.gov>"),
+            "missing co-authored-by trailer: {body}"
+        );
+    }
+
+    #[cfg(feature = "github")]
+    #[tokio::test]
+    async fn session_backend_empty_persist_returns_cached_pr() {
+        use crate::pr_client::PullRequestClient;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let dir = TempDir::new().unwrap();
+        let (_bare, work, bare_url) = setup_bare_with_checkout(dir.path()).await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/repos/minbzk/test-source/pulls"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([])))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/repos/minbzk/test-source/pulls"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                "number": 99,
+                "html_url": "https://github.com/minbzk/test-source/pull/99",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut config = CorpusConfig::new(&bare_url, &work);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+        let pr_client = PullRequestClient::new()
+            .unwrap()
+            .with_base_url(server.uri());
+
+        let backend = SessionGitBackend::new(
+            client,
+            None,
+            "editor/session-cached".to_string(),
+            "development".to_string(),
+            "minbzk".to_string(),
+            "test-source".to_string(),
+            "test-token".to_string(),
+        )
+        .unwrap()
+        .with_pr_client(pr_client);
+
+        // First persist makes a real PR
+        backend.write_file(Path::new("a.md"), "hi").await.unwrap();
+        let first = backend
+            .persist(&WriteContext {
+                message: "edit".to_string(),
+                author: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(first.pr.unwrap().number, 99);
+
+        // Second persist with no dirty files returns the cached PR — no
+        // new HTTP calls (the wiremock `.expect(1)` enforces this).
+        let second = backend
+            .persist(&WriteContext {
+                message: "noop".to_string(),
+                author: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(second.pr.unwrap().number, 99);
+    }
+
+    #[cfg(feature = "github")]
+    #[tokio::test]
+    async fn session_backend_rejects_empty_token() {
+        let dir = TempDir::new().unwrap();
+        let (_bare, work, bare_url) = setup_bare_with_checkout(dir.path()).await;
+
+        let mut config = CorpusConfig::new(&bare_url, &work);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        let result = SessionGitBackend::new(
+            client,
+            None,
+            "editor/session-x".to_string(),
+            "development".to_string(),
+            "owner".to_string(),
+            "repo".to_string(),
+            String::new(),
+        );
+        assert!(result.is_err(), "empty token must be rejected");
     }
 }

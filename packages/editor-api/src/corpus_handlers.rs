@@ -2,19 +2,46 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+use tower_sessions::Session;
 
-use regelrecht_corpus::backend::{RepoBackend, WriteContext};
+use regelrecht_auth::handlers::{SESSION_KEY_EMAIL, SESSION_KEY_NAME};
+use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
     collect_law_outputs, extract_law_id, resolve_display_name, validate_yaml_syntax, LoadedLaw,
 };
 use regelrecht_corpus::CorpusError;
 
-use crate::state::AppState;
+use crate::state::{AppState, SessionResolveError};
+
+/// Header used by the frontend to scope writes to one editor session.
+///
+/// The frontend mints a UUID in `sessionStorage` on first load and sends
+/// it on every save. The backend uses it to key per-(session, source)
+/// `SessionGitBackend`s so all edits in one browser session land on the
+/// same upstream feature branch / PR.
+const EDITOR_SESSION_HEADER: &str = "X-Editor-Session";
+
+/// Response body for a successful save.
+///
+/// `pr` is `None` for local-source saves (no upstream PR to open) and
+/// populated for federated GitHub-source saves so the frontend can render
+/// a "Bekijk op GitHub" link.
+#[derive(Debug, Serialize)]
+pub struct SaveResponse {
+    pub pr: Option<SavePrInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SavePrInfo {
+    pub url: String,
+    pub number: u64,
+    pub branch: String,
+}
 
 /// A law entry with source provenance.
 #[derive(Debug, Serialize)]
@@ -285,13 +312,14 @@ fn law_relative_dir(law: &LoadedLaw) -> Result<PathBuf, (StatusCode, String)> {
     })
 }
 
-/// Resolved backend information for a law.
+/// Resolved backend information for a law (read-path only).
+///
+/// The federated write path goes through [`SessionRegistry`] instead and
+/// returns its own resolved target shape ([`EditorWriteTarget`]), so this
+/// struct doesn't need a writability flag.
 struct ResolvedBackend {
     law: LoadedLaw,
     backend: Arc<Mutex<Box<dyn RepoBackend>>>,
-    /// Whether the resolved backend supports writes. Read handlers ignore
-    /// this; write handlers must reject the request with 403 if `false`.
-    writable: bool,
 }
 
 /// Resolve the backend that should be used for a law's scenario files.
@@ -332,7 +360,6 @@ async fn resolve_backend_for_law(
             return Ok(ResolvedBackend {
                 law,
                 backend: entry.backend.clone(),
-                writable: true,
             });
         }
     }
@@ -359,23 +386,21 @@ async fn resolve_backend_for_law(
                 law_id = %law_id,
                 law_source = %law.source_id,
                 fallback_source = %source_id,
-                "law's own source has no writable backend; routing reads and writes through verified-matching source"
+                "law's own source has no writable backend; routing reads through verified-matching source"
             );
             return Ok(ResolvedBackend {
                 law,
                 backend: entry.backend.clone(),
-                writable: true,
             });
         }
     }
 
     // 3. Fall through to the law's own read-only backend so reads still
-    //    work. Write handlers turn this into a 403.
+    //    work.
     if let Some(entry) = corpus.backends.get(&law.source_id) {
         return Ok(ResolvedBackend {
             law,
             backend: entry.backend.clone(),
-            writable: entry.writable,
         });
     }
 
@@ -422,61 +447,251 @@ fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (Status
 // Save / Delete scenario endpoints
 // ---------------------------------------------------------------------------
 
-/// Resolve write target: pick the backend, compute the scenario path, and
-/// lock the backend. Shared by save and delete handlers. Returns 403 if the
-/// resolved backend is read-only — the caller cannot recover from this.
-async fn resolve_write_target(
-    state: &AppState,
-    law_id: &str,
-    filename: &str,
-) -> Result<(PathBuf, tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>), (StatusCode, String)> {
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        resolve_backend_for_law(&corpus, law_id).await?
-    };
-
-    if !resolved.writable {
+/// Read the editor session id from the `X-Editor-Session` header.
+///
+/// Required on every editor write. We deliberately accept-then-validate
+/// (rather than minting one server-side) so the editor controls session
+/// scope: closing the browser tab purges `sessionStorage`, the next save
+/// arrives with a fresh UUID, and the user gets a fresh PR — matching
+/// "one PR per editor session" without any server-side TTL bookkeeping.
+fn require_editor_session(headers: &HeaderMap) -> Result<String, (StatusCode, String)> {
+    let value = headers.get(EDITOR_SESSION_HEADER).ok_or((
+        StatusCode::BAD_REQUEST,
+        format!("Missing {} header", EDITOR_SESSION_HEADER),
+    ))?;
+    let s = value.to_str().map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("{} header is not valid UTF-8", EDITOR_SESSION_HEADER),
+        )
+    })?;
+    // Loose validation: non-empty + ASCII-safe for use in a git ref name.
+    // Tighter shape (UUID) lives at the editor layer where it's minted.
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
         return Err((
-            StatusCode::FORBIDDEN,
+            StatusCode::BAD_REQUEST,
+            format!("{} header is empty", EDITOR_SESSION_HEADER),
+        ));
+    }
+    if !trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
             format!(
-                "No writable backend available for law '{}' (source '{}' is read-only \
-                 and no other registered source contains a matching copy of the law)",
-                law_id, resolved.law.source_id
+                "{} header contains characters that are not allowed in a git ref",
+                EDITOR_SESSION_HEADER
             ),
         ));
     }
+    Ok(trimmed.to_string())
+}
 
-    let rel_dir = law_relative_dir(&resolved.law)?;
-    let relative_path = rel_dir.join("scenarios").join(filename);
+/// Pull the editor user identity out of the OIDC session, when both name
+/// and email are populated.
+///
+/// Returns `None` when auth is disabled or the relevant session keys
+/// haven't been set — in those cases the resulting commit just has no
+/// `Co-Authored-By` trailer, which is harmless. We do NOT fail the save
+/// over a missing identity.
+async fn editor_user_from_session(session: &Session) -> Option<EditorUser> {
+    let name: Option<String> = session.get(SESSION_KEY_NAME).await.ok().flatten();
+    let email: Option<String> = session.get(SESSION_KEY_EMAIL).await.ok().flatten();
+    match (name, email) {
+        (Some(name), Some(email)) if !name.is_empty() && !email.is_empty() => {
+            Some(EditorUser { name, email })
+        }
+        _ => None,
+    }
+}
+
+/// Map a [`SessionResolveError`] into an HTTP error tuple suitable for an
+/// `Result<_, (StatusCode, String)>` save handler.
+fn session_resolve_error(law_id: &str, e: SessionResolveError) -> (StatusCode, String) {
+    match e {
+        SessionResolveError::SourceNotFound(_) => (
+            StatusCode::NOT_FOUND,
+            format!("Law '{}' references an unknown source", law_id),
+        ),
+        SessionResolveError::NoToken(source_id) => {
+            tracing::warn!(
+                law_id = %law_id,
+                source_id = %source_id,
+                "save: source has no PR token configured"
+            );
+            (
+                StatusCode::FORBIDDEN,
+                "Source is not configured for write-back".to_string(),
+            )
+        }
+        SessionResolveError::Other(msg) => {
+            tracing::error!(
+                law_id = %law_id,
+                error = %msg,
+                "save: failed to resolve session backend"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to prepare write target".to_string(),
+            )
+        }
+    }
+}
+
+/// Resolved write target for editor saves: a backend lock + the file
+/// path. PR info comes back via `PersistOutcome.pr` from the actual
+/// `persist` call, so we don't need to flag the backend here.
+struct EditorWriteTarget {
+    relative_path: PathBuf,
+    backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
+}
+
+/// Resolve the write target for a law-content (`save_law`) edit by routing
+/// through the [`SessionRegistry`] for GitHub sources and falling back to
+/// the existing global backend resolution for local sources.
+async fn resolve_law_write_target(
+    state: &AppState,
+    session_id: &str,
+    law_id: &str,
+) -> Result<EditorWriteTarget, (StatusCode, String)> {
+    // Look up the law (and its source) once.
+    let law = {
+        let corpus = state.corpus.read().await;
+        corpus
+            .source_map
+            .get_law(law_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
+            .clone()
+    };
+
+    let resolved = {
+        let corpus = state.corpus.read().await;
+        state
+            .sessions
+            .resolve_session_backend(&corpus, session_id, &law.source_id)
+            .await
+            .map_err(|e| session_resolve_error(law_id, e))?
+    };
+
+    // For local sources the SessionRegistry hands back the existing global
+    // backend, which may be read-only (baked-in container fs). Surface
+    // that as 403, matching the previous behaviour.
+    if !resolved.uses_session_pr {
+        let writable = {
+            let backend = resolved.backend.lock().await;
+            backend.is_writable()
+        };
+        if !writable {
+            return Err((
+                StatusCode::FORBIDDEN,
+                "Law is stored on a read-only source".to_string(),
+            ));
+        }
+    }
 
     let backend = resolved.backend.lock_owned().await;
+    Ok(EditorWriteTarget {
+        relative_path: PathBuf::from(&law.relative_path),
+        backend,
+    })
+}
 
-    Ok((relative_path, backend))
+/// Resolve the write target for a scenario file edit. Mirrors
+/// `resolve_law_write_target` but appends the scenario subdir + filename.
+async fn resolve_scenario_write_target(
+    state: &AppState,
+    session_id: &str,
+    law_id: &str,
+    filename: &str,
+) -> Result<EditorWriteTarget, (StatusCode, String)> {
+    let law = {
+        let corpus = state.corpus.read().await;
+        corpus
+            .source_map
+            .get_law(law_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
+            .clone()
+    };
+
+    let resolved = {
+        let corpus = state.corpus.read().await;
+        state
+            .sessions
+            .resolve_session_backend(&corpus, session_id, &law.source_id)
+            .await
+            .map_err(|e| session_resolve_error(law_id, e))?
+    };
+
+    if !resolved.uses_session_pr {
+        let writable = {
+            let backend = resolved.backend.lock().await;
+            backend.is_writable()
+        };
+        if !writable {
+            return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
+        }
+    }
+
+    let rel_dir = law_relative_dir(&law)?;
+    let backend = resolved.backend.lock_owned().await;
+    Ok(EditorWriteTarget {
+        relative_path: rel_dir.join("scenarios").join(filename),
+        backend,
+    })
+}
+
+/// Build a [`SaveResponse`] from a successful [`PersistOutcome`]. Pulls
+/// the branch name out so the frontend can show "session-abc123" without
+/// re-deriving it from the URL.
+fn save_response_from(outcome: PersistOutcome, session_id: &str) -> SaveResponse {
+    SaveResponse {
+        pr: outcome.pr.map(|pr| SavePrInfo {
+            url: pr.html_url,
+            number: pr.number,
+            branch: format!("editor/session-{session_id}"),
+        }),
+    }
 }
 
 /// PUT /api/corpus/laws/{law_id}/scenarios/{filename} — save a scenario file.
+///
+/// Requires the `X-Editor-Session` header on every call; the session id
+/// scopes the per-(session, source) feature branch + PR for federated
+/// write-back. For local sources the session header is still required
+/// (uniform contract with the frontend) but is otherwise ignored.
 pub async fn save_scenario(
     State(state): State<AppState>,
+    session: Session,
+    headers: HeaderMap,
     Path((law_id, filename)): Path<(String, String)>,
     body: String,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
+    let session_id = require_editor_session(&headers)?;
+    let author = editor_user_from_session(&session).await;
 
-    let (relative_path, backend) = resolve_write_target(&state, &law_id, &filename).await?;
+    let target = resolve_scenario_write_target(&state, &session_id, &law_id, &filename).await?;
+    let EditorWriteTarget {
+        relative_path,
+        backend,
+    } = target;
 
     backend
         .write_file(&relative_path, &body)
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    backend
+    let outcome = backend
         .persist(&WriteContext {
             message: format!("Update scenario {} for {}", filename, law_id),
+            author,
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    Ok(StatusCode::OK)
+    Ok(Json(save_response_from(outcome, &session_id)))
 }
 
 /// PUT /api/corpus/laws/{law_id} — save edited law YAML content.
@@ -493,9 +708,14 @@ pub async fn save_scenario(
 /// the source map.
 pub async fn save_law(
     State(state): State<AppState>,
+    session: Session,
+    headers: HeaderMap,
     Path(law_id): Path<String>,
     body: String,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<Json<SaveResponse>, (StatusCode, String)> {
+    let session_id = require_editor_session(&headers)?;
+    let author = editor_user_from_session(&session).await;
+
     // Validation:
     //   1. Body must parse as well-formed YAML. extract_law_id below is a
     //      line-based scanner that happily accepts "$id: foo\n<garbage>",
@@ -538,46 +758,18 @@ pub async fn save_law(
         ));
     }
 
-    // Resolve backend with writable fallback (same path scenarios take).
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        resolve_backend_for_law(&corpus, &law_id).await?
-    };
+    let target = resolve_law_write_target(&state, &session_id, &law_id).await?;
+    let EditorWriteTarget {
+        relative_path,
+        backend,
+    } = target;
 
-    if !resolved.writable {
-        // Log the internal source id (and the law id, even though the
-        // caller already knows it) for operators but keep both out of the
-        // HTTP body. `source_id` is a registry key ("central",
-        // "local-scratch", …) so leaking it exposes infrastructure naming;
-        // `law_id` echoed in the body would also flow through
-        // useLaw.saveError into ndd-inline-dialog's supporting-text, with
-        // the same self-XSS concern as the $id-mismatch branch above. The
-        // hard-coded message keeps both branches consistent.
-        tracing::warn!(
-            law_id = %law_id,
-            source_id = %resolved.law.source_id,
-            "save_law: no writable backend for law"
-        );
-        return Err((
-            StatusCode::FORBIDDEN,
-            "Law is stored on a read-only source".to_string(),
-        ));
-    }
-
-    let relative_path = PathBuf::from(&resolved.law.relative_path);
-
-    {
-        // The `if !resolved.writable` early return above ensures the
-        // RepoBackend will not refuse the write under normal operation, so
-        // the only realistic path to a `CorpusError::ReadOnly` here is a
-        // TOCTOU between the writability check and the write itself
-        // (e.g. the underlying volume flips read-only mid-request). In
-        // that race the `corpus_write_error` helper falls through to its
-        // generic 500-style mapping, mirroring the existing scenario
-        // write paths; the `ReadOnly` arm of `corpus_write_error` —
-        // which echoes `e.to_string()` — is unreachable here in
-        // practice and is not in scope to harden in this PR.
-        let backend = resolved.backend.lock_owned().await;
+    let outcome = {
+        // The earlier write-target resolution checks writability for local
+        // sources; for federated GitHub sources a missing token is a 403
+        // before we even get here. The remaining failure mode here is a
+        // TOCTOU on local backend writability (volume flips read-only
+        // mid-request); `corpus_write_error` maps that as a generic 500.
         backend
             .write_file(&relative_path, &body)
             .await
@@ -585,10 +777,11 @@ pub async fn save_law(
         backend
             .persist(&WriteContext {
                 message: format!("Update law {}", law_id),
+                author,
             })
             .await
-            .map_err(corpus_write_error("law"))?;
-    }
+            .map_err(corpus_write_error("law"))?
+    };
 
     // Refresh the in-memory cache so /api/corpus/laws/{law_id} (and
     // dependency walks) see the edit without a full corpus reload.
@@ -603,31 +796,40 @@ pub async fn save_law(
         }
     }
 
-    Ok(StatusCode::OK)
+    Ok(Json(save_response_from(outcome, &session_id)))
 }
 
 /// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
 pub async fn delete_scenario(
     State(state): State<AppState>,
+    session: Session,
+    headers: HeaderMap,
     Path((law_id, filename)): Path<(String, String)>,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
+    let session_id = require_editor_session(&headers)?;
+    let author = editor_user_from_session(&session).await;
 
-    let (relative_path, backend) = resolve_write_target(&state, &law_id, &filename).await?;
+    let target = resolve_scenario_write_target(&state, &session_id, &law_id, &filename).await?;
+    let EditorWriteTarget {
+        relative_path,
+        backend,
+    } = target;
 
     backend
         .delete_file(&relative_path)
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    backend
+    let outcome = backend
         .persist(&WriteContext {
             message: format!("Delete scenario {} for {}", filename, law_id),
+            author,
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    Ok(StatusCode::OK)
+    Ok(Json(save_response_from(outcome, &session_id)))
 }
 
 /// POST /api/corpus/reload — refetch corpus from all sources.

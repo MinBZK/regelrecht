@@ -2,6 +2,7 @@
  * useScenarios — fetch, manage, and save scenario files for a law.
  */
 import { ref, watch } from 'vue';
+import { getEditorSessionId } from './useEditorSession.js';
 
 export function useScenarios(lawId) {
   const scenarios = ref([]);
@@ -11,6 +12,10 @@ export function useScenarios(lawId) {
   const saving = ref(false);
   const error = ref(null);
   const saveError = ref(null);
+  // Same shape as useLaw's `lastSavedPr` — the editor renders one PR link
+  // for both law-content and scenario edits because every save in a
+  // session lands on the same upstream feature branch.
+  const lastSavedPr = ref(null);
 
   async function fetchScenarios() {
     if (!lawId.value) return;
@@ -77,13 +82,24 @@ export function useScenarios(lawId) {
         `/api/corpus/laws/${encodeURIComponent(lawId.value)}/scenarios/${encodeURIComponent(filename)}`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          headers: {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'X-Editor-Session': getEditorSessionId(),
+          },
           body: content,
         },
       );
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `Save failed: ${res.status}`);
+      }
+      // Same `{ pr }` shape as the law-content save; capture for the
+      // shared "Bekijk op GitHub" badge in EditorApp.vue.
+      try {
+        const json = await res.json();
+        lastSavedPr.value = json?.pr ?? null;
+      } catch {
+        // Older deployments returned a bare 200 — keep the prior PR.
       }
       // Update local state with saved content
       featureText.value = content;
@@ -113,5 +129,6 @@ export function useScenarios(lawId) {
     selectScenario,
     fetchScenarios,
     saveScenario,
+    lastSavedPr,
   };
 }

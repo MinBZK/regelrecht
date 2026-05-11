@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
+import { getEditorSessionId } from './useEditorSession.js';
 
 // --- Shared law cache ---
 const lawCache = new Map();
@@ -48,6 +49,12 @@ export function useLaw(lawParam, articleParam) {
   const error = ref(null);
   const saving = ref(false);
   const saveError = ref(null);
+  // PR opened or updated by the most recent successful save through the
+  // federated write-back path (RFC-010 phase 6). Stays populated across
+  // saves in the same editor session — every successful save returns the
+  // same PR info from the backend until the session ends or the PR is
+  // merged/closed. Null for local-source saves (no upstream PR).
+  const lastSavedPr = ref(null);
 
   const articles = computed(() => law.value?.articles ?? []);
 
@@ -152,7 +159,12 @@ export function useLaw(lawParam, articleParam) {
         `/api/corpus/laws/${encodeURIComponent(savedLawId)}`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'text/yaml; charset=utf-8' },
+          headers: {
+            'Content-Type': 'text/yaml; charset=utf-8',
+            // Required by editor-api on every write — scopes this save to
+            // a per-(session, source) feature branch + PR upstream.
+            'X-Editor-Session': getEditorSessionId(),
+          },
           body: yamlText,
         },
       );
@@ -173,6 +185,19 @@ export function useLaw(lawParam, articleParam) {
           } catch { /* keep status fallback */ }
         }
         throw new Error(text);
+      }
+      // Backend returns `{ pr: { url, number, branch } | null }` on 200.
+      // We only update `lastSavedPr` for the originating law — same logic
+      // as `rawYaml`/`law` updates below: a stale response after the user
+      // switched laws shouldn't repaint the new law's PR badge.
+      try {
+        const json = await res.json();
+        if (lawId.value === savedLawId) {
+          lastSavedPr.value = json?.pr ?? null;
+        }
+      } catch {
+        // Older deployments return a bare 200 without JSON — keep the
+        // existing PR (if any) and treat the save as successful.
       }
       // Parse once and reuse for both reactive state and the shared
       // lawCache so they remain referentially consistent.
@@ -227,5 +252,6 @@ export function useLaw(lawParam, articleParam) {
     saving,
     saveError,
     saveLaw,
+    lastSavedPr,
   };
 }
