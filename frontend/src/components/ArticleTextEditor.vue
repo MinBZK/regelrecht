@@ -9,7 +9,18 @@ const props = defineProps({
   editable: { type: Boolean, default: false },
   /** Error from the most recent save attempt (Error instance or null) */
   saveError: { type: Object, default: null },
-  /** Markdown source, v-model-bound to the parent editor state */
+  /**
+   * Markdown source, v-model-bound to the parent editor state.
+   *
+   * WARNING: tiptap-markdown is configured with `html: false`, so raw HTML
+   * tags in the incoming markdown (e.g. `<em>`, `<sup>`, `<br>` from a
+   * harvested corpus entry) are silently dropped on load. Editing such an
+   * article and saving will strip the HTML from the persisted YAML even if
+   * the user typed nothing — the diff at the first save will be larger than
+   * the "numbered-prose normalization" framing in the PR description
+   * suggests. The engine ignores `text` so this is functionally lossless,
+   * but the rendered output in downstream readers will change.
+   */
   modelValue: { type: String, default: '' },
 });
 
@@ -50,11 +61,22 @@ const selectionTick = ref(0);
 watch(editor, (inst) => {
   if (!inst) return;
   const bump = () => { selectionTick.value++; };
-  // Listeners are freed when `useEditor`'s built-in destroy runs on unmount;
-  // we don't .off() explicitly because the editor instance is stable across
-  // the component's lifetime.
+  // `selectionUpdate` alone misses Ctrl+B style commands that change marks
+  // without moving the cursor. `transaction` covers those, but fires on
+  // every keystroke too — gate it on a doc-or-selection change so the
+  // toolbar re-render doesn't run on pure cursor motion within a paragraph.
+  const onTransaction = ({ transaction: tr }) => {
+    if (tr.docChanged || tr.selectionSet) bump();
+  };
   inst.on('selectionUpdate', bump);
-  inst.on('transaction', bump);
+  inst.on('transaction', onTransaction);
+  // Return a cleanup so Vue removes the listeners if the watcher re-runs
+  // (HMR while the component stays mounted re-evaluates the callback with
+  // the same editor instance, which would otherwise stack listeners).
+  return () => {
+    inst.off('selectionUpdate', bump);
+    inst.off('transaction', onTransaction);
+  };
 }, { immediate: true });
 
 // Re-seed content when the parent swaps articles or a save completes. Skip if

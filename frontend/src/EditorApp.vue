@@ -607,6 +607,14 @@ const isArticleTextDirty = computed(() => {
   return (selectedArticle.value.text ?? '') !== (editedText.value ?? '');
 });
 
+// Tracks which pane(s) had dirty edits at the time of the most recent save
+// attempt. Used to scope `lawSaveError` to the pane that actually triggered
+// the save — without this, a save initiated from the machine pane that
+// fails would surface the "Opslaan mislukt" dialog inside the text-pane
+// body too, blaming a pane the user didn't touch.
+const lastSaveTouchedText = ref(false);
+const lastSaveTouchedMachine = ref(false);
+
 // Single save handler shared by the Tekst and Machine panes. The PUT writes
 // the whole law YAML, so one click persists every in-memory edit for the
 // selected article regardless of which pane surfaced the button.
@@ -619,6 +627,8 @@ async function handleLawSave() {
   // in-progress edits with its pristine article data if the user switched
   // laws mid-flight.
   const savedLawId = lawId.value;
+  lastSaveTouchedText.value = isArticleTextDirty.value;
+  lastSaveTouchedMachine.value = isMachineReadableDirty.value;
   try {
     await saveLaw(lawYaml);
     if (lawId.value !== savedLawId) return; // law switched mid-PUT
@@ -633,11 +643,24 @@ async function handleLawSave() {
     machineReadable.value = freshMr ? structuredClone(freshMr) : null;
     yamlSource.value = freshMr ? yaml.dump(freshMr, dumpOpts) : '';
     editedText.value = fresh?.text ?? '';
+    // Successful save — the dialog flags drop back to false.
+    lastSaveTouchedText.value = false;
+    lastSaveTouchedMachine.value = false;
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
     console.warn('saveLaw failed:', e);
   }
 }
+
+// Per-pane scoped views of lawSaveError. The error is only visible in the
+// pane that contributed to the failing save, even though the underlying
+// failure (and lawSaveError itself) is the same for both panes.
+const articleTextSaveError = computed(() =>
+  lastSaveTouchedText.value ? lawSaveError.value : null,
+);
+const machineReadableSaveError = computed(() =>
+  lastSaveTouchedMachine.value ? lawSaveError.value : null,
+);
 
 // Alias kept to minimise template churn; both panes ultimately call the
 // same whole-law save.
@@ -1133,7 +1156,7 @@ function handleActionSave() {
                 <ArticleTextEditor
                   :article="selectedArticle"
                   :editable="canEdit"
-                  :save-error="lawSaveError"
+                  :save-error="articleTextSaveError"
                   :model-value="editedText"
                   @update:model-value="editedText = $event"
                 />
@@ -1162,7 +1185,7 @@ function handleActionSave() {
                   :editable="canEdit"
                   :dirty="isMachineReadableDirty"
                   :saving="lawSaving"
-                  :save-error="lawSaveError"
+                  :save-error="machineReadableSaveError"
                   @open-action="handleOpenAction"
                   @open-edit="activeEditItem = $event"
                   @init-mr="handleInitMr"
