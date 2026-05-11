@@ -699,22 +699,32 @@ impl SessionGitBackend {
 }
 
 /// Strip ASCII / Unicode control characters from a value before splicing
-/// it into the PR body Markdown. Whitespace runs are collapsed to a
-/// single space so a trailing newline can't break the surrounding
-/// formatting.
+/// it into the PR body Markdown or a commit-message trailer. Whitespace
+/// runs are collapsed to a single space so a trailing newline can't break
+/// the surrounding formatting.
+///
+/// `<` and `>` are also replaced with a space: the call sites use these
+/// as delimiters around the email (`Name <email>` in the PR body and in
+/// the `Co-authored-by` trailer), so a display name like
+/// `"Foo <attacker@evil>"` would otherwise produce a malformed trailer
+/// (`Co-authored-by: Foo <attacker@evil> <real@email>`).
 #[cfg(feature = "github")]
 fn sanitize_pr_body_value(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut last_was_space = false;
     for c in s.chars() {
-        if c.is_control() {
+        if c.is_control() || c == '<' || c == '>' {
             if !last_was_space {
                 out.push(' ');
                 last_was_space = true;
             }
         } else {
             out.push(c);
-            last_was_space = false;
+            // Treat a regular space as already-emitted whitespace so a
+            // following control character (or `<`/`>`) does not produce
+            // a double space — e.g. "Foo <evil>" → "Foo evil" instead of
+            // "Foo  evil".
+            last_was_space = c == ' ';
         }
     }
     out.trim().to_string()
@@ -817,7 +827,7 @@ impl RepoBackend for SessionGitBackend {
             .as_ref()
             .map(|(name, email)| (name.as_str(), email.as_str()));
 
-        if let Err(e) = self
+        let pushed = match self
             .client
             .commit_and_push_to_branch(
                 &self.session_branch,
@@ -828,13 +838,28 @@ impl RepoBackend for SessionGitBackend {
             )
             .await
         {
-            // Restore dirty files so the next save can retry. Note we do
-            // NOT restore them on PR-API failure below: at that point the
-            // commit + push succeeded so the data is upstream; only the
-            // PR open/update failed and the next persist would create a
-            // duplicate commit.
-            self.dirty_files.lock().await.extend(paths);
-            return Err(e);
+            Ok(pushed) => pushed,
+            Err(e) => {
+                // Restore dirty files so the next save can retry. Note we
+                // do NOT restore them on PR-API failure below: at that
+                // point the commit + push succeeded so the data is
+                // upstream; only the PR open/update failed and the next
+                // persist would create a duplicate commit.
+                self.dirty_files.lock().await.extend(paths);
+                return Err(e);
+            }
+        };
+
+        // No commit was created (paths matched base content after
+        // snapshot+replay — typical when the user hits Save on a freshly
+        // loaded article without typing). Skip `ensure_pr`: on a brand-new
+        // session the branch was never pushed and GitHub would reject the
+        // PR open with a 422. Return the previously memoised PR (if any)
+        // so the editor keeps showing the existing badge.
+        if !pushed {
+            return Ok(PersistOutcome {
+                pr: self.last_pr.lock().await.clone(),
+            });
         }
 
         let (title, body) = self.pr_title_body(ctx);
@@ -1349,14 +1374,30 @@ mod tests {
         // Newlines, tabs, NUL bytes in an OIDC display name must not bleed
         // into the PR body Markdown — they could break layout (extra
         // headings) or confuse GitHub's renderer.
-        let dirty = "Anne\nSchuth\u{0000}\t<X>";
+        let dirty = "Anne\nSchuth\u{0000}\tX";
         let clean = sanitize_pr_body_value(dirty);
         assert!(!clean.contains('\n'));
         assert!(!clean.contains('\t'));
         assert!(!clean.contains('\u{0000}'));
         // Display characters survive, and consecutive control chars are
         // collapsed to a single space rather than a run of spaces.
-        assert_eq!(clean, "Anne Schuth <X>");
+        assert_eq!(clean, "Anne Schuth X");
+    }
+
+    #[cfg(feature = "github")]
+    #[test]
+    fn sanitize_pr_body_value_strips_angle_brackets() {
+        // `<` and `>` are reserved as the email delimiter in both the PR
+        // body line ("Ingediend door: Name <email>") and in the
+        // `Co-authored-by` trailer. A name like "Foo <attacker@evil>" must
+        // not survive — otherwise the resulting trailer
+        // "Co-authored-by: Foo <attacker@evil> <real@email>" is malformed
+        // and the attacker-controlled email may end up linked to the
+        // commit instead of the real author.
+        let clean = sanitize_pr_body_value("Foo <attacker@evil>");
+        assert!(!clean.contains('<'));
+        assert!(!clean.contains('>'));
+        assert_eq!(clean, "Foo attacker@evil");
     }
 
     #[cfg(feature = "github")]

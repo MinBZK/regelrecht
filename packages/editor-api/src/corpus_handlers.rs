@@ -580,24 +580,35 @@ async fn resolve_law_write_target(
     session_id: &str,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    // Look up the law (and its source) once.
-    let law = {
+    // Look up the law (and snapshot the source state) under a single
+    // corpus read guard, then drop it before calling into the
+    // SessionRegistry. The slow-path session-backend init runs `git
+    // clone` and we must not hold the corpus read guard across that —
+    // otherwise a concurrent `POST /api/corpus/reload` (which takes the
+    // write guard) is starved for the duration of the clone.
+    let (law, snapshot) = {
         let corpus = state.corpus.read().await;
-        corpus
+        let law = corpus
             .source_map
             .get_law(law_id)
             .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
-            .clone()
+            .clone();
+        let snapshot = corpus
+            .snapshot_source_for_session(&law.source_id)
+            .ok_or_else(|| {
+                session_resolve_error(
+                    law_id,
+                    SessionResolveError::SourceNotFound(law.source_id.clone()),
+                )
+            })?;
+        (law, snapshot)
     };
 
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        state
-            .sessions
-            .resolve_session_backend(&corpus, session_id, &law.source_id)
-            .await
-            .map_err(|e| session_resolve_error(law_id, e))?
-    };
+    let resolved = state
+        .sessions
+        .resolve_session_backend(&snapshot, session_id, &law.source_id)
+        .await
+        .map_err(|e| session_resolve_error(law_id, e))?;
 
     // For local sources the SessionRegistry hands back the existing global
     // backend, which may be read-only (baked-in container fs). Surface
@@ -630,23 +641,33 @@ async fn resolve_scenario_write_target(
     law_id: &str,
     filename: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let law = {
+    // Snapshot under a single corpus read guard, then drop it — same
+    // reasoning as `resolve_law_write_target` above (the slow-path
+    // session-backend init runs `git clone` and must not hold the corpus
+    // read guard across that or `POST /api/corpus/reload` is starved).
+    let (law, snapshot) = {
         let corpus = state.corpus.read().await;
-        corpus
+        let law = corpus
             .source_map
             .get_law(law_id)
             .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
-            .clone()
+            .clone();
+        let snapshot = corpus
+            .snapshot_source_for_session(&law.source_id)
+            .ok_or_else(|| {
+                session_resolve_error(
+                    law_id,
+                    SessionResolveError::SourceNotFound(law.source_id.clone()),
+                )
+            })?;
+        (law, snapshot)
     };
 
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        state
-            .sessions
-            .resolve_session_backend(&corpus, session_id, &law.source_id)
-            .await
-            .map_err(|e| session_resolve_error(law_id, e))?
-    };
+    let resolved = state
+        .sessions
+        .resolve_session_backend(&snapshot, session_id, &law.source_id)
+        .await
+        .map_err(|e| session_resolve_error(law_id, e))?;
 
     if !resolved.uses_session_pr {
         let writable = {

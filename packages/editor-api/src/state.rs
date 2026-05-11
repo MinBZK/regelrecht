@@ -6,7 +6,7 @@ use regelrecht_auth::{ConfiguredClient, OidcAppState, OidcConfig};
 use regelrecht_corpus::auth::resolve_token_for_source;
 use regelrecht_corpus::backend::{RepoBackend, SessionGitBackend};
 use regelrecht_corpus::config::CorpusConfig;
-use regelrecht_corpus::models::SourceType;
+use regelrecht_corpus::models::{Source, SourceType};
 use regelrecht_corpus::{CorpusClient, SourceMap};
 use sqlx::PgPool;
 use tokio::sync::{Mutex, OnceCell, RwLock};
@@ -88,6 +88,45 @@ impl CorpusState {
             auth_file: None,
         }
     }
+
+    /// Snapshot the corpus state needed by
+    /// [`SessionRegistry::resolve_session_backend`] so the caller can drop
+    /// the corpus read guard before the (potentially slow) session backend
+    /// init runs. The init future allocates a per-(session, source)
+    /// `SessionGitBackend` and runs `ensure_ready` — which on a cold cache
+    /// performs a full `git clone` — and we must not hold the corpus
+    /// `RwLock` read guard across that or a concurrent `POST
+    /// /api/corpus/reload` write-locker is starved for the duration.
+    ///
+    /// Returns `None` when no source with `source_id` is registered. The
+    /// caller maps that to a 404 at the HTTP boundary.
+    pub fn snapshot_source_for_session(&self, source_id: &str) -> Option<SessionSourceSnapshot> {
+        let source = self.registry.get_source(source_id)?.clone();
+        let local_backend = self.backends.get(source_id).map(|e| e.backend.clone());
+        Some(SessionSourceSnapshot {
+            source,
+            local_backend,
+            auth_file: self.auth_file.clone(),
+        })
+    }
+}
+
+/// Owned snapshot of the corpus state that
+/// [`SessionRegistry::resolve_session_backend`] needs to decide how to
+/// route a (session, source) write. Built via
+/// [`CorpusState::snapshot_source_for_session`] while holding the corpus
+/// read guard; the guard can be dropped before the resolver runs so the
+/// slow-path `git clone` does not block concurrent corpus-reload
+/// writers.
+pub struct SessionSourceSnapshot {
+    pub source: Source,
+    /// Currently-registered global backend for this source, if any. Only
+    /// used when `source.source_type` is `Local` — GitHub sources route
+    /// to a freshly created per-session backend.
+    pub local_backend: Option<Arc<Mutex<Box<dyn RepoBackend>>>>,
+    /// Path to corpus-auth.yaml; cloned out of the corpus guard so the
+    /// resolver can read it without holding the lock.
+    pub auth_file: Option<PathBuf>,
 }
 
 /// Outcome of resolving a write target through the [`SessionRegistry`].
@@ -158,26 +197,24 @@ impl SessionRegistry {
     ///   configured for the source — without one we surface a 403 because
     ///   silently dropping edits is worse than a clear error.
     ///
-    /// `corpus` is read-locked once to look up the source definition and
-    /// (for the local case) hand back the global backend. The session
-    /// backend itself does not borrow from `corpus`.
+    /// `snapshot` is an owned slice of the corpus state captured via
+    /// [`CorpusState::snapshot_source_for_session`]. Callers MUST drop the
+    /// `state.corpus` read guard before invoking this method — the
+    /// GitHub-source slow path runs `git clone` inside the cell, and
+    /// holding the corpus `RwLock` read guard across that would starve
+    /// concurrent `POST /api/corpus/reload` write-lockers.
     pub async fn resolve_session_backend(
         &self,
-        corpus: &CorpusState,
+        snapshot: &SessionSourceSnapshot,
         session_id: &str,
         source_id: &str,
     ) -> std::result::Result<ResolvedSessionBackend, SessionResolveError> {
-        let source = corpus
-            .registry
-            .get_source(source_id)
-            .ok_or_else(|| SessionResolveError::SourceNotFound(source_id.to_string()))?;
-
-        match &source.source_type {
-            SourceType::Local { .. } => corpus
-                .backends
-                .get(source_id)
-                .map(|entry| ResolvedSessionBackend {
-                    backend: entry.backend.clone(),
+        match &snapshot.source.source_type {
+            SourceType::Local { .. } => snapshot
+                .local_backend
+                .as_ref()
+                .map(|backend| ResolvedSessionBackend {
+                    backend: backend.clone(),
                     uses_session_pr: false,
                 })
                 .ok_or_else(|| SessionResolveError::SourceNotFound(source_id.to_string())),
@@ -215,8 +252,8 @@ impl SessionRegistry {
                     .get_or_try_init(|| async {
                         let token = resolve_token_for_source(
                             source_id,
-                            source.auth_ref.as_deref(),
-                            corpus.auth_file.as_deref(),
+                            snapshot.source.auth_ref.as_deref(),
+                            snapshot.auth_file.as_deref(),
                         )
                         .map_err(|e| SessionResolveError::Other(e.to_string()))?
                         .ok_or_else(|| SessionResolveError::NoToken(source_id.to_string()))?;
@@ -345,15 +382,10 @@ mod tests {
 ",
         );
         let corpus = corpus_state_from_yaml(&yaml);
-        let reg = SessionRegistry::new();
-        let result = reg
-            .resolve_session_backend(&corpus, "sess-1", "unknown")
-            .await;
-        match result {
-            Err(SessionResolveError::SourceNotFound(id)) => assert_eq!(id, "unknown"),
-            Err(other) => panic!("expected SourceNotFound, got {other:?}"),
-            Ok(_) => panic!("expected SourceNotFound, got Ok"),
-        }
+        // Unknown source has no snapshot — the handler maps that to 404
+        // upstream of the resolver. The resolver itself is only invoked
+        // for known sources.
+        assert!(corpus.snapshot_source_for_session("unknown").is_none());
     }
 
     #[tokio::test]
@@ -371,9 +403,12 @@ mod tests {
 ",
         );
         let corpus = corpus_state_from_yaml(&yaml);
+        let snapshot = corpus
+            .snapshot_source_for_session("local-src")
+            .expect("source is registered");
         let reg = SessionRegistry::new();
         let result = reg
-            .resolve_session_backend(&corpus, "sess-1", "local-src")
+            .resolve_session_backend(&snapshot, "sess-1", "local-src")
             .await;
         match result {
             Err(SessionResolveError::SourceNotFound(_)) => {}
@@ -399,9 +434,12 @@ mod tests {
 ",
         );
         let corpus = corpus_state_from_yaml(&yaml);
+        let snapshot = corpus
+            .snapshot_source_for_session("gh-src")
+            .expect("source is registered");
         let reg = SessionRegistry::new();
         let result = reg
-            .resolve_session_backend(&corpus, "sess-1", "gh-src")
+            .resolve_session_backend(&snapshot, "sess-1", "gh-src")
             .await;
         match result {
             Err(SessionResolveError::NoToken(id)) => assert_eq!(id, "gh-src"),

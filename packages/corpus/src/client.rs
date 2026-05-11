@@ -222,6 +222,13 @@ impl CorpusClient {
     /// as a `Co-authored-by` trailer so GitHub credits the human editor on
     /// the commit even though the git author/committer stays the service
     /// identity.
+    ///
+    /// Returns `Ok(true)` when a commit was created and pushed to the
+    /// remote, `Ok(false)` when there was nothing to commit (empty `paths`
+    /// or all files matched the base content after snapshot+replay). The
+    /// caller uses this to gate downstream side-effects like opening a PR
+    /// — calling PR-open against a branch that was never pushed would
+    /// return a 422 from GitHub.
     pub async fn commit_and_push_to_branch(
         &self,
         branch: &str,
@@ -229,7 +236,7 @@ impl CorpusClient {
         paths: &[PathBuf],
         message: &str,
         co_authored_by: Option<(&str, &str)>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         // Make sure we have the latest base, and the session branch tip
         // when one already exists on the remote.
         self.run_git(&["fetch", "--depth", "1", "origin", base_branch])
@@ -321,7 +328,7 @@ impl CorpusClient {
         let status = self.run_git_output(&["status", "--porcelain"]).await?;
         if status.trim().is_empty() {
             tracing::debug!(branch = %branch, "no changes to commit on session branch");
-            return Ok(());
+            return Ok(false);
         }
 
         let commit_message = match co_authored_by {
@@ -340,7 +347,7 @@ impl CorpusClient {
             base = %base_branch,
             "pushed editor session commit"
         );
-        Ok(())
+        Ok(true)
     }
 
     async fn git_clone(&self) -> Result<()> {
@@ -1549,10 +1556,14 @@ mod tests {
 
         // Empty paths and clean tree → should not error and should not
         // create the branch on the remote.
-        client
+        let pushed = client
             .commit_and_push_to_branch("editor/session-empty", "development", &[], "no-op", None)
             .await
             .unwrap();
+        assert!(
+            !pushed,
+            "no-op call must report `pushed=false` so callers can skip PR-open"
+        );
 
         let branches = Command::new("git")
             .args(["branch"])
@@ -1564,6 +1575,75 @@ mod tests {
         assert!(
             !out.contains("editor/session-empty"),
             "no-op should not create remote branch: {out}"
+        );
+    }
+
+    /// Regression for the iteration-3 finding: when `paths` is non-empty
+    /// but every path's content already matches the base after
+    /// snapshot+replay, no commit is created and no branch is pushed.
+    /// The function must report `pushed=false` so the editor's
+    /// `SessionGitBackend::persist` can skip `ensure_pr` (calling the
+    /// GitHub PR-open API against a branch that was never pushed returns
+    /// 422).
+    #[tokio::test]
+    async fn commit_and_push_to_branch_reports_no_push_when_content_matches_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let bare_path = setup_bare_repo(dir.path()).await;
+        let bare_url = format!("file://{}", bare_path.display());
+        let repo_path = dir.path().join("corpus");
+        clone_with_config(&bare_path, &repo_path).await;
+
+        // Seed `development` with a file the user will later "save"
+        // without actually changing.
+        let seed = repo_path.join("article.md");
+        tokio::fs::write(&seed, "base content").await.unwrap();
+        for args in [
+            vec!["add", "."],
+            vec!["commit", "-m", "seed"],
+            vec!["push", "origin", "development"],
+        ] {
+            Command::new("git")
+                .args(&args)
+                .current_dir(&repo_path)
+                .output()
+                .await
+                .unwrap();
+        }
+
+        let mut config = CorpusConfig::new(&bare_url, &repo_path);
+        config.branch = "development".to_string();
+        let client = CorpusClient::new(config);
+
+        // The user "edits" the file but the content is identical to
+        // origin/development — the editor still passes the path through
+        // `dirty_files` because `write_file` cannot cheaply distinguish.
+        tokio::fs::write(&seed, "base content").await.unwrap();
+
+        let pushed = client
+            .commit_and_push_to_branch(
+                "editor/session-unchanged",
+                "development",
+                &[seed.clone()],
+                "no-op save",
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(
+            !pushed,
+            "content-matches-base must report `pushed=false` so callers can skip PR-open"
+        );
+
+        let branches = Command::new("git")
+            .args(["branch"])
+            .current_dir(&bare_path)
+            .output()
+            .await
+            .unwrap();
+        let out = String::from_utf8_lossy(&branches.stdout);
+        assert!(
+            !out.contains("editor/session-unchanged"),
+            "no-commit path must not push branch to remote: {out}"
         );
     }
 }

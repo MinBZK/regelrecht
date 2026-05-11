@@ -190,14 +190,14 @@ export function useLaw(lawParam, articleParam) {
         throw new Error(text);
       }
       // Backend returns `{ pr: { url, number, branch } | null }` on 200.
-      // We only update `lastSavedPr` for the originating law — same logic
-      // as `rawYaml`/`law` updates below: a stale response after the user
-      // switched laws shouldn't repaint the new law's PR badge.
+      // Update `lastSavedPr` unconditionally — the badge represents "last
+      // save's PR" not "current law's PR", and `useScenarios.saveScenario`
+      // applies the same rule. The reactive refs for `rawYaml`/`law` are
+      // still gated on `lawId.value === savedLawId` below because writing
+      // them after a law-switch would corrupt the new law's editor state.
       try {
         const json = await res.json();
-        if (lawId.value === savedLawId) {
-          lastSavedPr.value = json?.pr ?? null;
-        }
+        lastSavedPr.value = json?.pr ?? null;
       } catch {
         // Older deployments return a bare 200 without JSON — keep the
         // existing PR (if any) and treat the save as successful.
