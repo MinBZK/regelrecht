@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Stage 1: Build frontend
-FROM node:24-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f AS frontend-builder
+FROM node:26-alpine@sha256:e71ac5e964b9201072425d59d2e876359efa25dc96bb1768cb73295728d6e4ea AS frontend-builder
 WORKDIR /app
 COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/package-lock.json* packages/admin/frontend-src/.npmrc ./
 RUN --mount=type=secret,id=GITHUB_TOKEN \
