@@ -713,18 +713,15 @@ fn sanitize_pr_body_value(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut last_was_space = false;
     for c in s.chars() {
-        if c.is_control() || c == '<' || c == '>' {
+        let is_whitespace_like = c.is_control() || c == '<' || c == '>' || c == ' ';
+        if is_whitespace_like {
             if !last_was_space {
                 out.push(' ');
                 last_was_space = true;
             }
         } else {
             out.push(c);
-            // Treat a regular space as already-emitted whitespace so a
-            // following control character (or `<`/`>`) does not produce
-            // a double space — e.g. "Foo <evil>" → "Foo evil" instead of
-            // "Foo  evil".
-            last_was_space = c == ' ';
+            last_was_space = false;
         }
     }
     out.trim().to_string()
