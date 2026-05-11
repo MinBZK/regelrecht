@@ -189,8 +189,14 @@ pub async fn list_scenarios(
     State(state): State<AppState>,
     Path(law_id): Path<String>,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    // Route reads through the same backend resolution as writes so a save
-    // followed by a list/get always sees its own writes.
+    // Reads use the global backend resolution (writable fallback included).
+    // For federated GitHub sources this is NOT the same backend writes use
+    // (writes go through the per-session `SessionGitBackend`), so a save
+    // followed immediately by a list/get returns the pre-edit content from
+    // the global clone until the session branch is rebased back into it.
+    // Frontend already keeps the just-saved content in local state, so
+    // editor UX is unaffected; a follow-up can route reads through the
+    // session backend if a strict read-your-writes guarantee is needed.
     let resolved = {
         let corpus = state.corpus.read().await;
         resolve_backend_for_law(&corpus, &law_id).await?

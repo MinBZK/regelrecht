@@ -803,10 +803,19 @@ impl RepoBackend for SessionGitBackend {
             });
         }
 
-        let co_authored_by = ctx
-            .author
+        // Sanitise name/email before they land in the commit message so a
+        // crafted OIDC display name can't inject extra Git trailers (e.g. a
+        // newline followed by `Reviewer-suggested-by: …`). Matches the
+        // identical defence applied to the PR body above.
+        let sanitized_author = ctx.author.as_ref().map(|a| {
+            (
+                sanitize_pr_body_value(&a.name),
+                sanitize_pr_body_value(&a.email),
+            )
+        });
+        let co_authored_by = sanitized_author
             .as_ref()
-            .map(|a| (a.name.as_str(), a.email.as_str()));
+            .map(|(name, email)| (name.as_str(), email.as_str()));
 
         if let Err(e) = self
             .client

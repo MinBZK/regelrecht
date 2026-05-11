@@ -61,17 +61,24 @@ watch(editor, (inst) => {
 // the markdown already matches what the editor holds — calling setContent on
 // every keystroke would reset the cursor.
 //
-// When we do replace the content (typically an article switch), also reset
-// the selection to the start of the document. Without this, ProseMirror
-// keeps the previous cursor offset, which can land in the middle of the
-// new article (or out of range, snapping to the end) and confuses the user.
+// Track the previously-rendered article so we only reset the cursor on an
+// actual article switch. ProseMirror otherwise keeps the previous cursor
+// offset, which can land in the middle of the new article (or snap to the
+// end) and confuses the user. Within a single article we leave the selection
+// alone — e.g. a server-side save that round-trips an unchanged markdown
+// string should not yank the cursor to position 0.
+let lastArticleNumber = props.article ? String(props.article.number) : null;
 watch(() => props.modelValue, (next) => {
   const inst = editor.value;
   if (!inst) return;
   const current = inst.storage.markdown.getMarkdown();
   if (current === next) return;
   inst.commands.setContent(next || '', { emitUpdate: false });
-  inst.commands.setTextSelection(0);
+  const currentArticleNumber = props.article ? String(props.article.number) : null;
+  if (currentArticleNumber !== lastArticleNumber) {
+    inst.commands.setTextSelection(0);
+    lastArticleNumber = currentArticleNumber;
+  }
 });
 
 watch(() => props.editable, (next) => {
