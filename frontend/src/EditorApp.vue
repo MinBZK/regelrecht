@@ -540,12 +540,24 @@ const currentLawYaml = computed(() => {
       (a) => String(a.number) === String(selectedArticleNumber.value),
     );
     if (idx < 0) return rawYaml.value;
+    // Short-circuit when neither pane has been touched: a `yaml.dump`
+    // round-trip can cosmetically reformat the parsed doc (key ordering,
+    // string quoting), and `handleActionSave` calls `saveLaw(currentLawYaml)`
+    // without checking dirty flags, so a no-op action-modal save on a
+    // pristine article would otherwise produce a reformat-only commit.
+    const baseArticle = docArticles[idx];
+    const textPristine = editedText.value === (baseArticle.text ?? '');
+    const baselineMr = baseArticle.machine_readable ?? null;
+    const currentMr = machineReadable.value ?? null;
+    const mrPristine = baselineMr === currentMr
+      || JSON.stringify(baselineMr) === JSON.stringify(currentMr);
+    if (textPristine && mrPristine) return rawYaml.value;
     // Only splice fields that have diverged from the base — passing
     // `machineReadable.value` verbatim when it's null would erase the
     // article's machine_readable from the serialized doc, and similarly
     // for text. The dirty computeds below drive this same contract.
-    const patched = { ...docArticles[idx] };
-    if (editedText.value !== (docArticles[idx].text ?? '')) {
+    const patched = { ...baseArticle };
+    if (!textPristine) {
       patched.text = editedText.value;
     }
     if (machineReadable.value != null) {

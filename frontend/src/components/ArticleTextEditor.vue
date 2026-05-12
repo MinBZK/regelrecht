@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useEditor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
@@ -107,11 +107,23 @@ watch(() => props.editable, (next) => {
   editor.value?.setEditable(next);
 });
 
-function isActive(name, attrs) {
-  // eslint-disable-next-line no-unused-expressions
+// Compute the active-format map once per selection/transaction tick. The
+// template binds against `activeFormats.bold` etc., which makes the
+// reactive dependency on `selectionTick` explicit (no side-effect read +
+// lint suppression). Add another mark name here when the toolbar grows a
+// new format button.
+const activeFormats = computed(() => {
+  // Subscribe to selection/transaction changes.
   selectionTick.value;
-  return editor.value?.isActive(name, attrs) ?? false;
-}
+  const inst = editor.value;
+  if (!inst) return { bold: false, italic: false, bulletList: false, orderedList: false };
+  return {
+    bold: inst.isActive('bold'),
+    italic: inst.isActive('italic'),
+    bulletList: inst.isActive('bulletList'),
+    orderedList: inst.isActive('orderedList'),
+  };
+});
 
 function toggleBold() { editor.value?.chain().focus().toggleBold().run(); }
 function toggleItalic() { editor.value?.chain().focus().toggleItalic().run(); }
@@ -132,7 +144,7 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
       </nldd-toolbar-item>
       <nldd-toolbar-item slot="center">
         <div class="fmt-group">
-          <span class="fmt-btn" :class="{ 'is-active': isActive('bold') }">
+          <span class="fmt-btn" :class="{ 'is-active': activeFormats.bold }">
             <nldd-icon-button
               icon="bold"
               size="md"
@@ -142,7 +154,7 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
               @click="toggleBold"
             ></nldd-icon-button>
           </span>
-          <span class="fmt-btn" :class="{ 'is-active': isActive('italic') }">
+          <span class="fmt-btn" :class="{ 'is-active': activeFormats.italic }">
             <nldd-icon-button
               icon="italic"
               size="md"
@@ -153,7 +165,7 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
             ></nldd-icon-button>
           </span>
           <span class="fmt-divider" role="separator" aria-orientation="vertical"></span>
-          <span class="fmt-btn" :class="{ 'is-active': isActive('bulletList') }">
+          <span class="fmt-btn" :class="{ 'is-active': activeFormats.bulletList }">
             <nldd-icon-button
               icon="bullet-list"
               size="md"
@@ -163,7 +175,7 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
               @click="toggleBulletList"
             ></nldd-icon-button>
           </span>
-          <span class="fmt-btn" :class="{ 'is-active': isActive('orderedList') }">
+          <span class="fmt-btn" :class="{ 'is-active': activeFormats.orderedList }">
             <nldd-icon-button
               icon="numbered-list"
               size="md"
