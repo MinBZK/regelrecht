@@ -11,6 +11,11 @@ const DEFAULTS = {
   'panel.scenario_form': true,
   'panel.yaml_editor': true,
   'panel.machine_readable': true,
+  // Gates write access on the Tekst pane independently from its visibility.
+  // Default off so users see article text in read-only mode until they
+  // explicitly opt in — the first-save markdown normalisation rewrites the
+  // YAML enough that we want the toggle to be deliberate.
+  'editor.article_text_edit': false,
 };
 
 // Local overrides survive refresh when the backend has no persistence (dev).

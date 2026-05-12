@@ -28,6 +28,8 @@ github = ["dep:reqwest"]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process", "fs"] }
 tempfile.workspace = true
 regelrecht-engine = { path = "../engine" }
+wiremock.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

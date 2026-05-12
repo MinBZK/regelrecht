@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
+import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
 
 // --- Shared law cache ---
 const lawCache = new Map();
@@ -48,6 +49,15 @@ export function useLaw(lawParam, articleParam) {
   const error = ref(null);
   const saving = ref(false);
   const saveError = ref(null);
+  // PR opened or updated by the most recent successful save through the
+  // federated write-back path (RFC-010 phase 6). Imported as a
+  // module-shared ref from useEditorSession so the badge in EditorApp
+  // reflects the most recent save regardless of which composable issued
+  // it (law-content saves via useLaw, scenario saves via useScenarios).
+  // Stays populated across saves in the same editor session — every
+  // successful save returns the same PR info from the backend until the
+  // session ends or the PR is merged/closed. Null for local-source saves
+  // (no upstream PR).
 
   const articles = computed(() => law.value?.articles ?? []);
 
@@ -152,7 +162,12 @@ export function useLaw(lawParam, articleParam) {
         `/api/corpus/laws/${encodeURIComponent(savedLawId)}`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'text/yaml; charset=utf-8' },
+          headers: {
+            'Content-Type': 'text/yaml; charset=utf-8',
+            // Required by editor-api on every write — scopes this save to
+            // a per-(session, source) feature branch + PR upstream.
+            'X-Editor-Session': getEditorSessionId(),
+          },
           body: yamlText,
         },
       );
@@ -173,6 +188,19 @@ export function useLaw(lawParam, articleParam) {
           } catch { /* keep status fallback */ }
         }
         throw new Error(text);
+      }
+      // Backend returns `{ pr: { url, number, branch } | null }` on 200.
+      // Update `lastSavedPr` unconditionally — the badge represents "last
+      // save's PR" not "current law's PR", and `useScenarios.saveScenario`
+      // applies the same rule. The reactive refs for `rawYaml`/`law` are
+      // still gated on `lawId.value === savedLawId` below because writing
+      // them after a law-switch would corrupt the new law's editor state.
+      try {
+        const json = await res.json();
+        lastSavedPr.value = sanitizeSavedPr(json?.pr);
+      } catch {
+        // Older deployments return a bare 200 without JSON — keep the
+        // existing PR (if any) and treat the save as successful.
       }
       // Parse once and reuse for both reactive state and the shared
       // lawCache so they remain referentially consistent.
@@ -227,5 +255,6 @@ export function useLaw(lawParam, articleParam) {
     saving,
     saveError,
     saveLaw,
+    lastSavedPr,
   };
 }

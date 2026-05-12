@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, watchEffect, nextTick } from 'vue';
+import { ref, computed, reactive, watch, watchEffect, nextTick } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
@@ -9,7 +9,7 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import ArticleText from './components/ArticleText.vue';
+import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
@@ -33,6 +33,7 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
+  ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
 // Per-pane view selection. Each pane independently picks one of the
@@ -134,6 +135,10 @@ function setPaneView(idx, viewId) {
 // and blocks unauthenticated users before this component mounts, so canEdit
 // is always true here — the computed remains as a safety net.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
+// Tekst-pane is only editable when the user has write access AND the
+// `editor.article_text_edit` flag is on. Visibility of the pane is
+// controlled separately by `panel.article_text`.
+const canEditArticleText = computed(() => canEdit.value && isEnabled('editor.article_text_edit'));
 
 const route = useRoute();
 const router = useRouter();
@@ -153,6 +158,7 @@ const {
   saving: lawSaving,
   saveError: lawSaveError,
   saveLaw,
+  lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber);
 
 const resultSheetOpen = ref(false);
@@ -448,6 +454,26 @@ const parseError = ref(null);
 
 const machineReadable = ref(null);
 const yamlSource = ref('');
+// In-memory markdown for the currently selected article's `text` field.
+// Seeded on article switch alongside machineReadable so the Tekst and Machine
+// panes reset in lockstep when the user tabs to a different article.
+const editedText = ref('');
+
+// Per-pane refs to the ArticleTextEditor instance so the pane-header can
+// render the formatting toolbar (Bold/Italic/lists) next to the existing
+// pane-view dropdown rather than the editor drawing its own duplicate
+// label dropdown inside the body. Functional ref keeps the map in sync as
+// panes mount/unmount.
+const textEditorRefs = reactive({});
+function setTextEditorRef(idx) {
+  return (el) => {
+    if (el) {
+      textEditorRefs[idx] = el;
+    } else {
+      delete textEditorRefs[idx];
+    }
+  };
+}
 
 const dumpOpts = { lineWidth: 80, noRefs: true };
 
@@ -457,6 +483,7 @@ watch(selectedArticle, (article) => {
   const mr = article?.machine_readable;
   machineReadable.value = mr ? structuredClone(mr) : null;
   yamlSource.value = mr ? yaml.dump(mr, dumpOpts) : '';
+  editedText.value = article?.text ?? '';
   parseError.value = null;
 }, { immediate: true });
 
@@ -477,7 +504,11 @@ watchEffect(() => {
 
 const editedArticle = computed(() => {
   if (!selectedArticle.value) return null;
-  return { ...selectedArticle.value, machine_readable: machineReadable.value };
+  return {
+    ...selectedArticle.value,
+    text: editedText.value,
+    machine_readable: machineReadable.value,
+  };
 });
 
 // Parse rawYaml once per law load into a reusable document skeleton. The
@@ -515,9 +546,7 @@ const parsedRawLaw = computed(() => {
 // article).
 const currentLawYaml = computed(() => {
   if (!rawYaml.value) return null;
-  if (!selectedArticle.value || machineReadable.value == null) {
-    return rawYaml.value;
-  }
+  if (!selectedArticle.value) return rawYaml.value;
   const base = parsedRawLaw.value;
   if (!base) return rawYaml.value;
   try {
@@ -532,10 +561,36 @@ const currentLawYaml = computed(() => {
       (a) => String(a.number) === String(selectedArticleNumber.value),
     );
     if (idx < 0) return rawYaml.value;
-    docArticles[idx] = {
-      ...docArticles[idx],
-      machine_readable: machineReadable.value,
-    };
+    // Short-circuit when neither pane has been touched: a `yaml.dump`
+    // round-trip can cosmetically reformat the parsed doc (key ordering,
+    // string quoting), and `handleActionSave` calls `saveLaw(currentLawYaml)`
+    // without checking dirty flags, so a no-op action-modal save on a
+    // pristine article would otherwise produce a reformat-only commit.
+    const baseArticle = docArticles[idx];
+    const textPristine = editedText.value === (baseArticle.text ?? '');
+    const baselineMr = baseArticle.machine_readable ?? null;
+    const currentMr = machineReadable.value ?? null;
+    const mrPristine = baselineMr === currentMr
+      || JSON.stringify(baselineMr) === JSON.stringify(currentMr);
+    if (textPristine && mrPristine) return rawYaml.value;
+    // Only splice fields that have diverged from the base — passing
+    // `machineReadable.value` verbatim when it's null would erase the
+    // article's machine_readable from the serialized doc, and similarly
+    // for text. The dirty computeds below drive this same contract.
+    const patched = { ...baseArticle };
+    if (!textPristine) {
+      patched.text = editedText.value;
+    }
+    if (machineReadable.value != null) {
+      patched.machine_readable = machineReadable.value;
+    } else if (baselineMr != null) {
+      // The user opened an article that had machine_readable and cleared the
+      // YAML editor. The spread above carried the original key over; we have
+      // to drop it explicitly so the save persists the deletion rather than
+      // silently round-tripping the original content.
+      delete patched.machine_readable;
+    }
+    docArticles[idx] = patched;
     doc.articles = docArticles;
     return yaml.dump(doc, dumpOpts);
   } catch {
@@ -586,34 +641,69 @@ const isMachineReadableDirty = computed(() => {
   }
 });
 
-async function handleMachineReadableSave() {
+const isArticleTextDirty = computed(() => {
+  if (!selectedArticle.value) return false;
+  return (selectedArticle.value.text ?? '') !== (editedText.value ?? '');
+});
+
+// Tracks which pane(s) had dirty edits at the time of the most recent save
+// attempt. Used to scope `lawSaveError` to the pane that actually triggered
+// the save — without this, a save initiated from the machine pane that
+// fails would surface the "Opslaan mislukt" dialog inside the text-pane
+// body too, blaming a pane the user didn't touch.
+const lastSaveTouchedText = ref(false);
+const lastSaveTouchedMachine = ref(false);
+
+// Single save handler shared by the Tekst and Machine panes. The PUT writes
+// the whole law YAML, so one click persists every in-memory edit for the
+// selected article regardless of which pane surfaced the button.
+async function handleLawSave() {
   const lawYaml = currentLawYaml.value;
   if (!lawYaml) return;
   // Snapshot the law id before the await. saveLaw itself guards its own
   // reactive writes with the same check, but the post-save cleanup below
   // runs in the EditorApp scope and would happily overwrite the new law's
-  // in-progress machine_readable with its pristine article data if the
-  // user switched laws mid-flight.
+  // in-progress edits with its pristine article data if the user switched
+  // laws mid-flight.
   const savedLawId = lawId.value;
+  lastSaveTouchedText.value = isArticleTextDirty.value;
+  lastSaveTouchedMachine.value = isMachineReadableDirty.value;
   try {
     await saveLaw(lawYaml);
     if (lawId.value !== savedLawId) return; // law switched mid-PUT
-    // After save, `rawYaml` is the saved text and `selectedArticle` now
-    // points at the re-parsed article. We could rely on the `watch`
-    // further up to re-sync `machineReadable` from the new selectedArticle,
-    // but that watcher fires on the next microtask — leaving a window
-    // where `isMachineReadableDirty` still sees the pre-save object and
-    // the save button stays enabled, enabling a double-save click. Reset
-    // `machineReadable` explicitly from the freshly-parsed article so the
-    // dirty flag clears synchronously with the save.
-    const fresh = selectedArticle.value?.machine_readable ?? null;
-    machineReadable.value = fresh ? structuredClone(fresh) : null;
-    yamlSource.value = fresh ? yaml.dump(fresh, dumpOpts) : '';
+    // points at the re-parsed article. The `watch(selectedArticle)` above
+    // fires on the next microtask — leaving a window where the dirty
+    // computeds still see the pre-save values and the save button stays
+    // enabled, enabling a double-save click. Reset local state explicitly
+    // from the freshly-parsed article so both dirty flags clear
+    // synchronously with the save.
+    const fresh = selectedArticle.value;
+    const freshMr = fresh?.machine_readable ?? null;
+    machineReadable.value = freshMr ? structuredClone(freshMr) : null;
+    yamlSource.value = freshMr ? yaml.dump(freshMr, dumpOpts) : '';
+    editedText.value = fresh?.text ?? '';
+    // Successful save — the dialog flags drop back to false.
+    lastSaveTouchedText.value = false;
+    lastSaveTouchedMachine.value = false;
   } catch (e) {
     // saveError is surfaced via lawSaveError; log for dev visibility.
     console.warn('saveLaw failed:', e);
   }
 }
+
+// Per-pane scoped views of lawSaveError. The error is only visible in the
+// pane that contributed to the failing save, even though the underlying
+// failure (and lawSaveError itself) is the same for both panes.
+const articleTextSaveError = computed(() =>
+  lastSaveTouchedText.value ? lawSaveError.value : null,
+);
+const machineReadableSaveError = computed(() =>
+  lastSaveTouchedMachine.value ? lawSaveError.value : null,
+);
+
+// Alias kept to minimise template churn; both panes ultimately call the
+// same whole-law save.
+const handleMachineReadableSave = handleLawSave;
 
 function onYamlInput(event) {
   // nldd-code-editor dispatches a CustomEvent with the new value in
@@ -888,6 +978,19 @@ function handleActionSave() {
                 <nldd-tab-bar-item selected text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
+            <nldd-toolbar-item v-if="lastSavedPr" slot="end">
+              <!-- Federated write-back indicator. Stays visible across pane
+                   switches so the user always knows where their edits are
+                   accumulating. New tab so the editor state isn't lost. -->
+              <nldd-button
+                size="md"
+                start-icon="external-link"
+                :text="`PR #${lastSavedPr.number}`"
+                :href="lastSavedPr.url"
+                target="_blank"
+                rel="noopener"
+              ></nldd-button>
+            </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
             </nldd-toolbar-item>
@@ -941,6 +1044,17 @@ function handleActionSave() {
                 @click="openSearch"
                 @keydown="onBarSearchKeydown"
               ></nldd-search-field>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item v-if="lastSavedPr" slot="end">
+              <!-- Same federated write-back indicator as the md toolbar. -->
+              <nldd-button
+                size="md"
+                start-icon="external-link"
+                :text="`PR #${lastSavedPr.number}`"
+                :href="lastSavedPr.url"
+                target="_blank"
+                rel="noopener"
+              ></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
@@ -1053,7 +1167,7 @@ function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :sticky-footer="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
+              :sticky-footer="(view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
               <div slot="header" class="pane-header">
                 <nldd-button
@@ -1073,13 +1187,88 @@ function handleActionSave() {
                     @select="setPaneView(idx, opt.id)"
                   ></nldd-menu-item>
                 </nldd-menu>
+                <!-- Formatting toolbar lives in the pane-header so it sits in
+                     line with the pane-view dropdown rather than below it.
+                     Wired to the ArticleTextEditor instance via textEditorRefs
+                     so the active-format chips update in lockstep with the
+                     editor's selection. -->
+                <div
+                  v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
+                  class="fmt-group"
+                  data-testid="article-text-fmt-group"
+                >
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bold }">
+                    <nldd-icon-button
+                      icon="bold"
+                      size="md"
+                      accessible-label="Vet"
+                      data-testid="fmt-bold"
+                      :disabled="!canEditArticleText || undefined"
+                      @click="textEditorRefs[idx].toggleBold()"
+                    ></nldd-icon-button>
+                  </span>
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.italic }">
+                    <nldd-icon-button
+                      icon="italic"
+                      size="md"
+                      accessible-label="Schuin"
+                      data-testid="fmt-italic"
+                      :disabled="!canEditArticleText || undefined"
+                      @click="textEditorRefs[idx].toggleItalic()"
+                    ></nldd-icon-button>
+                  </span>
+                  <span class="fmt-divider" role="separator" aria-orientation="vertical"></span>
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bulletList }">
+                    <nldd-icon-button
+                      icon="bullet-list"
+                      size="md"
+                      accessible-label="Opsomming"
+                      data-testid="fmt-bullet-list"
+                      :disabled="!canEditArticleText || undefined"
+                      @click="textEditorRefs[idx].toggleBulletList()"
+                    ></nldd-icon-button>
+                  </span>
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.orderedList }">
+                    <nldd-icon-button
+                      icon="numbered-list"
+                      size="md"
+                      accessible-label="Genummerde lijst"
+                      data-testid="fmt-ordered-list"
+                      :disabled="!canEditArticleText || undefined"
+                      @click="textEditorRefs[idx].toggleOrderedList()"
+                    ></nldd-icon-button>
+                  </span>
+                </div>
                 <span v-if="view === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
               </div>
 
               <!-- Tekst -->
               <nldd-simple-section v-if="view === 'text'" full-width>
-                <ArticleText :article="selectedArticle" raw />
+                <ArticleTextEditor
+                  :ref="setTextEditorRef(idx)"
+                  :article="selectedArticle"
+                  :editable="canEditArticleText"
+                  :save-error="articleTextSaveError"
+                  :model-value="editedText"
+                  @update:model-value="editedText = $event"
+                />
               </nldd-simple-section>
+              <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
+              <nldd-container
+                v-if="view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx"
+                slot="footer"
+                padding="16"
+              >
+                <nldd-button
+                  variant="primary"
+                  size="md"
+                  full-width
+                  data-testid="save-text-btn"
+                  :disabled="lawSaving || undefined"
+                  :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
+                  @click="handleLawSave"
+                ></nldd-button>
+              </nldd-container>
 
               <!-- Machine readable -->
               <nldd-simple-section v-else-if="view === 'machine'" full-width>
@@ -1088,7 +1277,7 @@ function handleActionSave() {
                   :editable="canEdit"
                   :dirty="isMachineReadableDirty"
                   :saving="lawSaving"
-                  :save-error="lawSaveError"
+                  :save-error="machineReadableSaveError"
                   @open-action="handleOpenAction"
                   @open-edit="activeEditItem = $event"
                   @init-mr="handleInitMr"
@@ -1295,7 +1484,33 @@ function handleActionSave() {
   box-sizing: border-box;
 }
 
+/* Formatting buttons embedded in the text-pane header. The nldd-icon-button
+ * library doesn't carry a pressed state of its own, so the wrapper span
+ * paints the active background locally — same approach the previous
+ * in-component toolbar used. */
+.fmt-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
+.fmt-btn {
+  display: inline-flex;
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+}
+
+.fmt-btn.is-active {
+  background-color: var(--semantics-surfaces-accent-tinted-background-color, rgba(0, 123, 199, 0.14));
+}
+
+.fmt-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background-color: var(--semantics-borders-default-color, #DDE0E4);
+}
 
 .editor-parse-error {
   font-size: 12px;
