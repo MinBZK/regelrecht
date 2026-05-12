@@ -3,12 +3,15 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { authedFetch } from '../composables/useAuth.js';
 import { useLawJobsSheet } from '../composables/useLawJobsSheet.js';
 import StatusBadge from './StatusBadge.vue';
-import { formatDate, jobSubtitle, truncateUuid } from '../formatters.js';
+import { formatDate, jobSubtitle } from '../formatters.js';
 
 const { isOpen, lawId, close } = useLawJobsSheet();
 
+const JOBS_LIMIT = 100;
+
 const sheetRef = ref(null);
 const jobs = ref([]);
+const totalJobs = ref(0);
 const loading = ref(false);
 const error = ref(null);
 const selectedJob = ref(null);
@@ -48,7 +51,7 @@ async function loadJobs() {
       law_id: lawId.value,
       sort: 'created_at',
       order: 'desc',
-      limit: '100',
+      limit: String(JOBS_LIMIT),
     });
     const response = await authedFetch(`api/jobs?${params}`);
     if (!response) return;
@@ -58,6 +61,7 @@ async function loadJobs() {
     }
     const body = await response.json();
     jobs.value = body.data ?? [];
+    totalJobs.value = body.total ?? jobs.value.length;
   } catch (err) {
     error.value = err.message;
   } finally {
@@ -168,6 +172,10 @@ const codeSections = computed(() => {
               <nldd-icon-cell icon="chevron-right" size="20" />
             </nldd-list-item>
           </nldd-list>
+          <nldd-inline-dialog
+            v-if="totalJobs > jobs.length"
+            :text="`Showing first ${jobs.length} of ${totalJobs} jobs`"
+          />
         </nldd-simple-section>
 
         <nldd-simple-section v-else>
