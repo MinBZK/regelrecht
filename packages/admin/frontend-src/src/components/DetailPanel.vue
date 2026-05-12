@@ -66,6 +66,7 @@ function onSheetClose() {
     <nldd-sheet
       ref="sheetRef"
       placement="right"
+      full-height
       accessible-label="Job details"
       @close="onSheetClose"
     >

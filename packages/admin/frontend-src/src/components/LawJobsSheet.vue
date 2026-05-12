@@ -123,6 +123,7 @@ const codeSections = computed(() => {
     <nldd-sheet
       ref="sheetRef"
       placement="right"
+      full-height
       accessible-label="Jobs"
       @close="onSheetClose"
     >

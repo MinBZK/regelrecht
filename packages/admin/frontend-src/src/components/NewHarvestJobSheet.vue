@@ -112,6 +112,7 @@ function onSheetClose() {
     <nldd-sheet
       ref="sheetRef"
       placement="right"
+      full-height
       accessible-label="New harvest job"
       @close="onSheetClose"
     >
