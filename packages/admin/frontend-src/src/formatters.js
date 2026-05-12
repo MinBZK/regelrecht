@@ -23,3 +23,21 @@ export function truncateError(error, maxLen = 80) {
   if (!error) return null;
   return error.length > maxLen ? error.substring(0, maxLen) + '\u2026' : error;
 }
+
+export function jobSubtitle(job) {
+  const type = job.job_type
+    ? job.job_type.charAt(0).toUpperCase() + job.job_type.slice(1)
+    : 'Job';
+  switch (job.status) {
+    case 'completed':
+      return `${type} completed at ${formatDate(job.completed_at)}`;
+    case 'failed': {
+      const attempts = job.attempts > 1 ? ` after ${job.attempts} attempts` : '';
+      return `${type} failed${attempts} at ${formatDate(job.completed_at)}`;
+    }
+    case 'processing':
+      return `${type} started at ${formatDate(job.started_at)}`;
+    default:
+      return `${type} created at ${formatDate(job.created_at)}`;
+  }
+}

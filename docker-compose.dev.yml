@@ -17,8 +17,6 @@ services:
     build:
       context: .
       dockerfile: packages/admin/Dockerfile
-      secrets:
-        - GITHUB_TOKEN
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,8 +87,6 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-      secrets:
-        - GITHUB_TOKEN
     environment:
       PIPELINE_API_URL: http://pipelineapi:8000
     ports:
@@ -124,10 +120,6 @@ services:
       # Placeholder so alerting provisioning doesn't fail on missing webhook
       MATTERMOST_WEBHOOK_URL: http://localhost:0/webhook-not-configured
       # Port mapping set via override files (compose.local.yaml / compose.native.yaml)
-
-secrets:
-  GITHUB_TOKEN:
-    environment: GITHUB_TOKEN
 
 volumes:
   pgdata:

@@ -315,8 +315,6 @@ jobs:
         if: needs.changes.outputs.ci == 'true'
         working-directory: frontend
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run frontend tests
         if: needs.changes.outputs.ci == 'true'
@@ -415,14 +413,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install admin frontend dependencies
         working-directory: packages/admin/frontend-src
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3  # v4.0.0
@@ -499,8 +493,6 @@ jobs:
         if: needs.changes.outputs.admin == 'true'
         working-directory: packages/admin/frontend-src
         run: npm ci
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build admin frontend
         if: needs.changes.outputs.admin == 'true'

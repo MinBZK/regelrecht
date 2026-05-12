@@ -25,8 +25,7 @@ RUN cargo build --target wasm32-unknown-unknown --release --features wasm -p reg
 FROM node:26-alpine@sha256:e71ac5e964b9201072425d59d2e876359efa25dc96bb1768cb73295728d6e4ea AS frontend-builder
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) npm ci
+RUN npm ci
 COPY frontend/ .
 COPY --from=wasm-builder /wasm-pkg/ public/wasm/pkg/
 RUN npm run build

@@ -6,7 +6,7 @@ The frontend is a law editor and library browser built with Vue 3 and Vite.
 
 - **Framework**: Vue 3 (Composition API)
 - **Build tool**: Vite 8
-- **Design system**: [@minbzk/storybook](https://github.com/minbzk/storybook) web components
+- **Design system**: [@nldd/design-system](https://github.com/minbzk/storybook) web components
 - **Location**: `frontend/`
 
 ## Pages
@@ -51,7 +51,7 @@ Edit law articles with a split-pane interface:
 
 ## Design System
 
-The frontend uses the **RegelRecht Design System** (`@minbzk/storybook`), which provides Lit-based web components:
+The frontend uses the **RegelRecht Design System** (`@nldd/design-system`), which provides Lit-based web components:
 
 | Category | Components Used |
 |----------|----------------|

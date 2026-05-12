@@ -1,5 +1,5 @@
 /* Main CSS - Minimal app-level styles */
-/* Component styles are provided by @minbzk/storybook (imported in JS entry points) */
+/* Component styles are provided by @nldd/design-system (imported in JS entry points) */
 
 :root {
   /* Rijksoverheid donkerblauw — used by accent UI in editor components.

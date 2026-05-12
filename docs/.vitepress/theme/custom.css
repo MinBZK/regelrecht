@@ -48,7 +48,7 @@
 }
 
 :root {
-  /* Font family - aligned with @minbzk/storybook design tokens */
+  /* Font family - aligned with @nldd/design-system design tokens */
   --rr-font-family-sans: 'RijksSansVF', system-ui, sans-serif;
   --rr-font-family-serif: 'RijksoverheidSerif', Georgia, serif;
 

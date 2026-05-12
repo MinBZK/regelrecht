@@ -1,7 +1,6 @@
 <script setup>
-import { computed, watch, onUnmounted } from 'vue';
+import { computed, ref, watch } from 'vue';
 import StatusBadge from './StatusBadge.vue';
-import ProgressIndicator from './ProgressIndicator.vue';
 import { formatDate } from '../formatters.js';
 
 const props = defineProps({
@@ -11,12 +10,19 @@ const props = defineProps({
 
 const emit = defineEmits(['close']);
 
+const sheetRef = ref(null);
+
+watch(() => props.isOpen, (open) => {
+  if (open) sheetRef.value?.show();
+  else sheetRef.value?.hide();
+});
+
 const infoFields = computed(() => {
   if (!props.job) return [];
   return [
-    ['ID', props.job.id],
-    ['Type', props.job.job_type],
+    ['Job ID', props.job.id],
     ['Law ID', props.job.law_id],
+    ['Type', props.job.job_type],
     ['Status', props.job.status],
     ['Priority', props.job.priority],
     ['Attempts', `${props.job.attempts} / ${props.job.max_attempts}`],
@@ -26,88 +32,69 @@ const infoFields = computed(() => {
   ].filter(([, value]) => value != null);
 });
 
-const resultJson = computed(() => {
-  if (!props.job?.result) return null;
-  return JSON.stringify(props.job.result, null, 2);
-});
+const resultJson = computed(() =>
+  props.job?.result ? JSON.stringify(props.job.result, null, 2) : null,
+);
 
-const payloadJson = computed(() => {
-  if (!props.job?.payload) return null;
-  return JSON.stringify(props.job.payload, null, 2);
-});
+const payloadJson = computed(() =>
+  props.job?.payload ? JSON.stringify(props.job.payload, null, 2) : null,
+);
 
-function onKeydown(e) {
-  if (e.key === 'Escape') emit('close');
-}
-
-watch(() => props.isOpen, (open) => {
-  if (open) {
-    document.addEventListener('keydown', onKeydown);
-  } else {
-    document.removeEventListener('keydown', onKeydown);
+const codeSections = computed(() => {
+  const j = props.job;
+  if (!j) return [];
+  const out = [];
+  if (j.status === 'failed' && j.result?.error) {
+    out.push({ title: 'Error', code: j.result.error, wrap: true });
   }
+  if (j.status === 'completed' && resultJson.value) {
+    out.push({ title: 'Result', code: resultJson.value, language: 'json' });
+  }
+  if (payloadJson.value) {
+    out.push({ title: 'Payload', code: payloadJson.value, language: 'json' });
+  }
+  return out;
 });
 
-onUnmounted(() => document.removeEventListener('keydown', onKeydown));
+function onSheetClose() {
+  if (props.isOpen) emit('close');
+}
 </script>
 
 <template>
   <Teleport to="body">
-    <div
-      class="detail-backdrop"
-      :class="{ 'is-open': isOpen }"
-      :hidden="!isOpen ? '' : undefined"
-      @click="emit('close')"
-    />
-    <aside class="detail-panel" :class="{ 'is-open': isOpen }">
-      <div class="detail-panel__header">
-        <h2 class="detail-panel__title">Job Details</h2>
-        <ndd-icon-button
-          variant="neutral-transparent"
-          size="sm"
-          accessible-label="Close"
-          @click="emit('close')"
-        >
-          <ndd-icon name="dismiss" />
-          Close
-        </ndd-icon-button>
-      </div>
-      <div v-if="job" class="detail-panel__body">
-        <!-- Info section -->
-        <div class="detail-section">
-          <h3 class="detail-section__title">Info</h3>
-          <dl class="detail-grid">
-            <template v-for="[label, value] in infoFields" :key="label">
-              <dt>{{ label }}</dt>
-              <dd>
-                <StatusBadge v-if="label === 'Status'" :status="value" />
-                <template v-else>{{ value }}</template>
-              </dd>
-            </template>
-          </dl>
-        </div>
+    <nldd-sheet
+      ref="sheetRef"
+      placement="right"
+      accessible-label="Job details"
+      @close="onSheetClose"
+    >
+      <nldd-page sticky-header>
+        <nldd-top-title-bar slot="header" text="Job details" />
+        <nldd-simple-section v-if="job">
+          <nldd-list variant="simple">
+            <nldd-list-item v-for="[label, value] in infoFields" :key="label">
+              <nldd-text-cell :text="label" color="secondary" width="fit-content" />
+              <nldd-spacer-cell size="12" />
+              <nldd-cell
+                v-if="label === 'Status'"
+                width="stretch"
+                style="align-items: flex-end"
+              >
+                <StatusBadge :status="value" size="md" />
+              </nldd-cell>
+              <nldd-text-cell v-else :text="String(value)" horizontal-alignment="right" />
+            </nldd-list-item>
+          </nldd-list>
 
-        <!-- Progress section -->
-        <ProgressIndicator v-if="job.status === 'processing'" :progress="job.progress" />
-
-        <!-- Error section -->
-        <div v-if="job.status === 'failed' && job.result?.error" class="detail-section">
-          <h3 class="detail-section__title">Error</h3>
-          <div class="detail-error">{{ job.result.error }}</div>
-        </div>
-
-        <!-- Result section -->
-        <div v-if="job.status === 'completed' && resultJson" class="detail-section">
-          <h3 class="detail-section__title">Result</h3>
-          <div class="detail-json">{{ resultJson }}</div>
-        </div>
-
-        <!-- Payload section -->
-        <div v-if="payloadJson" class="detail-section">
-          <h3 class="detail-section__title">Payload</h3>
-          <div class="detail-json">{{ payloadJson }}</div>
-        </div>
-      </div>
-    </aside>
+          <template v-for="(section, idx) in codeSections" :key="section.title">
+            <nldd-spacer size="16" />
+            <nldd-title size="6"><h3>{{ section.title }}</h3></nldd-title>
+            <nldd-spacer size="4" />
+            <nldd-code :wrap="section.wrap || undefined" :language="section.language || undefined">{{ section.code }}</nldd-code>
+          </template>
+        </nldd-simple-section>
+      </nldd-page>
+    </nldd-sheet>
   </Teleport>
 </template>

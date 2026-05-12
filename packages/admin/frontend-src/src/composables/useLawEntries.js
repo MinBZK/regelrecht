@@ -26,13 +26,16 @@ export function useLawEntries() {
   const { data, totalCount, loading, error, refresh, startPolling, stopPolling } =
     usePollingFetch(buildUrl);
 
-  function setSort(key) {
+  function setSort(key, newOrder) {
     if (!LAW_ENTRY_SORT_KEYS.has(key)) return;
-    if (sort.value === key) {
+    if (newOrder === 'asc' || newOrder === 'desc') {
+      sort.value = key;
+      order.value = newOrder;
+    } else if (sort.value === key) {
       order.value = order.value === 'asc' ? 'desc' : 'asc';
     } else {
       sort.value = key;
-      order.value = 'asc';
+      order.value = 'desc';
     }
     offset.value = 0;
     refresh();

@@ -2,13 +2,14 @@ import { ref, reactive, computed } from 'vue';
 import { usePollingFetch } from './usePollingFetch.js';
 import { JOB_SORT_KEYS, GROUPED_SORT_KEYS } from '../constants.js';
 
-export function useJobs() {
-  const sort = ref('latest_created_at');
+export function useJobs(options = {}) {
+  const initialView = options.initialViewMode === 'flat' ? 'flat' : 'grouped';
+  const sort = ref(initialView === 'flat' ? 'created_at' : 'latest_created_at');
   const order = ref('desc');
   const limit = ref(50);
   const offset = ref(0);
   const filters = reactive({});
-  const viewMode = ref('grouped');
+  const viewMode = ref(initialView);
   const expandedLawIds = reactive(new Set());
   const expandedJobsCache = reactive({});
 
@@ -87,14 +88,17 @@ export function useJobs() {
     await refresh();
   }
 
-  function setSort(key) {
+  function setSort(key, newOrder) {
     const allowedKeys = viewMode.value === 'grouped' ? GROUPED_SORT_KEYS : JOB_SORT_KEYS;
     if (!allowedKeys.has(key)) return;
-    if (sort.value === key) {
+    if (newOrder === 'asc' || newOrder === 'desc') {
+      sort.value = key;
+      order.value = newOrder;
+    } else if (sort.value === key) {
       order.value = order.value === 'asc' ? 'desc' : 'asc';
     } else {
       sort.value = key;
-      order.value = 'asc';
+      order.value = 'desc';
     }
     offset.value = 0;
     refresh();
