@@ -415,8 +415,12 @@ pub async fn list_jobs_summary(
     // Build ORDER BY clause. Status uses a multi-key sort by percentage
     // (failed% → pending% → processing% → completed%, all DESC) so rows
     // ladder from "most broken" at the top to "fully completed" at the
-    // bottom, with predictable in-group ordering. Other columns use the
-    // generic {expr} {order} shape.
+    // bottom, with predictable in-group ordering. The frontend's
+    // GROUPED_SORT_OPTIONS deliberately omits directionLabels for status,
+    // so `order` is ignored here — there is no meaningful ascending
+    // equivalent of "least-broken-first" beyond reversing the existing
+    // ladder, which we don't expose. Other columns use the generic
+    // {expr} {order} shape.
     let order_by_clause = if sort_column == "status" {
         "failed::float / NULLIF(total_jobs, 0) DESC, \
          pending::float / NULLIF(total_jobs, 0) DESC, \

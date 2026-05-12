@@ -9,11 +9,13 @@ const sheetRef = ref(null);
 const inputRef = ref(null);
 const submitting = ref(false);
 const errorId = ref('');
+const networkError = ref('');
 const buttonLabel = ref('Add harvest job');
 
 watch(isOpen, async (open) => {
   if (open) {
     errorId.value = '';
+    networkError.value = '';
     sheetRef.value?.show();
     await nextTick();
     inputRef.value?.focus();
@@ -79,7 +81,9 @@ async function submit({ keepOpen = false } = {}) {
       close();
     }
   } catch (err) {
-    alert('Harvest failed: ' + err.message);
+    networkError.value = err.message || 'Unknown error';
+    errorId.value = 'harvest-network-error';
+    el.focus?.();
   } finally {
     submitting.value = false;
     buttonLabel.value = 'Add harvest job';
@@ -91,6 +95,7 @@ function onSubmitAndAddAnother() { submit({ keepOpen: true }); }
 
 function onInput() {
   if (errorId.value) errorId.value = '';
+  if (networkError.value) networkError.value = '';
 }
 
 function onKeydown(e) {
@@ -134,6 +139,9 @@ function onSheetClose() {
               </nldd-form-field-error-text>
               <nldd-form-field-error-text id="harvest-law-id-conflict">
                 A harvest job for this law is already pending or processing.
+              </nldd-form-field-error-text>
+              <nldd-form-field-error-text id="harvest-network-error">
+                Failed to submit harvest job: {{ networkError }}
               </nldd-form-field-error-text>
             </nldd-form-field>
             <nldd-form-actions>

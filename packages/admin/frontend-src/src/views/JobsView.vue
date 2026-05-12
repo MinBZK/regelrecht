@@ -12,6 +12,7 @@ import DetailPanel from '../components/DetailPanel.vue';
 import LawJobsSheet from '../components/LawJobsSheet.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import PaginationControls from '../components/PaginationControls.vue';
+import ViewToggle from '../components/ViewToggle.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -78,10 +79,7 @@ function onViewChange(event) {
     @row-click="openDetail"
   >
     <template #toolbar-prefix>
-      <nldd-segmented-control size="sm" :value="viewMode" @change="onViewChange">
-        <nldd-segmented-control-item value="grouped" text="Grouped" />
-        <nldd-segmented-control-item value="flat" text="Flat" />
-      </nldd-segmented-control>
+      <ViewToggle :value="viewMode" @change="onViewChange" />
     </template>
     <template #cell-status="{ row }">
       <StatusBadge :status="row.status || 'unknown'" :error-message="row.result?.error" />
@@ -119,10 +117,7 @@ function onViewChange(event) {
     @view-jobs="openLawJobs"
   >
     <template #toolbar-prefix>
-      <nldd-segmented-control size="sm" :value="viewMode" @change="onViewChange">
-        <nldd-segmented-control-item value="grouped" text="Grouped" />
-        <nldd-segmented-control-item value="flat" text="Flat" />
-      </nldd-segmented-control>
+      <ViewToggle :value="viewMode" @change="onViewChange" />
     </template>
     <template #empty-action>
       <nldd-button
