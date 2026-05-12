@@ -62,7 +62,8 @@ async function submit({ keepOpen = false } = {}) {
     });
     if (!response) return;
     if (response.status === 409) {
-      alert('A harvest job for this law is already pending or processing.');
+      errorId.value = 'harvest-law-id-conflict';
+      el.focus?.();
       return;
     }
     if (!response.ok) {
@@ -130,6 +131,9 @@ function onSheetClose() {
               </nldd-form-field-error-text>
               <nldd-form-field-error-text id="harvest-law-id-format">
                 Expected a BWB ID (e.g. BWBR0018451) or CVDR ID (e.g. CVDR681386).
+              </nldd-form-field-error-text>
+              <nldd-form-field-error-text id="harvest-law-id-conflict">
+                A harvest job for this law is already pending or processing.
               </nldd-form-field-error-text>
             </nldd-form-field>
             <nldd-form-actions>
