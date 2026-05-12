@@ -562,6 +562,12 @@ const currentLawYaml = computed(() => {
     }
     if (machineReadable.value != null) {
       patched.machine_readable = machineReadable.value;
+    } else if (baselineMr != null) {
+      // The user opened an article that had machine_readable and cleared the
+      // YAML editor. The spread above carried the original key over; we have
+      // to drop it explicitly so the save persists the deletion rather than
+      // silently round-tripping the original content.
+      delete patched.machine_readable;
     }
     docArticles[idx] = patched;
     doc.articles = docArticles;

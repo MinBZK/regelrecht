@@ -53,8 +53,10 @@ mod inner {
         /// Build a client. Uses the standard `regelrecht-corpus/0.1` UA so
         /// requests are traceable in GitHub audit logs the same way reads are.
         pub fn new() -> Result<Self> {
+            // User-Agent is set per-request in `default_headers` so requests
+            // remain traceable in GitHub audit logs without configuring it
+            // twice on the client.
             let client = reqwest::Client::builder()
-                .user_agent("regelrecht-corpus/0.1")
                 .connect_timeout(std::time::Duration::from_secs(30))
                 .timeout(std::time::Duration::from_secs(60))
                 .build()

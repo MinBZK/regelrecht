@@ -175,6 +175,16 @@ type SharedBackend = Arc<Mutex<Box<dyn RepoBackend>>>;
 /// **different** keys never block each other on the slow path. Concurrent
 /// callers on the **same** key serialise inside the cell's `get_or_try_init`
 /// — which is the desired behaviour for that case.
+/// Hard cap on the number of `(session, source)` backends kept in the
+/// registry simultaneously. Each entry holds a full on-disk git clone,
+/// so unbounded growth is a disk-exhaustion vector — a misbehaving (or
+/// hostile authenticated) client that rotates `X-Editor-Session` values
+/// would otherwise be able to fill `/tmp` until the pod fails. A proper
+/// LRU reaper that prunes idle sessions is tracked separately; this cap
+/// is the minimum guard so the registry refuses new keys with `503`
+/// rather than crashing the process.
+pub const SESSION_REGISTRY_MAX_ENTRIES: usize = 5_000;
+
 #[derive(Default)]
 pub struct SessionRegistry {
     /// Backends keyed by `(session_id, source_id)`. The cells are
@@ -240,6 +250,13 @@ impl SessionRegistry {
                 // by a clone in flight elsewhere.
                 let cell = {
                     let mut map = self.backends.write().await;
+                    // Refuse new keys once the cap is reached. Existing keys
+                    // (already in the map) still resolve so an in-flight
+                    // session is not killed mid-edit; only NEW (session,
+                    // source) pairs hit the 503.
+                    if !map.contains_key(&key) && map.len() >= SESSION_REGISTRY_MAX_ENTRIES {
+                        return Err(SessionResolveError::CapacityExceeded);
+                    }
                     map.entry(key)
                         .or_insert_with(|| Arc::new(OnceCell::new()))
                         .clone()
@@ -315,7 +332,7 @@ impl SessionRegistry {
 }
 
 /// Errors from [`SessionRegistry::resolve_session_backend`]. The
-/// editor-api maps these to HTTP statuses (404 / 403 / 500) at the
+/// editor-api maps these to HTTP statuses (404 / 403 / 503 / 500) at the
 /// handler boundary — keeps the registry independent of axum types.
 #[derive(Debug)]
 pub enum SessionResolveError {
@@ -326,6 +343,12 @@ pub enum SessionResolveError {
     /// message; we deliberately do not silently fall back to a local-only
     /// commit because the user would think their edit reached upstream.
     NoToken(String),
+    /// The registry has hit its hard cap on concurrent (session, source)
+    /// backends. Each backend holds an on-disk git clone, so unbounded
+    /// growth is a disk-exhaustion vector; this guards against rotation
+    /// attacks or honest leaks until a proper LRU reaper lands. Surfaced
+    /// as 503 to tell the caller "try again later".
+    CapacityExceeded,
     /// Anything else (clone failure, bad config, IO error). Surfaced as
     /// 500 with a generic message; the underlying error is logged.
     Other(String),
@@ -339,6 +362,11 @@ impl std::fmt::Display for SessionResolveError {
                 f,
                 "source '{}' is not configured for write-back (no auth token)",
                 id
+            ),
+            Self::CapacityExceeded => write!(
+                f,
+                "session registry at capacity ({} entries)",
+                SESSION_REGISTRY_MAX_ENTRIES
             ),
             Self::Other(msg) => write!(f, "{}", msg),
         }

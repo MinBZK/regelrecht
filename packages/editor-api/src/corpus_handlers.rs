@@ -550,6 +550,16 @@ fn session_resolve_error(law_id: &str, e: SessionResolveError) -> (StatusCode, S
                 "Source is not configured for write-back".to_string(),
             )
         }
+        SessionResolveError::CapacityExceeded => {
+            tracing::warn!(
+                law_id = %law_id,
+                "save: session registry at capacity, refusing new (session, source) backend"
+            );
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Editor is at capacity — try again in a moment".to_string(),
+            )
+        }
         SessionResolveError::Other(msg) => {
             tracing::error!(
                 law_id = %law_id,
