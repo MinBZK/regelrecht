@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
-import { getEditorSessionId, lastSavedPr } from './useEditorSession.js';
+import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
 
 // --- Shared law cache ---
 const lawCache = new Map();
@@ -197,7 +197,7 @@ export function useLaw(lawParam, articleParam) {
       // them after a law-switch would corrupt the new law's editor state.
       try {
         const json = await res.json();
-        lastSavedPr.value = json?.pr ?? null;
+        lastSavedPr.value = sanitizeSavedPr(json?.pr);
       } catch {
         // Older deployments return a bare 200 without JSON — keep the
         // existing PR (if any) and treat the save as successful.

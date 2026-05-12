@@ -845,6 +845,15 @@ pub async fn save_law(
 }
 
 /// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
+///
+/// CONTRACT NOTE: this endpoint now requires an `X-Editor-Session` header
+/// (same as `save_scenario` and `save_law`). The federated write-back path
+/// scopes every write to a per-session feature branch; without the session
+/// id we cannot route the deletion to the correct branch, so the endpoint
+/// returns `400 Bad Request` rather than silently falling back to the
+/// global backend. This is a contract change from the previous implementation
+/// where `delete_scenario` was unauthenticated — non-browser callers
+/// (curl, admin scripts, integration tests) must send the header.
 pub async fn delete_scenario(
     State(state): State<AppState>,
     session: Session,

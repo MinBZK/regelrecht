@@ -2,7 +2,7 @@
  * useScenarios — fetch, manage, and save scenario files for a law.
  */
 import { ref, watch } from 'vue';
-import { getEditorSessionId, lastSavedPr } from './useEditorSession.js';
+import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
 
 export function useScenarios(lawId) {
   const scenarios = ref([]);
@@ -97,7 +97,7 @@ export function useScenarios(lawId) {
       // shared "Bekijk op GitHub" badge in EditorApp.vue.
       try {
         const json = await res.json();
-        lastSavedPr.value = json?.pr ?? null;
+        lastSavedPr.value = sanitizeSavedPr(json?.pr);
       } catch {
         // Older deployments returned a bare 200 — keep the prior PR.
       }

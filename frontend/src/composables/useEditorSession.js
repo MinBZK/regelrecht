@@ -34,6 +34,20 @@ const STORAGE_KEY = 'regelrecht-editor-session-id';
 export const lastSavedPr = ref(null);
 
 /**
+ * Sanitize a PR payload from the editor-api before storing it in
+ * `lastSavedPr`. Only PRs whose `url` is an explicit `https://` link survive
+ * — anything else (missing url, `javascript:`, relative paths) is collapsed
+ * to `null` so the `<a :href>` binding can never accept an attacker-controlled
+ * scheme even if the backend ever misbehaves.
+ */
+export function sanitizeSavedPr(pr) {
+  if (!pr || typeof pr.url !== 'string' || !pr.url.startsWith('https://')) {
+    return null;
+  }
+  return pr;
+}
+
+/**
  * Returns this tab's editor session id, minting + persisting one on first
  * call. Stable for the lifetime of the tab.
  *
