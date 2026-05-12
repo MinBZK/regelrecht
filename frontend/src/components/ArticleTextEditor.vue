@@ -129,66 +129,22 @@ function toggleBold() { editor.value?.chain().focus().toggleBold().run(); }
 function toggleItalic() { editor.value?.chain().focus().toggleItalic().run(); }
 function toggleBulletList() { editor.value?.chain().focus().toggleBulletList().run(); }
 function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList().run(); }
+
+// Expose the active-format state and toggle handlers so the parent can
+// render the formatting buttons inside its own pane-header (next to the
+// existing pane-view dropdown) rather than this component re-drawing its
+// own toolbar with a duplicate label dropdown.
+defineExpose({
+  activeFormats,
+  toggleBold,
+  toggleItalic,
+  toggleBulletList,
+  toggleOrderedList,
+});
 </script>
 
 <template>
   <div class="article-text-editor" data-testid="article-text-editor">
-    <nldd-toolbar v-if="article" size="md" class="article-text-editor__toolbar">
-      <nldd-toolbar-item slot="start">
-        <!-- Single-option panel-label dropdown; future revisions will let users switch the pane to other views (e.g. structured outline). Disabled today because there's only one option. -->
-        <nldd-dropdown size="md">
-          <select disabled aria-label="Paneel" data-testid="article-text-panel-label">
-            <option value="tekst">Tekst</option>
-          </select>
-        </nldd-dropdown>
-      </nldd-toolbar-item>
-      <nldd-toolbar-item slot="center">
-        <div class="fmt-group">
-          <span class="fmt-btn" :class="{ 'is-active': activeFormats.bold }">
-            <nldd-icon-button
-              icon="bold"
-              size="md"
-              accessible-label="Vet"
-              data-testid="fmt-bold"
-              :disabled="!editable || undefined"
-              @click="toggleBold"
-            ></nldd-icon-button>
-          </span>
-          <span class="fmt-btn" :class="{ 'is-active': activeFormats.italic }">
-            <nldd-icon-button
-              icon="italic"
-              size="md"
-              accessible-label="Schuin"
-              data-testid="fmt-italic"
-              :disabled="!editable || undefined"
-              @click="toggleItalic"
-            ></nldd-icon-button>
-          </span>
-          <span class="fmt-divider" role="separator" aria-orientation="vertical"></span>
-          <span class="fmt-btn" :class="{ 'is-active': activeFormats.bulletList }">
-            <nldd-icon-button
-              icon="bullet-list"
-              size="md"
-              accessible-label="Opsomming"
-              data-testid="fmt-bullet-list"
-              :disabled="!editable || undefined"
-              @click="toggleBulletList"
-            ></nldd-icon-button>
-          </span>
-          <span class="fmt-btn" :class="{ 'is-active': activeFormats.orderedList }">
-            <nldd-icon-button
-              icon="numbered-list"
-              size="md"
-              accessible-label="Genummerde lijst"
-              data-testid="fmt-ordered-list"
-              :disabled="!editable || undefined"
-              @click="toggleOrderedList"
-            ></nldd-icon-button>
-          </span>
-        </div>
-      </nldd-toolbar-item>
-    </nldd-toolbar>
-
     <div class="article-text-editor__body-wrap">
       <template v-if="article && editable && saveError">
         <nldd-inline-dialog
@@ -213,45 +169,6 @@ function toggleOrderedList() { editor.value?.chain().focus().toggleOrderedList()
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.article-text-editor__toolbar {
-  /* Pin at the top of the pane body; the scrolling area is the editor body
-   * below, not the toolbar. */
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.fmt-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.fmt-btn {
-  display: inline-flex;
-  border-radius: 8px;
-  transition: background-color 120ms ease;
-}
-
-/* Toggled formatting buttons: the library's nldd-icon-button has no built-in
- * pressed state, so we paint it ourselves. A follow-up upstream PR to
- * MinBZK/storybook can add a real `pressed` attr; until then this scoped
- * wrapper keeps the indication local. */
-.fmt-btn.is-active {
-  background-color: var(--semantics-surfaces-accent-tinted-background-color, rgba(0, 123, 199, 0.14));
-}
-
-/* Vertical separator between the inline/mark toggles and the list toggles.
- * `nldd-button-bar-divider` only renders when nested inside `nldd-button-bar`;
- * here we're already inside `nldd-toolbar-item`, so we draw the line locally. */
-.fmt-divider {
-  display: inline-block;
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
-  background-color: var(--semantics-borders-default-color, #DDE0E4);
 }
 
 .article-text-editor__body-wrap {

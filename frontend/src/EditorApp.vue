@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, watchEffect, nextTick } from 'vue';
+import { ref, computed, reactive, watch, watchEffect, nextTick } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
@@ -453,6 +453,22 @@ const yamlSource = ref('');
 // Seeded on article switch alongside machineReadable so the Tekst and Machine
 // panes reset in lockstep when the user tabs to a different article.
 const editedText = ref('');
+
+// Per-pane refs to the ArticleTextEditor instance so the pane-header can
+// render the formatting toolbar (Bold/Italic/lists) next to the existing
+// pane-view dropdown rather than the editor drawing its own duplicate
+// label dropdown inside the body. Functional ref keeps the map in sync as
+// panes mount/unmount.
+const textEditorRefs = reactive({});
+function setTextEditorRef(idx) {
+  return (el) => {
+    if (el) {
+      textEditorRefs[idx] = el;
+    } else {
+      delete textEditorRefs[idx];
+    }
+  };
+}
 
 const dumpOpts = { lineWidth: 80, noRefs: true };
 
@@ -1166,12 +1182,65 @@ function handleActionSave() {
                     @select="setPaneView(idx, opt.id)"
                   ></nldd-menu-item>
                 </nldd-menu>
+                <!-- Formatting toolbar lives in the pane-header so it sits in
+                     line with the pane-view dropdown rather than below it.
+                     Wired to the ArticleTextEditor instance via textEditorRefs
+                     so the active-format chips update in lockstep with the
+                     editor's selection. -->
+                <div
+                  v-if="view === 'text' && selectedArticle && textEditorRefs[idx]"
+                  class="fmt-group"
+                  data-testid="article-text-fmt-group"
+                >
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bold }">
+                    <nldd-icon-button
+                      icon="bold"
+                      size="md"
+                      accessible-label="Vet"
+                      data-testid="fmt-bold"
+                      :disabled="!canEdit || undefined"
+                      @click="textEditorRefs[idx].toggleBold()"
+                    ></nldd-icon-button>
+                  </span>
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.italic }">
+                    <nldd-icon-button
+                      icon="italic"
+                      size="md"
+                      accessible-label="Schuin"
+                      data-testid="fmt-italic"
+                      :disabled="!canEdit || undefined"
+                      @click="textEditorRefs[idx].toggleItalic()"
+                    ></nldd-icon-button>
+                  </span>
+                  <span class="fmt-divider" role="separator" aria-orientation="vertical"></span>
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.bulletList }">
+                    <nldd-icon-button
+                      icon="bullet-list"
+                      size="md"
+                      accessible-label="Opsomming"
+                      data-testid="fmt-bullet-list"
+                      :disabled="!canEdit || undefined"
+                      @click="textEditorRefs[idx].toggleBulletList()"
+                    ></nldd-icon-button>
+                  </span>
+                  <span class="fmt-btn" :class="{ 'is-active': textEditorRefs[idx].activeFormats.orderedList }">
+                    <nldd-icon-button
+                      icon="numbered-list"
+                      size="md"
+                      accessible-label="Genummerde lijst"
+                      data-testid="fmt-ordered-list"
+                      :disabled="!canEdit || undefined"
+                      @click="textEditorRefs[idx].toggleOrderedList()"
+                    ></nldd-icon-button>
+                  </span>
+                </div>
                 <span v-if="view === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
               </div>
 
               <!-- Tekst -->
               <nldd-simple-section v-if="view === 'text'" full-width>
                 <ArticleTextEditor
+                  :ref="setTextEditorRef(idx)"
                   :article="selectedArticle"
                   :editable="canEdit"
                   :save-error="articleTextSaveError"
@@ -1410,7 +1479,33 @@ function handleActionSave() {
   box-sizing: border-box;
 }
 
+/* Formatting buttons embedded in the text-pane header. The nldd-icon-button
+ * library doesn't carry a pressed state of its own, so the wrapper span
+ * paints the active background locally — same approach the previous
+ * in-component toolbar used. */
+.fmt-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 
+.fmt-btn {
+  display: inline-flex;
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+}
+
+.fmt-btn.is-active {
+  background-color: var(--semantics-surfaces-accent-tinted-background-color, rgba(0, 123, 199, 0.14));
+}
+
+.fmt-divider {
+  display: inline-block;
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background-color: var(--semantics-borders-default-color, #DDE0E4);
+}
 
 .editor-parse-error {
   font-size: 12px;

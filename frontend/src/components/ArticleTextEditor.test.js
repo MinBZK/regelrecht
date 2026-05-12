@@ -19,25 +19,22 @@ function mountEditor(props = {}) {
 }
 
 describe('ArticleTextEditor', () => {
-  it('mounts cleanly with markdown modelValue and renders the toolbar buttons', () => {
+  it('mounts cleanly with markdown modelValue and exposes format toggles', () => {
     const wrapper = mountEditor({ modelValue: '**hello**' });
 
-    // Toolbar buttons (one per icon) — match the storybook custom elements.
-    expect(wrapper.find('[data-testid="fmt-bold"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="fmt-italic"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="fmt-bullet-list"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="fmt-ordered-list"]').exists()).toBe(true);
-
-    // Their accessible labels are in Dutch.
-    expect(wrapper.find('[data-testid="fmt-bold"]').attributes('accessible-label')).toBe('Vet');
-    expect(wrapper.find('[data-testid="fmt-italic"]').attributes('accessible-label')).toBe('Schuin');
-    expect(wrapper.find('[data-testid="fmt-bullet-list"]').attributes('accessible-label')).toBe('Opsomming');
-    expect(wrapper.find('[data-testid="fmt-ordered-list"]').attributes('accessible-label')).toBe('Genummerde lijst');
-
-    // Panel label dropdown
-    const panel = wrapper.find('[data-testid="article-text-panel-label"]');
-    expect(panel.exists()).toBe(true);
-    expect(panel.text()).toContain('Tekst');
+    // The toolbar lives in the parent pane-header now; this component
+    // only needs to expose its format helpers so the parent can drive
+    // them. Verify the contract used by EditorApp.vue's pane-header.
+    const exposed = wrapper.vm;
+    expect(typeof exposed.toggleBold).toBe('function');
+    expect(typeof exposed.toggleItalic).toBe('function');
+    expect(typeof exposed.toggleBulletList).toBe('function');
+    expect(typeof exposed.toggleOrderedList).toBe('function');
+    // activeFormats reflects the editor's current selection — only the shape
+    // is part of the contract with the parent toolbar.
+    expect(Object.keys(exposed.activeFormats).sort()).toEqual([
+      'bold', 'bulletList', 'italic', 'orderedList',
+    ]);
   });
 
   it('shows the empty state when no article is selected', () => {
@@ -47,20 +44,6 @@ describe('ArticleTextEditor', () => {
     const empty = wrapper.find('.article-text-editor__empty');
     expect(empty.exists()).toBe(true);
     expect(empty.find('nldd-inline-dialog').attributes('text')).toContain('Geen artikel geselecteerd');
-  });
-
-  it('hides the formatting toolbar when no article is selected', () => {
-    // Toolbar buttons would otherwise stay clickable in the empty state and
-    // fire no-op/stale toggles on a tiptap editor whose mount point isn't in
-    // the DOM. The empty state should take over the whole pane.
-    const wrapper = mount(ArticleTextEditor, {
-      props: { article: null, editable: true, modelValue: '' },
-    });
-    expect(wrapper.find('.article-text-editor__toolbar').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="fmt-bold"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="fmt-italic"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="fmt-bullet-list"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="fmt-ordered-list"]').exists()).toBe(false);
   });
 
   it('renders the save error dialog when saveError is set and editable', () => {
