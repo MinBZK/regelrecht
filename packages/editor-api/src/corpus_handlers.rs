@@ -585,17 +585,31 @@ struct EditorWriteTarget {
 /// Resolve the write target for a law-content (`save_law`) edit by routing
 /// through the [`SessionRegistry`] for GitHub sources and falling back to
 /// the existing global backend resolution for local sources.
-async fn resolve_law_write_target(
+/// Common write-target resolution: look up the law under a single corpus
+/// read guard, snapshot the source, drop the guard, resolve the session
+/// backend, enforce writability for local sources, and acquire the
+/// backend's owned mutex. Callers compute the final `relative_path` from
+/// the returned `LoadedLaw`.
+///
+/// Held as a single helper because both the law-content and scenario
+/// write paths need the exact same lock ordering and writability check —
+/// previously this lived as two near-identical copies that would have
+/// diverged silently if the slow-path semantics were ever revisited.
+async fn resolve_session_write_backend(
     state: &AppState,
     session_id: &str,
     law_id: &str,
-) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    // Look up the law (and snapshot the source state) under a single
-    // corpus read guard, then drop it before calling into the
-    // SessionRegistry. The slow-path session-backend init runs `git
-    // clone` and we must not hold the corpus read guard across that —
-    // otherwise a concurrent `POST /api/corpus/reload` (which takes the
-    // write guard) is starved for the duration of the clone.
+) -> Result<
+    (
+        LoadedLaw,
+        tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
+    ),
+    (StatusCode, String),
+> {
+    // Snapshot under a single corpus read guard, then drop it. The
+    // slow-path session-backend init runs `git clone`; holding the corpus
+    // read guard across it would starve any concurrent
+    // `POST /api/corpus/reload` (which takes the write guard).
     let (law, snapshot) = {
         let corpus = state.corpus.read().await;
         let law = corpus
@@ -629,14 +643,20 @@ async fn resolve_law_write_target(
             backend.is_writable()
         };
         if !writable {
-            return Err((
-                StatusCode::FORBIDDEN,
-                "Law is stored on a read-only source".to_string(),
-            ));
+            return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
         }
     }
 
     let backend = resolved.backend.lock_owned().await;
+    Ok((law, backend))
+}
+
+async fn resolve_law_write_target(
+    state: &AppState,
+    session_id: &str,
+    law_id: &str,
+) -> Result<EditorWriteTarget, (StatusCode, String)> {
+    let (law, backend) = resolve_session_write_backend(state, session_id, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from(&law.relative_path),
         backend,
@@ -651,46 +671,8 @@ async fn resolve_scenario_write_target(
     law_id: &str,
     filename: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    // Snapshot under a single corpus read guard, then drop it — same
-    // reasoning as `resolve_law_write_target` above (the slow-path
-    // session-backend init runs `git clone` and must not hold the corpus
-    // read guard across that or `POST /api/corpus/reload` is starved).
-    let (law, snapshot) = {
-        let corpus = state.corpus.read().await;
-        let law = corpus
-            .source_map
-            .get_law(law_id)
-            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
-            .clone();
-        let snapshot = corpus
-            .snapshot_source_for_session(&law.source_id)
-            .ok_or_else(|| {
-                session_resolve_error(
-                    law_id,
-                    SessionResolveError::SourceNotFound(law.source_id.clone()),
-                )
-            })?;
-        (law, snapshot)
-    };
-
-    let resolved = state
-        .sessions
-        .resolve_session_backend(&snapshot, session_id, &law.source_id)
-        .await
-        .map_err(|e| session_resolve_error(law_id, e))?;
-
-    if !resolved.uses_session_pr {
-        let writable = {
-            let backend = resolved.backend.lock().await;
-            backend.is_writable()
-        };
-        if !writable {
-            return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-        }
-    }
-
+    let (law, backend) = resolve_session_write_backend(state, session_id, law_id).await?;
     let rel_dir = law_relative_dir(&law)?;
-    let backend = resolved.backend.lock_owned().await;
     Ok(EditorWriteTarget {
         relative_path: rel_dir.join("scenarios").join(filename),
         backend,
