@@ -9,7 +9,7 @@
     "preview": "vitepress preview"
   },
   "optionalDependencies": {
-    "@minbzk/storybook": "^0.8.12"
+    "@nldd/design-system": "^0.8.42"
   },
   "overrides": {
     "esbuild": "^0.25.0",

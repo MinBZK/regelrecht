@@ -3,8 +3,7 @@
 FROM node:26-alpine@sha256:e71ac5e964b9201072425d59d2e876359efa25dc96bb1768cb73295728d6e4ea AS frontend-builder
 WORKDIR /app
 COPY packages/admin/frontend-src/package.json packages/admin/frontend-src/package-lock.json* packages/admin/frontend-src/.npmrc ./
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) npm ci
+RUN npm ci
 COPY packages/admin/frontend-src/ .
 # vite outDir is '../static' which resolves to /static from /app
 RUN npm run build

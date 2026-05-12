@@ -4,6 +4,7 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 export default withMermaid(
   defineConfig({
     title: 'RegelRecht',
+    titleTemplate: ':title · RegelRecht',
     description: 'Machine-readable Dutch law execution',
     lang: 'en',
 
@@ -201,8 +202,8 @@ export default withMermaid(
     vite: {
       build: {
         rollupOptions: {
-          // @minbzk/storybook is optional — externalize if not installed
-          external: (id: string) => id.startsWith('@minbzk/storybook'),
+          // @nldd/design-system is optional — externalize if not installed
+          external: (id: string) => id.startsWith('@nldd/design-system'),
         },
       },
     },

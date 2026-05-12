@@ -107,7 +107,7 @@ audit:
 admin:
     cd packages && cargo run --package regelrecht-admin
 
-# Build admin frontend (requires GITHUB_TOKEN env var for npm)
+# Build admin frontend
 admin-frontend:
     cd packages/admin/frontend-src && npm ci && npm run build
 
@@ -212,7 +212,7 @@ dev:
         if (cd packages/admin/frontend-src && npm ci --silent) > /dev/null 2>&1; then
             printf "${green}done${reset}\n"
         else
-            printf "${yellow}skipped${reset} (set GITHUB_TOKEN in .env for private packages)\n"
+            printf "${yellow}skipped${reset} (npm ci failed)\n"
             admin_fe=false
         fi
     fi
@@ -221,7 +221,7 @@ dev:
         if (cd frontend && npm ci --silent) > /dev/null 2>&1; then
             printf "${green}done${reset}\n"
         else
-            printf "${yellow}skipped${reset} (set GITHUB_TOKEN in .env for private packages)\n"
+            printf "${yellow}skipped${reset} (npm ci failed)\n"
             editor_fe=false
         fi
     fi
@@ -360,22 +360,9 @@ local-clean:
 
 # --- Documentation ---
 
-# Install docs dependencies (requires GITHUB_TOKEN for @minbzk/storybook)
-# Token is only needed for install, not for dev/build/preview.
+# Install docs dependencies
 docs-install:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Try macOS keychain first, then fall back to environment variable
-    TOKEN="${GITHUB_TOKEN:-$(security find-generic-password -a "$USER" -s github-packages-read -w 2>/dev/null || echo "")}"
-    if [ -z "$TOKEN" ]; then
-        printf "\033[31mNo GITHUB_TOKEN found.\033[0m\n"
-        printf "Create a classic PAT at https://github.com/settings/tokens\n"
-        printf "with only the read:packages scope. Then:\n\n"
-        printf "  macOS:  security add-generic-password -a \"\$USER\" -s github-packages-read -w \"ghp_YOUR_TOKEN\"\n"
-        printf "  Linux:  export GITHUB_TOKEN=ghp_YOUR_TOKEN\n"
-        exit 1
-    fi
-    cd docs && GITHUB_TOKEN="$TOKEN" npm ci
+    cd docs && npm ci
 
 # Start docs dev server (VitePress)
 docs:

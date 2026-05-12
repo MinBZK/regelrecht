@@ -2,8 +2,7 @@
 FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS builder
 WORKDIR /app
 COPY docs/package.json docs/package-lock.json* docs/.npmrc ./
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) npm ci
+RUN npm ci
 COPY docs/ .
 RUN npm run build
 

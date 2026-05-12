@@ -70,9 +70,6 @@ just local-psql     # Database access
 Create a `.env` file in the project root:
 
 ```bash
-# Required for @minbzk/storybook package
-GITHUB_TOKEN=ghp_...
-
 # Optional overrides
 POSTGRES_PORT=5433
 GRAFANA_PORT=3002

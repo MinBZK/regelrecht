@@ -7,7 +7,7 @@ export default defineConfig({
     vue({
       template: {
         compilerOptions: {
-          isCustomElement: (tag) => tag.startsWith('ndd-'),
+          isCustomElement: (tag) => tag.startsWith('nldd-'),
         },
       },
     }),

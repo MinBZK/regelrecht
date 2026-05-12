@@ -1,13 +1,12 @@
 <script setup>
-import { useRouter } from 'vue-router';
+import { watch } from 'vue';
 import { useLawEntries } from '../composables/useLawEntries.js';
-import { LAW_ENTRY_COLUMNS } from '../constants.js';
+import { useNewHarvestJob } from '../composables/useNewHarvestJob.js';
+import { LAW_ENTRY_COLUMNS, LAW_ENTRY_SORT_OPTIONS } from '../constants.js';
 import DataTable from '../components/DataTable.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import RowActions from '../components/RowActions.vue';
 import PaginationControls from '../components/PaginationControls.vue';
-
-const router = useRouter();
 
 const {
   data, totalCount, loading, error,
@@ -16,39 +15,36 @@ const {
   setSort, setFilter, goToPage, refresh,
 } = useLawEntries();
 
-function viewJobsForLaw(lawId) {
-  router.push({ name: 'jobs', query: { law_id: lawId } });
-}
+const { lastJobCreated } = useNewHarvestJob();
+watch(lastJobCreated, () => refresh());
 </script>
 
 <template>
   <DataTable
     :columns="LAW_ENTRY_COLUMNS"
+    :sort-options="LAW_ENTRY_SORT_OPTIONS"
     :data="data"
     :loading="loading"
     :error="error"
     :sort="sort"
     :order="order"
     :filters="filters"
+    empty-text="No law entries"
     @sort="setSort"
     @filter-change="setFilter"
   >
-    <template #cell-law_id="{ row }">
-      <a class="cell-mono law-id-link" href="#" @click.prevent="viewJobsForLaw(row.law_id)">
-        {{ row.law_id }}
-      </a>
-    </template>
     <template #cell-status="{ row }">
       <StatusBadge :status="row.status || 'unknown'" />
     </template>
     <template #cell-_actions="{ row }">
       <RowActions :row="row" @action-complete="refresh" />
     </template>
+    <template #pagination>
+      <PaginationControls
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        @page-change="goToPage"
+      />
+    </template>
   </DataTable>
-
-  <PaginationControls
-    :current-page="currentPage"
-    :total-pages="totalPages"
-    @page-change="goToPage"
-  />
 </template>

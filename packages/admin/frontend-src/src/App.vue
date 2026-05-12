@@ -3,20 +3,19 @@ import { computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from './composables/useAuth.js';
 import { usePlatformInfo } from './composables/usePlatformInfo.js';
+import { useNewHarvestJob } from './composables/useNewHarvestJob.js';
+import NewHarvestJobSheet from './components/NewHarvestJobSheet.vue';
 
 const route = useRoute();
 const router = useRouter();
-const { authenticated, person, oidcConfigured, loading: authLoading, logout, redirectToLogin } = useAuth();
+const { authenticated, oidcConfigured, loading: authLoading, logout, redirectToLogin } = useAuth();
 const { info } = usePlatformInfo();
+const { open: openNewHarvestJob } = useNewHarvestJob();
 
 const deploymentName = computed(() =>
   info.value?.deployment_name && info.value.deployment_name !== 'regelrecht'
     ? info.value.deployment_name
     : null,
-);
-
-const accountLabel = computed(() =>
-  person.value?.name || person.value?.email || 'Admin',
 );
 
 const tabs = [
@@ -32,48 +31,60 @@ watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
     redirectToLogin();
   }
 });
-
-function onAccountClick() {
-  logout();
-}
 </script>
 
 <template>
   <div v-if="authLoading" />
   <template v-else>
-    <span v-if="deploymentName" class="env-badge">{{ deploymentName }}</span>
-    <ndd-app-view>
-      <ndd-bar-split-view>
-        <ndd-page slot="toolbar">
-          <ndd-top-navigation-bar
-            title="RegelRecht admin"
-            no-logo
-            no-menu
-            utility-no-language-switch
-            :utility-account-label="accountLabel"
-            @account-click="onAccountClick"
+    <nldd-tag
+      v-if="deploymentName"
+      class="env-badge"
+      variant="warning"
+      size="sm"
+      :text="deploymentName"
+    />
+    <nldd-bar-split-view>
+      <nldd-container slot="toolbar" padding="8" padding-left="16">
+        <nldd-toolbar size="md">
+          <nldd-toolbar-title-group
+            slot="start"
+            text="Admin"
+            subtext="RegelRecht"
+            min-width="fit-content"
           />
-          <ndd-container padding="8">
-            <ndd-toolbar size="md">
-              <ndd-toolbar-item slot="start">
-                <ndd-tab-bar>
-                  <ndd-tab-bar-item
-                    v-for="tab in tabs"
-                    :key="tab.key"
-                    :text="tab.label"
-                    :selected="activeTab === tab.key ? '' : undefined"
-                    @click="router.push(tab.route)"
-                  ></ndd-tab-bar-item>
-                </ndd-tab-bar>
-              </ndd-toolbar-item>
-              <ndd-toolbar-item id="view-toggle-target" slot="end" />
-            </ndd-toolbar>
-          </ndd-container>
-        </ndd-page>
-        <ndd-page slot="main">
-          <router-view />
-        </ndd-page>
-      </ndd-bar-split-view>
-    </ndd-app-view>
+          <nldd-toolbar-item slot="center">
+            <nldd-tab-bar>
+              <nldd-tab-bar-item
+                v-for="tab in tabs"
+                :key="tab.key"
+                :text="tab.label"
+                :selected="activeTab === tab.key ? '' : undefined"
+                @click="router.push(tab.route)"
+              ></nldd-tab-bar-item>
+            </nldd-tab-bar>
+          </nldd-toolbar-item>
+          <nldd-toolbar-item slot="end">
+            <nldd-icon-button
+              icon="plus-small"
+              text="Add"
+              hide-tooltip
+              variant="neutral-tinted"
+              @click="openNewHarvestJob"
+            />
+          </nldd-toolbar-item>
+          <nldd-toolbar-item slot="end">
+            <nldd-button
+              text="Logout"
+              end-icon="logout"
+              @click="logout"
+            />
+          </nldd-toolbar-item>
+        </nldd-toolbar>
+      </nldd-container>
+      <nldd-page slot="main">
+        <router-view />
+      </nldd-page>
+    </nldd-bar-split-view>
+    <NewHarvestJobSheet />
   </template>
 </template>

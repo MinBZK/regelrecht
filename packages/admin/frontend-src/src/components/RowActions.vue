@@ -1,5 +1,6 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, useId } from 'vue';
+import { useRouter } from 'vue-router';
 import { RE_HARVESTABLE_STATUSES, ENRICHABLE_STATUSES } from '../constants.js';
 import { authedFetch } from '../composables/useAuth.js';
 
@@ -9,17 +10,22 @@ const props = defineProps({
 
 const emit = defineEmits(['action-complete']);
 
-const harvestSubmitting = ref(false);
-const harvestLabel = ref('Harvest');
-const enrichSubmitting = ref(false);
-const enrichLabel = ref('Enrich');
-const resetSubmitting = ref(false);
-const resetLabel = ref('Reset');
+const router = useRouter();
+
+function onViewJobs() {
+  router.push({ name: 'jobs', query: { law_id: props.row.law_id } });
+}
+
+const uid = useId();
+const menuAnchor = computed(() => `row-actions-${uid}`);
+
+const canHarvest = computed(() => RE_HARVESTABLE_STATUSES.includes(props.row.status));
+const canEnrich = computed(() => ENRICHABLE_STATUSES.includes(props.row.status));
+const canReset = computed(
+  () => props.row.status === 'harvest_exhausted' || props.row.status === 'enrich_exhausted',
+);
 
 async function onHarvest() {
-  harvestSubmitting.value = true;
-  harvestLabel.value = 'Submitting\u2026';
-
   try {
     const response = await authedFetch('api/harvest-jobs', {
       method: 'POST',
@@ -41,16 +47,10 @@ async function onHarvest() {
     emit('action-complete');
   } catch (err) {
     alert('Harvest failed: ' + err.message);
-  } finally {
-    harvestSubmitting.value = false;
-    harvestLabel.value = 'Harvest';
   }
 }
 
 async function onEnrich() {
-  enrichSubmitting.value = true;
-  enrichLabel.value = 'Submitting\u2026';
-
   try {
     const response = await authedFetch('api/enrich-jobs', {
       method: 'POST',
@@ -72,64 +72,40 @@ async function onEnrich() {
     emit('action-complete');
   } catch (err) {
     alert('Enrich failed: ' + err.message);
-  } finally {
-    enrichSubmitting.value = false;
-    enrichLabel.value = 'Enrich';
   }
 }
 
 async function onResetExhausted() {
-  resetSubmitting.value = true;
-  resetLabel.value = 'Resetting\u2026';
-
   try {
-    const response = await authedFetch(`api/law_entries/${encodeURIComponent(props.row.law_id)}/reset-exhausted`, {
-      method: 'POST',
-    });
+    const response = await authedFetch(
+      `api/law_entries/${encodeURIComponent(props.row.law_id)}/reset-exhausted`,
+      { method: 'POST' },
+    );
     if (!response) return;
     if (!response.ok) {
       const text = await response.text().catch(() => '');
       throw new Error(text || `HTTP ${response.status}`);
     }
-    resetLabel.value = 'Reset \u2713';
-    setTimeout(() => { resetLabel.value = 'Reset'; }, 2000);
     emit('action-complete');
   } catch (err) {
     alert('Reset failed: ' + err.message);
-  } finally {
-    resetSubmitting.value = false;
   }
 }
 </script>
 
 <template>
-  <span class="action-btns">
-    <ndd-button
-      v-if="RE_HARVESTABLE_STATUSES.includes(row.status)"
-      variant="accent-outlined"
-      size="sm"
-      :text="harvestLabel"
-      :title="'Re-harvest ' + row.law_id"
-      :disabled="harvestSubmitting ? '' : undefined"
-      @click.stop="onHarvest"
-    />
-    <ndd-button
-      v-if="ENRICHABLE_STATUSES.includes(row.status)"
-      variant="neutral-tinted"
-      size="sm"
-      :text="enrichLabel"
-      :title="'Trigger enrichment for ' + row.law_id"
-      :disabled="enrichSubmitting ? '' : undefined"
-      @click.stop="onEnrich"
-    />
-    <ndd-button
-      v-if="row.status === 'harvest_exhausted' || row.status === 'enrich_exhausted'"
-      variant="accent-outlined"
-      size="sm"
-      :text="resetLabel"
-      :title="'Reset exhausted status for ' + row.law_id"
-      :disabled="resetSubmitting ? '' : undefined"
-      @click.stop="onResetExhausted"
-    />
-  </span>
+  <nldd-icon-button
+    :id="menuAnchor"
+    icon="ellipsis"
+    text="Actions"
+    hide-tooltip
+    variant="neutral-tinted"
+    size="md"
+  />
+  <nldd-menu :anchor="menuAnchor">
+    <nldd-menu-item v-if="canHarvest" text="Harvest" @click.stop="onHarvest" />
+    <nldd-menu-item v-if="canEnrich" text="Enrich" @click.stop="onEnrich" />
+    <nldd-menu-item v-if="canReset" text="Reset exhausted" @click.stop="onResetExhausted" />
+    <nldd-menu-item text="View job details" @click.stop="onViewJobs" />
+  </nldd-menu>
 </template>

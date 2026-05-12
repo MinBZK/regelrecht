@@ -1,154 +1,114 @@
 <script setup>
-import StatusBadge from './StatusBadge.vue';
 import TableToolbar from './TableToolbar.vue';
-import { GROUPED_COLUMNS, JOB_COLUMNS, STATUS_BADGE_MAP } from '../constants.js';
-import { formatDate, truncateUuid, truncateError } from '../formatters.js';
+import { GROUPED_COLUMNS } from '../constants.js';
+import { formatDate } from '../formatters.js';
 
-const props = defineProps({
+defineProps({
   data: { type: Array, required: true },
   loading: { type: Boolean, default: false },
   error: { type: String, default: null },
   sort: { type: String, default: '' },
   order: { type: String, default: 'desc' },
   filters: { type: Object, default: () => ({}) },
-  expandedLawIds: { type: Set, required: true },
-  expandedJobsCache: { type: Object, required: true },
+  emptyText: { type: String, default: 'No data found' },
+  sortOptions: { type: Array, default: null },
 });
 
-const emit = defineEmits(['sort', 'filter-change', 'toggle-expand', 'row-click']);
+const emit = defineEmits(['sort', 'filter-change', 'view-jobs']);
 
 const columns = GROUPED_COLUMNS;
-const childColumns = JOB_COLUMNS;
 
-const statusCountKeys = ['pending', 'processing', 'completed', 'failed'];
+const STATUS_BAR_KEYS = ['completed', 'failed', 'processing', 'pending'];
 
-function sortLabel(col) {
-  if (!col.sortable) return col.label;
-  if (props.sort !== col.key) return col.label;
-  return `${col.label} ${props.order === 'asc' ? '\u2191' : '\u2193'}`;
+function statusSegments(group) {
+  const total = group.total_jobs || 0;
+  if (total === 0) return [];
+  return STATUS_BAR_KEYS
+    .map((key) => ({ key, count: group[key] || 0 }))
+    .filter((seg) => seg.count > 0)
+    .map((seg) => ({ ...seg, percent: (seg.count / total) * 100 }));
 }
 
-function formatChildCell(value, key) {
-  if (value === null || value === undefined || value === '') return null;
-  if (key === 'id') return truncateUuid(value);
-  if (key.endsWith('_at')) return formatDate(value);
-  return String(value);
+function statusBarTitle(group) {
+  return STATUS_BAR_KEYS
+    .filter((key) => group[key] > 0)
+    .map((key) => `${group[key]} ${key}`)
+    .join(' · ');
 }
 </script>
 
 <template>
-  <ndd-simple-section>
+  <nldd-simple-section full-width>
     <TableToolbar
       :columns="columns"
+      :sort-options="sortOptions"
       :sort="sort"
       :order="order"
       :filters="filters"
-      @sort="(key) => emit('sort', key)"
+      @sort="(key, order) => emit('sort', key, order)"
       @filter-change="(key, value) => emit('filter-change', key, value)"
-    />
-
-    <ndd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></ndd-inline-dialog>
-    <ndd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></ndd-inline-dialog>
-    <ndd-inline-dialog v-else-if="data.length === 0" text="No data found"></ndd-inline-dialog>
-
-    <ndd-list v-else variant="simple">
-      <!-- Header row -->
-      <ndd-list-item size="sm">
-        <ndd-title-cell
-          v-for="col in columns"
-          :key="col.key"
-          :text="sortLabel(col)"
-          :width="col.width || 'stretch'"
-        ></ndd-title-cell>
-        <ndd-cell width="fit-content"></ndd-cell>
-      </ndd-list-item>
-
-      <!-- Group rows -->
-      <template v-for="group in data" :key="group.law_id">
-        <!-- Group header -->
-        <ndd-list-item
-          size="md"
-          type="button"
-          class="group-row"
-          @click="emit('toggle-expand', group.law_id)"
-        >
-          <template v-for="col in columns" :key="col.key">
-            <ndd-cell :width="col.width || 'stretch'">
-              <div class="cell-wrap">
-                <span v-if="col.key === 'law_id'" class="cell-mono">{{ group.law_id }}</span>
-                <template v-else-if="statusCountKeys.includes(col.key)">
-                  <span v-if="group[col.key] === 0" class="cell-null">0</span>
-                  <span v-else class="badge" :class="'badge--' + (STATUS_BADGE_MAP[col.key] || 'grey')">
-                    {{ group[col.key] }}
-                  </span>
-                </template>
-                <template v-else-if="col.key.endsWith('_at') && formatDate(group[col.key])">
-                  {{ formatDate(group[col.key]) }}
-                </template>
-                <template v-else-if="group[col.key] != null">{{ group[col.key] }}</template>
-                <span v-else class="cell-null">&mdash;</span>
-              </div>
-            </ndd-cell>
-          </template>
-          <ndd-cell width="fit-content">
-            {{ expandedLawIds.has(group.law_id) ? '\u25B2' : '\u25BC' }}
-          </ndd-cell>
-        </ndd-list-item>
-
-        <!-- Expanded child rows -->
-        <template v-if="expandedLawIds.has(group.law_id)">
-          <ndd-list-item v-if="!expandedJobsCache[group.law_id]" size="sm">
-            <ndd-text-cell text="Loading jobs…"></ndd-text-cell>
-          </ndd-list-item>
-          <ndd-list-item v-else-if="expandedJobsCache[group.law_id].length === 0" size="sm">
-            <ndd-text-cell text="No jobs found"></ndd-text-cell>
-          </ndd-list-item>
-          <template v-else>
-            <!-- Child header -->
-            <ndd-list-item size="sm" class="child-header">
-              <ndd-title-cell
-                v-for="col in childColumns"
-                :key="col.key"
-                :text="col.label"
-                :width="col.width || 'stretch'"
-              ></ndd-title-cell>
-            </ndd-list-item>
-            <!-- Child job rows -->
-            <ndd-list-item
-              v-for="job in expandedJobsCache[group.law_id]"
-              :key="job.id"
-              size="md"
-              type="button"
-              class="child-row"
-              @click.stop="emit('row-click', job)"
-            >
-              <template v-for="col in childColumns" :key="col.key">
-                <ndd-cell :width="col.width || 'stretch'">
-                  <div class="cell-wrap">
-                    <template v-if="col.key === '_error'">
-                      <span
-                        v-if="job.result && job.result.error"
-                        class="cell-error"
-                        :title="job.result.error"
-                      >{{ truncateError(job.result.error) }}</span>
-                      <span v-else class="cell-null">&mdash;</span>
-                    </template>
-                    <StatusBadge v-else-if="col.key === 'status'" :status="job[col.key] || 'unknown'" />
-                    <span v-else-if="col.key === 'id'" class="cell-mono" :title="String(job[col.key])">
-                      {{ formatChildCell(job[col.key], col.key) }}
-                    </span>
-                    <span v-else-if="col.key === 'law_id'" class="cell-mono">{{ job[col.key] }}</span>
-                    <template v-else-if="formatChildCell(job[col.key], col.key) !== null">
-                      {{ formatChildCell(job[col.key], col.key) }}
-                    </template>
-                    <span v-else class="cell-null">&mdash;</span>
-                  </div>
-                </ndd-cell>
-              </template>
-            </ndd-list-item>
-          </template>
-        </template>
+    >
+      <template #prefix>
+        <slot name="toolbar-prefix" />
       </template>
-    </ndd-list>
-  </ndd-simple-section>
+    </TableToolbar>
+    <nldd-spacer size="16" />
+
+    <nldd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></nldd-inline-dialog>
+    <nldd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
+    <nldd-inline-dialog v-else-if="data.length === 0" :text="emptyText">
+      <slot name="empty-action" />
+    </nldd-inline-dialog>
+
+    <nldd-list v-else variant="simple">
+      <!-- Group rows -->
+      <nldd-list-item
+        v-for="group in data"
+        :key="group.law_id"
+        size="md"
+        type="button"
+        @click="emit('view-jobs', group.law_id)"
+      >
+        <template v-for="(col, idx) in columns" :key="col.key">
+          <nldd-spacer-cell v-if="idx > 0" size="12" />
+          <nldd-cell
+            v-if="col.key === 'status_bar'"
+            :width="col.width || 'stretch'"
+          >
+            <nldd-tooltip :text="statusBarTitle(group)" placement="top">
+              <div class="status-bar">
+                <div
+                  v-for="seg in statusSegments(group)"
+                  :key="seg.key"
+                  :class="['status-bar__segment', `status-bar__segment--${seg.key}`]"
+                  :style="{ width: seg.percent + '%' }"
+                />
+              </div>
+            </nldd-tooltip>
+          </nldd-cell>
+          <nldd-text-cell
+            v-else-if="col.text"
+            :text="col.text(group)"
+            :overline="col.overline ? col.overline(group) : undefined"
+            :supporting-text="col.supportingText ? col.supportingText(group) : undefined"
+            :width="col.width || 'stretch'"
+            :min-width="col.minWidth"
+            :horizontal-alignment="col.align"
+          />
+          <nldd-text-cell
+            v-else
+            :text="group[col.key] != null ? String(group[col.key]) : '—'"
+            :color="group[col.key] != null ? 'default' : 'secondary'"
+            :width="col.width || 'stretch'"
+            :min-width="col.minWidth"
+            :horizontal-alignment="col.align"
+          />
+        </template>
+        <nldd-spacer-cell size="12" />
+        <nldd-icon-cell icon="chevron-right" size="20" />
+      </nldd-list-item>
+    </nldd-list>
+
+    <slot name="pagination" />
+  </nldd-simple-section>
 </template>

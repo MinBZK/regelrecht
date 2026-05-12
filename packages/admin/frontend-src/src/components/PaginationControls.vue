@@ -12,10 +12,11 @@ function onPageChange(event) {
 </script>
 
 <template>
-  <ndd-pagination
+  <nldd-pagination
+    v-if="totalPages > 1"
     full-width
     :current="currentPage"
     :total="totalPages"
     @page-change="onPageChange"
-  ></ndd-pagination>
+  ></nldd-pagination>
 </template>
