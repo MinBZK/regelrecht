@@ -99,11 +99,13 @@ fn law_sort_expression(col: &str) -> String {
     }
 }
 
-/// SQL ORDER BY expression for the grouped/summary query.
-/// Note: `status` is handled inline in the handler as a multi-key sort
-/// (see `order_by_clause`); this helper only covers single-column sorts.
-fn summary_sort_expression(col: &str) -> String {
-    col.to_string()
+/// Escape LIKE/ILIKE wildcard metacharacters so user input matches literally.
+/// Postgres uses `\` as the default escape character; we escape `\` first so
+/// the subsequent `\%` / `\_` insertions aren't themselves re-escaped.
+fn like_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 #[derive(Deserialize)]
@@ -306,7 +308,7 @@ pub async fn list_jobs(
         count_query = count_query.bind(job_type);
     }
     if let Some(ref law_id) = params.law_id {
-        count_query = count_query.bind(format!("%{law_id}%"));
+        count_query = count_query.bind(format!("%{}%", like_escape(law_id)));
     }
 
     let total: i64 = count_query
@@ -335,7 +337,7 @@ pub async fn list_jobs(
         data_query = data_query.bind(job_type);
     }
     if let Some(ref law_id) = params.law_id {
-        data_query = data_query.bind(format!("%{law_id}%"));
+        data_query = data_query.bind(format!("%{}%", like_escape(law_id)));
     }
     data_query = data_query.bind(limit).bind(offset);
 
@@ -422,7 +424,7 @@ pub async fn list_jobs_summary(
          completed::float / NULLIF(total_jobs, 0) ASC"
             .to_string()
     } else {
-        format!("{} {}", summary_sort_expression(sort_column), order)
+        format!("{sort_column} {order}")
     };
     // Wrap the GROUP BY in a subquery so the ORDER BY can reference the
     // aggregate aliases (e.g. `failed`, `pending`) which Postgres won't

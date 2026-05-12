@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { authedFetch } from '../composables/useAuth.js';
 import { useLawJobsSheet } from '../composables/useLawJobsSheet.js';
 import StatusBadge from './StatusBadge.vue';
-import { formatDate, jobSubtitle, truncateUuid, truncateError } from '../formatters.js';
+import { formatDate, jobSubtitle, truncateUuid } from '../formatters.js';
 
 const { isOpen, lawId, close } = useLawJobsSheet();
 
@@ -189,7 +189,7 @@ const codeSections = computed(() => {
             </nldd-list-item>
           </nldd-list>
 
-          <template v-for="(section, idx) in codeSections" :key="section.title">
+          <template v-for="section in codeSections" :key="section.title">
             <nldd-spacer size="16" />
             <nldd-title size="6"><h3>{{ section.title }}</h3></nldd-title>
             <nldd-spacer size="4" />

@@ -6,7 +6,7 @@ The frontend is a law editor and library browser built with Vue 3 and Vite.
 
 - **Framework**: Vue 3 (Composition API)
 - **Build tool**: Vite 8
-- **Design system**: [@nldd/design-system](https://github.com/minbzk/storybook) web components
+- **Design system**: [@nldd/design-system](https://www.npmjs.com/package/@nldd/design-system) web components
 - **Location**: `frontend/`
 
 ## Pages
