@@ -12,7 +12,6 @@ import DetailPanel from '../components/DetailPanel.vue';
 import LawJobsSheet from '../components/LawJobsSheet.vue';
 import StatusBadge from '../components/StatusBadge.vue';
 import PaginationControls from '../components/PaginationControls.vue';
-import { truncateError } from '../formatters.js';
 
 const route = useRoute();
 const router = useRouter();

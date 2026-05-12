@@ -19,11 +19,6 @@ export function truncateUuid(value) {
   return str.length > 8 ? str.substring(0, 8) : str;
 }
 
-export function truncateError(error, maxLen = 80) {
-  if (!error) return null;
-  return error.length > maxLen ? error.substring(0, maxLen) + '\u2026' : error;
-}
-
 export function jobSubtitle(job) {
   const type = job.job_type
     ? job.job_type.charAt(0).toUpperCase() + job.job_type.slice(1)
