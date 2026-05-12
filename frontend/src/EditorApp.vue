@@ -33,6 +33,7 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
+  ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
 // Per-pane view selection. Each pane independently picks one of the
@@ -134,6 +135,10 @@ function setPaneView(idx, viewId) {
 // and blocks unauthenticated users before this component mounts, so canEdit
 // is always true here — the computed remains as a safety net.
 const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
+// Tekst-pane is only editable when the user has write access AND the
+// `editor.article_text_edit` flag is on. Visibility of the pane is
+// controlled separately by `panel.article_text`.
+const canEditArticleText = computed(() => canEdit.value && isEnabled('editor.article_text_edit'));
 
 const route = useRoute();
 const router = useRouter();
@@ -1162,7 +1167,7 @@ function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :sticky-footer="(view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEdit && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
+              :sticky-footer="(view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
               <div slot="header" class="pane-header">
                 <nldd-button
@@ -1198,7 +1203,7 @@ function handleActionSave() {
                       size="md"
                       accessible-label="Vet"
                       data-testid="fmt-bold"
-                      :disabled="!canEdit || undefined"
+                      :disabled="!canEditArticleText || undefined"
                       @click="textEditorRefs[idx].toggleBold()"
                     ></nldd-icon-button>
                   </span>
@@ -1208,7 +1213,7 @@ function handleActionSave() {
                       size="md"
                       accessible-label="Schuin"
                       data-testid="fmt-italic"
-                      :disabled="!canEdit || undefined"
+                      :disabled="!canEditArticleText || undefined"
                       @click="textEditorRefs[idx].toggleItalic()"
                     ></nldd-icon-button>
                   </span>
@@ -1219,7 +1224,7 @@ function handleActionSave() {
                       size="md"
                       accessible-label="Opsomming"
                       data-testid="fmt-bullet-list"
-                      :disabled="!canEdit || undefined"
+                      :disabled="!canEditArticleText || undefined"
                       @click="textEditorRefs[idx].toggleBulletList()"
                     ></nldd-icon-button>
                   </span>
@@ -1229,7 +1234,7 @@ function handleActionSave() {
                       size="md"
                       accessible-label="Genummerde lijst"
                       data-testid="fmt-ordered-list"
-                      :disabled="!canEdit || undefined"
+                      :disabled="!canEditArticleText || undefined"
                       @click="textEditorRefs[idx].toggleOrderedList()"
                     ></nldd-icon-button>
                   </span>
@@ -1242,7 +1247,7 @@ function handleActionSave() {
                 <ArticleTextEditor
                   :ref="setTextEditorRef(idx)"
                   :article="selectedArticle"
-                  :editable="canEdit"
+                  :editable="canEditArticleText"
                   :save-error="articleTextSaveError"
                   :model-value="editedText"
                   @update:model-value="editedText = $event"
@@ -1250,7 +1255,7 @@ function handleActionSave() {
               </nldd-simple-section>
               <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
               <nldd-container
-                v-if="view === 'text' && canEdit && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx"
+                v-if="view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx"
                 slot="footer"
                 padding="16"
               >
