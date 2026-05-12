@@ -5,6 +5,27 @@ use tokio::process::Command;
 use crate::config::CorpusConfig;
 use crate::error::{CorpusError, Result};
 
+/// Best-effort: write the snapshot contents back to disk after a failed
+/// `checkout -B`. Used only on the error path so the working tree does not
+/// look truncated to the user while their dirty content is still preserved
+/// in memory by the caller. Filesystem errors are swallowed deliberately —
+/// the original git error is what the caller cares about.
+async fn replay_snapshot_best_effort(snapshots: &[(PathBuf, Option<Vec<u8>>)]) {
+    for (path, content) in snapshots {
+        match content {
+            Some(bytes) => {
+                if let Some(parent) = path.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                let _ = tokio::fs::write(path, bytes).await;
+            }
+            None => {
+                let _ = tokio::fs::remove_file(path).await;
+            }
+        }
+    }
+}
+
 pub struct CorpusClient {
     config: CorpusConfig,
     askpass_path: Option<PathBuf>,
@@ -290,8 +311,20 @@ impl CorpusClient {
                 Err(e) => return Err(e.into()),
             }
         }
-        self.run_git(&["checkout", "-B", branch, &start_point])
-            .await?;
+        // If `checkout -B` fails, the dirty paths are still removed from disk
+        // (above). The caller's `persist` keeps the in-memory `dirty_files`
+        // list intact, but a follow-up save would re-write the paths before
+        // committing — so the *content* is recoverable from browser state. To
+        // avoid leaving the working tree visibly missing files in the meantime,
+        // best-effort replay the snapshot back to disk before propagating the
+        // checkout error.
+        if let Err(e) = self
+            .run_git(&["checkout", "-B", branch, &start_point])
+            .await
+        {
+            replay_snapshot_best_effort(&snapshots).await;
+            return Err(e);
+        }
 
         // Replay the snapshot: write back tracked content, remove paths
         // that were marked for deletion.
