@@ -54,7 +54,7 @@ export const JOB_COLUMNS = [
     width: 'fit-content',
     minWidth: '40px',
     align: 'right',
-    text: (row) => `Priority ${row.priority ?? '—'}`,
+    text: (row) => `Prio ${row.priority ?? '—'}`,
   },
 ];
 
