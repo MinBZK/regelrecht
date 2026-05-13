@@ -180,19 +180,8 @@ defineExpose({
   text-align: center;
 }
 
-.article-text-editor__body {
-  background: var(--semantics-surfaces-tinted-background-color, #F4F6F9);
-  border: 1px solid var(--semantics-borders-default-color, #DDE0E4);
-  border-radius: 12px;
-  padding: 16px;
-  min-height: 200px;
-  line-height: 1.6;
-  font-size: 14px;
-}
-
 .article-text-editor__body :deep(.ProseMirror) {
   outline: none;
-  min-height: 160px;
 }
 
 .article-text-editor__body :deep(.ProseMirror p) {
