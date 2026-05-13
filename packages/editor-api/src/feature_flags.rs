@@ -16,6 +16,14 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         ("panel.yaml_editor".into(), true),
         ("panel.machine_readable".into(), true),
         ("panel.law_graph".into(), false),
+        // Editor capability flags — visibility is panel.*, editability is editor.*.
+        // The frontend wires editor.article_text_edit (default off) to gate
+        // write access on the Tekst pane. Without the key here the backend's
+        // allow-list check rejects the toggle PUT with 400, and the frontend
+        // treats that as a failure and silently reverts the user's change —
+        // so the editor would stay read-only no matter how many times the
+        // menu toggle is flipped.
+        ("editor.article_text_edit".into(), false),
     ])
 });
 
