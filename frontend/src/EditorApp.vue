@@ -10,6 +10,7 @@ import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
+import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
@@ -1242,9 +1243,23 @@ function handleActionSave() {
                 <span v-if="view === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
               </div>
 
-              <!-- Tekst (read-only fallback while the WYSIWYG editor is disabled for demos) -->
+              <!-- Tekst — WYSIWYG editor when the editor.article_text_edit
+                   feature flag is on, otherwise the read-only ArticleText
+                   display (matches the pre-#589 look). The toolbar in the
+                   pane-header above guards on `textEditorRefs[idx]`, which
+                   is only populated by the WYSIWYG component, so it auto-
+                   hides when the flag is off. -->
               <nldd-simple-section v-if="view === 'text'" full-width>
-                <ArticleText :article="selectedArticle" />
+                <ArticleTextEditor
+                  v-if="canEditArticleText"
+                  :ref="setTextEditorRef(idx)"
+                  :article="selectedArticle"
+                  :editable="canEditArticleText"
+                  :save-error="articleTextSaveError"
+                  :model-value="editedText"
+                  @update:model-value="editedText = $event"
+                />
+                <ArticleText v-else :article="selectedArticle" />
               </nldd-simple-section>
               <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
               <nldd-container
