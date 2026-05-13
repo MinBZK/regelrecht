@@ -9,7 +9,7 @@ import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
-import ArticleTextEditor from './components/ArticleTextEditor.vue';
+import ArticleText from './components/ArticleText.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
@@ -1242,16 +1242,9 @@ function handleActionSave() {
                 <span v-if="view === 'yaml' && parseError" class="editor-parse-error">YAML parse error</span>
               </div>
 
-              <!-- Tekst -->
+              <!-- Tekst (read-only fallback while the WYSIWYG editor is disabled for demos) -->
               <nldd-simple-section v-if="view === 'text'" full-width>
-                <ArticleTextEditor
-                  :ref="setTextEditorRef(idx)"
-                  :article="selectedArticle"
-                  :editable="canEditArticleText"
-                  :save-error="articleTextSaveError"
-                  :model-value="editedText"
-                  @update:model-value="editedText = $event"
-                />
+                <ArticleText :article="selectedArticle" />
               </nldd-simple-section>
               <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
               <nldd-container
