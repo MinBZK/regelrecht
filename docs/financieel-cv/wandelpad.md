@@ -4,6 +4,11 @@ Educatieve route door de zes wetten plus AWB. **Niet** de runtime-flow
 van de regelhulp (die is parallel/fan-out) maar een statische tour
 voor uitleg: meest verbonden eerst, dan steeds verder de buitenring in.
 
+> Sinds 2025-01-01 is **LIV (Wtl hoofdstuk 3) afgeschaft** door Wet
+> 36458. De Wtl-corpus bevat een aparte `2025-01-01.yaml` zonder
+> hoofdstuk 3. Stap 8 hieronder is daarom alleen nog LKV — LIV is
+> historisch.
+
 ```mermaid
 flowchart TB
   classDef hub fill:#fff5f5,stroke:#c0392b,stroke-width:3px,color:#000;
@@ -43,7 +48,7 @@ flowchart TB
     S6 -.->|intra-law| S7
   end
 
-  S8["<b>Stap 8 — LIV + LKV</b><br/>Wtl art. 2 + art. 3<br/>━━━━━━━━<br/>standalone, Belastingdienst<br/>(LIV per 2025 afgeschaft)"]:::alone
+  S8["<b>Stap 8 — LKV</b><br/>Wtl art. 2<br/>━━━━━━━━<br/>standalone, Belastingdienst<br/>(LIV — hoofdstuk 3 — afgeschaft<br/>per 2025-01-01, Wet 36458)"]:::alone
   S9["<b>Stap 9 — PP</b><br/>WW art. 76a<br/>━━━━━━━━<br/>standalone, UWV"]:::alone
 
   S3 ==> S10
@@ -100,7 +105,6 @@ flowchart LR
   Orch[regelhulp Financieel CV<br/>orchestrator]:::orch
 
   Orch ==> NRP[NRP]:::regeling
-  Orch ==> LIV[LIV]:::regeling
   Orch ==> LKV[LKV]:::regeling
   Orch ==> LKS[LKS]:::regeling
   Orch ==> LDP[LDP]:::regeling
@@ -109,7 +113,6 @@ flowchart LR
   Orch ==> PP[PP]:::regeling
 
   NRP ==> Out
-  LIV ==> Out
   LKV ==> Out
   LKS ==> Out
   LDP ==> Out
@@ -125,7 +128,8 @@ flowchart LR
 Voor de **werkgever** is de vraag: "Als ik deze persoon aanneem, op
 welke regelingen krijg ik aanspraak?" Voor de **werknemer**: "Bij een
 toekomstige werkgever, welke financiële voordelen kan ik bieden?" De
-8 onderliggende regelingen blijven hetzelfde, alleen de presentatie
-en de aanvullende brief verschillen.
+7 onderliggende regelingen blijven hetzelfde, alleen de presentatie
+en de aanvullende brief verschillen. (NB: dit was er 8 inclusief LIV
+tot 2024; vanaf 2025 zijn het er 7.)
 
 Use-case in de workshop: eerst de wandeling tonen ("dit is hoe het stelsel zit"), daarna de fan-out ("zo werkt de regelhulp er bovenop, voor beide gebruikersgroepen"). Dat scheidt het juridisch begrip van het uitvoeringsbeleid.

@@ -5,30 +5,35 @@ de regelhulp Financieel CV en juridische review.
 
 ## Scope
 
-Acht regelingen uit de regelhulp [Financieel
+Zeven regelingen uit de regelhulp [Financieel
 CV](https://regelhulpenvoorbedrijven.nl/financieelcv/), gericht op
-werkgevers/werknemers met afstand tot de arbeidsmarkt. **Alle acht
-volledig uitgewerkt, met BDD-validatie per regeling.**
+werkgevers/werknemers met afstand tot de arbeidsmarkt. **Alle zeven
+volledig uitgewerkt, met BDD-validatie per regeling.** LIV is sinds
+2025-01-01 afgeschaft (Wet 36458) — historisch wel in scope geweest,
+zie ook `dataminimalisatie.md`.
 
 | Acroniem | Regeling                       | Wet                                                                                | BWB-ID       | Hoofdartikel       | Peildatum  | BDD-scenarios |
 |----------|--------------------------------|------------------------------------------------------------------------------------|--------------|--------------------|------------|---------------|
 | **NRP**  | **No-riskpolis**               | Ziektewet                                                                          | BWBR0001888  | 29b lid 1, 2, 4    | 2025-01-01 | 5 (3 + 2 MvT) |
-| LIV      | Lage-inkomensvoordeel          | Wet tegemoetkomingen loondomein (Wtl)                                              | BWBR0037522  | 3.1 + 3.2          | 2024-01-01 | 5 |
 | LKV      | Loonkostenvoordeel             | Wet tegemoetkomingen loondomein (Wtl)                                              | BWBR0037522  | 2.1 + 2.7/9/13/17  | 2024-01-01 | 5 |
 | LKS      | Loonkostensubsidie             | Participatiewet                                                                    | BWBR0015703  | 10c + 10d          | 2025-01-01 | 5 |
 | LDP      | Loondispensatie                | Wet arbeidsongeschiktheidsvoorziening jonggehandicapten (Wajong)                   | BWBR0008657  | 2:20 lid 1 + 2     | 2025-01-01 | 5 |
 | JC       | Jobcoaching                    | Wet werk en inkomen naar arbeidsvermogen (Wet WIA)                                 | BWBR0019057  | 35 lid 1, 2.d, 4   | 2025-01-01 | 6 |
 | WPA      | Werkplekaanpassingen           | Wet werk en inkomen naar arbeidsvermogen (Wet WIA)                                 | BWBR0019057  | 35 lid 1, 2.c, 4   | 2025-01-01 | (idem JC) |
 | PP       | Proefplaatsing                 | Werkloosheidswet (WW)                                                              | BWBR0004045  | 76a lid 1-5        | 2024-01-01 | 4 |
+| _(LIV)_  | _Lage-inkomensvoordeel — afgeschaft per 2025-01-01_ | _Wtl — hoofdstuk 3_                                  | _BWBR0037522_ | _3.1 + 3.2 (vervallen)_ | _historisch_ | _5 (historisch)_ |
 
-Totaal: **35 BDD-scenarios** voor de Financieel-CV-suite, 88/88 over
-de hele repo groen via `just bdd`.
+Totaal: **103/103 BDD-scenarios** groen via `just bdd`, waaronder
+14 integraal-scenarios voor casus Sadee (werkgever-perspectief) en
+Koen (werknemer-perspectief) in `features/financieel_cv_*.feature`.
 
 ### Toelichting op peildata
 
-- **LIV** is per 2025-01-01 afgeschaft voor nieuwe dienstverbanden
-  (Wet 36458). Peildatum 2024-01-01 voor Wtl gekozen zodat zowel LIV als
-  LKV in beeld blijven voor de Financieel CV-graphdemo.
+- **LIV** is per 2025-01-01 afgeschaft (Wet 36458). De Wtl-corpus
+  bevat sinds 2026-05-11 een aparte `2025-01-01.yaml` zonder
+  hoofdstuk 3. De Sadee/Koen-scenarios draaien op peildatum vandaag
+  en asserteren expliciet dat `heeft_recht_op_liv` als output niet
+  meer bestaat.
 - **WW** harvest met 2025-01-01 faalde (geen versie beschikbaar op die
   datum); 2024-01-01 gebruikt — artikel 76a is sinds die datum niet
   inhoudelijk gewijzigd.
@@ -489,7 +494,7 @@ juridische context per regeling.)
 - `just lint` — groen
 - `just validate` — groen (alle YAMLs schema v0.5.1)
 - `just test` — groen
-- `just bdd` — **88/88 scenarios** (553 steps)
+- `just bdd` — **103/103 scenarios** (648 steps)
 
 `just check` faalt op `admin-test` omdat dat Docker (testcontainers)
 vereist; geen regressie van deze sessie.

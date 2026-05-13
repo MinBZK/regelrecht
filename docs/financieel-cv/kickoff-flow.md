@@ -65,8 +65,9 @@ machine-bekende informatie is, niet alleen documentatie.
 1. Toon [financieel-cv-graph-detail-alle-7.png](financieel-cv-graph-detail-alle-7.png).
 2. Wijs op kleurcodering: blauw=parameters, blauw=conditions,
    rood=outputs, geel=untranslatables.
-3. Loop NRP, LIV, LKV, LKS, LDP, JC/WPA, PP linksboven naar rechtsonder
-   langs — telkens wijzen op:
+3. Loop NRP, LKV, LKS, LDP, JC/WPA, PP linksboven naar rechtsonder
+   langs — telkens wijzen op (LIV is per 2025-01-01 afgeschaft, Wet 36458,
+   en als historisch artefact in de graph zichtbaar):
    - de *parameters* (wat de aanvrager invult)
    - de *conditions* / *gates* (lid-niveau OR/AND)
    - de *outputs* (wat de werkgever of werknemer terugkrijgt)
@@ -127,7 +128,7 @@ draaiende code die per persoon doorrekent.
    just bdd
    ```
 
-   88/88 scenarios groen, ~5 seconden. Niet papier, runnable.
+   103/103 scenarios groen, ~5 seconden. Niet papier, runnable.
 
 ---
 
@@ -216,7 +217,7 @@ git checkout packages/editor-api/src/feature_flags.rs   # demo-only patch revert
 # Validatie van alle YAMLs
 just validate
 
-# Volledige BDD-suite (88/88 scenarios)
+# Volledige BDD-suite (103/103 scenarios)
 just bdd
 
 # BDD met traces (nuttig om persona-uitkomst toe te lichten)

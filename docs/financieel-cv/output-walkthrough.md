@@ -271,37 +271,44 @@ zie YAML.)
 
 ---
 
-# 3. LIV — Lage-inkomensvoordeel (Wtl art. 3.1 + 3.2) — voorbeeld
+# 3. LIV — Lage-inkomensvoordeel (Wtl art. 3.1 + 3.2) — _HISTORISCH_
 
-## Output — `hoogte_liv_per_jaar_eurocent`
+> **Per 2025-01-01 afgeschaft door Wet 36458.** De Wtl-corpus bevat
+> sinds 2026-05-11 een aparte `2025-01-01.yaml` zonder hoofdstuk 3.
+> Op peildatum vandaag geeft de engine een "Output not found"-error
+> voor `heeft_recht_op_liv` — zie de Sadee- en Koen-scenarios in
+> `features/financieel_cv_*.feature` voor expliciete assertie.
+>
+> Deze sectie blijft als historische uitleg behouden voor sessies waar
+> ondernemers vragen "wat was LIV ook alweer?" of voor reconstructie
+> van dienstverbanden vóór 2025.
 
-**Wettekst (Wtl art. 3.2.1):**
+## Output — `hoogte_liv_per_jaar_eurocent` (historisch, geldend t/m 2024)
+
+**Wettekst (Wtl art. 3.2.1) — geldend t/m 2024-12-31:**
 
 > "Een lage-inkomensvoordeel bedraagt € 0,49 per verloond uur van de
 > werknemers die voldoen aan de voorwaarde, bedoeld in artikel 3.1,
 > eerste lid, onderdeel a, doch ten hoogste € 960 per werknemer per
 > kalenderjaar."
 
-**Formule (YAML):**
+**Formule (YAML t/m 2024):**
 ```
 hoogte_liv_per_jaar_eurocent ≡
   IF heeft_recht_op_liv → MIN(49 × verloonde_uren, 96000)
   default 0
 ```
 
-**Attributie:** `Wtl art. 3.2 lid 1` (BWBR0037522). Bedragen in
-eurocent: 49 = € 0,49 / uur, 96000 = € 960,00 / jaar.
+**Attributie:** `Wtl art. 3.2 lid 1` (BWBR0037522, geldend t/m
+2024-12-31, vervallen door Wet 36458). Bedragen in eurocent:
+49 = € 0,49 / uur, 96000 = € 960,00 / jaar.
 
-**Interpretatie-keuzes:**
+**Historische interpretatie-keuzes:**
 
-- Bedragen voor 2024 hardgecodeerd. Lid 4 schrijft jaarlijkse
+- Bedragen voor 2024 hardgecodeerd. Lid 4 schreef jaarlijkse
   aanpassing voor via min. regeling (open_term `liv_uurloongrenzen_per_jaar`).
-- LIV is per 2025-01-01 afgeschaft (Wet 36458). Peildatum van deze YAML
-  is 2024-01-01.
-
-- [ ] € 0,49/uur en € 960/jaar als correcte 2024-bedragen
-- [ ] MIN-formule als correcte cap-implementatie
-- [ ] Afschaffing per 2025 verwerkt in peildatum acceptabel
+- Afschaffing per 2025-01-01: in de huidige corpus weerspiegeld door
+  het ontbreken van hoofdstuk 3 in `wet_tegemoetkomingen_loondomein/2025-01-01.yaml`.
 
 ---
 
