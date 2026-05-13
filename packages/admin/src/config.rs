@@ -129,6 +129,7 @@ mod tests {
         env::set_var("OIDC_CLIENT_SECRET", "secret");
         env::set_var("KEYCLOAK_BASE_URL", "https://keycloak.example.com");
         env::set_var("KEYCLOAK_REALM", "test-realm");
+        env::set_var("OIDC_REQUIRED_ROLE", "harvester-reader");
     }
 
     #[test]

@@ -126,6 +126,7 @@ export default withMermaid(
             items: [
               { text: 'CI/CD Pipeline', link: '/operations/ci-cd' },
               { text: 'Deployment', link: '/operations/deployment' },
+              { text: 'Authentication & Roles', link: '/operations/auth' },
             ],
           },
           {

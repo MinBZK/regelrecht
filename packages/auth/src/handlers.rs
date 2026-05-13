@@ -26,6 +26,7 @@ pub const SESSION_KEY_SUB: &str = "person_sub";
 pub const SESSION_KEY_EMAIL: &str = "person_email";
 pub const SESSION_KEY_NAME: &str = "person_name";
 pub const SESSION_KEY_ID_TOKEN: &str = "id_token_hint";
+pub const SESSION_KEY_ROLES: &str = "person_roles";
 const SESSION_KEY_BASE_URL: &str = "oidc_base_url";
 const SESSION_KEY_RETURN_URL: &str = "oidc_return_url";
 
@@ -285,12 +286,8 @@ pub async fn callback<S: OidcAppState>(
         "checking realm roles"
     );
 
-    let has_role = realm_roles
-        .as_ref()
-        .map(|roles| roles.contains(required_role))
-        .unwrap_or(false);
-
-    if !has_role {
+    let realm_roles = realm_roles.unwrap_or_default();
+    if !realm_roles.contains(required_role) {
         tracing::warn!(role = %required_role, "user lacks required role");
         return Err(StatusCode::FORBIDDEN);
     }
@@ -327,6 +324,15 @@ pub async fn callback<S: OidcAppState>(
     session_insert(&session, SESSION_KEY_EMAIL, email.clone()).await?;
     session_insert(&session, SESSION_KEY_NAME, name.clone()).await?;
     session_insert(&session, SESSION_KEY_ID_TOKEN, id_token_jwt).await?;
+    // Persist the realm roles so route-level `require_role` middleware can
+    // gate per-route access without re-parsing the JWT on every request.
+    session
+        .insert(SESSION_KEY_ROLES, realm_roles)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to insert roles into session");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     tracing::debug!(email = %email, "OIDC login successful");
 

@@ -152,20 +152,29 @@ async fn main() {
         // and would otherwise be an amplification vector.)
         .route("/api/harvest/status", get(harvest_proxy::proxy_harvest));
 
-    // Protected API routes — require authentication when OIDC is enabled.
-    // Write endpoints (PUT/DELETE) for scenarios live here so they cannot be
-    // invoked anonymously when a deployment has a git push token configured.
-    //
-    // The 1 MiB body cap is generous for a single Gherkin scenario file
-    // (real-world scenarios are a few KiB) and prevents a caller from
-    // streaming an arbitrarily large body to disk — important when OIDC
-    // is disabled in local dev and the endpoint is reachable without auth.
+    // Body-size caps for write routes. The 1 MiB scenario cap is generous for
+    // a single Gherkin file (real-world scenarios are a few KiB) and the 5 MiB
+    // law cap leaves headroom for federated regulations that can reach a few
+    // hundred KiB.
     const MAX_SCENARIO_BODY: usize = 1024 * 1024;
-    // Law YAMLs are larger than scenarios — zorgtoeslag's ~25 KiB is typical
-    // but federated regulations can reach a few hundred KiB. A 5 MiB cap
-    // gives ample headroom while still rejecting pathological bodies.
     const MAX_LAW_BODY: usize = 5 * 1024 * 1024;
-    let protected_api_routes = Router::new()
+
+    // Reader routes — `editor-reader` covers user-scoped reads (favorites,
+    // settings) and harvest search (search is behind auth because it triggers
+    // outbound requests and would otherwise be an amplification vector).
+    let reader_routes = Router::new()
+        .route("/api/favorites", get(favorites::list))
+        .route("/api/user/settings", get(user_settings::list))
+        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    // Writer routes — `editor-writer` covers wet- and scenario-edits plus
+    // user-scoped writes. Harvest POSTs (which trigger outbound requests) sit
+    // here so anonymous callers can never reach them.
+    let writer_routes = Router::new()
         .route(
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             axum::routing::put(corpus_handlers::save_scenario)
@@ -177,14 +186,17 @@ async fn main() {
             axum::routing::put(corpus_handlers::save_law)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
         )
-        .route("/api/favorites", get(favorites::list))
         .route(
             "/api/favorites/{law_id}",
             axum::routing::put(favorites::add).delete(favorites::remove),
         )
-        // Harvest proxy — write operations behind auth. Search is also
-        // behind auth because it makes outbound requests to the SRU API.
-        .route("/api/harvest/search", get(harvest_proxy::proxy_harvest))
+        // 4 KiB is ample for `{"value":"<one allowed enum>"}` and rejects
+        // oversized bodies before deserialization.
+        .route(
+            "/api/user/settings/{key}",
+            axum::routing::put(user_settings::set)
+                .layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
         .route(
             "/api/harvest",
             axum::routing::post(harvest_proxy::proxy_harvest),
@@ -193,6 +205,14 @@ async fn main() {
             "/api/harvest/batch",
             axum::routing::post(harvest_proxy::proxy_harvest),
         )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-writer"),
+        ));
+
+    // Admin routes — `editor-admin` covers destructive/global operations
+    // (full corpus reload, feature flag toggles).
+    let admin_routes = Router::new()
         .route(
             "/api/corpus/reload",
             axum::routing::post(corpus_handlers::reload_corpus),
@@ -201,15 +221,17 @@ async fn main() {
             "/api/feature-flags/{key}",
             axum::routing::put(feature_flags::update_feature_flag),
         )
-        .route("/api/user/settings", get(user_settings::list))
-        // 4 KiB is ample for `{"value":"<one allowed enum>"}` and stops a
-        // caller from streaming a much larger body that `validate` would only
-        // reject after deserialization.
-        .route(
-            "/api/user/settings/{key}",
-            axum::routing::put(user_settings::set)
-                .layer(axum::extract::DefaultBodyLimit::max(4096)),
-        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-admin"),
+        ));
+
+    // Traject routes — user-scoped CRUD on shared editing sessions. Handlers
+    // extract `Extension<AccountRecord>`, so `account_middleware` must run
+    // before each request to load the account row from the DB. Writer-tier
+    // because users manage their own trajects; the per-traject membership
+    // model handles finer-grained access within each handler.
+    let traject_routes = Router::new()
         .route("/api/trajects", get(trajects::list).post(trajects::create))
         .route(
             "/api/trajects/{id}",
@@ -239,7 +261,7 @@ async fn main() {
         ))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
-            middleware::require_session_auth::<AppState>,
+            middleware::require_role::<AppState>("editor-writer"),
         ));
 
     // --- Build app with session layer ---
@@ -288,7 +310,10 @@ async fn main() {
             .route("/health", get(|| async { "OK" }))
             .merge(auth_routes)
             .merge(public_api_routes)
-            .merge(protected_api_routes)
+            .merge(reader_routes)
+            .merge(writer_routes)
+            .merge(admin_routes)
+            .merge(traject_routes)
             .with_state(app_state)
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
@@ -310,7 +335,10 @@ async fn main() {
             .route("/health", get(|| async { "OK" }))
             .merge(auth_routes)
             .merge(public_api_routes)
-            .merge(protected_api_routes)
+            .merge(reader_routes)
+            .merge(writer_routes)
+            .merge(admin_routes)
+            .merge(traject_routes)
             .with_state(app_state)
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
