@@ -142,13 +142,17 @@ zad component edit harvester-admin --deployment regelrecht \
 Earlier deployments used a single `allowed-user` realm role checked at login,
 with no per-route gating. To migrate without locking anyone out:
 
-1. **Keycloak**: create the seven new roles, set up composites, attach the
-   ID-token mapper, and grant existing users an appropriate role
-   (most editor users → `editor-writer`).
+1. **Keycloak (hard prerequisite)**: create the seven new roles, set up
+   composites, attach the ID-token mapper, and grant every existing user an
+   appropriate new role (most editor users → `editor-writer`). This must be
+   fully rolled out before Step 2 — any user without one of the new roles
+   will get **403 on every API request** once the new code is live, because
+   the per-route middleware checks for `editor-reader` / `harvester-reader`
+   etc., not `allowed-user`.
 2. **Deploy the new code** with `OIDC_REQUIRED_ROLE=allowed-user` set
    explicitly on both components (the new code rejects an empty value), *and*
-   grant `allowed-user` to all migrated users so login still succeeds during
-   the transition.
+   keep `allowed-user` granted to all migrated users so login still succeeds
+   during the transition.
 3. **Switch `OIDC_REQUIRED_ROLE`** on each component to its new value
    (`editor-reader` / `harvester-reader`).
 4. **Remove the `allowed-user` role** from the realm.
@@ -156,7 +160,7 @@ with no per-route gating. To migrate without locking anyone out:
 ## Programmatic access (admin API key)
 
 The harvester-admin service accepts a bearer API key on **GET** and **DELETE**
-requests (`API_KEY` env var). This is an out-of-band trust path — the holder
+requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path — the holder
 is treated as a `platform-admin`-equivalent for those methods. POST is never
 allowed via the API key path; use a user session with `harvester-writer` or
 `harvester-admin` for mutations. The editor service has no API key path.

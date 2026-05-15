@@ -149,6 +149,10 @@ async fn main() {
 
     // Reader routes — anyone with `harvester-reader` (or higher) can list
     // jobs, sources, law entries, and platform info.
+    // Note: `/api/jobs` is split by HTTP method across this router and
+    // `admin_routes` (GET here, DELETE there). This works because each
+    // router's `route_layer` is baked into its `MethodRouter` before merge,
+    // so the per-method middleware stays attached when the routers combine.
     let reader_routes = Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
@@ -174,6 +178,8 @@ async fn main() {
     // Admin routes — destructive/state-mutating ops require `harvester-admin`.
     // Reset-exhausted and source sync change shared state across the queue.
     // Job deletion is destructive even though it's a DELETE method.
+    // Note: `DELETE /api/jobs` shares its path with `GET /api/jobs` in
+    // `reader_routes`; see the comment there for why this is safe.
     let admin_routes = Router::new()
         .route(
             "/api/jobs",

@@ -286,7 +286,17 @@ pub async fn callback<S: OidcAppState>(
         "checking realm roles"
     );
 
-    let realm_roles = realm_roles.unwrap_or_default();
+    let realm_roles = match realm_roles {
+        Some(roles) => roles,
+        None => {
+            tracing::warn!(
+                sub = %claims.subject().as_str(),
+                "no realm_access claim in ID token or access token — \
+                 check Keycloak client mappers"
+            );
+            Vec::new()
+        }
+    };
     if !realm_roles.contains(required_role) {
         tracing::warn!(role = %required_role, "user lacks required role");
         return Err(StatusCode::FORBIDDEN);
