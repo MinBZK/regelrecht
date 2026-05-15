@@ -16,15 +16,9 @@ use regelrecht_corpus::source_map::{
 };
 use regelrecht_corpus::CorpusError;
 
-use crate::state::{AppState, SessionResolveError};
-
-/// Header used by the frontend to scope writes to one editor session.
-///
-/// The frontend mints a UUID in `sessionStorage` on first load and sends
-/// it on every save. The backend uses it to key per-(session, source)
-/// `SessionGitBackend`s so all edits in one browser session land on the
-/// same upstream feature branch / PR.
-const EDITOR_SESSION_HEADER: &str = "X-Editor-Session";
+use crate::state::AppState;
+use crate::traject_corpus::{TrajectCorpus, TrajectCorpusError};
+use crate::trajects::read_active_from_session;
 
 /// Response body for a successful save.
 ///
@@ -453,66 +447,6 @@ fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (Status
 // Save / Delete scenario endpoints
 // ---------------------------------------------------------------------------
 
-/// Maximum accepted length of the `X-Editor-Session` header value.
-///
-/// The header ends up as a path segment on disk
-/// (`/tmp/regelrecht-editor-sessions/.../<session_id>`) and as a git ref
-/// name (`editor/session-<id>`). 128 bytes comfortably fits a UUID, hex,
-/// or other opaque identifier the frontend mints, while rejecting a
-/// pathological client that sends a multi-kilobyte value.
-const EDITOR_SESSION_MAX_LEN: usize = 128;
-
-/// Read the editor session id from the `X-Editor-Session` header.
-///
-/// Required on every editor write. We deliberately accept-then-validate
-/// (rather than minting one server-side) so the editor controls session
-/// scope: closing the browser tab purges `sessionStorage`, the next save
-/// arrives with a fresh UUID, and the user gets a fresh PR — matching
-/// "one PR per editor session" without any server-side TTL bookkeeping.
-fn require_editor_session(headers: &HeaderMap) -> Result<String, (StatusCode, String)> {
-    let value = headers.get(EDITOR_SESSION_HEADER).ok_or((
-        StatusCode::BAD_REQUEST,
-        format!("Missing {} header", EDITOR_SESSION_HEADER),
-    ))?;
-    let s = value.to_str().map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("{} header is not valid UTF-8", EDITOR_SESSION_HEADER),
-        )
-    })?;
-    // Loose validation: non-empty + ASCII-safe for use in a git ref name.
-    // Tighter shape (UUID) lives at the editor layer where it's minted.
-    let trimmed = s.trim();
-    if trimmed.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("{} header is empty", EDITOR_SESSION_HEADER),
-        ));
-    }
-    if trimmed.len() > EDITOR_SESSION_MAX_LEN {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!(
-                "{} header exceeds {} characters",
-                EDITOR_SESSION_HEADER, EDITOR_SESSION_MAX_LEN
-            ),
-        ));
-    }
-    if !trimmed
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!(
-                "{} header contains characters that are not allowed in a git ref",
-                EDITOR_SESSION_HEADER
-            ),
-        ));
-    }
-    Ok(trimmed.to_string())
-}
-
 /// Pull the editor user identity out of the OIDC session, when both name
 /// and email are populated.
 ///
@@ -531,49 +465,6 @@ async fn editor_user_from_session(session: &Session) -> Option<EditorUser> {
     }
 }
 
-/// Map a [`SessionResolveError`] into an HTTP error tuple suitable for an
-/// `Result<_, (StatusCode, String)>` save handler.
-fn session_resolve_error(law_id: &str, e: SessionResolveError) -> (StatusCode, String) {
-    match e {
-        SessionResolveError::SourceNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            format!("Law '{}' references an unknown source", law_id),
-        ),
-        SessionResolveError::NoToken(source_id) => {
-            tracing::warn!(
-                law_id = %law_id,
-                source_id = %source_id,
-                "save: source has no PR token configured"
-            );
-            (
-                StatusCode::FORBIDDEN,
-                "Source is not configured for write-back".to_string(),
-            )
-        }
-        SessionResolveError::CapacityExceeded => {
-            tracing::warn!(
-                law_id = %law_id,
-                "save: session registry at capacity, refusing new (session, source) backend"
-            );
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Editor is at capacity — try again in a moment".to_string(),
-            )
-        }
-        SessionResolveError::Other(msg) => {
-            tracing::error!(
-                law_id = %law_id,
-                error = %msg,
-                "save: failed to resolve session backend"
-            );
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to prepare write target".to_string(),
-            )
-        }
-    }
-}
-
 /// Resolved write target for editor saves: a backend lock + the file
 /// path. PR info comes back via `PersistOutcome.pr` from the actual
 /// `persist` call, so we don't need to flag the backend here.
@@ -582,22 +473,64 @@ struct EditorWriteTarget {
     backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
 }
 
-/// Resolve the write target for a law-content (`save_law`) edit by routing
-/// through the [`SessionRegistry`] for GitHub sources and falling back to
-/// the existing global backend resolution for local sources.
-/// Common write-target resolution: look up the law under a single corpus
-/// read guard, snapshot the source, drop the guard, resolve the session
-/// backend, enforce writability for local sources, and acquire the
-/// backend's owned mutex. Callers compute the final `relative_path` from
-/// the returned `LoadedLaw`.
-///
-/// Held as a single helper because both the law-content and scenario
-/// write paths need the exact same lock ordering and writability check —
-/// previously this lived as two near-identical copies that would have
-/// diverged silently if the slow-path semantics were ever revisited.
-async fn resolve_session_write_backend(
+/// Resolve the per-traject corpus from session state, returning 403 when
+/// no traject is active. Bumps the cache on a miss; calls
+/// `ensure_ready` (i.e. `git clone`) for every source in the traject's
+/// federated config on first use.
+async fn require_traject_corpus(
     state: &AppState,
-    session_id: &str,
+    session: &Session,
+) -> Result<Arc<TrajectCorpus>, (StatusCode, String)> {
+    let traject_id = read_active_from_session(session)
+        .await
+        .map_err(|status| (status, "session read failed".to_string()))?
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                "Selecteer eerst een traject om te bewerken".to_string(),
+            )
+        })?;
+    let pool = state.pool.as_ref().ok_or((
+        StatusCode::SERVICE_UNAVAILABLE,
+        "database not configured".to_string(),
+    ))?;
+    let auth_file = {
+        let corpus = state.corpus.read().await;
+        corpus.auth_file.clone()
+    };
+    state
+        .trajects
+        .get_or_build(pool, traject_id, auth_file, &state.favorites)
+        .await
+        .map_err(traject_corpus_error)
+}
+
+fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
+    match e {
+        TrajectCorpusError::NotFound => (
+            StatusCode::NOT_FOUND,
+            "Actief traject niet gevonden".to_string(),
+        ),
+        TrajectCorpusError::NoWritableOwn => (
+            StatusCode::CONFLICT,
+            "Traject heeft geen eigen schrijfbare source".to_string(),
+        ),
+        other => {
+            tracing::error!(error = %other, "traject corpus build failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Traject corpus init failed".to_string(),
+            )
+        }
+    }
+}
+
+/// Resolve the writable-own backend within an active traject's corpus.
+/// Returns the looked-up law (for its `relative_path`) and an owned guard
+/// over the traject's writable backend.
+async fn resolve_traject_law_write(
+    state: &AppState,
+    session: &Session,
     law_id: &str,
 ) -> Result<
     (
@@ -606,72 +539,47 @@ async fn resolve_session_write_backend(
     ),
     (StatusCode, String),
 > {
-    // Snapshot under a single corpus read guard, then drop it. The
-    // slow-path session-backend init runs `git clone`; holding the corpus
-    // read guard across it would starve any concurrent
-    // `POST /api/corpus/reload` (which takes the write guard).
-    let (law, snapshot) = {
-        let corpus = state.corpus.read().await;
-        let law = corpus
-            .source_map
-            .get_law(law_id)
-            .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
-            .clone();
-        let snapshot = corpus
-            .snapshot_source_for_session(&law.source_id)
-            .ok_or_else(|| {
-                session_resolve_error(
-                    law_id,
-                    SessionResolveError::SourceNotFound(law.source_id.clone()),
-                )
-            })?;
-        (law, snapshot)
-    };
-
-    let resolved = state
-        .sessions
-        .resolve_session_backend(&snapshot, session_id, &law.source_id)
-        .await
-        .map_err(|e| session_resolve_error(law_id, e))?;
-
-    // For local sources the SessionRegistry hands back the existing global
-    // backend, which may be read-only (baked-in container fs). Surface
-    // that as 403, matching the previous behaviour.
-    if !resolved.uses_session_pr {
-        let writable = {
-            let backend = resolved.backend.lock().await;
-            backend.is_writable()
-        };
-        if !writable {
-            return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
-        }
+    let traject = require_traject_corpus(state, session).await?;
+    let law = traject
+        .corpus
+        .source_map
+        .get_law(law_id)
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
+        .clone();
+    let entry = traject
+        .corpus
+        .backends
+        .get(&traject.writable_own_source_id)
+        .ok_or((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Writable backend not initialised".to_string(),
+        ))?;
+    if !entry.writable {
+        return Err((StatusCode::FORBIDDEN, "Source is read-only".to_string()));
     }
-
-    let backend = resolved.backend.lock_owned().await;
+    let backend = entry.backend.clone().lock_owned().await;
     Ok((law, backend))
 }
 
-async fn resolve_law_write_target(
+async fn resolve_traject_law_target(
     state: &AppState,
-    session_id: &str,
+    session: &Session,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (law, backend) = resolve_session_write_backend(state, session_id, law_id).await?;
+    let (law, backend) = resolve_traject_law_write(state, session, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from(&law.relative_path),
         backend,
     })
 }
 
-/// Resolve the write target for a scenario file edit. Mirrors
-/// `resolve_law_write_target` but appends the scenario subdir + filename.
-async fn resolve_scenario_write_target(
+async fn resolve_traject_scenario_target(
     state: &AppState,
-    session_id: &str,
+    session: &Session,
     law_id: &str,
     filename: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (law, backend) = resolve_session_write_backend(state, session_id, law_id).await?;
+    let (law, backend) = resolve_traject_law_write(state, session, law_id).await?;
     let rel_dir = law_relative_dir(&law)?;
     Ok(EditorWriteTarget {
         relative_path: rel_dir.join("scenarios").join(filename),
@@ -679,15 +587,17 @@ async fn resolve_scenario_write_target(
     })
 }
 
-/// Build a [`SaveResponse`] from a successful [`PersistOutcome`]. Pulls
-/// the branch name out so the frontend can show "session-abc123" without
-/// re-deriving it from the URL.
-fn save_response_from(outcome: PersistOutcome, session_id: &str) -> SaveResponse {
+/// Build a [`SaveResponse`] for a traject write. Traject backends commit
+/// straight to the configured branch without opening a PR for now, so the
+/// outcome typically carries `pr: None` and the response is just `{ pr:
+/// null }` — the frontend treats that as a successful save without an
+/// upstream link to display.
+fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
     SaveResponse {
         pr: outcome.pr.map(|pr| SavePrInfo {
             url: pr.html_url,
             number: pr.number,
-            branch: format!("editor/session-{session_id}"),
+            branch: String::new(),
         }),
     }
 }
@@ -701,15 +611,14 @@ fn save_response_from(outcome: PersistOutcome, session_id: &str) -> SaveResponse
 pub async fn save_scenario(
     State(state): State<AppState>,
     session: Session,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     Path((law_id, filename)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
-    let session_id = require_editor_session(&headers)?;
     let author = editor_user_from_session(&session).await;
 
-    let target = resolve_scenario_write_target(&state, &session_id, &law_id, &filename).await?;
+    let target = resolve_traject_scenario_target(&state, &session, &law_id, &filename).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -728,7 +637,7 @@ pub async fn save_scenario(
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    Ok(Json(save_response_from(outcome, &session_id)))
+    Ok(Json(save_response_from_traject(outcome)))
 }
 
 /// PUT /api/corpus/laws/{law_id} — save edited law YAML content.
@@ -746,11 +655,10 @@ pub async fn save_scenario(
 pub async fn save_law(
     State(state): State<AppState>,
     session: Session,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     Path(law_id): Path<String>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
-    let session_id = require_editor_session(&headers)?;
     let author = editor_user_from_session(&session).await;
 
     // Validation:
@@ -795,18 +703,13 @@ pub async fn save_law(
         ));
     }
 
-    let target = resolve_law_write_target(&state, &session_id, &law_id).await?;
+    let target = resolve_traject_law_target(&state, &session, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
     } = target;
 
     let outcome = {
-        // The earlier write-target resolution checks writability for local
-        // sources; for federated GitHub sources a missing token is a 403
-        // before we even get here. The remaining failure mode here is a
-        // TOCTOU on local backend writability (volume flips read-only
-        // mid-request); `corpus_write_error` maps that as a generic 500.
         backend
             .write_file(&relative_path, &body)
             .await
@@ -820,20 +723,15 @@ pub async fn save_law(
             .map_err(corpus_write_error("law"))?
     };
 
-    // Refresh the in-memory cache so /api/corpus/laws/{law_id} (and
-    // dependency walks) see the edit without a full corpus reload.
+    // Refresh the global in-memory cache so /api/corpus/laws/{law_id}
+    // outside of a traject still reflects merged changes once any. For
+    // active-traject reads the traject-corpus has its own SourceMap.
     {
         let mut corpus = state.corpus.write().await;
-        let updated = corpus.source_map.update_yaml_content(&law_id, body);
-        if !updated {
-            tracing::warn!(
-                law_id = %law_id,
-                "save_law wrote to backend but law vanished from source_map between write and cache refresh"
-            );
-        }
+        let _ = corpus.source_map.update_yaml_content(&law_id, body);
     }
 
-    Ok(Json(save_response_from(outcome, &session_id)))
+    Ok(Json(save_response_from_traject(outcome)))
 }
 
 /// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
@@ -849,14 +747,13 @@ pub async fn save_law(
 pub async fn delete_scenario(
     State(state): State<AppState>,
     session: Session,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     Path((law_id, filename)): Path<(String, String)>,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
-    let session_id = require_editor_session(&headers)?;
     let author = editor_user_from_session(&session).await;
 
-    let target = resolve_scenario_write_target(&state, &session_id, &law_id, &filename).await?;
+    let target = resolve_traject_scenario_target(&state, &session, &law_id, &filename).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -875,7 +772,7 @@ pub async fn delete_scenario(
         .await
         .map_err(corpus_write_error("scenario"))?;
 
-    Ok(Json(save_response_from(outcome, &session_id)))
+    Ok(Json(save_response_from_traject(outcome)))
 }
 
 /// POST /api/corpus/reload — refetch corpus from all sources.
@@ -950,99 +847,30 @@ pub struct ReloadResponse {
 
 #[cfg(test)]
 mod tests {
-    //! Tests for the small, pure helpers in this module: header validation,
-    //! error mapping, and response shaping. The full save/delete handlers
-    //! require an axum harness with sessions + sqlx + a real source map
-    //! and live behind separate integration tests.
+    //! Tests for the small, pure helpers in this module. The full
+    //! save/delete handlers require an axum harness with sessions +
+    //! sqlx + a real source map and live behind separate integration
+    //! tests.
     use super::*;
-    use axum::http::HeaderValue;
-    use regelrecht_corpus::backend::PrInfo;
-
-    fn headers_with(value: &str) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        h.insert(EDITOR_SESSION_HEADER, HeaderValue::from_str(value).unwrap());
-        h
-    }
 
     #[test]
-    fn require_editor_session_missing_header_is_400() {
-        let h = HeaderMap::new();
-        let err = require_editor_session(&h).unwrap_err();
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.contains("Missing"));
-    }
-
-    #[test]
-    fn require_editor_session_empty_value_is_400() {
-        let h = headers_with("   ");
-        let err = require_editor_session(&h).unwrap_err();
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.contains("empty"));
-    }
-
-    #[test]
-    fn require_editor_session_invalid_chars_is_400() {
-        // Slashes are not allowed in a git ref segment and must be rejected.
-        let h = headers_with("foo/bar");
-        let err = require_editor_session(&h).unwrap_err();
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-    }
-
-    #[test]
-    fn require_editor_session_oversized_value_is_400() {
-        // Defence against pathological clients sending a megabyte-long
-        // header — that would end up as a branch name on disk.
-        let h = headers_with(&"a".repeat(1024));
-        let err = require_editor_session(&h).unwrap_err();
-        assert_eq!(err.0, StatusCode::BAD_REQUEST);
-    }
-
-    #[test]
-    fn require_editor_session_accepts_uuid_shape() {
-        let h = headers_with("abc123-def4567890");
-        let session_id = require_editor_session(&h).unwrap();
-        assert_eq!(session_id, "abc123-def4567890");
-    }
-
-    #[test]
-    fn session_resolve_error_source_not_found_is_404() {
-        let err = session_resolve_error("law_x", SessionResolveError::SourceNotFound("src".into()));
-        assert_eq!(err.0, StatusCode::NOT_FOUND);
-    }
-
-    #[test]
-    fn session_resolve_error_no_token_is_403() {
-        let err = session_resolve_error("law_x", SessionResolveError::NoToken("src".into()));
-        assert_eq!(err.0, StatusCode::FORBIDDEN);
-    }
-
-    #[test]
-    fn session_resolve_error_other_is_500() {
-        let err = session_resolve_error("law_x", SessionResolveError::Other("boom".into()));
-        assert_eq!(err.0, StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    #[test]
-    fn save_response_from_local_source_has_no_pr() {
-        // PersistOutcome.pr is None for local-source saves; the response
-        // must mirror that shape so the frontend hides the PR badge.
-        let out = PersistOutcome { pr: None };
-        let body = save_response_from(out, "sess-abc");
-        assert!(body.pr.is_none());
-    }
-
-    #[test]
-    fn save_response_from_github_source_carries_pr_with_session_branch() {
+    fn save_response_from_traject_passes_through_pr_when_set() {
+        use regelrecht_corpus::backend::PrInfo;
         let out = PersistOutcome {
             pr: Some(PrInfo {
-                number: 42,
-                html_url: "https://github.com/x/y/pull/42".to_string(),
+                number: 7,
+                html_url: "https://github.com/x/y/pull/7".to_string(),
             }),
         };
-        let body = save_response_from(out, "sess-abc");
-        let pr = body.pr.expect("session-pr response must carry pr");
-        assert_eq!(pr.number, 42);
-        assert_eq!(pr.url, "https://github.com/x/y/pull/42");
-        assert_eq!(pr.branch, "editor/session-sess-abc");
+        let body = save_response_from_traject(out);
+        let pr = body.pr.expect("response must carry pr");
+        assert_eq!(pr.number, 7);
+        assert_eq!(pr.url, "https://github.com/x/y/pull/7");
+    }
+
+    #[test]
+    fn save_response_from_traject_returns_none_for_plain_commit() {
+        let body = save_response_from_traject(PersistOutcome { pr: None });
+        assert!(body.pr.is_none());
     }
 }
