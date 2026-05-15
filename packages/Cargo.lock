@@ -3671,6 +3671,7 @@ name = "regelrecht-editor-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "pretty_assertions",
  "regelrecht-auth",
  "regelrecht-corpus",
  "regelrecht-pipeline",

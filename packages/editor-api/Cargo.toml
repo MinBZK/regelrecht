@@ -7,6 +7,10 @@ description = "RegelRecht editor API — lightweight Axum server for the law edi
 license = "EUPL-1.2"
 repository = "https://github.com/MinBZK/regelrecht"
 
+[lib]
+name = "regelrecht_editor_api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "regelrecht-editor-api"
 path = "src/main.rs"
@@ -30,6 +34,11 @@ serde_json.workspace = true
 time.workspace = true
 tracing.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
+tower-sessions-memory-store.workspace = true
+pretty_assertions.workspace = true
 
 [lints]
 workspace = true
