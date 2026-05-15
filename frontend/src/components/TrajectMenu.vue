@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useTrajects } from '../composables/useTrajects.js';
 
 const props = defineProps({
@@ -21,7 +21,6 @@ const {
 
 const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);
 const menuId = computed(() => `traject-menu-${props.idSuffix}`);
-const dialogId = computed(() => `traject-create-dialog-${props.idSuffix}`);
 
 const activeLabel = computed(() => {
   if (loading.value) return 'Traject…';
@@ -29,24 +28,12 @@ const activeLabel = computed(() => {
   return activeTraject.value.name;
 });
 
-// --- Create-dialog state ---
+// --- Create-sheet state ---
+const sheetEl = ref(null);
 const showCreate = ref(false);
-const form = ref({
-  name: '',
-  description: '',
-  scope: '',
-  gh_owner: '',
-  gh_repo: '',
-  gh_branch: '',
-  gh_base_branch: '',
-  auth_ref: '',
-});
-const createBusy = ref(false);
-const createError = ref(null);
 
-function openCreate() {
-  createError.value = null;
-  form.value = {
+function emptyForm() {
+  return {
     name: '',
     description: '',
     scope: '',
@@ -56,6 +43,24 @@ function openCreate() {
     gh_base_branch: '',
     auth_ref: '',
   };
+}
+
+const form = ref(emptyForm());
+const createBusy = ref(false);
+const createError = ref(null);
+
+// nldd-sheet exposes imperative show()/hide(); mirror showCreate into those
+// calls so the sheet animates instead of mounting/unmounting (matches the
+// ActionSheet / EditSheet pattern in this app).
+watch(showCreate, async (v) => {
+  await nextTick();
+  if (v) sheetEl.value?.show();
+  else sheetEl.value?.hide();
+});
+
+function openCreate() {
+  createError.value = null;
+  form.value = emptyForm();
   showCreate.value = true;
 }
 
@@ -82,7 +87,7 @@ async function submitCreate() {
     return;
   }
   if (!form.value.gh_owner.trim() || !form.value.gh_repo.trim()) {
-    createError.value = 'Owner en repo van de schrijfbare source zijn verplicht';
+    createError.value = 'GitHub owner en repo zijn verplicht';
     return;
   }
   createBusy.value = true;
@@ -107,6 +112,15 @@ async function submitCreate() {
   } finally {
     createBusy.value = false;
   }
+}
+
+// Input event handlers: NDD text-field/text-area dispatch on the bare
+// <input>/<textarea> element, so target.value is set; some custom-element
+// variants dispatch a custom event with detail.value. Read both to stay
+// robust across NDD versions (matches the pattern in EditSheet.vue).
+function bind(field) {
+  return (event) =>
+    (form.value[field] = event.target?.value ?? event.detail?.value ?? form.value[field]);
 }
 </script>
 
@@ -142,85 +156,216 @@ async function submitCreate() {
     ></nldd-menu-item>
   </nldd-menu>
 
-  <nldd-dialog v-if="showCreate" :id="dialogId" open @close="closeCreate">
-    <div slot="title">Nieuw traject</div>
-    <div class="traject-form">
-      <nldd-text-field
-        label="Naam"
-        required
-        :value="form.name"
-        @input="form.name = $event.target.value"
-      ></nldd-text-field>
-      <nldd-text-area
-        label="Beschrijving"
-        :value="form.description"
-        @input="form.description = $event.target.value"
-      ></nldd-text-area>
-      <nldd-text-area
-        label="Scope"
-        supporting-text="Vrije tekst — welke wetten of onderwerpen vallen onder dit traject?"
-        :value="form.scope"
-        @input="form.scope = $event.target.value"
-      ></nldd-text-area>
-      <nldd-text-field
-        label="GitHub owner"
-        supporting-text="Bijv. MinBZK, of jouw eigen org/user voor een fork."
-        required
-        :value="form.gh_owner"
-        @input="form.gh_owner = $event.target.value"
-      ></nldd-text-field>
-      <nldd-text-field
-        label="GitHub repo"
-        required
-        :value="form.gh_repo"
-        @input="form.gh_repo = $event.target.value"
-      ></nldd-text-field>
-      <nldd-text-field
-        label="Branch (optioneel)"
-        supporting-text="Leeg laten om automatisch te genereren op basis van de naam."
-        :value="form.gh_branch"
-        @input="form.gh_branch = $event.target.value"
-      ></nldd-text-field>
-      <nldd-text-field
-        label="Basis-branch (optioneel)"
-        supporting-text="Branch om vanaf te starten als de bovenstaande branch nog niet bestaat. Standaard 'main' — vul 'master' of 'development' in voor repos met een andere default."
-        :value="form.gh_base_branch"
-        @input="form.gh_base_branch = $event.target.value"
-      ></nldd-text-field>
-      <nldd-text-field
-        label="Auth-ref (optioneel)"
-        supporting-text="Naam van de token-entry in corpus-auth.yaml als je er een nodig hebt."
-        :value="form.auth_ref"
-        @input="form.auth_ref = $event.target.value"
-      ></nldd-text-field>
-      <div v-if="createError" class="traject-error">{{ createError }}</div>
-    </div>
-    <nldd-button
-      slot="actions"
-      variant="primary"
-      :text="createBusy ? 'Bezig…' : 'Aanmaken'"
-      :disabled="createBusy || undefined"
-      @click="submitCreate"
-    ></nldd-button>
-    <nldd-button
-      slot="actions"
-      variant="secondary"
-      text="Annuleren"
-      :disabled="createBusy || undefined"
-      @click="closeCreate"
-    ></nldd-button>
-  </nldd-dialog>
+  <!-- Teleport the sheet out of the toolbar so it doesn't inherit the
+       toolbar's positioning / clipping. Matches the ScenarioBuilder
+       pattern. Each TrajectMenu instance (md/lg/sm) teleports its own
+       sheet to body but only one is active per breakpoint, so they
+       don't visually collide. -->
+  <Teleport to="body">
+    <nldd-sheet
+      ref="sheetEl"
+      placement="right"
+      width="520px"
+      full-height
+      @close="closeCreate"
+    >
+      <nldd-page sticky-header sticky-footer>
+        <nldd-top-title-bar
+          slot="header"
+          text="Nieuw traject"
+          :dismiss-text="createBusy ? '' : 'Annuleer'"
+          @dismiss="closeCreate"
+        ></nldd-top-title-bar>
+
+        <nldd-simple-section>
+          <nldd-list variant="box" class="traject-form-list">
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Naam"
+                supporting-text="Korte herkenbare titel, bijv. 'Tariefswijziging 2026'."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  required
+                  :value="form.name"
+                  @input="bind('name')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Beschrijving"
+                supporting-text="Waarom dit traject? (optioneel)"
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.description"
+                  @input="bind('description')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Scope"
+                supporting-text="Welke wetten of onderwerpen vallen onder dit traject? (vrije tekst, optioneel)"
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.scope"
+                  @input="bind('scope')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+          </nldd-list>
+
+          <nldd-spacer size="16"></nldd-spacer>
+          <nldd-title size="6"><h6>Schrijfbare bron</h6></nldd-title>
+          <nldd-spacer size="8"></nldd-spacer>
+
+          <nldd-list variant="box" class="traject-form-list">
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="GitHub owner"
+                supporting-text="Bijv. 'MinBZK' voor de centrale repo, of de naam van jouw fork."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  required
+                  :value="form.gh_owner"
+                  @input="bind('gh_owner')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="GitHub repo"
+                supporting-text="Bijv. 'regelrecht-corpus'."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  required
+                  :value="form.gh_repo"
+                  @input="bind('gh_repo')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Branch"
+                supporting-text="Naam van de branch waarop dit traject pusht. Leeg laten om automatisch te genereren uit de naam."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.gh_branch"
+                  @input="bind('gh_branch')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Basis-branch"
+                supporting-text="Branch om vanaf te vertakken als de bovenstaande nog niet bestaat. Standaard 'main'."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.gh_base_branch"
+                  @input="bind('gh_base_branch')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+            <nldd-list-item size="md">
+              <nldd-text-cell
+                text="Auth-ref"
+                supporting-text="Naam van de token-entry in corpus-auth.yaml — alleen nodig voor private repos."
+                max-width="180px"
+              ></nldd-text-cell>
+              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field
+                  size="md"
+                  :value="form.auth_ref"
+                  @input="bind('auth_ref')($event)"
+                ></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+          </nldd-list>
+
+          <div v-if="createError" class="traject-error">{{ createError }}</div>
+        </nldd-simple-section>
+
+        <nldd-container slot="footer" padding="16">
+          <div v-if="createBusy" class="traject-busy" role="status">
+            <span class="traject-spinner" aria-hidden="true"></span>
+            <span>Traject wordt aangemaakt en branch wordt op de remote gezet — dit kan even duren.</span>
+          </div>
+          <nldd-button
+            variant="primary"
+            size="md"
+            full-width
+            :text="createBusy ? 'Bezig…' : 'Aanmaken'"
+            :disabled="createBusy || undefined"
+            @click="submitCreate"
+          ></nldd-button>
+        </nldd-container>
+      </nldd-page>
+    </nldd-sheet>
+  </Teleport>
 </template>
 
 <style scoped>
-.traject-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 320px;
+.traject-form-list nldd-cell {
+  flex: 1;
+  min-width: 0;
+}
+.traject-form-list nldd-text-field {
+  width: 100%;
 }
 .traject-error {
   color: var(--nldd-color-text-error, #c62828);
   font-size: 13px;
+  margin-top: 12px;
+}
+.traject-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--semantics-content-secondary-color, #555);
+  margin-bottom: 12px;
+}
+.traject-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: traject-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes traject-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
