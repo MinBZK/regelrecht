@@ -90,6 +90,7 @@ fn create_req(name: &str) -> CreateTrajectRequest {
             gh_owner: "minbzk".to_string(),
             gh_repo: "regelrecht-corpus".to_string(),
             gh_branch: None,
+            gh_base_branch: None,
             gh_path: None,
             auth_ref: None,
         },
@@ -401,6 +402,19 @@ async fn add_member_upserts_role_on_conflict() {
     .await
     .unwrap();
     assert_eq!(role, "beheerder");
+}
+
+#[tokio::test]
+async fn add_member_blocks_demoting_last_beheerder_via_upsert() {
+    // Without this guard, add_member would be a back-door around the
+    // last-beheerder check that update_member already enforces.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    let status = add_member(&state, &alice, traject_id, &alice.email, "lid").await;
+    assert_eq!(status, StatusCode::CONFLICT);
 }
 
 #[tokio::test]

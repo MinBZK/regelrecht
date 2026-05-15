@@ -59,6 +59,19 @@ pub async fn ensure_account(
         .await
         .map_err(session_read_failed(SESSION_KEY_EMAIL))?
         .unwrap_or_default();
+    // The `email` column is UNIQUE NOT NULL — letting a missing email
+    // claim default to "" would let the first such user create a row
+    // with empty email and then every subsequent emailless user would
+    // 500 on the constraint violation. Refuse the account creation up
+    // front with a clear log line so a misconfigured IdP is visible
+    // instead of presenting as a sporadic 500.
+    if email.trim().is_empty() {
+        tracing::error!(
+            sub = %sub,
+            "OIDC subject has no email claim — refusing to create account"
+        );
+        return Err(StatusCode::FORBIDDEN);
+    }
     let name: String = session
         .get(SESSION_KEY_NAME)
         .await

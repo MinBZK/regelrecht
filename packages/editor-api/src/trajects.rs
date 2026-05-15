@@ -47,6 +47,7 @@ pub struct TrajectSourceDto {
     pub gh_owner: Option<String>,
     pub gh_repo: Option<String>,
     pub gh_branch: Option<String>,
+    pub gh_base_branch: Option<String>,
     pub gh_path: Option<String>,
     pub gh_ref: Option<String>,
     pub local_path: Option<String>,
@@ -83,6 +84,11 @@ pub struct WritableSourceInput {
     /// Optional override; auto-generated from `name` when omitted.
     #[serde(default)]
     pub gh_branch: Option<String>,
+    /// Existing branch to clone-then-branch-from when `gh_branch` doesn't
+    /// yet exist on the remote. Defaults to `"main"` when omitted —
+    /// override for repos whose default is `master`, `development`, etc.
+    #[serde(default)]
+    pub gh_base_branch: Option<String>,
     #[serde(default)]
     pub gh_path: Option<String>,
     #[serde(default)]
@@ -241,11 +247,13 @@ fn validate_status(status: &str) -> Result<(), StatusCode> {
     }
 }
 
-/// Conservative git-branch-name check: lowercase ASCII letters, digits,
-/// `-`, `_`, `/`, `.`. Rejects empty, leading/trailing `/`, `..`, and
-/// length > 255. Stays well inside git's own `check-ref-format` rules so
-/// the branch can be passed to `git --branch` later without the clone
-/// crashing on a malformed ref.
+/// Conservative git-branch-name check: ASCII alphanumerics, `-`, `_`,
+/// `/`, `.`. Rejects empty, leading/trailing `/`, `..`, `//`, and length
+/// over 255 chars. Stays well inside git's own `check-ref-format` rules
+/// so the branch can be passed to `git --branch` later without the clone
+/// crashing on a malformed ref. Mixed case is intentionally allowed
+/// because git refs are case-sensitive and users may want to mirror
+/// existing upstream branch naming.
 fn validate_branch_name(branch: &str) -> Result<(), StatusCode> {
     let b = branch;
     if b.is_empty()
@@ -325,7 +333,7 @@ pub async fn get(
 
     let sources: Vec<TrajectSourceDto> = sqlx::query_as(
         "SELECT source_id, name, source_type::text AS source_type,
-                gh_owner, gh_repo, gh_branch, gh_path, gh_ref,
+                gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path, gh_ref,
                 local_path, priority, auth_ref, is_writable_own
          FROM traject_corpus_sources
          WHERE traject_id = $1
@@ -449,15 +457,29 @@ pub async fn create(
         None => derive_branch_name(&req.name, traject_id),
     };
 
+    let writable_base_branch = match req
+        .writable_source
+        .gh_base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+    {
+        Some(b) => {
+            validate_branch_name(b)?;
+            Some(b.to_string())
+        }
+        None => None,
+    };
+
     let writable_source_id = format!("traject-own-{}", traject_id.simple());
     sqlx::query(
         "INSERT INTO traject_corpus_sources
          (traject_id, source_id, name, source_type,
-          gh_owner, gh_repo, gh_branch, gh_path,
+          gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path,
           priority, auth_ref, is_writable_own)
          VALUES ($1, $2, $3, 'github',
-                 $4, $5, $6, $7,
-                 0, $8, TRUE)",
+                 $4, $5, $6, $7, $8,
+                 0, $9, TRUE)",
     )
     .bind(traject_id)
     .bind(&writable_source_id)
@@ -465,6 +487,7 @@ pub async fn create(
     .bind(&req.writable_source.gh_owner)
     .bind(&req.writable_source.gh_repo)
     .bind(&writable_branch)
+    .bind(writable_base_branch.as_deref())
     .bind(&req.writable_source.gh_path)
     .bind(&req.writable_source.auth_ref)
     .execute(&mut *tx)
@@ -498,6 +521,13 @@ pub async fn update(
     if let Some(ref s) = req.status {
         validate_status(s)?;
     }
+    // Mirror `create`'s non-empty check so a PATCH can't blank-out the
+    // name with whitespace.
+    if let Some(ref n) = req.name {
+        if n.trim().is_empty() {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
 
     sqlx::query(
         "UPDATE trajects SET
@@ -508,7 +538,7 @@ pub async fn update(
          WHERE id = $1",
     )
     .bind(id)
-    .bind(req.name.as_deref())
+    .bind(req.name.as_deref().map(str::trim))
     .bind(req.description.as_deref())
     .bind(req.scope.as_deref())
     .bind(req.status.as_deref())
@@ -562,13 +592,20 @@ pub async fn add_member(
     require_beheerder(pool, id, account.id).await?;
     validate_role(&req.role)?;
 
-    let target: Option<(Uuid,)> =
-        sqlx::query_as("SELECT id FROM accounts WHERE email = $1 LIMIT 1")
-            .bind(&req.email)
-            .fetch_optional(pool)
-            .await
-            .map_err(db_err("lookup account"))?;
+    let target: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM accounts WHERE email = $1")
+        .bind(&req.email)
+        .fetch_optional(pool)
+        .await
+        .map_err(db_err("lookup account"))?;
     let target_id = target.ok_or(StatusCode::NOT_FOUND)?.0;
+
+    // If this upsert would convert an existing beheerder to lid, make sure
+    // at least one other beheerder remains — otherwise add_member would be
+    // a back-door around the same guard that update_member and remove_member
+    // already enforce.
+    if req.role != "beheerder" {
+        ensure_other_beheerder(pool, id, target_id).await?;
+    }
 
     sqlx::query(
         "INSERT INTO traject_members (traject_id, account_id, role)

@@ -62,7 +62,7 @@ async fn main() {
     // --- Corpus init ---
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
     let favorites = Arc::new(load_favorites(&static_dir));
-    let corpus_state = init_corpus(&static_dir, &favorites).await;
+    let corpus_state = init_corpus(&favorites).await;
 
     let hostname = env::var("HOSTNAME").ok();
     let pipeline_api_url =
@@ -345,7 +345,7 @@ async fn serve(
 
 /// Initialize the corpus: load local sources, then fetch only the
 /// favorites that are missing from GitHub sources.
-async fn init_corpus(_static_dir: &str, favorites: &HashSet<String>) -> CorpusState {
+async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
     let manifest_str =
         env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
     let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")

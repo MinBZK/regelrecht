@@ -124,7 +124,7 @@ async fn build_traject_corpus(
 ) -> Result<Arc<TrajectCorpus>, TrajectCorpusError> {
     let rows = sqlx::query_as::<_, TrajectSourceRow>(
         "SELECT source_id, name, source_type::text AS source_type,
-                gh_owner, gh_repo, gh_branch, gh_path, gh_ref,
+                gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path, gh_ref,
                 local_path, priority, auth_ref, scopes, is_writable_own
          FROM traject_corpus_sources
          WHERE traject_id = $1
@@ -149,7 +149,7 @@ async fn build_traject_corpus(
 
     // Build a backend per source, scoped to a traject-specific clone path.
     let mut backends: HashMap<String, BackendEntry> = HashMap::new();
-    for source in &sources {
+    for (row, source) in rows.iter().zip(sources.iter()) {
         let token = regelrecht_corpus::auth::resolve_token_for_source(
             &source.id,
             source.auth_ref.as_deref(),
@@ -169,9 +169,13 @@ async fn build_traject_corpus(
         // gets its own working tree. Local sources keep their configured
         // path — they're already isolated by definition.
         let backend_result = match &source.source_type {
-            SourceType::GitHub { github } => {
-                build_traject_github_backend(traject_id, source, github, token.as_deref())
-            }
+            SourceType::GitHub { github } => build_traject_github_backend(
+                traject_id,
+                source,
+                github,
+                row.gh_base_branch.as_deref(),
+                token.as_deref(),
+            ),
             SourceType::Local { .. } => create_backend(source, token.as_deref()),
         };
 
@@ -264,6 +268,7 @@ fn build_traject_github_backend(
     traject_id: Uuid,
     source: &Source,
     github: &GitHubSource,
+    base_branch: Option<&str>,
     token: Option<&str>,
 ) -> Result<Box<dyn regelrecht_corpus::backend::RepoBackend>, regelrecht_corpus::error::CorpusError>
 {
@@ -284,9 +289,11 @@ fn build_traject_github_backend(
     config.branch = github.effective_ref().to_string();
     // For traject writable branches we expect the branch to not yet exist
     // on the remote on first clone — `git_clone_and_create_branch` will
-    // fall back to `base_branch` and push a new branch. Default base is
-    // `main` for trajects (overrides the global default of `development`).
-    config.base_branch = Some("main".to_string());
+    // fall back to `base_branch` and push a new branch. Default to `main`
+    // for trajects (overrides the global default of `development`); the
+    // caller can override per-source when their writable repo's default
+    // branch is something else.
+    config.base_branch = Some(base_branch.unwrap_or("main").to_string());
     if let Some(t) = token {
         config = config.with_token(t);
     }
@@ -294,7 +301,9 @@ fn build_traject_github_backend(
     Ok(Box::new(GitBackend::new(client, github.path.clone())))
 }
 
-/// DB row mirror for `traject_corpus_sources`.
+/// DB row mirror for `traject_corpus_sources`. `gh_base_branch` is kept
+/// outside [`Source`] because it's traject-flow-specific (clone-then-
+/// branch-from) and the global [`Source`] type doesn't carry it.
 #[derive(sqlx::FromRow, Debug, Clone)]
 struct TrajectSourceRow {
     source_id: String,
@@ -303,6 +312,7 @@ struct TrajectSourceRow {
     gh_owner: Option<String>,
     gh_repo: Option<String>,
     gh_branch: Option<String>,
+    gh_base_branch: Option<String>,
     gh_path: Option<String>,
     gh_ref: Option<String>,
     local_path: Option<String>,

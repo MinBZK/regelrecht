@@ -63,6 +63,10 @@ CREATE TABLE traject_corpus_sources (
     gh_owner         TEXT,
     gh_repo          TEXT,
     gh_branch        TEXT,
+    -- Branch to clone-then-branch-from when `gh_branch` doesn't yet exist
+    -- on the remote. Only meaningful for the writable-own source; NULL
+    -- on read-only seeds. The backend falls back to "main" when NULL.
+    gh_base_branch   TEXT,
     gh_path          TEXT,
     gh_ref           TEXT,
     local_path       TEXT,
