@@ -430,11 +430,14 @@ impl CorpusClient {
         Ok(())
     }
 
-    /// Clone the `development` base branch, then create and push the target branch.
+    /// Clone the base branch (configurable via [`CorpusConfig::base_branch`],
+    /// defaulting to `"development"` for the legacy harvester flow), then
+    /// create and push the target branch.
     async fn git_clone_and_create_branch(&self) -> Result<()> {
         let url = self.config.clone_url();
         let path_str = self.config.repo_path.to_string_lossy().to_string();
         let sparse = self.config.sparse_paths.is_some();
+        let base = self.config.base_branch.as_deref().unwrap_or("development");
 
         let mut args = vec![
             "clone",
@@ -442,7 +445,7 @@ impl CorpusClient {
             "1",
             "--quiet",
             "--branch",
-            "development",
+            base,
             "--single-branch",
         ];
         if sparse {
@@ -461,7 +464,7 @@ impl CorpusClient {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let sanitized = self.sanitize_output(&stderr);
             return Err(CorpusError::Git(format!(
-                "git clone (development) failed: {sanitized}"
+                "git clone (base={base}) failed: {sanitized}"
             )));
         }
 
@@ -474,7 +477,11 @@ impl CorpusClient {
         self.run_git(&["push", "-u", "origin", &self.config.branch])
             .await?;
 
-        tracing::info!(branch = %self.config.branch, "created and pushed new branch");
+        tracing::info!(
+            branch = %self.config.branch,
+            base = %base,
+            "created and pushed new branch"
+        );
         Ok(())
     }
 
