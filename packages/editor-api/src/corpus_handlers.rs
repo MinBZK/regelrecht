@@ -555,24 +555,27 @@ async fn require_traject_corpus(
         let corpus = state.corpus.read().await;
         corpus.auth_file.clone()
     };
-    state
+    match state
         .trajects
         .get_or_build(pool, traject_id, auth_file, &state.favorites)
         .await
-        .map_err(|e| {
+    {
+        Ok(corpus) => Ok(corpus),
+        Err(e) => {
             // Also clear the session on NotFound so the user isn't stuck
-            // 404-on-every-save after the traject was deleted.
+            // 404-on-every-save after the traject was deleted. The clear
+            // must run inline (NOT via tokio::spawn) so SessionManagerLayer
+            // sees the mutation when it persists the session on the way
+            // out — a detached task wouldn't have run yet at save time.
             if matches!(e, TrajectCorpusError::NotFound) {
-                let session = session.clone();
-                tokio::spawn(async move {
-                    let _: Option<Uuid> = session
-                        .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
-                        .await
-                        .unwrap_or(None);
-                });
+                let _: Option<Uuid> = session
+                    .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
+                    .await
+                    .unwrap_or(None);
             }
-            traject_corpus_error(e)
-        })
+            Err(traject_corpus_error(e))
+        }
+    }
 }
 
 fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
