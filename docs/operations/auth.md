@@ -117,9 +117,11 @@ Each service is gated on a **minimum role** at login time, configured via
 | `editor` | `editor-reader` |
 | `harvester-admin` | `harvester-reader` |
 
-A missing or empty `OIDC_REQUIRED_ROLE` is a startup error when OIDC is
-otherwise configured — there is no implicit default. This prevents a
-misconfigured deployment from silently accepting anyone with any role.
+If `OIDC_REQUIRED_ROLE` is unset or empty, the service falls back to
+`allowed-user` and logs a warning on startup. This default keeps the
+pre-RBAC migration path working out of the box; **always set the value
+explicitly in production** so the login gate matches the per-app reader
+role (`editor-reader` / `harvester-reader`) once the migration completes.
 
 ### Setting the env var on ZAD
 
@@ -149,10 +151,11 @@ with no per-route gating. To migrate without locking anyone out:
    will get **403 on every API request** once the new code is live, because
    the per-route middleware checks for `editor-reader` / `harvester-reader`
    etc., not `allowed-user`.
-2. **Deploy the new code** with `OIDC_REQUIRED_ROLE=allowed-user` set
-   explicitly on both components (the new code rejects an empty value), *and*
-   keep `allowed-user` granted to all migrated users so login still succeeds
-   during the transition.
+2. **Deploy the new code**. If `OIDC_REQUIRED_ROLE` is unset on the existing
+   deployment, the new code falls back to `allowed-user` and logs a warning —
+   so login keeps working during the transition without any prep. Setting
+   the env var explicitly to `allowed-user` is still recommended for clarity.
+   Keep the `allowed-user` role granted to all migrated users.
 3. **Switch `OIDC_REQUIRED_ROLE`** on each component to its new value
    (`editor-reader` / `harvester-reader`).
 4. **Remove the `allowed-user` role** from the realm.

@@ -45,17 +45,21 @@ fn parse_oidc_config(client_id: String) -> Result<OidcConfig, String> {
 
     // Minimum realm role required to log in (the login gate). Typically
     // `<app>-reader`. Per-route `require_role` middleware layers finer-grained
-    // gates on top. We refuse to default this: a silent default would let a
-    // mis-configured deployment accept anyone holding any role.
+    // gates on top. Defaults to `allowed-user` for backwards compatibility
+    // with the pre-RBAC deployment; operators should set it explicitly to the
+    // per-app reader role (`editor-reader` / `harvester-reader`) once the
+    // migration in `docs/operations/auth.md` is complete.
     let required_role = env::var("OIDC_REQUIRED_ROLE")
         .ok()
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            "OIDC_CLIENT_ID is set but OIDC_REQUIRED_ROLE is missing. \
-             Set it to the minimum realm role required to access this service \
-             (e.g. `editor-reader` or `harvester-reader`)."
-                .to_string()
-        })?;
+        .unwrap_or_else(|| {
+            tracing::warn!(
+                "OIDC_REQUIRED_ROLE not set; defaulting to `allowed-user`. \
+                 Set this explicitly to the per-app reader role once the \
+                 Keycloak migration is complete."
+            );
+            "allowed-user".to_string()
+        });
 
     Ok(OidcConfig {
         client_id,
@@ -208,23 +212,23 @@ mod tests {
     }
 
     #[test]
-    fn missing_required_role_is_error() {
+    fn missing_required_role_defaults_to_allowed_user() {
         let _lock = ENV_LOCK.lock();
         clear_oidc_env();
         env::set_var("OIDC_CLIENT_ID", "test-client");
         env::set_var("OIDC_CLIENT_SECRET", "secret");
         env::set_var("KEYCLOAK_BASE_URL", "https://keycloak.example.com");
         env::set_var("KEYCLOAK_REALM", "test-realm");
-        // No OIDC_REQUIRED_ROLE — must error.
+        // No OIDC_REQUIRED_ROLE — falls back to `allowed-user`.
 
-        let result = parse_oidc_from_env();
-        assert!(result.is_err(), "expected error when role is missing");
+        let oidc = parse_oidc_from_env().expect("should succeed").unwrap();
+        assert_eq!(oidc.required_role, "allowed-user");
 
         clear_oidc_env();
     }
 
     #[test]
-    fn empty_required_role_is_error() {
+    fn empty_required_role_defaults_to_allowed_user() {
         let _lock = ENV_LOCK.lock();
         clear_oidc_env();
         env::set_var("OIDC_CLIENT_ID", "test-client");
@@ -233,8 +237,8 @@ mod tests {
         env::set_var("KEYCLOAK_REALM", "test-realm");
         env::set_var("OIDC_REQUIRED_ROLE", "");
 
-        let result = parse_oidc_from_env();
-        assert!(result.is_err(), "expected error when role is empty");
+        let oidc = parse_oidc_from_env().expect("should succeed").unwrap();
+        assert_eq!(oidc.required_role, "allowed-user");
 
         clear_oidc_env();
     }
