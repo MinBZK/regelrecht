@@ -8,6 +8,11 @@ const error = ref(null);
 let readyPromise = null;
 
 async function loadTrajects() {
+  // Reset on each call so refresh-path consumers (createTraject →
+  // refreshTrajects) see the menu flip back to its loading placeholder
+  // while the new list is in flight, instead of holding the stale label
+  // for the duration of the round-trip.
+  loading.value = true;
   try {
     const [listResp, activeResp] = await Promise.all([
       fetch('/api/trajects'),

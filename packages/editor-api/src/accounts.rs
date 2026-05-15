@@ -126,17 +126,23 @@ pub async fn ensure_account(
 /// `axum::Extension<AccountRecord>`.
 ///
 /// Must be mounted **after** `require_session_auth` so that the session
-/// claims are guaranteed present (or auth is disabled).
+/// claims are guaranteed present (or auth is disabled). When no account
+/// can be resolved — either because the pool isn't configured (auth-off
+/// dev mode) or because the session has no `sub` claim — the middleware
+/// returns 503; downstream handlers all extract `Extension<AccountRecord>`
+/// and would otherwise crash with a generic 500 ("missing request
+/// extension"), which obscures the real reason ("feature is unavailable
+/// without auth/database").
 pub async fn account_middleware(
     State(state): State<AppState>,
     session: Session,
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if let Some(pool) = state.pool.as_ref() {
-        if let Some(account) = ensure_account(pool, &session).await? {
-            request.extensions_mut().insert(account);
-        }
-    }
+    let pool = state.pool.as_ref().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let account = ensure_account(pool, &session)
+        .await?
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    request.extensions_mut().insert(account);
     Ok(next.run(request).await)
 }

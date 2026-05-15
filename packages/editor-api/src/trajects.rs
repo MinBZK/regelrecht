@@ -143,6 +143,16 @@ fn db_err<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> Stat
     }
 }
 
+/// Builds a session-error mapper that logs the underlying error with the
+/// key being read/written so operators can diagnose tower-sessions /
+/// session-store failures from logs instead of seeing a bare 500.
+fn session_err(context: &'static str) -> impl FnOnce(tower_sessions::session::Error) -> StatusCode {
+    move |e| {
+        tracing::error!(error = %e, "{context}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
 /// Slugify a traject name for the branch suffix: lowercase, allowed chars
 /// `[a-z0-9-]`, runs of disallowed chars collapsed to a single dash,
 /// trimmed and capped at 32 characters.
@@ -363,12 +373,29 @@ pub async fn create(
     Extension(account): Extension<AccountRecord>,
     Json(req): Json<CreateTrajectRequest>,
 ) -> Result<(StatusCode, Json<TrajectSummary>), StatusCode> {
-    if req.name.trim().is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-    if req.writable_source.gh_owner.trim().is_empty()
-        || req.writable_source.gh_repo.trim().is_empty()
-    {
+    // Trim once up-front so the validation check and the values we bind
+    // (and the values that flow into the clone URL later) stay in sync.
+    // Without this, " minbzk" passes the empty-check, gets stored
+    // verbatim, and produces a malformed `https://github.com/ minbzk/...`
+    // URL that fails opaquely at git-clone time.
+    let name = req.name.trim();
+    let ws_name = req.writable_source.name.trim();
+    let gh_owner = req.writable_source.gh_owner.trim();
+    let gh_repo = req.writable_source.gh_repo.trim();
+    let gh_path = req
+        .writable_source
+        .gh_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let auth_ref = req
+        .writable_source
+        .auth_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+
+    if name.is_empty() || gh_owner.is_empty() || gh_repo.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -379,7 +406,7 @@ pub async fn create(
         "INSERT INTO trajects (name, description, scope, created_by)
          VALUES ($1, $2, $3, $4) RETURNING id",
     )
-    .bind(req.name.trim())
+    .bind(name)
     .bind(&req.description)
     .bind(&req.scope)
     .bind(account.id)
@@ -454,7 +481,7 @@ pub async fn create(
             validate_branch_name(b)?;
             b.to_string()
         }
-        None => derive_branch_name(&req.name, traject_id),
+        None => derive_branch_name(name, traject_id),
     };
 
     let writable_base_branch = match req
@@ -483,13 +510,13 @@ pub async fn create(
     )
     .bind(traject_id)
     .bind(&writable_source_id)
-    .bind(&req.writable_source.name)
-    .bind(&req.writable_source.gh_owner)
-    .bind(&req.writable_source.gh_repo)
+    .bind(ws_name)
+    .bind(gh_owner)
+    .bind(gh_repo)
     .bind(&writable_branch)
     .bind(writable_base_branch.as_deref())
-    .bind(&req.writable_source.gh_path)
-    .bind(&req.writable_source.auth_ref)
+    .bind(gh_path)
+    .bind(auth_ref)
     .execute(&mut *tx)
     .await
     .map_err(db_err("insert writable source"))?;
@@ -500,7 +527,7 @@ pub async fn create(
 
     let summary = TrajectSummary {
         id: traject_id,
-        name: req.name,
+        name: name.to_string(),
         description: req.description,
         scope: req.scope,
         status: "bezig".to_string(),
@@ -717,12 +744,12 @@ pub async fn leave(
     let active: Option<Uuid> = session
         .get(SESSION_KEY_ACTIVE_TRAJECT)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(session_err("session read active-traject in leave"))?;
     if active == Some(id) {
         let _: Option<Uuid> = session
             .remove(SESSION_KEY_ACTIVE_TRAJECT)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(session_err("session clear active-traject in leave"))?;
     }
 
     Ok(StatusCode::NO_CONTENT)
@@ -756,7 +783,7 @@ pub async fn get_active(session: Session) -> Result<Json<ActiveTrajectResponse>,
     let traject_id: Option<Uuid> = session
         .get(SESSION_KEY_ACTIVE_TRAJECT)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(session_err("session read active-traject"))?;
     Ok(Json(ActiveTrajectResponse { traject_id }))
 }
 
@@ -777,7 +804,7 @@ pub async fn set_active(
             session
                 .insert(SESSION_KEY_ACTIVE_TRAJECT, id)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .map_err(session_err("session set active-traject"))?;
             Ok(Json(ActiveTrajectResponse {
                 traject_id: Some(id),
             }))
@@ -786,7 +813,7 @@ pub async fn set_active(
             let _: Option<Uuid> = session
                 .remove(SESSION_KEY_ACTIVE_TRAJECT)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .map_err(session_err("session clear active-traject"))?;
             Ok(Json(ActiveTrajectResponse { traject_id: None }))
         }
     }
@@ -857,7 +884,7 @@ pub async fn read_active_from_session(session: &Session) -> Result<Option<Uuid>,
     session
         .get::<Uuid>(SESSION_KEY_ACTIVE_TRAJECT)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(session_err("session read active-traject in save"))
 }
 
 #[cfg(test)]
