@@ -487,6 +487,38 @@ pub async fn update(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// DELETE /api/trajects/:id — beheerder-only hard delete.
+///
+/// FK cascades on `traject_members` and `traject_corpus_sources` clean
+/// up the dependent rows. The cached `TrajectCorpus` is invalidated so
+/// any in-flight reads rebuild against an empty source set and surface
+/// `NotFound`. The upstream branch on the writable source is **not**
+/// touched — that's a manual cleanup decision and there's no way to
+/// know whether the user still wants the in-flight edits preserved
+/// elsewhere.
+pub async fn delete(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let pool = get_pool(&state)?;
+    require_beheerder(pool, id, account.id).await?;
+
+    let affected = sqlx::query("DELETE FROM trajects WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(db_err("delete traject"))?
+        .rows_affected();
+
+    if affected == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    state.trajects.invalidate(id).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// POST /api/trajects/:id/members — invite an existing account by email.
 pub async fn add_member(
     State(state): State<AppState>,
@@ -579,6 +611,52 @@ pub async fn remove_member(
     } else {
         Ok(StatusCode::NO_CONTENT)
     }
+}
+
+/// POST /api/trajects/:id/leave — caller removes themselves from the
+/// traject.
+///
+/// A `lid` can always leave. A `beheerder` cannot leave when they are
+/// the last beheerder — they must hand over the role or delete the
+/// traject. When the caller leaves the traject they currently have
+/// active in their session, that session pointer is cleared so the
+/// next save handler doesn't try to resolve a traject they no longer
+/// belong to.
+pub async fn leave(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    session: Session,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, StatusCode> {
+    let pool = get_pool(&state)?;
+    require_membership(pool, id, account.id).await?;
+    ensure_other_beheerder(pool, id, account.id).await?;
+
+    let affected =
+        sqlx::query("DELETE FROM traject_members WHERE traject_id = $1 AND account_id = $2")
+            .bind(id)
+            .bind(account.id)
+            .execute(pool)
+            .await
+            .map_err(db_err("leave traject"))?
+            .rows_affected();
+
+    if affected == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let active: Option<Uuid> = session
+        .get(SESSION_KEY_ACTIVE_TRAJECT)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if active == Some(id) {
+        let _: Option<Uuid> = session
+            .remove(SESSION_KEY_ACTIVE_TRAJECT)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Guard that prevents removing the last beheerder of a traject.

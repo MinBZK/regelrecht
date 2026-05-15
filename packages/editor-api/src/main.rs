@@ -184,7 +184,13 @@ async fn main() {
         .route("/api/trajects", get(trajects::list).post(trajects::create))
         .route(
             "/api/trajects/{id}",
-            get(trajects::get).patch(trajects::update),
+            get(trajects::get)
+                .patch(trajects::update)
+                .delete(trajects::delete),
+        )
+        .route(
+            "/api/trajects/{id}/leave",
+            axum::routing::post(trajects::leave),
         )
         .route(
             "/api/trajects/{id}/members",
