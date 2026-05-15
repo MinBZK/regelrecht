@@ -37,31 +37,58 @@ pub async fn ensure_account(
     pool: &PgPool,
     session: &Session,
 ) -> Result<Option<AccountRecord>, StatusCode> {
+    let session_read_failed = |key: &'static str| {
+        move |e: tower_sessions::session::Error| {
+            tracing::error!(
+                error = %e,
+                key = %key,
+                "session read failed in account middleware"
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+
     let sub: Option<String> = session
         .get(SESSION_KEY_SUB)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(session_read_failed(SESSION_KEY_SUB))?;
     let Some(sub) = sub else { return Ok(None) };
 
     let email: String = session
         .get(SESSION_KEY_EMAIL)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(session_read_failed(SESSION_KEY_EMAIL))?
         .unwrap_or_default();
     let name: String = session
         .get(SESSION_KEY_NAME)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(session_read_failed(SESSION_KEY_NAME))?
         .unwrap_or_default();
 
+    // The middleware runs on every request under the traject route layer,
+    // so this query is on the hot path. The DO UPDATE … WHERE clause
+    // skips the write (and the `updated_at = now()` bump) when nothing
+    // actually changed; the trailing UNION ALL covers the case where the
+    // WHERE filter held — `RETURNING` is empty for skipped updates so we
+    // fall back to a plain SELECT against the same key. The combined
+    // statement still hits the same `person_sub` index twice in the worst
+    // case, but the common path is read-only after the first request.
     let row: (Uuid,) = sqlx::query_as(
-        "INSERT INTO accounts (person_sub, email, name)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (person_sub) DO UPDATE
-            SET email = EXCLUDED.email,
-                name  = EXCLUDED.name,
-                updated_at = now()
-         RETURNING id",
+        "WITH upserted AS (
+             INSERT INTO accounts (person_sub, email, name)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (person_sub) DO UPDATE
+                SET email = EXCLUDED.email,
+                    name  = EXCLUDED.name,
+                    updated_at = now()
+                WHERE accounts.email IS DISTINCT FROM EXCLUDED.email
+                   OR accounts.name  IS DISTINCT FROM EXCLUDED.name
+             RETURNING id
+         )
+         SELECT id FROM upserted
+         UNION ALL
+         SELECT id FROM accounts WHERE person_sub = $1
+         LIMIT 1",
     )
     .bind(&sub)
     .bind(&email)

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -22,9 +22,10 @@ use crate::trajects::read_active_from_session;
 
 /// Response body for a successful save.
 ///
-/// `pr` is `None` for local-source saves (no upstream PR to open) and
-/// populated for federated GitHub-source saves so the frontend can render
-/// a "Bekijk op GitHub" link.
+/// `pr` is populated when the traject's writable backend opened (or
+/// updated) a pull request for this save — currently a future enhancement;
+/// the default traject backend commits straight to the configured branch
+/// and returns `None`.
 #[derive(Debug, Serialize)]
 pub struct SaveResponse {
     pub pr: Option<SavePrInfo>,
@@ -34,7 +35,6 @@ pub struct SaveResponse {
 pub struct SavePrInfo {
     pub url: String,
     pub number: u64,
-    pub branch: String,
 }
 
 /// A law entry with source provenance.
@@ -314,9 +314,9 @@ fn law_relative_dir(law: &LoadedLaw) -> Result<PathBuf, (StatusCode, String)> {
 
 /// Resolved backend information for a law (read-path only).
 ///
-/// The federated write path goes through [`SessionRegistry`] instead and
-/// returns its own resolved target shape ([`EditorWriteTarget`]), so this
-/// struct doesn't need a writability flag.
+/// The write path goes through the per-traject corpus
+/// ([`require_traject_corpus`]) and returns its own resolved target shape
+/// ([`EditorWriteTarget`]), so this struct doesn't need a writability flag.
 struct ResolvedBackend {
     law: LoadedLaw,
     backend: Arc<Mutex<Box<dyn RepoBackend>>>,
@@ -597,21 +597,18 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
         pr: outcome.pr.map(|pr| SavePrInfo {
             url: pr.html_url,
             number: pr.number,
-            branch: String::new(),
         }),
     }
 }
 
 /// PUT /api/corpus/laws/{law_id}/scenarios/{filename} — save a scenario file.
 ///
-/// Requires the `X-Editor-Session` header on every call; the session id
-/// scopes the per-(session, source) feature branch + PR for federated
-/// write-back. For local sources the session header is still required
-/// (uniform contract with the frontend) but is otherwise ignored.
+/// Requires an active traject in the session; the save is routed through
+/// that traject's writable-own source (its branch on the writable repo).
+/// Without an active traject the handler returns 403.
 pub async fn save_scenario(
     State(state): State<AppState>,
     session: Session,
-    _headers: HeaderMap,
     Path((law_id, filename)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
@@ -642,10 +639,12 @@ pub async fn save_scenario(
 
 /// PUT /api/corpus/laws/{law_id} — save edited law YAML content.
 ///
-/// Writes the new YAML to the backend (same RepoBackend used for scenario
-/// saves, with the same writable-fallback resolution), then refreshes the
-/// in-memory `yaml_content` on the law's `SourceMap` entry so subsequent
-/// GETs see the edited text without waiting for a full corpus reload.
+/// Writes the new YAML to the active traject's writable-own backend (its
+/// branch on the writable repo). The save does NOT mirror the new content
+/// into `state.corpus.source_map`: that cache feeds GETs for users outside
+/// the traject, so pushing in-progress traject edits there would leak
+/// across users. Routing GETs through the per-traject corpus is a separate
+/// follow-up.
 ///
 /// The `$id` in the body must match the path parameter: allowing them to
 /// diverge would either create a phantom law (new `$id` lands on an
@@ -655,7 +654,6 @@ pub async fn save_scenario(
 pub async fn save_law(
     State(state): State<AppState>,
     session: Session,
-    _headers: HeaderMap,
     Path(law_id): Path<String>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
@@ -723,31 +721,26 @@ pub async fn save_law(
             .map_err(corpus_write_error("law"))?
     };
 
-    // Refresh the global in-memory cache so /api/corpus/laws/{law_id}
-    // outside of a traject still reflects merged changes once any. For
-    // active-traject reads the traject-corpus has its own SourceMap.
-    {
-        let mut corpus = state.corpus.write().await;
-        let _ = corpus.source_map.update_yaml_content(&law_id, body);
-    }
+    // Deliberately NOT mirroring the new YAML into `state.corpus.source_map`:
+    // that cache is the read source for `/api/corpus/laws/...` for users
+    // *outside* the active traject (and anyone browsing without a traject),
+    // so pushing a traject's in-progress edits into it would leak unmerged
+    // changes across users. GET handlers under `state.corpus.*` will keep
+    // returning the last globally-loaded content until `POST
+    // /api/corpus/reload` runs — routing GETs through the per-traject
+    // corpus when a traject is active is a separate follow-up.
 
     Ok(Json(save_response_from_traject(outcome)))
 }
 
 /// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
 ///
-/// CONTRACT NOTE: this endpoint now requires an `X-Editor-Session` header
-/// (same as `save_scenario` and `save_law`). The federated write-back path
-/// scopes every write to a per-session feature branch; without the session
-/// id we cannot route the deletion to the correct branch, so the endpoint
-/// returns `400 Bad Request` rather than silently falling back to the
-/// global backend. This is a contract change from the previous implementation
-/// where `delete_scenario` was unauthenticated — non-browser callers
-/// (curl, admin scripts, integration tests) must send the header.
+/// Requires an active traject in the session, same as `save_scenario` /
+/// `save_law`: the deletion is routed through the traject's writable-own
+/// backend. Without an active traject the handler returns 403.
 pub async fn delete_scenario(
     State(state): State<AppState>,
     session: Session,
-    _headers: HeaderMap,
     Path((law_id, filename)): Path<(String, String)>,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;

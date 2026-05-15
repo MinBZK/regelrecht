@@ -175,9 +175,23 @@ async fn build_traject_corpus(
             SourceType::Local { .. } => create_backend(source, token.as_deref()),
         };
 
+        let is_writable_own = source.id == writable_own_source_id;
         match backend_result {
             Ok(mut backend) => {
                 if let Err(e) = backend.ensure_ready().await {
+                    if is_writable_own {
+                        // The traject's whole purpose is to push edits to
+                        // this branch; falling through with a missing
+                        // writable backend would make every save 503 with
+                        // no signal that the underlying clone failed.
+                        tracing::error!(
+                            traject = %traject_id,
+                            source_id = %source.id,
+                            error = %e,
+                            "traject writable-own backend init failed"
+                        );
+                        return Err(TrajectCorpusError::Corpus(e));
+                    }
                     tracing::warn!(
                         traject = %traject_id,
                         source_id = %source.id,
@@ -196,6 +210,15 @@ async fn build_traject_corpus(
                 );
             }
             Err(e) => {
+                if is_writable_own {
+                    tracing::error!(
+                        traject = %traject_id,
+                        source_id = %source.id,
+                        error = %e,
+                        "failed to create traject writable-own backend"
+                    );
+                    return Err(TrajectCorpusError::Corpus(e));
+                }
                 tracing::warn!(
                     traject = %traject_id,
                     source_id = %source.id,
@@ -308,7 +331,14 @@ impl TrajectSourceRow {
             },
         };
 
-        let scopes = serde_json::from_value(self.scopes.clone()).unwrap_or_default();
+        let scopes = serde_json::from_value(self.scopes.clone()).unwrap_or_else(|e| {
+            tracing::warn!(
+                source_id = %self.source_id,
+                error = %e,
+                "traject_corpus_sources.scopes failed to deserialise, falling back to empty list"
+            );
+            Default::default()
+        });
 
         Source {
             id: self.source_id.clone(),

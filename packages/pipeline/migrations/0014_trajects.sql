@@ -3,10 +3,14 @@
 -- corpus-registry.yaml) waarin exact één source de schrijfbare eigen-source is.
 
 -- Stabiele identiteit per gebruiker, geupsert bij OIDC-login op person_sub.
+-- `email` is UNIQUE so that `add_member` (invite-by-email) can resolve the
+-- target deterministically; if a future OIDC email change ever collides
+-- with another account's email the login UPSERT will fail loudly rather
+-- than silently let two rows share the same address.
 CREATE TABLE accounts (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     person_sub  TEXT NOT NULL UNIQUE,
-    email       TEXT NOT NULL,
+    email       TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()

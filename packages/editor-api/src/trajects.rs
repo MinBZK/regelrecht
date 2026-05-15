@@ -241,6 +241,29 @@ fn validate_status(status: &str) -> Result<(), StatusCode> {
     }
 }
 
+/// Conservative git-branch-name check: lowercase ASCII letters, digits,
+/// `-`, `_`, `/`, `.`. Rejects empty, leading/trailing `/`, `..`, and
+/// length > 255. Stays well inside git's own `check-ref-format` rules so
+/// the branch can be passed to `git --branch` later without the clone
+/// crashing on a malformed ref.
+fn validate_branch_name(branch: &str) -> Result<(), StatusCode> {
+    let b = branch;
+    if b.is_empty()
+        || b.len() > 255
+        || b.starts_with('/')
+        || b.ends_with('/')
+        || b.contains("..")
+        || b.contains("//")
+        || !b
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '/' | '.'))
+    {
+        Err(StatusCode::BAD_REQUEST)
+    } else {
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
@@ -409,13 +432,22 @@ pub async fn create(
 
     // Insert the writable own source at priority 0 (highest). The branch
     // name is derived from the traject name + id to stay both readable
-    // and unique on the remote.
-    let writable_branch = req
+    // and unique on the remote. An explicit branch from the caller is
+    // validated up front so a malformed ref doesn't end up as a `--branch`
+    // argument to `git` later and surface as a generic 500.
+    let writable_branch = match req
         .writable_source
         .gh_branch
-        .clone()
-        .filter(|b| !b.trim().is_empty())
-        .unwrap_or_else(|| derive_branch_name(&req.name, traject_id));
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+    {
+        Some(b) => {
+            validate_branch_name(b)?;
+            b.to_string()
+        }
+        None => derive_branch_name(&req.name, traject_id),
+    };
 
     let writable_source_id = format!("traject-own-{}", traject_id.simple());
     sqlx::query(
