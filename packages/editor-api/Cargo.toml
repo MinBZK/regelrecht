@@ -37,7 +37,6 @@ url.workspace = true
 
 [dev-dependencies]
 regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
-tower-sessions-memory-store.workspace = true
 pretty_assertions.workspace = true
 
 [lints]

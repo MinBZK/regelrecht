@@ -7,8 +7,9 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
+use uuid::Uuid;
 
-use regelrecht_auth::handlers::{SESSION_KEY_EMAIL, SESSION_KEY_NAME};
+use regelrecht_auth::handlers::{SESSION_KEY_EMAIL, SESSION_KEY_NAME, SESSION_KEY_SUB};
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
@@ -477,6 +478,12 @@ struct EditorWriteTarget {
 /// no traject is active. Bumps the cache on a miss; calls
 /// `ensure_ready` (i.e. `git clone`) for every source in the traject's
 /// federated config on first use.
+///
+/// Re-verifies the caller's membership against `traject_members` on every
+/// call — `set_active` only checks once at the time the active id is
+/// stored, so without a re-check a member who has been removed (or whose
+/// traject has been deleted) since picking it active could keep writing
+/// to that traject's branch through their stale session.
 async fn require_traject_corpus(
     state: &AppState,
     session: &Session,
@@ -494,6 +501,56 @@ async fn require_traject_corpus(
         StatusCode::SERVICE_UNAVAILABLE,
         "database not configured".to_string(),
     ))?;
+
+    // Membership re-check: a single EXISTS join keeps this on the hot
+    // path while catching session/state drift (membership revoked,
+    // traject deleted, account never linked to a sub).
+    let sub: String = session
+        .get(SESSION_KEY_SUB)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "session read sub in require_traject_corpus");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "session read failed".to_string(),
+            )
+        })?
+        .ok_or((
+            StatusCode::FORBIDDEN,
+            "session has no subject claim".to_string(),
+        ))?;
+    let (is_member,): (bool,) = sqlx::query_as(
+        "SELECT EXISTS(
+             SELECT 1 FROM accounts a
+             JOIN traject_members m ON m.account_id = a.id
+             WHERE a.person_sub = $1 AND m.traject_id = $2
+         )",
+    )
+    .bind(&sub)
+    .bind(traject_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "membership re-check query failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "membership check failed".to_string(),
+        )
+    })?;
+    if !is_member {
+        // Clear the stale pointer so the next request from this session
+        // hits the "no active traject" path and the user can rebind via
+        // the menu instead of seeing 403 on every save.
+        let _: Option<Uuid> = session
+            .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
+            .await
+            .unwrap_or(None);
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Je hebt geen toegang meer tot dit traject".to_string(),
+        ));
+    }
+
     let auth_file = {
         let corpus = state.corpus.read().await;
         corpus.auth_file.clone()
@@ -502,7 +559,20 @@ async fn require_traject_corpus(
         .trajects
         .get_or_build(pool, traject_id, auth_file, &state.favorites)
         .await
-        .map_err(traject_corpus_error)
+        .map_err(|e| {
+            // Also clear the session on NotFound so the user isn't stuck
+            // 404-on-every-save after the traject was deleted.
+            if matches!(e, TrajectCorpusError::NotFound) {
+                let session = session.clone();
+                tokio::spawn(async move {
+                    let _: Option<Uuid> = session
+                        .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
+                        .await
+                        .unwrap_or(None);
+                });
+            }
+            traject_corpus_error(e)
+        })
 }
 
 fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {

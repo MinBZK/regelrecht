@@ -399,6 +399,30 @@ pub async fn create(
         return Err(StatusCode::BAD_REQUEST);
     }
 
+    // Validate branch-shape inputs up front so a malformed branch
+    // returns 400 immediately, before the seed-sources fan-out has
+    // anything to roll back. The explicit-`gh_branch` case is checked
+    // here; the auto-derived case uses `derive_branch_name` which is
+    // guaranteed to produce a valid ref.
+    let explicit_writable_branch = req
+        .writable_source
+        .gh_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty());
+    if let Some(b) = explicit_writable_branch {
+        validate_branch_name(b)?;
+    }
+    let explicit_base_branch = req
+        .writable_source
+        .gh_base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty());
+    if let Some(b) = explicit_base_branch {
+        validate_branch_name(b)?;
+    }
+
     let pool = get_pool(&state)?;
     let mut tx = pool.begin().await.map_err(db_err("begin tx"))?;
 
@@ -465,38 +489,13 @@ pub async fn create(
         .map_err(db_err("seed traject source"))?;
     }
 
-    // Insert the writable own source at priority 0 (highest). The branch
-    // name is derived from the traject name + id to stay both readable
-    // and unique on the remote. An explicit branch from the caller is
-    // validated up front so a malformed ref doesn't end up as a `--branch`
-    // argument to `git` later and surface as a generic 500.
-    let writable_branch = match req
-        .writable_source
-        .gh_branch
-        .as_deref()
-        .map(str::trim)
-        .filter(|b| !b.is_empty())
-    {
-        Some(b) => {
-            validate_branch_name(b)?;
-            b.to_string()
-        }
-        None => derive_branch_name(name, traject_id),
-    };
-
-    let writable_base_branch = match req
-        .writable_source
-        .gh_base_branch
-        .as_deref()
-        .map(str::trim)
-        .filter(|b| !b.is_empty())
-    {
-        Some(b) => {
-            validate_branch_name(b)?;
-            Some(b.to_string())
-        }
-        None => None,
-    };
+    // Branch shape was validated above; here we just pick auto-derived
+    // vs explicit. derive_branch_name's output is guaranteed safe by
+    // construction.
+    let writable_branch = explicit_writable_branch
+        .map(str::to_string)
+        .unwrap_or_else(|| derive_branch_name(name, traject_id));
+    let writable_base_branch = explicit_base_branch.map(str::to_string);
 
     let writable_source_id = format!("traject-own-{}", traject_id.simple());
     sqlx::query(

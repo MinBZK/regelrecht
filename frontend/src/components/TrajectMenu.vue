@@ -38,6 +38,7 @@ const form = ref({
   gh_owner: '',
   gh_repo: '',
   gh_branch: '',
+  gh_base_branch: '',
   auth_ref: '',
 });
 const createBusy = ref(false);
@@ -52,6 +53,7 @@ function openCreate() {
     gh_owner: '',
     gh_repo: '',
     gh_branch: '',
+    gh_base_branch: '',
     auth_ref: '',
   };
   showCreate.value = true;
@@ -94,6 +96,7 @@ async function submitCreate() {
         gh_owner: form.value.gh_owner.trim(),
         gh_repo: form.value.gh_repo.trim(),
         gh_branch: form.value.gh_branch.trim() || null,
+        gh_base_branch: form.value.gh_base_branch.trim() || null,
         auth_ref: form.value.auth_ref.trim() || null,
       },
     });
@@ -177,6 +180,12 @@ async function submitCreate() {
         supporting-text="Leeg laten om automatisch te genereren op basis van de naam."
         :value="form.gh_branch"
         @input="form.gh_branch = $event.target.value"
+      ></nldd-text-field>
+      <nldd-text-field
+        label="Basis-branch (optioneel)"
+        supporting-text="Branch om vanaf te starten als de bovenstaande branch nog niet bestaat. Standaard 'main' — vul 'master' of 'development' in voor repos met een andere default."
+        :value="form.gh_base_branch"
+        @input="form.gh_base_branch = $event.target.value"
       ></nldd-text-field>
       <nldd-text-field
         label="Auth-ref (optioneel)"
