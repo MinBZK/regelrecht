@@ -2,6 +2,7 @@
 import { computed, ref, watch, nextTick } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
+import BreakableName from './BreakableName.vue';
 
 const { displayName: lawDisplayName } = useCorpusLaws();
 
@@ -44,7 +45,13 @@ const definitions = computed(() => {
   return Object.entries(defs).map(([name, def]) => {
     const val = typeof def === 'object' ? def.value : def;
     const unit = typeof def === 'object' ? def.type_spec?.unit : undefined;
-    return { name, value: val, unit };
+    // Per-token parts for read-only display: a list keeps its raw items
+    // (each wrapped in <wbr>-breakable tokens), a scalar is the formatted
+    // single value. Lets long underscore identifiers wrap instead of
+    // overflowing the (no longer fit-content) value cell.
+    const isList = Array.isArray(val);
+    const parts = isList ? val.map((v) => String(v)) : [formatValue(val, unit)];
+    return { name, value: val, unit, isList, parts };
   });
 });
 
@@ -84,6 +91,10 @@ function formatValue(val, unit) {
       return (val * 100).toLocaleString('nl-NL', { maximumFractionDigits: 3 }) + '%';
     }
   }
+  // A list definition value (YAML sequence) renders here; String([...])
+  // joins with a bare comma ("a,b,c") which has no break opportunity and
+  // pushes the column width. Use comma + space so it can wrap.
+  if (Array.isArray(val)) return val.join(', ');
   return String(val);
 }
 
@@ -255,9 +266,21 @@ function addOutput() {
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
           <template v-else>
-            <nldd-text-cell :text="def.name"></nldd-text-cell>
+            <nldd-text-cell min-width="120px"><BreakableName :name="def.name" /></nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="formatValue(def.value, def.unit)"></nldd-text-cell>
+            <nldd-text-cell
+              v-if="def.isList"
+              horizontal-alignment="right"
+            ><template
+              v-for="(part, i) in def.parts"
+              :key="i"
+            ><span v-if="i > 0">, </span><BreakableName :name="part" /></template></nldd-text-cell>
+            <nldd-text-cell
+              v-else
+              width="fit-content"
+              horizontal-alignment="right"
+              :text="def.parts[0]"
+            ></nldd-text-cell>
           </template>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
@@ -286,7 +309,7 @@ function addOutput() {
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
-          <nldd-text-cell :text="`${param.name} (${param.type})`"></nldd-text-cell>
+          <nldd-text-cell><BreakableName :name="param.name" /> <nldd-tag size="sm" :text="param.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
@@ -316,9 +339,8 @@ function addOutput() {
       <nldd-list variant="box">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <nldd-text-cell
-            :text="`${input.name} (${input.type})`"
             :supporting-text="input.source ? lawDisplayName(input.source) : undefined"
-          ></nldd-text-cell>
+          ><BreakableName :name="input.name" /> <nldd-tag size="sm" :text="input.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
@@ -347,7 +369,7 @@ function addOutput() {
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
-          <nldd-text-cell :text="`${output.name} (${output.type})`"></nldd-text-cell>
+          <nldd-text-cell><BreakableName :name="output.name" /> <nldd-tag size="sm" :text="output.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
             <div class="mr-row-actions">
