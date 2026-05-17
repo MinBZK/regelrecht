@@ -84,7 +84,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <nldd-sheet ref="sheetEl" placement="right" width="640px" @close="emit('close')">
+  <nldd-sheet ref="sheetEl" placement="right" width="480px" @close="emit('close')">
     <!-- :key forces nldd-page to remount whenever a NEW action opens.
          nldd-page captures the sticky-header height ONCE per mount via
          requestAnimationFrame; when the sheet opens with a new action the
@@ -109,8 +109,8 @@ onUnmounted(() => {
         <template v-if="editable && action">
           <nldd-list variant="box" class="settings-list" data-testid="action-output-binding">
             <nldd-list-item size="md">
-              <nldd-text-cell text="Output" max-width="120px"></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
+              <nldd-text-cell text="Output" width="fit-content"></nldd-text-cell>
+              <nldd-spacer-cell size="12"></nldd-spacer-cell>
               <nldd-cell>
                 <nldd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></nldd-text-field>
               </nldd-cell>
@@ -157,13 +157,13 @@ onUnmounted(() => {
              which action they're looking at. -->
         <nldd-list v-if="directValue" variant="box">
           <nldd-list-item size="md">
-            <nldd-text-cell text="Output" max-width="120px"></nldd-text-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell text="Output" width="fit-content"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-text-cell horizontal-alignment="right" :text="action.output || '(leeg)'"></nldd-text-cell>
           </nldd-list-item>
           <nldd-list-item size="md">
-            <nldd-text-cell text="Waarde" max-width="120px"></nldd-text-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell text="Waarde" width="fit-content"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-text-cell horizontal-alignment="right" :text="directValue.label"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
