@@ -23,7 +23,7 @@ const { colorScheme, setColorScheme } = useColorScheme();
 const LIBRARY_HOME_TITLE = 'Wetten en regels';
 
 const colorSchemeOptions = [
-  ['auto', 'Automatisch'],
+  ['auto', 'Systeem'],
   ['light', 'Licht'],
   ['dark', 'Donker'],
 ];
@@ -464,10 +464,8 @@ loadIndex();
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -476,7 +474,8 @@ loadIndex();
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-md-${value}`"
@@ -485,6 +484,7 @@ loadIndex();
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
@@ -515,10 +515,8 @@ loadIndex();
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -527,7 +525,8 @@ loadIndex();
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-lg-${value}`"
@@ -536,6 +535,7 @@ loadIndex();
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
@@ -721,10 +721,8 @@ loadIndex();
                 <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="global-settings" text="Instellingen" popovertarget="settings-menu-sm"></nldd-icon-button>
               </span>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -733,7 +731,8 @@ loadIndex();
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-sm-${value}`"
@@ -742,6 +741,7 @@ loadIndex();
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
