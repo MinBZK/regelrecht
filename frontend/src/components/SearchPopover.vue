@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useBwbSearch, MIN_QUERY_LENGTH } from '../composables/useBwbSearch.js';
 import { useBwbHarvest } from '../composables/useBwbHarvest.js';
 import { useAuth } from '../composables/useAuth.js';
@@ -128,41 +128,64 @@ function selectLaw(lawId) {
  * bar's search-field intercepts the keystroke and forwards it as the
  * initial query in the popover.
  */
-async function show(anchorEl, initialSearch = '') {
-  if (!popoverRef.value) return;
-  if (anchorEl) popoverRef.value.anchorElement = anchorEl;
+/**
+ * Open + focus MUST stay synchronous within the trusted tap gesture.
+ *
+ * iOS/iPadOS (and partly Android) only raise the on-screen keyboard when
+ * `input.focus()` runs synchronously inside the user-activation of the
+ * originating tap. An `await nextTick()` (or focusing later from the
+ * popover's `open` event, after its async _manageFocus) breaks that
+ * activation: focus still lands in the field but the keyboard never
+ * appears. So no `await` may run before show()+focus().
+ *
+ * The nextTick previously existed only to let Vue propagate the
+ * `centered`/`top`/`width` props before the first Floating-UI reposition
+ * (md anchored mode). We instead set those props imperatively on the
+ * element here, which is effective synchronously — keeping positioning
+ * correct without breaking the gesture, on every viewport (phone + iPad).
+ */
+function show(anchorEl, initialSearch = '') {
+  const pop = popoverRef.value;
+  if (!pop) return;
+  if (anchorEl) pop.anchorElement = anchorEl;
   if (initialSearch) search.value = initialSearch;
-  // On lg the popover is centered top (large dropdown overlay style).
-  // On md it anchors below the trigger button (Floating UI placement),
-  // matching the smaller toolbar's button-as-trigger feel.
-  // On sm the popover renders as a full-height sheet (CSS-driven).
-  useCenteredPosition.value = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`).matches;
-  isAnchored.value = window.matchMedia(`(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`).matches;
-  // Wait for Vue to propagate the new `centered` / `top` / `width` props
-  // onto the popover element before opening — otherwise the first
-  // reposition() inside the popover's toggle handler runs against the
-  // previous breakpoint's props (e.g. centered=true held over from lg)
-  // and the popover lands in the wrong position. The Lit-side update on
-  // prop change DOES re-trigger reposition, but in some cases the
-  // initial Floating-UI run wins for the visual frame.
-  await nextTick();
-  popoverRef.value.show();
+
+  // lg: centered top overlay · md: anchored below trigger · sm: CSS sheet
+  const centered = window.matchMedia(`(min-width: ${BREAKPOINT_LG_MIN}px)`).matches;
+  const anchored = window.matchMedia(`(min-width: ${BREAKPOINT_MD_MIN}px) and (max-width: ${BREAKPOINT_LG_MIN - 1}px)`).matches;
+  useCenteredPosition.value = centered;
+  isAnchored.value = anchored;
+
+  // Set positioning props imperatively so they take effect this tick
+  // (no await). Vue's reactive bindings re-apply the same values on the
+  // next update — no conflict.
+  pop.centered = centered || null;
+  pop.top = centered ? '0' : null;
+  pop.width = centered ? '720px' : '360px';
+
+  pop.show();
+  focusSearchInput();
 }
 
 /**
- * Auto-focus the internal search input on open. Listening to the popover's
- * `open` event (rather than awaiting nextTick after show()) is the only
- * reliable hook: popover's own _manageFocus() runs after computePosition +
- * updateComplete and would otherwise steal focus back to the host. The
- * `open` event fires AFTER _manageFocus, so our focus call wins last.
+ * Focus the internal search input. Called synchronously from show()
+ * (raises the mobile keyboard, in-gesture) and again from the popover's
+ * `open` event as a desktop fallback — the popover's own _manageFocus()
+ * runs after computePosition + updateComplete and would otherwise steal
+ * focus back to the host; re-focusing the same input is idempotent and
+ * does not dismiss an already-open keyboard.
  *
- * The shadow-root vs light-DOM lookup is to be defensive — different
- * design-system versions may render the <input> differently.
+ * Shadow-root vs light-DOM lookup is defensive — different design-system
+ * versions may render the <input> differently.
  */
-function onPopoverOpen() {
+function focusSearchInput() {
   const field = popoverRef.value?.querySelector('nldd-search-field');
   const native = field?.shadowRoot?.querySelector('input') ?? field?.querySelector('input');
   native?.focus();
+}
+
+function onPopoverOpen() {
+  focusSearchInput();
 }
 
 defineExpose({ show });
