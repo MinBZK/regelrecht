@@ -156,10 +156,6 @@ const operationValues = computed(() => {
   return vals;
 });
 
-const hasClickableRow = computed(() =>
-  !props.editable && operationValues.value.some(v => isNestedOperation(v._value))
-);
-
 function isNestedOperation(val) {
   return val != null && typeof val === 'object' && val.operation;
 }
@@ -354,6 +350,10 @@ function readonlyValueText(val) {
   // derived expression. Mirrors the buildOperationTree title rule so the
   // Waarde row reads identically to the Titel row after clicking in.
   if (isNestedOperation(v)) return v.title ?? derivedTitle(v);
+  // A YAML list renders as a value; String([...]) joins with a bare comma
+  // ("a,b,c") which has no break opportunity and pushes the column width.
+  // Use comma + space so it can wrap and reads naturally.
+  if (Array.isArray(v)) return v.join(', ');
   return String(v);
 }
 
@@ -436,10 +436,6 @@ function addNestedOperation() {
       <nldd-list-item size="md">
         <nldd-text-cell text="Titel" max-width="120px"></nldd-text-cell>
         <nldd-text-cell horizontal-alignment="right" :text="operation.title || '(leeg)'"></nldd-text-cell>
-        <template v-if="!editable && hasClickableRow">
-          <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-icon-cell size="20"></nldd-icon-cell>
-        </template>
       </nldd-list-item>
 
       <!-- Type -->
@@ -455,10 +451,6 @@ function addNestedOperation() {
         </nldd-cell>
         <template v-else>
           <nldd-text-cell horizontal-alignment="right" :text="OPERATION_LABELS[operation.operation] || operation.operation || '(leeg)'"></nldd-text-cell>
-          <template v-if="hasClickableRow">
-            <nldd-spacer-cell size="12"></nldd-spacer-cell>
-            <nldd-icon-cell size="20"></nldd-icon-cell>
-          </template>
         </template>
       </nldd-list-item>
 
@@ -521,10 +513,10 @@ function addNestedOperation() {
             :text="readonlyValueText(val)"
             :supporting-text="nestedSupportingText(val)"
           ></nldd-text-cell>
-          <template v-if="hasClickableRow">
+          <template v-if="isNestedOperation(val._value)">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20">
-              <nldd-icon v-if="isNestedOperation(val._value)" name="chevron-right"></nldd-icon>
+              <nldd-icon name="chevron-right"></nldd-icon>
             </nldd-icon-cell>
           </template>
         </template>
