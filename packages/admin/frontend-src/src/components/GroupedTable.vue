@@ -1,9 +1,10 @@
 <script setup>
+import { computed } from 'vue';
 import TableToolbar from './TableToolbar.vue';
 import { GROUPED_COLUMNS } from '../constants.js';
 import { formatDate } from '../formatters.js';
 
-defineProps({
+const props = defineProps({
   data: { type: Array, required: true },
   loading: { type: Boolean, default: false },
   error: { type: String, default: null },
@@ -15,6 +16,22 @@ defineProps({
 });
 
 const emit = defineEmits(['sort', 'filter-change', 'view-jobs']);
+
+// A search/filter is active when any filter holds a non-empty value. Used to
+// tell an *empty* state (no data at all → hide the toolbar) apart from a
+// *no-results* state (filters excluded everything → keep the toolbar so the
+// user can clear or change the search).
+const hasActiveFilters = computed(() =>
+  Object.values(props.filters || {}).some((v) => v !== '' && v != null),
+);
+
+// Clear every active filter by emitting an empty value per key — the parent's
+// setFilter handler deletes a filter when given a falsy value.
+function clearFilters() {
+  for (const key of Object.keys(props.filters || {})) {
+    emit('filter-change', key, '');
+  }
+}
 
 const columns = GROUPED_COLUMNS;
 
@@ -39,23 +56,36 @@ function statusBarTitle(group) {
 
 <template>
   <nldd-simple-section width="full">
-    <TableToolbar
-      :columns="columns"
-      :sort-options="sortOptions"
-      :sort="sort"
-      :order="order"
-      :filters="filters"
-      @sort="(key, order) => emit('sort', key, order)"
-      @filter-change="(key, value) => emit('filter-change', key, value)"
-    >
-      <template #prefix>
-        <slot name="toolbar-prefix" />
-      </template>
-    </TableToolbar>
-    <nldd-spacer size="16" />
+    <template v-if="data.length > 0 || hasActiveFilters">
+      <TableToolbar
+        :columns="columns"
+        :sort-options="sortOptions"
+        :sort="sort"
+        :order="order"
+        :filters="filters"
+        @sort="(key, order) => emit('sort', key, order)"
+        @filter-change="(key, value) => emit('filter-change', key, value)"
+      >
+        <template #prefix>
+          <slot name="toolbar-prefix" />
+        </template>
+      </TableToolbar>
+      <nldd-spacer size="16" />
+    </template>
 
     <nldd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></nldd-inline-dialog>
     <nldd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
+    <nldd-inline-dialog
+      v-else-if="data.length === 0 && hasActiveFilters"
+      text="No results match the current filters."
+    >
+      <nldd-button
+        slot="actions"
+        variant="secondary"
+        text="Clear filters"
+        @click="clearFilters"
+      />
+    </nldd-inline-dialog>
     <nldd-inline-dialog v-else-if="data.length === 0" :text="emptyText">
       <slot name="empty-action" />
     </nldd-inline-dialog>
