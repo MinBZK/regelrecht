@@ -14,7 +14,7 @@ const variant = computed(() => STATUS_BADGE_MAP[props.status] || 'neutral');
 <template>
   <nldd-tooltip v-if="errorMessage" :text="errorMessage" placement="top">
     <nldd-tag
-      :variant="variant"
+      :color="variant"
       :text="status"
       :size="size"
       icon="info"
@@ -22,7 +22,7 @@ const variant = computed(() => STATUS_BADGE_MAP[props.status] || 'neutral');
   </nldd-tooltip>
   <nldd-tag
     v-else
-    :variant="variant"
+    :color="variant"
     :text="status"
     :size="size"
   />

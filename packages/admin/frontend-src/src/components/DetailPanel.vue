@@ -66,7 +66,6 @@ function onSheetClose() {
     <nldd-sheet
       ref="sheetRef"
       placement="right"
-      full-height
       accessible-label="Job details"
       @close="onSheetClose"
     >
@@ -79,7 +78,7 @@ function onSheetClose() {
               <nldd-spacer-cell size="12" />
               <nldd-cell
                 v-if="label === 'Status'"
-                width="stretch"
+                width="full"
                 style="align-items: flex-end"
               >
                 <StatusBadge :status="value" size="md" />

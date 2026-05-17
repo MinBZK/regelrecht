@@ -28,7 +28,7 @@ function formatCellValue(value, key) {
 </script>
 
 <template>
-  <nldd-simple-section full-width>
+  <nldd-simple-section width="full">
     <TableToolbar
       :columns="columns"
       :sort-options="sortOptions"

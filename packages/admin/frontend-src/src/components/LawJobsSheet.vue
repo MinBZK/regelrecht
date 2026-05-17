@@ -123,7 +123,6 @@ const codeSections = computed(() => {
     <nldd-sheet
       ref="sheetRef"
       placement="right"
-      full-height
       accessible-label="Jobs"
       @close="onSheetClose"
     >
@@ -189,7 +188,7 @@ const codeSections = computed(() => {
               <nldd-spacer-cell size="12" />
               <nldd-cell
                 v-if="label === 'Status'"
-                width="stretch"
+                width="full"
                 style="align-items: flex-end"
               >
                 <StatusBadge :status="value" size="md" />

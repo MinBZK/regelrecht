@@ -39,17 +39,17 @@ watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
     <nldd-tag
       v-if="deploymentName"
       class="env-badge"
-      variant="warning"
+      color="warning"
       size="sm"
       :text="deploymentName"
     />
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" padding-left="16">
         <nldd-toolbar size="md">
-          <nldd-toolbar-title-group
+          <nldd-toolbar-title
             slot="start"
             text="Admin"
-            subtext="RegelRecht"
+            supporting-text="RegelRecht"
             min-width="fit-content"
           />
           <nldd-toolbar-item slot="center">
@@ -67,7 +67,7 @@ watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
             <nldd-icon-button
               icon="plus-small"
               text="Add"
-              hide-tooltip
+              tooltip-timing="never"
               variant="neutral-tinted"
               @click="openNewHarvestJob"
             />
