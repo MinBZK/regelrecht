@@ -19,6 +19,14 @@ export function truncateUuid(value) {
   return str.length > 8 ? str.substring(0, 8) : str;
 }
 
+// snake_case status → human-readable sentence case, e.g.
+// 'harvest_failed' → 'Harvest failed', 'enriching' → 'Enriching'.
+export function formatStatus(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const s = String(value).replace(/_/g, ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export function jobSubtitle(job) {
   const type = job.job_type
     ? job.job_type.charAt(0).toUpperCase() + job.job_type.slice(1)

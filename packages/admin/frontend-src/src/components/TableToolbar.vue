@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onUnmounted, useId } from 'vue';
+import { formatStatus } from '../formatters.js';
 
 const props = defineProps({
   columns: { type: Array, required: true },
@@ -59,7 +60,7 @@ function getFilterButtonLabel(col) {
   const key = getFilterKey(col);
   const value = props.filters[key];
   const label = getFilterLabel(col);
-  return `${label}: ${value || 'All'}`;
+  return `${label}: ${value ? formatStatus(value) : 'All'}`;
 }
 
 function onSortSelect(event) {
@@ -143,7 +144,7 @@ onUnmounted(() => Object.values(debounceTimers).forEach(clearTimeout));
           v-for="v in col.filter.options"
           :key="v"
           type="radio"
-          :text="v"
+          :text="formatStatus(v)"
           :value="v"
           :selected="filters[getFilterKey(col)] === v"
         />

@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { STATUS_BADGE_MAP } from '../constants.js';
+import { formatStatus } from '../formatters.js';
 
 const props = defineProps({
   status: { type: String, required: true },
@@ -8,14 +9,16 @@ const props = defineProps({
   errorMessage: { type: String, default: null },
 });
 
+// Colour stays keyed on the raw enum value; only the visible label is humanised.
 const variant = computed(() => STATUS_BADGE_MAP[props.status] || 'neutral');
+const label = computed(() => formatStatus(props.status));
 </script>
 
 <template>
-  <nldd-tooltip v-if="errorMessage" :text="errorMessage" placement="top">
+  <nldd-tooltip v-if="errorMessage" :text="errorMessage" placement="top" timing="instant">
     <nldd-tag
       :color="variant"
-      :text="status"
+      :text="label"
       :size="size"
       icon="info"
     />
@@ -23,7 +26,7 @@ const variant = computed(() => STATUS_BADGE_MAP[props.status] || 'neutral');
   <nldd-tag
     v-else
     :color="variant"
-    :text="status"
+    :text="label"
     :size="size"
   />
 </template>
