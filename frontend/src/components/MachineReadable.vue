@@ -272,8 +272,8 @@ function addOutput() {
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Definitie toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Definitie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -301,8 +301,8 @@ function addOutput() {
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Parameter toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Parameter toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -333,8 +333,8 @@ function addOutput() {
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Input toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Input toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -362,8 +362,8 @@ function addOutput() {
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Output toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Output toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -403,8 +403,8 @@ function addOutput() {
           </template>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Actie toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Actie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>

@@ -156,12 +156,12 @@ const rowCount = computed(() => rows.value.length);
 
           <!-- Single-row inline delete -->
           <nldd-list-item v-if="!readonly && rows.length === 1" size="md">
-            <nldd-button size="md" full-width start-icon="minus" @click="removeRow(ri)" text="Rij verwijderen"></nldd-button>
+            <nldd-button size="md" width="full" start-icon="minus" @click="removeRow(ri)" text="Rij verwijderen"></nldd-button>
           </nldd-list-item>
         </nldd-list>
       </div>
 
-      <nldd-button v-if="!readonly" size="md" full-width start-icon="plus-small" @click="addRow" text="Rij toevoegen"></nldd-button>
+      <nldd-button v-if="!readonly" size="md" width="full" start-icon="plus-small" @click="addRow" text="Rij toevoegen"></nldd-button>
     </div>
   </div>
 </template>

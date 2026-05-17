@@ -1118,7 +1118,7 @@ function handleActionSave() {
              bar too because closed tabs may still be visible alongside this
              empty state on the next pane. -->
         <nldd-page v-if="!activeTab">
-          <nldd-simple-section full-width>
+          <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
               <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
             </nldd-inline-dialog>
@@ -1127,7 +1127,7 @@ function handleActionSave() {
 
         <!-- Error state — mirrors the library's law-load failure pattern. -->
         <nldd-page v-else-if="error">
-          <nldd-simple-section full-width>
+          <nldd-simple-section width="full">
             <nldd-inline-dialog
               variant="alert"
               :text="`${failedLawName} is niet geladen`"
@@ -1144,7 +1144,7 @@ function handleActionSave() {
              explicit empty-state with a CTA to the settings menu so
              the user understands the editor isn't broken. -->
         <nldd-page v-else-if="paneViews.length === 0">
-          <nldd-simple-section full-width>
+          <nldd-simple-section width="full">
             <nldd-inline-dialog text="Geen editors actief. Schakel ten minste één editor in via Instellingen."></nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -1249,7 +1249,7 @@ function handleActionSave() {
                    pane-header above guards on `textEditorRefs[idx]`, which
                    is only populated by the WYSIWYG component, so it auto-
                    hides when the flag is off. -->
-              <nldd-simple-section v-if="view === 'text'" full-width>
+              <nldd-simple-section v-if="view === 'text'" width="full">
                 <ArticleTextEditor
                   v-if="canEditArticleText"
                   :ref="setTextEditorRef(idx)"
@@ -1270,7 +1270,7 @@ function handleActionSave() {
                 <nldd-button
                   variant="primary"
                   size="md"
-                  full-width
+                  width="full"
                   data-testid="save-text-btn"
                   :disabled="lawSaving || undefined"
                   :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
@@ -1279,7 +1279,7 @@ function handleActionSave() {
               </nldd-container>
 
               <!-- Machine readable -->
-              <nldd-simple-section v-else-if="view === 'machine'" full-width>
+              <nldd-simple-section v-else-if="view === 'machine'" width="full">
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
@@ -1305,7 +1305,7 @@ function handleActionSave() {
                 <nldd-button
                   variant="primary"
                   size="md"
-                  full-width
+                  width="full"
                   data-testid="save-mr-btn"
                   :disabled="lawSaving || undefined"
                   :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
@@ -1315,7 +1315,7 @@ function handleActionSave() {
 
               <!-- Scenario builder -->
               <template v-else-if="view === 'scenario'">
-                <nldd-simple-section v-if="engineInitError" full-width>
+                <nldd-simple-section v-if="engineInitError" width="full">
                   <nldd-inline-dialog
                     variant="alert"
                     text="WASM engine niet geladen"
@@ -1334,7 +1334,7 @@ function handleActionSave() {
               </template>
 
               <!-- YAML -->
-              <nldd-simple-section v-else-if="view === 'yaml'" full-width>
+              <nldd-simple-section v-else-if="view === 'yaml'" width="full">
                 <nldd-code-editor
                   resize="none"
                   accessible-label="YAML"
@@ -1415,12 +1415,11 @@ function handleActionSave() {
   <nldd-sheet
     ref="resultSheetEl"
     placement="bottom"
-    full-height
     @close="resultSheetOpen = false"
   >
     <nldd-page sticky-header>
       <nldd-top-title-bar slot="header" :text="lastScenarioName ? `Resultaat: ${lastScenarioName}` : 'Resultaat'" collapse-anchor="result-scenario-title" dismiss-text="Sluit" @dismiss="resultSheetOpen = false"></nldd-top-title-bar>
-      <nldd-simple-section full-width>
+      <nldd-simple-section width="full">
         <nldd-title id="result-scenario-title" size="4"><h3>{{ lastScenarioName ? `Resultaat: ${lastScenarioName}` : 'Resultaat' }}</h3></nldd-title>
         <nldd-spacer size="16"></nldd-spacer>
         <ExecutionTraceView
@@ -1438,7 +1437,6 @@ function handleActionSave() {
   <nldd-sheet
     ref="graphSheetEl"
     placement="bottom"
-    full-height
     @close="graphSheetOpen = false"
   >
     <nldd-page sticky-header>

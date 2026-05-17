@@ -556,7 +556,7 @@ loadIndex();
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
-              <nldd-simple-section full-width>
+              <nldd-simple-section width="full">
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
@@ -595,7 +595,7 @@ loadIndex();
                 collapse-anchor="wet-titel"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section full-width>
+              <nldd-simple-section width="full">
                 <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
@@ -632,7 +632,7 @@ loadIndex();
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section full-width v-if="indexError">
+              <nldd-simple-section width="full" v-if="indexError">
                 <nldd-inline-dialog
                   variant="alert"
                   text="Wetten en regels zijn niet geladen"
@@ -642,10 +642,10 @@ loadIndex();
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="!selectedLawId">
+              <nldd-simple-section width="full" v-else-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="lawError">
+              <nldd-simple-section width="full" v-else-if="lawError">
                 <nldd-inline-dialog
                   variant="alert"
                   :text="`${indexedLawName} is niet geladen`"
@@ -655,7 +655,7 @@ loadIndex();
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="articleNotFound">
+              <nldd-simple-section width="full" v-else-if="articleNotFound">
                 <nldd-inline-dialog
                   variant="alert"
                   :text="`Artikel ${selectedArticleNumber} van ${lawName || indexedLawName} bestaat niet`"
@@ -665,11 +665,11 @@ loadIndex();
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="!selectedArticle">
+              <nldd-simple-section width="full" v-else-if="!selectedArticle">
                 <nldd-inline-dialog text="Selecteer een artikel"></nldd-inline-dialog>
               </nldd-simple-section>
               <template v-else>
-                <nldd-simple-section full-width>
+                <nldd-simple-section width="full">
                   <nldd-title id="article-titel" size="3">
                     <h3>Artikel {{ selectedArticle.number }}</h3>
                     <span slot="subtitle">{{ lawName }}</span>

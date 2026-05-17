@@ -394,7 +394,6 @@ defineExpose({ save: onSave });
       ref="scenarioSheetEl"
       placement="right"
       width="640px"
-      full-height
       @close="cancelEdits"
     >
       <nldd-page sticky-header :sticky-footer="isDirty || undefined">

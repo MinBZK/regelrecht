@@ -492,7 +492,7 @@ function addNestedOperation() {
             </template>
             <!-- Literal values show a text field -->
             <template v-else-if="isLiteralValue(val._value)">
-              <nldd-text-field size="md" :value="String(val._value)" is-full-width @input="updateValue(val, $event)"></nldd-text-field>
+              <nldd-text-field size="md" :value="String(val._value)" width="full" @input="updateValue(val, $event)"></nldd-text-field>
             </template>
             <!-- Variable references and nested operations show a full dropdown -->
             <template v-else>

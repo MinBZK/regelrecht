@@ -354,7 +354,7 @@ const sectionLabels = {
 </script>
 
 <template>
-  <nldd-sheet ref="sheetEl" placement="right" width="640px" full-height @close="emit('close')">
+  <nldd-sheet ref="sheetEl" placement="right" width="640px" @close="emit('close')">
     <!-- `:key` forces nldd-page to remount whenever the section changes.
          nldd-page captures the sticky-header height ONCE per mount via
          requestAnimationFrame; if the header text changes after that
@@ -398,7 +398,7 @@ const sectionLabels = {
                   <nldd-number-field
                     :value="values.displayValue"
                     :step="values.controlType === 'currency' ? '0.01' : (values.controlType === 'percentage' ? '0.001' : undefined)"
-                    full-width
+                    width="full"
                     hide-spin-buttons
                     @change="values.displayValue = $event.detail?.value ?? values.displayValue"
                   ></nldd-number-field>
@@ -576,7 +576,7 @@ const sectionLabels = {
       </nldd-simple-section>
 
       <nldd-container slot="footer" padding="16">
-        <nldd-button variant="primary" size="md" full-width data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></nldd-button>
+        <nldd-button variant="primary" size="md" width="full" data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></nldd-button>
       </nldd-container>
     </nldd-page>
   </nldd-sheet>
