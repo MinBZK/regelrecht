@@ -100,12 +100,12 @@ function statusBarTitle(group) {
         @click="emit('view-jobs', group.law_id)"
       >
         <template v-for="(col, idx) in columns" :key="col.key">
-          <nldd-spacer-cell v-if="idx > 0" size="12" />
+          <nldd-spacer-cell v-if="idx > 0" size="12" :hide-below="col.hideBelow" />
           <nldd-cell
             v-if="col.key === 'status_bar'"
             :width="col.width || 'stretch'"
           >
-            <nldd-tooltip :text="statusBarTitle(group)" placement="top">
+            <nldd-tooltip :text="statusBarTitle(group)" placement="top" timing="instant">
               <div class="status-bar">
                 <div
                   v-for="seg in statusSegments(group)"
@@ -132,6 +132,7 @@ function statusBarTitle(group) {
             :width="col.width || 'stretch'"
             :min-width="col.minWidth"
             :horizontal-alignment="col.align"
+            :hide-below="col.hideBelow"
           />
         </template>
         <nldd-spacer-cell size="12" />

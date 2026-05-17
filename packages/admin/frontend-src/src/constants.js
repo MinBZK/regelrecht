@@ -54,6 +54,7 @@ export const JOB_COLUMNS = [
     width: 'fit-content',
     minWidth: '40px',
     align: 'right',
+    hideBelow: '640px',
     text: (row) => `Prio ${row.priority ?? '—'}`,
   },
 ];
@@ -69,7 +70,7 @@ export const GROUPED_COLUMNS = [
       g.latest_created_at ? `Updated at ${formatDate(g.latest_created_at)}` : undefined,
   },
   { key: 'status_bar', label: 'Status', sortable: false, width: '80px' },
-  { key: 'total_jobs', label: 'Jobs', sortable: true, filter: { key: 'status', options: JOB_STATUSES, label: 'Status' }, width: 'fit-content', minWidth: '24px', align: 'right' },
+  { key: 'total_jobs', label: 'Jobs', sortable: true, filter: { key: 'status', options: JOB_STATUSES, label: 'Status' }, width: 'fit-content', minWidth: '24px', align: 'right', hideBelow: '640px' },
 ];
 
 // Sort menus are independent from visible columns — users should be able to

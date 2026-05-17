@@ -91,7 +91,7 @@ function formatCellValue(value, key) {
           @click="clickableRows && emit('row-click', row)"
         >
           <template v-for="(col, idx) in columns" :key="col.key">
-            <nldd-spacer-cell v-if="idx > 0" size="12" />
+            <nldd-spacer-cell v-if="idx > 0" size="12" :hide-below="col.hideBelow" />
             <nldd-cell
               v-if="$slots['cell-' + col.key]"
               :width="col.width || 'stretch'"
@@ -115,6 +115,7 @@ function formatCellValue(value, key) {
               :width="col.width || 'stretch'"
               :min-width="col.minWidth"
               :horizontal-alignment="col.align"
+              :hide-below="col.hideBelow"
             />
             <nldd-cell
               v-else-if="col.key === 'id' || col.key === 'law_id'"
