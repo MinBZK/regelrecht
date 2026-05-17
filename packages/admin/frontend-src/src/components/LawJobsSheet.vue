@@ -131,12 +131,16 @@ const codeSections = computed(() => {
           v-if="!selectedJob"
           slot="header"
           :text="`Jobs for ${lawId || ''}`"
+          dismiss-text="Close"
+          @dismiss="close"
         />
         <nldd-top-title-bar
           v-else
           slot="header"
           :back-text="`Jobs for ${lawId}`"
+          dismiss-text="Close"
           @back="onBack"
+          @dismiss="close"
         />
 
         <nldd-simple-section v-if="!selectedJob">

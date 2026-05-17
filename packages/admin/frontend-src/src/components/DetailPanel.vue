@@ -70,7 +70,12 @@ function onSheetClose() {
       @close="onSheetClose"
     >
       <nldd-page sticky-header>
-        <nldd-top-title-bar slot="header" text="Job details" />
+        <nldd-top-title-bar
+          slot="header"
+          text="Job details"
+          dismiss-text="Close"
+          @dismiss="$emit('close')"
+        />
         <nldd-simple-section v-if="job">
           <nldd-list variant="simple">
             <nldd-list-item v-for="[label, value] in infoFields" :key="label">
