@@ -473,6 +473,7 @@ const sectionLabels = {
                   <nldd-combo-box
                     ref="lawComboBoxEl"
                     size="md"
+                    width="100%"
                     placeholder="Zoek regelgeving..."
                     accessible-label="Bron regelgeving"
                     :value="values.sourceRegulation"
@@ -500,6 +501,7 @@ const sectionLabels = {
                     v-if="availableOutputs.length > 0"
                     ref="outputComboBoxEl"
                     size="md"
+                    width="100%"
                     placeholder="Selecteer output..."
                     accessible-label="Bron output"
                     :value="values.sourceOutput"

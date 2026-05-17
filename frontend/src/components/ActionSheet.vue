@@ -84,7 +84,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <nldd-sheet ref="sheetEl" placement="right" width="480px" @close="emit('close')">
+  <nldd-sheet ref="sheetEl" placement="right" :width="editable ? '640px' : '480px'" @close="emit('close')">
     <!-- :key forces nldd-page to remount whenever a NEW action opens.
          nldd-page captures the sticky-header height ONCE per mount via
          requestAnimationFrame; when the sheet opens with a new action the
@@ -109,7 +109,7 @@ onUnmounted(() => {
         <template v-if="editable && action">
           <nldd-list variant="box" class="settings-list" data-testid="action-output-binding">
             <nldd-list-item size="md">
-              <nldd-text-cell text="Output" width="fit-content"></nldd-text-cell>
+              <nldd-text-cell text="Output" width="120px"></nldd-text-cell>
               <nldd-spacer-cell size="12"></nldd-spacer-cell>
               <nldd-cell>
                 <nldd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></nldd-text-field>

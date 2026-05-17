@@ -435,14 +435,14 @@ function addNestedOperation() {
     <nldd-list variant="box" class="settings-list">
       <!-- Titel -->
       <nldd-list-item size="md">
-        <nldd-text-cell text="Titel" width="fit-content"></nldd-text-cell>
+        <nldd-text-cell text="Titel" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
         <nldd-spacer-cell size="12"></nldd-spacer-cell>
         <nldd-text-cell horizontal-alignment="right"><BreakableName :name="operation.title || '(leeg)'" /></nldd-text-cell>
       </nldd-list-item>
 
       <!-- Type -->
       <nldd-list-item size="md">
-        <nldd-text-cell text="Type" width="fit-content"></nldd-text-cell>
+        <nldd-text-cell text="Type" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
         <nldd-spacer-cell size="12"></nldd-spacer-cell>
         <nldd-cell v-if="editable">
           <nldd-dropdown size="md" data-testid="operation-type-dropdown">
@@ -465,7 +465,7 @@ function addNestedOperation() {
         :type="!editable && isNestedOperation(val._value) ? 'button' : undefined"
         @click="!editable && isNestedOperation(val._value) && emit('select-operation', val._value)"
       >
-        <nldd-text-cell :text="val._label" width="fit-content"></nldd-text-cell>
+        <nldd-text-cell :text="val._label" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
         <nldd-spacer-cell size="12"></nldd-spacer-cell>
         <nldd-cell v-if="editable">
           <div class="value-row">
