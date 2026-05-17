@@ -15,7 +15,7 @@ const { open: openNewHarvestJob } = useNewHarvestJob();
 const { colorScheme, setColorScheme } = useColorScheme();
 
 const themeOptions = [
-  ['auto', 'Match system'],
+  ['auto', 'System'],
   ['dark', 'Dark'],
   ['light', 'Light'],
 ];
