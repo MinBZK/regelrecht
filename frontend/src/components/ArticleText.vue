@@ -6,6 +6,9 @@ import DOMPurify from 'dompurify';
 const props = defineProps({
   article: { type: Object, default: null },
   raw: { type: Boolean, default: false },
+  // Center the rich-text column. Opt-in so the library reading view can
+  // center while the editor's read-only pane stays left-aligned.
+  centered: { type: Boolean, default: false },
 });
 
 // marked v18 no longer sanitizes HTML in Markdown by default; run its output
@@ -25,10 +28,10 @@ const paragraphs = computed(() => {
 
 <template>
   <template v-if="article">
-    <nldd-rich-text v-if="raw">
+    <nldd-rich-text v-if="raw" :centered="centered || undefined">
       <p v-for="(p, i) in paragraphs" :key="i">{{ p }}</p>
     </nldd-rich-text>
-    <nldd-rich-text v-else v-html="html"></nldd-rich-text>
+    <nldd-rich-text v-else :centered="centered || undefined" v-html="html"></nldd-rich-text>
   </template>
   <nldd-inline-dialog v-else text="Geen artikel geselecteerd"></nldd-inline-dialog>
 </template>

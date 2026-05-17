@@ -17,10 +17,12 @@ const { authenticated, loading: authLoading, oidcConfigured, person, login, logo
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 const { colorScheme, setColorScheme } = useColorScheme();
 
-// Single source of truth for the library home title — used as the
-// sidebar header and as the back-text on the secondary-sidebar so the
-// two stay in sync.
-const LIBRARY_HOME_TITLE = 'Wetten en regels';
+// Library home title (sidebar header + home heading) and the label of
+// the back-button that returns to it from underlying pages. They differ
+// intentionally: the page is titled "RegelRecht", but a back-button
+// reads more naturally as "Home".
+const LIBRARY_HOME_TITLE = 'RegelRecht';
+const LIBRARY_HOME_BACK_TEXT = 'Home';
 
 const colorSchemeOptions = [
   ['auto', 'Systeem'],
@@ -591,7 +593,7 @@ loadIndex();
               <nldd-top-title-bar
                 slot="header"
                 :text="lawName || indexedLawName || 'Selecteer een wet'"
-                :back-text="LIBRARY_HOME_TITLE"
+                :back-text="LIBRARY_HOME_BACK_TEXT"
                 collapse-anchor="wet-titel"
               ></nldd-top-title-bar>
 
@@ -628,7 +630,7 @@ loadIndex();
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
                 :supporting-text="selectedArticle ? lawName : undefined"
-                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_TITLE : (lawName || 'Terug'))"
+                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug'))"
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
@@ -689,7 +691,7 @@ loadIndex();
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
-                    <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" />
+                    <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
                     <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
                     <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
                   </KeepAlive>
@@ -707,7 +709,7 @@ loadIndex();
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar compact>
-                <nldd-tab-bar-item selected icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item selected icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
