@@ -1354,7 +1354,7 @@ function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar compact>
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
