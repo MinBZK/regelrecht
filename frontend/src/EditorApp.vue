@@ -777,6 +777,11 @@ function handleSave({ section, key, newKey, index, data }) {
     if (!mr.execution.produces) mr.execution.produces = {};
     if (data == null) delete mr.execution.produces[key];
     else mr.execution.produces[key] = data;
+    // Drop the container once every field is cleared, otherwise the YAML
+    // dump emits a bare `produces: {}` which the schema rejects.
+    if (Object.keys(mr.execution.produces).length === 0) {
+      delete mr.execution.produces;
+    }
   }
 
   machineReadable.value = mr;
