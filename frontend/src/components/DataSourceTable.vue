@@ -117,11 +117,11 @@ const showBody = computed(() => props.drilledIn || expanded.value);
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
     <template v-else>
-      <nldd-title size="5" class="ds-block-heading" :id="anchorId || undefined">
-        <span>{{ title }}</span>
-        <span v-if="subtitle" slot="subtitle">{{ subtitle }}</span>
+      <nldd-title size="5" :id="anchorId || undefined">
+        <h2>{{ title }}</h2>
+        <p v-if="subtitle" slot="subtitle">{{ subtitle }}</p>
       </nldd-title>
-      <nldd-spacer size="8"></nldd-spacer>
+      <nldd-spacer size="12"></nldd-spacer>
     </template>
 
     <div v-if="showBody" class="ds-block-body">
@@ -200,10 +200,6 @@ const showBody = computed(() => props.drilledIn || expanded.value);
   padding: 0;
   width: 100%;
   margin-bottom: 4px;
-}
-
-.ds-block-heading {
-  margin: 0;
 }
 
 .ds-block-chevron {
