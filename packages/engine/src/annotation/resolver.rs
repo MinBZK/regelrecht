@@ -189,22 +189,23 @@ fn verify_at_position(
 ) -> Option<TextMatch> {
     let chars: Vec<char> = text.chars().collect();
 
+    // The window is exactly `len + 1` chars wide and sits flush against
+    // `exact`, so after trimming it must *equal* the prefix/suffix. Equality
+    // (not ends_with/starts_with) rejects word-internal false positives: with
+    // prefix "op een", the window before a wrong occurrence in "strop een"
+    // trims to "rop een", which `ends_with("op een")` would wrongly accept.
+    // The +1 char of slack absorbs a single whitespace difference.
     if !selector.prefix.is_empty() {
         let prefix_start = start.saturating_sub(selector.prefix.chars().count() + 1);
         let actual: String = chars[prefix_start..start].iter().collect();
-        // The prefix is the text immediately *before* `exact`, so the window
-        // must *end with* it (ends_with, not contains: prefix "een" must not
-        // be satisfied by "geen").
-        if !actual.trim().ends_with(selector.prefix.trim()) {
+        if actual.trim() != selector.prefix.trim() {
             return None;
         }
     }
     if !selector.suffix.is_empty() {
         let suffix_end = (end + selector.suffix.chars().count() + 1).min(chars.len());
         let actual: String = chars[end..suffix_end].iter().collect();
-        // The suffix is the text immediately *after* `exact`, so the window
-        // must *start with* it.
-        if !actual.trim().starts_with(selector.suffix.trim()) {
+        if actual.trim() != selector.suffix.trim() {
             return None;
         }
     }
@@ -236,22 +237,22 @@ fn find_exact_matches(text: &str, selector: &TextQuoteSelector) -> Vec<TextMatch
         let pos = from + rel;
         let end = pos + exact.len();
 
-        // Prefix is the text right before `exact`: the window must end with
-        // it. Suffix is the text right after: the window must start with it.
-        // ends_with/starts_with (not contains) so prefix "een" is not
-        // satisfied by "geen". The +1 char of slack plus trim() keeps the
-        // check whitespace-tolerant.
+        // Window is exactly `len + 1` chars flush against `exact`, so after
+        // trimming it must *equal* the prefix/suffix. Equality (not
+        // ends_with/starts_with) rejects word-internal false positives, e.g.
+        // prefix "op een" must not be satisfied by "rop een". The +1 char of
+        // slack plus trim() absorbs a single whitespace difference.
         let prefix_ok = selector.prefix.is_empty() || {
             let p_len = selector.prefix.chars().count();
             let p_start = pos.saturating_sub(p_len + 1);
             let actual: String = chars[p_start..pos].iter().collect();
-            actual.trim().ends_with(selector.prefix.trim())
+            actual.trim() == selector.prefix.trim()
         };
         let suffix_ok = selector.suffix.is_empty() || {
             let s_len = selector.suffix.chars().count();
             let s_end = (end + s_len + 1).min(chars.len());
             let actual: String = chars[end..s_end].iter().collect();
-            actual.trim().starts_with(selector.suffix.trim())
+            actual.trim() == selector.suffix.trim()
         };
 
         if prefix_ok && suffix_ok {
@@ -474,6 +475,23 @@ mod tests {
         let sel = selector("verzekerde", "heeft de ", " aanspraak");
         let r = resolve(&sel, &arts);
         assert!(r.is_found());
+    }
+
+    #[test]
+    fn prefix_rejects_word_internal_false_positive() {
+        // "op een" must not be satisfied by the word-internal "...rop een"
+        // (the bug an `ends_with` check would let through). Only the genuine
+        // occurrence preceded by exactly "op een" should match.
+        let arts = vec![article(
+            "2",
+            "de stroop een zoetstof; recht op een zorgtoeslag",
+        )];
+        let sel = selector("zorgtoeslag", "op een ", "");
+        let r = resolve(&sel, &arts);
+        assert!(r.is_found(), "expected the genuine 'op een ' occurrence");
+        let m = r.single().unwrap();
+        // It must be the second "zorgtoeslag"-context, not anchored via "stroop een".
+        assert_eq!(m.matched_text, "zorgtoeslag");
     }
 
     #[test]
