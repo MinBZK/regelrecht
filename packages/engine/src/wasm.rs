@@ -518,8 +518,8 @@ impl WasmEngine {
     ///   offsets** (Unicode scalar values), not UTF-16 code units: JS code
     ///   slicing the article text must convert accordingly.
     /// * `Err(JsValue)` - Error if the law is not loaded or the selector is invalid
-    #[wasm_bindgen(js_name = resolveAnnotation)]
-    pub fn resolve_annotation(&self, law_id: &str, selector: JsValue) -> Result<JsValue, JsValue> {
+    #[wasm_bindgen(js_name = resolveNote)]
+    pub fn resolve_note(&self, law_id: &str, selector: JsValue) -> Result<JsValue, JsValue> {
         let selector: TextQuoteSelector = serde_wasm_bindgen::from_value(selector)
             .map_err(|e| wasm_error(&format!("Invalid selector: {e}")))?;
         let law = ServiceProvider::get_law(&self.service, law_id)
@@ -552,12 +552,8 @@ impl WasmEngine {
     ///   or a message string. Match `start`/`end` are **`char` offsets**, not
     ///   UTF-16 code units.
     /// * `Err(JsValue)` - Error if the law is not loaded or the YAML is invalid
-    #[wasm_bindgen(js_name = resolveAnnotations)]
-    pub fn resolve_annotations(
-        &self,
-        law_id: &str,
-        annotations_yaml: &str,
-    ) -> Result<JsValue, JsValue> {
+    #[wasm_bindgen(js_name = resolveNotes)]
+    pub fn resolve_notes(&self, law_id: &str, annotations_yaml: &str) -> Result<JsValue, JsValue> {
         let law = ServiceProvider::get_law(&self.service, law_id)
             .ok_or_else(|| wasm_error(&format!("Law not loaded: {law_id}")))?;
 

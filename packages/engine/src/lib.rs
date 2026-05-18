@@ -54,7 +54,7 @@ pub mod telemetry;
 
 // Re-export commonly used items
 pub use annotation::{
-    resolve as resolve_annotation, MatchResult, MatchStatus, SelectorHint, TextMatch,
+    law_id_from_source, resolve as resolve_note, MatchResult, MatchStatus, SelectorHint, TextMatch,
     TextQuoteSelector,
 };
 pub use article::{
