@@ -73,15 +73,6 @@ const canAddValue = computed(() => {
   return true;
 });
 
-const canAddNestedOperation = computed(() => {
-  if (!props.editable) return false;
-  const op = props.operation?.operation;
-  if (!op) return false;
-  // Same fixed-shape rule as canAddValue: structural-slot ops don't grow.
-  if (op === 'NOT' || op === 'IF' || op === 'SWITCH' || op === 'AGE') return false;
-  return !isComparisonOp.value;
-});
-
 // Required structural fields whose minus button must be hidden so the user
 // cannot delete them and silently produce an invalid node.
 function canRemoveValue(val) {
@@ -348,6 +339,26 @@ function updateDropdownValue(val, event) {
 }
 
 
+// The Type radio (Waarde / Operatie) only applies to value slots that can
+// hold either a literal or a nested operation — not subject/date pickers.
+function canChangeValueKind(val) {
+  return val._kind !== 'subject'
+    && val._kind !== 'date_of_birth'
+    && val._kind !== 'reference_date';
+}
+
+// Switch a value between a literal and a nested operation, writing through
+// applyValueMutation so it lands in the correct slot for this _kind. The
+// default operation mirrors the old "Operatie toevoegen" shape.
+function changeValueKind(val, kind) {
+  const isOp = isNestedOperation(val._value);
+  if (kind === 'operatie' && !isOp) {
+    applyValueMutation(val, { operation: 'ADD', values: [] });
+  } else if (kind === 'value' && isOp) {
+    applyValueMutation(val, '');
+  }
+}
+
 function readonlyValueText(val) {
   const v = val._value;
   if (v === null || v === undefined || v === '') return '(leeg)';
@@ -415,17 +426,6 @@ function addValue() {
   }
 }
 
-function addNestedOperation() {
-  const node = props.operation?.node;
-  if (!node || isComparisonOp.value) return;
-  if (node.operation === 'NOT' || node.operation === 'IF' || node.operation === 'SWITCH') return;
-
-  if (Array.isArray(node.conditions)) {
-    node.conditions.push({ operation: 'EQUALS', subject: '', value: '' });
-  } else if (Array.isArray(node.values)) {
-    node.values.push({ operation: 'ADD', values: [] });
-  }
-}
 </script>
 
 <template>
@@ -509,12 +509,45 @@ function addNestedOperation() {
                 </select>
               </nldd-dropdown>
             </template>
-            <nldd-icon-button v-if="canRemoveValue(val)" icon="minus" title="Verwijder waarde" @click="removeValue(val)">
-            </nldd-icon-button>
+            <nldd-icon-button
+              :id="`val-actions-${operation.number}-${i}`"
+              icon="more"
+              text="Acties"
+              tooltip-timing="never"
+              variant="neutral-tinted"
+            ></nldd-icon-button>
+            <nldd-menu :anchor="`val-actions-${operation.number}-${i}`">
+              <nldd-menu-item
+                v-if="isNestedOperation(val._value)"
+                text="Bewerk"
+                icon="edit"
+                @click.stop="emit('select-operation', val._value)"
+              ></nldd-menu-item>
+              <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
+                <nldd-menu-item
+                  type="radio"
+                  text="Waarde"
+                  :selected="!isNestedOperation(val._value) || undefined"
+                  @click.stop="changeValueKind(val, 'value')"
+                ></nldd-menu-item>
+                <nldd-menu-item
+                  type="radio"
+                  text="Operatie"
+                  :selected="isNestedOperation(val._value) || undefined"
+                  @click.stop="changeValueKind(val, 'operatie')"
+                ></nldd-menu-item>
+              </nldd-menu-group>
+              <nldd-menu-divider v-if="canRemoveValue(val)"></nldd-menu-divider>
+              <nldd-menu-item
+                v-if="canRemoveValue(val)"
+                text="Verwijder"
+                icon="delete"
+                @click.stop="removeValue(val)"
+              ></nldd-menu-item>
+            </nldd-menu>
           </div>
           <p v-if="isNestedOperation(val._value)" class="value-help-text">
             {{ describeSubtitle(val._value) }}
-            <a href="#" @click.prevent="emit('select-operation', val._value)">Bewerk</a>
           </p>
         </nldd-cell>
         <template v-else>
@@ -532,11 +565,10 @@ function addNestedOperation() {
       </nldd-list-item>
 
       <!-- Add value -->
-      <nldd-list-item v-if="canAddValue || canAddNestedOperation" size="md">
-        <div class="add-value-buttons">
-          <nldd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Waarde toevoegen"></nldd-button>
-          <nldd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Operatie toevoegen"></nldd-button>
-        </div>
+      <nldd-list-item v-if="canAddValue" size="md">
+        <nldd-cell width="full">
+          <nldd-button width="full" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></nldd-button>
+        </nldd-cell>
       </nldd-list-item>
     </nldd-list>
   </template>
@@ -578,12 +610,6 @@ function addNestedOperation() {
   min-width: 0;
 }
 
-.add-value-buttons {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-}
-
 .value-help-text {
   font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
   font-size: 14px;
@@ -591,14 +617,5 @@ function addNestedOperation() {
   line-height: 1.25;
   color: var(--semantics-text-secondary-color, #545D68);
   margin: 2px 0 0 0;
-}
-
-.value-help-text a {
-  color: var(--semantics-text-accent-color, #007BC7);
-  text-decoration: none;
-}
-
-.value-help-text a:hover {
-  text-decoration: underline;
 }
 </style>
