@@ -46,6 +46,11 @@ path = "src/bin/validate.rs"
 required-features = ["validate"]
 
 [[bin]]
+name = "validate-annotations"
+path = "src/bin/validate_annotations.rs"
+required-features = ["validate"]
+
+[[bin]]
 name = "evaluate"
 path = "src/bin/evaluate.rs"
 
