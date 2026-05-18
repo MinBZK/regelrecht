@@ -3,6 +3,7 @@ import { computed, ref, watch, nextTick } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
 import BreakableName from './BreakableName.vue';
+import RowActionsMenu from './RowActionsMenu.vue';
 
 const { displayName: lawDisplayName } = useCorpusLaws();
 
@@ -283,15 +284,12 @@ function addOutput() {
             ></nldd-text-cell>
           </template>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button @click="editDef(def.name)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder definitie"
-                :data-testid="`def-${def.name}-delete-btn`"
-                @click="deleteDef(def.name)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor definitie ${def.name}`"
+              :delete-testid="`def-${def.name}-delete-btn`"
+              @edit="editDef(def.name)"
+              @delete="deleteDef(def.name)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
@@ -312,15 +310,12 @@ function addOutput() {
           <nldd-text-cell><BreakableName :name="param.name" /> <nldd-tag size="sm" :text="param.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button @click="editParam(index)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder parameter"
-                :data-testid="`param-${param.name}-delete-btn`"
-                @click="deleteParam(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor parameter ${param.name}`"
+              :delete-testid="`param-${param.name}-delete-btn`"
+              @edit="editParam(index)"
+              @delete="deleteParam(index)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
@@ -343,15 +338,13 @@ function addOutput() {
           ><BreakableName :name="input.name" /> <nldd-tag size="sm" :text="input.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder input"
-                :data-testid="`input-${input.name}-delete-btn`"
-                @click="deleteInput(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor input ${input.name}`"
+              :edit-testid="`input-${input.name}-edit-btn`"
+              :delete-testid="`input-${input.name}-delete-btn`"
+              @edit="editInput(index)"
+              @delete="deleteInput(index)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
@@ -372,15 +365,12 @@ function addOutput() {
           <nldd-text-cell><BreakableName :name="output.name" /> <nldd-tag size="sm" :text="output.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button @click="editOutput(index)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder output"
-                :data-testid="`output-${output.name}-delete-btn`"
-                @click="deleteOutput(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor output ${output.name}`"
+              :delete-testid="`output-${output.name}-delete-btn`"
+              @edit="editOutput(index)"
+              @delete="deleteOutput(index)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
@@ -407,15 +397,13 @@ function addOutput() {
           <nldd-text-cell :text="action.output"></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder actie"
-                :data-testid="`action-${action.output}-delete-btn`"
-                @click="deleteAction(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor actie ${action.output}`"
+              :edit-testid="`action-${action.output}-edit-btn`"
+              :delete-testid="`action-${action.output}-delete-btn`"
+              @edit="emit('open-action', action)"
+              @delete="deleteAction(index)"
+            />
           </nldd-cell>
           <template v-else>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -444,15 +432,3 @@ function addOutput() {
     <nldd-button slot="actions" variant="destructive" text="Verwijder" @click="confirmDelete"></nldd-button>
   </nldd-modal-dialog>
 </template>
-
-<style scoped>
-/* Row-level actions cluster: Bewerk button + minus icon button. flex-end
- * keeps them right-aligned within the row's value cell, and the gap matches
- * the spacing used in OperationSettings' value-row pattern. */
-.mr-row-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-</style>

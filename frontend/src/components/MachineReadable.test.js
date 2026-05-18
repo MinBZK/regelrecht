@@ -61,8 +61,13 @@ function mountEditable(articleOverrides = {}) {
   });
 }
 
+// "Bewerk" moved from an inline nldd-button to a RowActionsMenu menu-item
+// (the more-menu). In mount() custom elements aren't upgraded, so the
+// menu-item is just a DOM node and triggering click still fires the
+// component's @click → emit('edit'). DOM order per row is unchanged, so
+// the index mapping used by the tests is preserved.
 function findBewerkButtons(wrapper) {
-  return wrapper.findAll('nldd-button[text="Bewerk"]');
+  return wrapper.findAll('nldd-menu-item[text="Bewerk"]');
 }
 
 function findBekijkButtons(wrapper) {
