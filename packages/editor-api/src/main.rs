@@ -78,13 +78,42 @@ async fn main() {
         ),
     }
 
-    let mut app_state = AppState {
+    // The pool has to be created BEFORE `app_state` is built, because the
+    // `route_layer(from_fn_with_state(app_state.clone(), …))` below captures
+    // a snapshot of `app_state` at call time — anything we mutate on the
+    // outer binding after that point is invisible to the middleware.
+    // Migrations + session-store setup still live in the auth-enabled
+    // branch further down; here we only spin up the connection.
+    let pool: Option<sqlx::PgPool> = if app_config.is_auth_enabled() {
+        let database_url = env::var("DATABASE_URL")
+            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
+            .unwrap_or_else(|_| {
+                tracing::error!(
+                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
+                );
+                std::process::exit(1);
+            });
+        Some(
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&database_url)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "failed to connect to database");
+                    std::process::exit(1);
+                }),
+        )
+    } else {
+        None
+    };
+
+    let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
         http_client,
-        pool: None, // set below when auth is enabled
+        pool: pool.clone(),
         pipeline_api_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
         trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
@@ -217,34 +246,24 @@ async fn main() {
     // SessionManagerLayer is generic over the store type, so we build the
     // router in two branches depending on whether auth is enabled.
     if app_state.config.is_auth_enabled() {
-        let database_url = env::var("DATABASE_URL")
-            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
-                );
-                std::process::exit(1);
-            });
-
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
-            .connect(&database_url)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::error!(error = %e, "failed to connect to database");
-                std::process::exit(1);
-            });
+        // Pool was created above app_state so the route_layer middleware
+        // sees a populated app_state.pool. The outer `is_auth_enabled`
+        // branch above already returned `Some`, but we still take the
+        // safe path here so a refactor that breaks the invariant fails
+        // with a clear error instead of a panic.
+        let Some(pool) = pool else {
+            tracing::error!("pool was not created despite auth being enabled");
+            std::process::exit(1);
+        };
 
         // The editor shares a database with the pipeline; ensure_schema runs
-        // all pipeline migrations (including 0008_user_favorites). If the
-        // services are ever split to separate databases this should be replaced
-        // with an editor-specific migration runner.
+        // all pipeline migrations (including 0008_user_favorites and 0014
+        // trajects). If the services are ever split to separate databases
+        // this should be replaced with an editor-specific migration runner.
         if let Err(e) = regelrecht_pipeline::ensure_schema(&pool).await {
             tracing::error!(error = %e, "database migration failed");
             std::process::exit(1);
         }
-
-        app_state.pool = Some(pool.clone());
 
         let session_store = PostgresStore::new(pool);
         if let Err(e) = session_store.migrate().await {
