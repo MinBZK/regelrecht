@@ -240,7 +240,16 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <template v-if="selectedSource === null">
       <!-- Expected outputs -->
       <template v-if="hasExpectations">
-        <nldd-title size="5"><h2>Verwachte uitkomsten</h2></nldd-title>
+        <nldd-title size="5">
+          <h2>Verwachte uitkomsten</h2>
+          <nldd-button
+            slot="actions"
+            size="sm"
+            :disabled="!result && !error || undefined"
+            @click="emit('show-details')"
+            text="Resultaat"
+          ></nldd-button>
+        </nldd-title>
         <nldd-spacer size="12"></nldd-spacer>
         <nldd-list variant="box">
           <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
@@ -252,12 +261,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
             ></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
-        <nldd-spacer size="8"></nldd-spacer>
-        <nldd-button
-          :disabled="!result && !error || undefined"
-          @click="emit('show-details')"
-          text="Resultaat"
-        ></nldd-button>
       </template>
 
       <!-- Error -->
