@@ -352,20 +352,16 @@ async function onSaveAndShow() {
 }
 
 function cancelEdits() {
-  // Only discard when there were actual edits. Re-parsing/replacing
-  // formState otherwise needlessly remounts the whole overview — clearing
-  // cached results/refs (via the formState watcher) and resetting the
-  // pane's scroll position — just from opening and closing a scenario.
-  // Each ScenarioForm's deep watcher resets its local inputs when its
-  // `scenario`/`setup` props are replaced.
-  if (isDirty.value) {
-    const text = featureText.value;
-    if (text) {
-      try {
-        const parsed = parseFeature(text);
-        formState.value = mapFeatureToForm(parsed);
-      } catch { /* keep the previous state */ }
-    }
+  // Discard unsaved edits *without* replacing formState. Re-parsing it
+  // remounts the whole overview — clearing cached results/refs (via the
+  // formState watcher) and resetting the scenarios-pane scroll position.
+  // Edits live entirely in the edited ScenarioForm's local refs (only
+  // synced into formState on save), so asking that form to re-init from
+  // its unchanged props discards them while leaving the overview — and
+  // its scroll position — intact, exactly as when nothing was edited.
+  const idx = selectedScenarioIndex.value;
+  if (isDirty.value && idx !== null) {
+    scenarioRefs.value[idx]?.discardEdits?.();
   }
   isDirty.value = false;
   selectedScenarioIndex.value = null;

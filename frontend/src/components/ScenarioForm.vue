@@ -92,8 +92,12 @@ const running = ref(false);
 const error = ref(null);
 const errorTraceText = ref(null);
 
-// Re-init when scenario/setup changes
-watch([() => props.setup, () => props.scenario], () => {
+// Re-initialise every local input/result ref from the (read-only) props.
+// All edits live in these refs and are only written back to formState on
+// save, so re-initialising here fully discards unsaved edits. Used both
+// when the scenario/setup props change and when the parent discards edits
+// (cancel / click-away) without replacing formState — see ScenarioBuilder.
+function discardEdits() {
   calculationDate.value = props.setup.calculationDate || new Date().toISOString().slice(0, 10);
   parameterValues.value = Object.fromEntries(
     (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
@@ -109,7 +113,10 @@ watch([() => props.setup, () => props.scenario], () => {
   result.value = null;
   error.value = null;
   errorTraceText.value = null;
-}, { deep: true });
+}
+
+// Re-init when scenario/setup changes
+watch([() => props.setup, () => props.scenario], discardEdits, { deep: true });
 
 function execute() {
   if (!props.engine || !props.ready) return;
@@ -202,7 +209,7 @@ function getFormValues() {
   };
 }
 
-defineExpose({ execute, getExecutionData, getFormValues, clearDrill });
+defineExpose({ execute, getExecutionData, getFormValues, clearDrill, discardEdits });
 
 // --- Auto-re-execute when input values change ---
 let executeTimer = null;
