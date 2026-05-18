@@ -1,6 +1,11 @@
 <script setup>
-import { computed, ref, useTemplateRef } from 'vue';
-import { markRanges } from '../composables/useNotes.js';
+import { computed, ref, watch, nextTick, useTemplateRef, onBeforeUnmount } from 'vue';
+import { renderArticleHtml } from '../composables/useArticleMarkdown.js';
+import {
+  buildAlignment,
+  spanToNodeSlices,
+  cpToUtf16,
+} from '../composables/useNotesHighlight.js';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -8,14 +13,30 @@ const props = defineProps({
   notesForArticle: { type: Array, default: () => [] },
 });
 
-// The resolver matched against the raw article text, so offsets are into that
-// exact string. Rendering markdown here would desync the offsets, so notes are
-// shown over plain text. (ArticleText.vue keeps the markdown view for the
-// non-annotated Tekst pane.)
-const segments = computed(() => {
-  if (!props.article?.text) return [];
-  return markRanges(props.article.text, props.notesForArticle);
-});
+// Render the law text as markdown, identical to the Tekst pane with notes
+// off (shared pipeline so the two cannot drift — #646). The resolver matched
+// char-offsets into the *raw* text; after rendering we re-anchor those onto
+// the DOM's text nodes and wrap each resolved span in a <mark> imperatively,
+// because the spans cross marked's generated <li>/<p> structure and cannot be
+// expressed as a flat string partition (that was the old markRanges path,
+// kept in useNotes.js as the reference implementation + its tests).
+const html = computed(() => renderArticleHtml(props.article?.text || ''));
+
+const richTextEl = useTemplateRef('richTextEl');
+
+// Index notes so a <mark> can carry data-note-idx and the delegated hover
+// handler can recover the note object without per-mark Vue bindings.
+const noteByIdx = computed(() => props.notesForArticle.map((n) => n.note));
+
+function collectTextNodes(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const out = [];
+  let n;
+  while ((n = walker.nextNode())) {
+    out.push({ node: n, text: n.textContent });
+  }
+  return out;
+}
 
 // W3C motivation -> colour class. Linking blue, commenting yellow,
 // questioning orange, tagging green (RFC-018 Decision 10).
@@ -28,10 +49,10 @@ function motivationClass(note) {
   return 'note-other';
 }
 
-// Authority is derived from the creator (RFC-018 Decision 3). The editor does
-// not yet know each law's competent_authority, so for now: a known tool
-// creator => generated (dotted), anything else => default (solid). Advisory
-// (dashed) is reserved for when competent_authority wiring lands.
+// Authority -> border style. Derived from the creator (RFC-018 Decision 3):
+// a known tool creator => generated (dotted), anything else => default
+// (solid). Advisory (dashed) is reserved for when competent_authority wiring
+// lands.
 function authorityClass(note) {
   const c = (note?.creator || '').toString().toLowerCase();
   if (c.includes('tool') || c.includes('llm') || c.includes('generated')) {
@@ -40,13 +61,192 @@ function authorityClass(note) {
   return 'note-authoritative';
 }
 
+// Wrap one code-point slice of a text node in a <mark>. Splits the text node
+// so the Range covers exactly the slice, then surrounds it. Returns the
+// created <mark> (or null if the slice is degenerate after splitting).
+function wrapSlice(slice, noteIdx, note) {
+  const textNode = slice.node;
+  const full = textNode.textContent;
+  const u1 = cpToUtf16(full, slice.startCp);
+  const u2 = cpToUtf16(full, slice.endCp);
+  if (u2 <= u1) return null;
+  const range = document.createRange();
+  range.setStart(textNode, u1);
+  range.setEnd(textNode, u2);
+  const mark = document.createElement('mark');
+  mark.dataset.noteIdx = String(noteIdx);
+  // Class instead of data attribute so the scoped :deep() rules below match;
+  // mirrors the colour/border scheme of the pre-#646 string renderer.
+  mark.className = `${motivationClass(note)} ${authorityClass(note)}`;
+  mark.setAttribute('aria-label', `Notitie: ${note?.motivation ?? ''}`);
+  mark.setAttribute('tabindex', '0');
+  try {
+    range.surroundContents(mark);
+  } catch {
+    // surroundContents throws if the range partially selects a non-text
+    // node; our ranges are always within a single text node, so this is
+    // defensive only.
+    range.detach?.();
+    return null;
+  }
+  return mark;
+}
+
+// Unwrap every <mark> we added, restoring the original text nodes. v-html
+// resets the DOM when `html` changes, but a notes-only change (article
+// unchanged — e.g. once notes become editable) leaves the prior marks in
+// place, so applyHighlights must be idempotent and clean up first.
+function clearHighlights(root) {
+  for (const mark of root.querySelectorAll('mark[data-note-idx]')) {
+    const parent = mark.parentNode;
+    if (!parent) continue;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+    parent.normalize(); // re-join the split text nodes so offsets are stable
+  }
+}
+
+// Vue paints the sanitized markdown via v-html, then we layer the marks on
+// top. Runs after every relevant change (article or notes). Idempotent:
+// clears prior marks, re-aligns, re-wraps.
+function applyHighlights() {
+  const root = richTextEl.value;
+  if (!root) return;
+  clearHighlights(root);
+
+  const rawText = props.article?.text || '';
+  const notes = props.notesForArticle;
+  if (!rawText || notes.length === 0) return;
+
+  const domNodes = collectTextNodes(root);
+  if (domNodes.length === 0) return;
+
+  const { rawToDom, desynced } = buildAlignment(rawText, domNodes);
+  // If the rendered text diverged from the raw text by more than the known
+  // raw-only transforms (list prefixes, collapsed whitespace) the offset map
+  // is untrustworthy. Better to show the clean markdown with no highlights
+  // than to smear every mark onto the wrong words. Surfaced via useNotes'
+  // `issues` is out of scope here; the spans simply do not render.
+  if (desynced) return;
+  const domNodeCpLen = new Map(
+    domNodes.map(({ node, text }) => [node, Array.from(text).length]),
+  );
+
+  // Flatten to (span, note) and wrap by descending raw start. surroundContents
+  // splits the text node, so processing the rightmost span first keeps every
+  // earlier span's node references and offsets valid. `wrapped` tracks the raw
+  // ranges already marked: a span that overlaps one is dropped, matching the
+  // deterministic drop in markRanges() (RFC-018's overlapping-notes case).
+  const flat = [];
+  notes.forEach((entry, idx) => {
+    for (const span of entry.spans) flat.push({ span, idx });
+  });
+  // Drop decision must use document order (ascending), so the *earlier* note
+  // wins the overlap, same as markRanges. Wrapping order stays descending.
+  const ascending = [...flat].sort(
+    (a, b) => a.span.start - b.span.start || b.span.end - a.span.end,
+  );
+  const keep = new Set();
+  let cursor = 0;
+  for (const item of ascending) {
+    if (item.span.start < cursor) continue; // overlaps an earlier kept span
+    keep.add(item);
+    cursor = item.span.end;
+  }
+
+  const descending = flat
+    .filter((item) => keep.has(item))
+    .sort((a, b) => b.span.start - a.span.start);
+
+  for (const { span, idx } of descending) {
+    const note = noteByIdx.value[idx];
+    const slices = spanToNodeSlices(rawToDom, span, domNodeCpLen);
+    // Wrap right-to-left within the span too, same node-stability reason.
+    for (let i = slices.length - 1; i >= 0; i--) {
+      wrapSlice(slices[i], idx, note);
+    }
+  }
+}
+
+watch(
+  [html, () => props.notesForArticle],
+  async () => {
+    await nextTick();
+    applyHighlights();
+  },
+  { immediate: true },
+);
+
+// --- Hover popover -------------------------------------------------------
+// One shared nldd-popover. Marks are created imperatively, so hover is wired
+// via event delegation on the container instead of per-<mark> @mouseenter.
+// nldd-popover is a native HTML popover (click/light-dismiss by design), so
+// hover is wired manually with a small close delay so the pointer can travel
+// mark -> popover without it snapping shut.
+const popoverEl = useTemplateRef('popoverEl');
+const activeNote = ref(null);
+let closeTimer = null;
+
+function markFromEvent(event) {
+  const el = event.target?.closest?.('mark[data-note-idx]');
+  if (!el) return null;
+  const idx = Number(el.dataset.noteIdx);
+  return { el, note: noteByIdx.value[idx] || null };
+}
+
+function openFor(el, note) {
+  if (closeTimer) {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  }
+  activeNote.value = note;
+  const pop = popoverEl.value;
+  if (!pop) return;
+  pop.anchorElement = el;
+  try {
+    if (!pop.matches?.(':popover-open')) pop.showPopover?.();
+  } catch {
+    /* already open against another anchor — anchorElement moved it */
+  }
+}
+
+function onPointerOver(event) {
+  const hit = markFromEvent(event);
+  if (hit?.note) openFor(hit.el, hit.note);
+}
+function onPointerOut(event) {
+  if (markFromEvent(event)) scheduleClose();
+}
+function onFocusIn(event) {
+  const hit = markFromEvent(event);
+  if (hit?.note) openFor(hit.el, hit.note);
+}
+function onFocusOut(event) {
+  if (markFromEvent(event)) scheduleClose();
+}
+
+function scheduleClose() {
+  if (closeTimer) clearTimeout(closeTimer);
+  closeTimer = setTimeout(() => {
+    popoverEl.value?.hidePopover?.();
+    activeNote.value = null;
+    closeTimer = null;
+  }, 160);
+}
+function cancelClose() {
+  if (closeTimer) {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  }
+}
+onBeforeUnmount(() => {
+  if (closeTimer) clearTimeout(closeTimer);
+});
+
 function bodies(note) {
   return Array.isArray(note?.body) ? note.body : note?.body ? [note.body] : [];
 }
 function noteText(note) {
-  // W3C allows a plain-string body shorthand (`body: "text"`) alongside the
-  // structured TextualBody form; surface either, but not the tagging body
-  // (that is shown as chips).
   return (
     bodies(note).find((b) => typeof b === 'string') ??
     bodies(note).find((b) => b?.type === 'TextualBody' && b.purpose !== 'tagging')?.value ??
@@ -65,75 +265,20 @@ function noteCreator(note) {
   if (!note?.creator) return '';
   return typeof note.creator === 'string' ? note.creator : note.creator.name || '';
 }
-
-// --- Hover popover -------------------------------------------------------
-// One shared nldd-popover. On hover/focus of a highlight we point its
-// anchorElement at that mark, set the active note, and open it. nldd-popover
-// is a native HTML popover (click/light-dismiss by design), so hover is wired
-// manually with a small close delay so the pointer can travel mark -> popover
-// without it snapping shut.
-const popoverEl = useTemplateRef('popoverEl');
-const activeNote = ref(null);
-let closeTimer = null;
-
-function openFor(event, note) {
-  if (closeTimer) {
-    clearTimeout(closeTimer);
-    closeTimer = null;
-  }
-  activeNote.value = note;
-  const pop = popoverEl.value;
-  if (!pop) return;
-  pop.anchorElement = event.currentTarget;
-  // showPopover throws if already open; guard with matches(':popover-open').
-  try {
-    if (!pop.matches?.(':popover-open')) pop.showPopover?.();
-  } catch {
-    /* popover already open against another anchor — anchorElement moved it */
-  }
-}
-
-function scheduleClose() {
-  if (closeTimer) clearTimeout(closeTimer);
-  closeTimer = setTimeout(() => {
-    popoverEl.value?.hidePopover?.();
-    activeNote.value = null;
-    closeTimer = null;
-  }, 160);
-}
-
-function cancelClose() {
-  if (closeTimer) {
-    clearTimeout(closeTimer);
-    closeTimer = null;
-  }
-}
 </script>
 
 <template>
   <template v-if="article">
-    <nldd-rich-text>
-      <p>
-        <template v-for="(seg, i) in segments" :key="i">
-          <mark
-            v-if="seg.note"
-            :class="[
-              motivationClass(seg.note),
-              authorityClass(seg.note),
-              { 'is-active': activeNote === seg.note },
-            ]"
-            tabindex="0"
-            :aria-label="`Notitie: ${seg.note.motivation}`"
-            @mouseenter="openFor($event, seg.note)"
-            @mouseleave="scheduleClose"
-            @focus="openFor($event, seg.note)"
-            @blur="scheduleClose"
-            >{{ seg.text }}</mark
-          >
-          <template v-else>{{ seg.text }}</template>
-        </template>
-      </p>
-    </nldd-rich-text>
+    <!-- Delegated hover/focus: marks are added imperatively after render. -->
+    <div
+      class="annotated-wrap"
+      @pointerover="onPointerOver"
+      @pointerout="onPointerOut"
+      @focusin="onFocusIn"
+      @focusout="onFocusOut"
+    >
+      <nldd-rich-text ref="richTextEl" v-html="html"></nldd-rich-text>
+    </div>
 
     <!-- Single shared popover; anchorElement is repointed per hovered mark. -->
     <nldd-popover
@@ -174,63 +319,53 @@ function cancelClose() {
 </template>
 
 <style scoped>
-/* Legal text carries its own paragraph breaks (\n\n). Preserve them so the
-   Notities pane reads like the other text panes instead of one collapsed
-   block. pre-wrap keeps wrapping while honouring newlines. */
-p {
-  white-space: pre-wrap;
-}
-mark {
+/* Highlights are wrapped imperatively so they are not scoped-CSS targets via
+   Vue's data attribute; style <mark> through :deep so the rules still apply
+   inside nldd-rich-text's slotted content. */
+/* Marks are wrapped imperatively into nldd-rich-text's slotted light DOM, so
+   they are not tagged with Vue's scoped data attribute; reach them with
+   :deep(). Motivation -> background colour, authority -> border style, same
+   scheme as the pre-#646 string renderer. */
+.annotated-wrap :deep(mark) {
   padding: 0 0.1em;
   border-radius: 2px;
   cursor: help;
   transition: filter 0.12s;
-  /* Authority -> border style. */
 }
-mark.is-active {
-  filter: brightness(1.15) saturate(1.3);
-}
-mark.note-authoritative {
+.annotated-wrap :deep(mark.note-authoritative) {
   border-bottom: 2px solid currentColor;
 }
-mark.note-generated {
+.annotated-wrap :deep(mark.note-generated) {
   border-bottom: 2px dotted currentColor;
 }
-/* Reserved: authorityClass() returns 'note-advisory' once the
-   competent_authority wiring lands (RFC-018 Decision 3). Intentionally
-   kept ahead of its producer — not dead code. */
-mark.note-advisory {
+/* Reserved: authorityClass() returns 'note-advisory' once competent_authority
+   wiring lands (RFC-018 Decision 3). Kept ahead of its producer. */
+.annotated-wrap :deep(mark.note-advisory) {
   border-bottom: 2px dashed currentColor;
 }
-/* Motivation -> background colour. Kept light so text stays readable in
-   both themes; the design system's tokens would be preferable once the
-   notes feature has dedicated tokens. */
-mark.note-linking {
+.annotated-wrap :deep(mark.note-linking) {
   background: rgba(59, 130, 246, 0.28);
 }
-mark.note-commenting {
+.annotated-wrap :deep(mark.note-commenting) {
   background: rgba(234, 179, 8, 0.28);
 }
-mark.note-questioning {
+.annotated-wrap :deep(mark.note-questioning) {
   background: rgba(249, 115, 22, 0.3);
 }
-mark.note-tagging {
+.annotated-wrap :deep(mark.note-tagging) {
   background: rgba(34, 197, 94, 0.28);
 }
-mark.note-other {
+.annotated-wrap :deep(mark.note-other) {
   background: rgba(148, 163, 184, 0.28);
 }
-mark:focus-visible {
+.annotated-wrap :deep(mark:focus-visible) {
   outline: 2px solid currentColor;
   outline-offset: 1px;
 }
 
-/* Popover card content. nldd-popover does not pad slotted content, so the
-   card sets its own padding. It also does not inherit the editor's UI font
-   into the slot, so set RijksSansVF explicitly (the design-system UI face)
-   instead of falling back to a serif default — that was the "gek font" on
-   the heading. Border-left echoes the highlight colour so the popover is
-   visually tied to the mark it describes. */
+/* Popover card content. nldd-popover does not pad slotted content, nor
+   inherit the editor UI font, so the card sets both (RijksSansVF is the
+   design-system UI face). Border-left echoes the highlight colour. */
 .note-pop {
   font-family: 'RijksSansVF', system-ui, sans-serif;
   padding: 14px 16px;
@@ -257,8 +392,6 @@ mark:focus-visible {
   gap: 8px;
   margin-bottom: 8px;
 }
-/* Small coloured pill instead of a bare uppercase word — the uppercase +
-   letter-spacing read as a "weird font" against the serif fallback. */
 .note-pop__badge {
   font-size: 0.72rem;
   font-weight: 600;

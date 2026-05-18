@@ -1,7 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
+import { renderArticleHtml } from '../composables/useArticleMarkdown.js';
 
 const props = defineProps({
   article: { type: Object, default: null },
@@ -11,14 +10,9 @@ const props = defineProps({
   centered: { type: Boolean, default: false },
 });
 
-// marked v18 no longer sanitizes HTML in Markdown by default; run its output
-// through DOMPurify before binding with v-html so law text (today author-
-// controlled, but harvested laws could introduce arbitrary HTML) cannot inject
-// <script>, event handlers or javascript: links.
-const html = computed(() => {
-  if (!props.article?.text) return '';
-  return DOMPurify.sanitize(marked.parse(props.article.text));
-});
+// Shared marked + DOMPurify pipeline so the notes-on view (AnnotatedText)
+// renders byte-identically to this notes-off view (#646).
+const html = computed(() => renderArticleHtml(props.article?.text || ''));
 
 const paragraphs = computed(() => {
   if (!props.article?.text) return [];
