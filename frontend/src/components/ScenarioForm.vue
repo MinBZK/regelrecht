@@ -242,7 +242,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <template v-if="hasExpectations">
         <nldd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></nldd-title>
         <nldd-spacer size="4"></nldd-spacer>
-        <nldd-list variant="simple">
+        <nldd-list variant="box">
           <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
             <nldd-text-cell size="md" :text="humanize(name)"></nldd-text-cell>
             <nldd-text-cell
@@ -271,14 +271,14 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
       <nldd-list variant="box" class="sf-input-list">
         <nldd-list-item size="md">
-          <nldd-text-cell text="Datum" max-width="140px"></nldd-text-cell>
+          <nldd-text-cell text="Datum" max-width="280px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell>
             <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140px"></nldd-text-cell>
+          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="280px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell>
             <nldd-text-field
@@ -370,14 +370,14 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 <style>
 /* Unscoped: nldd web components need global selectors */
 .sf-input-list nldd-text-cell {
-  width: 140px;
   min-width: 140px;
-  flex-shrink: 0;
+  flex: 1;
 }
 
 .sf-input-list nldd-cell {
   flex: 1;
   min-width: 0;
+  max-width: 280px;
 }
 
 .sf-input-list nldd-text-field {

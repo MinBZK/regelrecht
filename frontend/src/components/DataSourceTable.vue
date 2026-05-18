@@ -138,7 +138,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
         class="ds-datasource-list"
       >
         <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
-          <nldd-text-cell :text="col.name" max-width="140px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
+          <nldd-text-cell :text="col.name" max-width="280px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
           <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
           <template v-if="readonly">
             <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
@@ -256,14 +256,14 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 <style>
 /* Unscoped: nldd web components need global selectors */
 .ds-datasource-list nldd-text-cell {
-  width: 140px;
   min-width: 140px;
-  flex-shrink: 0;
+  flex: 1;
 }
 
 .ds-datasource-list nldd-cell {
   flex: 1;
   min-width: 0;
+  max-width: 280px;
 }
 
 .ds-datasource-list nldd-text-field,
