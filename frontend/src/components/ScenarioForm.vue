@@ -118,6 +118,14 @@ function discardEdits() {
 // Re-init when scenario/setup changes
 watch([() => props.setup, () => props.scenario], discardEdits, { deep: true });
 
+// CONTRACT: execute() must stay fully synchronous. The WASM engine runs
+// in-process with no I/O, so `result`/`error`/`running` are all settled
+// (running reset in finally) before this returns, and callers read them
+// back immediately from the return value or getExecutionData() — e.g.
+// ScenarioBuilder.reExecute() / onSaveAndShow() and the auto-execute
+// loop. Introducing any await/timer/microtask here would make those
+// callers observe `running: true` and stale data. If async execution is
+// ever needed, return a Promise and update every caller to await it.
 function execute() {
   if (!props.engine || !props.ready) return;
 
