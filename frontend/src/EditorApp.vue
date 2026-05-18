@@ -933,7 +933,7 @@ function findIncompleteOperation(value) {
 }
 
 // Sync YAML when ActionSheet saves (mutations happened in-place)
-function handleActionSave() {
+async function handleActionSave() {
   const action = activeAction.value;
   if (action) {
     // Output is required by the schema and the engine cannot load a law
@@ -955,12 +955,17 @@ function handleActionSave() {
       return;
     }
   }
-  actionSnapshot = null;
-  activeAction.value = null;
-  // Re-assign to trigger reactivity + re-dump YAML
+  // Commit the in-place mutations, then actually persist the law. The
+  // sheet's "Opslaan" is a real save, so the Machine pane won't show a
+  // separate dirty/save affordance for sheet edits. On a failed PUT the
+  // edits stay in the model and the Machine pane's normal dirty/save
+  // affordance is the fallback — no data loss either way.
   machineReadable.value = structuredClone(machineReadable.value);
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
+  await handleLawSave();
+  actionSnapshot = null;
+  activeAction.value = null;
 }
 
 </script>
