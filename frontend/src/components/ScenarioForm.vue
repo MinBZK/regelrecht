@@ -235,12 +235,12 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 </script>
 
 <template>
-  <div class="sf-form">
+  <div>
     <!-- Scenario overview -->
     <template v-if="selectedSource === null">
       <!-- Expected outputs -->
       <template v-if="hasExpectations">
-        <nldd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></nldd-title>
+        <nldd-title size="5"><h2>Verwachte uitkomsten</h2></nldd-title>
         <nldd-spacer size="4"></nldd-spacer>
         <nldd-list variant="box">
           <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
@@ -258,7 +258,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
           @click="emit('show-details')"
           text="Resultaat"
         ></nldd-button>
-        <nldd-spacer size="16"></nldd-spacer>
       </template>
 
       <!-- Error -->
@@ -268,7 +267,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <div v-if="running" class="sf-running">Uitvoeren...</div>
 
       <!-- Input: date + parameters -->
-      <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
+      <nldd-spacer v-if="hasExpectations" size="16"></nldd-spacer>
+      <nldd-title size="5"><h2>Invoer</h2></nldd-title>
+      <nldd-spacer size="4"></nldd-spacer>
       <nldd-list variant="box" class="sf-input-list">
         <nldd-list-item size="md">
           <nldd-text-cell text="Datum" max-width="280px"></nldd-text-cell>
@@ -292,7 +293,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       </nldd-list>
 
       <!-- Data sources: a row per source, drill in one level deeper -->
-      <nldd-title size="5" class="sf-section-title"><span>Gegevensbronnen</span></nldd-title>
+      <nldd-spacer size="16"></nldd-spacer>
+      <nldd-title size="5"><h2>Gegevensbronnen</h2></nldd-title>
+      <nldd-spacer size="4"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item
           v-for="(ds, i) in dataSources"
@@ -332,20 +335,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 </template>
 
 <style scoped>
-.sf-form {
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-}
-
-/* Section titles — extra top margin separates each block visually.
- * The first section title doesn't need top margin (handled by :first-child). */
-.sf-section-title {
-  margin-top: 16px;
-  margin-bottom: 4px;
-}
-.sf-section-title:first-child {
-  margin-top: 0;
-}
-
 .sf-running {
   font-size: 12px;
   color: var(--semantics-text-color-secondary, #666);
