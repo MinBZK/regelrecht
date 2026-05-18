@@ -244,7 +244,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
           <h2>Verwachte uitkomsten</h2>
           <nldd-button
             slot="actions"
-            size="sm"
+            size="xs"
             :disabled="!result && !error || undefined"
             @click="emit('show-details')"
             text="Resultaat"
