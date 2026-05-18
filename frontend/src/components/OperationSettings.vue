@@ -464,7 +464,19 @@ function addValue() {
         <nldd-spacer-cell size="12"></nldd-spacer-cell>
         <nldd-cell v-if="editable">
           <nldd-dropdown size="md" data-testid="operation-type-dropdown">
-            <select aria-label="Operatie type" :value="operation.operation" @change="changeOperationType($event.target.value)">
+            <!-- Same stale-collapsed-label issue as the value dropdown: the
+                 <option> list (typeOptions) is constant, so navigating to a
+                 different operation only changes the bound value, and a
+                 native <select> reused in place keeps showing the previous
+                 op's type label. Key on the operation identity + its type so
+                 the element is recreated and the collapsed text stays in
+                 sync with the selected option. -->
+            <select
+              :key="`op-type-${operation.number}-${operation.operation}`"
+              aria-label="Operatie type"
+              :value="operation.operation"
+              @change="changeOperationType($event.target.value)"
+            >
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value" :selected="opt.value === operation.operation">{{ opt.label }}</option>
             </select>
           </nldd-dropdown>
@@ -509,8 +521,22 @@ function addValue() {
             <!-- Variable references and nested operations show a full dropdown -->
             <template v-else>
               <nldd-dropdown size="md" style="flex: 1; min-width: 0;">
-                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
-                  <template v-for="nestedOpt in [valueDropdownNestedOption(val._value)]" :key="'nested'">
+                <!-- A nested op's option value is the constant '__nested__',
+                     and so is the select's bound value. Native <select>
+                     only re-renders its COLLAPSED label when value changes,
+                     so navigating to a different operation (which only swaps
+                     the option TEXT, not its value) leaves the closed
+                     control showing the previous op's label while the open
+                     list shows the correct one. Keying the <select> on the
+                     displayed identity forces a fresh element so the
+                     collapsed text always matches the selected option. -->
+                <select
+                  :key="`val-sel-${i}-${valueDropdownNestedOption(val._value)?.label ?? currentDropdownValue(val._value)}`"
+                  :aria-label="val._label"
+                  :value="currentDropdownValue(val._value)"
+                  @change="updateDropdownValue(val, $event)"
+                >
+                  <template v-for="nestedOpt in [valueDropdownNestedOption(val._value)]" :key="nestedOpt?.label ?? 'nested'">
                     <option v-if="nestedOpt" :value="nestedOpt.value" :selected="currentDropdownValue(val._value) === '__nested__'">{{ nestedOpt.label }}</option>
                   </template>
                   <optgroup v-for="[category, opts] in variableGroups" :key="category" :label="category">
