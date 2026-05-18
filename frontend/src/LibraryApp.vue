@@ -455,9 +455,9 @@ loadIndex();
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar size="md">
-                <nldd-tab-bar-item selected text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+              <nldd-tab-bar size="md" navigation>
+                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -501,9 +501,9 @@ loadIndex();
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar size="md">
-                <nldd-tab-bar-item selected text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+              <nldd-tab-bar size="md" navigation>
+                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%">
@@ -708,9 +708,9 @@ loadIndex();
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar compact>
-                <nldd-tab-bar-item selected icon="books" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
+              <nldd-tab-bar compact navigation>
+                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
