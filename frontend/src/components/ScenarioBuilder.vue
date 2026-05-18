@@ -276,6 +276,15 @@ function onShowDetails(index, view = 'trace') {
     // Bound to this builder + scenario so the result sheet's reload
     // action re-runs exactly the right scenario regardless of how many
     // ScenarioBuilder instances (panes) exist.
+    //
+    // Known limitation: `index` is captured by value and the result
+    // sheet can outlive the scenario sheet. It stays correct in practice
+    // because scenario count/order is stable across an inputs-only save
+    // and cancelEdits() no longer replaces formState — so nothing
+    // reindexes scenarios while the sheet is open, and the UI has no
+    // reorder/delete-scenario affordance. If the index ever did go out
+    // of bounds, reExecute()'s optional chaining makes it a safe no-op
+    // (empty result) rather than running the wrong scenario.
     reload: () => reExecute(index),
     view,
   });

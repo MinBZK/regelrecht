@@ -110,6 +110,11 @@ function discardEdits() {
       .map((a) => [a.outputName, String(a.value)]),
   );
   selectedOutputs.value = initOutputs();
+  // Wiping the local result is safe even on a cancel-with-edits: the
+  // builder keeps the last run in its scenarioResults map, and
+  // onShowDetails() falls back to that when getExecutionData() returns
+  // no fresh result (hasFresh === false). So the result sheet keeps
+  // showing the previous outcome instead of going blank.
   result.value = null;
   error.value = null;
   errorTraceText.value = null;
