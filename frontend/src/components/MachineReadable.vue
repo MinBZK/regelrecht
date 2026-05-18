@@ -282,6 +282,14 @@ function addOutput() {
               @change="updateProduces('legal_character', $event.target.value)"
             >
               <option value="">(geen)</option>
+              <!-- Preserve a value the hardcoded enum doesn't know (e.g. a
+                   law authored against a newer schema, or set via the YAML
+                   view): show + keep it instead of silently collapsing to
+                   (geen), which any stray edit would then commit. -->
+              <option
+                v-if="produces.legal_character && !LEGAL_CHARACTERS.includes(produces.legal_character)"
+                :value="produces.legal_character"
+              >{{ humanize(produces.legal_character) }}</option>
               <option v-for="v in LEGAL_CHARACTERS" :key="v" :value="v">{{ humanize(v) }}</option>
             </select>
           </nldd-dropdown>
@@ -300,6 +308,12 @@ function addOutput() {
               @change="updateProduces('decision_type', $event.target.value)"
             >
               <option value="">(geen)</option>
+              <!-- Same as legal_character: keep an out-of-enum value
+                   visible/selected so it isn't silently cleared. -->
+              <option
+                v-if="produces.decision_type && !DECISION_TYPES.includes(produces.decision_type)"
+                :value="produces.decision_type"
+              >{{ humanize(produces.decision_type) }}</option>
               <option v-for="v in DECISION_TYPES" :key="v" :value="v">{{ humanize(v) }}</option>
             </select>
           </nldd-dropdown>
