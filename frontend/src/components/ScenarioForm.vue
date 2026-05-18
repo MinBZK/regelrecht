@@ -346,12 +346,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   margin-top: 0;
 }
 
-/* Expected outputs — single continuous block with left border */
-/* DataSourceTable blocks get the same top spacing as section titles */
-.sf-form :deep(.ds-block) {
-  margin-top: 16px;
-}
-
 .sf-running {
   font-size: 12px;
   color: var(--semantics-text-color-secondary, #666);
