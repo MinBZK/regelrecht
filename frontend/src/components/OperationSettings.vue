@@ -370,6 +370,11 @@ function changeValueKind(val, kind) {
   if (kind === 'operatie' && !isOp) {
     applyValueMutation(val, { operation: 'ADD', values: [] });
   } else if (kind === 'value' && isOp) {
+    // Replaces the whole nested op with '' in one click. Deliberately
+    // unconfirmed: this matches the equally-destructive sibling
+    // removeValue() in the same menu — both rely on the ActionSheet
+    // "Annuleren" snapshot-restore as the single, consistent undo,
+    // rather than introducing a one-off confirm dialog here.
     applyValueMutation(val, '');
   }
 }
