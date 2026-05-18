@@ -122,9 +122,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
     </template>
 
     <template v-if="showBody">
-      <div v-if="rows.length === 0" class="ds-block-empty">
-        Geen gegevens &mdash; vul in indien relevant
-      </div>
+      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens — vul in indien relevant"></nldd-inline-dialog>
 
       <!-- One box list per row — identical layout regardless of row count,
            with the delete button at the bottom of each list. Spacers (not a
@@ -156,7 +154,6 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               size="md"
               :type="inputType(col.type)"
               :value="String(row[col.name] ?? '')"
-              :placeholder="col.name"
               @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
             ></nldd-text-field>
           </nldd-cell>
@@ -164,7 +161,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 
         <nldd-list-item v-if="!readonly" size="md">
           <nldd-cell width="full">
-            <nldd-button variant="destructive" size="md" width="full" start-icon="minus" @click="removeRow(ri)" text="Verwijder"></nldd-button>
+            <nldd-button variant="destructive" size="md" width="full" start-icon="delete" @click="removeRow(ri)" text="Verwijder"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
         </nldd-list>
@@ -216,11 +213,4 @@ const showBody = computed(() => props.drilledIn || expanded.value);
   flex-shrink: 0;
 }
 
-.ds-block-empty {
-  padding: 12px;
-  text-align: center;
-  font-size: 14px;
-  color: var(--semantics-text-color-secondary, #999);
-  font-style: italic;
-}
 </style>

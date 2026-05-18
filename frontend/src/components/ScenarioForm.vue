@@ -233,6 +233,18 @@ function matchStatus(outputName, actualValue) {
 }
 
 const hasExpectations = computed(() => Object.keys(expectations.value).length > 0);
+
+// Minimal field-level validation: an empty/unparseable date, or the
+// "Variable not found: <name>" engine error, is mapped back onto the
+// offending input so the user sees which field is wrong (the raw engine
+// message still shows as context). No auto-revert — the input stays.
+const dateInvalid = computed(
+  () => !calculationDate.value || /date/i.test(error.value || ''),
+);
+const missingVar = computed(() => {
+  const m = /Variable not found:\s*(\S+)/i.exec(error.value || '');
+  return m ? m[1] : null;
+});
 </script>
 
 <template>
@@ -280,7 +292,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
           <nldd-text-cell text="Datum" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
-            <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+            <nldd-text-field size="md" type="date" :invalid="dateInvalid || undefined" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
@@ -289,8 +301,8 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
           <nldd-cell width="full" min-width="120px">
             <nldd-text-field
               size="md"
+              :invalid="missingVar === name || undefined"
               :value="value"
-              :placeholder="name"
               @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
             ></nldd-text-field>
           </nldd-cell>
