@@ -71,12 +71,6 @@ const currentScenarioName = computed(() =>
     ? formState.value?.scenarios?.[selectedScenarioIndex.value]?.name ?? ''
     : '',
 );
-// The title bar is a static "Scenario"; the readable scenario name lives as
-// an nldd-title at the top of the section content instead (so it can't get
-// truncated). The back button only appears when drilled into a data source
-// — its label is the scenario name as the accessible "back to" target.
-const titleBarBackText = computed(() => (drilledSourceName.value ? currentScenarioName.value : ''));
-
 function onTitleBack() {
   const idx = selectedScenarioIndex.value;
   if (idx !== null) scenarioRefs.value[idx]?.clearDrill?.();
@@ -444,17 +438,29 @@ defineExpose({ save: onSave });
       @close="cancelEdits"
     >
       <nldd-page sticky-header :sticky-footer="isDirty || undefined">
+        <!-- Overview header: scenario name (revealed in the bar on scroll
+             via the content-title anchor), no back. -->
         <nldd-top-title-bar
+          v-if="!drilledSourceName"
           slot="header"
-          text="Scenario"
-          :back-text="titleBarBackText"
+          :text="currentScenarioName"
+          collapse-anchor="scenario-title-anchor"
+          dismiss-text="Annuleer"
+          @dismiss="cancelEdits"
+        ></nldd-top-title-bar>
+        <!-- Drilled-in header: its own bar — a back button to the scenario
+             overview (the data-source heading lives in the content). -->
+        <nldd-top-title-bar
+          v-else
+          slot="header"
+          :back-text="currentScenarioName"
           dismiss-text="Annuleer"
           @back="onTitleBack"
           @dismiss="cancelEdits"
         ></nldd-top-title-bar>
         <nldd-simple-section>
           <template v-if="!drilledSourceName">
-            <nldd-title size="4"><h2>{{ currentScenarioName }}</h2></nldd-title>
+            <nldd-title id="scenario-title-anchor" size="4"><h2>{{ currentScenarioName }}</h2></nldd-title>
             <nldd-spacer size="24"></nldd-spacer>
           </template>
           <ScenarioForm
