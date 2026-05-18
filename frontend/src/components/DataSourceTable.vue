@@ -256,6 +256,11 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 .ds-datasource-list nldd-cell {
   flex: 1;
   min-width: 0;
+}
+
+/* Cap only the input cells, so the full-width Verwijder button cell still
+   spans the whole row. */
+.ds-datasource-list nldd-cell:not([width="full"]) {
   max-width: 280px;
 }
 
