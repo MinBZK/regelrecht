@@ -525,12 +525,6 @@ function addValue() {
               variant="neutral-tinted"
             ></nldd-icon-button>
             <nldd-menu :anchor="`val-actions-${operation.number}-${i}`">
-              <nldd-menu-item
-                v-if="isNestedOperation(val._value)"
-                text="Bewerk"
-                icon="edit"
-                @click.stop="emit('select-operation', val._value)"
-              ></nldd-menu-item>
               <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
                 <nldd-menu-item
                   type="radio"
