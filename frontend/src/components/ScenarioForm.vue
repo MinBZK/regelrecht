@@ -258,8 +258,12 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 // caused an execution error, is marked invalid so the user sees which
 // field to fill (the raw engine message still shows as context). No
 // auto-revert — the input stays. We deliberately do NOT map engine error
-// strings onto data-source columns: that produced confusing cross-field
-// invalid states (e.g. changing bsn flagged loon_uit_dienstbetrekking).
+// strings onto fields (incl. substring-matching the error against a param
+// name): that produced confusing cross-field invalid states (changing bsn
+// flagged loon_uit_dienstbetrekking) and was explicitly reverted. The
+// broad "any error + this field empty" mark is the accepted trade — it
+// can over-mark a legitimately-blank optional param, but it never
+// mis-points at an unrelated field, which was the worse failure.
 const dateInvalid = computed(() => !calculationDate.value);
 // Unique id so the inline message can be aria-associated with the field
 // (ScenarioForm is mounted once per scenario, so a static id would clash).

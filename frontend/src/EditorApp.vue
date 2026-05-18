@@ -746,6 +746,10 @@ function onYamlInput(event) {
 }
 
 function handleSave({ section, key, newKey, index, data }) {
+  // JSON round-trip clone: Vue reactive proxies aren't structuredClone-able
+  // in all envs. Safe because law YAML is JSON-plain — but Date/undefined
+  // are NOT preserved, which only matters if a future field becomes
+  // date-typed (use an explicit serialiser then).
   const mr = machineReadable.value
     ? JSON.parse(JSON.stringify(machineReadable.value))
     : {};
@@ -795,6 +799,8 @@ function handleSave({ section, key, newKey, index, data }) {
 // array index. Out-of-range indices and missing keys are no-ops so a
 // stale event from the UI can never crash.
 function handleDelete({ section, key, index }) {
+  // JSON clone — see handleSave: Date/undefined not preserved (fine for
+  // JSON-plain law data).
   const mr = machineReadable.value
     ? JSON.parse(JSON.stringify(machineReadable.value))
     : null;
@@ -982,6 +988,8 @@ async function handleActionSave() {
   // separate dirty/save affordance for sheet edits. On a failed PUT the
   // edits stay in the model and the Machine pane's normal dirty/save
   // affordance is the fallback — no data loss either way.
+  // JSON clone — see handleSave: reactive proxy not structuredClone-able;
+  // Date/undefined not preserved (fine for JSON-plain law YAML).
   machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
