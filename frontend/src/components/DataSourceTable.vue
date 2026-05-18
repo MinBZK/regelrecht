@@ -115,10 +115,10 @@ const showBody = computed(() => props.drilledIn || expanded.value);
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
     <template v-else>
-      <nldd-title size="5" :id="anchorId || undefined">
+      <nldd-title size="3" :id="anchorId || undefined">
         <h2>{{ title }}</h2>
       </nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
     </template>
 
     <template v-if="showBody">

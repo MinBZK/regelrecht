@@ -460,8 +460,8 @@ defineExpose({ save: onSave });
         ></nldd-top-title-bar>
         <nldd-simple-section>
           <template v-if="!drilledSourceName">
-            <nldd-title id="scenario-title-anchor" size="4"><h2>{{ currentScenarioName }}</h2></nldd-title>
-            <nldd-spacer size="24"></nldd-spacer>
+            <nldd-title id="scenario-title-anchor" size="3"><h2>{{ currentScenarioName }}</h2></nldd-title>
+            <nldd-spacer size="16"></nldd-spacer>
           </template>
           <ScenarioForm
             v-for="(scenario, i) in formState.scenarios"

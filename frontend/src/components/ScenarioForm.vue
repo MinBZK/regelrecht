@@ -242,7 +242,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <!-- Expected outputs -->
       <template v-if="hasExpectations">
         <nldd-title size="5"><h2>Verwachte uitkomsten</h2></nldd-title>
-        <nldd-spacer size="12"></nldd-spacer>
+        <nldd-spacer size="8"></nldd-spacer>
         <nldd-list variant="box">
           <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
             <nldd-text-cell size="md" :text="humanize(name)"></nldd-text-cell>
@@ -272,9 +272,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <div v-if="running" class="sf-running">Uitvoeren...</div>
 
       <!-- Input: date + parameters -->
-      <nldd-spacer v-if="hasExpectations" size="24"></nldd-spacer>
+      <nldd-spacer v-if="hasExpectations" size="16"></nldd-spacer>
       <nldd-title size="5"><h2>Invoer</h2></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item size="md">
           <nldd-text-cell text="Datum" min-width="120px" max-width="200px"></nldd-text-cell>
@@ -298,9 +298,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       </nldd-list>
 
       <!-- Data sources: a row per source, drill in one level deeper -->
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item
           v-for="(ds, i) in dataSources"
