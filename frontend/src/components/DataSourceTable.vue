@@ -136,7 +136,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
         <nldd-spacer v-if="ri > 0" size="12"></nldd-spacer>
         <nldd-list variant="box">
         <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
-          <nldd-text-cell :text="col.isKey ? `**${col.name}**` : col.name" min-width="120px" max-width="200px"></nldd-text-cell>
+          <nldd-text-cell :text="col.name" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
           <template v-if="readonly">
             <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
