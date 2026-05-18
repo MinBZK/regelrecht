@@ -44,6 +44,10 @@ function initDataSources() {
 
 const dataSources = ref(initDataSources());
 
+// Drill-in navigation: null = scenario overview, otherwise the index of the
+// data source whose table is shown one level deeper in the sheet.
+const selectedSource = ref(null);
+
 // Expectations from scenario assertions
 const expectations = ref(
   Object.fromEntries(
@@ -77,6 +81,7 @@ watch([() => props.setup, () => props.scenario], () => {
     (props.setup.parameters || []).map((p) => [p.name, p.value ?? '']),
   );
   dataSources.value = initDataSources();
+  selectedSource.value = null;
   expectations.value = Object.fromEntries(
     (props.scenario.assertions || [])
       .filter((a) => a.outputName && a.value !== null && a.value !== undefined)
@@ -213,70 +218,101 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 
 <template>
   <div class="sf-form">
-    <!-- Expected outputs -->
-    <template v-if="hasExpectations">
-      <nldd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></nldd-title>
-      <nldd-spacer size="4"></nldd-spacer>
-      <nldd-list variant="simple">
-        <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
-          <nldd-text-cell size="md" :text="humanize(name)"></nldd-text-cell>
-          <nldd-text-cell
-            size="md"
-            horizontal-alignment="right"
-            :text="humanize(formatValue(normalizeForCompare(exp)))"
-          ></nldd-text-cell>
+    <!-- Scenario overview -->
+    <template v-if="selectedSource === null">
+      <!-- Expected outputs -->
+      <template v-if="hasExpectations">
+        <nldd-title size="5" class="sf-section-title"><span>Verwachte uitkomsten</span></nldd-title>
+        <nldd-spacer size="4"></nldd-spacer>
+        <nldd-list variant="simple">
+          <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
+            <nldd-text-cell size="md" :text="humanize(name)"></nldd-text-cell>
+            <nldd-text-cell
+              size="md"
+              horizontal-alignment="right"
+              :text="humanize(formatValue(normalizeForCompare(exp)))"
+            ></nldd-text-cell>
+          </nldd-list-item>
+        </nldd-list>
+        <nldd-spacer size="8"></nldd-spacer>
+        <nldd-button
+          :disabled="!result && !error || undefined"
+          @click="emit('show-details')"
+          text="Resultaat"
+        ></nldd-button>
+        <nldd-spacer size="16"></nldd-spacer>
+      </template>
+
+      <!-- Error -->
+      <div v-if="error && !running" class="sf-error">{{ error }}</div>
+
+      <!-- Loading indicator -->
+      <div v-if="running" class="sf-running">Uitvoeren...</div>
+
+      <!-- Input: date + parameters -->
+      <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
+      <nldd-list variant="box" class="sf-input-list">
+        <nldd-list-item size="md">
+          <nldd-text-cell text="Datum" max-width="140px"></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-cell>
+            <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+          </nldd-cell>
+        </nldd-list-item>
+        <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
+          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140px"></nldd-text-cell>
+          <nldd-spacer-cell size="8"></nldd-spacer-cell>
+          <nldd-cell>
+            <nldd-text-field
+              size="md"
+              :value="value"
+              :placeholder="name"
+              @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
+            ></nldd-text-field>
+          </nldd-cell>
         </nldd-list-item>
       </nldd-list>
-      <nldd-spacer size="8"></nldd-spacer>
-      <nldd-button
-        :disabled="!result && !error || undefined"
-        @click="emit('show-details')"
-        text="Resultaat"
-      ></nldd-button>
-      <nldd-spacer size="16"></nldd-spacer>
+
+      <!-- Data sources: a row per source, drill in one level deeper -->
+      <nldd-title size="5" class="sf-section-title"><span>Gegevensbronnen</span></nldd-title>
+      <nldd-list variant="box">
+        <nldd-list-item
+          v-for="(ds, i) in dataSources"
+          :key="ds.sourceName"
+          size="md"
+          type="button"
+          :data-testid="`ds-row-${i}`"
+          @click="selectedSource = i"
+        >
+          <nldd-text-cell :text="ds.sourceName"></nldd-text-cell>
+          <nldd-spacer-cell size="12"></nldd-spacer-cell>
+          <nldd-text-cell horizontal-alignment="right"><nldd-tag v-if="ds.rows.length" size="sm" :text="String(ds.rows.length)"></nldd-tag></nldd-text-cell>
+          <nldd-spacer-cell size="12"></nldd-spacer-cell>
+          <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
+        </nldd-list-item>
+      </nldd-list>
     </template>
 
-    <!-- Error -->
-    <div v-if="error && !running" class="sf-error">{{ error }}</div>
-
-    <!-- Loading indicator -->
-    <div v-if="running" class="sf-running">Uitvoeren...</div>
-
-    <!-- Input: date + parameters -->
-    <nldd-title size="5" class="sf-section-title"><span>Invoer</span></nldd-title>
-    <nldd-list variant="box" class="sf-input-list">
-      <nldd-list-item size="md">
-        <nldd-text-cell text="Datum" max-width="140px"></nldd-text-cell>
-        <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-cell>
-          <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
-        </nldd-cell>
-      </nldd-list-item>
-      <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-        <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="140px"></nldd-text-cell>
-        <nldd-spacer-cell size="8"></nldd-spacer-cell>
-        <nldd-cell>
-          <nldd-text-field
-            size="md"
-            :value="value"
-            :placeholder="name"
-            @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
-          ></nldd-text-field>
-        </nldd-cell>
-      </nldd-list-item>
-    </nldd-list>
-
-    <!-- Data sources -->
-    <DataSourceTable
-      v-for="(ds, i) in dataSources"
-      :key="ds.sourceName"
-      :title="ds.sourceName"
-      :key-field="ds.keyField"
-      :fields="ds.fields"
-      :model-value="ds.rows"
-      :default-expanded="false"
-      @update:model-value="updateDataSourceRows(i, $event)"
-    />
+    <!-- One level deeper: a single data source's table + back to scenario -->
+    <template v-else>
+      <nldd-list variant="box">
+        <nldd-list-item size="md" type="button" data-testid="ds-back" @click="selectedSource = null">
+          <nldd-icon-cell size="20"><nldd-icon name="chevron-left"></nldd-icon></nldd-icon-cell>
+          <nldd-spacer-cell size="12"></nldd-spacer-cell>
+          <nldd-text-cell text="Scenario"></nldd-text-cell>
+        </nldd-list-item>
+      </nldd-list>
+      <nldd-spacer size="16"></nldd-spacer>
+      <DataSourceTable
+        :key="dataSources[selectedSource].sourceName"
+        :title="dataSources[selectedSource].sourceName"
+        :key-field="dataSources[selectedSource].keyField"
+        :fields="dataSources[selectedSource].fields"
+        :model-value="dataSources[selectedSource].rows"
+        :drilled-in="true"
+        @update:model-value="updateDataSourceRows(selectedSource, $event)"
+      />
+    </template>
 
   </div>
 </template>

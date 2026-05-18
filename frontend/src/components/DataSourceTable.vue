@@ -10,6 +10,9 @@ const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   defaultExpanded: { type: Boolean, default: false },
   readonly: { type: Boolean, default: false },
+  // When the table is shown one level deep in a drill-in sheet there's no
+  // accordion: the title is a plain heading and the body is always visible.
+  drilledIn: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -93,20 +96,26 @@ const allColumns = computed(() => {
 });
 
 const rowCount = computed(() => rows.value.length);
+
+// Drilled-in tables have no toggle, so the body is always shown.
+const showBody = computed(() => props.drilledIn || expanded.value);
 </script>
 
 <template>
   <div class="ds-block">
-    <!-- Header -->
-    <button class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
+    <!-- Header: accordion toggle, or a plain heading when drilled in -->
+    <button v-if="!drilledIn" class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
       <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
       <nldd-title size="5" style="flex: 1; text-align: left;">
         <span>{{ title }}</span>
       </nldd-title>
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
+    <nldd-title v-else size="5" class="ds-block-heading">
+      <span>{{ title }}</span>
+    </nldd-title>
 
-    <div v-if="expanded" class="ds-block-body">
+    <div v-if="showBody" class="ds-block-body">
       <div v-if="rows.length === 0" class="ds-block-empty">
         Geen gegevens &mdash; vul in indien relevant
       </div>
@@ -181,6 +190,10 @@ const rowCount = computed(() => rows.value.length);
   padding: 0;
   width: 100%;
   margin-bottom: 4px;
+}
+
+.ds-block-heading {
+  margin: 0 0 4px 0;
 }
 
 .ds-block-chevron {
