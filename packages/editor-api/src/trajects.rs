@@ -71,29 +71,20 @@ pub struct CreateTrajectRequest {
     pub description: String,
     #[serde(default)]
     pub scope: String,
-    /// Writable own source config — required, defines where edits push.
-    pub writable_source: WritableSourceInput,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct WritableSourceInput {
-    pub name: String,
-    /// Owner of the GitHub repo the traject branch lives on (fork or central).
-    pub gh_owner: String,
-    pub gh_repo: String,
-    /// Optional override; auto-generated from `name` when omitted.
-    #[serde(default)]
-    pub gh_branch: Option<String>,
-    /// Existing branch to clone-then-branch-from when `gh_branch` doesn't
-    /// yet exist on the remote. Defaults to `"main"` when omitted —
-    /// override for repos whose default is `master`, `development`, etc.
-    #[serde(default)]
-    pub gh_base_branch: Option<String>,
-    #[serde(default)]
-    pub gh_path: Option<String>,
-    #[serde(default)]
-    pub auth_ref: Option<String>,
-}
+// Phase-1: trajects always push to a single, app-wide writable source —
+// the central MinBZK corpus repo on its `development` branch, using the
+// app-wide CORPUS_AUTH_MINBZK_CENTRAL_TOKEN. No per-user / per-traject
+// auth yet; that's phase 2 (probably GitHub-App OAuth so we don't have
+// to store PATs in the database at all). When phase 2 lands these
+// constants become a fallback default for the request body.
+const CENTRAL_WRITABLE_OWNER: &str = "MinBZK";
+const CENTRAL_WRITABLE_REPO: &str = "regelrecht-corpus";
+const CENTRAL_WRITABLE_PATH: &str = "regulation/nl";
+const CENTRAL_WRITABLE_BASE_BRANCH: &str = "development";
+const CENTRAL_WRITABLE_AUTH_REF: &str = "minbzk-central";
+const CENTRAL_WRITABLE_NAME: &str = "MinBZK/regelrecht-corpus";
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateTrajectRequest {
@@ -257,31 +248,6 @@ fn validate_status(status: &str) -> Result<(), StatusCode> {
     }
 }
 
-/// Conservative git-branch-name check: ASCII alphanumerics, `-`, `_`,
-/// `/`, `.`. Rejects empty, leading/trailing `/`, `..`, `//`, and length
-/// over 255 chars. Stays well inside git's own `check-ref-format` rules
-/// so the branch can be passed to `git --branch` later without the clone
-/// crashing on a malformed ref. Mixed case is intentionally allowed
-/// because git refs are case-sensitive and users may want to mirror
-/// existing upstream branch naming.
-fn validate_branch_name(branch: &str) -> Result<(), StatusCode> {
-    let b = branch;
-    if b.is_empty()
-        || b.len() > 255
-        || b.starts_with('/')
-        || b.ends_with('/')
-        || b.contains("..")
-        || b.contains("//")
-        || !b
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '/' | '.'))
-    {
-        Err(StatusCode::BAD_REQUEST)
-    } else {
-        Ok(())
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Endpoints
 // ---------------------------------------------------------------------------
@@ -373,54 +339,9 @@ pub async fn create(
     Extension(account): Extension<AccountRecord>,
     Json(req): Json<CreateTrajectRequest>,
 ) -> Result<(StatusCode, Json<TrajectSummary>), StatusCode> {
-    // Trim once up-front so the validation check and the values we bind
-    // (and the values that flow into the clone URL later) stay in sync.
-    // Without this, " minbzk" passes the empty-check, gets stored
-    // verbatim, and produces a malformed `https://github.com/ minbzk/...`
-    // URL that fails opaquely at git-clone time.
     let name = req.name.trim();
-    let ws_name = req.writable_source.name.trim();
-    let gh_owner = req.writable_source.gh_owner.trim();
-    let gh_repo = req.writable_source.gh_repo.trim();
-    let gh_path = req
-        .writable_source
-        .gh_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
-    let auth_ref = req
-        .writable_source
-        .auth_ref
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
-
-    if name.is_empty() || gh_owner.is_empty() || gh_repo.is_empty() {
+    if name.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // Validate branch-shape inputs up front so a malformed branch
-    // returns 400 immediately, before the seed-sources fan-out has
-    // anything to roll back. The explicit-`gh_branch` case is checked
-    // here; the auto-derived case uses `derive_branch_name` which is
-    // guaranteed to produce a valid ref.
-    let explicit_writable_branch = req
-        .writable_source
-        .gh_branch
-        .as_deref()
-        .map(str::trim)
-        .filter(|b| !b.is_empty());
-    if let Some(b) = explicit_writable_branch {
-        validate_branch_name(b)?;
-    }
-    let explicit_base_branch = req
-        .writable_source
-        .gh_base_branch
-        .as_deref()
-        .map(str::trim)
-        .filter(|b| !b.is_empty());
-    if let Some(b) = explicit_base_branch {
-        validate_branch_name(b)?;
     }
 
     let pool = get_pool(&state)?;
@@ -489,14 +410,13 @@ pub async fn create(
         .map_err(db_err("seed traject source"))?;
     }
 
-    // Branch shape was validated above; here we just pick auto-derived
-    // vs explicit. derive_branch_name's output is guaranteed safe by
-    // construction.
-    let writable_branch = explicit_writable_branch
-        .map(str::to_string)
-        .unwrap_or_else(|| derive_branch_name(name, traject_id));
-    let writable_base_branch = explicit_base_branch.map(str::to_string);
-
+    // Writable-own source: hardcoded to the central MinBZK corpus on
+    // `development` for phase 1. The branch name is derived from the
+    // traject name + id; auth flows through `CORPUS_AUTH_MINBZK_CENTRAL_TOKEN`
+    // via `auth_ref = "minbzk-central"`. Columns stay populated as a
+    // record — phase 2 (per-user auth, per-traject fork choice) can swap
+    // these constants for request-body fields without touching the DB.
+    let writable_branch = derive_branch_name(name, traject_id);
     let writable_source_id = format!("traject-own-{}", traject_id.simple());
     sqlx::query(
         "INSERT INTO traject_corpus_sources
@@ -509,13 +429,13 @@ pub async fn create(
     )
     .bind(traject_id)
     .bind(&writable_source_id)
-    .bind(ws_name)
-    .bind(gh_owner)
-    .bind(gh_repo)
+    .bind(CENTRAL_WRITABLE_NAME)
+    .bind(CENTRAL_WRITABLE_OWNER)
+    .bind(CENTRAL_WRITABLE_REPO)
     .bind(&writable_branch)
-    .bind(writable_base_branch.as_deref())
-    .bind(gh_path)
-    .bind(auth_ref)
+    .bind(CENTRAL_WRITABLE_BASE_BRANCH)
+    .bind(CENTRAL_WRITABLE_PATH)
+    .bind(CENTRAL_WRITABLE_AUTH_REF)
     .execute(&mut *tx)
     .await
     .map_err(db_err("insert writable source"))?;

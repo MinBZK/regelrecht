@@ -37,11 +37,6 @@ function emptyForm() {
     name: '',
     description: '',
     scope: '',
-    gh_owner: '',
-    gh_repo: '',
-    gh_branch: '',
-    gh_base_branch: '',
-    auth_ref: '',
   };
 }
 
@@ -86,24 +81,12 @@ async function submitCreate() {
     createError.value = 'Naam is verplicht';
     return;
   }
-  if (!form.value.gh_owner.trim() || !form.value.gh_repo.trim()) {
-    createError.value = 'GitHub owner en repo zijn verplicht';
-    return;
-  }
   createBusy.value = true;
   try {
     const created = await createTraject({
       name: form.value.name.trim(),
       description: form.value.description,
       scope: form.value.scope,
-      writable_source: {
-        name: `${form.value.gh_owner}/${form.value.gh_repo}`,
-        gh_owner: form.value.gh_owner.trim(),
-        gh_repo: form.value.gh_repo.trim(),
-        gh_branch: form.value.gh_branch.trim() || null,
-        gh_base_branch: form.value.gh_base_branch.trim() || null,
-        auth_ref: form.value.auth_ref.trim() || null,
-      },
     });
     showCreate.value = false;
     emit('switched', created.id);
@@ -227,89 +210,11 @@ function bind(field) {
             </nldd-list-item>
           </nldd-list>
 
-          <nldd-spacer size="16"></nldd-spacer>
-          <nldd-title size="6"><h6>Schrijfbare bron</h6></nldd-title>
-          <nldd-spacer size="8"></nldd-spacer>
-
-          <nldd-list variant="box" class="traject-form-list">
-            <nldd-list-item size="md">
-              <nldd-text-cell
-                text="GitHub owner"
-                supporting-text="Bijv. 'MinBZK' voor de centrale repo, of de naam van jouw fork."
-                max-width="180px"
-              ></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell>
-                <nldd-text-field
-                  size="md"
-                  required
-                  :value="form.gh_owner"
-                  @input="bind('gh_owner')($event)"
-                ></nldd-text-field>
-              </nldd-cell>
-            </nldd-list-item>
-            <nldd-list-item size="md">
-              <nldd-text-cell
-                text="GitHub repo"
-                supporting-text="Bijv. 'regelrecht-corpus'."
-                max-width="180px"
-              ></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell>
-                <nldd-text-field
-                  size="md"
-                  required
-                  :value="form.gh_repo"
-                  @input="bind('gh_repo')($event)"
-                ></nldd-text-field>
-              </nldd-cell>
-            </nldd-list-item>
-            <nldd-list-item size="md">
-              <nldd-text-cell
-                text="Branch"
-                supporting-text="Naam van de branch waarop dit traject pusht. Leeg laten om automatisch te genereren uit de naam."
-                max-width="180px"
-              ></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell>
-                <nldd-text-field
-                  size="md"
-                  :value="form.gh_branch"
-                  @input="bind('gh_branch')($event)"
-                ></nldd-text-field>
-              </nldd-cell>
-            </nldd-list-item>
-            <nldd-list-item size="md">
-              <nldd-text-cell
-                text="Basis-branch"
-                supporting-text="Branch om vanaf te vertakken als de bovenstaande nog niet bestaat. Standaard 'main'."
-                max-width="180px"
-              ></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell>
-                <nldd-text-field
-                  size="md"
-                  :value="form.gh_base_branch"
-                  @input="bind('gh_base_branch')($event)"
-                ></nldd-text-field>
-              </nldd-cell>
-            </nldd-list-item>
-            <nldd-list-item size="md">
-              <nldd-text-cell
-                text="Auth-ref"
-                supporting-text="Naam van de token-entry in corpus-auth.yaml — alleen nodig voor private repos."
-                max-width="180px"
-              ></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell>
-                <nldd-text-field
-                  size="md"
-                  :value="form.auth_ref"
-                  @input="bind('auth_ref')($event)"
-                ></nldd-text-field>
-              </nldd-cell>
-            </nldd-list-item>
-          </nldd-list>
+          <div class="traject-source-hint">
+            Edits in dit traject worden gepusht naar een aparte branch op
+            <code>MinBZK/regelrecht-corpus</code> (basis: <code>development</code>).
+            Per-gebruiker GitHub-auth komt later.
+          </div>
 
           <div v-if="createError" class="traject-error">{{ createError }}</div>
         </nldd-simple-section>
@@ -340,6 +245,21 @@ function bind(field) {
 }
 .traject-form-list nldd-text-field {
   width: 100%;
+}
+.traject-source-hint {
+  margin-top: 16px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--semantics-content-secondary-color, #555);
+  background: var(--semantics-surfaces-tinted-background-color, #f4f4f4);
+  border-radius: 6px;
+}
+.traject-source-hint code {
+  font-size: 12px;
+  padding: 1px 4px;
+  background: var(--semantics-surfaces-background-color, #fff);
+  border-radius: 3px;
 }
 .traject-error {
   color: var(--nldd-color-text-error, #c62828);

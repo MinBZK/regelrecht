@@ -34,7 +34,7 @@ use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 use regelrecht_editor_api::trajects::{
     self, AddMemberRequest, CreateTrajectRequest, SetActiveTrajectRequest, UpdateMemberRequest,
-    UpdateTrajectRequest, WritableSourceInput, SESSION_KEY_ACTIVE_TRAJECT,
+    UpdateTrajectRequest, SESSION_KEY_ACTIVE_TRAJECT,
 };
 
 use regelrecht_pipeline::test_utils::TestDb;
@@ -85,15 +85,6 @@ fn create_req(name: &str) -> CreateTrajectRequest {
         name: name.to_string(),
         description: String::new(),
         scope: String::new(),
-        writable_source: WritableSourceInput {
-            name: "minbzk/regelrecht-corpus".to_string(),
-            gh_owner: "minbzk".to_string(),
-            gh_repo: "regelrecht-corpus".to_string(),
-            gh_branch: None,
-            gh_base_branch: None,
-            gh_path: None,
-            auth_ref: None,
-        },
     }
 }
 
@@ -192,27 +183,6 @@ async fn create_rejects_empty_name() {
 
     let mut req = create_req("");
     req.name = "   ".to_string();
-    let err = trajects::create(State(state), Extension(alice), Json(req))
-        .await
-        .unwrap_err();
-    assert_eq!(err, StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn create_rejects_empty_gh_owner_or_repo() {
-    let db = TestDb::new().await;
-    let state = empty_state(db.pool.clone());
-    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
-
-    let mut req = create_req("Tarief");
-    req.writable_source.gh_owner = "".to_string();
-    let err = trajects::create(State(state.clone()), Extension(alice.clone()), Json(req))
-        .await
-        .unwrap_err();
-    assert_eq!(err, StatusCode::BAD_REQUEST);
-
-    let mut req = create_req("Tarief");
-    req.writable_source.gh_repo = "  ".to_string();
     let err = trajects::create(State(state), Extension(alice), Json(req))
         .await
         .unwrap_err();
