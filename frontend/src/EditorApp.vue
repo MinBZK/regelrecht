@@ -6,10 +6,12 @@ import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
+import { useNotes } from './composables/useNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
+import AnnotatedText from './components/AnnotatedText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -34,6 +36,7 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
+  ['panel.notes', 'Notities'],
   ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
@@ -49,6 +52,7 @@ const VIEW_DEFINITIONS = [
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
+  { id: 'notes', flag: 'panel.notes', label: 'Notities' },
 ];
 
 const availableViews = computed(() => VIEW_DEFINITIONS.filter(v => isEnabled(v.flag)));
@@ -161,6 +165,15 @@ const {
   saveLaw,
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber);
+
+// Notes (RFC-005/RFC-018) for the current law, resolved against its text.
+const {
+  notesForArticle,
+  issues: noteIssues,
+  loading: notesLoading,
+  error: notesError,
+} = useNotes(lawId, selectedArticle);
+const selectedNote = ref(null);
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1312,6 +1325,34 @@ function handleActionSave() {
                   @click="handleMachineReadableSave"
                 ></nldd-button>
               </nldd-container>
+
+              <!-- Notes (RFC-005/RFC-018): article text with resolved
+                   note highlights. Read-only in this phase. -->
+              <nldd-simple-section v-else-if="view === 'notes'" full-width>
+                <nldd-inline-dialog
+                  v-if="notesError"
+                  variant="alert"
+                  text="Notities niet geladen"
+                  :supporting-text="notesError.message"
+                ></nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-else-if="notesLoading"
+                  text="Notities laden…"
+                ></nldd-inline-dialog>
+                <template v-else>
+                  <AnnotatedText
+                    :article="selectedArticle"
+                    :notes-for-article="notesForArticle"
+                    @select-note="selectedNote = $event"
+                  />
+                  <nldd-inline-dialog
+                    v-if="noteIssues.length"
+                    variant="warning"
+                    :text="`${noteIssues.length} notitie(s) niet verankerd`"
+                    :supporting-text="noteIssues.map(i => i.reason).join('; ')"
+                  ></nldd-inline-dialog>
+                </template>
+              </nldd-simple-section>
 
               <!-- Scenario builder -->
               <template v-else-if="view === 'scenario'">
