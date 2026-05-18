@@ -37,6 +37,7 @@ const SHORT_TITLE = /^\*\*Short title:\*\*\s*(.+?)\s*$/m
  */
 export function getRfcs(): RfcEntry[] {
   const entries: RfcEntry[] = []
+  const seen = new Map<number, string>()
 
   for (const filename of readdirSync(RFCS_DIR)) {
     // This filter excludes index.md and template.md by construction.
@@ -52,10 +53,23 @@ export function getRfcs(): RfcEntry[] {
     }
 
     const num = parseInt(h1[1], 10)
+    const existing = seen.get(num)
+    if (existing) {
+      throw new Error(
+        `RFC-${num} declared in both ${existing} and ${filename}; ` +
+          'RFC numbers must be unique',
+      )
+    }
+    seen.set(num, filename)
+
     const title = h1[2]
     const status = content.match(STATUS)?.[1] ?? 'Unknown'
     const shortTitle = content.match(SHORT_TITLE)?.[1] ?? title
 
+    // The link is derived from a filename we just read, so it provably
+    // resolves to a real page. This is why a bare <a href> in the index
+    // component is safe even though it sidesteps VitePress dead-link
+    // checking: a non-existent target cannot be produced here.
     entries.push({
       num,
       id: `RFC-${String(num).padStart(3, '0')}`,
