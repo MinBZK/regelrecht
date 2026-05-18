@@ -1,11 +1,19 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 import {
   OPERATION_LABELS,
   collectAvailableVariables,
   derivedTitle,
 } from '../utils/operationTree.js';
 import BreakableName from './BreakableName.vue';
+
+// Per-instance prefix for the per-value action menu DOM ids. operation.number
+// is stable within a law but identical across editor panes, so two panes
+// showing the same operation would collide and nldd-menu would anchor to the
+// first match (wrong pane). useId() is unique per component instance; ${i}
+// still disambiguates the value rows within one instance. Mirrors the
+// useId() pattern in RowActionsMenu.vue.
+const valueMenuId = useId();
 const props = defineProps({
   operation: { type: Object, default: null },
   article: { type: Object, default: null },
@@ -563,13 +571,13 @@ function addValue() {
           <template v-if="hasValueMenu(val)">
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-icon-button
-              :id="`val-actions-${operation.number}-${i}`"
+              :id="`val-actions-${valueMenuId}-${i}`"
               icon="more"
               text="Acties"
               tooltip-timing="never"
               variant="neutral-tinted"
             ></nldd-icon-button>
-            <nldd-menu :anchor="`val-actions-${operation.number}-${i}`">
+            <nldd-menu :anchor="`val-actions-${valueMenuId}-${i}`">
               <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
                 <nldd-menu-item
                   type="radio"
