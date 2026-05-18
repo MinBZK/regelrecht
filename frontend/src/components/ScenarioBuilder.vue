@@ -284,8 +284,10 @@ function onShowDetails(index, view = 'trace') {
 }
 
 // Re-run a scenario from the result sheet's reload action, then refresh the
-// sheet with the fresh outcome. execute() is synchronous, so the data is
-// ready by the time onShowDetails reads it back.
+// sheet with the fresh outcome. ScenarioForm.execute() runs the WASM engine
+// in-process and synchronously (no API call, no await; `running` is reset in
+// its finally before it returns), so the result/error is already set by the
+// time onShowDetails reads it back via getExecutionData().
 function reExecute(index) {
   const formRef = scenarioRefs.value[index];
   if (formRef?.execute) formRef.execute();
