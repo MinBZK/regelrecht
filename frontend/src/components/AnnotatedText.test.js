@@ -1,7 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import AnnotatedText from './AnnotatedText.vue';
+
+// The authoring tests mount NoteCreator, which fetches the ambiguity
+// vocabulary on first use. Stub fetch so no real request dangles.
+beforeEach(() => {
+  globalThis.fetch = vi
+    .fn()
+    .mockResolvedValue({ ok: true, text: async () => 'ambiguity: []\n' });
+});
 
 // The watcher awaits nextTick before applyHighlights, so the test must wait
 // two ticks: one for the watcher to fire, one for its inner nextTick.
@@ -15,11 +23,15 @@ const nlddStubs = {
   'nldd-rich-text': { template: '<div><slot/></div>' },
   'nldd-popover': { template: '<div><slot/></div>' },
   'nldd-inline-dialog': { template: '<div/>' },
+  'nldd-segmented-control': { template: '<div><slot/></div>' },
+  'nldd-segmented-control-item': { template: '<div/>' },
+  'nldd-text-field': { template: '<input/>' },
+  'nldd-button': { template: '<button><slot/></button>' },
 };
 
-function mountWith(article, notesForArticle) {
+function mountWith(article, notesForArticle, extraProps = {}) {
   return mount(AnnotatedText, {
-    props: { article, notesForArticle },
+    props: { article, notesForArticle, ...extraProps },
     global: { stubs: nlddStubs },
   });
 }
@@ -125,6 +137,32 @@ describe('AnnotatedText markdown highlighting', () => {
       wrapper.element.querySelectorAll('mark[data-note-idx]'),
     ).toHaveLength(0);
     // The list rendered: an <ol><li> from "1. ".
+    expect(wrapper.element.querySelector('ol li')).toBeTruthy();
+  });
+
+  it('renders no authoring UI in the default read-only mode', async () => {
+    const wrapper = mountWith(ART, []);
+    await nextTick();
+    // canCreate defaults false: no NoteCreator, no floating button, no
+    // selection anchor — the pane is purely a read view.
+    expect(wrapper.find('[data-testid="create-note-btn"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('.sel-anchor').exists()).toBe(false);
+    expect(wrapper.findComponent({ name: 'NoteCreator' }).exists()).toBe(false);
+  });
+
+  it('mounts the authoring path without disturbing the highlight render', async () => {
+    const wrapper = mountWith(ART, [{ note: noteVerzekerde, spans: [] }], {
+      canCreate: true,
+      lawId: 'zorgtoeslagwet',
+      engine: { resolveNote: () => ({ status: 'orphaned', matches: [] }) },
+    });
+    await nextTick();
+    await nextTick();
+    // NoteCreator is present (gated on canCreate) but its popover is closed
+    // until a selection is made, and the read render is unaffected.
+    expect(wrapper.findComponent({ name: 'NoteCreator' }).exists()).toBe(true);
     expect(wrapper.element.querySelector('ol li')).toBeTruthy();
   });
 });

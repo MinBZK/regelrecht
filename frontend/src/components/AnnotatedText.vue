@@ -6,12 +6,21 @@ import {
   spanToNodeSlices,
   cpToUtf16,
 } from '../composables/useNotesHighlight.js';
+import { selectionToRawRange } from '../composables/useTextSelection.js';
+import NoteCreator from './NoteCreator.vue';
 
 const props = defineProps({
   article: { type: Object, default: null },
   // [{ note, spans }] for the current article, from useNotes().notesForArticle
   notesForArticle: { type: Array, default: () => [] },
+  // Note authoring (RFC-018 write path). Off keeps the pure read-only view.
+  canCreate: { type: Boolean, default: false },
+  lawId: { type: String, default: '' },
+  // Loaded WASM engine, for selector uniqueness validation in NoteCreator.
+  engine: { type: Object, default: null },
 });
+
+const emit = defineEmits(['create-note']);
 
 // Render the law text as markdown, identical to the Tekst pane with notes
 // off (shared pipeline so the two cannot drift — #646). The resolver matched
@@ -270,6 +279,105 @@ function noteCreator(note) {
   if (!note?.creator) return '';
   return typeof note.creator === 'string' ? note.creator : note.creator.name || '';
 }
+
+// --- Note authoring (RFC-018 write path) --------------------------------
+// On a non-empty selection inside the rendered text, show a small "Notitie"
+// button at the selection. Clicking it maps the selection to a raw char range
+// (selectionToRawRange handles the markdown DOM -> raw text gap) and opens
+// NoteCreator. The button is positioned over the selection's bounding rect.
+const selectionRange = ref(null); // raw [start,end) for NoteCreator
+const creatorOpen = ref(false);
+const selBtnStyle = ref(null); // position of the floating "Notitie" button
+const anchorStyle = ref(null); // position of the popover anchor (persists)
+const selAnchorEl = useTemplateRef('selAnchorEl');
+
+function clearSelectionUi() {
+  if (creatorOpen.value) return; // keep anchor + form while the form is open
+  selBtnStyle.value = null;
+  anchorStyle.value = null;
+  selectionRange.value = null;
+}
+
+function onSelectionChange() {
+  if (!props.canCreate || creatorOpen.value) return;
+  const root = richTextEl.value;
+  const sel = window.getSelection?.();
+  if (!root || !sel || sel.rangeCount === 0 || sel.isCollapsed) {
+    clearSelectionUi();
+    return;
+  }
+  const domRange = sel.getRangeAt(0);
+  if (!root.contains(domRange.commonAncestorContainer)) {
+    clearSelectionUi();
+    return;
+  }
+  const rect = domRange.getBoundingClientRect();
+  const wrap = root.closest('.annotated-wrap');
+  const wrapRect = wrap?.getBoundingClientRect();
+  if (!wrapRect || rect.width === 0) {
+    clearSelectionUi();
+    return;
+  }
+  // Position the button just below the selection, relative to the wrap. The
+  // anchor sits at the selection start so the popover opens against the text.
+  const top = rect.bottom - wrapRect.top + 6;
+  const left = rect.left - wrapRect.left;
+  selBtnStyle.value = { position: 'absolute', top: `${top}px`, left: `${left}px`, zIndex: 5 };
+  anchorStyle.value = {
+    position: 'absolute',
+    top: `${rect.top - wrapRect.top}px`,
+    left: `${left}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    pointerEvents: 'none',
+  };
+}
+
+function openCreator() {
+  const root = richTextEl.value;
+  const rawText = props.article?.text || '';
+  if (!root || !rawText) return;
+  const range = selectionToRawRange(rawText, root);
+  if (!range) {
+    // The selection could not be mapped (e.g. it spans only stripped
+    // structure). Drop the UI rather than open an unanchorable form.
+    selBtnStyle.value = null;
+    return;
+  }
+  selectionRange.value = range;
+  creatorOpen.value = true;
+  selBtnStyle.value = null; // hide the button; the anchor persists for the popover
+}
+
+function onNoteCreated(note) {
+  creatorOpen.value = false;
+  selectionRange.value = null;
+  anchorStyle.value = null; // drop the now-orphaned invisible anchor span
+  window.getSelection?.()?.removeAllRanges();
+  emit('create-note', note);
+}
+
+function onCreatorCancel() {
+  creatorOpen.value = false;
+  selectionRange.value = null;
+  anchorStyle.value = null;
+}
+
+watch(
+  () => props.canCreate,
+  (on) => {
+    if (on) {
+      document.addEventListener('selectionchange', onSelectionChange);
+    } else {
+      document.removeEventListener('selectionchange', onSelectionChange);
+      clearSelectionUi();
+    }
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  document.removeEventListener('selectionchange', onSelectionChange);
+});
 </script>
 
 <template>
@@ -283,6 +391,37 @@ function noteCreator(note) {
       @focusout="onFocusOut"
     >
       <nldd-rich-text ref="richTextEl" v-html="html"></nldd-rich-text>
+
+      <!-- Note authoring (RFC-018). The anchor span tracks the selection
+           rect and persists while the form is open so NoteCreator's popover
+           stays attached to the text after the native selection is gone. -->
+      <span
+        v-if="canCreate && anchorStyle"
+        ref="selAnchorEl"
+        class="sel-anchor"
+        :style="anchorStyle"
+      ></span>
+      <span v-if="canCreate && selBtnStyle" class="sel-btn" :style="selBtnStyle">
+        <nldd-button
+          size="sm"
+          variant="primary"
+          text="Notitie"
+          data-testid="create-note-btn"
+          @click="openCreator"
+        ></nldd-button>
+      </span>
+
+      <NoteCreator
+        v-if="canCreate"
+        :range="creatorOpen ? selectionRange : null"
+        :raw-text="article?.text || ''"
+        :law-id="lawId"
+        :article="article"
+        :engine="engine"
+        :anchor="selAnchorEl"
+        @create="onNoteCreated"
+        @cancel="onCreatorCancel"
+      />
     </div>
 
     <!-- Single shared popover; anchorElement is repointed per hovered mark. -->
@@ -324,6 +463,15 @@ function noteCreator(note) {
 </template>
 
 <style scoped>
+/* Positioning context for the selection button + popover anchor, which are
+   placed absolutely over the selection rect (RFC-018 write path). */
+.annotated-wrap {
+  position: relative;
+}
+.sel-anchor {
+  display: block;
+}
+
 /* Marks are wrapped imperatively into nldd-rich-text's slotted light DOM, so
    they are not tagged with Vue's scoped data attribute; reach them with
    :deep(). Motivation -> background colour, authority -> border style, same

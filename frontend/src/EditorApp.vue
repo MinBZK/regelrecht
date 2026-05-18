@@ -6,7 +6,8 @@ import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
-import { useNotes } from './composables/useNotes.js';
+import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
+import { useDraftNotes } from './composables/useDraftNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
@@ -40,6 +41,10 @@ const editorPanelFlags = [
   // toggle that overlays resolved notes on the article text. Not a
   // separate pane (notes are a layer over the text, not other content).
   ['panel.notes', 'Notities'],
+  // Note authoring (RFC-018 write path). Separate gate from panel.notes so
+  // notes can be shown read-only without exposing the (MVP, local-only)
+  // creation + export flow.
+  ['notes.create', 'Notities aanmaken'],
   ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
@@ -170,7 +175,7 @@ const {
 
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
 const {
-  notesForArticle,
+  notesForArticle: committedNotesForArticle,
   issues: noteIssues,
   loading: notesLoading,
   error: notesError,
@@ -190,6 +195,56 @@ watch(showNotes, (v) => {
 const notesActive = computed(
   () => isEnabled('panel.notes') && showNotes.value && !canEditArticleText.value,
 );
+
+// Note authoring (RFC-018 write path). Draft notes live in localStorage per
+// law until exported; they resolve and highlight live alongside committed
+// ones, so the author sees the new note anchored immediately. The WASM engine
+// is handed to NoteCreator for selector-uniqueness checks; useNotes already
+// initialises it, this just exposes the instance once ready (null until then,
+// NoteCreator guards on it).
+const noteEngine = ref(null);
+useEngine()
+  .initEngine()
+  .then((e) => {
+    noteEngine.value = e;
+  })
+  .catch(() => {});
+const {
+  drafts: draftNotes,
+  draftCount,
+  addDraft,
+  clearDrafts,
+  exportYaml,
+} = useDraftNotes(lawId);
+const { draftNotesForArticle } = useResolvedDraftNotes(
+  draftNotes,
+  lawId,
+  selectedArticle,
+);
+const canCreateNotes = computed(
+  () => isEnabled('notes.create') && notesActive.value,
+);
+// Committed + draft notes share the highlight path. Draft entries already
+// carry __draft so the popover can mark them unsaved.
+const notesForArticle = computed(() => [
+  ...committedNotesForArticle.value,
+  ...draftNotesForArticle.value,
+]);
+
+function onCreateNote(note) {
+  addDraft(note);
+}
+
+async function exportNotes() {
+  const text = await exportYaml();
+  const blob = new Blob([text], { type: 'text/yaml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'annotations.yaml';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1367,6 +1422,10 @@ async function handleActionSave() {
                     <AnnotatedText
                       :article="selectedArticle"
                       :notes-for-article="notesForArticle"
+                      :can-create="canCreateNotes"
+                      :law-id="lawId"
+                      :engine="noteEngine"
+                      @create-note="onCreateNote"
                     />
                     <nldd-inline-dialog
                       v-if="noteIssues.length"
@@ -1374,6 +1433,35 @@ async function handleActionSave() {
                       :text="`${noteIssues.length} notitie(s) niet verankerd`"
                       :supporting-text="noteIssues.map(i => i.reason).join('; ')"
                     ></nldd-inline-dialog>
+                    <!-- Draft notes are local-only until exported (RFC-018
+                         write path MVP: no write API, git stays the source
+                         of truth). The export downloads committed + draft
+                         notes as one sidecar YAML to commit by hand. -->
+                    <nldd-container
+                      v-if="canCreateNotes && draftCount > 0"
+                      padding="12"
+                      class="draft-notes-bar"
+                      data-testid="draft-notes-bar"
+                    >
+                      <span class="draft-notes-bar__count">
+                        {{ draftCount }} concept-notitie(s), nog niet opgeslagen
+                      </span>
+                      <span class="draft-notes-bar__actions">
+                        <nldd-button
+                          size="md"
+                          text="Exporteer YAML"
+                          data-testid="export-notes-btn"
+                          @click="exportNotes"
+                        ></nldd-button>
+                        <nldd-button
+                          size="md"
+                          variant="destructive"
+                          text="Concepten wissen"
+                          data-testid="clear-drafts-btn"
+                          @click="clearDrafts"
+                        ></nldd-button>
+                      </span>
+                    </nldd-container>
                   </template>
                 </template>
                 <ArticleText v-else :article="selectedArticle" />
@@ -1660,5 +1748,24 @@ async function handleActionSave() {
   padding: 8px 12px;
   border: 1px solid #fecaca;
   border-radius: 6px;
+}
+
+.draft-notes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  border: 1px dashed rgba(249, 115, 22, 0.6);
+  border-radius: 6px;
+}
+.draft-notes-bar__count {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.draft-notes-bar__actions {
+  display: flex;
+  gap: 8px;
 }
 </style>
