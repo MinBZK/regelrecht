@@ -326,7 +326,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <DataSourceTable
         :key="dataSources[selectedSource].sourceName"
         :title="sourceLabel(dataSources[selectedSource].sourceName)"
-        :subtitle="scenario.name"
         :key-field="dataSources[selectedSource].keyField"
         :fields="dataSources[selectedSource].fields"
         :model-value="dataSources[selectedSource].rows"

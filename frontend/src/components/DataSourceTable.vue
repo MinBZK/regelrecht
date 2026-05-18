@@ -16,8 +16,6 @@ const props = defineProps({
   // Optional id put on the drilled-in heading so the sheet's top-title-bar
   // can use it as its `collapse-anchor` (full back button until scrolled).
   anchorId: { type: String, default: '' },
-  // Secondary line under the drilled-in heading (e.g. the scenario name).
-  subtitle: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -119,7 +117,6 @@ const showBody = computed(() => props.drilledIn || expanded.value);
     <template v-else>
       <nldd-title size="5" :id="anchorId || undefined">
         <h2>{{ title }}</h2>
-        <p v-if="subtitle" slot="subtitle">{{ subtitle }}</p>
       </nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
     </template>
