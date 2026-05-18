@@ -107,7 +107,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 </script>
 
 <template>
-  <div class="ds-block">
+  <div>
     <!-- Header: accordion toggle, or a plain heading when drilled in -->
     <button v-if="!drilledIn" class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
       <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
@@ -124,19 +124,17 @@ const showBody = computed(() => props.drilledIn || expanded.value);
       <nldd-spacer size="12"></nldd-spacer>
     </template>
 
-    <div v-if="showBody" class="ds-block-body">
+    <template v-if="showBody">
       <div v-if="rows.length === 0" class="ds-block-empty">
         Geen gegevens &mdash; vul in indien relevant
       </div>
 
       <!-- One box list per row — identical layout regardless of row count,
-           with the delete button at the bottom of each list. -->
-      <nldd-list
-        v-for="(row, ri) in rows"
-        :key="row._id ?? ri"
-        variant="box"
-        class="ds-datasource-list"
-      >
+           with the delete button at the bottom of each list. Spacers (not a
+           flex-gap container) separate the stacked lists. -->
+      <template v-for="(row, ri) in rows" :key="row._id ?? ri">
+        <nldd-spacer v-if="ri > 0" size="12"></nldd-spacer>
+        <nldd-list variant="box" class="ds-datasource-list">
         <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
           <nldd-text-cell :text="col.name" max-width="280px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
           <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
@@ -172,8 +170,10 @@ const showBody = computed(() => props.drilledIn || expanded.value);
             <nldd-button variant="destructive" size="md" width="full" start-icon="minus" @click="removeRow(ri)" text="Verwijder"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
-      </nldd-list>
+        </nldd-list>
+      </template>
 
+      <nldd-spacer v-if="!readonly" size="12"></nldd-spacer>
       <nldd-list v-if="!readonly" variant="box">
         <nldd-list-item size="md">
           <nldd-cell width="full">
@@ -181,15 +181,11 @@ const showBody = computed(() => props.drilledIn || expanded.value);
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
-    </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.ds-block + .ds-block {
-  margin-top: 12px;
-}
-
 .ds-block-toggle {
   display: flex;
   align-items: center;
@@ -221,12 +217,6 @@ const showBody = computed(() => props.drilledIn || expanded.value);
   background: var(--color-primary);
   color: white;
   flex-shrink: 0;
-}
-
-.ds-block-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
 .ds-block-empty {
