@@ -14,6 +14,17 @@ const lawComboBoxEl = ref(null);
 const outputComboBoxEl = ref(null);
 const values = ref({});
 
+// Snapshot of the form taken when an item opens, so the Save button only
+// appears once the user actually changes something (mirrors ActionSheet).
+const baseline = ref('');
+const isDirty = computed(() => {
+  try {
+    return JSON.stringify(values.value) !== baseline.value;
+  } catch {
+    return true;
+  }
+});
+
 const typeOptions = ['string', 'number', 'boolean', 'amount'];
 
 // Available variables from the article's machine_readable for parameter
@@ -251,6 +262,7 @@ watch(() => props.item, async (item) => {
     };
   }
 
+  baseline.value = JSON.stringify(values.value);
   await nextTick();
   sheetEl.value?.show();
 }, { immediate: true });
@@ -577,7 +589,7 @@ const sectionLabels = {
           </template>
       </nldd-simple-section>
 
-      <nldd-container slot="footer" padding="16">
+      <nldd-container v-if="isDirty" slot="footer" padding="16">
         <nldd-button variant="primary" size="md" width="full" data-testid="edit-sheet-save-btn" @click="save" text="Opslaan"></nldd-button>
       </nldd-container>
     </nldd-page>
