@@ -510,6 +510,14 @@ function addValue() {
               </nldd-dropdown>
             </template>
             <nldd-icon-button
+              v-if="isNestedOperation(val._value)"
+              icon="edit"
+              text="Bewerken"
+              tooltip-timing="never"
+              variant="neutral-tinted"
+              @click="emit('select-operation', val._value)"
+            ></nldd-icon-button>
+            <nldd-icon-button
               :id="`val-actions-${operation.number}-${i}`"
               icon="more"
               text="Acties"
