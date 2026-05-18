@@ -231,7 +231,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <nldd-button
         :disabled="!result && !error || undefined"
         @click="emit('show-details')"
-        text="Toon resultaat"
+        text="Resultaat"
       ></nldd-button>
       <nldd-spacer size="16"></nldd-spacer>
     </template>

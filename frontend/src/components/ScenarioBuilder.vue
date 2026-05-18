@@ -360,7 +360,7 @@ defineExpose({ save: onSave });
               <nldd-button-group orientation="horizontal">
                 <nldd-button
                   :disabled="!scenarioResults.get(i) || undefined"
-                  text="Toon resultaat"
+                  text="Resultaat"
                   @click="onShowDetails(i, 'trace')"
                 ></nldd-button>
                 <nldd-button
