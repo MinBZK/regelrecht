@@ -6,10 +6,12 @@ import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
+import { useNotes } from './composables/useNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
 import ArticleText from './components/ArticleText.vue';
+import AnnotatedText from './components/AnnotatedText.vue';
 import ArticleTextEditor from './components/ArticleTextEditor.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import EditSheet from './components/EditSheet.vue';
@@ -34,6 +36,10 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
+  // Capability gate: when on, the Tekst pane offers a "Notities"
+  // toggle that overlays resolved notes on the article text. Not a
+  // separate pane (notes are a layer over the text, not other content).
+  ['panel.notes', 'Notities'],
   ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
@@ -161,6 +167,29 @@ const {
   saveLaw,
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber);
+
+// Notes (RFC-005/RFC-018) for the current law, resolved against its text.
+const {
+  notesForArticle,
+  issues: noteIssues,
+  loading: notesLoading,
+  error: notesError,
+} = useNotes(lawId, selectedArticle);
+
+// Notes are a layer over the Tekst pane, not a separate pane. This toggle is
+// the user's "show notes now" preference; panel.notes (a feature flag) is the
+// capability gate that makes the toggle available at all. Persisted so it
+// survives navigation within a session.
+const NOTES_TOGGLE_KEY = 'regelrecht-show-notes';
+const showNotes = ref(localStorage.getItem(NOTES_TOGGLE_KEY) === '1');
+watch(showNotes, (v) => {
+  try { localStorage.setItem(NOTES_TOGGLE_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+});
+// Notes overlay only makes sense in read mode: the resolver matches raw text,
+// so it cannot align with the markdown render or the editable textarea.
+const notesActive = computed(
+  () => isEnabled('panel.notes') && showNotes.value && !canEditArticleText.value,
+);
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1231,6 +1260,24 @@ async function handleActionSave() {
                     @select="setPaneView(idx, opt.id)"
                   ></nldd-menu-item>
                 </nldd-menu>
+                <!-- Notes toggle: only on the Tekst pane, only when the
+                     panel.notes capability is enabled, and only in read mode
+                     (the overlay needs raw text — it can't align with the
+                     editable textarea). Notes are a layer over the text, not
+                     a separate pane. -->
+                <!-- No start-icon: the design-system has no note/comment
+                     glyph (its `comment` icon is an empty SVG). A misleading
+                     icon (edit/document) is worse than none; the "Notities"
+                     label is clear on its own. Tracked upstream:
+                     MinBZK/storybook icon-set request. -->
+                <nldd-button
+                  v-if="view === 'text' && isEnabled('panel.notes') && !canEditArticleText"
+                  size="md"
+                  :variant="showNotes ? 'primary' : 'default'"
+                  text="Notities"
+                  data-testid="notes-toggle"
+                  @click="showNotes = !showNotes"
+                ></nldd-button>
                 <!-- Formatting toolbar lives in the pane-header so it sits in
                      line with the pane-view dropdown rather than below it.
                      Wired to the ArticleTextEditor instance via textEditorRefs
@@ -1302,6 +1349,33 @@ async function handleActionSave() {
                   :model-value="editedText"
                   @update:model-value="editedText = $event"
                 />
+                <!-- Notes overlay (read mode only): same Tekst pane, plain
+                     text with resolved highlights instead of the markdown
+                     render. Toggled via the header button below. -->
+                <template v-else-if="notesActive">
+                  <nldd-inline-dialog
+                    v-if="notesError"
+                    variant="alert"
+                    text="Notities niet geladen"
+                    :supporting-text="notesError.message"
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-else-if="notesLoading"
+                    text="Notities laden…"
+                  ></nldd-inline-dialog>
+                  <template v-else>
+                    <AnnotatedText
+                      :article="selectedArticle"
+                      :notes-for-article="notesForArticle"
+                    />
+                    <nldd-inline-dialog
+                      v-if="noteIssues.length"
+                      variant="warning"
+                      :text="`${noteIssues.length} notitie(s) niet verankerd`"
+                      :supporting-text="noteIssues.map(i => i.reason).join('; ')"
+                    ></nldd-inline-dialog>
+                  </template>
+                </template>
                 <ArticleText v-else :article="selectedArticle" />
               </nldd-simple-section>
               <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
