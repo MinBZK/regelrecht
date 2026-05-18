@@ -267,7 +267,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <div v-if="running" class="sf-running">Uitvoeren...</div>
 
       <!-- Input: date + parameters -->
-      <nldd-spacer v-if="hasExpectations" size="16"></nldd-spacer>
+      <nldd-spacer v-if="hasExpectations" size="24"></nldd-spacer>
       <nldd-title size="5"><h2>Invoer</h2></nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box" class="sf-input-list">
@@ -293,7 +293,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       </nldd-list>
 
       <!-- Data sources: a row per source, drill in one level deeper -->
-      <nldd-spacer size="16"></nldd-spacer>
+      <nldd-spacer size="24"></nldd-spacer>
       <nldd-title size="5"><h2>Gegevensbronnen</h2></nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
