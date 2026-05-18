@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onBeforeUnmount, useId } from 'vue';
 import { parseValue } from '../gherkin/steps.js';
 import { formatValue, formatOutputValue, normalizeForCompare, matchStatus as _matchStatus, humanize } from '../utils/outputFormat.js';
 import DataSourceTable from './DataSourceTable.vue';
@@ -241,6 +241,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 // strings onto data-source columns: that produced confusing cross-field
 // invalid states (e.g. changing bsn flagged loon_uit_dienstbetrekking).
 const dateInvalid = computed(() => !calculationDate.value);
+// Unique id so the inline message can be aria-associated with the field
+// (ScenarioForm is mounted once per scenario, so a static id would clash).
+const dateErrorId = useId();
 </script>
 
 <template>
@@ -288,7 +291,8 @@ const dateInvalid = computed(() => !calculationDate.value);
           <nldd-text-cell text="Datum" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
-            <nldd-text-field size="md" type="date" :invalid="dateInvalid || undefined" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+            <nldd-text-field size="md" type="date" :invalid="dateInvalid || undefined" :error-message-ids="dateInvalid ? dateErrorId : undefined" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
+            <span v-if="dateInvalid" :id="dateErrorId" class="sf-error">Datum is verplicht</span>
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
