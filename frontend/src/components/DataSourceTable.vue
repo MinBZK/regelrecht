@@ -141,7 +141,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
           <template v-if="readonly">
             <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
           </template>
-          <nldd-cell v-else-if="col.type === 'boolean'" width="full" min-width="100px" max-width="320px">
+          <nldd-cell v-else-if="col.type === 'boolean'" width="full" min-width="120px" max-width="320px">
             <nldd-dropdown size="md">
               <select
                 :aria-label="col.name"
@@ -154,7 +154,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               </select>
             </nldd-dropdown>
           </nldd-cell>
-          <nldd-cell v-else width="full" min-width="100px" max-width="320px">
+          <nldd-cell v-else width="full" min-width="120px" max-width="320px">
             <nldd-text-field
               size="md"
               :type="inputType(col.type)"
