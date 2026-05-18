@@ -58,10 +58,11 @@ use serde_wasm_bindgen::Serializer;
 use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
+use crate::annotation::{self, TextQuoteSelector};
 use crate::config;
 use crate::engine::OutputProvenance;
 use crate::error::EngineError;
-use crate::service::LawExecutionService;
+use crate::service::{LawExecutionService, ServiceProvider};
 use crate::trace::{PathNode, TraceBuilder};
 use crate::types::{RegulatoryLayer, Value};
 
@@ -500,6 +501,84 @@ impl WasmEngine {
     #[wasm_bindgen(js_name = lawCount)]
     pub fn law_count(&self) -> usize {
         self.service.law_count()
+    }
+
+    /// Resolve a single TextQuoteSelector against a loaded law (RFC-005).
+    ///
+    /// The law must already be loaded via `loadLaw()`. The selector is
+    /// content-addressed, so it resolves on whichever version is loaded.
+    ///
+    /// # Arguments
+    /// * `law_id` - ID of the loaded law
+    /// * `selector` - JS object: `{ exact, prefix?, suffix?, "regelrecht:hint"? }`
+    ///
+    /// # Returns
+    /// * `Ok(JsValue)` - `MatchResult`: `{ status, matches: [{ article_number,
+    ///   start, end, confidence, matched_text }] }`
+    /// * `Err(JsValue)` - Error if the law is not loaded or the selector is invalid
+    #[wasm_bindgen(js_name = resolveAnnotation)]
+    pub fn resolve_annotation(&self, law_id: &str, selector: JsValue) -> Result<JsValue, JsValue> {
+        let selector: TextQuoteSelector = serde_wasm_bindgen::from_value(selector)
+            .map_err(|e| wasm_error(&format!("Invalid selector: {e}")))?;
+        let law = ServiceProvider::get_law(&self.service, law_id)
+            .ok_or_else(|| wasm_error(&format!("Law not loaded: {law_id}")))?;
+        let result = annotation::resolve(&selector, &law.articles);
+        result
+            .serialize(&js_serializer())
+            .map_err(|e| wasm_error(&format!("Serialization error: {e}")))
+    }
+
+    /// Resolve all notes in a note-sidecar YAML string against a loaded law.
+    ///
+    /// Parses an `annotations:` document (the format validated by
+    /// `just validate-annotations`) and resolves every note's selector. Notes
+    /// whose `target.source` law id differs from `law_id` are skipped.
+    ///
+    /// # Arguments
+    /// * `law_id` - ID of the loaded law to resolve against
+    /// * `annotations_yaml` - Contents of an `annotations.yaml` sidecar file
+    ///
+    /// # Returns
+    /// * `Ok(JsValue)` - Array of `{ note, match }` objects, where `match` is
+    ///   the `MatchResult` for that note's selector
+    /// * `Err(JsValue)` - Error if the law is not loaded or the YAML is invalid
+    #[wasm_bindgen(js_name = resolveAnnotations)]
+    pub fn resolve_annotations(
+        &self,
+        law_id: &str,
+        annotations_yaml: &str,
+    ) -> Result<JsValue, JsValue> {
+        let law = ServiceProvider::get_law(&self.service, law_id)
+            .ok_or_else(|| wasm_error(&format!("Law not loaded: {law_id}")))?;
+
+        let doc: serde_json::Value = serde_yaml_ng::from_str(annotations_yaml)
+            .map_err(|e| wasm_error(&format!("Invalid annotations YAML: {e}")))?;
+        let notes = doc
+            .get("annotations")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| wasm_error("Missing 'annotations' list"))?;
+
+        let mut resolved: Vec<serde_json::Value> = Vec::with_capacity(notes.len());
+        for note in notes {
+            let Some(selector_value) = note.get("target").and_then(|t| t.get("selector")) else {
+                continue;
+            };
+            let Ok(selector) = serde_json::from_value::<TextQuoteSelector>(selector_value.clone())
+            else {
+                continue;
+            };
+            let result = annotation::resolve(&selector, &law.articles);
+            let match_value = serde_json::to_value(&result)
+                .map_err(|e| wasm_error(&format!("Serialization error: {e}")))?;
+            resolved.push(serde_json::json!({
+                "note": note,
+                "match": match_value,
+            }));
+        }
+
+        serde_json::Value::Array(resolved)
+            .serialize(&js_serializer())
+            .map_err(|e| wasm_error(&format!("Serialization error: {e}")))
     }
 
     /// Register a tabular data source from flat records.
