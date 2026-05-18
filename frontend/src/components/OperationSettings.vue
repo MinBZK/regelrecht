@@ -347,6 +347,13 @@ function canChangeValueKind(val) {
     && val._kind !== 'reference_date';
 }
 
+// The actions menu only contains the Type group and Verwijder. When neither
+// applies (e.g. a comparison op's fixed subject/value), the menu would render
+// empty ("Geen opties beschikbaar"), so suppress the more-button entirely.
+function hasValueMenu(val) {
+  return canChangeValueKind(val) || canRemoveValue(val);
+}
+
 // Switch a value between a literal and a nested operation, writing through
 // applyValueMutation so it lands in the correct slot for this _kind. The
 // default operation mirrors the old "Operatie toevoegen" shape.
@@ -518,13 +525,14 @@ function addValue() {
               @click="emit('select-operation', val._value)"
             ></nldd-icon-button>
             <nldd-icon-button
+              v-if="hasValueMenu(val)"
               :id="`val-actions-${operation.number}-${i}`"
               icon="more"
               text="Acties"
               tooltip-timing="never"
               variant="neutral-tinted"
             ></nldd-icon-button>
-            <nldd-menu :anchor="`val-actions-${operation.number}-${i}`">
+            <nldd-menu v-if="hasValueMenu(val)" :anchor="`val-actions-${operation.number}-${i}`">
               <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
                 <nldd-menu-item
                   type="radio"
