@@ -486,8 +486,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn platform_admin_can_access_all_apps() {
-        // Platform-admin's token transitively contains every sub-role across
+    async fn regelrecht_admin_can_access_all_apps() {
+        // Regelrecht-admin's token transitively contains every sub-role across
         // both apps; a check for any leaf role passes.
         for required in [
             "editor-reader",
@@ -500,13 +500,13 @@ mod tests {
             let app = role_test_app(test_state(true), required);
             let cookie = seed_session(
                 &app,
-                "platform-admin,editor-admin,editor-writer,editor-reader,harvester-admin,harvester-writer,harvester-reader",
+                "regelrecht-admin,editor-admin,editor-writer,editor-reader,harvester-admin,harvester-writer,harvester-reader",
             )
             .await;
             assert_eq!(
                 get_test(app, &cookie).await,
                 StatusCode::OK,
-                "platform-admin should access {required}"
+                "regelrecht-admin should access {required}"
             );
         }
     }

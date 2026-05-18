@@ -13,7 +13,7 @@ token. The application code never has to check `role-A OR role-B`; each
 protected route asks for exactly one role.
 
 ```
-                  platform-admin
+                  regelrecht-admin
                  /              \
         editor-admin            harvester-admin
               │                       │
@@ -40,7 +40,7 @@ There are two applications today:
 | `harvester-reader` | Harvester admin: read jobs, sources, law entries, platform info. |
 | `harvester-writer` | Harvester admin: enqueue harvest and enrich jobs. Inherits `harvester-reader`. |
 | `harvester-admin` | Harvester admin: delete jobs, reset exhausted entries, sync sources. Inherits `harvester-writer`. |
-| `platform-admin` | Everything across both apps. Inherits `editor-admin` and `harvester-admin`. |
+| `regelrecht-admin` | Everything across both apps. Inherits `editor-admin` and `harvester-admin`. |
 
 ## Specific (orthogonal) rights
 
@@ -74,10 +74,10 @@ The application reads `realm_access.roles` from the ID token. With composite
 roles, the token contains the *effective* set of roles after expansion:
 
 ```json
-// platform-admin user
+// regelrecht-admin user
 "realm_access": {
   "roles": [
-    "platform-admin",
+    "regelrecht-admin",
     "editor-admin", "editor-writer", "editor-reader",
     "harvester-admin", "harvester-writer", "harvester-reader"
   ]
@@ -99,7 +99,7 @@ roles, the token contains the *effective* set of roles after expansion:
    - `harvester-writer` → contains `harvester-reader`.
    - `harvester-admin` → contains `harvester-writer` (+ every harvester
      specific right).
-   - `platform-admin` → contains `editor-admin` and `harvester-admin`.
+   - `regelrecht-admin` → contains `editor-admin` and `harvester-admin`.
 3. **Realm-roles mapper on the ID token**: each OIDC client (editor,
    harvester-admin) needs a "Realm roles" mapper that injects `realm_access`
    into the **ID token** (not just the access token). Keycloak only adds it
@@ -164,7 +164,7 @@ with no per-route gating. To migrate without locking anyone out:
 
 The harvester-admin service accepts a bearer API key on **GET** and **DELETE**
 requests (`ADMIN_API_KEY` env var). This is an out-of-band trust path — the holder
-is treated as a `platform-admin`-equivalent for those methods. POST is never
+is treated as a `regelrecht-admin`-equivalent for those methods. POST is never
 allowed via the API key path; use a user session with `harvester-writer` or
 `harvester-admin` for mutations. The editor service has no API key path.
 

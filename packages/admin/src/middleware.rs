@@ -24,7 +24,7 @@ type RequireAuthFuture = Pin<Box<dyn Future<Output = Result<Response, ApiError>>
 /// Route-level auth gate for the admin (harvester) dashboard.
 ///
 /// Two trust paths:
-/// 1. A valid bearer API key — out-of-band trust, treated as platform-admin
+/// 1. A valid bearer API key — out-of-band trust, treated as regelrecht-admin
 ///    equivalent for the methods listed in [`API_KEY_ALLOWED_METHODS`]
 ///    (GET/DELETE). The key holder is whoever provisioned the deployment.
 /// 2. An authenticated OIDC session — must carry `required_role` in
