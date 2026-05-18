@@ -526,6 +526,7 @@ function addValue() {
                   :value="currentDropdownValue(val._value)"
                   @change="updateDropdownValue(val, $event)"
                 >
+                  <option value="">Selecteer...</option>
                   <template v-for="nestedOpt in [valueDropdownNestedOption(val._value)]" :key="nestedOpt?.label ?? 'nested'">
                     <option v-if="nestedOpt" :value="nestedOpt.value" :selected="currentDropdownValue(val._value) === '__nested__'">{{ nestedOpt.label }}</option>
                   </template>
