@@ -1,4 +1,4 @@
-//! Step definitions for note resolution (RFC-005, RFC-016).
+//! Step definitions for note resolution (RFC-005, RFC-018).
 //!
 //! Scenarios set up article text inline (so they are self-contained and do not
 //! depend on the corpus), build a TextQuoteSelector, resolve it, and assert on

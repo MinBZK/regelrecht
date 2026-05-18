@@ -1,4 +1,4 @@
-Feature: Note resolution (RFC-005, RFC-016)
+Feature: Note resolution (RFC-005, RFC-018)
   A note anchors to legal text via a W3C TextQuoteSelector: an exact quote
   plus optional prefix/suffix context. The selector is content-addressed, so
   a note resolves on any law version where the text exists, surviving article
@@ -33,6 +33,33 @@ Feature: Note resolution (RFC-005, RFC-016)
     When the note is resolved
     Then the note resolves to article "2"
     And the note is a fuzzy match
+
+  # Scoring boundary guard (RFC-018). The resolver scores fuzzy candidates
+  # with normalised Levenshtein, not the Python PoC's SequenceMatcher; the two
+  # disagree near the 0.7 threshold. These two scenarios pin the boundary so a
+  # scoring-function or threshold change cannot silently re-classify notes.
+
+  Scenario: A near-identical change stays above the fuzzy threshold
+    # The article reads "vaststelt"; the note's exact is "stelt vast" (a small
+    # word-order/spelling drift). Levenshtein similarity stays well above 0.7,
+    # so the note still resolves, as a fuzzy match (confidence < 1.0).
+    Given a law with the following articles:
+      | number | text                                                                  |
+      | 2      | de inspecteur die het verzamelinkomen van de belanghebbende vaststelt |
+    And a note selecting "het verzamelinkomen van de belanghebbende stelt vast" with prefix "de inspecteur die " and suffix ""
+    When the note is resolved
+    Then the note resolves to article "2"
+    And the note is a fuzzy match
+
+  Scenario: A wholesale rewrite falls below the fuzzy threshold
+    # The exact phrase shares a word but the text is otherwise unrelated:
+    # similarity below 0.7, so the note must orphan rather than mis-anchor.
+    Given a law with the following articles:
+      | number | text                                                      |
+      | 2      | De Belastingdienst kent op aanvraag een voorschot toe.    |
+    And a note selecting "stelt het verzamelinkomen van de belanghebbende ambtshalve vast" with prefix "de inspecteur " and suffix " voor het jaar"
+    When the note is resolved
+    Then the note is orphaned
 
   Scenario: Text removed orphans the note
     Given a law with the following articles:
@@ -80,7 +107,7 @@ Feature: Note resolution (RFC-005, RFC-016)
     When the note is resolved
     Then the note resolves to article "2"
 
-  # === Ambiguity tracking (RFC-016 Decision 6) ===
+  # === Ambiguity tracking (RFC-018 Decision 6) ===
   # A questioning note over an open norm still has to resolve to the text it
   # is about; the ambiguity state lives in a tagging body, the resolver only
   # cares about anchoring.

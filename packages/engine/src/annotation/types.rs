@@ -97,14 +97,21 @@ pub enum MatchStatus {
 }
 
 /// A single located span in the law text.
+///
+/// `start`/`end` are **`char` offsets** (Unicode scalar values) into the
+/// article text, article-relative, not byte offsets and not UTF-16 code
+/// units. A JS consumer slicing the text (e.g. to build a DOM Range) must map
+/// these to UTF-16 indices itself; they will differ for any text containing
+/// non-BMP characters, and the convention must match the offsets the editor
+/// writes into a `regelrecht:hint`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextMatch {
     /// Article the match was found in (empty when resolving raw text).
     #[serde(default)]
     pub article_number: String,
-    /// Character offset (article-relative) where the match begins.
+    /// `char` offset (article-relative) where the match begins.
     pub start: usize,
-    /// Character offset (article-relative) where the match ends.
+    /// `char` offset (article-relative) where the match ends.
     pub end: usize,
     /// Confidence: `1.0` for an exact match, `< 1.0` for a fuzzy match.
     pub confidence: f64,

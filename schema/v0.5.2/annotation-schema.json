@@ -68,8 +68,8 @@
         },
         "resolution": {
           "type": "string",
-          "description": "Technical dimension: can the selector locate the text? Derived at resolution time; stored value is advisory.",
-          "enum": ["found", "orphaned"],
+          "description": "Technical dimension: can the selector locate the text? Derived at resolution time; the stored value is advisory and mirrors the resolver's MatchStatus (found / orphaned / ambiguous).",
+          "enum": ["found", "orphaned", "ambiguous"],
           "default": "found"
         },
         "workflow": {

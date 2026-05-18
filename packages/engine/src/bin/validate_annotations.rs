@@ -1,14 +1,14 @@
-//! Validate note sidecar files (RFC-005, RFC-016).
+//! Validate note sidecar files (RFC-005, RFC-018).
 //!
 //! For each note file:
 //! 1. JSON Schema validation against the embedded annotation schema.
 //! 2. Resolve every note's selector against its target law (loaded from the
 //!    corpus by `$id`). Orphaned or ambiguous notes are reported as
-//!    **warnings**, not errors (RFC-016 Decision 8): law text legitimately
+//!    **warnings**, not errors (RFC-018 Decision 8): law text legitimately
 //!    drifts away from notes over time.
 //! 3. Tagging-body values are checked against the controlled vocabulary
 //!    (`corpus/annotations/_vocabulary/ambiguity.yaml`); unknown values are
-//!    **warnings** (RFC-016 Decision 9).
+//!    **warnings** (RFC-018 Decision 9).
 //!
 //! Exit code is non-zero only on schema validation failures.
 
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use jsonschema::Validator;
-use regelrecht_engine::annotation::{resolve, TextQuoteSelector};
+use regelrecht_engine::annotation::{law_id_from_source, resolve, TextQuoteSelector};
 use regelrecht_engine::article::ArticleBasedLaw;
 
 const ANNOTATION_SCHEMA: &str = include_str!("../../../../schema/v0.5.2/annotation-schema.json");
@@ -87,7 +87,7 @@ fn main() {
     }
 
     if warnings > 0 {
-        eprintln!("\n{warnings} warning(s). Orphaned/ambiguous notes and unknown tags do not fail the build (RFC-016).");
+        eprintln!("\n{warnings} warning(s). Orphaned/ambiguous notes and unknown tags do not fail the build (RFC-018).");
     }
     if failed {
         process::exit(1);
@@ -108,7 +108,7 @@ fn check_notes(path: &Path, doc: &serde_json::Value, vocabulary: &HashSet<String
             .and_then(|t| t.get("source"))
             .and_then(|s| s.as_str())
             .and_then(law_id_from_source)
-            .and_then(|id| load_law_by_id(&id))
+            .and_then(load_law_by_id)
         {
             if let Some(selector) = note
                 .get("target")
@@ -147,12 +147,6 @@ fn check_notes(path: &Path, doc: &serde_json::Value, vocabulary: &HashSet<String
         }
     }
     warnings
-}
-
-/// Extract `{law_id}` from a `regelrecht://{law_id}` (or `.../...`) source URI.
-fn law_id_from_source(source: &str) -> Option<String> {
-    let rest = source.strip_prefix("regelrecht://")?;
-    Some(rest.split('/').next().unwrap_or(rest).to_string())
 }
 
 /// Collect every `TextualBody` value whose `purpose` is `tagging`.
@@ -235,10 +229,14 @@ fn collect_law_yaml(dir: &Path, law_id: &str, out: &mut Vec<PathBuf>) {
         if p.is_dir() {
             collect_law_yaml(&p, law_id, out);
         } else if p.extension().and_then(|e| e.to_str()) == Some("yaml") {
+            // Parse the top-level `$id` rather than substring-matching the
+            // file: a comment or a nested string containing "$id: x" would
+            // otherwise produce a false positive.
             if let Ok(content) = std::fs::read_to_string(&p) {
-                // Cheap pre-check before a full parse.
-                if content.contains(&format!("$id: {law_id}")) {
-                    out.push(p);
+                if let Ok(doc) = serde_yaml_ng::from_str::<serde_json::Value>(&content) {
+                    if doc.get("$id").and_then(|v| v.as_str()) == Some(law_id) {
+                        out.push(p);
+                    }
                 }
             }
         }

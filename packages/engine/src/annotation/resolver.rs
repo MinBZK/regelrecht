@@ -1,4 +1,4 @@
-//! TextQuoteSelector resolution algorithm (RFC-005, RFC-016).
+//! TextQuoteSelector resolution algorithm (RFC-005, RFC-018).
 //!
 //! Resolution order:
 //! 1. If a hint is present, try the hinted article first; on failure fall
@@ -6,14 +6,25 @@
 //! 2. Exact match: locate `prefix + exact + suffix` as a substring, with
 //!    whitespace-tolerant prefix/suffix checks.
 //! 3. Fuzzy match: a sliding window over the text scored
-//!    `exact*0.5 + prefix*0.25 + suffix*0.25` using normalised Levenshtein
-//!    similarity, keeping candidates at or above the threshold (0.7).
-//! 4. One match → [`MatchStatus::Found`], several equally-good →
-//!    [`MatchStatus::Ambiguous`], none → [`MatchStatus::Orphaned`].
+//!    `exact*0.5 + prefix*0.25 + suffix*0.25`, keeping candidates at or above
+//!    the threshold (0.7).
+//! 4. One match (or a clear winner) is [`MatchStatus::Found`], several
+//!    equally-good are [`MatchStatus::Ambiguous`], none is
+//!    [`MatchStatus::Orphaned`].
 //!
-//! Ported from the Python proof-of-concept on the `feature/annotation-resolver`
-//! branch; the Rust port is the single source of truth (it also runs in the
-//! browser via WASM).
+//! Structurally ported from the Python proof-of-concept on the
+//! `feature/annotation-resolver` branch (resolution order, hint fallback,
+//! dedup, tiebreak margin). The scoring function differs deliberately: the
+//! PoC used `difflib.SequenceMatcher.ratio()` (Ratcliff-Obershelp); this uses
+//! normalised Levenshtein per RFC-018, which is harsher on block moves. The
+//! two disagree near the 0.7 threshold, so a boundary BDD scenario guards the
+//! behaviour. The Rust port is the single source of truth (it also runs in
+//! the browser via WASM).
+//!
+//! All offsets ([`TextMatch::start`]/`end`, [`SelectorHint`] positions) are
+//! **`char` offsets** (Unicode scalar values), not byte or UTF-16 code-unit
+//! offsets. JS consumers indexing the law text must account for this; see the
+//! WASM binding docs.
 
 use crate::annotation::types::{MatchResult, SelectorHint, TextMatch, TextQuoteSelector};
 use crate::article::Article;
@@ -181,14 +192,19 @@ fn verify_at_position(
     if !selector.prefix.is_empty() {
         let prefix_start = start.saturating_sub(selector.prefix.chars().count() + 1);
         let actual: String = chars[prefix_start..start].iter().collect();
-        if !actual.trim().contains(selector.prefix.trim()) {
+        // The prefix is the text immediately *before* `exact`, so the window
+        // must *end with* it (ends_with, not contains: prefix "een" must not
+        // be satisfied by "geen").
+        if !actual.trim().ends_with(selector.prefix.trim()) {
             return None;
         }
     }
     if !selector.suffix.is_empty() {
         let suffix_end = (end + selector.suffix.chars().count() + 1).min(chars.len());
         let actual: String = chars[end..suffix_end].iter().collect();
-        if !actual.trim().contains(selector.suffix.trim()) {
+        // The suffix is the text immediately *after* `exact`, so the window
+        // must *start with* it.
+        if !actual.trim().starts_with(selector.suffix.trim()) {
             return None;
         }
     }
@@ -220,17 +236,22 @@ fn find_exact_matches(text: &str, selector: &TextQuoteSelector) -> Vec<TextMatch
         let pos = from + rel;
         let end = pos + exact.len();
 
+        // Prefix is the text right before `exact`: the window must end with
+        // it. Suffix is the text right after: the window must start with it.
+        // ends_with/starts_with (not contains) so prefix "een" is not
+        // satisfied by "geen". The +1 char of slack plus trim() keeps the
+        // check whitespace-tolerant.
         let prefix_ok = selector.prefix.is_empty() || {
             let p_len = selector.prefix.chars().count();
             let p_start = pos.saturating_sub(p_len + 1);
             let actual: String = chars[p_start..pos].iter().collect();
-            actual.trim().contains(selector.prefix.trim())
+            actual.trim().ends_with(selector.prefix.trim())
         };
         let suffix_ok = selector.suffix.is_empty() || {
             let s_len = selector.suffix.chars().count();
             let s_end = (end + s_len + 1).min(chars.len());
             let actual: String = chars[end..s_end].iter().collect();
-            actual.trim().contains(selector.suffix.trim())
+            actual.trim().starts_with(selector.suffix.trim())
         };
 
         if prefix_ok && suffix_ok {
@@ -263,6 +284,11 @@ fn find_fuzzy_matches(text: &str, selector: &TextQuoteSelector, threshold: f64) 
     let min_w = exact_len.saturating_sub(tolerance).max(1);
     let max_w = exact_len + tolerance;
 
+    // Constant for the whole scan: compute once, not per window position.
+    let exact_words = significant_words(&selector.exact);
+    let prefix_len = selector.prefix.chars().count();
+    let suffix_len = selector.suffix.chars().count();
+
     let mut matches: Vec<TextMatch> = Vec::new();
     for window in min_w..=max_w {
         if window > chars.len() {
@@ -270,12 +296,10 @@ fn find_fuzzy_matches(text: &str, selector: &TextQuoteSelector, threshold: f64) 
         }
         for i in 0..=(chars.len() - window) {
             let candidate: String = chars[i..i + window].iter().collect();
-            if !shares_significant_content(&selector.exact, &candidate) {
+            if !shares_significant_content(&exact_words, &candidate) {
                 continue;
             }
 
-            let prefix_len = selector.prefix.chars().count();
-            let suffix_len = selector.suffix.chars().count();
             let p_start = i.saturating_sub(prefix_len);
             let actual_prefix: String = chars[p_start..i].iter().collect();
             let s_end = (i + window + suffix_len).min(chars.len());
@@ -314,7 +338,7 @@ fn find_fuzzy_matches(text: &str, selector: &TextQuoteSelector, threshold: f64) 
     matches
 }
 
-/// Normalised Levenshtein similarity in `[0.0, 1.0]` (RFC-016).
+/// Normalised Levenshtein similarity in `[0.0, 1.0]` (RFC-018).
 fn similarity(a: &str, b: &str) -> f64 {
     if a.is_empty() && b.is_empty() {
         return 1.0;
@@ -325,17 +349,30 @@ fn similarity(a: &str, b: &str) -> f64 {
     strsim::normalized_levenshtein(a, b)
 }
 
-/// Cheap pre-filter: do the two strings share a word longer than 3 chars?
-/// Avoids scoring obviously unrelated windows.
-fn shares_significant_content(a: &str, b: &str) -> bool {
-    let words_a: std::collections::HashSet<String> = a
+/// Significant words (longer than 3 chars, lowercased) of a string.
+///
+/// Computed once for `exact` before the sliding-window scan; "significant"
+/// excludes short function words (articles, prepositions) so the pre-filter
+/// keys on content words.
+fn significant_words(s: &str) -> std::collections::HashSet<String> {
+    s.to_lowercase()
+        .split_whitespace()
+        .filter(|w| w.chars().count() > 3)
+        .map(String::from)
+        .collect()
+}
+
+/// Cheap pre-filter: does the candidate share a significant word with `exact`?
+/// Avoids scoring obviously unrelated windows. `exact_words` is precomputed by
+/// the caller so this allocates nothing per window.
+fn shares_significant_content(
+    exact_words: &std::collections::HashSet<String>,
+    candidate: &str,
+) -> bool {
+    candidate
         .to_lowercase()
         .split_whitespace()
-        .map(String::from)
-        .collect();
-    b.to_lowercase()
-        .split_whitespace()
-        .any(|w| w.chars().count() > 3 && words_a.contains(w))
+        .any(|w| w.chars().count() > 3 && exact_words.contains(w))
 }
 
 /// Keep only the highest-confidence match for each overlapping region.
