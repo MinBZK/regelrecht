@@ -71,20 +71,11 @@ const currentScenarioName = computed(() =>
     ? formState.value?.scenarios?.[selectedScenarioIndex.value]?.name ?? ''
     : '',
 );
-// Drilled in: title = humanised source name, scenario name as supporting
-// text, and a back button to the scenario overview. The collapse-anchor
-// keeps the bar non-compact (full text back button) until the user scrolls
-// past the table heading, then it compacts to show title + supporting text.
-// Overview: title = scenario name, no back button (empty back-text hides it).
-const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-const titleBarText = computed(() =>
-  drilledSourceName.value ? capitalize(humanize(drilledSourceName.value)) : currentScenarioName.value,
-);
-const titleBarSupportingText = computed(() =>
-  drilledSourceName.value ? currentScenarioName.value : '',
-);
-const titleBarBackText = computed(() => (drilledSourceName.value ? 'Scenario' : ''));
-const titleBarCollapseAnchor = computed(() => (drilledSourceName.value ? 'ds-drill-anchor' : ''));
+// The title bar is a static "Scenario"; the readable scenario name lives as
+// an nldd-title at the top of the section content instead (so it can't get
+// truncated). The back button only appears when drilled into a data source
+// — its label is the scenario name as the accessible "back to" target.
+const titleBarBackText = computed(() => (drilledSourceName.value ? currentScenarioName.value : ''));
 
 function onTitleBack() {
   const idx = selectedScenarioIndex.value;
@@ -345,15 +336,20 @@ async function onSaveAndShow() {
 }
 
 function cancelEdits() {
-  // Discard edits by re-parsing the last-loaded feature text into formState.
+  // Only discard when there were actual edits. Re-parsing/replacing
+  // formState otherwise needlessly remounts the whole overview — clearing
+  // cached results/refs (via the formState watcher) and resetting the
+  // pane's scroll position — just from opening and closing a scenario.
   // Each ScenarioForm's deep watcher resets its local inputs when its
   // `scenario`/`setup` props are replaced.
-  const text = featureText.value;
-  if (text) {
-    try {
-      const parsed = parseFeature(text);
-      formState.value = mapFeatureToForm(parsed);
-    } catch { /* keep the previous state */ }
+  if (isDirty.value) {
+    const text = featureText.value;
+    if (text) {
+      try {
+        const parsed = parseFeature(text);
+        formState.value = mapFeatureToForm(parsed);
+      } catch { /* keep the previous state */ }
+    }
   }
   isDirty.value = false;
   selectedScenarioIndex.value = null;
@@ -450,15 +446,17 @@ defineExpose({ save: onSave });
       <nldd-page sticky-header :sticky-footer="isDirty || undefined">
         <nldd-top-title-bar
           slot="header"
-          :text="titleBarText"
-          :supporting-text="titleBarSupportingText"
+          text="Scenario"
           :back-text="titleBarBackText"
-          :collapse-anchor="titleBarCollapseAnchor"
           dismiss-text="Annuleer"
           @back="onTitleBack"
           @dismiss="cancelEdits"
         ></nldd-top-title-bar>
         <nldd-simple-section>
+          <template v-if="!drilledSourceName">
+            <nldd-title size="4"><h2>{{ currentScenarioName }}</h2></nldd-title>
+            <nldd-spacer size="24"></nldd-spacer>
+          </template>
           <ScenarioForm
             v-for="(scenario, i) in formState.scenarios"
             v-show="selectedScenarioIndex === i"
