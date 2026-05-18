@@ -576,7 +576,7 @@ function addValue() {
                   @click.stop="changeValueKind(val, 'operatie')"
                 ></nldd-menu-item>
               </nldd-menu-group>
-              <nldd-menu-divider v-if="canRemoveValue(val)"></nldd-menu-divider>
+              <nldd-menu-divider v-if="canChangeValueKind(val) && canRemoveValue(val)"></nldd-menu-divider>
               <nldd-menu-item
                 v-if="canRemoveValue(val)"
                 text="Verwijder"
