@@ -244,7 +244,7 @@ const dateInvalid = computed(() => !calculationDate.value);
 </script>
 
 <template>
-  <div>
+  <div class="sf-root">
     <!-- Scenario overview -->
     <template v-if="selectedSource === null">
       <!-- Expected outputs -->
@@ -292,7 +292,7 @@ const dateInvalid = computed(() => !calculationDate.value);
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" min-width="120px" max-width="200px"></nldd-text-cell>
+          <nldd-text-cell :text="name" :supporting-text="articleMap?.paramToArticle?.get(name) ? `Artikel ${articleMap.paramToArticle.get(name)}` : undefined" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
           <nldd-cell width="full" min-width="120px">
             <nldd-text-field
@@ -347,6 +347,13 @@ const dateInvalid = computed(() => !calculationDate.value);
 </template>
 
 <style scoped>
+/* Single component root required for v-show, but it must not generate a
+ * box — otherwise it blocks the enclosing simple-section's nldd flex
+ * layout (flex-grow / centering of an empty data source's dialog). */
+.sf-root {
+  display: contents;
+}
+
 .sf-running {
   font-size: 12px;
   color: var(--semantics-text-color-secondary, #666);

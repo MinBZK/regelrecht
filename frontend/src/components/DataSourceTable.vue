@@ -105,7 +105,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 </script>
 
 <template>
-  <div>
+  <div class="ds-root">
     <!-- Header: accordion toggle, or a plain heading when drilled in -->
     <button v-if="!drilledIn" class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
       <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
@@ -122,7 +122,9 @@ const showBody = computed(() => props.drilledIn || expanded.value);
     </template>
 
     <template v-if="showBody">
-      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens — vul in indien relevant"></nldd-inline-dialog>
+      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens — vul in indien relevant">
+        <nldd-button v-if="!readonly" slot="actions" size="md" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
+      </nldd-inline-dialog>
 
       <!-- One box list per row — identical layout regardless of row count,
            with the delete button at the bottom of each list. Spacers (not a
@@ -167,19 +169,29 @@ const showBody = computed(() => props.drilledIn || expanded.value);
         </nldd-list>
       </template>
 
-      <nldd-spacer v-if="!readonly" size="12"></nldd-spacer>
-      <nldd-list v-if="!readonly" variant="box">
-        <nldd-list-item size="md">
-          <nldd-cell width="full">
-            <nldd-button size="md" width="full" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
-          </nldd-cell>
-        </nldd-list-item>
-      </nldd-list>
+      <!-- Empty state offers "Voeg toe" inside the inline-dialog instead. -->
+      <template v-if="!readonly && rows.length > 0">
+        <nldd-spacer size="12"></nldd-spacer>
+        <nldd-list variant="box">
+          <nldd-list-item size="md">
+            <nldd-cell width="full">
+              <nldd-button size="md" width="full" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
+            </nldd-cell>
+          </nldd-list-item>
+        </nldd-list>
+      </template>
     </template>
   </div>
 </template>
 
 <style scoped>
+/* The component needs a single root, but it must not generate a box —
+ * otherwise it blocks the nldd flex layout (flex-grow / centering of the
+ * empty-state inline-dialog) of the enclosing simple-section. */
+.ds-root {
+  display: contents;
+}
+
 .ds-block-toggle {
   display: flex;
   align-items: center;
