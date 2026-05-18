@@ -24,6 +24,7 @@ Eerst scope-bepaling met jurist.
 |---------|------|
 | [stelsel-overview.md](stelsel-overview.md) | **Startpunt** — stelsel-diagram met regulatory_layers + uitvoeringsorganisaties |
 | [scope-bepaling.md](scope-bepaling.md) | Werkblad voor de scope-bepalings-sessie met jurist (wegkruis-tabel + artikel-graph) |
+| [product-positionering.md](product-positionering.md) | 1-pager voor productowner — scope, differentiators, besluitvragen |
 | [jurist-input-2026-05-13.md](jurist-input-2026-05-13.md) | Verbatim juristen-mail die het startpunt vormt |
 
 ## Eerste sprint: doelgroepbepaling
@@ -59,7 +60,7 @@ art. 5.2.
 
 ## Hulpbronnen (juristen-input)
 
-- **MVO Wetchecker** — https://www.mvonederland.nl/wetchecker/
+- **MVO Wetchecker** — https://regelhulpenvoorbedrijven.nl/mvo-wetchecker/ (juristen-mail noemde een verouderde URL `mvonederland.nl/wetchecker`; de tool is nu RVO-eigen via regelhulpenvoorbedrijven.nl)
 - **RVO CSRD-pagina** — https://www.rvo.nl/onderwerpen/csrd
 - **SER over Omnibus** — https://www.ser.nl/nl/thema/imvo/csrd-omnibus
 - **EU Commission Omnibus** — https://commission.europa.eu/business-economy-euro/doing-business-eu/sustainability-due-diligence-responsible-business/sustainability-related-reporting_en
