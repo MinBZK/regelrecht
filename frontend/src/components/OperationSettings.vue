@@ -383,16 +383,6 @@ function readonlyValueText(val) {
   return String(v);
 }
 
-// Supporting-text for a Waarde row holding a nested op: only show the
-// derived expression when a user-title masked it as the primary text.
-// Without a user-title the row text IS the derived expression, so a
-// supporting-text would just repeat it.
-function nestedSupportingText(val) {
-  const v = val._value;
-  if (!isNestedOperation(v) || !v.title) return undefined;
-  return derivedTitle(v);
-}
-
 function removeValue(val) {
   const node = props.operation?.node;
   if (!node) return;
@@ -497,14 +487,14 @@ function addValue() {
       >
         <nldd-text-cell :text="val._label" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
         <nldd-spacer-cell size="12"></nldd-spacer-cell>
-        <nldd-cell v-if="editable">
-          <div class="value-row">
+        <template v-if="editable">
+          <nldd-cell>
             <!-- Subject/date fields show a dropdown of available variables.
                  If the field already holds a literal value (e.g. "2025-01-01"),
                  it's included as the first option so it stays visible and
                  selectable. -->
             <template v-if="val._kind === 'subject' || val._kind === 'date_of_birth' || val._kind === 'reference_date'">
-              <nldd-dropdown size="md" style="flex: 1; min-width: 0;">
+              <nldd-dropdown size="md">
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
                   <option value="">Selecteer...</option>
                   <option v-if="isLiteralValue(val._value) && val._value !== '' && val._value !== null" :value="String(val._value)" :selected="true">{{ String(val._value) }}</option>
@@ -520,7 +510,7 @@ function addValue() {
             </template>
             <!-- Variable references and nested operations show a full dropdown -->
             <template v-else>
-              <nldd-dropdown size="md" style="flex: 1; min-width: 0;">
+              <nldd-dropdown size="md">
                 <!-- A nested op's option value is the constant '__nested__',
                      and so is the select's bound value. Native <select>
                      only re-renders its COLLAPSED label when value changes,
@@ -545,23 +535,27 @@ function addValue() {
                 </select>
               </nldd-dropdown>
             </template>
+          </nldd-cell>
+          <template v-if="isNestedOperation(val._value)">
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-icon-button
-              v-if="isNestedOperation(val._value)"
               icon="edit"
               text="Bewerken"
               tooltip-timing="never"
               variant="neutral-tinted"
               @click="emit('select-operation', val._value)"
             ></nldd-icon-button>
+          </template>
+          <template v-if="hasValueMenu(val)">
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
             <nldd-icon-button
-              v-if="hasValueMenu(val)"
               :id="`val-actions-${operation.number}-${i}`"
               icon="more"
               text="Acties"
               tooltip-timing="never"
               variant="neutral-tinted"
             ></nldd-icon-button>
-            <nldd-menu v-if="hasValueMenu(val)" :anchor="`val-actions-${operation.number}-${i}`">
+            <nldd-menu :anchor="`val-actions-${operation.number}-${i}`">
               <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
                 <nldd-menu-item
                   type="radio"
@@ -584,20 +578,10 @@ function addValue() {
                 @click.stop="removeValue(val)"
               ></nldd-menu-item>
             </nldd-menu>
-          </div>
-          <!-- Subtitle only when a user title masks the derived form: then
-               the derived expression is the extra technical detail. Without a
-               title the dropdown already shows derivedTitle, so a subtitle
-               would just repeat it (matches read-only nestedSupportingText). -->
-          <p v-if="isNestedOperation(val._value) && val._value.title" class="value-help-text">
-            {{ derivedTitle(val._value) }}
-          </p>
-        </nldd-cell>
+          </template>
+        </template>
         <template v-else>
-          <nldd-text-cell
-            horizontal-alignment="right"
-            :supporting-text="nestedSupportingText(val)"
-          ><BreakableName :name="readonlyValueText(val)" /></nldd-text-cell>
+          <nldd-text-cell horizontal-alignment="right"><BreakableName :name="readonlyValueText(val)" /></nldd-text-cell>
           <template v-if="isNestedOperation(val._value)">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20">
@@ -639,26 +623,5 @@ function addValue() {
 .settings-list nldd-text-field,
 .settings-list nldd-dropdown {
   width: 100%;
-}
-
-.value-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-}
-.value-row nldd-text-field,
-.value-row nldd-dropdown {
-  flex: 1;
-  min-width: 0;
-}
-
-.value-help-text {
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.25;
-  color: var(--semantics-text-secondary-color, #545D68);
-  margin: 2px 0 0 0;
 }
 </style>
