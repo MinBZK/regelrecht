@@ -295,9 +295,9 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
           :data-testid="`ds-row-${i}`"
           @click="selectedSource = i"
         >
-          <nldd-text-cell :text="ds.sourceName"></nldd-text-cell>
+          <nldd-text-cell :text="humanize(ds.sourceName)"></nldd-text-cell>
           <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-text-cell horizontal-alignment="right"><nldd-tag v-if="ds.rows.length" size="sm" :text="String(ds.rows.length)"></nldd-tag></nldd-text-cell>
+          <nldd-text-cell horizontal-alignment="right" :text="ds.rows.length ? String(ds.rows.length) : ''"></nldd-text-cell>
           <nldd-spacer-cell size="12"></nldd-spacer-cell>
           <nldd-icon-cell size="20"><nldd-icon name="chevron-right"></nldd-icon></nldd-icon-cell>
         </nldd-list-item>
@@ -310,11 +310,12 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <template v-else>
       <DataSourceTable
         :key="dataSources[selectedSource].sourceName"
-        :title="dataSources[selectedSource].sourceName"
+        :title="humanize(dataSources[selectedSource].sourceName)"
         :key-field="dataSources[selectedSource].keyField"
         :fields="dataSources[selectedSource].fields"
         :model-value="dataSources[selectedSource].rows"
         :drilled-in="true"
+        anchor-id="ds-drill-anchor"
         @update:model-value="updateDataSourceRows(selectedSource, $event)"
       />
     </template>

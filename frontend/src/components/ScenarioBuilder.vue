@@ -55,15 +55,15 @@ const scenarioSheetEl = ref(null);
 const drilledSourceName = ref(null);
 
 watch(selectedScenarioIndex, async (idx) => {
-  // Opening / switching a scenario always lands on its overview.
+  // Opening / switching a scenario always lands on its overview. Reset every
+  // form's drill state so at most one drilled DataSourceTable exists at a
+  // time — its heading carries the constant `ds-drill-anchor` id used as the
+  // top-title-bar collapse anchor, so a second one would duplicate the id.
   drilledSourceName.value = null;
   await nextTick();
-  if (idx !== null) {
-    scenarioRefs.value[idx]?.clearDrill?.();
-    scenarioSheetEl.value?.show();
-  } else {
-    scenarioSheetEl.value?.hide();
-  }
+  scenarioRefs.value.forEach((f) => f?.clearDrill?.());
+  if (idx !== null) scenarioSheetEl.value?.show();
+  else scenarioSheetEl.value?.hide();
 });
 
 const currentScenarioName = computed(() =>
@@ -71,10 +71,19 @@ const currentScenarioName = computed(() =>
     ? formState.value?.scenarios?.[selectedScenarioIndex.value]?.name ?? ''
     : '',
 );
-// Drilled in: title = source name, back button → scenario overview.
-// Otherwise: title = scenario name, no back button (empty back-text hides it).
-const titleBarText = computed(() => drilledSourceName.value ?? currentScenarioName.value);
+// Drilled in: title = humanised source name, scenario name as supporting
+// text, and a back button to the scenario overview. The collapse-anchor
+// keeps the bar non-compact (full text back button) until the user scrolls
+// past the table heading, then it compacts to show title + supporting text.
+// Overview: title = scenario name, no back button (empty back-text hides it).
+const titleBarText = computed(() =>
+  drilledSourceName.value ? humanize(drilledSourceName.value) : currentScenarioName.value,
+);
+const titleBarSupportingText = computed(() =>
+  drilledSourceName.value ? currentScenarioName.value : '',
+);
 const titleBarBackText = computed(() => (drilledSourceName.value ? currentScenarioName.value : ''));
+const titleBarCollapseAnchor = computed(() => (drilledSourceName.value ? 'ds-drill-anchor' : ''));
 
 function onTitleBack() {
   const idx = selectedScenarioIndex.value;
@@ -425,7 +434,9 @@ defineExpose({ save: onSave });
         <nldd-top-title-bar
           slot="header"
           :text="titleBarText"
+          :supporting-text="titleBarSupportingText"
           :back-text="titleBarBackText"
+          :collapse-anchor="titleBarCollapseAnchor"
           dismiss-text="Annuleer"
           @back="onTitleBack"
           @dismiss="cancelEdits"

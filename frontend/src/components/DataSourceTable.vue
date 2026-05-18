@@ -13,6 +13,9 @@ const props = defineProps({
   // When the table is shown one level deep in a drill-in sheet there's no
   // accordion: the title is a plain heading and the body is always visible.
   drilledIn: { type: Boolean, default: false },
+  // Optional id put on the drilled-in heading so the sheet's top-title-bar
+  // can use it as its `collapse-anchor` (full back button until scrolled).
+  anchorId: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -111,7 +114,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
       </nldd-title>
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
-    <nldd-title v-else size="5" class="ds-block-heading">
+    <nldd-title v-else size="5" class="ds-block-heading" :id="anchorId || undefined">
       <span>{{ title }}</span>
     </nldd-title>
 
@@ -120,57 +123,58 @@ const showBody = computed(() => props.drilledIn || expanded.value);
         Geen gegevens &mdash; vul in indien relevant
       </div>
 
-      <!-- One card per data row -->
-      <div v-for="(row, ri) in rows" :key="row._id ?? ri">
-        <div v-if="rows.length > 1" class="ds-row-card-header">
-          <span class="ds-row-card-label">Rij {{ ri + 1 }}</span>
-          <nldd-icon-button
-            v-if="!readonly"
-            icon="minus"
-            title="Rij verwijderen"
-            @click="removeRow(ri)"
-          ></nldd-icon-button>
-        </div>
+      <!-- One box list per row — identical layout regardless of row count,
+           with the delete button at the bottom of each list. -->
+      <nldd-list
+        v-for="(row, ri) in rows"
+        :key="row._id ?? ri"
+        variant="box"
+        class="ds-datasource-list"
+      >
+        <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
+          <nldd-text-cell :text="col.name" max-width="140px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
+          <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
+          <template v-if="readonly">
+            <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
+          </template>
+          <nldd-cell v-else-if="col.type === 'boolean'">
+            <nldd-dropdown size="md">
+              <select
+                :aria-label="col.name"
+                :value="String(row[col.name] || 'null')"
+                @change="updateCell(ri, col.name, $event.target.value)"
+              >
+                <option value="true">true</option>
+                <option value="false">false</option>
+                <option value="null">null</option>
+              </select>
+            </nldd-dropdown>
+          </nldd-cell>
+          <nldd-cell v-else>
+            <nldd-text-field
+              size="md"
+              :type="inputType(col.type)"
+              :value="String(row[col.name] ?? '')"
+              :placeholder="col.name"
+              @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
+            ></nldd-text-field>
+          </nldd-cell>
+        </nldd-list-item>
 
-        <nldd-list variant="box" class="ds-datasource-list">
-          <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
-            <nldd-text-cell :text="col.name" max-width="140px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
-            <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
-            <template v-if="readonly">
-              <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
-            </template>
-            <nldd-cell v-else-if="col.type === 'boolean'">
-              <nldd-dropdown size="md">
-                <select
-                  :aria-label="col.name"
-                  :value="String(row[col.name] || 'null')"
-                  @change="updateCell(ri, col.name, $event.target.value)"
-                >
-                  <option value="true">true</option>
-                  <option value="false">false</option>
-                  <option value="null">null</option>
-                </select>
-              </nldd-dropdown>
-            </nldd-cell>
-            <nldd-cell v-else>
-              <nldd-text-field
-                size="md"
-                :type="inputType(col.type)"
-                :value="String(row[col.name] ?? '')"
-                :placeholder="col.name"
-                @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
-              ></nldd-text-field>
-            </nldd-cell>
-          </nldd-list-item>
+        <nldd-list-item v-if="!readonly" size="md">
+          <nldd-cell width="full">
+            <nldd-button size="md" width="full" start-icon="minus" @click="removeRow(ri)" text="Verwijder"></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+      </nldd-list>
 
-          <!-- Single-row inline delete -->
-          <nldd-list-item v-if="!readonly && rows.length === 1" size="md">
-            <nldd-button size="md" width="full" start-icon="minus" @click="removeRow(ri)" text="Rij verwijderen"></nldd-button>
-          </nldd-list-item>
-        </nldd-list>
-      </div>
-
-      <nldd-button v-if="!readonly" size="md" width="full" start-icon="plus-small" @click="addRow" text="Rij toevoegen"></nldd-button>
+      <nldd-list v-if="!readonly" variant="box">
+        <nldd-list-item size="md">
+          <nldd-cell width="full">
+            <nldd-button size="md" width="full" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
+          </nldd-cell>
+        </nldd-list-item>
+      </nldd-list>
     </div>
   </div>
 </template>
@@ -229,20 +233,6 @@ const showBody = computed(() => props.drilledIn || expanded.value);
   font-size: 14px;
   color: var(--semantics-text-color-secondary, #999);
   font-style: italic;
-}
-
-.ds-row-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-
-.ds-row-card-label {
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--semantics-text-color-secondary, #545D68);
 }
 
 .ds-key-label {
