@@ -23,6 +23,19 @@ const selectedOpIndex = ref(0);
 let actionSeq = 0;
 const actionKey = ref('none');
 
+// Snapshot the action when it opens so we can show "Opslaan" only when
+// something actually changed. Edits mutate the action in place, so a
+// JSON compare of the live action vs this baseline is the dirty signal.
+const actionBaseline = ref('');
+const isDirty = computed(() => {
+  if (!props.action) return false;
+  try {
+    return JSON.stringify(props.action) !== actionBaseline.value;
+  } catch {
+    return true;
+  }
+});
+
 watch(() => props.action, async (action) => {
   selectedOpIndex.value = 0;
   actionKey.value = action ? String(++actionSeq) : 'none';
@@ -31,6 +44,7 @@ watch(() => props.action, async (action) => {
     sheetEl.value?.hide();
     return;
   }
+  actionBaseline.value = JSON.stringify(action);
   await nextTick();
   sheetEl.value?.show();
 }, { immediate: true });
@@ -165,8 +179,8 @@ onUnmounted(() => {
       </nldd-simple-section>
 
       <nldd-container slot="footer" padding="16">
-        <nldd-button v-if="editable" variant="primary" size="md" width="full" data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
-        <nldd-button v-else variant="secondary" size="md" width="full" data-testid="action-sheet-edit-btn" @click="emit('edit')" text="Bewerken"></nldd-button>
+        <nldd-button v-if="editable && isDirty" variant="primary" size="md" width="full" data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
+        <nldd-button v-else-if="!editable" variant="secondary" size="md" width="full" data-testid="action-sheet-edit-btn" @click="emit('edit')" text="Bewerken"></nldd-button>
       </nldd-container>
     </nldd-page>
   </nldd-sheet>
