@@ -980,9 +980,16 @@ async function handleActionSave() {
   machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
-  await handleLawSave();
-  actionSnapshot = null;
-  activeAction.value = null;
+  // Close the sheet unconditionally: the mutations are already committed
+  // above, so even if handleLawSave() throws the sheet must not stay open
+  // showing a now-clean (isDirty === false) state. A failed PUT falls back
+  // to the Machine pane's normal dirty/save affordance — no data loss.
+  try {
+    await handleLawSave();
+  } finally {
+    actionSnapshot = null;
+    activeAction.value = null;
+  }
 }
 
 </script>
