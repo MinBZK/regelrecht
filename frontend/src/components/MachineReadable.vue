@@ -383,7 +383,7 @@ function addOutput() {
       <nldd-list variant="box">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <nldd-text-cell
-            :supporting-text="input.sourceRegulation ? lawDisplayName(input.sourceRegulation) : 'Geen bron regelgeving'"
+            :supporting-text="input.sourceRegulation ? lawDisplayName(input.sourceRegulation) : undefined"
           ><BreakableName :name="input.name" /> <nldd-tag size="sm" :text="input.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
