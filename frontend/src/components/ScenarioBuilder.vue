@@ -266,6 +266,13 @@ function onShowDetails(index, view = 'trace') {
     result: data?.result || null,
     traceText: data?.traceText || null,
     error: data?.error || null,
+    // Always false today: execute() is synchronous (see the CONTRACT
+    // note on ScenarioForm.execute) so `running` is reset in its finally
+    // before getExecutionData() is read here. The "Bezig met uitvoeren…"
+    // branch in ExecutionTraceView and the lastRunning/lastReload
+    // scaffolding in EditorApp are therefore unreachable *by design* —
+    // deliberately kept so the async path lights up for free if that
+    // contract is ever lifted. Not dead code to be removed in isolation.
     running: !!fresh?.running,
     expectations: data?.expectations || {},
     scenarioName,
@@ -332,6 +339,13 @@ async function onSave() {
     await saveScenario(selectedScenarioFile.value, gherkin);
     saveSuccess.value = true;
     isDirty.value = false;
+    // The just-saved state is the new clean baseline. Re-snapshot here so
+    // the dirty check stays correct even if the sheet is *not* closed on
+    // save (today selectedScenarioIndex is nulled below, but don't let the
+    // invariant depend on that): without this, reverting back to the saved
+    // state would still compare unequal to the pre-edit baseline and keep
+    // the Save footer wrongly visible.
+    dirtyBaseline = editSnapshot();
     selectedScenarioIndex.value = null;
     setTimeout(() => { saveSuccess.value = false; }, 3000);
   } catch (e) {
