@@ -173,6 +173,30 @@ for (const source of localSources) {
   }
 }
 
+// Copy note sidecar files (RFC-005/RFC-018) to public/data/annotations/.
+// useNotes.js fetches /data/annotations/{lawId}/annotations.yaml; the
+// annotation directories are already keyed by the law's $id. The
+// _vocabulary/ dir is build/CI-only (validate-annotations) and is not
+// fetched by the editor, so it is skipped.
+const annotationsSrc = resolve(projectRoot, 'corpus', 'annotations');
+if (existsSync(annotationsSrc)) {
+  const annotationsDest = resolve(destDir, 'annotations');
+  let annotationFiles = 0;
+  for (const lawId of readdirSync(annotationsSrc)) {
+    if (lawId === '_vocabulary') continue;
+    const lawDir = resolve(annotationsSrc, lawId);
+    if (!statSync(lawDir).isDirectory()) continue;
+    for (const file of readdirSync(lawDir)) {
+      if (!file.endsWith('.yaml')) continue;
+      const dest = resolve(annotationsDest, lawId, file);
+      mkdirSync(dirname(dest), { recursive: true });
+      cpSync(resolve(lawDir, file), dest);
+      annotationFiles++;
+    }
+  }
+  console.log(`  ${annotationFiles} note sidecar file(s) copied to /data/annotations/`);
+}
+
 index.sort((a, b) =>
   a.regulatory_layer.localeCompare(b.regulatory_layer) || a.id.localeCompare(b.id)
 );
