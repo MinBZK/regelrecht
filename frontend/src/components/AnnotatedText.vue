@@ -225,11 +225,16 @@ mark:focus-visible {
   outline-offset: 1px;
 }
 
-/* Popover card content. Border-left echoes the highlight colour so the
-   popover is visually tied to the mark it describes. */
+/* Popover card content. nldd-popover does not pad slotted content, so the
+   card sets its own padding. It also does not inherit the editor's UI font
+   into the slot, so set RijksSansVF explicitly (the design-system UI face)
+   instead of falling back to a serif default — that was the "gek font" on
+   the heading. Border-left echoes the highlight colour so the popover is
+   visually tied to the mark it describes. */
 .note-pop {
+  font-family: 'RijksSansVF', system-ui, sans-serif;
+  padding: 14px 16px;
   border-left: 3px solid transparent;
-  padding-left: 10px;
 }
 .note-pop.note-linking {
   border-left-color: #3b82f6;
@@ -250,18 +255,35 @@ mark:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
+/* Small coloured pill instead of a bare uppercase word — the uppercase +
+   letter-spacing read as a "weird font" against the serif fallback. */
 .note-pop__badge {
   font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  opacity: 0.7;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+}
+.note-pop.note-linking .note-pop__badge {
+  background: #3b82f6;
+}
+.note-pop.note-commenting .note-pop__badge {
+  background: #ca8a04;
+}
+.note-pop.note-questioning .note-pop__badge {
+  background: #ea580c;
+}
+.note-pop.note-tagging .note-pop__badge {
+  background: #16a34a;
+}
+.note-pop.note-other .note-pop__badge {
+  background: #64748b;
 }
 .note-pop__creator {
-  font-size: 0.72rem;
-  opacity: 0.55;
+  font-size: 0.75rem;
+  opacity: 0.6;
   margin-left: auto;
 }
 .note-pop__body {

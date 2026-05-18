@@ -1265,11 +1265,15 @@ async function handleActionSave() {
                      (the overlay needs raw text — it can't align with the
                      editable textarea). Notes are a layer over the text, not
                      a separate pane. -->
+                <!-- No start-icon: the design-system has no note/comment
+                     glyph (its `comment` icon is an empty SVG). A misleading
+                     icon (edit/document) is worse than none; the "Notities"
+                     label is clear on its own. Tracked upstream:
+                     MinBZK/storybook icon-set request. -->
                 <nldd-button
                   v-if="view === 'text' && isEnabled('panel.notes') && !canEditArticleText"
                   size="md"
                   :variant="showNotes ? 'primary' : 'default'"
-                  start-icon="comment"
                   text="Notities"
                   data-testid="notes-toggle"
                   @click="showNotes = !showNotes"
