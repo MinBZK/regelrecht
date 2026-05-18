@@ -164,6 +164,27 @@ async fn build_traject_corpus(
             );
             None
         });
+        // Diagnostic: token=None on the writable-own source means git
+        // push will hit "could not read Username" later. Surface it now
+        // with both the source_id and the resolved auth_ref so an
+        // operator can see whether the row carries the expected ref and
+        // whether the env var matches.
+        if token.is_none() && source.id == writable_own_source_id {
+            tracing::error!(
+                traject = %traject_id,
+                source_id = %source.id,
+                auth_ref = ?source.auth_ref,
+                auth_file = ?auth_file,
+                "traject writable-own source resolved NO token — push will fail; \
+                 expected env var: CORPUS_AUTH_{}_TOKEN",
+                source
+                    .auth_ref
+                    .as_deref()
+                    .unwrap_or(&source.id)
+                    .to_uppercase()
+                    .replace('-', "_")
+            );
+        }
 
         // For GitHub sources we override the clone path so each traject
         // gets its own working tree. Local sources keep their configured
