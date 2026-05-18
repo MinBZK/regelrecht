@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
+import { rfcSidebarItems } from './rfcs'
 
 export default withMermaid(
   defineConfig({
@@ -143,25 +144,7 @@ export default withMermaid(
         '/rfcs/': [
           {
             text: 'RFCs',
-            items: [
-              { text: 'Overview', link: '/rfcs/' },
-              { text: 'RFC-000: RFC Process', link: '/rfcs/rfc-000' },
-              { text: 'RFC-001: YAML Schema', link: '/rfcs/rfc-001' },
-              { text: 'RFC-002: Authority Roles', link: '/rfcs/rfc-002' },
-              { text: 'RFC-003: Inversion of Control', link: '/rfcs/rfc-003' },
-              { text: 'RFC-004: Uniform Operations', link: '/rfcs/rfc-004' },
-              { text: 'RFC-005: Stand-off Notes', link: '/rfcs/rfc-005' },
-              { text: 'RFC-006: Language Choice', link: '/rfcs/rfc-006' },
-              { text: 'RFC-007: Cross-Law Execution', link: '/rfcs/rfc-007' },
-              { text: 'RFC-008: Bestuursrecht/AWB', link: '/rfcs/rfc-008' },
-              { text: 'RFC-009: Multi-Org Execution', link: '/rfcs/rfc-009' },
-              { text: 'RFC-010: Federated Corpus', link: '/rfcs/rfc-010' },
-              { text: 'RFC-012: Untranslatables', link: '/rfcs/rfc-012' },
-              { text: 'RFC-013: Execution Provenance', link: '/rfcs/rfc-013' },
-              { text: 'RFC-014: Engine Conformance', link: '/rfcs/rfc-014' },
-              { text: 'RFC-015: Engine Policy', link: '/rfcs/rfc-015' },
-              { text: 'RFC-018: Note Infrastructure', link: '/rfcs/rfc-018' },
-            ],
+            items: rfcSidebarItems(),
           },
         ],
         '/reference/': [
