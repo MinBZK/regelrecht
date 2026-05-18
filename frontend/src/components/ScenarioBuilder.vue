@@ -62,9 +62,31 @@ watch(selectedScenarioIndex, async (idx) => {
   drilledSourceName.value = null;
   await nextTick();
   scenarioRefs.value.forEach((f) => f?.clearDrill?.());
-  if (idx !== null) scenarioSheetEl.value?.show();
-  else scenarioSheetEl.value?.hide();
+  if (idx !== null) {
+    // Baseline the editable state so Save can disappear again once the
+    // user manually reverts every change (markDirty re-compares).
+    dirtyBaseline = editSnapshot();
+    isDirty.value = false;
+    scenarioSheetEl.value?.show();
+  } else {
+    scenarioSheetEl.value?.hide();
+  }
 });
+
+// Serialised editable surface: the (in-place edited) scenario objects plus
+// each ScenarioForm's local input values. Compared against the baseline so
+// reverting an edit clears the dirty state.
+let dirtyBaseline = '';
+function editSnapshot() {
+  try {
+    return JSON.stringify({
+      s: formState.value?.scenarios ?? null,
+      f: scenarioRefs.value.map((r) => (r?.getFormValues ? r.getFormValues() : null)),
+    });
+  } catch {
+    return `dirty-${Date.now()}`;
+  }
+}
 
 const currentScenarioName = computed(() =>
   selectedScenarioIndex.value !== null
@@ -79,7 +101,7 @@ function onTitleBack() {
 watch(isDirty, (val) => emit('dirty-change', val));
 
 function markDirty() {
-  if (!isDirty.value) isDirty.value = true;
+  isDirty.value = editSnapshot() !== dirtyBaseline;
 }
 
 function scenarioExpectations(index) {
