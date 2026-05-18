@@ -1,8 +1,8 @@
 <script setup>
-import { computed } from 'vue';
 import StatusBadge from './StatusBadge.vue';
 import TableToolbar from './TableToolbar.vue';
 import { formatDate, formatCoverageScore, truncateUuid } from '../formatters.js';
+import { useTableFilters } from '../composables/useTableFilters.js';
 
 const props = defineProps({
   columns: { type: Array, required: true },
@@ -19,21 +19,7 @@ const props = defineProps({
 
 const emit = defineEmits(['sort', 'filter-change', 'row-click']);
 
-// A search/filter is active when any filter holds a non-empty value. Used to
-// tell an *empty* state (no data at all → hide the toolbar) apart from a
-// *no-results* state (filters excluded everything → keep the toolbar so the
-// user can clear or change the search).
-const hasActiveFilters = computed(() =>
-  Object.values(props.filters || {}).some((v) => v !== '' && v != null),
-);
-
-// Clear every active filter by emitting an empty value per key — the parent's
-// setFilter handler deletes a filter when given a falsy value.
-function clearFilters() {
-  for (const key of Object.keys(props.filters || {})) {
-    emit('filter-change', key, '');
-  }
-}
+const { hasActiveFilters, clearFilters } = useTableFilters(() => props.filters, emit);
 
 function formatCellValue(value, key) {
   if (value === null || value === undefined || value === '') return null;
