@@ -29,6 +29,12 @@ const actionKey = ref('none');
 // Snapshot the action when it opens so we can show "Opslaan" only when
 // something actually changed. Edits mutate the action in place, so a
 // JSON compare of the live action vs this baseline is the dirty signal.
+// Perf note: this is O(action tree) and re-runs whenever any nested
+// field changes (an edit), not on every unrelated render. It's the
+// same snapshot approach EditSheet/ScenarioBuilder use deliberately for
+// consistency. If a pathologically deep SWITCH/IF tree ever makes the
+// per-keystroke stringify noticeable, swap to a deep watch that flips a
+// boolean (O(change) instead of O(tree)).
 const actionBaseline = ref('');
 const isDirty = computed(() => {
   if (!props.action) return false;

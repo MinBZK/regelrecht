@@ -340,7 +340,10 @@ function updateDropdownValue(val, event) {
   // pencil), so it's a no-op. Picking anything else (a variable, literal,
   // or the empty option) replaces the value, including replacing a nested
   // operation — otherwise switching e.g. an IF op to $bsn silently does
-  // nothing and never marks the action dirty.
+  // nothing and never marks the action dirty. Consequence: picking the
+  // empty "Selecteer…" option discards a nested op tree in one click,
+  // same destructive trade as changeValueKind(); recovery is the
+  // ActionSheet "Annuleren" snapshot-restore (smoke-test this path).
   if (selected === '__nested__') return;
   const newVal = selected.startsWith('$') ? selected : parseInputValue(selected);
   applyValueMutation(val, newVal);

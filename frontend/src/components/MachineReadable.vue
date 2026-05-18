@@ -66,7 +66,11 @@ const definitions = computed(() => {
 
 const produces = computed(() => execution.value?.produces ?? null);
 
-// Enum values from the law schema (schema/v0.4.0 — produces.*).
+// Enum values copied from the law schema. Keep in sync with
+// schema/latest/schema.json → execution.produces.legal_character.enum
+// and .decision_type.enum. Currently identical across v0.4.0..v0.5.2;
+// if the schema adds a value here, add it here too or the dropdown
+// silently can't set it.
 const LEGAL_CHARACTERS = [
   'BESCHIKKING', 'TOETS', 'WAARDEBEPALING', 'BESLUIT_VAN_ALGEMENE_STREKKING', 'INFORMATIEF',
 ];

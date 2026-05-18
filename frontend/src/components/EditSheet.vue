@@ -408,7 +408,13 @@ const sectionLabels = {
                        the visual clutter that felt out of place for "fixed
                        value from law" semantics. The plain text-field used
                        previously silently produced NaN on Dutch comma input
-                       and 0 on cleared field. -->
+                       and 0 on cleared field.
+                       Both @input and @change are intentional, not a
+                       copy-paste: @input gives live-as-you-type updates
+                       (dirty marking); @change delivers the value the
+                       field normalises on commit/blur (locale/step). The
+                       assignment is idempotent so a same-tick double-fire
+                       is harmless — do not drop @change. -->
                   <nldd-number-field
                     :value="values.displayValue"
                     :step="values.controlType === 'currency' ? '0.01' : (values.controlType === 'percentage' ? '0.001' : undefined)"
