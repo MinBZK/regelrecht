@@ -7,6 +7,9 @@ const props = defineProps({
   action: { type: Object, default: null },
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
+  /** A freshly added action — Save is always offered (you opened the
+   *  sheet to create it), regardless of the dirty snapshot. */
+  isNew: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['close', 'save', 'edit']);
@@ -179,7 +182,7 @@ onUnmounted(() => {
       </nldd-simple-section>
 
       <nldd-container slot="footer" padding="16">
-        <nldd-button v-if="editable && isDirty" variant="primary" size="md" width="full" data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
+        <nldd-button v-if="editable && (isNew || isDirty)" variant="primary" size="md" width="full" data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
         <nldd-button v-else-if="!editable" variant="secondary" size="md" width="full" data-testid="action-sheet-edit-btn" @click="emit('edit')" text="Bewerken"></nldd-button>
       </nldd-container>
     </nldd-page>

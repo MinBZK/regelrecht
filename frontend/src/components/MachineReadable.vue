@@ -23,7 +23,15 @@ const emit = defineEmits([
   'open-edit',
   'init-mr',
   'add-action',
+  // The Machine-pane "Opslaan" button — a real backend save of the law.
   'save',
+  /**
+   * Patch a single machine_readable field in place (no backend save, just
+   * marks the model dirty). Same `{ section, key, data }` shape the parent's
+   * handleSave dispatches on — used for inline edits like the produces
+   * dropdowns. Distinct from `save` (which is the law PUT).
+   */
+  'patch',
   /**
    * Delete a single item from the machine_readable. Payload shape mirrors
    * `open-edit` so the parent's `handleSave`/`handleDelete` can dispatch on
@@ -57,6 +65,22 @@ const definitions = computed(() => {
 });
 
 const produces = computed(() => execution.value?.produces ?? null);
+
+// Enum values from the law schema (schema/v0.4.0 — produces.*).
+const LEGAL_CHARACTERS = [
+  'BESCHIKKING', 'TOETS', 'WAARDEBEPALING', 'BESLUIT_VAN_ALGEMENE_STREKKING', 'INFORMATIEF',
+];
+const DECISION_TYPES = [
+  'TOEKENNING', 'AFWIJZING', 'GOEDKEURING', 'GEEN_BESLUIT',
+  'ALGEMEEN_VERBINDEND_VOORSCHRIFT', 'BELEIDSREGEL', 'VOORBEREIDINGSBESLUIT',
+  'ANDERE_HANDELING', 'AANSLAG',
+];
+
+// Mutations live in the parent; emit a save with the produces section.
+// An empty selection clears the key (data: null).
+function updateProduces(key, value) {
+  emit('patch', { section: 'produces', key, data: value === '' ? null : value });
+}
 
 const parameters = computed(() =>
   (execution.value?.parameters ?? []).map((p) => ({
@@ -242,17 +266,39 @@ function addOutput() {
 
     <!-- Metadata: produces -->
     <nldd-list v-if="produces" variant="box">
-      <nldd-list-item v-if="produces.legal_character" size="md">
-        <nldd-text-cell text="Juridische basis"></nldd-text-cell>
-        <nldd-cell v-if="editable">
-          <nldd-button size="md" expandable :text="humanize(produces.legal_character)"></nldd-button>
+      <nldd-list-item v-if="produces.legal_character || editable" size="md">
+        <nldd-text-cell text="Juridische basis" min-width="120px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-cell v-if="editable" width="full" min-width="120px" max-width="280px">
+          <nldd-dropdown size="md">
+            <select
+              :key="`lc-${article?.number}`"
+              aria-label="Juridische basis"
+              :value="produces.legal_character || ''"
+              @change="updateProduces('legal_character', $event.target.value)"
+            >
+              <option value="">(geen)</option>
+              <option v-for="v in LEGAL_CHARACTERS" :key="v" :value="v">{{ humanize(v) }}</option>
+            </select>
+          </nldd-dropdown>
         </nldd-cell>
         <nldd-text-cell v-else horizontal-alignment="right" :text="humanize(produces.legal_character)"></nldd-text-cell>
       </nldd-list-item>
-      <nldd-list-item v-if="produces.decision_type" size="md">
-        <nldd-text-cell text="Besluit-type"></nldd-text-cell>
-        <nldd-cell v-if="editable">
-          <nldd-button size="md" expandable :text="humanize(produces.decision_type)"></nldd-button>
+      <nldd-list-item v-if="produces.decision_type || editable" size="md">
+        <nldd-text-cell text="Besluit-type" min-width="120px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-cell v-if="editable" width="full" min-width="120px" max-width="280px">
+          <nldd-dropdown size="md">
+            <select
+              :key="`dt-${article?.number}`"
+              aria-label="Besluit-type"
+              :value="produces.decision_type || ''"
+              @change="updateProduces('decision_type', $event.target.value)"
+            >
+              <option value="">(geen)</option>
+              <option v-for="v in DECISION_TYPES" :key="v" :value="v">{{ humanize(v) }}</option>
+            </select>
+          </nldd-dropdown>
         </nldd-cell>
         <nldd-text-cell v-else horizontal-alignment="right" :text="humanize(produces.decision_type)"></nldd-text-cell>
       </nldd-list-item>
@@ -260,13 +306,13 @@ function addOutput() {
 
     <!-- Definities -->
     <template v-if="definitions.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-definitions"><h5>Definities</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
           <template v-if="editable">
-            <nldd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+            <nldd-text-cell><BreakableName :name="def.name" /> = {{ formatValue(def.value, def.unit) }}</nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
           <template v-else>
@@ -305,9 +351,9 @@ function addOutput() {
 
     <!-- Parameters -->
     <template v-if="parameters.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-parameters"><h5>Parameters</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
           <nldd-text-cell><BreakableName :name="param.name" /> <nldd-tag size="sm" :text="param.type"></nldd-tag></nldd-text-cell>
@@ -331,13 +377,13 @@ function addOutput() {
 
     <!-- Inputs -->
     <template v-if="inputs.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <nldd-text-cell
-            :supporting-text="input.sourceRegulation ? lawDisplayName(input.sourceRegulation) : undefined"
+            :supporting-text="input.sourceRegulation ? lawDisplayName(input.sourceRegulation) : 'Geen bron regelgeving'"
           ><BreakableName :name="input.name" /> <nldd-tag size="sm" :text="input.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
@@ -360,9 +406,9 @@ function addOutput() {
 
     <!-- Outputs -->
     <template v-if="outputs.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-outputs"><h5>Outputs</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
           <nldd-text-cell><BreakableName :name="output.name" /> <nldd-tag size="sm" :text="output.type"></nldd-tag></nldd-text-cell>
@@ -386,9 +432,9 @@ function addOutput() {
 
     <!-- Acties -->
     <template v-if="actions.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-actions"><h5>Acties</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item
           v-for="(action, index) in actions"

@@ -14,10 +14,12 @@ const lawComboBoxEl = ref(null);
 const outputComboBoxEl = ref(null);
 const values = ref({});
 
-// Snapshot of the form taken when an item opens, so the Save button only
-// appears once the user actually changes something (mirrors ActionSheet).
+// Snapshot of the form taken when an item opens. For a NEW item the Save
+// button is always shown (you opened the sheet to add it); for an existing
+// item it only appears once the user actually changes something.
 const baseline = ref('');
 const isDirty = computed(() => {
+  if (props.item?.isNew) return true;
   try {
     return JSON.stringify(values.value) !== baseline.value;
   } catch {
@@ -412,6 +414,7 @@ const sectionLabels = {
                     :step="values.controlType === 'currency' ? '0.01' : (values.controlType === 'percentage' ? '0.001' : undefined)"
                     width="full"
                     hide-spin-buttons
+                    @input="values.displayValue = $event.detail?.value ?? values.displayValue"
                     @change="values.displayValue = $event.detail?.value ?? values.displayValue"
                   ></nldd-number-field>
                 </nldd-cell>

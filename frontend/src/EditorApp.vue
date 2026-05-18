@@ -458,6 +458,9 @@ watch(lawId, () => {
 
 // --- Editor state ---
 const activeAction = ref(null);
+// True while the open action sheet is for a freshly added action, so its
+// Save button is always offered (no edit required to create it).
+const activeActionIsNew = ref(false);
 const activeEditItem = ref(null);
 const parseError = ref(null);
 
@@ -744,7 +747,7 @@ function onYamlInput(event) {
 
 function handleSave({ section, key, newKey, index, data }) {
   const mr = machineReadable.value
-    ? structuredClone(machineReadable.value)
+    ? JSON.parse(JSON.stringify(machineReadable.value))
     : {};
 
   if (!mr.definitions) mr.definitions = {};
@@ -770,6 +773,10 @@ function handleSave({ section, key, newKey, index, data }) {
     mr.execution.output[index] = data;
   } else if (section === 'add-output') {
     mr.execution.output.push(data);
+  } else if (section === 'produces') {
+    if (!mr.execution.produces) mr.execution.produces = {};
+    if (data == null) delete mr.execution.produces[key];
+    else mr.execution.produces[key] = data;
   }
 
   machineReadable.value = mr;
@@ -784,7 +791,7 @@ function handleSave({ section, key, newKey, index, data }) {
 // stale event from the UI can never crash.
 function handleDelete({ section, key, index }) {
   const mr = machineReadable.value
-    ? structuredClone(machineReadable.value)
+    ? JSON.parse(JSON.stringify(machineReadable.value))
     : null;
   if (!mr) return;
 
@@ -852,11 +859,13 @@ function handleAddAction() {
   machineReadable.value = { ...mr };
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
+  activeActionIsNew.value = true;
   activeAction.value = newAction;
 }
 
 function handleOpenAction(action) {
   actionSnapshot = JSON.stringify(machineReadable.value);
+  activeActionIsNew.value = false;
   activeAction.value = action;
   // Clear any stale parse error from a previous failed save
   parseError.value = null;
@@ -968,7 +977,7 @@ async function handleActionSave() {
   // separate dirty/save affordance for sheet edits. On a failed PUT the
   // edits stay in the model and the Machine pane's normal dirty/save
   // affordance is the fallback — no data loss either way.
-  machineReadable.value = structuredClone(machineReadable.value);
+  machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
   await handleLawSave();
@@ -1305,6 +1314,7 @@ async function handleActionSave() {
                   @init-mr="handleInitMr"
                   @add-action="handleAddAction"
                   @save="handleMachineReadableSave"
+                  @patch="handleSave"
                   @delete="handleDelete"
                 />
               </nldd-simple-section>
@@ -1417,7 +1427,7 @@ async function handleActionSave() {
     </nldd-bar-split-view>
   </nldd-app-view>
 
-  <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
+  <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" :is-new="activeActionIsNew" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" :article="editedArticle" @save="handleSave" @close="activeEditItem = null" />
   <SearchPopover
     ref="searchPopoverRef"

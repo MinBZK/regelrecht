@@ -113,10 +113,13 @@ describe('MachineReadable', () => {
       expect(titles).toContain('Acties');
     });
 
-    it('shows produces metadata', () => {
+    it('shows produces metadata as editable dropdowns', () => {
       const wrapper = mountEditable();
-      expect(wrapper.find('nldd-button[text="beschikking"]').exists()).toBe(true);
-      expect(wrapper.find('nldd-button[text="toekenning"]').exists()).toBe(true);
+      expect(wrapper.find('select[aria-label="Juridische basis"]').exists()).toBe(true);
+      expect(wrapper.find('select[aria-label="Besluit-type"]').exists()).toBe(true);
+      const opts = wrapper.findAll('option').map((o) => o.text());
+      expect(opts).toContain('beschikking');
+      expect(opts).toContain('toekenning');
     });
 
     it('shows empty state when no machine_readable', () => {
@@ -128,19 +131,25 @@ describe('MachineReadable', () => {
 
     it('formats percentage values (0 < v < 1)', () => {
       const wrapper = mountEditable();
-      const cells = wrapper.findAll('nldd-text-cell').map(c => c.attributes('text') || '');
+      // The value sits in the `text` attribute (read-only cells) or as
+      // slot text next to BreakableName (editable definition rows).
+      const cells = wrapper.findAll('nldd-text-cell').map(c => `${c.attributes('text') || ''} ${c.text()}`);
       expect(cells.some(t => /1,896\s*%/.test(t))).toBe(true);
     });
 
     it('formats eurocent values as currency', () => {
       const wrapper = mountEditable();
-      const cells = wrapper.findAll('nldd-text-cell').map(c => c.attributes('text') || '');
+      // The value sits in the `text` attribute (read-only cells) or as
+      // slot text next to BreakableName (editable definition rows).
+      const cells = wrapper.findAll('nldd-text-cell').map(c => `${c.attributes('text') || ''} ${c.text()}`);
       expect(cells.some(t => /1\.500,00/.test(t))).toBe(true);
     });
 
     it('shows plain number when no unit', () => {
       const wrapper = mountEditable();
-      const cells = wrapper.findAll('nldd-text-cell').map(c => c.attributes('text') || '');
+      // The value sits in the `text` attribute (read-only cells) or as
+      // slot text next to BreakableName (editable definition rows).
+      const cells = wrapper.findAll('nldd-text-cell').map(c => `${c.attributes('text') || ''} ${c.text()}`);
       expect(cells.some(t => t.includes('3971900'))).toBe(true);
     });
 
