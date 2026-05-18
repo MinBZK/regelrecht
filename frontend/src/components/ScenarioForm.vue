@@ -277,16 +277,16 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item size="md">
-          <nldd-text-cell text="Datum" min-width="120px" max-width="280px"></nldd-text-cell>
+          <nldd-text-cell text="Datum" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-cell width="full" min-width="120px" max-width="280px">
+          <nldd-cell width="full" min-width="120px">
             <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" min-width="120px" max-width="280px"></nldd-text-cell>
+          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" min-width="120px" max-width="200px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-cell width="full" min-width="120px" max-width="280px">
+          <nldd-cell width="full" min-width="120px">
             <nldd-text-field
               size="md"
               :value="value"
