@@ -1173,7 +1173,7 @@ async function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :sticky-footer="(view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
+              :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
               <div slot="header" class="pane-header">
                 <nldd-button
@@ -1301,9 +1301,12 @@ async function handleActionSave() {
               </nldd-simple-section>
               <!-- Footer + Save button only on the first machine pane.
                    Duplicates would render redundant Save buttons over
-                   the same shared dirty state — not broken, just noisy. -->
+                   the same shared dirty state — not broken, just noisy.
+                   Hidden while the action sheet is open: the sheet's
+                   "Opslaan" is the real save for those in-place edits, so a
+                   second Machine-pane Save button behind it just distracts. -->
               <nldd-container
-                v-if="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
+                v-if="view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
                 slot="footer"
                 padding="16"
               >
