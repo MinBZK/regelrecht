@@ -15,6 +15,7 @@ use regelrecht_corpus::source_map::{
     collect_law_outputs, extract_law_id, resolve_display_name, validate_yaml_syntax, LoadedLaw,
 };
 use regelrecht_corpus::CorpusError;
+use regelrecht_engine::{Direction, Relation, RelationType};
 
 use crate::state::{AppState, SessionResolveError};
 
@@ -929,9 +930,11 @@ pub async fn reload_corpus(
         })?;
 
     let law_count = new_map.len();
+    let new_index = Arc::new(crate::relations::build_index_from_source_map(&new_map));
     {
         let mut corpus = state.corpus.write().await;
         corpus.source_map = new_map;
+        corpus.relation_index = new_index;
     }
     tracing::info!(law_count, "corpus reloaded (local + GitHub)");
     Ok(Json(ReloadResponse { law_count }))
@@ -946,6 +949,179 @@ pub struct ReloadRequest {
 #[derive(Debug, Serialize)]
 pub struct ReloadResponse {
     pub law_count: usize,
+}
+
+/// Query parameters for `GET /api/related`.
+///
+/// `law_id` is required. The combination of `article` / `output` / `input`
+/// determines the granularity: the most specific anchor wins.
+///
+/// - bare `law_id`: relations involving any article in the law.
+/// - `law_id` + `article`: relations involving this article.
+/// - `law_id` + `article` + `output`: relations that touch this specific output.
+/// - `law_id` + `article` + `input`: relations that touch this specific input.
+///
+/// `direction` defaults to `both`. `types` is a comma-separated allowlist
+/// of relation types (`cross_law_dataflow,implementation,...`); when
+/// omitted, all types are returned.
+#[derive(Debug, Deserialize)]
+pub struct RelatedQuery {
+    pub law_id: String,
+    #[serde(default)]
+    pub article: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default)]
+    pub types: Option<String>,
+}
+
+/// Response body for `GET /api/related`.
+#[derive(Debug, Serialize)]
+pub struct RelatedResponse {
+    pub query: RelatedQueryEcho,
+    pub relations: Vec<Relation>,
+}
+
+/// Echo of the resolved query for the client to confirm what was matched
+/// (handy when defaults kick in — e.g. `direction: "both"` when omitted).
+#[derive(Debug, Serialize)]
+pub struct RelatedQueryEcho {
+    pub law_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    pub direction: Direction,
+}
+
+fn parse_direction(raw: Option<&str>) -> Result<Direction, (StatusCode, String)> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(Direction::Both),
+        Some("incoming") => Ok(Direction::Incoming),
+        Some("outgoing") => Ok(Direction::Outgoing),
+        Some("both") => Ok(Direction::Both),
+        Some(other) => Err((
+            StatusCode::BAD_REQUEST,
+            format!("Invalid 'direction': expected one of incoming|outgoing|both, got '{other}'"),
+        )),
+    }
+}
+
+fn parse_relation_type(raw: &str) -> Result<RelationType, (StatusCode, String)> {
+    match raw.trim() {
+        "cross_law_dataflow" => Ok(RelationType::CrossLawDataflow),
+        "implementation" => Ok(RelationType::Implementation),
+        "open_term_declaration" => Ok(RelationType::OpenTermDeclaration),
+        "legal_basis" => Ok(RelationType::LegalBasis),
+        "intra_law_dataflow" => Ok(RelationType::IntraLawDataflow),
+        other => Err((
+            StatusCode::BAD_REQUEST,
+            format!("Unknown relation type '{other}'"),
+        )),
+    }
+}
+
+fn parse_type_filter(raw: Option<&str>) -> Result<Option<Vec<RelationType>>, (StatusCode, String)> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let parts: Vec<&str> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    let mut out = Vec::with_capacity(parts.len());
+    for p in parts {
+        out.push(parse_relation_type(p)?);
+    }
+    Ok(Some(out))
+}
+
+/// GET /api/related — find relations anchored at a law/article/output/input.
+///
+/// Reads the pre-built [`RelationIndex`] from corpus state (no YAML
+/// parsing per request). Returns 404 when the anchoring law is not in
+/// the corpus; returns 400 on malformed query params.
+pub async fn find_related(
+    State(state): State<AppState>,
+    Query(params): Query<RelatedQuery>,
+) -> Result<Json<RelatedResponse>, (StatusCode, String)> {
+    if params.law_id.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Missing required query parameter 'law_id'".to_string(),
+        ));
+    }
+    if params.output.is_some() && params.input.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Specify at most one of 'output' or 'input'".to_string(),
+        ));
+    }
+    if (params.output.is_some() || params.input.is_some()) && params.article.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "'output' and 'input' require 'article'".to_string(),
+        ));
+    }
+
+    let direction = parse_direction(params.direction.as_deref())?;
+    let type_filter = parse_type_filter(params.types.as_deref())?;
+
+    let corpus = state.corpus.read().await;
+    if corpus.source_map.get_law(&params.law_id).is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("Law '{}' not found in corpus", params.law_id),
+        ));
+    }
+    let index = corpus.relation_index.clone();
+    drop(corpus);
+
+    let relations: Vec<Relation> = if let Some(article) = params.article.as_deref() {
+        let matches = if let Some(output) = params.output.as_deref() {
+            index.for_output(&params.law_id, article, output, direction)
+        } else if let Some(input) = params.input.as_deref() {
+            index.for_input(&params.law_id, article, input, direction)
+        } else {
+            index.for_article(&params.law_id, article, direction)
+        };
+        matches.into_iter().cloned().collect()
+    } else {
+        index
+            .for_law(&params.law_id, direction)
+            .into_iter()
+            .cloned()
+            .collect()
+    };
+
+    let relations = match type_filter {
+        Some(allowed) => relations
+            .into_iter()
+            .filter(|r| allowed.contains(&r.relation_type))
+            .collect(),
+        None => relations,
+    };
+
+    Ok(Json(RelatedResponse {
+        query: RelatedQueryEcho {
+            law_id: params.law_id,
+            article: params.article,
+            output: params.output,
+            input: params.input,
+            direction,
+        },
+        relations,
+    }))
 }
 
 #[cfg(test)]

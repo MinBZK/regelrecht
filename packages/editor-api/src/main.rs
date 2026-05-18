@@ -22,6 +22,7 @@ mod favorites;
 mod feature_flags;
 mod harvest_proxy;
 mod middleware;
+mod relations;
 mod state;
 mod user_settings;
 
@@ -112,6 +113,7 @@ async fn main() {
             get(corpus_handlers::get_scenario),
         )
         .route("/api/feature-flags", get(feature_flags::list_feature_flags))
+        .route("/api/related", get(corpus_handlers::find_related))
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
         // auth because it triggers outbound requests to zoekservice.overheid.nl
@@ -367,10 +369,13 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
     };
 
     let backends = init_backends(&registry, auth_file).await;
+    let relation_index =
+        std::sync::Arc::new(crate::relations::build_index_from_source_map(&source_map));
 
     CorpusState {
         registry,
         source_map,
+        relation_index,
         backends,
         auth_file: auth_file.map(|p| p.to_path_buf()),
     }

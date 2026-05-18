@@ -16,6 +16,7 @@ axum.workspace = true
 regelrecht-auth = { path = "../auth" }
 regelrecht-shared = { path = "../shared", features = ["telemetry"] }
 regelrecht-corpus = { path = "../corpus", features = ["github"] }
+regelrecht-engine = { path = "../engine" }
 regelrecht-pipeline = { path = "../pipeline" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower-http = { workspace = true, features = ["fs", "trace"] }

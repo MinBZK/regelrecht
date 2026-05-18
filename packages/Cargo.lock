@@ -3673,6 +3673,7 @@ dependencies = [
  "axum",
  "regelrecht-auth",
  "regelrecht-corpus",
+ "regelrecht-engine",
  "regelrecht-pipeline",
  "regelrecht-shared",
  "reqwest 0.12.28",

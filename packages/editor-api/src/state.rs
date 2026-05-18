@@ -8,6 +8,7 @@ use regelrecht_corpus::backend::{RepoBackend, SessionGitBackend};
 use regelrecht_corpus::config::CorpusConfig;
 use regelrecht_corpus::models::{Source, SourceType};
 use regelrecht_corpus::{CorpusClient, SourceMap};
+use regelrecht_engine::RelationIndex;
 use sqlx::PgPool;
 use tokio::sync::{Mutex, OnceCell, RwLock};
 
@@ -69,6 +70,9 @@ pub struct BackendEntry {
 pub struct CorpusState {
     pub registry: regelrecht_corpus::CorpusRegistry,
     pub source_map: SourceMap,
+    /// Pre-computed relation graph over the loaded corpus. Rebuilt on
+    /// `/api/corpus/reload`; lookups are O(1) by law/article/output.
+    pub relation_index: Arc<RelationIndex>,
     /// Backends keyed by source ID. Read-only backends are also registered
     /// here so reads (`get_scenario`, `list_scenarios`) can route through
     /// the same abstraction as writes — preventing read/write path
@@ -84,6 +88,7 @@ impl CorpusState {
         Self {
             registry: regelrecht_corpus::CorpusRegistry::empty(),
             source_map: SourceMap::new(),
+            relation_index: Arc::new(RelationIndex::default()),
             backends: HashMap::new(),
             auth_file: None,
         }
@@ -393,6 +398,7 @@ mod tests {
         CorpusState {
             registry,
             source_map: SourceMap::new(),
+            relation_index: Arc::new(RelationIndex::default()),
             backends: HashMap::new(),
             auth_file: None,
         }
