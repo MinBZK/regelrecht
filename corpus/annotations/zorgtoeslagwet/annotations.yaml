@@ -1,6 +1,6 @@
 ---
 # Stand-off notes on the Healthcare Allowance Act (Wet op de zorgtoeslag).
-# Format: RFC-005. Infrastructure: RFC-016. Validated by `just validate-annotations`.
+# Format: RFC-005. Infrastructure: RFC-018. Validated by `just validate-annotations`.
 $schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json
 annotations:
   # Linking note: connects the text granting the allowance to the
@@ -45,7 +45,7 @@ annotations:
       language: nl
     resolution: found
 
-  # Questioning note over an open norm (RFC-016 Decision 6). The percentages
+  # Questioning note over an open norm (RFC-018 Decision 6). The percentages
   # can be changed by ministerial regulation; until that regulation is located
   # and modelled, this is an open norm that is only partially filled in.
   - type: Annotation

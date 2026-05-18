@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json",
   "title": "RegelRecht Note Sidecar Schema v0.5.2",
-  "description": "Stand-off notes on legal texts (RFC-005, RFC-016). A note file holds a list of W3C Web Annotation objects anchored to law text via a TextQuoteSelector. The feature is called 'notes' (RFC-005 terminology); the W3C entity is named 'Annotation'.",
+  "description": "Stand-off notes on legal texts (RFC-005, RFC-018). A note file holds a list of W3C Web Annotation objects anchored to law text via a TextQuoteSelector. The feature is called 'notes' (RFC-005 terminology); the W3C entity is named 'Annotation'.",
   "type": "object",
   "required": ["annotations"],
   "properties": {
@@ -74,7 +74,7 @@
         },
         "workflow": {
           "type": "string",
-          "description": "Process dimension: has the issue been addressed? Used with the questioning motivation for ambiguity tracking (RFC-016).",
+          "description": "Process dimension: has the issue been addressed? Used with the questioning motivation for ambiguity tracking (RFC-018).",
           "enum": ["open", "resolved"],
           "default": "open"
         },
@@ -190,7 +190,7 @@
             "type": { "const": "SpecificResource" },
             "source": {
               "type": "string",
-              "description": "Target URI, e.g. regelrecht://zorgtoeslagwet/artikel_2#hoogte_zorgtoeslag."
+              "description": "Target URI, e.g. regelrecht://zorgtoeslagwet/hoogte_zorgtoeslag#hoogte_zorgtoeslag."
             },
             "purpose": {
               "type": "string",

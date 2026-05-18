@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate note sidecar files against the annotation schema (RFC-005, RFC-016).
+# Validate note sidecar files against the annotation schema (RFC-005, RFC-018).
 #
 # Resolves every note against its target law and reports orphaned/ambiguous
 # notes and unknown tag values as warnings (not errors).

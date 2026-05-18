@@ -1,5 +1,5 @@
 ---
-# Controlled vocabulary for ambiguity tags on questioning notes (RFC-016 Decision 9).
+# Controlled vocabulary for ambiguity tags on questioning notes (RFC-018 Decision 9).
 #
 # A questioning note over an open norm carries a tagging body whose `value` is
 # one of the `id`s below. This list is intentionally not a JSON Schema enum:

@@ -34,7 +34,7 @@ pub struct RegelrechtWorld {
     pub error: Option<EngineError>,
     /// External data sources for zorgtoeslag scenarios
     pub external_data: ExternalData,
-    /// Articles set up for note-resolution scenarios (RFC-005, RFC-016)
+    /// Articles set up for note-resolution scenarios (RFC-005, RFC-018)
     pub note_articles: Vec<Article>,
     /// Selector built for the current note-resolution scenario
     pub note_selector: Option<TextQuoteSelector>,
