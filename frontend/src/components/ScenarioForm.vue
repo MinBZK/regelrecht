@@ -240,16 +240,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <template v-if="selectedSource === null">
       <!-- Expected outputs -->
       <template v-if="hasExpectations">
-        <nldd-title size="5">
-          <h2>Verwachte uitkomsten</h2>
-          <nldd-button
-            slot="actions"
-            size="xs"
-            :disabled="!result && !error || undefined"
-            @click="emit('show-details')"
-            text="Resultaat"
-          ></nldd-button>
-        </nldd-title>
+        <nldd-title size="5"><h2>Verwachte uitkomsten</h2></nldd-title>
         <nldd-spacer size="12"></nldd-spacer>
         <nldd-list variant="box">
           <nldd-list-item v-for="(exp, name) in expectations" :key="name" size="md">
@@ -259,6 +250,17 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
               horizontal-alignment="right"
               :text="humanize(formatValue(normalizeForCompare(exp)))"
             ></nldd-text-cell>
+          </nldd-list-item>
+          <nldd-list-item size="md">
+            <nldd-cell width="full">
+              <nldd-button
+                size="md"
+                width="full"
+                :disabled="!result && !error || undefined"
+                @click="emit('show-details')"
+                text="Bekijk resultaat"
+              ></nldd-button>
+            </nldd-cell>
           </nldd-list-item>
         </nldd-list>
       </template>
@@ -273,18 +275,18 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       <nldd-spacer v-if="hasExpectations" size="24"></nldd-spacer>
       <nldd-title size="5"><h2>Invoer</h2></nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
-      <nldd-list variant="box" class="sf-input-list">
+      <nldd-list variant="box">
         <nldd-list-item size="md">
-          <nldd-text-cell text="Datum" max-width="280px"></nldd-text-cell>
+          <nldd-text-cell text="Datum" min-width="140px" max-width="280px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-cell>
+          <nldd-cell width="full" max-width="280px">
             <nldd-text-field size="md" type="date" :value="calculationDate" @input="calculationDate = $event.target?.value ?? $event.detail?.value ?? calculationDate; emit('change')"></nldd-text-field>
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-for="(value, name) in parameterValues" :key="name" size="md">
-          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" max-width="280px"></nldd-text-cell>
+          <nldd-text-cell :text="articleMap?.paramToArticle?.get(name) ? `${name} (Art. ${articleMap.paramToArticle.get(name)})` : name" min-width="140px" max-width="280px"></nldd-text-cell>
           <nldd-spacer-cell size="8"></nldd-spacer-cell>
-          <nldd-cell>
+          <nldd-cell width="full" max-width="280px">
             <nldd-text-field
               size="md"
               :value="value"
@@ -350,23 +352,5 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
   color: #c00;
   word-break: break-word;
   padding: 4px 0;
-}
-</style>
-
-<style>
-/* Unscoped: nldd web components need global selectors */
-.sf-input-list nldd-text-cell {
-  min-width: 140px;
-  flex: 1;
-}
-
-.sf-input-list nldd-cell {
-  flex: 1;
-  min-width: 0;
-  max-width: 280px;
-}
-
-.sf-input-list nldd-text-field {
-  width: 100%;
 }
 </style>

@@ -134,14 +134,14 @@ const showBody = computed(() => props.drilledIn || expanded.value);
            flex-gap container) separate the stacked lists. -->
       <template v-for="(row, ri) in rows" :key="row._id ?? ri">
         <nldd-spacer v-if="ri > 0" size="12"></nldd-spacer>
-        <nldd-list variant="box" class="ds-datasource-list">
+        <nldd-list variant="box">
         <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
-          <nldd-text-cell :text="col.name" max-width="280px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
+          <nldd-text-cell :text="col.isKey ? `**${col.name}**` : col.name" min-width="120px" max-width="280px"></nldd-text-cell>
           <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
           <template v-if="readonly">
             <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
           </template>
-          <nldd-cell v-else-if="col.type === 'boolean'">
+          <nldd-cell v-else-if="col.type === 'boolean'" width="full" min-width="100px" max-width="320px">
             <nldd-dropdown size="md">
               <select
                 :aria-label="col.name"
@@ -154,7 +154,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
               </select>
             </nldd-dropdown>
           </nldd-cell>
-          <nldd-cell v-else>
+          <nldd-cell v-else width="full" min-width="100px" max-width="320px">
             <nldd-text-field
               size="md"
               :type="inputType(col.type)"
@@ -225,33 +225,5 @@ const showBody = computed(() => props.drilledIn || expanded.value);
   font-size: 14px;
   color: var(--semantics-text-color-secondary, #999);
   font-style: italic;
-}
-
-.ds-key-label {
-  font-weight: 700;
-}
-</style>
-
-<style>
-/* Unscoped: nldd web components need global selectors */
-.ds-datasource-list nldd-text-cell {
-  min-width: 140px;
-  flex: 1;
-}
-
-.ds-datasource-list nldd-cell {
-  flex: 1;
-  min-width: 0;
-}
-
-/* Cap only the input cells, so the full-width Verwijder button cell still
-   spans the whole row. */
-.ds-datasource-list nldd-cell:not([width="full"]) {
-  max-width: 280px;
-}
-
-.ds-datasource-list nldd-text-field,
-.ds-datasource-list nldd-dropdown {
-  width: 100%;
 }
 </style>
