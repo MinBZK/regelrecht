@@ -359,7 +359,6 @@ defineExpose({ save: onSave });
             <nldd-container slot="footer" padding-inline="16" padding-bottom="16">
               <nldd-button-group orientation="horizontal">
                 <nldd-button
-                  variant="primary"
                   :disabled="!scenarioResults.get(i) || undefined"
                   text="Toon resultaat"
                   @click="onShowDetails(i, 'trace')"
