@@ -55,7 +55,7 @@ function statusBarTitle(group) {
 </script>
 
 <template>
-  <nldd-simple-section width="full">
+  <nldd-simple-section>
     <template v-if="data.length > 0 || hasActiveFilters">
       <TableToolbar
         :columns="columns"
