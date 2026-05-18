@@ -8,8 +8,6 @@ const props = defineProps({
   notesForArticle: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['select-note']);
-
 // The resolver matched against the raw article text, so offsets are into that
 // exact string. Rendering markdown here would desync the offsets, so notes are
 // shown over plain text. (ArticleText.vue keeps the markdown view for the
@@ -53,16 +51,17 @@ function noteTitle(note) {
 <template>
   <template v-if="article">
     <nldd-rich-text>
+      <!-- Phase 4 is display-only. The marks are not interactive yet, so no
+           role="button"/tabindex (that would announce an action that does
+           nothing — an accessibility lie). The note content is surfaced via
+           the title tooltip. Phase 5 adds a detail panel and makes the marks
+           focusable + keyboard-activatable. -->
       <p>
         <template v-for="(seg, i) in segments" :key="i">
           <mark
             v-if="seg.note"
             :class="[motivationClass(seg.note), authorityClass(seg.note)]"
             :title="noteTitle(seg.note)"
-            tabindex="0"
-            role="button"
-            @click="emit('select-note', seg.note)"
-            @keydown.enter="emit('select-note', seg.note)"
             >{{ seg.text }}</mark
           >
           <template v-else>{{ seg.text }}</template>
@@ -74,10 +73,15 @@ function noteTitle(note) {
 </template>
 
 <style scoped>
+/* Legal text carries its own paragraph breaks (\n\n). Preserve them so the
+   Notities pane reads like the other text panes instead of one collapsed
+   block. pre-wrap keeps wrapping while honouring newlines. */
+p {
+  white-space: pre-wrap;
+}
 mark {
   padding: 0 0.1em;
   border-radius: 2px;
-  cursor: pointer;
   /* Authority -> border style. */
 }
 mark.note-authoritative {
