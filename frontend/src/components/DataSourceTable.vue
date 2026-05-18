@@ -119,8 +119,8 @@ const showBody = computed(() => props.drilledIn || expanded.value);
     <template v-else>
       <nldd-title size="5" class="ds-block-heading" :id="anchorId || undefined">
         <span>{{ title }}</span>
+        <span v-if="subtitle" slot="subtitle">{{ subtitle }}</span>
       </nldd-title>
-      <p v-if="subtitle" class="ds-block-subtitle">{{ subtitle }}</p>
       <nldd-spacer size="8"></nldd-spacer>
     </template>
 
@@ -204,13 +204,6 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 
 .ds-block-heading {
   margin: 0;
-}
-
-.ds-block-subtitle {
-  margin: 2px 0 0 0;
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  font-size: 13px;
-  color: var(--semantics-text-color-secondary, #545D68);
 }
 
 .ds-block-chevron {
