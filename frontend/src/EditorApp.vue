@@ -410,11 +410,17 @@ const lastScenarioName = ref('');
 // The scenario's entry output (e.g. "is_rechthebbende"). The graph view
 // uses this to pin its "▶ start" marker to the right leaf.
 const lastOutputName = ref(null);
+// Loading state of the last scenario and a bound re-run callback, so the
+// result sheet can show "running…" / an error with a reload action.
+const lastRunning = ref(false);
+const lastReload = ref(null);
 
-function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName, view }) {
+function handleScenarioExecuted({ result, traceText, error, running, expectations, scenarioName, outputName, reload, view }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
   lastError.value = error || null;
+  lastRunning.value = !!running;
+  lastReload.value = typeof reload === 'function' ? reload : null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
   lastOutputName.value = outputName || null;
@@ -441,6 +447,8 @@ watch(lawId, () => {
   lastResult.value = null;
   lastTraceText.value = null;
   lastError.value = null;
+  lastRunning.value = false;
+  lastReload.value = null;
   lastExpectations.value = {};
   lastScenarioName.value = '';
   lastOutputName.value = null;
@@ -1434,7 +1442,10 @@ async function handleActionSave() {
           :result="lastResult"
           :trace-text="lastTraceText"
           :error="lastError"
+          :running="lastRunning"
           :expectations="lastExpectations"
+          :can-reload="!!lastReload"
+          @reload="lastReload && lastReload()"
         />
       </nldd-simple-section>
     </nldd-page>

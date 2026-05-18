@@ -253,20 +253,36 @@ function onShowDetails(index, view = 'trace') {
   const fresh = formRef?.getExecutionData?.();
   const hasFresh = fresh && (fresh.result || fresh.traceText || fresh.error);
   const data = hasFresh ? fresh : scenarioResults.value.get(index);
-  if (data) {
-    const scenarioName = formState.value?.scenarios[index]?.name || '';
-    emit('executed', {
-      result: data.result,
-      traceText: data.traceText,
-      error: data.error,
-      expectations: data.expectations || {},
-      scenarioName,
-      // Forward the scenario's entry output so the graph view can pin
-      // its "▶ start" marker to the right output leaf.
-      outputName: data.outputName || null,
-      view,
-    });
-  }
+  const scenarioName = formState.value?.scenarios[index]?.name || '';
+  // Always emit so the sheet opens: the result sheet itself handles the
+  // loading / error (with reload) / empty states instead of the button
+  // being a dead gate.
+  emit('executed', {
+    result: data?.result || null,
+    traceText: data?.traceText || null,
+    error: data?.error || null,
+    running: !!fresh?.running,
+    expectations: data?.expectations || {},
+    scenarioName,
+    // Forward the scenario's entry output so the graph view can pin
+    // its "▶ start" marker to the right output leaf.
+    outputName: data?.outputName || null,
+    index,
+    // Bound to this builder + scenario so the result sheet's reload
+    // action re-runs exactly the right scenario regardless of how many
+    // ScenarioBuilder instances (panes) exist.
+    reload: () => reExecute(index),
+    view,
+  });
+}
+
+// Re-run a scenario from the result sheet's reload action, then refresh the
+// sheet with the fresh outcome. execute() is synchronous, so the data is
+// ready by the time onShowDetails reads it back.
+function reExecute(index) {
+  const formRef = scenarioRefs.value[index];
+  if (formRef?.execute) formRef.execute();
+  onShowDetails(index);
 }
 
 // Memoized setup per scenario (avoids new object on every render)

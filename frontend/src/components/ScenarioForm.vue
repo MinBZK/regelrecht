@@ -183,6 +183,7 @@ function getExecutionData() {
     result: result.value,
     traceText: result.value?.trace_text || errorTraceText.value || null,
     error: error.value,
+    running: running.value,
     expectations: expectations.value,
     // Expose the scenario's entry output so the graph view can mark the
     // starting leaf (see useTraceStepping.startNodeIds).
@@ -256,7 +257,6 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
               <nldd-button
                 size="md"
                 width="full"
-                :disabled="!result && !error || undefined"
                 @click="emit('show-details')"
                 text="Bekijk resultaat"
               ></nldd-button>

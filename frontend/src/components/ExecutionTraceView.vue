@@ -11,7 +11,13 @@ const props = defineProps({
   expectations: { type: Object, default: () => ({}) },
   /** Error message if execution failed */
   error: { type: String, default: null },
+  /** Scenario is currently executing */
+  running: { type: Boolean, default: false },
+  /** Whether a re-run action is available */
+  canReload: { type: Boolean, default: false },
 });
+
+const emit = defineEmits(['reload']);
 
 function matchStatus(outputName, actualValue) {
   return _matchStatus(outputName, actualValue, props.expectations);
@@ -33,9 +39,23 @@ const overallStatus = computed(() => {
 </script>
 
 <template>
-  <nldd-inline-dialog v-if="!hasContent" text="Klik op &quot;Details&quot; bij een scenario om de trace te bekijken."></nldd-inline-dialog>
+  <nldd-inline-dialog v-if="running" text="Bezig met uitvoeren…"></nldd-inline-dialog>
 
-  <nldd-inline-dialog v-else-if="error && !result && !traceText" variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
+  <template v-else-if="error && !result && !traceText">
+    <nldd-inline-dialog variant="alert" text="Fout bij uitvoering" :supporting-text="error"></nldd-inline-dialog>
+    <template v-if="canReload">
+      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>
+    </template>
+  </template>
+
+  <template v-else-if="!hasContent">
+    <nldd-inline-dialog text="Nog geen resultaat voor dit scenario."></nldd-inline-dialog>
+    <template v-if="canReload">
+      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>
+    </template>
+  </template>
 
   <template v-else>
     <template v-if="result && Object.keys(expectations).length">
@@ -100,6 +120,10 @@ const overallStatus = computed(() => {
       <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
       <nldd-code>{{ traceText }}</nldd-code>
+      <template v-if="canReload">
+        <nldd-spacer size="12"></nldd-spacer>
+        <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>
+      </template>
     </template>
   </template>
 </template>
