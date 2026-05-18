@@ -24,7 +24,7 @@ const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 const { colorScheme, setColorScheme } = useColorScheme();
 
 const colorSchemeOptions = [
-  ['auto', 'Automatisch'],
+  ['auto', 'Systeem'],
   ['light', 'Licht'],
   ['dark', 'Donker'],
 ];
@@ -410,11 +410,17 @@ const lastScenarioName = ref('');
 // The scenario's entry output (e.g. "is_rechthebbende"). The graph view
 // uses this to pin its "▶ start" marker to the right leaf.
 const lastOutputName = ref(null);
+// Loading state of the last scenario and a bound re-run callback, so the
+// result sheet can show "running…" / an error with a reload action.
+const lastRunning = ref(false);
+const lastReload = ref(null);
 
-function handleScenarioExecuted({ result, traceText, error, expectations, scenarioName, outputName, view }) {
+function handleScenarioExecuted({ result, traceText, error, running, expectations, scenarioName, outputName, reload, view }) {
   lastResult.value = result;
   lastTraceText.value = traceText;
   lastError.value = error || null;
+  lastRunning.value = !!running;
+  lastReload.value = typeof reload === 'function' ? reload : null;
   lastExpectations.value = expectations || {};
   lastScenarioName.value = scenarioName || '';
   lastOutputName.value = outputName || null;
@@ -441,6 +447,8 @@ watch(lawId, () => {
   lastResult.value = null;
   lastTraceText.value = null;
   lastError.value = null;
+  lastRunning.value = false;
+  lastReload.value = null;
   lastExpectations.value = {};
   lastScenarioName.value = '';
   lastOutputName.value = null;
@@ -450,6 +458,9 @@ watch(lawId, () => {
 
 // --- Editor state ---
 const activeAction = ref(null);
+// True while the open action sheet is for a freshly added action, so its
+// Save button is always offered (no edit required to create it).
+const activeActionIsNew = ref(false);
 const activeEditItem = ref(null);
 const parseError = ref(null);
 
@@ -735,8 +746,12 @@ function onYamlInput(event) {
 }
 
 function handleSave({ section, key, newKey, index, data }) {
+  // JSON round-trip clone: Vue reactive proxies aren't structuredClone-able
+  // in all envs. Safe because law YAML is JSON-plain — but Date/undefined
+  // are NOT preserved, which only matters if a future field becomes
+  // date-typed (use an explicit serialiser then).
   const mr = machineReadable.value
-    ? structuredClone(machineReadable.value)
+    ? JSON.parse(JSON.stringify(machineReadable.value))
     : {};
 
   if (!mr.definitions) mr.definitions = {};
@@ -762,6 +777,15 @@ function handleSave({ section, key, newKey, index, data }) {
     mr.execution.output[index] = data;
   } else if (section === 'add-output') {
     mr.execution.output.push(data);
+  } else if (section === 'produces') {
+    if (!mr.execution.produces) mr.execution.produces = {};
+    if (data == null) delete mr.execution.produces[key];
+    else mr.execution.produces[key] = data;
+    // Drop the container once every field is cleared, otherwise the YAML
+    // dump emits a bare `produces: {}` which the schema rejects.
+    if (Object.keys(mr.execution.produces).length === 0) {
+      delete mr.execution.produces;
+    }
   }
 
   machineReadable.value = mr;
@@ -775,8 +799,10 @@ function handleSave({ section, key, newKey, index, data }) {
 // array index. Out-of-range indices and missing keys are no-ops so a
 // stale event from the UI can never crash.
 function handleDelete({ section, key, index }) {
+  // JSON clone — see handleSave: Date/undefined not preserved (fine for
+  // JSON-plain law data).
   const mr = machineReadable.value
-    ? structuredClone(machineReadable.value)
+    ? JSON.parse(JSON.stringify(machineReadable.value))
     : null;
   if (!mr) return;
 
@@ -844,11 +870,13 @@ function handleAddAction() {
   machineReadable.value = { ...mr };
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
+  activeActionIsNew.value = true;
   activeAction.value = newAction;
 }
 
 function handleOpenAction(action) {
   actionSnapshot = JSON.stringify(machineReadable.value);
+  activeActionIsNew.value = false;
   activeAction.value = action;
   // Clear any stale parse error from a previous failed save
   parseError.value = null;
@@ -933,7 +961,7 @@ function findIncompleteOperation(value) {
 }
 
 // Sync YAML when ActionSheet saves (mutations happened in-place)
-function handleActionSave() {
+async function handleActionSave() {
   const action = activeAction.value;
   if (action) {
     // Output is required by the schema and the engine cannot load a law
@@ -955,12 +983,26 @@ function handleActionSave() {
       return;
     }
   }
-  actionSnapshot = null;
-  activeAction.value = null;
-  // Re-assign to trigger reactivity + re-dump YAML
-  machineReadable.value = structuredClone(machineReadable.value);
+  // Commit the in-place mutations, then actually persist the law. The
+  // sheet's "Opslaan" is a real save, so the Machine pane won't show a
+  // separate dirty/save affordance for sheet edits. On a failed PUT the
+  // edits stay in the model and the Machine pane's normal dirty/save
+  // affordance is the fallback — no data loss either way.
+  // JSON clone — see handleSave: reactive proxy not structuredClone-able;
+  // Date/undefined not preserved (fine for JSON-plain law YAML).
+  machineReadable.value = JSON.parse(JSON.stringify(machineReadable.value));
   yamlSource.value = yaml.dump(machineReadable.value, dumpOpts);
   parseError.value = null;
+  // Close the sheet unconditionally: the mutations are already committed
+  // above, so even if handleLawSave() throws the sheet must not stay open
+  // showing a now-clean (isDirty === false) state. A failed PUT falls back
+  // to the Machine pane's normal dirty/save affordance — no data loss.
+  try {
+    await handleLawSave();
+  } finally {
+    actionSnapshot = null;
+    activeAction.value = null;
+  }
 }
 
 </script>
@@ -998,10 +1040,8 @@ function handleActionSave() {
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -1010,7 +1050,8 @@ function handleActionSave() {
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-md-${value}`"
@@ -1019,6 +1060,7 @@ function handleActionSave() {
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
@@ -1060,10 +1102,8 @@ function handleActionSave() {
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -1072,7 +1112,8 @@ function handleActionSave() {
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-lg-${value}`"
@@ -1081,6 +1122,7 @@ function handleActionSave() {
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
@@ -1118,7 +1160,7 @@ function handleActionSave() {
              bar too because closed tabs may still be visible alongside this
              empty state on the next pane. -->
         <nldd-page v-if="!activeTab">
-          <nldd-simple-section full-width>
+          <nldd-simple-section width="full">
             <nldd-inline-dialog text="Open een artikel vanuit de tabbalk of de bibliotheek om te bewerken.">
               <nldd-button slot="actions" variant="secondary" text="Ga naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
             </nldd-inline-dialog>
@@ -1127,7 +1169,7 @@ function handleActionSave() {
 
         <!-- Error state — mirrors the library's law-load failure pattern. -->
         <nldd-page v-else-if="error">
-          <nldd-simple-section full-width>
+          <nldd-simple-section width="full">
             <nldd-inline-dialog
               variant="alert"
               :text="`${failedLawName} is niet geladen`"
@@ -1144,7 +1186,7 @@ function handleActionSave() {
              explicit empty-state with a CTA to the settings menu so
              the user understands the editor isn't broken. -->
         <nldd-page v-else-if="paneViews.length === 0">
-          <nldd-simple-section full-width>
+          <nldd-simple-section width="full">
             <nldd-inline-dialog text="Geen editors actief. Schakel ten minste één editor in via Instellingen."></nldd-inline-dialog>
           </nldd-simple-section>
         </nldd-page>
@@ -1168,7 +1210,8 @@ function handleActionSave() {
           >
             <nldd-page
               sticky-header
-              :sticky-footer="(view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
+              :background="view === 'scenario' ? 'tinted' : undefined"
+              :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
               <div slot="header" class="pane-header">
                 <nldd-button
@@ -1249,7 +1292,7 @@ function handleActionSave() {
                    pane-header above guards on `textEditorRefs[idx]`, which
                    is only populated by the WYSIWYG component, so it auto-
                    hides when the flag is off. -->
-              <nldd-simple-section v-if="view === 'text'" full-width>
+              <nldd-simple-section v-if="view === 'text'" width="full">
                 <ArticleTextEditor
                   v-if="canEditArticleText"
                   :ref="setTextEditorRef(idx)"
@@ -1270,7 +1313,7 @@ function handleActionSave() {
                 <nldd-button
                   variant="primary"
                   size="md"
-                  full-width
+                  width="full"
                   data-testid="save-text-btn"
                   :disabled="lawSaving || undefined"
                   :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
@@ -1279,7 +1322,7 @@ function handleActionSave() {
               </nldd-container>
 
               <!-- Machine readable -->
-              <nldd-simple-section v-else-if="view === 'machine'" full-width>
+              <nldd-simple-section v-else-if="view === 'machine'" width="full">
                 <MachineReadable
                   :article="editedArticle"
                   :editable="canEdit"
@@ -1291,21 +1334,25 @@ function handleActionSave() {
                   @init-mr="handleInitMr"
                   @add-action="handleAddAction"
                   @save="handleMachineReadableSave"
+                  @patch="handleSave"
                   @delete="handleDelete"
                 />
               </nldd-simple-section>
               <!-- Footer + Save button only on the first machine pane.
                    Duplicates would render redundant Save buttons over
-                   the same shared dirty state — not broken, just noisy. -->
+                   the same shared dirty state — not broken, just noisy.
+                   Hidden while the action sheet is open: the sheet's
+                   "Opslaan" is the real save for those in-place edits, so a
+                   second Machine-pane Save button behind it just distracts. -->
               <nldd-container
-                v-if="view === 'machine' && canEdit && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
+                v-if="view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx"
                 slot="footer"
                 padding="16"
               >
                 <nldd-button
                   variant="primary"
                   size="md"
-                  full-width
+                  width="full"
                   data-testid="save-mr-btn"
                   :disabled="lawSaving || undefined"
                   :text="lawSaving ? 'Opslaan…' : 'Opslaan'"
@@ -1315,7 +1362,7 @@ function handleActionSave() {
 
               <!-- Scenario builder -->
               <template v-else-if="view === 'scenario'">
-                <nldd-simple-section v-if="engineInitError" full-width>
+                <nldd-simple-section v-if="engineInitError" width="full">
                   <nldd-inline-dialog
                     variant="alert"
                     text="WASM engine niet geladen"
@@ -1334,7 +1381,7 @@ function handleActionSave() {
               </template>
 
               <!-- YAML -->
-              <nldd-simple-section v-else-if="view === 'yaml'" full-width>
+              <nldd-simple-section v-else-if="view === 'yaml'" width="full">
                 <nldd-code-editor
                   resize="none"
                   accessible-label="YAML"
@@ -1354,7 +1401,7 @@ function handleActionSave() {
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
               <nldd-tab-bar compact>
-                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item selected icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
@@ -1368,10 +1415,8 @@ function handleActionSave() {
                 <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="global-settings" text="Instellingen" popovertarget="settings-menu-sm"></nldd-icon-button>
               </span>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -1380,7 +1425,8 @@ function handleActionSave() {
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-sm-${value}`"
@@ -1389,6 +1435,7 @@ function handleActionSave() {
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
@@ -1400,7 +1447,7 @@ function handleActionSave() {
     </nldd-bar-split-view>
   </nldd-app-view>
 
-  <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" @close="handleActionClose" @save="handleActionSave" />
+  <ActionSheet :action="activeAction" :article="editedArticle" :editable="canEdit" :is-new="activeActionIsNew" @close="handleActionClose" @save="handleActionSave" />
   <EditSheet :item="activeEditItem" :article="editedArticle" @save="handleSave" @close="activeEditItem = null" />
   <SearchPopover
     ref="searchPopoverRef"
@@ -1415,19 +1462,21 @@ function handleActionSave() {
   <nldd-sheet
     ref="resultSheetEl"
     placement="bottom"
-    full-height
     @close="resultSheetOpen = false"
   >
     <nldd-page sticky-header>
       <nldd-top-title-bar slot="header" :text="lastScenarioName ? `Resultaat: ${lastScenarioName}` : 'Resultaat'" collapse-anchor="result-scenario-title" dismiss-text="Sluit" @dismiss="resultSheetOpen = false"></nldd-top-title-bar>
-      <nldd-simple-section full-width>
+      <nldd-simple-section width="full">
         <nldd-title id="result-scenario-title" size="4"><h3>{{ lastScenarioName ? `Resultaat: ${lastScenarioName}` : 'Resultaat' }}</h3></nldd-title>
         <nldd-spacer size="16"></nldd-spacer>
         <ExecutionTraceView
           :result="lastResult"
           :trace-text="lastTraceText"
           :error="lastError"
+          :running="lastRunning"
           :expectations="lastExpectations"
+          :can-reload="!!lastReload"
+          @reload="lastReload && lastReload()"
         />
       </nldd-simple-section>
     </nldd-page>
@@ -1438,7 +1487,6 @@ function handleActionSave() {
   <nldd-sheet
     ref="graphSheetEl"
     placement="bottom"
-    full-height
     @close="graphSheetOpen = false"
   >
     <nldd-page sticky-header>

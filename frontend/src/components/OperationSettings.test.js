@@ -183,8 +183,10 @@ describe('OperationSettings — AGE op', () => {
     });
   });
 
-  describe('canAddValue / canAddNestedOperation', () => {
-    it('disables both add buttons for AGE', () => {
+  describe('canAddValue', () => {
+    // Operations are added by switching a value's Type via the per-row
+    // menu, so there is only the single "Voeg waarde toe" path now.
+    it('disables the add-value button for AGE', () => {
       const node = {
         operation: 'AGE',
         date_of_birth: '$geboortedatum',
@@ -192,7 +194,6 @@ describe('OperationSettings — AGE op', () => {
       };
       const wrapper = mountOp(node);
       expect(wrapper.vm.canAddValue).toBe(false);
-      expect(wrapper.vm.canAddNestedOperation).toBe(false);
     });
   });
 });

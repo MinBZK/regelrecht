@@ -2,8 +2,9 @@
 import TableToolbar from './TableToolbar.vue';
 import { GROUPED_COLUMNS } from '../constants.js';
 import { formatDate } from '../formatters.js';
+import { useTableFilters } from '../composables/useTableFilters.js';
 
-defineProps({
+const props = defineProps({
   data: { type: Array, required: true },
   loading: { type: Boolean, default: false },
   error: { type: String, default: null },
@@ -15,6 +16,8 @@ defineProps({
 });
 
 const emit = defineEmits(['sort', 'filter-change', 'view-jobs']);
+
+const { hasActiveFilters, clearFilters } = useTableFilters(() => props.filters, emit);
 
 const columns = GROUPED_COLUMNS;
 
@@ -38,24 +41,37 @@ function statusBarTitle(group) {
 </script>
 
 <template>
-  <nldd-simple-section full-width>
-    <TableToolbar
-      :columns="columns"
-      :sort-options="sortOptions"
-      :sort="sort"
-      :order="order"
-      :filters="filters"
-      @sort="(key, order) => emit('sort', key, order)"
-      @filter-change="(key, value) => emit('filter-change', key, value)"
-    >
-      <template #prefix>
-        <slot name="toolbar-prefix" />
-      </template>
-    </TableToolbar>
-    <nldd-spacer size="16" />
+  <nldd-simple-section>
+    <template v-if="data.length > 0 || hasActiveFilters">
+      <TableToolbar
+        :columns="columns"
+        :sort-options="sortOptions"
+        :sort="sort"
+        :order="order"
+        :filters="filters"
+        @sort="(key, order) => emit('sort', key, order)"
+        @filter-change="(key, value) => emit('filter-change', key, value)"
+      >
+        <template #prefix>
+          <slot name="toolbar-prefix" />
+        </template>
+      </TableToolbar>
+      <nldd-spacer size="16" />
+    </template>
 
     <nldd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></nldd-inline-dialog>
     <nldd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
+    <nldd-inline-dialog
+      v-else-if="data.length === 0 && hasActiveFilters"
+      text="No results match the current filters."
+    >
+      <nldd-button
+        slot="actions"
+        variant="secondary"
+        text="Clear filters"
+        @click="clearFilters"
+      />
+    </nldd-inline-dialog>
     <nldd-inline-dialog v-else-if="data.length === 0" :text="emptyText">
       <slot name="empty-action" />
     </nldd-inline-dialog>
@@ -70,12 +86,12 @@ function statusBarTitle(group) {
         @click="emit('view-jobs', group.law_id)"
       >
         <template v-for="(col, idx) in columns" :key="col.key">
-          <nldd-spacer-cell v-if="idx > 0" size="12" />
+          <nldd-spacer-cell v-if="idx > 0" size="12" :hide-below="col.hideBelow" />
           <nldd-cell
             v-if="col.key === 'status_bar'"
             :width="col.width || 'stretch'"
           >
-            <nldd-tooltip :text="statusBarTitle(group)" placement="top">
+            <nldd-tooltip :text="statusBarTitle(group)" placement="top" timing="instant">
               <div class="status-bar">
                 <div
                   v-for="seg in statusSegments(group)"
@@ -102,6 +118,7 @@ function statusBarTitle(group) {
             :width="col.width || 'stretch'"
             :min-width="col.minWidth"
             :horizontal-alignment="col.align"
+            :hide-below="col.hideBelow"
           />
         </template>
         <nldd-spacer-cell size="12" />

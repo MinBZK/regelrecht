@@ -98,7 +98,7 @@ async function onResetExhausted() {
     :id="menuAnchor"
     icon="ellipsis"
     text="Actions"
-    hide-tooltip
+    tooltip-timing="never"
     variant="neutral-tinted"
     size="md"
   />

@@ -10,6 +10,9 @@ const props = defineProps({
   modelValue: { type: Array, default: () => [] },
   defaultExpanded: { type: Boolean, default: false },
   readonly: { type: Boolean, default: false },
+  // When the table is shown one level deep in a drill-in sheet there's no
+  // accordion: the title is a plain heading and the body is always visible.
+  drilledIn: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -93,44 +96,46 @@ const allColumns = computed(() => {
 });
 
 const rowCount = computed(() => rows.value.length);
+
+// Drilled-in tables have no toggle, so the body is always shown.
+const showBody = computed(() => props.drilledIn || expanded.value);
 </script>
 
 <template>
-  <div class="ds-block">
-    <!-- Header -->
-    <button class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
+  <div class="ds-root">
+    <!-- Header: accordion toggle, or a plain heading when drilled in -->
+    <button v-if="!drilledIn" class="ds-block-toggle" :aria-expanded="expanded" @click="toggleExpand" type="button">
       <span class="ds-block-chevron" :class="{ 'ds-block-chevron--open': expanded }">&#9656;</span>
       <nldd-title size="5" style="flex: 1; text-align: left;">
         <span>{{ title }}</span>
       </nldd-title>
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
+    <template v-else>
+      <nldd-title size="3">
+        <h2>{{ title }}</h2>
+      </nldd-title>
+      <nldd-spacer size="8"></nldd-spacer>
+    </template>
 
-    <div v-if="expanded" class="ds-block-body">
-      <div v-if="rows.length === 0" class="ds-block-empty">
-        Geen gegevens &mdash; vul in indien relevant
-      </div>
+    <template v-if="showBody">
+      <nldd-inline-dialog v-if="rows.length === 0" text="Geen gegevens — vul in indien relevant">
+        <nldd-button v-if="!readonly" slot="actions" size="md" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
+      </nldd-inline-dialog>
 
-      <!-- One card per data row -->
-      <div v-for="(row, ri) in rows" :key="row._id ?? ri">
-        <div v-if="rows.length > 1" class="ds-row-card-header">
-          <span class="ds-row-card-label">Rij {{ ri + 1 }}</span>
-          <nldd-icon-button
-            v-if="!readonly"
-            icon="minus"
-            title="Rij verwijderen"
-            @click="removeRow(ri)"
-          ></nldd-icon-button>
-        </div>
-
-        <nldd-list variant="box" class="ds-datasource-list">
+      <!-- One box list per row — identical layout regardless of row count,
+           with the delete button at the bottom of each list. Spacers (not a
+           flex-gap container) separate the stacked lists. -->
+      <template v-for="(row, ri) in rows" :key="row._id ?? ri">
+        <nldd-spacer v-if="ri > 0" size="12"></nldd-spacer>
+        <nldd-list variant="box">
           <nldd-list-item v-for="col in allColumns" :key="col.name" size="md">
-            <nldd-text-cell :text="col.name" max-width="140px" :class="{ 'ds-key-label': col.isKey }"></nldd-text-cell>
+            <nldd-text-cell :text="col.name" min-width="120px" max-width="200px"></nldd-text-cell>
             <nldd-spacer-cell v-if="!readonly" size="8"></nldd-spacer-cell>
             <template v-if="readonly">
               <nldd-text-cell :text="String(row[col.name] ?? '')"></nldd-text-cell>
             </template>
-            <nldd-cell v-else-if="col.type === 'boolean'">
+            <nldd-cell v-else-if="col.type === 'boolean'" width="full" min-width="120px">
               <nldd-dropdown size="md">
                 <select
                   :aria-label="col.name"
@@ -143,32 +148,45 @@ const rowCount = computed(() => rows.value.length);
                 </select>
               </nldd-dropdown>
             </nldd-cell>
-            <nldd-cell v-else>
+            <nldd-cell v-else width="full" min-width="120px">
               <nldd-text-field
                 size="md"
                 :type="inputType(col.type)"
                 :value="String(row[col.name] ?? '')"
-                :placeholder="col.name"
                 @input="updateCell(ri, col.name, $event.target?.value ?? $event.detail?.value ?? '')"
               ></nldd-text-field>
             </nldd-cell>
           </nldd-list-item>
 
-          <!-- Single-row inline delete -->
-          <nldd-list-item v-if="!readonly && rows.length === 1" size="md">
-            <nldd-button size="md" full-width start-icon="minus" @click="removeRow(ri)" text="Rij verwijderen"></nldd-button>
+          <nldd-list-item v-if="!readonly" size="md">
+            <nldd-cell width="full">
+              <nldd-button variant="destructive" size="md" width="full" start-icon="delete" @click="removeRow(ri)" text="Verwijder"></nldd-button>
+            </nldd-cell>
           </nldd-list-item>
         </nldd-list>
-      </div>
+      </template>
 
-      <nldd-button v-if="!readonly" size="md" full-width start-icon="plus-small" @click="addRow" text="Rij toevoegen"></nldd-button>
-    </div>
+      <!-- Empty state offers "Voeg toe" inside the inline-dialog instead. -->
+      <template v-if="!readonly && rows.length > 0">
+        <nldd-spacer size="12"></nldd-spacer>
+        <nldd-list variant="box">
+          <nldd-list-item size="md">
+            <nldd-cell width="full">
+              <nldd-button size="md" width="full" start-icon="plus-small" @click="addRow" text="Voeg toe"></nldd-button>
+            </nldd-cell>
+          </nldd-list-item>
+        </nldd-list>
+      </template>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.ds-block + .ds-block {
-  margin-top: 12px;
+/* The component needs a single root, but it must not generate a box —
+ * otherwise it blocks the nldd flex layout (flex-grow / centering of the
+ * empty-state inline-dialog) of the enclosing simple-section. */
+.ds-root {
+  display: contents;
 }
 
 .ds-block-toggle {
@@ -204,54 +222,4 @@ const rowCount = computed(() => rows.value.length);
   flex-shrink: 0;
 }
 
-.ds-block-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.ds-block-empty {
-  padding: 12px;
-  text-align: center;
-  font-size: 14px;
-  color: var(--semantics-text-color-secondary, #999);
-  font-style: italic;
-}
-
-.ds-row-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-
-.ds-row-card-label {
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--semantics-text-color-secondary, #545D68);
-}
-
-.ds-key-label {
-  font-weight: 700;
-}
-</style>
-
-<style>
-/* Unscoped: nldd web components need global selectors */
-.ds-datasource-list nldd-text-cell {
-  width: 140px;
-  min-width: 140px;
-  flex-shrink: 0;
-}
-
-.ds-datasource-list nldd-cell {
-  flex: 1;
-  min-width: 0;
-}
-
-.ds-datasource-list nldd-text-field,
-.ds-datasource-list nldd-dropdown {
-  width: 100%;
-}
 </style>

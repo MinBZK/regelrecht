@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useAuth } from './composables/useAuth.js';
 import { usePlatformInfo } from './composables/usePlatformInfo.js';
 import { useNewHarvestJob } from './composables/useNewHarvestJob.js';
+import { useColorScheme } from './composables/useColorScheme.js';
 import NewHarvestJobSheet from './components/NewHarvestJobSheet.vue';
 
 const route = useRoute();
@@ -11,6 +12,13 @@ const router = useRouter();
 const { authenticated, oidcConfigured, loading: authLoading, logout, redirectToLogin } = useAuth();
 const { info } = usePlatformInfo();
 const { open: openNewHarvestJob } = useNewHarvestJob();
+const { colorScheme, setColorScheme } = useColorScheme();
+
+const themeOptions = [
+  ['auto', 'System'],
+  ['dark', 'Dark'],
+  ['light', 'Light'],
+];
 
 const deploymentName = computed(() =>
   info.value?.deployment_name && info.value.deployment_name !== 'regelrecht'
@@ -39,17 +47,17 @@ watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
     <nldd-tag
       v-if="deploymentName"
       class="env-badge"
-      variant="warning"
+      color="warning"
       size="sm"
       :text="deploymentName"
     />
     <nldd-bar-split-view>
       <nldd-container slot="toolbar" padding="8" padding-left="16">
         <nldd-toolbar size="md">
-          <nldd-toolbar-title-group
+          <nldd-toolbar-title
             slot="start"
             text="Admin"
-            subtext="RegelRecht"
+            supporting-text="RegelRecht"
             min-width="fit-content"
           />
           <nldd-toolbar-item slot="center">
@@ -67,17 +75,38 @@ watch([authLoading, oidcConfigured, authenticated], ([loading, oidc, auth]) => {
             <nldd-icon-button
               icon="plus-small"
               text="Add"
-              hide-tooltip
+              tooltip-timing="never"
               variant="neutral-tinted"
               @click="openNewHarvestJob"
             />
           </nldd-toolbar-item>
           <nldd-toolbar-item slot="end">
-            <nldd-button
-              text="Logout"
-              end-icon="logout"
-              @click="logout"
+            <nldd-icon-button
+              id="account-menu-trigger"
+              icon="person-circle"
+              text="Account"
+              expandable
+              tooltip-timing="never"
+              variant="neutral-tinted"
             />
+            <nldd-menu anchor="account-menu-trigger">
+              <nldd-menu-group text="Theme">
+                <nldd-menu-item
+                  v-for="[value, label] in themeOptions"
+                  :key="value"
+                  type="radio"
+                  :text="label"
+                  :selected="colorScheme === value || undefined"
+                  @click.stop="setColorScheme(value)"
+                />
+              </nldd-menu-group>
+              <nldd-menu-divider />
+              <nldd-menu-item
+                text="Logout"
+                icon="logout"
+                @click.stop="logout"
+              />
+            </nldd-menu>
           </nldd-toolbar-item>
         </nldd-toolbar>
       </nldd-container>

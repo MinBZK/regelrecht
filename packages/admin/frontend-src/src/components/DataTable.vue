@@ -2,6 +2,7 @@
 import StatusBadge from './StatusBadge.vue';
 import TableToolbar from './TableToolbar.vue';
 import { formatDate, formatCoverageScore, truncateUuid } from '../formatters.js';
+import { useTableFilters } from '../composables/useTableFilters.js';
 
 const props = defineProps({
   columns: { type: Array, required: true },
@@ -18,6 +19,8 @@ const props = defineProps({
 
 const emit = defineEmits(['sort', 'filter-change', 'row-click']);
 
+const { hasActiveFilters, clearFilters } = useTableFilters(() => props.filters, emit);
+
 function formatCellValue(value, key) {
   if (value === null || value === undefined || value === '') return null;
   if (key === 'id') return truncateUuid(value);
@@ -28,24 +31,37 @@ function formatCellValue(value, key) {
 </script>
 
 <template>
-  <nldd-simple-section full-width>
-    <TableToolbar
-      :columns="columns"
-      :sort-options="sortOptions"
-      :sort="sort"
-      :order="order"
-      :filters="filters"
-      @sort="(key, order) => emit('sort', key, order)"
-      @filter-change="(key, value) => emit('filter-change', key, value)"
-    >
-      <template #prefix>
-        <slot name="toolbar-prefix" />
-      </template>
-    </TableToolbar>
-    <nldd-spacer size="16" />
+  <nldd-simple-section>
+    <template v-if="data.length > 0 || hasActiveFilters">
+      <TableToolbar
+        :columns="columns"
+        :sort-options="sortOptions"
+        :sort="sort"
+        :order="order"
+        :filters="filters"
+        @sort="(key, order) => emit('sort', key, order)"
+        @filter-change="(key, value) => emit('filter-change', key, value)"
+      >
+        <template #prefix>
+          <slot name="toolbar-prefix" />
+        </template>
+      </TableToolbar>
+      <nldd-spacer size="16" />
+    </template>
 
     <nldd-inline-dialog v-if="loading && data.length === 0" text="Loading…"></nldd-inline-dialog>
     <nldd-inline-dialog v-else-if="error && data.length === 0" :text="'Failed to load data: ' + error"></nldd-inline-dialog>
+    <nldd-inline-dialog
+      v-else-if="data.length === 0 && hasActiveFilters"
+      text="No results match the current filters."
+    >
+      <nldd-button
+        slot="actions"
+        variant="secondary"
+        text="Clear filters"
+        @click="clearFilters"
+      />
+    </nldd-inline-dialog>
     <nldd-inline-dialog v-else-if="data.length === 0" :text="emptyText">
       <slot name="empty-action" />
     </nldd-inline-dialog>
@@ -61,7 +77,7 @@ function formatCellValue(value, key) {
           @click="clickableRows && emit('row-click', row)"
         >
           <template v-for="(col, idx) in columns" :key="col.key">
-            <nldd-spacer-cell v-if="idx > 0" size="12" />
+            <nldd-spacer-cell v-if="idx > 0" size="12" :hide-below="col.hideBelow" />
             <nldd-cell
               v-if="$slots['cell-' + col.key]"
               :width="col.width || 'stretch'"
@@ -85,6 +101,7 @@ function formatCellValue(value, key) {
               :width="col.width || 'stretch'"
               :min-width="col.minWidth"
               :horizontal-alignment="col.align"
+              :hide-below="col.hideBelow"
             />
             <nldd-cell
               v-else-if="col.key === 'id' || col.key === 'law_id'"
