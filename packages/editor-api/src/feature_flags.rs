@@ -16,6 +16,11 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         ("panel.yaml_editor".into(), true),
         ("panel.machine_readable".into(), true),
         ("panel.law_graph".into(), false),
+        // Notes pane (RFC-005/RFC-018). Default off: display-only MVP, notes
+        // exist for one law so far. Must be registered here or the toggle PUT
+        // 400s and the frontend silently reverts it (see the editor.* note
+        // below — same allow-list mechanism).
+        ("panel.notes".into(), false),
         // Editor capability flags — visibility is panel.*, editability is editor.*.
         // The frontend wires editor.article_text_edit (default off) to gate
         // write access on the Tekst pane. Without the key here the backend's

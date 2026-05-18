@@ -36,6 +36,9 @@ const editorPanelFlags = [
   ['panel.machine_readable', 'Machine editor'],
   ['panel.scenario_form', 'Scenario editor'],
   ['panel.yaml_editor', 'YAML editor'],
+  // Capability gate: when on, the Tekst pane offers a "Notities"
+  // toggle that overlays resolved notes on the article text. Not a
+  // separate pane (notes are a layer over the text, not other content).
   ['panel.notes', 'Notities'],
   ['editor.article_text_edit', 'Tekst bewerken'],
 ];
@@ -52,7 +55,6 @@ const VIEW_DEFINITIONS = [
   { id: 'machine', flag: 'panel.machine_readable', label: 'Machine' },
   { id: 'scenario', flag: 'panel.scenario_form', label: "Scenario's" },
   { id: 'yaml', flag: 'panel.yaml_editor', label: 'YAML' },
-  { id: 'notes', flag: 'panel.notes', label: 'Notities' },
 ];
 
 const availableViews = computed(() => VIEW_DEFINITIONS.filter(v => isEnabled(v.flag)));
@@ -173,6 +175,21 @@ const {
   loading: notesLoading,
   error: notesError,
 } = useNotes(lawId, selectedArticle);
+
+// Notes are a layer over the Tekst pane, not a separate pane. This toggle is
+// the user's "show notes now" preference; panel.notes (a feature flag) is the
+// capability gate that makes the toggle available at all. Persisted so it
+// survives navigation within a session.
+const NOTES_TOGGLE_KEY = 'regelrecht-show-notes';
+const showNotes = ref(localStorage.getItem(NOTES_TOGGLE_KEY) === '1');
+watch(showNotes, (v) => {
+  try { localStorage.setItem(NOTES_TOGGLE_KEY, v ? '1' : '0'); } catch { /* ignore */ }
+});
+// Notes overlay only makes sense in read mode: the resolver matches raw text,
+// so it cannot align with the markdown render or the editable textarea.
+const notesActive = computed(
+  () => isEnabled('panel.notes') && showNotes.value && !canEditArticleText.value,
+);
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1243,6 +1260,20 @@ async function handleActionSave() {
                     @select="setPaneView(idx, opt.id)"
                   ></nldd-menu-item>
                 </nldd-menu>
+                <!-- Notes toggle: only on the Tekst pane, only when the
+                     panel.notes capability is enabled, and only in read mode
+                     (the overlay needs raw text — it can't align with the
+                     editable textarea). Notes are a layer over the text, not
+                     a separate pane. -->
+                <nldd-button
+                  v-if="view === 'text' && isEnabled('panel.notes') && !canEditArticleText"
+                  size="md"
+                  :variant="showNotes ? 'primary' : 'default'"
+                  start-icon="comment"
+                  text="Notities"
+                  data-testid="notes-toggle"
+                  @click="showNotes = !showNotes"
+                ></nldd-button>
                 <!-- Formatting toolbar lives in the pane-header so it sits in
                      line with the pane-view dropdown rather than below it.
                      Wired to the ArticleTextEditor instance via textEditorRefs
@@ -1314,6 +1345,33 @@ async function handleActionSave() {
                   :model-value="editedText"
                   @update:model-value="editedText = $event"
                 />
+                <!-- Notes overlay (read mode only): same Tekst pane, plain
+                     text with resolved highlights instead of the markdown
+                     render. Toggled via the header button below. -->
+                <template v-else-if="notesActive">
+                  <nldd-inline-dialog
+                    v-if="notesError"
+                    variant="alert"
+                    text="Notities niet geladen"
+                    :supporting-text="notesError.message"
+                  ></nldd-inline-dialog>
+                  <nldd-inline-dialog
+                    v-else-if="notesLoading"
+                    text="Notities laden…"
+                  ></nldd-inline-dialog>
+                  <template v-else>
+                    <AnnotatedText
+                      :article="selectedArticle"
+                      :notes-for-article="notesForArticle"
+                    />
+                    <nldd-inline-dialog
+                      v-if="noteIssues.length"
+                      variant="warning"
+                      :text="`${noteIssues.length} notitie(s) niet verankerd`"
+                      :supporting-text="noteIssues.map(i => i.reason).join('; ')"
+                    ></nldd-inline-dialog>
+                  </template>
+                </template>
                 <ArticleText v-else :article="selectedArticle" />
               </nldd-simple-section>
               <!-- Footer + Save button only on the first text pane (mirrors the machine pattern). -->
@@ -1371,33 +1429,6 @@ async function handleActionSave() {
                   @click="handleMachineReadableSave"
                 ></nldd-button>
               </nldd-container>
-
-              <!-- Notes (RFC-005/RFC-018): article text with resolved
-                   note highlights. Read-only in this phase. -->
-              <nldd-simple-section v-else-if="view === 'notes'" full-width>
-                <nldd-inline-dialog
-                  v-if="notesError"
-                  variant="alert"
-                  text="Notities niet geladen"
-                  :supporting-text="notesError.message"
-                ></nldd-inline-dialog>
-                <nldd-inline-dialog
-                  v-else-if="notesLoading"
-                  text="Notities laden…"
-                ></nldd-inline-dialog>
-                <template v-else>
-                  <AnnotatedText
-                    :article="selectedArticle"
-                    :notes-for-article="notesForArticle"
-                  />
-                  <nldd-inline-dialog
-                    v-if="noteIssues.length"
-                    variant="warning"
-                    :text="`${noteIssues.length} notitie(s) niet verankerd`"
-                    :supporting-text="noteIssues.map(i => i.reason).join('; ')"
-                  ></nldd-inline-dialog>
-                </template>
-              </nldd-simple-section>
 
               <!-- Scenario builder -->
               <template v-else-if="view === 'scenario'">
@@ -1627,3 +1658,4 @@ async function handleActionSave() {
   border-radius: 6px;
 }
 </style>
+// cache-bust 1779124589
