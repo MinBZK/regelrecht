@@ -82,7 +82,7 @@ function onViewChange(event) {
       <ViewToggle :value="viewMode" @change="onViewChange" />
     </template>
     <template #cell-status="{ row }">
-      <StatusBadge :status="row.status || 'unknown'" :error-message="row.result?.error" />
+      <StatusBadge :status="row.status || 'unknown'" />
     </template>
     <template #empty-action>
       <nldd-button

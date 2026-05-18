@@ -42,9 +42,11 @@ export const JOB_COLUMNS = [
     label: 'Job',
     sortable: true,
     filter: { key: 'law_id', type: 'text', label: 'Law ID' },
-    overline: (row) => row.law_id,
-    text: (row) => row.id,
-    supportingText: (row) => jobSubtitle(row),
+    overline: (row) => `${row.law_id} › ${row.id}`,
+    // Every row has the same shape: subtitle as the main text; a failed
+    // job's error message goes underneath as supporting text.
+    text: (row) => jobSubtitle(row),
+    supportingText: (row) => row.result?.error || undefined,
   },
   { key: 'status', label: 'Status', sortable: true, filter: { options: JOB_STATUSES }, width: 110 },
   {

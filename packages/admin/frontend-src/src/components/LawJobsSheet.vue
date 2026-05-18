@@ -165,12 +165,13 @@ const codeSections = computed(() => {
               @click="selectedJob = job"
             >
               <nldd-text-cell
-                :text="job.id"
-                :supporting-text="jobSubtitle(job)"
+                :overline="job.id"
+                :text="jobSubtitle(job)"
+                :supporting-text="job.result?.error || undefined"
               />
               <nldd-spacer-cell size="12" />
               <nldd-cell width="fit-content">
-                <StatusBadge :status="job.status || 'unknown'" :error-message="job.result?.error" />
+                <StatusBadge :status="job.status || 'unknown'" />
               </nldd-cell>
               <nldd-spacer-cell size="12" />
               <nldd-icon-cell icon="chevron-right" size="20" />
