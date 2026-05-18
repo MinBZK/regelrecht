@@ -3,7 +3,6 @@ import { computed } from 'vue';
 import {
   OPERATION_LABELS,
   collectAvailableVariables,
-  describeSubtitle,
   derivedTitle,
 } from '../utils/operationTree.js';
 import BreakableName from './BreakableName.vue';
@@ -160,9 +159,13 @@ function isLiteralValue(val) {
   return val === null || typeof val === 'number' || typeof val === 'boolean' || (typeof val === 'string' && !val.startsWith('$'));
 }
 
+// Mirror the read-only Waarde row (readonlyValueText): show the nested op's
+// own title when the author supplied one, falling back to the derived
+// expression. Keeps the dropdown label identical to the Titel row the user
+// sees after clicking "Bewerken" into that operation.
 function valueDropdownNestedOption(val) {
   if (!isNestedOperation(val)) return null;
-  return { value: '__nested__', label: `${derivedTitle(val)} (operatie)` };
+  return { value: '__nested__', label: `${val.title ?? derivedTitle(val)} (operatie)` };
 }
 
 function currentDropdownValue(val) {
@@ -556,8 +559,12 @@ function addValue() {
               ></nldd-menu-item>
             </nldd-menu>
           </div>
-          <p v-if="isNestedOperation(val._value)" class="value-help-text">
-            {{ describeSubtitle(val._value) }}
+          <!-- Subtitle only when a user title masks the derived form: then
+               the derived expression is the extra technical detail. Without a
+               title the dropdown already shows derivedTitle, so a subtitle
+               would just repeat it (matches read-only nestedSupportingText). -->
+          <p v-if="isNestedOperation(val._value) && val._value.title" class="value-help-text">
+            {{ derivedTitle(val._value) }}
           </p>
         </nldd-cell>
         <template v-else>
