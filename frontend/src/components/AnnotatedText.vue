@@ -42,7 +42,11 @@ function authorityClass(note) {
 
 function noteTitle(note) {
   const body = Array.isArray(note?.body) ? note.body : note?.body ? [note.body] : [];
-  const text = body.find((b) => b?.type === 'TextualBody')?.value;
+  // W3C allows a plain-string body shorthand (`body: "text"`) alongside the
+  // structured TextualBody form; surface either.
+  const text =
+    body.find((b) => typeof b === 'string') ??
+    body.find((b) => b?.type === 'TextualBody')?.value;
   const link = body.find((b) => b?.type === 'SpecificResource')?.source;
   return `${note?.motivation ?? 'note'}${text ? `: ${text}` : link ? ` → ${link}` : ''}`;
 }
@@ -90,6 +94,9 @@ mark.note-authoritative {
 mark.note-generated {
   border-bottom: 2px dotted currentColor;
 }
+/* Reserved: authorityClass() returns 'note-advisory' once the
+   competent_authority wiring lands (RFC-018 Decision 3). Intentionally
+   kept ahead of its producer — not dead code. */
 mark.note-advisory {
   border-bottom: 2px dashed currentColor;
 }

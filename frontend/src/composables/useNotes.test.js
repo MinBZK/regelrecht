@@ -122,4 +122,17 @@ describe('markRanges', () => {
     expect(segs.filter((s) => s.note === noteB)).toHaveLength(1);
     assertPartition(text, segs);
   });
+
+  it('drops a zero-length span instead of emitting an empty mark', () => {
+    const text = 'heeft de verzekerde aanspraak';
+    const segs = markRanges(text, [
+      { note: noteA, spans: [{ start: 9, end: 9 }] }, // degenerate span
+      { note: noteB, spans: [{ start: 9, end: 19 }] }, // "verzekerde"
+    ]);
+    // No empty-text segment, no mark for the zero-length note.
+    expect(segs.every((s) => s.text.length > 0)).toBe(true);
+    expect(segs.some((s) => s.note === noteA)).toBe(false);
+    expect(segs.filter((s) => s.note === noteB)).toHaveLength(1);
+    assertPartition(text, segs);
+  });
 });

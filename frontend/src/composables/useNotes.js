@@ -45,9 +45,15 @@ export function useNotes(lawId, selectedArticle) {
     const gen = ++generation;
     const isStale = () => gen !== generation;
 
+    // These early returns resolve synchronously. They must clear `loading`
+    // too: if a slow uncached load is in flight and the user navigates to a
+    // cached law, that older load is now stale and skips its own
+    // `loading = false` reset (gated on !isStale), so without clearing it
+    // here the "Notities laden…" spinner stays stuck forever.
     if (!id) {
       resolved.value = [];
       error.value = null;
+      loading.value = false;
       return;
     }
     if (cache.has(id)) {
@@ -55,6 +61,7 @@ export function useNotes(lawId, selectedArticle) {
       // the previous law's "kon notities niet laden" alert.
       resolved.value = cache.get(id);
       error.value = null;
+      loading.value = false;
       return;
     }
 
@@ -173,6 +180,11 @@ export function markRanges(text, notesForArticle) {
   const segments = [];
   let cursor = 0;
   for (const m of marks) {
+    // A zero-length span (start === end) would emit an empty, styled <mark>.
+    // The Rust resolver never produces this for a TextQuoteSelector, but a
+    // malformed hand-authored sidecar could; drop it so the contract is
+    // explicit and the partition stays clean.
+    if (m.end <= m.start) continue;
     if (m.start < cursor) continue; // skip overlap with an already-emitted mark
     if (m.start > cursor) {
       segments.push({ text: chars.slice(cursor, m.start).join(''), note: null });
