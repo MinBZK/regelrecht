@@ -11,6 +11,10 @@ const props = defineProps({
   operation: { type: Object, default: null },
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
+  // Suppress the read-only "Titel" row. The action sheet sets this at the
+  // top level in edit mode, where the editable Output field takes that
+  // first/name position instead (avoiding a duplicate name row).
+  hideTitleRow: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['select-operation']);
@@ -433,8 +437,12 @@ function addNestedOperation() {
       <nldd-spacer size="12"></nldd-spacer>
     </template>
     <nldd-list variant="box" class="settings-list">
+      <!-- Optional lead row, rendered as the first item of THIS list so
+           the action sheet's Output field sits in the same box as Type /
+           conditions on the root of an action. -->
+      <slot name="lead-row"></slot>
       <!-- Titel -->
-      <nldd-list-item size="md">
+      <nldd-list-item v-if="!hideTitleRow" size="md">
         <nldd-text-cell text="Titel" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
         <nldd-spacer-cell size="12"></nldd-spacer-cell>
         <nldd-text-cell horizontal-alignment="right"><BreakableName :name="operation.title || '(leeg)'" /></nldd-text-cell>
