@@ -1181,6 +1181,7 @@ async function handleActionSave() {
           >
             <nldd-page
               sticky-header
+              :background="view === 'scenario' ? 'tinted' : undefined"
               :sticky-footer="(view === 'machine' && canEdit && !activeAction && (isMachineReadableDirty || lawSaving) && paneViews.indexOf('machine') === idx) || (view === 'text' && canEditArticleText && (isArticleTextDirty || lawSaving) && paneViews.indexOf('text') === idx)"
             >
               <div slot="header" class="pane-header">
