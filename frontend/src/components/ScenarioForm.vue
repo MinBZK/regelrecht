@@ -299,7 +299,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
 
       <!-- Data sources: a row per source, drill in one level deeper -->
       <nldd-spacer size="24"></nldd-spacer>
-      <nldd-title size="5"><h2>Gegevensbronnen</h2></nldd-title>
+      <nldd-title size="5"><h2>Bronnen</h2></nldd-title>
       <nldd-spacer size="12"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item
