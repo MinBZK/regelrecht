@@ -75,13 +75,27 @@ describe('buildAlignment', () => {
     expect(desynced).toBe(false);
   });
 
-  it('flags desync when the DOM has a non-whitespace char absent from raw', () => {
-    // Simulates inline markdown that added DOM text (e.g. "**x**" -> "x"
-    // would be raw-only, but a footnote marker the renderer injects is
-    // DOM-only). Here DOM has an extra "Z" the raw lacks.
-    const raw = 'abc';
-    const node = tn('abZc');
-    const { desynced } = buildAlignment(raw, [{ node, text: 'abZc' }]);
+  it('tolerates a tiny DOM-only artefact (does not flag desync)', () => {
+    // A stray entity/punctuation artefact (run <= 4) must not suppress an
+    // otherwise-correct article: that would throw away every valid highlight
+    // over one decoded character. Here DOM has one extra "Z" the raw lacks.
+    const raw = 'abcdef';
+    const node = tn('abcZdef');
+    const { desynced } = buildAlignment(raw, [{ node, text: 'abcZdef' }]);
+    expect(desynced).toBe(false);
+  });
+
+  it('flags desync on a contiguous block of DOM-only text', () => {
+    // The real failure shape: inline markdown that ADDED visible DOM text
+    // (e.g. a renderer-injected phrase, or markup the scan cannot model),
+    // leaving a contiguous run with no raw counterpart after which every
+    // offset is shifted. Run > 4 -> drop highlighting rather than smear.
+    // This is scale-independent: it fires regardless of article length,
+    // unlike the old ratio threshold which only caught tiny articles.
+    const raw = 'het toetsingsinkomen van de verzekerde';
+    const domText = 'het toetsingsinkomen ZIE NOOT 7 van de verzekerde';
+    const node = tn(domText);
+    const { desynced } = buildAlignment(raw, [{ node, text: domText }]);
     expect(desynced).toBe(true);
   });
 

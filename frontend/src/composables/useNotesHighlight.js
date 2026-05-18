@@ -35,17 +35,27 @@ const WS = /\s/;
  *        rendered text nodes in document order, with their textContent
  * @returns {{
  *   rawToDom: Array<{node: Node, offset: number} | null>,
- *   domLen: number,
+ *   desynced: boolean,
  * }}
  *   rawToDom[i] is the DOM position of raw char i, or null if that raw char
  *   has no DOM counterpart (a list prefix or a collapsed-away space).
+ *   desynced is true when the rendered text diverged from raw in a way this
+ *   scan cannot model; the caller should then skip highlighting.
  */
 export function buildAlignment(rawText, domNodes) {
   const raw = Array.from(rawText); // code points: resolver offsets are char-based
   // Flatten DOM text into a single code-point stream, remembering which node
-  // and in-node code-point offset each char came from.
+  // and in-node code-point offset each char came from. Whitespace-only text
+  // nodes are skipped entirely: marked emits newlines between tags
+  // ("<ol>\n<li>") that become text nodes with no raw counterpart. If a raw
+  // char (the "\n\n" paragraph break) were allowed to map onto such a node,
+  // a span crossing two list items would produce a slice for it and
+  // AnnotatedText would wrap a focusable, styled <mark> around a bare "\n"
+  // sitting between <li>s — invalid HTML and an empty highlight blob. The
+  // raw paragraph break instead aligns via the normal raw-advance path.
   const dom = [];
   for (const { node, text } of domNodes) {
+    if (!text || /^\s*$/.test(text)) continue;
     const cps = Array.from(text);
     for (let k = 0; k < cps.length; k++) {
       dom.push({ ch: cps[k], node, offset: k });
@@ -55,68 +65,71 @@ export function buildAlignment(rawText, domNodes) {
   const rawToDom = new Array(raw.length).fill(null);
   let r = 0;
   let d = 0;
+  // Track the longest contiguous run of *significant* (non-whitespace) DOM
+  // chars that the scan had to skip. A real divergence this two-pointer scan
+  // cannot model — inline markdown that added visible DOM text — shows up as
+  // exactly that: a contiguous block of DOM chars with no raw counterpart,
+  // after which every offset is shifted (the "smear"). The legitimate
+  // raw-only transforms (list prefixes, collapsed whitespace) never leave
+  // significant DOM chars unmatched at all, so the tolerable run length is
+  // small. A global ratio was the wrong shape: a few wrong chars in a long
+  // article stay under any percentage while still smearing every later mark.
+  let maxSkippedRun = 0;
+  let curSkippedRun = 0;
   while (r < raw.length && d < dom.length) {
     if (raw[r] === dom[d].ch) {
       rawToDom[r] = { node: dom[d].node, offset: dom[d].offset };
       r++;
       d++;
+      curSkippedRun = 0;
       continue;
     }
-    // Mismatch. The expected, raw-only causes are a numbered-list prefix
-    // ("1. " marked turned into <li>) and whitespace the HTML renderer
-    // collapsed (raw "x  y" -> dom "x y", or a soft "\n" dropped). All of
-    // these are raw-only and short, so advancing the raw pointer realigns
-    // at the next shared character. A DOM char that is genuinely absent from
-    // raw (inline markdown that *added* DOM text) would instead pin `d` and
-    // leave a large unconsumed DOM tail — the caller checks coverage for
-    // that, see `desynced`.
-    if (WS.test(dom[d].ch) && !WS.test(raw[r])) {
-      // Injected layout whitespace on the DOM side (rare): skip it.
+    // Mismatch. Expected, raw-only causes: a numbered-list prefix ("1. "
+    // marked turned into <li>) and whitespace the HTML renderer collapsed
+    // (raw "x  y" -> dom "x y", or a soft "\n" dropped). These are raw-only
+    // and short, so advancing the raw pointer realigns at the next shared
+    // character. A DOM char genuinely absent from raw is the divergence
+    // case: skip it on the DOM side and count the run.
+    if (WS.test(raw[r])) {
+      r++;
+    } else if (WS.test(dom[d].ch)) {
+      d++; // DOM-side whitespace (inter-tag newline already filtered; rare)
+    } else if (raw.indexOf(dom[d].ch, r) === -1) {
+      // This DOM char does not occur anywhere in the remaining raw text:
+      // it is genuinely DOM-only. Skip it and grow the divergence run.
       d++;
+      curSkippedRun++;
+      if (curSkippedRun > maxSkippedRun) maxSkippedRun = curSkippedRun;
     } else {
+      // The DOM char reappears later in raw: the chars between are raw-only
+      // (a list prefix). Advance raw to catch up.
       r++;
     }
   }
-  // A trustworthy alignment consumes essentially all of the DOM's *visible*
-  // text. Whitespace-only DOM chars are excluded from the denominator: marked
-  // emits newlines between tags ("<ol>\n<li>") that become DOM text nodes
-  // with no raw counterpart, which is expected and harmless. A genuine
-  // divergence this scan cannot model (inline markdown that added *visible*
-  // DOM text) leaves non-whitespace DOM chars unmatched; report that so the
-  // caller drops highlighting rather than smearing every offset.
-  let domSignificant = 0;
-  let mappedSignificant = 0;
-  for (const { ch } of dom) {
-    if (WS.test(ch)) continue;
-    domSignificant++;
+  // Any DOM text the scan never reached (d stopped short) is also unmatched
+  // significant content if non-whitespace.
+  let tailRun = 0;
+  for (let i = d; i < dom.length; i++) {
+    if (WS.test(dom[i].ch)) continue;
+    tailRun++;
   }
-  for (let i = 0; i < raw.length; i++) {
-    if (rawToDom[i] && !WS.test(raw[i])) mappedSignificant++;
-  }
-  const desynced =
-    domSignificant > 0 && mappedSignificant < domSignificant * 0.98;
-  return { rawToDom, domLen: dom.length, desynced };
+  if (tailRun > maxSkippedRun) maxSkippedRun = tailRun;
+  // Tolerate a tiny run: a stray entity or punctuation artefact should not
+  // suppress an otherwise-correct article. Anything longer means inline
+  // markup the scan cannot model; drop highlighting rather than smear.
+  const desynced = maxSkippedRun > 4;
+  return { rawToDom, desynced };
 }
 
-// Anchorability probes only: spanToNodeSlices derives the actual slice
-// geometry from the rawToDom walk and uses these two solely to decide
-// whether the span has *any* mapped char near its start and end (a span
-// that falls entirely inside skipped prefix/whitespace is unanchorable).
-// anchorStart -> first mapped char at/after the offset; anchorEnd -> the
-// position just past the last mapped char before the exclusive end.
-function anchorStart(rawToDom, rawOffset) {
-  for (let i = rawOffset; i < rawToDom.length; i++) {
-    if (rawToDom[i]) return rawToDom[i];
+// Is at least one raw char in [start, end) mapped to the DOM? A span that
+// falls entirely inside skipped prefix/whitespace has no DOM position to
+// anchor to. The actual slice geometry is derived from the rawToDom walk in
+// spanToNodeSlices; this is only the "anchorable at all" gate.
+function hasMappedChar(rawToDom, start, end) {
+  for (let i = start; i < end; i++) {
+    if (rawToDom[i]) return true;
   }
-  return null;
-}
-function anchorEnd(rawToDom, rawEndExclusive) {
-  for (let i = rawEndExclusive - 1; i >= 0; i--) {
-    if (rawToDom[i]) {
-      return { node: rawToDom[i].node, offset: rawToDom[i].offset + 1 };
-    }
-  }
-  return null;
+  return false;
 }
 
 /**
@@ -132,9 +145,7 @@ function anchorEnd(rawToDom, rawEndExclusive) {
  * @returns {Array<{node: Node, startCp: number, endCp: number}>}
  */
 export function spanToNodeSlices(rawToDom, span, domNodeCpLen) {
-  const a = anchorStart(rawToDom, span.start);
-  const b = anchorEnd(rawToDom, span.end);
-  if (!a || !b) return [];
+  if (!hasMappedChar(rawToDom, span.start, span.end)) return [];
 
   // Collect the ordered set of text nodes the span touches by scanning the
   // mapped raw range. Each mapped raw char names a (node, offset); group

@@ -168,13 +168,18 @@ function applyHighlights() {
   }
 }
 
+// deep so an in-place mutation of notesForArticle (push/splice from the
+// upcoming editable-notes path) re-applies, not only a reference swap. The
+// await nextTick() ensures Vue has patched v-html before applyHighlights
+// walks the DOM (it also clears prior marks first, so a stale callback from
+// a rapid change is self-healing rather than additive).
 watch(
   [html, () => props.notesForArticle],
   async () => {
     await nextTick();
     applyHighlights();
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 );
 
 // --- Hover popover -------------------------------------------------------
@@ -319,9 +324,6 @@ function noteCreator(note) {
 </template>
 
 <style scoped>
-/* Highlights are wrapped imperatively so they are not scoped-CSS targets via
-   Vue's data attribute; style <mark> through :deep so the rules still apply
-   inside nldd-rich-text's slotted content. */
 /* Marks are wrapped imperatively into nldd-rich-text's slotted light DOM, so
    they are not tagged with Vue's scoped data attribute; reach them with
    :deep(). Motivation -> background colour, authority -> border style, same
@@ -330,7 +332,6 @@ function noteCreator(note) {
   padding: 0 0.1em;
   border-radius: 2px;
   cursor: help;
-  transition: filter 0.12s;
 }
 .annotated-wrap :deep(mark.note-authoritative) {
   border-bottom: 2px solid currentColor;
