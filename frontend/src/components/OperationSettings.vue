@@ -335,8 +335,13 @@ function updateValue(val, event) {
 
 function updateDropdownValue(val, event) {
   const selected = event.target.value;
+  // The '__nested__' sentinel is just the current operation's own row in
+  // the list — re-picking it means "keep the operation" (edit it via the
+  // pencil), so it's a no-op. Picking anything else (a variable, literal,
+  // or the empty option) replaces the value, including replacing a nested
+  // operation — otherwise switching e.g. an IF op to $bsn silently does
+  // nothing and never marks the action dirty.
   if (selected === '__nested__') return;
-  if (isNestedOperation(val._value)) return;
   const newVal = selected.startsWith('$') ? selected : parseInputValue(selected);
   applyValueMutation(val, newVal);
 }
