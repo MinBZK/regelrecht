@@ -139,10 +139,18 @@ pub async fn account_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let pool = state.pool.as_ref().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
-    let account = ensure_account(pool, &session)
-        .await?
-        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let pool = state.pool.as_ref().ok_or_else(|| {
+        tracing::warn!(
+            "account_middleware: returning 503 — state.pool is None (auth disabled or DATABASE_URL missing)"
+        );
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
+    let account = ensure_account(pool, &session).await?.ok_or_else(|| {
+        tracing::warn!(
+            "account_middleware: returning 503 — ensure_account returned None (no SESSION_KEY_SUB in session, caller is not OIDC-authenticated)"
+        );
+        StatusCode::SERVICE_UNAVAILABLE
+    })?;
     request.extensions_mut().insert(account);
     Ok(next.run(request).await)
 }
