@@ -173,7 +173,6 @@ const {
   loading: notesLoading,
   error: notesError,
 } = useNotes(lawId, selectedArticle);
-const selectedNote = ref(null);
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1390,7 +1389,6 @@ async function handleActionSave() {
                   <AnnotatedText
                     :article="selectedArticle"
                     :notes-for-article="notesForArticle"
-                    @select-note="selectedNote = $event"
                   />
                   <nldd-inline-dialog
                     v-if="noteIssues.length"

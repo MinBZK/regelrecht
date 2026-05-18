@@ -11,8 +11,15 @@ import { ref, computed, watch } from 'vue';
 import { useEngine } from './useEngine.js';
 
 // Cache resolved notes per lawId for the session. The resolver result only
-// changes when the law text or the sidecar changes, neither of which happens
-// within a session without a reload.
+// changes when the law text or the sidecar changes.
+//
+// Caveat (acceptable for the display-only, default-off MVP; revisit in the
+// note-editing phase): the key is `lawId` (`law.$id`) alone, which does not
+// encode the law *version*. RFC-005 notes resolve per version, and a save
+// through the editor changes the text without changing `$id`. This cache is
+// not invalidated on save, so editing a law in-session and reopening its
+// Notities pane could show offsets resolved against the pre-save text. Once
+// notes become editable, key by `$id` + version and invalidate on save.
 const cache = new Map();
 
 /**
@@ -25,14 +32,29 @@ export function useNotes(lawId, selectedArticle) {
   const loading = ref(false);
   const error = ref(null);
 
+  // Generation guard: each load() call claims a generation; only the latest
+  // is allowed to write reactive state. Without this, navigating between laws
+  // while a slow annotations fetch is in flight lets the older response
+  // overwrite the newer law's notes — and because article numbers collide
+  // across laws ('1','2','3' everywhere) the stale offsets would silently
+  // highlight wrong spans. useLaw guards the same race the same way.
+  let generation = 0;
+
   async function load() {
     const id = lawId.value;
+    const gen = ++generation;
+    const isStale = () => gen !== generation;
+
     if (!id) {
       resolved.value = [];
+      error.value = null;
       return;
     }
     if (cache.has(id)) {
+      // Reset error too: a cached law (e.g. a 404 → []) must not keep showing
+      // the previous law's "kon notities niet laden" alert.
       resolved.value = cache.get(id);
+      error.value = null;
       return;
     }
 
@@ -44,8 +66,8 @@ export function useNotes(lawId, selectedArticle) {
       );
       if (res.status === 404) {
         // A law without a sidecar is normal, not an error.
-        resolved.value = [];
         cache.set(id, []);
+        if (!isStale()) resolved.value = [];
         return;
       }
       if (!res.ok) {
@@ -60,13 +82,17 @@ export function useNotes(lawId, selectedArticle) {
         await loadDependency(id);
       }
       const result = engine.resolveNotes(id, yamlText);
-      resolved.value = Array.isArray(result) ? result : [];
-      cache.set(id, resolved.value);
+      const list = Array.isArray(result) ? result : [];
+      cache.set(id, list);
+      if (!isStale()) resolved.value = list;
     } catch (e) {
-      error.value = e;
-      resolved.value = [];
+      if (!isStale()) {
+        error.value = e;
+        resolved.value = [];
+      }
     } finally {
-      loading.value = false;
+      // Only the latest load owns the loading flag.
+      if (!isStale()) loading.value = false;
     }
   }
 
@@ -80,13 +106,17 @@ export function useNotes(lawId, selectedArticle) {
    */
   const notesForArticle = computed(() => {
     const articleNr = selectedArticle.value?.number;
-    if (!articleNr) return [];
+    if (articleNr == null || articleNr === '') return [];
+    // String() both sides: js-yaml decodes an unquoted `number: 2` to a JS
+    // number while the resolver's article_number is always a string. useLaw
+    // applies the same defensive coercion for the same reason.
+    const target = String(articleNr);
     const out = [];
     for (const entry of resolved.value) {
       if (entry.error || !entry.match) continue;
       if (entry.match.status !== 'found') continue;
       const spans = entry.match.matches.filter(
-        (m) => m.article_number === articleNr,
+        (m) => String(m.article_number) === target,
       );
       if (spans.length > 0) out.push({ note: entry.note, spans });
     }
@@ -116,9 +146,16 @@ export function useNotes(lawId, selectedArticle) {
  * Slice `text` into segments around resolved note spans, for rendering.
  *
  * Returns an ordered array of `{ text, note }` segments where `note` is null
- * for plain text and the annotating note for a highlighted span. Overlapping
- * spans are resolved by taking the earliest-starting, longest span (the
- * resolver already de-duplicates, so overlaps across notes are rare).
+ * for plain text and the annotating note for a highlighted span. The result is
+ * a gap-free partition of `text` (every character emitted exactly once).
+ *
+ * Overlap handling: marks are sorted by start (longest first on ties); a mark
+ * that starts inside an already-emitted mark is dropped. The resolver
+ * de-duplicates a single selector's matches, but two *different* notes
+ * annotating overlapping spans is a legitimate RFC-018 case — the later one
+ * is silently not rendered here (it is not surfaced in `issues` either, since
+ * it resolved fine). Acceptable for display-only; the note-editing phase will
+ * need layered rendering instead of a flat partition.
  *
  * @param {string} text          article text (the same string the resolver saw)
  * @param {Array<{note:object,spans:Array}>} notesForArticle
