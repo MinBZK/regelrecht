@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref, useTemplateRef } from 'vue';
 import { markRanges } from '../composables/useNotes.js';
 
 const props = defineProps({
@@ -40,38 +40,135 @@ function authorityClass(note) {
   return 'note-authoritative';
 }
 
-function noteTitle(note) {
-  const body = Array.isArray(note?.body) ? note.body : note?.body ? [note.body] : [];
+function bodies(note) {
+  return Array.isArray(note?.body) ? note.body : note?.body ? [note.body] : [];
+}
+function noteText(note) {
   // W3C allows a plain-string body shorthand (`body: "text"`) alongside the
-  // structured TextualBody form; surface either.
-  const text =
-    body.find((b) => typeof b === 'string') ??
-    body.find((b) => b?.type === 'TextualBody')?.value;
-  const link = body.find((b) => b?.type === 'SpecificResource')?.source;
-  return `${note?.motivation ?? 'note'}${text ? `: ${text}` : link ? ` → ${link}` : ''}`;
+  // structured TextualBody form; surface either, but not the tagging body
+  // (that is shown as chips).
+  return (
+    bodies(note).find((b) => typeof b === 'string') ??
+    bodies(note).find((b) => b?.type === 'TextualBody' && b.purpose !== 'tagging')?.value ??
+    ''
+  );
+}
+function noteLink(note) {
+  return bodies(note).find((b) => b?.type === 'SpecificResource')?.source || '';
+}
+function noteTags(note) {
+  return bodies(note)
+    .filter((b) => b?.type === 'TextualBody' && b.purpose === 'tagging')
+    .map((b) => b.value);
+}
+function noteCreator(note) {
+  if (!note?.creator) return '';
+  return typeof note.creator === 'string' ? note.creator : note.creator.name || '';
+}
+
+// --- Hover popover -------------------------------------------------------
+// One shared nldd-popover. On hover/focus of a highlight we point its
+// anchorElement at that mark, set the active note, and open it. nldd-popover
+// is a native HTML popover (click/light-dismiss by design), so hover is wired
+// manually with a small close delay so the pointer can travel mark -> popover
+// without it snapping shut.
+const popoverEl = useTemplateRef('popoverEl');
+const activeNote = ref(null);
+let closeTimer = null;
+
+function openFor(event, note) {
+  if (closeTimer) {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  }
+  activeNote.value = note;
+  const pop = popoverEl.value;
+  if (!pop) return;
+  pop.anchorElement = event.currentTarget;
+  // showPopover throws if already open; guard with matches(':popover-open').
+  try {
+    if (!pop.matches?.(':popover-open')) pop.showPopover?.();
+  } catch {
+    /* popover already open against another anchor — anchorElement moved it */
+  }
+}
+
+function scheduleClose() {
+  if (closeTimer) clearTimeout(closeTimer);
+  closeTimer = setTimeout(() => {
+    popoverEl.value?.hidePopover?.();
+    activeNote.value = null;
+    closeTimer = null;
+  }, 160);
+}
+
+function cancelClose() {
+  if (closeTimer) {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  }
 }
 </script>
 
 <template>
   <template v-if="article">
     <nldd-rich-text>
-      <!-- Phase 4 is display-only. The marks are not interactive yet, so no
-           role="button"/tabindex (that would announce an action that does
-           nothing — an accessibility lie). The note content is surfaced via
-           the title tooltip. Phase 5 adds a detail panel and makes the marks
-           focusable + keyboard-activatable. -->
       <p>
         <template v-for="(seg, i) in segments" :key="i">
           <mark
             v-if="seg.note"
-            :class="[motivationClass(seg.note), authorityClass(seg.note)]"
-            :title="noteTitle(seg.note)"
+            :class="[
+              motivationClass(seg.note),
+              authorityClass(seg.note),
+              { 'is-active': activeNote === seg.note },
+            ]"
+            tabindex="0"
+            :aria-label="`Notitie: ${seg.note.motivation}`"
+            @mouseenter="openFor($event, seg.note)"
+            @mouseleave="scheduleClose"
+            @focus="openFor($event, seg.note)"
+            @blur="scheduleClose"
             >{{ seg.text }}</mark
           >
           <template v-else>{{ seg.text }}</template>
         </template>
       </p>
     </nldd-rich-text>
+
+    <!-- Single shared popover; anchorElement is repointed per hovered mark. -->
+    <nldd-popover
+      ref="popoverEl"
+      accessible-label="Notitie"
+      placement="bottom-start"
+      @mouseenter="cancelClose"
+      @mouseleave="scheduleClose"
+    >
+      <div v-if="activeNote" class="note-pop" :class="motivationClass(activeNote)">
+        <div class="note-pop__head">
+          <span class="note-pop__badge">{{ activeNote.motivation }}</span>
+          <span v-if="noteCreator(activeNote)" class="note-pop__creator">{{
+            noteCreator(activeNote)
+          }}</span>
+        </div>
+        <p v-if="noteText(activeNote)" class="note-pop__body">{{ noteText(activeNote) }}</p>
+        <a
+          v-if="noteLink(activeNote)"
+          class="note-pop__link"
+          :href="noteLink(activeNote)"
+          @click.prevent
+          >{{ noteLink(activeNote) }}</a
+        >
+        <div v-if="noteTags(activeNote).length" class="note-pop__tags">
+          <span v-for="t in noteTags(activeNote)" :key="t" class="note-pop__tag">{{ t }}</span>
+        </div>
+        <span
+          v-if="activeNote.workflow"
+          class="note-pop__workflow"
+          :data-state="activeNote.workflow"
+          >{{ activeNote.workflow === 'open' ? 'open vraag' : 'afgehandeld' }}</span
+        >
+      </div>
+    </nldd-popover>
   </template>
   <nldd-inline-dialog v-else text="Geen artikel geselecteerd"></nldd-inline-dialog>
 </template>
@@ -86,7 +183,12 @@ p {
 mark {
   padding: 0 0.1em;
   border-radius: 2px;
+  cursor: help;
+  transition: filter 0.12s;
   /* Authority -> border style. */
+}
+mark.is-active {
+  filter: brightness(1.15) saturate(1.3);
 }
 mark.note-authoritative {
   border-bottom: 2px solid currentColor;
@@ -121,5 +223,83 @@ mark.note-other {
 mark:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 1px;
+}
+
+/* Popover card content. Border-left echoes the highlight colour so the
+   popover is visually tied to the mark it describes. */
+.note-pop {
+  border-left: 3px solid transparent;
+  padding-left: 10px;
+}
+.note-pop.note-linking {
+  border-left-color: #3b82f6;
+}
+.note-pop.note-commenting {
+  border-left-color: #eab308;
+}
+.note-pop.note-questioning {
+  border-left-color: #f97316;
+}
+.note-pop.note-tagging {
+  border-left-color: #22c55e;
+}
+.note-pop.note-other {
+  border-left-color: #94a3b8;
+}
+.note-pop__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.note-pop__badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.7;
+}
+.note-pop__creator {
+  font-size: 0.72rem;
+  opacity: 0.55;
+  margin-left: auto;
+}
+.note-pop__body {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.note-pop__link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+.note-pop__tags {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.note-pop__tag {
+  font-size: 0.72rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+}
+.note-pop__workflow {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+.note-pop__workflow[data-state='open'] {
+  background: rgba(249, 115, 22, 0.18);
+  color: #c2410c;
+}
+.note-pop__workflow[data-state='resolved'] {
+  background: rgba(34, 197, 94, 0.18);
+  color: #15803d;
 }
 </style>
