@@ -234,17 +234,13 @@ function matchStatus(outputName, actualValue) {
 
 const hasExpectations = computed(() => Object.keys(expectations.value).length > 0);
 
-// Minimal field-level validation: an empty/unparseable date, or the
-// "Variable not found: <name>" engine error, is mapped back onto the
-// offending input so the user sees which field is wrong (the raw engine
-// message still shows as context). No auto-revert — the input stays.
-const dateInvalid = computed(
-  () => !calculationDate.value || /date/i.test(error.value || ''),
-);
-const missingVar = computed(() => {
-  const m = /Variable not found:\s*(\S+)/i.exec(error.value || '');
-  return m ? m[1] : null;
-});
+// Minimal field-level validation: a missing date, or an empty input that
+// caused an execution error, is marked invalid so the user sees which
+// field to fill (the raw engine message still shows as context). No
+// auto-revert — the input stays. We deliberately do NOT map engine error
+// strings onto data-source columns: that produced confusing cross-field
+// invalid states (e.g. changing bsn flagged loon_uit_dienstbetrekking).
+const dateInvalid = computed(() => !calculationDate.value);
 </script>
 
 <template>
@@ -301,7 +297,7 @@ const missingVar = computed(() => {
           <nldd-cell width="full" min-width="120px">
             <nldd-text-field
               size="md"
-              :invalid="missingVar === name || undefined"
+              :invalid="(!!error && (value === '' || value == null)) || undefined"
               :value="value"
               @input="parameterValues = { ...parameterValues, [name]: $event.target?.value ?? $event.detail?.value ?? '' }; emit('change')"
             ></nldd-text-field>
