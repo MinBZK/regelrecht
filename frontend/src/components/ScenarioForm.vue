@@ -19,7 +19,7 @@ const props = defineProps({
   articleMap: { type: Object, default: null },
 });
 
-const emit = defineEmits(['show-details', 'executed', 'change']);
+const emit = defineEmits(['show-details', 'executed', 'change', 'drill-change']);
 
 // --- Form state (initialized from scenario setup) ---
 const calculationDate = ref(props.setup.calculationDate || new Date().toISOString().slice(0, 10));
@@ -45,8 +45,19 @@ function initDataSources() {
 const dataSources = ref(initDataSources());
 
 // Drill-in navigation: null = scenario overview, otherwise the index of the
-// data source whose table is shown one level deeper in the sheet.
+// data source whose table is shown one level deeper in the sheet. The back
+// affordance lives in the sheet's top-title-bar (a single level deep, so the
+// ActionSheet-style breadcrumb rows would be overkill), so the parent needs
+// to know the drilled source name and be able to pop back out.
 const selectedSource = ref(null);
+
+function clearDrill() {
+  selectedSource.value = null;
+}
+
+watch(selectedSource, (idx) => {
+  emit('drill-change', idx == null ? null : (dataSources.value[idx]?.sourceName ?? null));
+});
 
 // Expectations from scenario assertions
 const expectations = ref(
@@ -183,7 +194,7 @@ function getFormValues() {
   };
 }
 
-defineExpose({ execute, getExecutionData, getFormValues });
+defineExpose({ execute, getExecutionData, getFormValues, clearDrill });
 
 // --- Auto-re-execute when input values change ---
 let executeTimer = null;
@@ -293,16 +304,10 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
       </nldd-list>
     </template>
 
-    <!-- One level deeper: a single data source's table + back to scenario -->
+    <!-- One level deeper: a single data source's table. Back to the scenario
+         overview is the sheet's top-title-bar back button (driven by the
+         parent via clearDrill / drill-change). -->
     <template v-else>
-      <nldd-list variant="box">
-        <nldd-list-item size="md" type="button" data-testid="ds-back" @click="selectedSource = null">
-          <nldd-icon-cell size="20"><nldd-icon name="chevron-left"></nldd-icon></nldd-icon-cell>
-          <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-text-cell text="Scenario"></nldd-text-cell>
-        </nldd-list-item>
-      </nldd-list>
-      <nldd-spacer size="16"></nldd-spacer>
       <DataSourceTable
         :key="dataSources[selectedSource].sourceName"
         :title="dataSources[selectedSource].sourceName"

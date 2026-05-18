@@ -49,11 +49,37 @@ const isDirty = ref(false);
 const selectedScenarioIndex = ref(null);
 const scenarioSheetEl = ref(null);
 
+// Name of the data source the active ScenarioForm is drilled into (null =
+// scenario overview). Reported by ScenarioForm via @drill-change; the
+// top-title-bar back button uses it to pop one level back out.
+const drilledSourceName = ref(null);
+
 watch(selectedScenarioIndex, async (idx) => {
+  // Opening / switching a scenario always lands on its overview.
+  drilledSourceName.value = null;
   await nextTick();
-  if (idx !== null) scenarioSheetEl.value?.show();
-  else scenarioSheetEl.value?.hide();
+  if (idx !== null) {
+    scenarioRefs.value[idx]?.clearDrill?.();
+    scenarioSheetEl.value?.show();
+  } else {
+    scenarioSheetEl.value?.hide();
+  }
 });
+
+const currentScenarioName = computed(() =>
+  selectedScenarioIndex.value !== null
+    ? formState.value?.scenarios?.[selectedScenarioIndex.value]?.name ?? ''
+    : '',
+);
+// Drilled in: title = source name, back button → scenario overview.
+// Otherwise: title = scenario name, no back button (empty back-text hides it).
+const titleBarText = computed(() => drilledSourceName.value ?? currentScenarioName.value);
+const titleBarBackText = computed(() => (drilledSourceName.value ? currentScenarioName.value : ''));
+
+function onTitleBack() {
+  const idx = selectedScenarioIndex.value;
+  if (idx !== null) scenarioRefs.value[idx]?.clearDrill?.();
+}
 
 watch(isDirty, (val) => emit('dirty-change', val));
 
@@ -398,8 +424,10 @@ defineExpose({ save: onSave });
       <nldd-page sticky-header :sticky-footer="isDirty || undefined">
         <nldd-top-title-bar
           slot="header"
-          :text="selectedScenarioIndex !== null ? formState.scenarios[selectedScenarioIndex].name : ''"
+          :text="titleBarText"
+          :back-text="titleBarBackText"
           dismiss-text="Annuleer"
+          @back="onTitleBack"
           @dismiss="cancelEdits"
         ></nldd-top-title-bar>
         <nldd-simple-section>
@@ -417,6 +445,7 @@ defineExpose({ save: onSave });
             @show-details="() => onShowDetails(i)"
             @executed="(data) => onScenarioResult(i, data)"
             @change="markDirty"
+            @drill-change="(name) => { if (selectedScenarioIndex === i) drilledSourceName = name; }"
           />
         </nldd-simple-section>
         <nldd-container v-if="isDirty" slot="footer" padding="16">
