@@ -16,6 +16,8 @@ const props = defineProps({
   // Optional id put on the drilled-in heading so the sheet's top-title-bar
   // can use it as its `collapse-anchor` (full back button until scrolled).
   anchorId: { type: String, default: '' },
+  // Secondary line under the drilled-in heading (e.g. the scenario name).
+  subtitle: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -114,9 +116,13 @@ const showBody = computed(() => props.drilledIn || expanded.value);
       </nldd-title>
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
-    <nldd-title v-else size="5" class="ds-block-heading" :id="anchorId || undefined">
-      <span>{{ title }}</span>
-    </nldd-title>
+    <template v-else>
+      <nldd-title size="5" class="ds-block-heading" :id="anchorId || undefined">
+        <span>{{ title }}</span>
+      </nldd-title>
+      <p v-if="subtitle" class="ds-block-subtitle">{{ subtitle }}</p>
+      <nldd-spacer size="8"></nldd-spacer>
+    </template>
 
     <div v-if="showBody" class="ds-block-body">
       <div v-if="rows.length === 0" class="ds-block-empty">
@@ -163,7 +169,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 
         <nldd-list-item v-if="!readonly" size="md">
           <nldd-cell width="full">
-            <nldd-button size="md" width="full" start-icon="minus" @click="removeRow(ri)" text="Verwijder"></nldd-button>
+            <nldd-button variant="destructive" size="md" width="full" start-icon="minus" @click="removeRow(ri)" text="Verwijder"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -197,7 +203,14 @@ const showBody = computed(() => props.drilledIn || expanded.value);
 }
 
 .ds-block-heading {
-  margin: 0 0 4px 0;
+  margin: 0;
+}
+
+.ds-block-subtitle {
+  margin: 2px 0 0 0;
+  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
+  font-size: 13px;
+  color: var(--semantics-text-color-secondary, #545D68);
 }
 
 .ds-block-chevron {

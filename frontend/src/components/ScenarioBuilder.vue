@@ -76,13 +76,14 @@ const currentScenarioName = computed(() =>
 // keeps the bar non-compact (full text back button) until the user scrolls
 // past the table heading, then it compacts to show title + supporting text.
 // Overview: title = scenario name, no back button (empty back-text hides it).
+const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const titleBarText = computed(() =>
-  drilledSourceName.value ? humanize(drilledSourceName.value) : currentScenarioName.value,
+  drilledSourceName.value ? capitalize(humanize(drilledSourceName.value)) : currentScenarioName.value,
 );
 const titleBarSupportingText = computed(() =>
   drilledSourceName.value ? currentScenarioName.value : '',
 );
-const titleBarBackText = computed(() => (drilledSourceName.value ? currentScenarioName.value : ''));
+const titleBarBackText = computed(() => (drilledSourceName.value ? 'Scenario' : ''));
 const titleBarCollapseAnchor = computed(() => (drilledSourceName.value ? 'ds-drill-anchor' : ''));
 
 function onTitleBack() {

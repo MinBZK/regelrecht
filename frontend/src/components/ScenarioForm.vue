@@ -55,6 +55,13 @@ function clearDrill() {
   selectedSource.value = null;
 }
 
+// Data-source names render human-readable AND sentence-cased ("personal_data"
+// → "Personal data"). humanize() only de-snakes; it doesn't capitalise.
+function sourceLabel(name) {
+  const h = humanize(name);
+  return h ? h.charAt(0).toUpperCase() + h.slice(1) : h;
+}
+
 watch(selectedSource, (idx) => {
   emit('drill-change', idx == null ? null : (dataSources.value[idx]?.sourceName ?? null));
 });
@@ -295,7 +302,7 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
           :data-testid="`ds-row-${i}`"
           @click="selectedSource = i"
         >
-          <nldd-text-cell :text="humanize(ds.sourceName)"></nldd-text-cell>
+          <nldd-text-cell :text="sourceLabel(ds.sourceName)"></nldd-text-cell>
           <nldd-spacer-cell size="12"></nldd-spacer-cell>
           <nldd-text-cell horizontal-alignment="right" :text="ds.rows.length ? String(ds.rows.length) : ''"></nldd-text-cell>
           <nldd-spacer-cell size="12"></nldd-spacer-cell>
@@ -310,7 +317,8 @@ const hasExpectations = computed(() => Object.keys(expectations.value).length > 
     <template v-else>
       <DataSourceTable
         :key="dataSources[selectedSource].sourceName"
-        :title="humanize(dataSources[selectedSource].sourceName)"
+        :title="sourceLabel(dataSources[selectedSource].sourceName)"
+        :subtitle="scenario.name"
         :key-field="dataSources[selectedSource].keyField"
         :fields="dataSources[selectedSource].fields"
         :model-value="dataSources[selectedSource].rows"
