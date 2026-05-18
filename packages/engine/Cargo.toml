@@ -25,6 +25,7 @@ thiserror.workspace = true
 chrono.workspace = true
 sha2.workspace = true
 hex = "0.4"
+strsim = "0.11"
 tracing.workspace = true
 
 [dependencies.jsonschema]
@@ -42,6 +43,11 @@ optional = true
 [[bin]]
 name = "validate"
 path = "src/bin/validate.rs"
+required-features = ["validate"]
+
+[[bin]]
+name = "validate-annotations"
+path = "src/bin/validate_annotations.rs"
 required-features = ["validate"]
 
 [[bin]]

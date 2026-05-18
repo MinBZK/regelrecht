@@ -26,6 +26,7 @@
 //! )?;
 //! ```
 
+pub mod annotation;
 pub mod article;
 pub mod config;
 pub mod context;
@@ -52,6 +53,10 @@ pub mod wasm;
 pub mod telemetry;
 
 // Re-export commonly used items
+pub use annotation::{
+    law_id_from_source, resolve as resolve_note, MatchResult, MatchStatus, SelectorHint, TextMatch,
+    TextQuoteSelector,
+};
 pub use article::{
     Action, ActionOperation, ActionValue, Article, ArticleBasedLaw, Case, Execution,
     HookDeclaration, HookFilter, HookPoint, MachineReadable, OverrideDeclaration,
