@@ -70,7 +70,10 @@ const inputs = computed(() =>
   (execution.value?.input ?? []).map((i) => ({
     name: i.name,
     type: i.type,
-    source: i.source?.regulation ?? i.source?.output ?? null,
+    // Only an actual source regulation gets a supporting line. A cross-law
+    // output reference humanises to roughly the field name, which would
+    // just duplicate it.
+    sourceRegulation: i.source?.regulation ?? null,
   }))
 );
 
@@ -334,7 +337,7 @@ function addOutput() {
       <nldd-list variant="box">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <nldd-text-cell
-            :supporting-text="input.source ? lawDisplayName(input.source) : undefined"
+            :supporting-text="input.sourceRegulation ? lawDisplayName(input.sourceRegulation) : undefined"
           ><BreakableName :name="input.name" /> <nldd-tag size="sm" :text="input.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
