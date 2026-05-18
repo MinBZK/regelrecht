@@ -342,7 +342,6 @@ const dateErrorId = useId();
         :fields="dataSources[selectedSource].fields"
         :model-value="dataSources[selectedSource].rows"
         :drilled-in="true"
-        anchor-id="ds-drill-anchor"
         @update:model-value="updateDataSourceRows(selectedSource, $event)"
       />
     </template>

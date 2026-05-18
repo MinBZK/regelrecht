@@ -13,9 +13,6 @@ const props = defineProps({
   // When the table is shown one level deep in a drill-in sheet there's no
   // accordion: the title is a plain heading and the body is always visible.
   drilledIn: { type: Boolean, default: false },
-  // Optional id put on the drilled-in heading so the sheet's top-title-bar
-  // can use it as its `collapse-anchor` (full back button until scrolled).
-  anchorId: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -115,7 +112,7 @@ const showBody = computed(() => props.drilledIn || expanded.value);
       <span class="ds-block-badge" v-if="rowCount > 0">{{ rowCount }}</span>
     </button>
     <template v-else>
-      <nldd-title size="3" :id="anchorId || undefined">
+      <nldd-title size="3">
         <h2>{{ title }}</h2>
       </nldd-title>
       <nldd-spacer size="8"></nldd-spacer>

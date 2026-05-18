@@ -55,10 +55,8 @@ const scenarioSheetEl = ref(null);
 const drilledSourceName = ref(null);
 
 watch(selectedScenarioIndex, async (idx) => {
-  // Opening / switching a scenario always lands on its overview. Reset every
-  // form's drill state so at most one drilled DataSourceTable exists at a
-  // time — its heading carries the constant `ds-drill-anchor` id used as the
-  // top-title-bar collapse anchor, so a second one would duplicate the id.
+  // Opening / switching a scenario always lands on its overview, so reset
+  // every form's drill state (only the active form can be drilled into).
   drilledSourceName.value = null;
   await nextTick();
   scenarioRefs.value.forEach((f) => f?.clearDrill?.());
