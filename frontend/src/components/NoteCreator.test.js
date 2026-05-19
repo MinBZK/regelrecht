@@ -146,6 +146,27 @@ describe('NoteCreator', () => {
     expect(w.emitted('create')).toBeUndefined();
   });
 
+  it('hides the whole form when the selection is unusable', async () => {
+    const w = mountCreator({
+      engine: {
+        resolveNote: () => ({ status: 'orphaned', matches: [] }),
+      },
+    });
+    await nextTick();
+    // Only the warning + a single "Annuleren" — no type picker, no save.
+    expect(w.find('[data-testid="note-creator-status"]').exists()).toBe(true);
+    expect(w.find('[data-testid="note-save"]').exists()).toBe(false);
+    expect(w.find('[data-testid="note-comment-text"]').exists()).toBe(false);
+    expect(w.find('[data-testid="note-cancel"]').exists()).toBe(true);
+  });
+
+  it('shows the full form once the selection resolves uniquely', async () => {
+    const w = mountCreator(); // engine returns a matching unique result
+    await nextTick();
+    expect(w.find('[data-testid="note-creator-status"]').exists()).toBe(false);
+    expect(w.find('[data-testid="note-save"]').exists()).toBe(true);
+  });
+
   it('remembers the creator across mounts via localStorage', async () => {
     const w = mountCreator();
     await nextTick();

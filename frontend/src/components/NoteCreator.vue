@@ -204,14 +204,23 @@ defineExpose({ popoverEl });
         <span class="nc-quote__text">{{ exact }}</span>
       </div>
 
-      <nldd-inline-dialog
-        v-if="statusMessage"
-        variant="warning"
-        text="Selectie niet uniek"
-        :supporting-text="statusMessage"
-        data-testid="note-creator-status"
-      ></nldd-inline-dialog>
+      <!-- Unusable selection (ambiguous/orphaned): the form would only lead
+           to a permanently-disabled save, so show just the warning and a way
+           out. The full form appears once the selection resolves uniquely. -->
+      <template v-if="statusMessage">
+        <nldd-inline-dialog
+          icon="warning"
+          icon-color="warning"
+          text="Selectie niet bruikbaar"
+          :supporting-text="statusMessage"
+          data-testid="note-creator-status"
+        ></nldd-inline-dialog>
+        <div class="nc-actions">
+          <nldd-button size="md" text="Annuleren" data-testid="note-cancel" @click="cancel"></nldd-button>
+        </div>
+      </template>
 
+      <template v-else>
       <label class="nc-field">
         <span class="nc-field__label">Type</span>
         <nldd-segmented-control
@@ -307,6 +316,7 @@ defineExpose({ popoverEl });
           @click="save"
         ></nldd-button>
       </div>
+      </template>
     </div>
   </nldd-popover>
 </template>
