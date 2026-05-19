@@ -1,10 +1,12 @@
 /**
  * useDraftNotes — local-only note authoring store (RFC-018 write path, MVP).
  *
- * The MVP does not write the sidecar back to the repo: notes a user creates in
- * the editor live in `localStorage`, keyed per law, and are exported as a YAML
- * document the user commits to `corpus/annotations/{lawId}/annotations.yaml`
- * by hand (RFC-018 step 6 — git stays the source of truth, no write API).
+ * Notes a user creates in the editor live in `localStorage`, keyed per law,
+ * until they are written back. Two ways out: `exportYaml` produces a YAML
+ * document for a manual commit (the original RFC-018 §10 MVP, still here for
+ * the offline case), and `saveToRepo` PUTs that same document to editor-api,
+ * which validates it and opens a PR against the chosen source — the same
+ * per-(session, source) branch+PR path law and scenario edits already use.
  *
  * Draft notes are merged into the resolved-notes list by the caller so they
  * highlight live, exactly like committed notes; they just carry an extra
@@ -12,6 +14,11 @@
  */
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
+import {
+  getEditorSessionId,
+  lastSavedPr,
+  sanitizeSavedPr,
+} from './useEditorSession.js';
 
 const STORAGE_PREFIX = 'regelrecht-draft-notes:';
 
@@ -94,8 +101,11 @@ export function useDraftNotes(lawId) {
    * for a law that has no committed notes yet — the export is then just the
    * drafts.
    */
-  async function exportYaml() {
-    const id = lawId.value;
+  async function exportYaml(lawIdOverride) {
+    // saveToRepo passes its own snapshot so the PUT URL and the exported
+    // body provably share one law id even if the law switches in the
+    // synchronous gap before this call. Default: read it here.
+    const id = lawIdOverride ?? lawId.value;
     // Snapshot drafts BEFORE the await: watch(lawId) swaps drafts.value
     // synchronously on a law switch, so reading it after the fetch could mix
     // law A's committed notes with law B's drafts. Drafts are the only copy
@@ -129,6 +139,57 @@ export function useDraftNotes(lawId) {
     return yaml.dump(doc, { lineWidth: -1, noRefs: true });
   }
 
+  /**
+   * Write the full sidecar to the repo via editor-api and open/update the
+   * session PR. `targetSourceId` is optional: omit it to write to the law's
+   * own source (the default), or pass a registered source id to route an
+   * advisory note to the annotating organisation's repo (RFC-018 §2).
+   *
+   * On success the drafts are cleared (they are now in the PR) and the
+   * shared `lastSavedPr` ref is updated so EditorApp's "Bekijk op GitHub"
+   * badge shows this PR — exactly like a law or scenario save.
+   *
+   * Throws an Error with the editor-api message on failure (e.g. a schema
+   * 400 or a read-only-source 403) so the caller can surface it; drafts are
+   * left untouched in that case so no work is lost.
+   */
+  async function saveToRepo(targetSourceId) {
+    const id = lawId.value;
+    // Pass `id` so the body is built for the same law the URL targets.
+    const yamlText = await exportYaml(id);
+    let url = `/api/corpus/laws/${encodeURIComponent(id)}/annotations`;
+    if (targetSourceId) {
+      url += `?source=${encodeURIComponent(targetSourceId)}`;
+    }
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/yaml; charset=utf-8',
+        'X-Editor-Session': getEditorSessionId(),
+      },
+      body: yamlText,
+    });
+    if (!res.ok) {
+      // Same content-type guard as useLaw.saveLaw: only render the body
+      // when it's editor-api's own text/plain error, never a proxy's HTML.
+      let text = `Opslaan mislukt: ${res.status}`;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.startsWith('text/plain')) {
+        try {
+          text = (await res.text()) || text;
+        } catch { /* keep status fallback */ }
+      }
+      throw new Error(text);
+    }
+    try {
+      const json = await res.json();
+      lastSavedPr.value = sanitizeSavedPr(json?.pr);
+    } catch {
+      // Local source → no PR body; treat as success, keep any prior PR.
+    }
+    clearDrafts();
+  }
+
   const draftCount = computed(() => drafts.value.length);
 
   return {
@@ -138,6 +199,7 @@ export function useDraftNotes(lawId) {
     removeDraft,
     clearDrafts,
     exportYaml,
+    saveToRepo,
   };
 }
 

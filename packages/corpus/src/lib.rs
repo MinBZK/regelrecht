@@ -1,3 +1,5 @@
+#[cfg(feature = "annotation-validation")]
+pub mod annotation_schema;
 pub mod auth;
 pub mod backend;
 pub mod client;

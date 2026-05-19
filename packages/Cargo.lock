@@ -3653,6 +3653,7 @@ name = "regelrecht-corpus"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "jsonschema",
  "regelrecht-engine",
  "reqwest 0.13.2",
  "serde",

@@ -18,11 +18,16 @@ thiserror.workspace = true
 serde.workspace = true
 serde_yaml_ng.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
+serde_json = { workspace = true, optional = true }
+jsonschema = { version = "0.46", optional = true }
 walkdir.workspace = true
 
 [features]
 default = ["github"]
 github = ["dep:reqwest"]
+# Schema validation for note (annotation) YAML. Pulls in jsonschema; only
+# the editor-api write path needs it, so it stays optional.
+annotation-validation = ["dep:jsonschema", "dep:serde_json"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "process", "fs"] }

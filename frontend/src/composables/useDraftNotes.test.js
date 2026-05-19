@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useDraftNotes } from './useDraftNotes.js';
+import { lastSavedPr } from './useEditorSession.js';
 
 /** Stub the sidecar fetch exportYaml does. `committed` is the file's notes. */
 function stubSidecar(committed) {
@@ -125,5 +126,76 @@ describe('useDraftNotes', () => {
     // lineWidth -1: the value stays on one logical line (no YAML fold marker).
     const reparsed = yaml.load(await exportYaml());
     expect(reparsed.annotations[0].body.value).toBe(longValue);
+  });
+});
+
+// saveToRepo PUTs the exported sidecar to editor-api. fetch is called
+// twice per save: the sidecar GET inside exportYaml, then the annotations
+// PUT. This stub answers GET with a 404 (drafts-only export) and the PUT
+// with the supplied response.
+function stubSave(putResponse) {
+  globalThis.fetch = vi.fn((url, opts) => {
+    if (opts?.method === 'PUT') return Promise.resolve(putResponse);
+    return Promise.resolve({ ok: false, status: 404 });
+  });
+}
+
+describe('useDraftNotes.saveToRepo', () => {
+  beforeEach(() => {
+    lastSavedPr.value = null;
+  });
+
+  it('PUTs to the law annotations endpoint, clears drafts, sets the PR', async () => {
+    stubSave({
+      ok: true,
+      json: async () => ({
+        pr: { url: 'https://github.com/x/y/pull/7', number: 7, branch: 'b' },
+      }),
+    });
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('zorgtoeslagwet'));
+    addDraft({ ...NOTE, __draft: true });
+
+    await saveToRepo();
+
+    const putCall = globalThis.fetch.mock.calls.find(
+      ([, o]) => o?.method === 'PUT',
+    );
+    expect(putCall[0]).toBe('/api/corpus/laws/zorgtoeslagwet/annotations');
+    expect(putCall[1].headers['X-Editor-Session']).toBeTruthy();
+    expect(drafts.value).toHaveLength(0);
+    expect(lastSavedPr.value).toEqual({
+      url: 'https://github.com/x/y/pull/7',
+      number: 7,
+      branch: 'b',
+    });
+  });
+
+  it('appends ?source= when a target source is given', async () => {
+    stubSave({ ok: true, json: async () => ({ pr: null }) });
+    const { addDraft, saveToRepo } = useDraftNotes(ref('zorgtoeslagwet'));
+    addDraft({ ...NOTE, __draft: true });
+
+    await saveToRepo('amsterdam');
+
+    const putCall = globalThis.fetch.mock.calls.find(
+      ([, o]) => o?.method === 'PUT',
+    );
+    expect(putCall[0]).toBe(
+      '/api/corpus/laws/zorgtoeslagwet/annotations?source=amsterdam',
+    );
+  });
+
+  it('throws the editor-api message and keeps drafts on a 400', async () => {
+    stubSave({
+      ok: false,
+      status: 400,
+      headers: { get: () => 'text/plain; charset=utf-8' },
+      text: async () => 'Note file is invalid:\n/annotations: required',
+    });
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('w'));
+    addDraft({ ...NOTE, __draft: true });
+
+    await expect(saveToRepo()).rejects.toThrow(/Note file is invalid/);
+    expect(drafts.value).toHaveLength(1);
   });
 });

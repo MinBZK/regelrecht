@@ -222,6 +222,7 @@ const {
   addDraft,
   clearDrafts,
   exportYaml,
+  saveToRepo,
 } = useDraftNotes(lawId);
 const { draftNotesForArticle } = useResolvedDraftNotes(
   draftNotes,
@@ -310,6 +311,40 @@ async function exportNotes() {
     exporting.value = false;
   }
 }
+
+// Note write-back: PUT the sidecar to editor-api, which validates it and
+// opens/updates the session PR. The "PR #N" toolbar badge is driven by the
+// shared lastSavedPr ref, so a successful save lights it up with no extra
+// wiring here. `notesSources` feeds the target-source dropdown; the law's
+// own source is the default, overridable for the federated case (RFC-018 §2).
+const notesSources = ref([]);
+const notesTargetSource = ref('');
+const savingNotes = ref(false);
+const notesSaveError = ref(null);
+async function loadNotesSources() {
+  if (notesSources.value.length) return;
+  try {
+    const res = await fetch('/api/sources');
+    if (res.ok) notesSources.value = await res.json();
+  } catch {
+    // Dropdown just stays empty → save uses the default (law's) source.
+  }
+}
+async function saveNotesToRepo() {
+  if (savingNotes.value) return;
+  savingNotes.value = true;
+  notesSaveError.value = null;
+  try {
+    await saveToRepo(notesTargetSource.value || undefined);
+  } catch (e) {
+    notesSaveError.value = e?.message || 'Opslaan mislukt';
+  } finally {
+    savingNotes.value = false;
+  }
+}
+watch(canCreateNotes, (on) => {
+  if (on) loadNotesSources();
+});
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1504,10 +1539,13 @@ async function handleActionSave() {
                       :text="`${noteIssues.length} notitie(s) niet verankerd`"
                       :supporting-text="noteIssues.map(i => i.reason).join('; ')"
                     ></nldd-inline-dialog>
-                    <!-- Draft notes are local-only until exported (RFC-018
-                         write path MVP: no write API, git stays the source
-                         of truth). The export downloads committed + draft
-                         notes as one sidecar YAML to commit by hand. -->
+                    <!-- Draft notes live in localStorage until written back.
+                         "Opslaan naar repo" PUTs the sidecar to editor-api,
+                         which validates it and opens the session PR (same
+                         branch+PR as law/scenario edits). The target source
+                         defaults to the law's own; the dropdown overrides it
+                         for a federated note (RFC-018 §2). "Exporteer YAML"
+                         stays for the offline / manual-commit case. -->
                     <nldd-inline-dialog
                       v-if="canCreateNotes && draftCount > 0"
                       data-testid="draft-notes-bar"
@@ -1519,6 +1557,30 @@ async function handleActionSave() {
                       "
                       :icon-color="hiddenDraftCount > 0 ? 'warning' : undefined"
                     >
+                      <nldd-dropdown
+                        v-if="notesSources.length > 1"
+                        slot="actions"
+                        label="Opslaan naar"
+                        @change="notesTargetSource = $event.detail?.value ?? $event.target?.value ?? notesTargetSource"
+                      >
+                        <select :value="notesTargetSource" data-testid="notes-target-source">
+                          <option value="">Bron van de wet (standaard)</option>
+                          <option
+                            v-for="s in notesSources"
+                            :key="s.id"
+                            :value="s.id"
+                          >{{ s.name }}</option>
+                        </select>
+                      </nldd-dropdown>
+                      <nldd-button
+                        slot="actions"
+                        size="md"
+                        variant="primary"
+                        :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
+                        :disabled="savingNotes || null"
+                        data-testid="save-notes-btn"
+                        @click="saveNotesToRepo"
+                      ></nldd-button>
                       <nldd-button
                         slot="actions"
                         size="md"
@@ -1535,6 +1597,13 @@ async function handleActionSave() {
                         @click="askClearDrafts"
                       ></nldd-button>
                     </nldd-inline-dialog>
+                    <nldd-inline-dialog
+                      v-if="notesSaveError"
+                      variant="alert"
+                      data-testid="notes-save-error"
+                      text="Notities opslaan mislukt"
+                      :supporting-text="notesSaveError"
+                    ></nldd-inline-dialog>
                   </template>
                 </template>
                 <ArticleText v-else :article="selectedArticle" />
