@@ -125,14 +125,17 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
             </h2>
             <p class="rr-lede">{{ t.whatIsIt.lede }}</p>
             <div class="rr-grid">
-              <article
+              <nldd-card
                 v-for="c in t.whatIsIt.cards"
                 :key="c.h"
                 class="rr-card"
+                :accessible-label="c.h"
               >
-                <h3>{{ c.h }}</h3>
-                <p>{{ c.p }}</p>
-              </article>
+                <div class="rr-card-inner">
+                  <h3>{{ c.h }}</h3>
+                  <p>{{ c.p }}</p>
+                </div>
+              </nldd-card>
             </div>
           </div>
         </section>
@@ -199,21 +202,24 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
               {{ t.tools.title }}
             </h2>
             <div class="rr-grid">
-              <article
+              <nldd-card
                 v-for="tool in t.tools.items"
                 :key="tool.title"
                 class="rr-card"
+                :accessible-label="tool.title"
               >
-                <a
-                  v-if="tool.link"
-                  class="rr-card-link"
-                  :href="tool.link.href"
-                  >{{ tool.link.label }}</a
-                >
-                <span v-else class="rr-card-meta">{{ tool.meta }}</span>
-                <h3>{{ tool.title }}</h3>
-                <p>{{ tool.text }}</p>
-              </article>
+                <div class="rr-card-inner">
+                  <a
+                    v-if="tool.link"
+                    class="rr-card-link"
+                    :href="tool.link.href"
+                    >{{ tool.link.label }}</a
+                  >
+                  <span v-else class="rr-card-meta">{{ tool.meta }}</span>
+                  <h3>{{ tool.title }}</h3>
+                  <p>{{ tool.text }}</p>
+                </div>
+              </nldd-card>
             </div>
           </div>
         </section>
@@ -267,15 +273,18 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
               >{{ t.innovation.ledeAfter }}
             </p>
             <div class="rr-grid">
-              <article
+              <nldd-card
                 v-for="c in t.innovation.cards"
                 :key="c.h"
                 class="rr-card"
+                :accessible-label="c.h"
               >
-                <span class="rr-card-meta">{{ c.meta }}</span>
-                <h3>{{ c.h }}</h3>
-                <p>{{ c.p }}</p>
-              </article>
+                <div class="rr-card-inner">
+                  <span class="rr-card-meta">{{ c.meta }}</span>
+                  <h3>{{ c.h }}</h3>
+                  <p>{{ c.p }}</p>
+                </div>
+              </nldd-card>
             </div>
           </div>
         </section>

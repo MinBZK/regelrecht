@@ -245,14 +245,29 @@
   gap: 1.5rem;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
-.rr-card {
+/* Card box chrome. For plain .rr-card (no web component) this is the look.
+   For <nldd-card> it is the no-JS / not-yet-upgraded fallback: once the
+   component is :defined it draws its own elevated frame, so we drop our
+   border/background/padding to avoid a double frame. */
+.rr-card,
+nldd-card.rr-card:not(:defined) {
+  display: block;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
   border-radius: 10px;
   padding: 1.75rem;
 }
-.rr-section--alt .rr-card {
-  background: var(--vp-c-bg);
+nldd-card.rr-card:defined {
+  display: block;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+/* nldd-card leaves inner padding to a nested container (per its API).
+   The inner wrapper supplies it only once the component is upgraded; in
+   the fallback the outer .rr-card padding already covers it. */
+nldd-card.rr-card:defined .rr-card-inner {
+  padding: 1.75rem;
 }
 .rr-card h3 {
   margin: 0 0 0.6rem;

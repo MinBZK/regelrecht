@@ -9,7 +9,7 @@
     "preview": "vitepress preview",
     "a11y": "vitepress build && start-server-and-test 'vitepress preview --port 4173' http://localhost:4173 'pa11y-ci'"
   },
-  "optionalDependencies": {
+  "dependencies": {
     "@nldd/design-system": "^0.8.44"
   },
   "overrides": {

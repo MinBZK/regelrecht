@@ -205,17 +205,20 @@ export default withMermaid(
     vue: {
       template: {
         compilerOptions: {
-          isCustomElement: (tag: string) => tag.startsWith('rr-'),
+          isCustomElement: (tag: string) =>
+            tag.startsWith('rr-') || tag.startsWith('nldd-'),
         },
       },
     },
 
     vite: {
-      build: {
-        rollupOptions: {
-          // @nldd/design-system is optional — externalize if not installed
-          external: (id: string) => id.startsWith('@nldd/design-system'),
-        },
+      // @nldd/design-system (Lit web components) is bundled for the client so
+      // <nldd-*> elements actually upgrade in the browser. It must NOT run
+      // during SSR (Lit needs the DOM): the theme imports it client-only,
+      // guarded by `typeof window`, and ssr.noExternal keeps Vite from trying
+      // to externalize/evaluate it on the server.
+      ssr: {
+        noExternal: ['@nldd/design-system'],
       },
     },
 
