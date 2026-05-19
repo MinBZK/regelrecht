@@ -1,0 +1,19 @@
+flowchart TB
+  classDef bron fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000;
+  classDef kern fill:#ffe5e5,stroke:#c0392b,stroke-width:2px,color:#000;
+
+  WAJ["<b>Wajong-status</b><br/>Wajong art. 1a:1<br/><i>UWV</i>"]:::bron
+  PW["<b>Pwet-LKS-doelgroep</b><br/>Pwet art. 6 / 7 / 10b<br/><i>gemeente</i>"]:::bron
+  REG["<b>Banenafspraak-register</b><br/>Wfsv art. 38b + 38f<br/><i>UWV</i>"]:::bron
+
+  LDP["<b>LDP</b><br/>Wajong art. 2:20<br/>━━━━━━━<br/>loondispensatie"]:::kern
+  NRP["<b>NRP</b><br/>Ziektewet art. 29b<br/>━━━━━━━<br/>no-riskpolis"]:::kern
+  LKS["<b>LKS</b><br/>Pwet art. 10c + 10d<br/>━━━━━━━<br/>loonkostensubsidie"]:::kern
+  LKV["<b>LKV-banenafspraak</b><br/>Wtl art. 2.10 e.v.<br/>━━━━━━━<br/>loonkostenvoordeel"]:::kern
+
+  WAJ ==> LDP
+  WAJ -- "lid 2.a" --> NRP
+  PW ==> LKS
+  PW -- "lid 2.e/f" --> NRP
+  REG ==> LKV
+  REG -- "lid 2.e" --> NRP
