@@ -15,6 +15,7 @@ use regelrecht_corpus::source_map::{
     collect_law_outputs, extract_law_id, resolve_display_name, validate_yaml_syntax, LoadedLaw,
 };
 use regelrecht_corpus::CorpusError;
+use regelrecht_engine::{Direction, Relation, RelationType};
 
 use crate::state::{AppState, SessionResolveError};
 
@@ -831,6 +832,13 @@ pub async fn save_law(
                 "save_law wrote to backend but law vanished from source_map between write and cache refresh"
             );
         }
+        // Rebuild the relation index from the now-updated source_map so
+        // /api/related reflects the edit without a full corpus reload.
+        // Without this, the graph stays stale until the client posts
+        // /api/corpus/reload.
+        corpus.relation_index = Arc::new(crate::relations::build_index_from_source_map(
+            &corpus.source_map,
+        ));
     }
 
     Ok(Json(save_response_from(outcome, &session_id)))
@@ -929,9 +937,11 @@ pub async fn reload_corpus(
         })?;
 
     let law_count = new_map.len();
+    let new_index = Arc::new(crate::relations::build_index_from_source_map(&new_map));
     {
         let mut corpus = state.corpus.write().await;
         corpus.source_map = new_map;
+        corpus.relation_index = new_index;
     }
     tracing::info!(law_count, "corpus reloaded (local + GitHub)");
     Ok(Json(ReloadResponse { law_count }))
@@ -946,6 +956,204 @@ pub struct ReloadRequest {
 #[derive(Debug, Serialize)]
 pub struct ReloadResponse {
     pub law_count: usize,
+}
+
+/// Query parameters for `GET /api/related`.
+///
+/// `law_id` is required. The combination of `article` / `output` / `input`
+/// determines the granularity: the most specific anchor wins.
+///
+/// - bare `law_id`: relations involving any article in the law.
+/// - `law_id` + `article`: relations involving this article.
+/// - `law_id` + `article` + `output`: relations that touch this specific output.
+/// - `law_id` + `article` + `input`: relations that touch this specific input.
+///
+/// `direction` defaults to `both`. `types` is a comma-separated allowlist
+/// of relation types (`cross_law_dataflow,implementation,...`); when
+/// omitted, all types are returned.
+#[derive(Debug, Deserialize)]
+pub struct RelatedQuery {
+    pub law_id: String,
+    #[serde(default)]
+    pub article: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default)]
+    pub types: Option<String>,
+}
+
+/// Response body for `GET /api/related`.
+#[derive(Debug, Serialize)]
+pub struct RelatedResponse {
+    pub query: RelatedQueryEcho,
+    pub relations: Vec<Relation>,
+}
+
+/// Echo of the resolved query for the client to confirm what was matched
+/// (handy when defaults kick in — e.g. `direction: "both"` when omitted).
+#[derive(Debug, Serialize)]
+pub struct RelatedQueryEcho {
+    pub law_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub article: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+    pub direction: Direction,
+}
+
+fn parse_direction(raw: Option<&str>) -> Result<Direction, (StatusCode, String)> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Ok(Direction::Both),
+        Some("incoming") => Ok(Direction::Incoming),
+        Some("outgoing") => Ok(Direction::Outgoing),
+        Some("both") => Ok(Direction::Both),
+        Some(other) => Err((
+            StatusCode::BAD_REQUEST,
+            format!("Invalid 'direction': expected one of incoming|outgoing|both, got '{other}'"),
+        )),
+    }
+}
+
+fn parse_relation_type(raw: &str) -> Result<RelationType, (StatusCode, String)> {
+    match raw.trim() {
+        "cross_law_dataflow" => Ok(RelationType::CrossLawDataflow),
+        "implementation" => Ok(RelationType::Implementation),
+        "open_term_declaration" => Ok(RelationType::OpenTermDeclaration),
+        "legal_basis" => Ok(RelationType::LegalBasis),
+        "intra_law_dataflow" => Ok(RelationType::IntraLawDataflow),
+        other => Err((
+            StatusCode::BAD_REQUEST,
+            format!("Unknown relation type '{other}'"),
+        )),
+    }
+}
+
+fn parse_type_filter(raw: Option<&str>) -> Result<Option<Vec<RelationType>>, (StatusCode, String)> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let parts: Vec<&str> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if parts.is_empty() {
+        return Ok(None);
+    }
+    let mut out = Vec::with_capacity(parts.len());
+    for p in parts {
+        out.push(parse_relation_type(p)?);
+    }
+    Ok(Some(out))
+}
+
+/// GET /api/related — find relations anchored at a law/article/output/input.
+///
+/// Reads the pre-built [`RelationIndex`] from corpus state (no YAML
+/// parsing per request). Returns 404 when the anchoring law is not in
+/// the corpus; returns 400 on malformed query params.
+pub async fn find_related(
+    State(state): State<AppState>,
+    Query(params): Query<RelatedQuery>,
+) -> Result<Json<RelatedResponse>, (StatusCode, String)> {
+    if params.law_id.trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Missing required query parameter 'law_id'".to_string(),
+        ));
+    }
+
+    // An explicit empty `?article=`/`?output=`/`?input=` is a client bug,
+    // not an empty result — the index would never match. Reject up front so
+    // the caller gets a clear 400 instead of a silently-empty 200.
+    let article = require_non_empty("article", params.article.as_deref())?;
+    let output = require_non_empty("output", params.output.as_deref())?;
+    let input = require_non_empty("input", params.input.as_deref())?;
+
+    if output.is_some() && input.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Specify at most one of 'output' or 'input'".to_string(),
+        ));
+    }
+    if (output.is_some() || input.is_some()) && article.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "'output' and 'input' require 'article'".to_string(),
+        ));
+    }
+
+    let direction = parse_direction(params.direction.as_deref())?;
+    let type_filter = parse_type_filter(params.types.as_deref())?;
+
+    let corpus = state.corpus.read().await;
+    if corpus.source_map.get_law(&params.law_id).is_none() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("Law '{}' not found in corpus", params.law_id),
+        ));
+    }
+    let index = corpus.relation_index.clone();
+    drop(corpus);
+
+    let relations: Vec<Relation> = if let Some(article) = article.as_deref() {
+        let matches = if let Some(output) = output.as_deref() {
+            index.for_output(&params.law_id, article, output, direction)
+        } else if let Some(input) = input.as_deref() {
+            index.for_input(&params.law_id, article, input, direction)
+        } else {
+            index.for_article(&params.law_id, article, direction)
+        };
+        matches.into_iter().cloned().collect()
+    } else {
+        index
+            .for_law(&params.law_id, direction)
+            .into_iter()
+            .cloned()
+            .collect()
+    };
+
+    let relations = match type_filter {
+        Some(allowed) => relations
+            .into_iter()
+            .filter(|r| allowed.contains(&r.relation_type))
+            .collect(),
+        None => relations,
+    };
+
+    Ok(Json(RelatedResponse {
+        query: RelatedQueryEcho {
+            law_id: params.law_id,
+            article,
+            output,
+            input,
+            direction,
+        },
+        relations,
+    }))
+}
+
+/// Normalise an optional query string: pass `None` through, reject
+/// explicit-empty/whitespace-only `Some` values with a 400, and trim
+/// surrounding whitespace from anything else.
+fn require_non_empty(
+    name: &str,
+    val: Option<&str>,
+) -> Result<Option<String>, (StatusCode, String)> {
+    match val {
+        None => Ok(None),
+        Some(s) if s.trim().is_empty() => Err((
+            StatusCode::BAD_REQUEST,
+            format!("Query parameter '{name}' must not be empty when provided"),
+        )),
+        Some(s) => Ok(Some(s.trim().to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -1044,5 +1252,190 @@ mod tests {
         assert_eq!(pr.number, 42);
         assert_eq!(pr.url, "https://github.com/x/y/pull/42");
         assert_eq!(pr.branch, "editor/session-sess-abc");
+    }
+
+    // -----------------------------------------------------------------
+    // Query-parser helpers for GET /api/related
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parse_direction_none_defaults_to_both() {
+        let dir = parse_direction(None).unwrap();
+        assert_eq!(dir, Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_empty_string_defaults_to_both() {
+        // An explicit `?direction=` from a sloppy client should be treated
+        // the same as omitting the parameter rather than rejected outright.
+        let dir = parse_direction(Some("")).unwrap();
+        assert_eq!(dir, Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_whitespace_only_defaults_to_both() {
+        let dir = parse_direction(Some("   ")).unwrap();
+        assert_eq!(dir, Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_accepts_each_variant() {
+        assert_eq!(
+            parse_direction(Some("incoming")).unwrap(),
+            Direction::Incoming
+        );
+        assert_eq!(
+            parse_direction(Some("outgoing")).unwrap(),
+            Direction::Outgoing
+        );
+        assert_eq!(parse_direction(Some("both")).unwrap(), Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_trims_whitespace_around_variant() {
+        assert_eq!(
+            parse_direction(Some("  incoming  ")).unwrap(),
+            Direction::Incoming
+        );
+    }
+
+    #[test]
+    fn parse_direction_unknown_value_is_400_with_documented_message() {
+        let err = parse_direction(Some("sideways")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(
+            err.1.contains("incoming|outgoing|both"),
+            "error message should document the allowed variants, got: {}",
+            err.1
+        );
+        assert!(err.1.contains("sideways"));
+    }
+
+    #[test]
+    fn parse_relation_type_accepts_all_five_variants() {
+        assert_eq!(
+            parse_relation_type("cross_law_dataflow").unwrap(),
+            RelationType::CrossLawDataflow
+        );
+        assert_eq!(
+            parse_relation_type("implementation").unwrap(),
+            RelationType::Implementation
+        );
+        assert_eq!(
+            parse_relation_type("open_term_declaration").unwrap(),
+            RelationType::OpenTermDeclaration
+        );
+        assert_eq!(
+            parse_relation_type("legal_basis").unwrap(),
+            RelationType::LegalBasis
+        );
+        assert_eq!(
+            parse_relation_type("intra_law_dataflow").unwrap(),
+            RelationType::IntraLawDataflow
+        );
+    }
+
+    #[test]
+    fn parse_relation_type_trims_whitespace() {
+        assert_eq!(
+            parse_relation_type("  legal_basis  ").unwrap(),
+            RelationType::LegalBasis
+        );
+    }
+
+    #[test]
+    fn parse_relation_type_unknown_is_400() {
+        let err = parse_relation_type("not_a_real_type").unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("not_a_real_type"));
+    }
+
+    #[test]
+    fn parse_type_filter_none_returns_ok_none() {
+        let out = parse_type_filter(None).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn parse_type_filter_empty_string_returns_ok_none() {
+        // An explicit `?types=` should behave like omitting the parameter
+        // — return all types — rather than reject.
+        let out = parse_type_filter(Some("")).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn parse_type_filter_whitespace_only_returns_ok_none() {
+        let out = parse_type_filter(Some("   ,  , ")).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn parse_type_filter_single_value_returns_one_element_vec() {
+        let out = parse_type_filter(Some("legal_basis")).unwrap();
+        assert_eq!(out, Some(vec![RelationType::LegalBasis]));
+    }
+
+    #[test]
+    fn parse_type_filter_comma_separated_returns_vec() {
+        let out = parse_type_filter(Some("cross_law_dataflow,implementation,legal_basis")).unwrap();
+        assert_eq!(
+            out,
+            Some(vec![
+                RelationType::CrossLawDataflow,
+                RelationType::Implementation,
+                RelationType::LegalBasis,
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_type_filter_tolerates_whitespace_around_commas() {
+        let out = parse_type_filter(Some(" cross_law_dataflow ,  implementation , legal_basis "))
+            .unwrap();
+        assert_eq!(
+            out,
+            Some(vec![
+                RelationType::CrossLawDataflow,
+                RelationType::Implementation,
+                RelationType::LegalBasis,
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_type_filter_bad_entry_in_list_returns_400() {
+        let err = parse_type_filter(Some("legal_basis,bogus,implementation")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("bogus"));
+    }
+
+    #[test]
+    fn require_non_empty_none_passes_through() {
+        let out = require_non_empty("article", None).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn require_non_empty_whitespace_only_returns_400() {
+        // An explicit `?article=   ` is a client bug — the index would
+        // never match — and must be surfaced as a 400, not silently
+        // turned into an empty result.
+        let err = require_non_empty("article", Some("   ")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("article"));
+    }
+
+    #[test]
+    fn require_non_empty_empty_string_returns_400() {
+        let err = require_non_empty("article", Some("")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("article"));
+    }
+
+    #[test]
+    fn require_non_empty_value_is_trimmed() {
+        let out = require_non_empty("article", Some("  3a  ")).unwrap();
+        assert_eq!(out, Some("3a".to_string()));
     }
 }
