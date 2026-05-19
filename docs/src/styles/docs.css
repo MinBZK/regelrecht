@@ -1,0 +1,150 @@
+/*
+ * Markdown body typography for the docs pages. VitePress' default theme
+ * supplied the `.vp-doc` rules; this is a minimal, token-consistent
+ * replacement (headings, code, tables, links, lists) using the same
+ * --vp-* variables defined in tokens.css. Deliberately restrained: it
+ * only needs to render long-form documentation legibly, not reproduce
+ * VitePress chrome.
+ */
+.vp-doc {
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--vp-c-text-1);
+}
+
+.vp-doc h1,
+.vp-doc h2,
+.vp-doc h3,
+.vp-doc h4,
+.vp-doc h5,
+.vp-doc h6 {
+  color: var(--vp-c-text-1);
+  font-weight: 700;
+  line-height: 1.25;
+  scroll-margin-top: 5rem;
+}
+.vp-doc h1 {
+  font-size: 2rem;
+  margin: 0 0 1.5rem;
+}
+.vp-doc h2 {
+  font-size: 1.5rem;
+  margin: 2.5rem 0 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--vp-c-divider);
+}
+.vp-doc h3 {
+  font-size: 1.2rem;
+  margin: 2rem 0 0.75rem;
+}
+.vp-doc h4 {
+  font-size: 1.05rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.vp-doc p,
+.vp-doc li {
+  line-height: 1.625;
+}
+.vp-doc p {
+  margin: 1rem 0;
+}
+
+.vp-doc a {
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+  font-weight: 500;
+}
+.dark .vp-doc a {
+  color: var(--vp-c-brand-2);
+}
+.vp-doc a:hover {
+  text-decoration: underline;
+}
+
+.vp-doc ul,
+.vp-doc ol {
+  padding-left: 1.5rem;
+  margin: 1rem 0;
+}
+.vp-doc li {
+  margin: 0.4rem 0;
+}
+.vp-doc li > ul,
+.vp-doc li > ol {
+  margin: 0.4rem 0;
+}
+
+.vp-doc blockquote {
+  margin: 1.5rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.875em;
+  background: var(--vp-c-bg-mute);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+.vp-doc pre {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.vp-doc pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+.vp-doc div[class*='language-'] {
+  border-radius: 6px;
+}
+
+.vp-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  display: block;
+  overflow-x: auto;
+}
+.vp-doc th,
+.vp-doc td {
+  text-align: left;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--vp-c-divider);
+  vertical-align: top;
+}
+.vp-doc th {
+  font-weight: 600;
+  background: var(--vp-c-bg-soft);
+}
+
+.vp-doc img {
+  max-width: 100%;
+  height: auto;
+}
+.vp-doc img[src$='.svg'] {
+  background: #fff;
+  border-radius: 6px;
+}
+
+.vp-doc hr {
+  border: none;
+  border-top: 1px solid var(--vp-c-divider);
+  margin: 2rem 0;
+}
+
+.vp-doc > :first-child {
+  margin-top: 0;
+}
+.vp-doc h1 + h2,
+.vp-doc h2:first-child {
+  border-top: none;
+  padding-top: 0;
+}

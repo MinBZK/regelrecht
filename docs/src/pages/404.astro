@@ -1,0 +1,18 @@
+---
+import Base from '~/layouts/Base.astro';
+import NotFound from '~/components/NotFound.astro';
+
+// 404 is reached from arbitrary paths; default to the Dutch site chrome
+// (langFromPath inside NotFound resolves EN under /en/). The static host
+// serves this for any unmatched path.
+const pathname = '/404';
+---
+
+<Base
+  lang="nl"
+  kind="notfound"
+  pathname={pathname}
+  title="404 — RegelRecht"
+>
+  <NotFound pathname={pathname} />
+</Base>

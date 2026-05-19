@@ -1,0 +1,338 @@
+---
+/*
+ * Signup form, ported from the relanding SignupForm.vue <template>.
+ * Markup (classes, honeypot, fieldset/legend, aria-*) is reproduced
+ * exactly. Vue reactivity is replaced by a vanilla TypeScript handler in
+ * the inline <script>: honeypot early-return, the same email/name
+ * validation (regex /^[^\s@]+@[^\s@]+\.[^\s@]+$/, same error strings),
+ * the exact markdown webhook payload, fetch in no-cors mode, and focus
+ * management. All three states (idle/success/error) are rendered and
+ * toggled with `hidden`. <noscript> fallback is in LandingSections.astro.
+ */
+import { content } from '~/lib/landing-content';
+
+interface Props {
+  lang: 'nl' | 'en';
+}
+const { lang } = Astro.props;
+const s = content[lang].signup;
+
+const EMAIL = 'regelrecht@minbzk.nl';
+
+// Split a string on the support email so it can be rendered as a mailto link.
+function parts(text: string) {
+  const i = text.indexOf(EMAIL);
+  if (i === -1) return { before: text, after: '' };
+  return { before: text.slice(0, i), after: text.slice(i + EMAIL.length) };
+}
+const errorParts = parts(s.errorBody);
+const successParts = parts(s.successBody);
+---
+
+<div
+  class="rr-signup-root"
+  data-err-email-empty={s.errEmailEmpty}
+  data-err-email-invalid={s.errEmailInvalid}
+  data-err-name={s.errName}
+  data-submitting={s.submitting}
+  data-submit={s.submit}
+>
+  <form
+    class="rr-form"
+    novalidate
+    data-state="idle"
+  >
+    <div class="rr-honeypot" aria-hidden="true">
+      <label for="rr-company">{s.companyHoneypot}</label>
+      <input
+        id="rr-company"
+        type="text"
+        name="_honey"
+        tabindex="-1"
+        autocomplete="off"
+      />
+    </div>
+
+    <fieldset class="rr-fieldset">
+      <legend>{s.legend}</legend>
+      <label class="rr-choice">
+        <input
+          type="radio"
+          name="bijdragen"
+          value="Ja"
+          checked
+        />
+        <span>{s.radioYes}</span>
+      </label>
+      <label class="rr-choice">
+        <input type="radio" name="bijdragen" value="Nee" />
+        <span>{s.radioNo}</span>
+      </label>
+    </fieldset>
+
+    <div class="rr-field">
+      <label class="rr-choice">
+        <input type="checkbox" name="opDeHoogte" checked />
+        <span>{s.updates}</span>
+      </label>
+    </div>
+
+    <div class="rr-field">
+      <label class="rr-label" for="rr-email">
+        {s.emailLabel}
+        <span class="rr-required" aria-hidden="true">{s.required}</span>
+        <span class="rr-visually-hidden">{s.requiredSr}</span>
+      </label>
+      <input
+        id="rr-email"
+        type="email"
+        name="email"
+        autocomplete="email"
+        required
+        aria-required="true"
+      />
+      <p id="rr-email-error" class="rr-error-text" hidden></p>
+    </div>
+
+    <div class="rr-field">
+      <label class="rr-label" for="rr-naam">
+        {s.nameLabel}
+        <span class="rr-required" aria-hidden="true">{s.required}</span>
+        <span class="rr-visually-hidden">{s.requiredSr}</span>
+      </label>
+      <input
+        id="rr-naam"
+        type="text"
+        name="naam"
+        autocomplete="name"
+        required
+        aria-required="true"
+      />
+      <p id="rr-naam-error" class="rr-error-text" hidden></p>
+    </div>
+
+    <div class="rr-field">
+      <label class="rr-label" for="rr-org">{s.orgLabel}</label>
+      <input
+        id="rr-org"
+        type="text"
+        name="organisatie"
+        autocomplete="organization"
+        placeholder={s.orgPlaceholder}
+      />
+    </div>
+
+    <div class="rr-field">
+      <label class="rr-label" for="rr-functie">{s.roleLabel}</label>
+      <input
+        id="rr-functie"
+        type="text"
+        name="functie"
+        autocomplete="organization-title"
+        placeholder={s.rolePlaceholder}
+      />
+    </div>
+
+    <p class="rr-form-status" role="status" aria-live="polite">
+      <span class="rr-form-status-submitting" hidden>{s.submitting}</span>
+    </p>
+
+    <button type="submit" class="rr-btn rr-btn--primary">
+      {s.submit}
+    </button>
+  </form>
+
+  <div
+    class="rr-status-box rr-status-box--ok"
+    role="status"
+    aria-live="polite"
+    hidden
+  >
+    <h3 tabindex="-1">{s.successTitle}</h3>
+    <p>
+      {successParts.before}<a href={`mailto:${EMAIL}`}>{EMAIL}</a>{
+        successParts.after
+      }
+    </p>
+    <button type="button" class="rr-btn rr-btn--ghost rr-reset">
+      {s.successReset}
+    </button>
+  </div>
+
+  <div
+    class="rr-status-box rr-status-box--err"
+    role="alert"
+    aria-live="assertive"
+    hidden
+  >
+    <h3 tabindex="-1">{s.errorTitle}</h3>
+    <p>
+      {errorParts.before}<a href={`mailto:${EMAIL}`}>{EMAIL}</a>{
+        errorParts.after
+      }
+    </p>
+    <button type="button" class="rr-btn rr-btn--ghost rr-reset">
+      {s.errorReset}
+    </button>
+  </div>
+</div>
+
+<script>
+  const WEBHOOK =
+    'https://digilab.overheid.nl/chat/hooks/khcsah5zg3gy8notbfy5baoxwh';
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  document.querySelectorAll<HTMLElement>('.rr-signup-root').forEach((root) => {
+    const form = root.querySelector('form.rr-form') as HTMLFormElement | null;
+    if (!form) return;
+
+    const labels = {
+      emailEmpty: root.dataset.errEmailEmpty || '',
+      emailInvalid: root.dataset.errEmailInvalid || '',
+      name: root.dataset.errName || '',
+      submitting: root.dataset.submitting || '',
+      submit: root.dataset.submit || '',
+    };
+
+    const honeypot = form.querySelector(
+      'input[name="_honey"]'
+    ) as HTMLInputElement;
+    const emailInput = form.querySelector('#rr-email') as HTMLInputElement;
+    const naamInput = form.querySelector('#rr-naam') as HTMLInputElement;
+    const orgInput = form.querySelector('#rr-org') as HTMLInputElement;
+    const functieInput = form.querySelector(
+      '#rr-functie'
+    ) as HTMLInputElement;
+    const firstField = form.querySelector(
+      'input[name="bijdragen"][value="Ja"]'
+    ) as HTMLInputElement;
+    const opDeHoogte = form.querySelector(
+      'input[name="opDeHoogte"]'
+    ) as HTMLInputElement;
+    const emailErr = form.querySelector('#rr-email-error') as HTMLElement;
+    const naamErr = form.querySelector('#rr-naam-error') as HTMLElement;
+    const submitting = form.querySelector(
+      '.rr-form-status-submitting'
+    ) as HTMLElement;
+    const submitBtn = form.querySelector(
+      'button[type="submit"]'
+    ) as HTMLButtonElement;
+
+    const boxes = root.querySelectorAll<HTMLElement>('.rr-status-box');
+    const successBox = root.querySelector(
+      '.rr-status-box--ok'
+    ) as HTMLElement;
+    const errorBox = root.querySelector(
+      '.rr-status-box--err'
+    ) as HTMLElement;
+
+    function setFieldError(
+      input: HTMLInputElement,
+      el: HTMLElement,
+      msg: string
+    ) {
+      if (msg) {
+        el.textContent = msg;
+        el.hidden = false;
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', el.id);
+      } else {
+        el.textContent = '';
+        el.hidden = true;
+        input.removeAttribute('aria-invalid');
+        input.removeAttribute('aria-describedby');
+      }
+    }
+
+    function validate(): boolean {
+      let emailMsg = '';
+      let naamMsg = '';
+      const email = emailInput.value.trim();
+      const naam = naamInput.value.trim();
+      if (!email) emailMsg = labels.emailEmpty;
+      else if (!EMAIL_RE.test(email)) emailMsg = labels.emailInvalid;
+      if (!naam) naamMsg = labels.name;
+      setFieldError(emailInput, emailErr, emailMsg);
+      setFieldError(naamInput, naamErr, naamMsg);
+      return !emailMsg && !naamMsg;
+    }
+
+    function showState(state: 'idle' | 'submitting' | 'success' | 'error') {
+      if (state === 'success' || state === 'error') {
+        form.hidden = true;
+        const box = state === 'success' ? successBox : errorBox;
+        boxes.forEach((b) => (b.hidden = b !== box));
+        const h = box.querySelector('h3') as HTMLElement;
+        h.focus();
+      } else {
+        form.hidden = false;
+        boxes.forEach((b) => (b.hidden = true));
+        const busy = state === 'submitting';
+        form.setAttribute('aria-busy', busy ? 'true' : 'false');
+        submitting.hidden = !busy;
+        submitBtn.disabled = busy;
+        submitBtn.textContent = busy ? labels.submitting : labels.submit;
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (honeypot.value) return;
+
+      if (!validate()) {
+        if (emailInput.getAttribute('aria-invalid') === 'true') {
+          emailInput.focus();
+        } else {
+          naamInput.focus();
+        }
+        return;
+      }
+
+      showState('submitting');
+
+      const bijdragen =
+        (
+          form.querySelector(
+            'input[name="bijdragen"]:checked'
+          ) as HTMLInputElement | null
+        )?.value || 'Ja';
+
+      const text =
+        '#### Nieuwe aanmelding: RegelRecht\n' +
+        '| Veld | Waarde |\n' +
+        '|:-----|:-------|\n' +
+        `| **Naam** | ${naamInput.value} |\n` +
+        `| **E-mail** | ${emailInput.value} |\n` +
+        `| **Organisatie** | ${orgInput.value || '-'} |\n` +
+        `| **Functie** | ${functieInput.value || '-'} |\n` +
+        `| **Bijdragen aan validatie** | ${bijdragen} |\n` +
+        `| **Op de hoogte blijven** | ${opDeHoogte.checked ? 'Ja' : 'Nee'} |`;
+
+      try {
+        await fetch(WEBHOOK, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify({ text }),
+        });
+        showState('success');
+      } catch {
+        showState('error');
+      }
+    });
+
+    root.querySelectorAll<HTMLButtonElement>('.rr-reset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        emailInput.value = '';
+        naamInput.value = '';
+        orgInput.value = '';
+        functieInput.value = '';
+        firstField.checked = true;
+        opDeHoogte.checked = true;
+        setFieldError(emailInput, emailErr, '');
+        setFieldError(naamInput, naamErr, '');
+        showState('idle');
+        firstField.focus();
+      });
+    });
+  });
+</script>

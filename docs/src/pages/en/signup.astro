@@ -1,0 +1,21 @@
+---
+import Base from '~/layouts/Base.astro';
+import LandingSections from '~/components/LandingSections.astro';
+import Footer from '~/components/Footer.astro';
+
+// Frontmatter from .relanding-ref/en-signup.md.
+const title = 'Sign up — RegelRecht';
+const description =
+  'Stay informed about RegelRecht or contribute to its legal validation.';
+---
+
+<Base
+  lang="en"
+  kind="landing"
+  pathname="/en/signup"
+  title={title}
+  description={description}
+>
+  <LandingSections lang="en" showSignup={true} />
+  <Footer lang="en" />
+</Base>

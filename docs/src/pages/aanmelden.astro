@@ -1,0 +1,21 @@
+---
+import Base from '~/layouts/Base.astro';
+import LandingSections from '~/components/LandingSections.astro';
+import Footer from '~/components/Footer.astro';
+
+// Frontmatter/intent from .relanding-ref/aanmelden.md.
+const title = 'Aanmelden — RegelRecht';
+const description =
+  'Blijf op de hoogte van RegelRecht of draag bij aan de juridische validatie.';
+---
+
+<Base
+  lang="nl"
+  kind="landing"
+  pathname="/aanmelden"
+  title={title}
+  description={description}
+>
+  <LandingSections lang="nl" showSignup={true} />
+  <Footer lang="nl" />
+</Base>

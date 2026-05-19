@@ -1,0 +1,53 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import DocsSidebar from '~/components/DocsSidebar.astro';
+import DocsOutline from '~/components/DocsOutline.astro';
+import DocsFooter from '~/components/DocsFooter.astro';
+import { sidebarForPath } from '~/lib/sidebar';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs');
+  return docs.map((entry) => ({
+    // Collection id keeps the .md suffix; strip it for the site path.
+    params: { slug: entry.id.replace(/\.md$/, '') },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+
+const pathname = '/' + entry.id.replace(/\.md$/, '');
+const groups = sidebarForPath(pathname);
+
+const title =
+  (entry.data.title ?? headings.find((h) => h.depth === 1)?.text ?? entry.id) +
+  ' · RegelRecht';
+const description = entry.data.description;
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  title={title}
+  description={description}
+>
+  {
+    groups && (
+      <DocsSidebar groups={groups} pathname={pathname} />
+    )
+  }
+  <div class="rr-docs-body">
+    <main class="vp-doc rr-docs-content">
+      <Content />
+      <DocsFooter
+        entryId={entry.id}
+        collection="docs"
+        pathname={pathname}
+      />
+    </main>
+  </div>
+  <DocsOutline headings={headings} />
+</Base>

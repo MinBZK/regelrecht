@@ -1,0 +1,53 @@
+---
+/*
+ * RFC overview. Prose ported from the relanding rfcs/index.md; the
+ * <RfcIndexTable /> mechanism is preserved (it now calls getRfcs()
+ * directly at build time instead of via a data loader).
+ */
+import Base from '~/layouts/Base.astro';
+import DocsSidebar from '~/components/DocsSidebar.astro';
+import DocsFooter from '~/components/DocsFooter.astro';
+import RfcIndexTable from '~/components/RfcIndexTable.astro';
+import { sidebarForPath } from '~/lib/sidebar';
+
+const pathname = '/rfcs/';
+const groups = sidebarForPath(pathname);
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  title="RFCs · RegelRecht"
+  description="Design decisions in RegelRecht, documented through RFCs."
+>
+  {groups && <DocsSidebar groups={groups} pathname={pathname} />}
+  <div class="rr-docs-body">
+    <main class="vp-doc rr-docs-content">
+      <h1>RFCs (Requests for Comments)</h1>
+      <p>
+        Design decisions in RegelRecht are documented through RFCs. Each RFC
+        captures the problem, considered alternatives, and the chosen
+        approach.
+      </p>
+      <h2>Index</h2>
+      <RfcIndexTable />
+      <h2>Writing an RFC</h2>
+      <p>
+        See <a href="/rfcs/rfc-000">RFC-000</a> for the process. RFCs are
+        warranted for:
+      </p>
+      <ul>
+        <li>Law representation format changes</li>
+        <li>Execution engine architecture changes</li>
+        <li>Cross-cutting design patterns</li>
+        <li>Integration patterns between components</li>
+      </ul>
+      <p>
+        The template is at <code>docs/src/content/rfcs/template.md</code> in
+        the repository.
+      </p>
+      <DocsFooter entryId="index.md" collection="rfcs" pathname={pathname} />
+    </main>
+  </div>
+</Base>

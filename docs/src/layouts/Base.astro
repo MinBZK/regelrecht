@@ -1,0 +1,452 @@
+---
+import '@nldd/design-system/styles';
+import '~/styles/tokens.css';
+import '~/styles/landing.css';
+import { content, langFromPath } from '~/lib/landing-content';
+import { docsNav } from '~/lib/navLinks';
+
+interface Props {
+  lang: 'nl' | 'en';
+  title: string;
+  description?: string;
+  kind: 'landing' | 'docs' | 'notfound';
+  pathname: string;
+}
+
+const { lang, title, description, kind, pathname } = Astro.props;
+
+const isLanding = kind === 'landing';
+const isNotFound = kind === 'notfound';
+
+const t = content[lang];
+// Landing is bilingual (path-driven); docs are English-only.
+const home = isLanding ? (lang === 'en' ? '/en/' : '/') : '/en/';
+const brandSubtitle = isLanding
+  ? t.nav.brandTagline
+  : 'Machine-readable Dutch law';
+// The signup variant of the landing has no in-page anchor nav.
+const showSignup = isLanding && /\/aanmelden|\/en\/signup/.test(pathname);
+
+interface NavItem {
+  text: string;
+  href: string;
+  current?: boolean;
+}
+
+let globalLinks: NavItem[];
+if (isLanding) {
+  globalLinks = showSignup
+    ? []
+    : [
+        { text: t.nav.what, href: home + '#what-is-it' },
+        { text: t.nav.how, href: home + '#how-it-works' },
+        { text: t.nav.tools, href: home + '#tools' },
+        { text: t.nav.example, href: home + '#example' },
+        { text: t.nav.faq, href: home + '#faq' },
+        { text: t.nav.signup, href: t.feedback.ctaHref },
+        { text: t.nav.docs, href: '/guide/what-is-regelrecht' },
+      ];
+} else {
+  globalLinks = docsNav.map((n) => ({
+    text: n.text,
+    href: n.link,
+    current: n.match ? pathname.startsWith(n.match) : false,
+  }));
+}
+
+// Language switch lives on the right (utility) side of the bar. Only the
+// landing is bilingual; docs are English-only so no switch there.
+const langToggle: NavItem | null = isLanding
+  ? {
+      text: lang === 'en' ? 'Nederlands' : 'English',
+      href: lang === 'en' ? '/' : '/en/',
+    }
+  : null;
+
+const searchLabel = lang === 'en' ? 'Search' : 'Zoeken';
+const skipText = lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud';
+const navLabel = lang === 'en' ? 'Main navigation' : 'Hoofdnavigatie';
+const themeLabelLight = lang === 'en' ? 'Dark mode' : 'Donkere modus';
+const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
+---
+
+<!doctype html>
+<html lang={lang} data-scheme="light" style="color-scheme: light;">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/regelrecht-icon.svg"
+    />
+    <slot name="head" />
+    <script is:inline>
+      // NLDD colours resolve via data-scheme; the landing/chrome CSS uses
+      // the `.dark` class. Restore the persisted theme before first paint
+      // so there is no flash. Default light. Single authority, no Vue.
+      (function () {
+        try {
+          var stored = localStorage.getItem('rr-theme');
+          var dark = stored === 'dark';
+          var root = document.documentElement;
+          root.setAttribute('data-scheme', dark ? 'dark' : 'light');
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          root.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="rr-skip-link" href="#rr-main">{skipText}</a>
+
+    <div class="rr-shell">
+      <div class="rr-topbar">
+        <nldd-top-navigation-bar
+          logo-title="RegelRecht"
+          logo-subtitle={brandSubtitle}
+          logo-href={home}
+          website-href={home}
+        >
+          {
+            globalLinks.map((item) => (
+              <nldd-menu-bar-item
+                slot="global"
+                href={item.href}
+                text={item.text}
+                current={item.current || undefined}
+              />
+            ))
+          }
+          <nldd-menu-bar-item
+            slot="utility"
+            id="rr-search-trigger"
+            text={searchLabel}
+            icon="search"
+          ></nldd-menu-bar-item>
+          <nldd-menu-bar-item
+            slot="utility"
+            id="rr-theme-toggle"
+            text={themeLabelLight}
+            data-label-light={themeLabelLight}
+            data-label-dark={themeLabelDark}
+            icon="moon"
+          ></nldd-menu-bar-item>
+          {
+            langToggle && (
+              <nldd-menu-bar-item
+                slot="utility"
+                text={langToggle.text}
+                href={langToggle.href}
+              />
+            )
+          }
+          <nldd-menu-bar-item
+            slot="utility"
+            text="GitHub"
+            href="https://github.com/MinBZK/regelrecht"
+            icon="code"
+          ></nldd-menu-bar-item>
+        </nldd-top-navigation-bar>
+
+        {/* Semantic fallback: real <a> links rendered server-side, so the
+            site is navigable without JS / before @nldd upgrades. Hidden
+            once <nldd-top-navigation-bar> is :defined (see CSS). */}
+        <nav class="rr-nav-fallback" aria-label={navLabel}>
+          <a class="rr-nav-fallback-brand" href={home}>RegelRecht</a>
+          <ul>
+            {
+              globalLinks.map((item) => (
+                <li>
+                  <a
+                    href={item.href}
+                    aria-current={item.current ? 'page' : undefined}
+                  >
+                    {item.text}
+                  </a>
+                </li>
+              ))
+            }
+            {
+              langToggle && (
+                <li>
+                  <a href={langToggle.href}>{langToggle.text}</a>
+                </li>
+              )
+            }
+            <li>
+              <a href="https://github.com/MinBZK/regelrecht">GitHub</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+
+      {
+        isNotFound && (
+          <div id="rr-main" tabindex="-1" lang={lang}>
+            <slot />
+          </div>
+        )
+      }
+
+      {
+        isLanding && !isNotFound && (
+          <div id="rr-main" tabindex="-1" class="rr-landing" lang={lang}>
+            <slot />
+          </div>
+        )
+      }
+
+      {
+        kind === 'docs' && (
+          <div id="rr-main" tabindex="-1" class="rr-docs has-sidebar">
+            <slot />
+          </div>
+        )
+      }
+    </div>
+
+    {/* Pagefind search modal host. Pagefind only indexes after `astro
+        build`, so this is empty in `astro dev` by design. */}
+    <dialog id="rr-search-dialog" class="rr-search-dialog" aria-label={searchLabel}>
+      <div id="rr-search-ui"></div>
+    </dialog>
+
+    <script>
+      import '@nldd/design-system';
+    </script>
+
+    <script>
+      // Theme toggle: NLDD reads data-scheme; the ported landing/chrome CSS
+      // keys off the `.dark` class. Toggle both, persist to localStorage.
+      const themeBtn = document.getElementById('rr-theme-toggle');
+      themeBtn?.addEventListener('click', () => {
+        const root = document.documentElement;
+        const dark = root.getAttribute('data-scheme') !== 'dark';
+        root.setAttribute('data-scheme', dark ? 'dark' : 'light');
+        root.style.colorScheme = dark ? 'dark' : 'light';
+        root.classList.toggle('dark', dark);
+        try {
+          localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
+        } catch (e) {}
+        const el = themeBtn as HTMLElement;
+        el.setAttribute(
+          'text',
+          dark
+            ? el.dataset.labelDark || 'Light mode'
+            : el.dataset.labelLight || 'Dark mode'
+        );
+        el.setAttribute('icon', dark ? 'sun' : 'moon');
+      });
+      // Reflect the pre-paint state onto the toggle label/icon.
+      if (document.documentElement.getAttribute('data-scheme') === 'dark') {
+        const el = themeBtn as HTMLElement | null;
+        if (el) {
+          el.setAttribute('text', el.dataset.labelDark || 'Light mode');
+          el.setAttribute('icon', 'sun');
+        }
+      }
+    </script>
+
+    <script>
+      // Pagefind search modal. The UI bundle is emitted to /pagefind/ by
+      // astro-pagefind during the build; load it lazily on first open.
+      const dialog = document.getElementById(
+        'rr-search-dialog'
+      ) as HTMLDialogElement | null;
+      const trigger = document.getElementById('rr-search-trigger');
+      let pagefindLoaded = false;
+
+      function ensurePagefind() {
+        if (pagefindLoaded || !dialog) return;
+        pagefindLoaded = true;
+        // Pagefind's UI bundle is emitted to /pagefind/ by astro-pagefind
+        // during the build (absent in `astro dev`). Load it as a runtime
+        // asset via injected <link>/<script> so the bundler does not try
+        // to resolve it at build time.
+        const css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = '/pagefind/pagefind-ui.css';
+        document.head.appendChild(css);
+        const js = document.createElement('script');
+        js.src = '/pagefind/pagefind-ui.js';
+        js.onload = () => {
+          // @ts-expect-error - global from the UI bundle
+          if (window.PagefindUI) {
+            // @ts-expect-error - global from the UI bundle
+            new window.PagefindUI({
+              element: '#rr-search-ui',
+              showSubResults: true,
+            });
+          }
+        };
+        js.onerror = () => {
+          pagefindLoaded = false;
+        };
+        document.body.appendChild(js);
+      }
+
+      function openSearch() {
+        if (!dialog) return;
+        ensurePagefind();
+        if (!dialog.open) dialog.showModal();
+        const input = dialog.querySelector(
+          'input'
+        ) as HTMLInputElement | null;
+        input?.focus();
+      }
+
+      trigger?.addEventListener('click', openSearch);
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          openSearch();
+        }
+      });
+      dialog?.addEventListener('click', (e) => {
+        if (e.target === dialog) dialog.close();
+      });
+    </script>
+
+    <style>
+      /* No nldd-app-view / nldd-page: those impose an internal scroll model
+         that fights the document scroll. The document scrolls normally —
+         one scrollbar. nldd-top-navigation-bar only needs WIDTH for its
+         container-query layout, which a plain full-width bar provides. */
+      html {
+        /* Reserve the scrollbar's space permanently so opening the search
+           modal (which sets overflow:hidden on body) does not shift the
+           viewport ~15px and jump content. */
+        scrollbar-gutter: stable;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      .rr-shell {
+        min-height: 100vh;
+      }
+      .rr-topbar {
+        background: var(--vp-nav-bg-color);
+      }
+      .rr-topbar nldd-top-navigation-bar {
+        display: block;
+        width: 100%;
+      }
+
+      /* No-JS / pre-upgrade navigation fallback. The semantic <nav> is the
+         SSR-rendered, always-functional navigation. Once @nldd loads and
+         the web component upgrades (:defined), show the rich nav and hide
+         the fallback. Without JS the fallback simply stays. */
+      .rr-nav-fallback {
+        max-width: 1440px;
+        margin-inline: auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1rem 1.5rem;
+        padding: 0.75rem 1.5rem;
+      }
+      .rr-nav-fallback-brand {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--vp-c-text-1);
+        text-decoration: none;
+      }
+      .rr-nav-fallback ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1.25rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .rr-nav-fallback a {
+        color: var(--vp-c-text-2);
+        text-decoration: none;
+      }
+      .rr-nav-fallback a:hover {
+        color: var(--vp-c-brand-1);
+      }
+      .rr-nav-fallback a[aria-current='page'] {
+        color: var(--vp-c-brand-1);
+        font-weight: 600;
+      }
+      .rr-topbar nldd-top-navigation-bar:not(:defined) {
+        display: none;
+      }
+      .rr-topbar nldd-top-navigation-bar:defined ~ .rr-nav-fallback {
+        display: none;
+      }
+
+      /* Visible focus indicator across the whole shell (WCAG 2.2
+         SC 2.4.13). */
+      .rr-shell a:focus-visible,
+      .rr-shell button:focus-visible,
+      .rr-shell summary:focus-visible,
+      .rr-shell [tabindex]:focus-visible {
+        outline: 3px solid var(--vp-c-brand-1);
+        outline-offset: 2px;
+        border-radius: 2px;
+      }
+      /* #rr-main is only a programmatic skip-link target; no visible ring. */
+      #rr-main:focus,
+      #rr-main:focus-visible {
+        outline: none;
+      }
+
+      .rr-docs.has-sidebar {
+        display: grid;
+        grid-template-columns: 272px minmax(0, 1fr) 240px;
+        gap: 2rem;
+        max-width: 1440px;
+        margin-inline: auto;
+        padding: 1.5rem 1.5rem 4rem;
+      }
+      .rr-docs:not(.has-sidebar) {
+        max-width: 960px;
+        margin-inline: auto;
+        padding: 1.5rem 1.5rem 4rem;
+      }
+      .rr-docs-body {
+        min-width: 0;
+      }
+      .rr-docs-content {
+        min-width: 0;
+      }
+      @media (max-width: 1100px) {
+        .rr-docs.has-sidebar {
+          grid-template-columns: 240px minmax(0, 1fr);
+        }
+        .rr-docs.has-sidebar .rr-doc-outline {
+          display: none;
+        }
+      }
+      @media (max-width: 768px) {
+        .rr-docs.has-sidebar {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .rr-docs.has-sidebar .rr-doc-sidebar {
+          display: none;
+        }
+      }
+
+      /* Pagefind modal host. The visible trigger is the nav "Search" item. */
+      .rr-search-dialog {
+        border: none;
+        border-radius: 10px;
+        padding: 1.25rem;
+        width: min(40rem, 92vw);
+        max-height: 80vh;
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text-1);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+      }
+      .rr-search-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.45);
+      }
+    </style>
+  </body>
+</html>

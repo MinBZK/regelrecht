@@ -1,0 +1,82 @@
+---
+/*
+ * Ported from the relanding RrDocFooter.vue prev/next nav. The flattened
+ * sidebar order is the navigation order; prev/next are the neighbours of
+ * the current pathname. The edit-link prose is a sibling <EditLink>
+ * rendered by the page above this component (same as the Vue footer
+ * grouped both).
+ */
+import { flatSidebar } from '~/lib/sidebar';
+
+interface Props {
+  pathname: string;
+}
+const { pathname } = Astro.props;
+
+function norm(p: string) {
+  return p.replace(/(index)?\.(md|html)$/, '').replace(/\/$/, '');
+}
+
+const flat = flatSidebar(pathname);
+const idx = flat.findIndex((l) => norm(l.link) === norm(pathname));
+const prev = idx > 0 ? flat[idx - 1] : null;
+const next = idx >= 0 && idx < flat.length - 1 ? flat[idx + 1] : null;
+---
+
+<nav class="rr-doc-prevnext" aria-label="Pagination">
+  {
+    prev ? (
+      <a class="rr-doc-prev" href={prev.link}>
+        <span class="rr-doc-pn-label">Previous</span>
+        <span class="rr-doc-pn-title">{prev.text}</span>
+      </a>
+    ) : (
+      <span />
+    )
+  }
+  {
+    next && (
+      <a class="rr-doc-next" href={next.link}>
+        <span class="rr-doc-pn-label">Next</span>
+        <span class="rr-doc-pn-title">{next.text}</span>
+      </a>
+    )
+  }
+</nav>
+
+<style>
+  .rr-doc-prevnext {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .rr-doc-prevnext a {
+    flex: 1 1 240px;
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .rr-doc-next {
+    text-align: right;
+    align-items: flex-end;
+  }
+  .rr-doc-prevnext a:hover {
+    border-color: var(--vp-c-brand-1);
+  }
+  .rr-doc-pn-label {
+    font-size: 0.78rem;
+    color: var(--vp-c-text-2);
+  }
+  .rr-doc-pn-title {
+    color: var(--vp-c-brand-1);
+    font-weight: 600;
+  }
+  :global(.dark) .rr-doc-pn-title {
+    color: var(--vp-c-brand-2);
+  }
+</style>

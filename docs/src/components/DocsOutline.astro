@@ -1,0 +1,73 @@
+---
+/*
+ * Ported from the relanding RrDocOutline.vue. Built from the headings
+ * Astro returns from entry.render() ({ depth, slug, text }); the Vue
+ * source flattened page.headers and kept level <= 3, same here.
+ */
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  headings: Heading[];
+}
+const { headings } = Astro.props;
+const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
+---
+
+{
+  flat.length > 0 && (
+    <aside class="rr-doc-outline" aria-label="On this page">
+      <p class="rr-doc-outline-title">On this page</p>
+      <ul>
+        {flat.map((h) => (
+          <li class:list={[{ 'is-sub': h.depth === 3 }]}>
+            <a href={`#${h.slug}`}>{h.text}</a>
+          </li>
+        ))}
+      </ul>
+    </aside>
+  )
+}
+
+<style>
+  .rr-doc-outline {
+    font-size: 0.85rem;
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+  }
+  .rr-doc-outline-title {
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    color: var(--vp-c-text-1);
+  }
+  .rr-doc-outline ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid var(--vp-c-divider);
+  }
+  .rr-doc-outline li {
+    margin: 0.25rem 0;
+  }
+  .rr-doc-outline li.is-sub {
+    padding-left: 0.75rem;
+  }
+  .rr-doc-outline a {
+    color: var(--vp-c-text-2);
+    text-decoration: none;
+    display: block;
+    padding-left: 0.75rem;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+  }
+  .rr-doc-outline a:hover {
+    color: var(--vp-c-brand-1);
+    border-left-color: var(--vp-c-brand-1);
+  }
+</style>
