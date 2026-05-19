@@ -690,6 +690,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_key_bypasses_role_check_on_get_admin_route() {
+        // Locks in the documented invariant: a valid API key is treated as
+        // regelrecht-admin-equivalent for the allowed methods, so GET on an
+        // admin-tier route succeeds even though the bearer path carries no
+        // role. Today writer_routes and admin_routes contain no GETs, but if
+        // a future GET is added on either tier, this test ensures it's
+        // obvious that route is reachable via the API key without a session.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-admin");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("GET")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_bypasses_role_check_on_get_writer_route() {
+        // Same invariant as the admin-tier variant above, but for the
+        // writer tier. Writer routes currently contain no GETs either; this
+        // test makes the API-key reachability of any future writer-tier GET
+        // explicit and forces a deliberate change here if the invariant
+        // ever shifts.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-writer");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("GET")
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
     async fn api_key_bypasses_role_check_on_delete_admin_route() {
         // Locks in the documented invariant: a valid API key is treated as
         // regelrecht-admin-equivalent for the allowed methods, so DELETE on

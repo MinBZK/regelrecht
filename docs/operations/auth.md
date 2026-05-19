@@ -160,6 +160,39 @@ with no per-route gating. To migrate without locking anyone out:
    (`editor-reader` / `harvester-reader`).
 4. **Remove the `allowed-user` role** from the realm.
 
+## Operational notes
+
+### Role-change propagation
+
+The role set is read from the JWT at login and cached in the session
+(`SESSION_KEY_ROLES`) for the lifetime of that session. Per-request middleware
+reads this cached list rather than re-parsing the token, which means:
+
+- **Role changes in Keycloak only take effect on the next login.** Granting a
+  user a new role (e.g. promoting `editor-writer` to `editor-admin`) requires
+  the user to log out and back in before the new role is honoured by the
+  application.
+- **Role revocation has the same delay.** Removing a role in Keycloak does
+  *not* immediately revoke access — the live session continues to carry the
+  expanded role list until it expires.
+
+For emergency revocation (compromised account, immediate downgrade) the
+session store must also be cleared so the cached role list cannot be reused.
+Sessions live in the PostgreSQL `tower_sessions.session` table on each
+service's database:
+
+```sql
+-- Revoke all live sessions for a specific user (by Keycloak sub):
+DELETE FROM tower_sessions.session
+WHERE data::jsonb -> 'data' ->> 'sub' = '<keycloak-sub>';
+
+-- Nuclear option — invalidate every active session on the service:
+TRUNCATE tower_sessions.session;
+```
+
+After deleting the session row(s), the affected user is forced through the
+OIDC login again, which re-reads roles from Keycloak.
+
 ## Programmatic access (admin API key)
 
 The harvester-admin service accepts a bearer API key on **GET** and **DELETE**
