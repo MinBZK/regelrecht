@@ -127,3 +127,17 @@ Feature: Note resolution (RFC-005, RFC-018)
     And a note selecting "beleidsregels van de Belastingdienst" with prefix "overeenkomstig de " and suffix " omtrent"
     When the note is resolved
     Then the note resolves to article "5"
+
+  # The resolved end of the open->resolved lifecycle. Once the implementing
+  # regulation is located and the open norm is filled in, the questioning note
+  # moves to workflow: resolved. The anchor is now the concrete implementing
+  # sentence; the resolver must still place it on exactly that text. (The
+  # workflow field itself is sidecar metadata validated by
+  # validate-annotations, not resolver logic.)
+  Scenario: A resolved questioning note anchors to the now-filled-in norm
+    Given a law with the following articles:
+      | number | text                                                                                      |
+      | 3      | De normpremie bedraagt 2,7 procent van het drempelinkomen, vermeerderd met het toetsingsinkomen. |
+    And a note selecting "2,7 procent van het drempelinkomen" with prefix "bedraagt " and suffix ", vermeerderd"
+    When the note is resolved
+    Then the note resolves to article "3"
