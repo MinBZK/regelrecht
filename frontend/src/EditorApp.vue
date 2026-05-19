@@ -323,13 +323,18 @@ const notesSaveError = ref(null);
 // Explicit success signal: a PR-less / NoChange save must not look like
 // the work vanished (the drafts get cleared either way).
 const notesSaveStatus = ref(null);
-// The save status/error describe the LAST save. Once the draft set
-// changes (a new note added, or drafts wiped), that confirmation is stale
-// and showing "Opslaan gelukt" next to "1 concept, nog niet opgeslagen"
-// is a contradictory state. Clear both whenever the draft count moves.
-watch(draftCount, () => {
-  notesSaveStatus.value = null;
-  notesSaveError.value = null;
+// The save status/error describe the LAST save. A NEW draft appearing
+// after that save makes the confirmation stale ("Opslaan gelukt" next to
+// "1 concept, nog niet opgeslagen" is contradictory), so clear it then.
+// But a successful save itself drains drafts to zero — clearing on a
+// DECREASE would wipe the very confirmation `saveNotesToRepo` is about to
+// set, a race that previously only worked by microtask-ordering luck.
+// Only react to an increase; the count going down is the save completing.
+watch(draftCount, (count, prev) => {
+  if (count > prev) {
+    notesSaveStatus.value = null;
+    notesSaveError.value = null;
+  }
 });
 async function saveNotesToRepo() {
   if (savingNotes.value) return;

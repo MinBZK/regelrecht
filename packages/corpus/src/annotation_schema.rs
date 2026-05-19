@@ -132,12 +132,18 @@ pub enum AppendOutcome {
 /// - All new notes already present: [`AppendOutcome::NoChange`].
 ///
 /// Remaining format assumption: a uniform-space block sequence with LF
-/// endings (every corpus tool: `js-yaml` export, `serde_yaml_ng`, the
-/// committed sidecars). A flow sequence (`annotations: [...]`) or CRLF
-/// base still yields a malformed result, but that is caught: the caller
-/// re-parses and schema-validates the produced text, so such a base fails
-/// the save loudly rather than committing garbage. Not a silent
-/// corruption, and no longer the everyday-path break it was.
+/// endings (every corpus tool — `js-yaml` export, `serde_yaml_ng`, the
+/// committed sidecars — produces exactly this). Two non-conforming bases
+/// behave differently, both non-silently:
+/// - A flow sequence (`annotations: [...]`) or any base whose notes the
+///   parser cannot read as a block sequence takes the rebuild path, where
+///   the destructive-shrink guard refuses outright rather than dropping
+///   the existing notes.
+/// - A CRLF base parses (YAML accepts CRLF), so the verbatim-append path
+///   runs and yields a file with mixed endings. The re-parse + schema
+///   gate does NOT reject this (it is still valid YAML); the pre-commit
+///   `yamllint`/EOF hook is what catches it. The whole committed corpus
+///   is LF, so this is not a path the corpus produces.
 ///
 /// `new_notes` are assumed schema-checked by the caller; the caller must
 /// still validate the *resulting* document.
@@ -182,6 +188,30 @@ pub fn append_notes_to_sidecar(
     if !base_has_sequence {
         // Fresh document: base + new notes, full serialise is fine here
         // because there is nothing to protect.
+        //
+        // Destructive-shrink guard. This is the ONLY path that rebuilds
+        // the file instead of appending verbatim, so it is the only path
+        // that can lose notes: `notes_in_sidecar` returns `[]` for a base
+        // that does not parse as a block sequence (flow style
+        // `annotations: [...]`, CRLF that breaks the parser, an anchor/
+        // alias the loader rejects). If we rebuilt from an empty
+        // `base_notes` while the raw file clearly carried note-like
+        // content, we would silently drop the lot. Refuse instead: a
+        // loud abort with the bytes untouched beats a quiet corpus
+        // deletion. RFC-018 §10 / RFC-005 verbatim-preservation.
+        if base_notes.is_empty() {
+            if let Some(raw) = base_text {
+                if raw.contains("type: Annotation") || raw.contains("\"type\": \"Annotation\"") {
+                    return Err(
+                        "refusing to rebuild a notes file whose existing content could not \
+                         be parsed as a block sequence: this would discard the notes already \
+                         in it. The sidecar must be repaired (LF endings, block-style \
+                         `annotations:` list) before new notes can be added."
+                            .to_string(),
+                    );
+                }
+            }
+        }
         let mut all = base_notes;
         all.extend(to_add.iter().map(|n| (*n).clone()));
         let doc = serde_json::json!({ "$schema": schema_url, "annotations": all });
@@ -239,7 +269,7 @@ fn sequence_item_indent(text: &str) -> usize {
     for line in text.lines() {
         if !after_key {
             // Top-level `annotations:` key (no leading space).
-            if line.trim_end() == "annotations:" || line.starts_with("annotations:") {
+            if line.trim_end() == "annotations:" || line.starts_with("annotations: ") {
                 after_key = true;
             }
             continue;
@@ -426,7 +456,8 @@ annotations:
         );
 
         // Empty / absent array is vacuously fine — the destructive-shrink
-        // guard, not this function, handles an empty body.
+        // guard in `append_notes_to_sidecar` (the rebuild path), not this
+        // function, refuses a base whose notes failed to parse.
         assert_eq!(
             first_note_not_targeting_law(&serde_json::json!({"annotations": []}), "x"),
             None
@@ -547,6 +578,35 @@ annotations:
         };
         let doc: serde_json::Value = serde_yaml_ng::from_str(&out).unwrap();
         assert_eq!(doc["annotations"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn rebuild_path_refuses_to_drop_unparseable_existing_notes() {
+        // A base that carries real note content but does NOT parse, so
+        // `notes_in_sidecar` yields `[]` and the verbatim-append path is
+        // skipped. Without the guard the rebuild path would emit a file
+        // containing only the new note, silently discarding the existing
+        // one. Regression for the "shrink guard" the RFC promises
+        // (previously fictional). The trigger is a YAML syntax fault
+        // (here: a tab in indentation, which serde_yaml_ng rejects) in a
+        // file that still clearly holds an Annotation.
+        let broken_base =
+            "$schema: https://s\nannotations:\n  - type: Annotation\n\tmotivation: commenting\n";
+        assert!(
+            serde_yaml_ng::from_str::<serde_json::Value>(broken_base).is_err(),
+            "test premise: base must be unparseable"
+        );
+        match append_notes_to_sidecar(Some(broken_base), &[note("new")], "https://s") {
+            Err(e) => assert!(e.contains("refusing to rebuild"), "{e}"),
+            Ok(_) => panic!("must refuse to rebuild over unparseable existing notes"),
+        }
+
+        // Sanity: a genuinely empty/contentless base is still a normal
+        // fresh build, NOT a refusal (the guard keys on note-like content).
+        assert!(matches!(
+            append_notes_to_sidecar(Some("$schema: https://s\n"), &[note("a")], "https://s"),
+            Ok(AppendOutcome::Write(_))
+        ));
     }
 
     #[test]
