@@ -193,6 +193,25 @@ TRUNCATE tower_sessions.session;
 After deleting the session row(s), the affected user is forced through the
 OIDC login again, which re-reads roles from Keycloak.
 
+### Auth-disabled mode (dev/local only)
+
+When the OIDC environment variables are not configured (`OIDC_CLIENT_ID`
+unset), each service starts with **all per-route auth checks bypassed**.
+Every tier — reader, writer, *and* admin — is reachable without a session.
+This mode exists for local development convenience (no Keycloak required)
+and emits a `warn!` line at startup:
+
+```
+OIDC authentication is DISABLED — editor is unprotected.
+All routes (editor-reader/writer/admin tiers) bypass auth checks.
+Do NOT run this configuration in production.
+```
+
+The same applies to the harvester-admin service. **Never deploy a service
+without OIDC configured** — the warning is the only safeguard, and the
+admin-tier routes (corpus reload, feature-flag toggles, job deletion, source
+sync) are fully open in this mode.
+
 ## Programmatic access (admin API key)
 
 The harvester-admin service accepts a bearer API key on **GET** and **DELETE**

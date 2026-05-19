@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
 pub use regelrecht_auth::middleware::security_headers;
-use regelrecht_auth::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES, SESSION_KEY_SUB};
+use regelrecht_auth::{check_session_role, RoleCheck};
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -66,35 +66,19 @@ pub fn require_auth(
                 return Ok(next.run(request).await);
             }
 
-            let authenticated: bool = session
-                .get(SESSION_KEY_AUTHENTICATED)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or(false);
-            if !authenticated {
-                return Err(ApiError::Unauthorized(
+            match check_session_role(&session, required_role).await {
+                RoleCheck::Allowed => Ok(next.run(request).await),
+                RoleCheck::NotAuthenticated => Err(ApiError::Unauthorized(
                     "authentication required".to_string(),
-                ));
-            }
-
-            let roles: Vec<String> = session
-                .get(SESSION_KEY_ROLES)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-
-            if roles.iter().any(|r| r == required_role) {
-                Ok(next.run(request).await)
-            } else {
-                let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
-                tracing::warn!(
-                    required = %required_role,
-                    sub = ?sub,
-                    "user lacks required role for route"
-                );
-                Err(ApiError::Forbidden("forbidden".to_string()))
+                )),
+                RoleCheck::MissingRole { sub } => {
+                    tracing::warn!(
+                        required = %required_role,
+                        sub = ?sub,
+                        "user lacks required role for route"
+                    );
+                    Err(ApiError::Forbidden("forbidden".to_string()))
+                }
             }
         })
     }
@@ -149,6 +133,7 @@ mod tests {
     use axum::middleware as axum_middleware;
     use axum::routing::get;
     use axum::Router;
+    use regelrecht_auth::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES};
     use sqlx::postgres::PgPoolOptions;
     use std::sync::Arc;
     use tower::ServiceExt;

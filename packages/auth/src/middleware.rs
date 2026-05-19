@@ -13,6 +13,58 @@ use crate::OidcAppState;
 
 type RequireRoleFuture = Pin<Box<dyn Future<Output = Result<Response, StatusCode>> + Send>>;
 
+/// Outcome of a session-based role check. Independent of any HTTP error type
+/// so that callers in different crates can map this to their own error
+/// (`StatusCode` here, `ApiError` in the admin crate).
+pub enum RoleCheck {
+    /// Session is authenticated and carries the required role.
+    Allowed,
+    /// Session has no authenticated marker (or it's false).
+    NotAuthenticated,
+    /// Session is authenticated but lacks the required role. `sub` is the
+    /// Keycloak subject if present, included so callers can log it.
+    MissingRole { sub: Option<String> },
+}
+
+/// Inspect a session and decide whether it satisfies the role requirement.
+///
+/// Returns [`RoleCheck::Allowed`] when the session holds an authenticated
+/// marker *and* `SESSION_KEY_ROLES` contains `required_role`. The role list
+/// is compared verbatim against the realm roles stored at login — Keycloak
+/// composite expansion means a higher role's token automatically carries the
+/// lower roles, so callers never need to check "role A or role B".
+///
+/// This helper is shared between [`require_role`] (returns 401/403 status
+/// codes) and the admin crate's `require_auth` (which wraps the API-key
+/// bypass around the session path). It does **not** consider whether auth
+/// is enabled on the application — callers are expected to early-return
+/// before reaching this when their `is_auth_enabled()` is false.
+pub async fn check_session_role(session: &Session, required_role: &str) -> RoleCheck {
+    let authenticated: bool = session
+        .get(SESSION_KEY_AUTHENTICATED)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or(false);
+    if !authenticated {
+        return RoleCheck::NotAuthenticated;
+    }
+
+    let roles: Vec<String> = session
+        .get(SESSION_KEY_ROLES)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+
+    if roles.iter().any(|r| r == required_role) {
+        RoleCheck::Allowed
+    } else {
+        let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
+        RoleCheck::MissingRole { sub }
+    }
+}
+
 pub async fn security_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
@@ -93,33 +145,17 @@ pub fn require_role<S: OidcAppState>(
                 return Ok(next.run(request).await);
             }
 
-            let authenticated: bool = session
-                .get(SESSION_KEY_AUTHENTICATED)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or(false);
-            if !authenticated {
-                return Err(StatusCode::UNAUTHORIZED);
-            }
-
-            let roles: Vec<String> = session
-                .get(SESSION_KEY_ROLES)
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-
-            if roles.iter().any(|r| r == role) {
-                Ok(next.run(request).await)
-            } else {
-                let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
-                tracing::warn!(
-                    required = %role,
-                    sub = ?sub,
-                    "user lacks required role for route"
-                );
-                Err(StatusCode::FORBIDDEN)
+            match check_session_role(&session, role).await {
+                RoleCheck::Allowed => Ok(next.run(request).await),
+                RoleCheck::NotAuthenticated => Err(StatusCode::UNAUTHORIZED),
+                RoleCheck::MissingRole { sub } => {
+                    tracing::warn!(
+                        required = %role,
+                        sub = ?sub,
+                        "user lacks required role for route"
+                    );
+                    Err(StatusCode::FORBIDDEN)
+                }
             }
         })
     }

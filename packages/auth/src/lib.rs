@@ -18,7 +18,9 @@ pub use handlers::{
     AuthStatus, PersonInfo, SESSION_KEY_AUTHENTICATED, SESSION_KEY_EMAIL, SESSION_KEY_NAME,
     SESSION_KEY_ROLES, SESSION_KEY_SUB,
 };
-pub use middleware::{require_role, require_session_auth, security_headers};
+pub use middleware::{
+    check_session_role, require_role, require_session_auth, security_headers, RoleCheck,
+};
 pub use oidc::{discover_client, ConfiguredClient, DiscoveryResult};
 
 /// Trait implemented by each service's `AppState` to provide OIDC context
