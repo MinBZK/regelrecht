@@ -277,26 +277,20 @@
   text-decoration: underline;
 }
 
-/* --- Card grids --- */
+/* --- Card grids ---
+   The grid is now an <nldd-collection layout="grid">. It builds the
+   responsive grid INSIDE its shadow DOM (.collection__items, auto-fill
+   minmax). A previous .rr-grid{display:grid;...} on the host fought
+   that: it placed the collection's single shadow wrapper into one of
+   three host columns, squeezing it to ~1/3 width → only 1 column
+   rendered. So the host must NOT impose its own layout. Just give it
+   full width and feed the collection's own NLDD gap token. */
 .rr-grid {
-  display: grid;
-  /* Fixed 3-up on wide screens (auto-fit left a ragged empty trailing
-     column). Cards keep their natural height — align to the top so a
-     short card next to a tall one doesn't stretch awkwardly. Generous
-     gap so the variable heights read as a calm rhythm, not clutter. */
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
-  align-items: start;
-}
-@media (max-width: 900px) {
-  .rr-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (max-width: 600px) {
-  .rr-grid {
-    grid-template-columns: 1fr;
-  }
+  display: block;
+  width: 100%;
+  --components-collection-sm-gap: 1.5rem;
+  --components-collection-md-gap: 1.5rem;
+  --components-collection-lg-gap: 2rem;
 }
 /* Card box chrome. For plain .rr-card (no web component) this is the look.
    For <nldd-card> it is the no-JS / not-yet-upgraded fallback: once the
@@ -564,14 +558,22 @@ nldd-card.rr-card:defined .rr-card-inner {
 .rr-feedback {
   text-align: center;
 }
-.rr-feedback p {
-  max-width: 60ch;
+/* Centre every block (heading, the rich-text body, the CTA) on the same
+   axis so they line up. nldd-rich-text/nldd-title are light-DOM-slotted
+   so these selectors still reach their content. */
+.rr-feedback .rr-container > * {
   margin-inline: auto;
+}
+.rr-feedback nldd-rich-text {
+  display: block;
+  max-width: 60ch;
+}
+.rr-feedback nldd-rich-text p {
   color: var(--vp-c-text-2);
   line-height: 1.7;
 }
-.rr-feedback .rr-btn {
-  margin-top: 1.5rem;
+.rr-feedback .rr-cta {
+  justify-content: center;
 }
 
 /* --- Footer --- */

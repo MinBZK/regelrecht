@@ -114,7 +114,7 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
           <nldd-rich-text>
             <p class="rr-lede">{{ t.whatIsIt.lede }}</p>
           </nldd-rich-text>
-          <div class="rr-grid">
+          <nldd-collection layout="grid" item-width="300px" class="rr-grid">
             <nldd-card
               v-for="c in t.whatIsIt.cards"
               :key="c.h"
@@ -126,7 +126,7 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
                 <p>{{ c.p }}</p>
               </nldd-rich-text>
             </nldd-card>
-          </div>
+          </nldd-collection>
         </nldd-container>
       </section>
 
@@ -201,7 +201,7 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
               {{ t.tools.title }}
             </h2>
           </nldd-title>
-          <div class="rr-grid">
+          <nldd-collection layout="grid" item-width="300px" class="rr-grid">
             <nldd-card
               v-for="tool in t.tools.items"
               :key="tool.title"
@@ -224,7 +224,7 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
                 </nldd-rich-text>
               </div>
             </nldd-card>
-          </div>
+          </nldd-collection>
         </nldd-container>
       </section>
 
@@ -284,7 +284,7 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
               >{{ t.innovation.ledeAfter }}
             </p>
           </nldd-rich-text>
-          <div class="rr-grid">
+          <nldd-collection layout="grid" item-width="300px" class="rr-grid">
             <nldd-card
               v-for="c in t.innovation.cards"
               :key="c.h"
@@ -299,7 +299,7 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
                 </nldd-rich-text>
               </div>
             </nldd-card>
-          </div>
+          </nldd-collection>
         </nldd-container>
       </section>
 
