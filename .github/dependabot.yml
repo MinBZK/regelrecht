@@ -10,6 +10,16 @@ updates:
       - dependencies
       - rust
     groups:
+      opentelemetry:
+        patterns:
+          - opentelemetry
+          - opentelemetry-*
+          - opentelemetry_*
+          - tracing-opentelemetry
+        update-types:
+          - minor
+          - patch
+          - major
       rust-minor-patch:
         update-types:
           - minor
