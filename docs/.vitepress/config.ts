@@ -17,11 +17,21 @@ export default withMermaid(
       /^https?:\/\/localhost/,
     ],
 
-    // i18n: add Dutch locale here when translations are ready.
-    // See https://vitepress.dev/guide/i18n for setup.
+    // i18n: English docs live at the root; the Dutch public-facing landing
+    // (plus the signup page) lives under /nl/. See https://vitepress.dev/guide/i18n
     locales: {
       root: { label: 'English', lang: 'en' },
-      // nl: { label: 'Nederlands', lang: 'nl', link: '/nl/' },
+      nl: {
+        label: 'Nederlands',
+        lang: 'nl',
+        link: '/nl/',
+        themeConfig: {
+          nav: [
+            { text: 'Aanmelden', link: '/nl/aanmelden' },
+            { text: 'Documentatie (EN)', link: '/guide/what-is-regelrecht' },
+          ],
+        },
+      },
     },
 
     themeConfig: {

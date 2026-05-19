@@ -12,6 +12,9 @@ hero:
       text: Get Started
       link: /guide/getting-started
     - theme: alt
+      text: Nederlands
+      link: /nl/
+    - theme: alt
       text: GitHub
       link: https://github.com/MinBZK/regelrecht
 features:
