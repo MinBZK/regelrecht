@@ -109,11 +109,17 @@
   font-family: inherit;
 }
 .rr-btn--primary {
-  background: var(--vp-c-brand-1);
+  /* --vp-c-brand-1 flips to a light accent in dark mode → only 3.3:1
+     with white text (WCAG fail, surfaced once the a11y gate ran on a
+     modern Chromium). Use the NLDD palette token donkerblauw-500: it is
+     scheme-stable (rgb(37,124,177) in both modes) and clears 4.5:1 with
+     white text in light AND dark. No hex; stays in the design system. */
+  background: var(--primitives-color-donkerblauw-500);
   color: #fff;
 }
 .rr-btn--primary:hover {
-  background: var(--vp-c-brand-2);
+  /* Same NLDD tone, slightly deeper; brightness keeps it >=4.5:1. */
+  filter: brightness(0.9);
 }
 .rr-btn--ghost {
   background: transparent;
@@ -185,12 +191,24 @@
   margin: 0 0 2rem;
   color: #fff;
 }
+/* Hero-knop semantische fallback (zichtbaar pre-JS / no-JS). Zelfde
+   NLDD-palettonen als de nldd-button-override hierboven, zodat fallback
+   en component identiek ogen — geen losse hex. coolgray-25 op een
+   donkere hero ~12:1; in dark mode flipt het mee naar de andere zachte
+   tint, net als de component. */
 .rr-hero .rr-btn--primary {
-  background: #fff;
-  color: var(--vp-c-brand-1);
+  background: var(--primitives-color-coolgray-25);
+  color: var(--primitives-color-coolgray-900);
 }
 .rr-hero .rr-btn--primary:hover {
-  background: #e8eef4;
+  background: var(--primitives-color-coolgray-50);
+}
+.dark .rr-hero .rr-btn--primary {
+  background: var(--primitives-color-coolgray-950);
+  color: var(--primitives-color-coolgray-50);
+}
+.dark .rr-hero .rr-btn--primary:hover {
+  background: var(--primitives-color-coolgray-900);
 }
 
 /* nldd-button variant="primary" is accent-blue — designed for light
