@@ -73,7 +73,7 @@ version = "0.32"
 optional = true
 
 [dependencies.opentelemetry]
-version = "0.31"
+version = "0.32"
 optional = true
 
 [dependencies.opentelemetry_sdk]
