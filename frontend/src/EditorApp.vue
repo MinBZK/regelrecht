@@ -321,13 +321,19 @@ const notesSources = ref([]);
 const notesTargetSource = ref('');
 const savingNotes = ref(false);
 const notesSaveError = ref(null);
+const notesSourcesFailed = ref(false);
 async function loadNotesSources() {
   if (notesSources.value.length) return;
   try {
     const res = await fetch('/api/sources');
-    if (res.ok) notesSources.value = await res.json();
+    if (!res.ok) throw new Error(`sources ${res.status}`);
+    notesSources.value = await res.json();
+    notesSourcesFailed.value = false;
   } catch {
-    // Dropdown just stays empty → save uses the default (law's) source.
+    // Surface the failure rather than silently defaulting to the law's
+    // source: a federated note that quietly lands in the wrong repo is
+    // worse than a visible "couldn't load targets, retry" state.
+    notesSourcesFailed.value = true;
   }
 }
 async function saveNotesToRepo() {
@@ -1558,7 +1564,7 @@ async function handleActionSave() {
                       :icon-color="hiddenDraftCount > 0 ? 'warning' : undefined"
                     >
                       <nldd-dropdown
-                        v-if="notesSources.length > 1"
+                        v-if="notesSources.length >= 1"
                         slot="actions"
                         label="Opslaan naar"
                         @change="notesTargetSource = $event.detail?.value ?? $event.target?.value ?? notesTargetSource"
@@ -1577,7 +1583,7 @@ async function handleActionSave() {
                         size="md"
                         variant="primary"
                         :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
-                        :disabled="savingNotes || null"
+                        :disabled="savingNotes || notesSourcesFailed || null"
                         data-testid="save-notes-btn"
                         @click="saveNotesToRepo"
                       ></nldd-button>
@@ -1597,6 +1603,13 @@ async function handleActionSave() {
                         @click="askClearDrafts"
                       ></nldd-button>
                     </nldd-inline-dialog>
+                    <nldd-inline-dialog
+                      v-if="notesSourcesFailed"
+                      variant="warning"
+                      data-testid="notes-sources-failed"
+                      text="Doelbronnen konden niet geladen worden"
+                      supporting-text="Opslaan naar repo is uitgeschakeld tot de bronlijst opnieuw geladen is. Exporteer YAML werkt wel."
+                    ></nldd-inline-dialog>
                     <nldd-inline-dialog
                       v-if="notesSaveError"
                       variant="alert"

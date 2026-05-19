@@ -129,15 +129,11 @@ describe('useDraftNotes', () => {
   });
 });
 
-// saveToRepo PUTs the exported sidecar to editor-api. fetch is called
-// twice per save: the sidecar GET inside exportYaml, then the annotations
-// PUT. This stub answers GET with a 404 (drafts-only export) and the PUT
-// with the supplied response.
+// saveToRepo now does ONE request: a PUT whose body is the JSON array of
+// new drafts. No /data GET — the backend reads the base from the session
+// branch and appends. Single stub for the PUT.
 function stubSave(putResponse) {
-  globalThis.fetch = vi.fn((url, opts) => {
-    if (opts?.method === 'PUT') return Promise.resolve(putResponse);
-    return Promise.resolve({ ok: false, status: 404 });
-  });
+  globalThis.fetch = vi.fn(() => Promise.resolve(putResponse));
 }
 
 describe('useDraftNotes.saveToRepo', () => {
@@ -145,7 +141,7 @@ describe('useDraftNotes.saveToRepo', () => {
     lastSavedPr.value = null;
   });
 
-  it('PUTs to the law annotations endpoint, clears drafts, sets the PR', async () => {
+  it('PUTs only the new drafts as JSON, clears drafts, sets the PR', async () => {
     stubSave({
       ok: true,
       json: async () => ({
@@ -157,11 +153,17 @@ describe('useDraftNotes.saveToRepo', () => {
 
     await saveToRepo();
 
-    const putCall = globalThis.fetch.mock.calls.find(
-      ([, o]) => o?.method === 'PUT',
-    );
-    expect(putCall[0]).toBe('/api/corpus/laws/zorgtoeslagwet/annotations');
-    expect(putCall[1].headers['X-Editor-Session']).toBeTruthy();
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [url, opts] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('/api/corpus/laws/zorgtoeslagwet/annotations');
+    expect(opts.method).toBe('PUT');
+    expect(opts.headers['Content-Type']).toBe('application/json');
+    expect(opts.headers['X-Editor-Session']).toBeTruthy();
+    const sent = JSON.parse(opts.body);
+    expect(Array.isArray(sent)).toBe(true);
+    expect(sent).toHaveLength(1);
+    // The internal __draft marker must never reach the wire.
+    expect(JSON.stringify(sent)).not.toContain('__draft');
     expect(drafts.value).toHaveLength(0);
     expect(lastSavedPr.value).toEqual({
       url: 'https://github.com/x/y/pull/7',
@@ -177,10 +179,7 @@ describe('useDraftNotes.saveToRepo', () => {
 
     await saveToRepo('amsterdam');
 
-    const putCall = globalThis.fetch.mock.calls.find(
-      ([, o]) => o?.method === 'PUT',
-    );
-    expect(putCall[0]).toBe(
+    expect(globalThis.fetch.mock.calls[0][0]).toBe(
       '/api/corpus/laws/zorgtoeslagwet/annotations?source=amsterdam',
     );
   });
@@ -190,12 +189,43 @@ describe('useDraftNotes.saveToRepo', () => {
       ok: false,
       status: 400,
       headers: { get: () => 'text/plain; charset=utf-8' },
-      text: async () => 'Note file is invalid:\n/annotations: required',
+      text: async () => 'Notes are not valid against the annotation schema',
     });
     const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('w'));
     addDraft({ ...NOTE, __draft: true });
 
-    await expect(saveToRepo()).rejects.toThrow(/Note file is invalid/);
+    await expect(saveToRepo()).rejects.toThrow(/not valid against/);
     expect(drafts.value).toHaveLength(1);
+  });
+
+  it('clears the saved law, not the law switched to mid-save', async () => {
+    // Regression for the hostile-review finding: a law switch during the
+    // PUT must not wipe the new law's drafts nor leave the saved law's.
+    let resolvePut;
+    globalThis.fetch = vi.fn(
+      () => new Promise((r) => { resolvePut = r; }),
+    );
+    const lawId = ref('lawA');
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(lawId);
+    addDraft({ ...NOTE, __draft: true }); // a draft on lawA
+
+    const p = saveToRepo(); // snapshots id = 'lawA'
+    // User switches to lawB before the PUT resolves; lawB has its own draft.
+    localStorage.setItem(
+      'regelrecht-draft-notes:lawB',
+      JSON.stringify([{ ...NOTE, body: { ...NOTE.body, value: 'B' } }]),
+    );
+    lawId.value = 'lawB';
+    await Promise.resolve(); // let watch(lawId) resync drafts to lawB
+    resolvePut({ ok: true, json: async () => ({ pr: null }) });
+    await p;
+
+    // lawB's draft (on screen now) is untouched.
+    expect(drafts.value).toHaveLength(1);
+    expect(drafts.value[0].body.value).toBe('B');
+    // lawA's drafts were cleared in storage (they are in the PR).
+    expect(
+      JSON.parse(localStorage.getItem('regelrecht-draft-notes:lawA')),
+    ).toEqual([]);
   });
 });

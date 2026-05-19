@@ -81,10 +81,22 @@ export function useDraftNotes(lawId) {
     persist(lawId.value, drafts.value);
   }
 
-  /** Drop every draft for the current law (after a successful export/commit). */
-  function clearDrafts() {
-    drafts.value = [];
-    persist(lawId.value, []);
+  /**
+   * Drop every draft for a law (after a successful save/commit).
+   *
+   * `lawIdOverride` lets a caller clear the *law it actually saved* rather
+   * than `lawId.value`, which may have changed during the save's awaits. A
+   * `watch(lawId)` resyncs `drafts` to the now-current law, so this also
+   * persists the cleared list under the right key and only resets the
+   * in-memory `drafts` ref when it still belongs to the saved law (clearing
+   * it would otherwise wipe the freshly-switched law's drafts on screen).
+   */
+  function clearDrafts(lawIdOverride) {
+    const id = lawIdOverride ?? lawId.value;
+    persist(id, []);
+    if (lawId.value === id) {
+      drafts.value = [];
+    }
   }
 
   /**
@@ -140,23 +152,28 @@ export function useDraftNotes(lawId) {
   }
 
   /**
-   * Write the full sidecar to the repo via editor-api and open/update the
-   * session PR. `targetSourceId` is optional: omit it to write to the law's
-   * own source (the default), or pass a registered source id to route an
-   * advisory note to the annotating organisation's repo (RFC-018 §2).
+   * Append the local drafts to the law's sidecar via editor-api and
+   * open/update the session PR. `targetSourceId` is optional: omit it for
+   * the law's own source (the common case); a value is only honoured by
+   * the backend when it passes the cross-tenant allowlist (the law's
+   * source or the unrestricted central corpus).
    *
-   * On success the drafts are cleared (they are now in the PR) and the
-   * shared `lastSavedPr` ref is updated so EditorApp's "Bekijk op GitHub"
-   * badge shows this PR — exactly like a law or scenario save.
+   * The request body is **only the new drafts**, not the merged file: the
+   * backend reads the current sidecar from the session branch and appends.
+   * That is why there is no `/data` fetch here — rebuilding the file
+   * client-side from the stale static mirror was the blind-overwrite bug.
    *
-   * Throws an Error with the editor-api message on failure (e.g. a schema
-   * 400 or a read-only-source 403) so the caller can surface it; drafts are
-   * left untouched in that case so no work is lost.
+   * On success the saved law's drafts are cleared (they are in the PR now)
+   * and the shared `lastSavedPr` ref is updated so EditorApp's badge shows
+   * the PR. Throws with the editor-api message on failure; drafts are left
+   * untouched so no work is lost.
    */
   async function saveToRepo(targetSourceId) {
     const id = lawId.value;
-    // Pass `id` so the body is built for the same law the URL targets.
-    const yamlText = await exportYaml(id);
+    // Snapshot drafts BEFORE any await (watch(lawId) swaps drafts.value on
+    // a law switch). Strip the internal __draft marker; the backend gets
+    // clean W3C Annotation objects.
+    const newNotes = drafts.value.map(stripDraftMarker);
     let url = `/api/corpus/laws/${encodeURIComponent(id)}/annotations`;
     if (targetSourceId) {
       url += `?source=${encodeURIComponent(targetSourceId)}`;
@@ -164,10 +181,10 @@ export function useDraftNotes(lawId) {
     const res = await fetch(url, {
       method: 'PUT',
       headers: {
-        'Content-Type': 'text/yaml; charset=utf-8',
+        'Content-Type': 'application/json',
         'X-Editor-Session': getEditorSessionId(),
       },
-      body: yamlText,
+      body: JSON.stringify(newNotes),
     });
     if (!res.ok) {
       // Same content-type guard as useLaw.saveLaw: only render the body
@@ -187,7 +204,9 @@ export function useDraftNotes(lawId) {
     } catch {
       // Local source → no PR body; treat as success, keep any prior PR.
     }
-    clearDrafts();
+    // Clear the law we saved, not lawId.value, which may have switched
+    // during the await.
+    clearDrafts(id);
   }
 
   const draftCount = computed(() => drafts.value.length);

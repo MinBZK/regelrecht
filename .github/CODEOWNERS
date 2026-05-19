@@ -1,13 +1,15 @@
 # Code owners. A matching owner is auto-requested for review on any PR
-# touching the matched paths (and, if branch protection requires owner
-# review, gates the merge).
+# touching the matched paths.
+#
+# IMPORTANT: this only REQUESTS a reviewer. It gates a merge solely when
+# branch protection on the target branch has `require_code_owner_reviews`
+# enabled. That is a repository setting, not something this file controls;
+# until it is on, a PR here can still be merged with no domain review.
 #
 # Stand-off notes (RFC-005 / RFC-018). The editor write path opens PRs
 # against a source repo's annotations/ on a contributor's behalf. This
-# rule scopes the central corpus (this repo): a note PR here gets a domain
-# review. Federated note sources live in their own repos and carry their
-# own CODEOWNERS; this file cannot gate those. Content review here is the
-# first of the two-layer review; schema/resolve correctness is enforced
-# separately by validate-annotations in CI (warn-only for orphaned/
-# ambiguous per RFC-018 §8).
+# rule scopes the central corpus (this repo) only; federated note sources
+# live in their own repos with their own CODEOWNERS. When enforced, this
+# is the content half of the two-layer review; the schema/resolve half is
+# validate-annotations in CI (warn-only for orphaned/ambiguous, RFC-018 §8).
 /corpus/annotations/ @MinBZK/regelrecht-team

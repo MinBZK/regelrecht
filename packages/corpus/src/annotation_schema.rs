@@ -42,18 +42,29 @@ static VALIDATOR: LazyLock<Result<Validator, String>> = LazyLock::new(|| {
 /// name lands in the path) and that flows into UI dialogs — the same
 /// self-XSS vector `save_law` avoids by not echoing the request `$id`.
 pub fn parse_and_validate_annotation_yaml(yaml: &str) -> Result<serde_json::Value, Vec<String>> {
-    let validator = VALIDATOR.as_ref().map_err(|e| vec![e.clone()])?;
-
     let doc: serde_json::Value =
         serde_yaml_ng::from_str(yaml).map_err(|e| vec![format!("YAML parse error: {e}")])?;
+    validate_annotation_doc(&doc)?;
+    Ok(doc)
+}
+
+/// Validate an already-parsed sidecar document against the note schema.
+///
+/// Used by the editor write path, which builds the merged document
+/// in-memory (base notes from the branch + new notes) and must validate
+/// the *result* before it is written. Same error-handling caveat as
+/// [`parse_and_validate_annotation_yaml`]: log the errors, do not echo
+/// them to the client.
+pub fn validate_annotation_doc(doc: &serde_json::Value) -> Result<(), Vec<String>> {
+    let validator = VALIDATOR.as_ref().map_err(|e| vec![e.clone()])?;
 
     let errors: Vec<String> = validator
-        .iter_errors(&doc)
+        .iter_errors(doc)
         .map(|err| format!("{}: {}", err.instance_path(), err))
         .collect();
 
     if errors.is_empty() {
-        Ok(doc)
+        Ok(())
     } else {
         Err(errors)
     }
@@ -64,6 +75,16 @@ pub fn parse_and_validate_annotation_yaml(yaml: &str) -> Result<serde_json::Valu
 /// pass/fail (e.g. the `validate-annotations` style check).
 pub fn validate_annotation_yaml(yaml: &str) -> Result<(), Vec<String>> {
     parse_and_validate_annotation_yaml(yaml).map(|_| ())
+}
+
+/// Serialise a sidecar document back to YAML for writing.
+///
+/// The editor write path builds the merged document as JSON in-memory;
+/// the on-disk corpus format is YAML. Centralised here so the dump options
+/// (block style, no anchors) stay consistent with the frontend export and
+/// the committed files, keeping git diffs readable.
+pub fn serialize_annotation_doc(doc: &serde_json::Value) -> Result<String, String> {
+    serde_yaml_ng::to_string(doc).map_err(|e| format!("failed to serialise notes: {e}"))
 }
 
 /// The law id a note's `target.source` URI refers to.
@@ -77,27 +98,52 @@ pub fn law_id_from_source(source: &str) -> Option<&str> {
     Some(rest.split('/').next().unwrap_or(rest))
 }
 
-/// Every distinct law id referenced by the notes in a (schema-valid)
-/// document's `target.source`. Used to reject a note file whose contents
-/// are about a different law than the path it is being written to —
-/// the note-side analogue of `save_law`'s `$id`/path-mismatch guard.
-pub fn note_target_law_ids(doc: &serde_json::Value) -> Vec<String> {
-    let Some(notes) = doc.get("annotations").and_then(|v| v.as_array()) else {
-        return Vec::new();
-    };
-    let mut ids: Vec<String> = notes
-        .iter()
-        .filter_map(|n| {
-            n.get("target")
-                .and_then(|t| t.get("source"))
-                .and_then(|s| s.as_str())
-                .and_then(law_id_from_source)
-                .map(str::to_string)
-        })
-        .collect();
-    ids.sort();
-    ids.dedup();
-    ids
+/// Why a note's `target.source` is not an acceptable reference to the law
+/// the sidecar is being written for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NoteTargetError {
+    /// `target.source` absent or not a string (schema permits any string).
+    Unparseable,
+    /// `target.source` is a string but not a `regelrecht://<law_id>` URI.
+    NotRegelrechtUri,
+    /// Parsed to a law id, but a *different* one than expected.
+    WrongLaw(String),
+}
+
+/// Reject the sidecar unless **every** note's `target.source` resolves to
+/// exactly `law_id`.
+///
+/// This is an *allowlist*, deliberately: an earlier version collected the
+/// parseable law ids and looked for a mismatch, which silently let a note
+/// whose source was `https://evil/...` or absent slip through (the schema
+/// only requires `target.source` to be *a string*, no `regelrecht://`
+/// pattern). RFC-018 §1 keys the sidecar by law id — one file is one law's
+/// notes — so anything that does not provably refer to `law_id` is
+/// rejected, the note-side analogue of `save_law`'s `$id`/path guard.
+/// Returns the first offending note (by array index) and why.
+pub fn first_note_not_targeting_law(
+    doc: &serde_json::Value,
+    law_id: &str,
+) -> Option<(usize, NoteTargetError)> {
+    let notes = doc.get("annotations").and_then(|v| v.as_array())?;
+    for (i, note) in notes.iter().enumerate() {
+        let source = note
+            .get("target")
+            .and_then(|t| t.get("source"))
+            .and_then(|s| s.as_str());
+        let err = match source {
+            None => Some(NoteTargetError::Unparseable),
+            Some(s) => match law_id_from_source(s) {
+                None => Some(NoteTargetError::NotRegelrechtUri),
+                Some(id) if id == law_id => None,
+                Some(id) => Some(NoteTargetError::WrongLaw(id.to_string())),
+            },
+        };
+        if let Some(e) = err {
+            return Some((i, e));
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -173,35 +219,50 @@ annotations:
     }
 
     #[test]
-    fn note_target_law_ids_are_distinct_and_sorted() {
-        let yaml = format!(
-            r#"
-$schema: "{SCHEMA_URL}"
-annotations:
-  - type: Annotation
-    motivation: commenting
-    target:
-      source: "regelrecht://zorgtoeslagwet"
-      selector: {{ type: TextQuoteSelector, exact: a }}
-    body: {{ type: TextualBody, value: x, purpose: commenting }}
-  - type: Annotation
-    motivation: linking
-    target:
-      source: "regelrecht://andere_wet/hoogte"
-      selector: {{ type: TextQuoteSelector, exact: b }}
-    body: {{ type: SpecificResource, source: "regelrecht://andere_wet/x#y", purpose: linking }}
-  - type: Annotation
-    motivation: commenting
-    target:
-      source: "regelrecht://zorgtoeslagwet"
-      selector: {{ type: TextQuoteSelector, exact: c }}
-    body: {{ type: TextualBody, value: z, purpose: commenting }}
-"#
-        );
-        let doc = parse_and_validate_annotation_yaml(&yaml).expect("schema-valid fixture");
+    fn first_note_not_targeting_law_is_an_allowlist() {
+        // All on-law → None.
+        let ok = serde_json::json!({"annotations": [
+            {"target": {"source": "regelrecht://zorgtoeslagwet"}},
+            {"target": {"source": "regelrecht://zorgtoeslagwet/hoogte#x"}},
+        ]});
+        assert_eq!(first_note_not_targeting_law(&ok, "zorgtoeslagwet"), None);
+
+        // A different law → WrongLaw at its index.
+        let wrong = serde_json::json!({"annotations": [
+            {"target": {"source": "regelrecht://zorgtoeslagwet"}},
+            {"target": {"source": "regelrecht://andere_wet"}},
+        ]});
         assert_eq!(
-            note_target_law_ids(&doc),
-            vec!["andere_wet".to_string(), "zorgtoeslagwet".to_string()]
+            first_note_not_targeting_law(&wrong, "zorgtoeslagwet"),
+            Some((1, NoteTargetError::WrongLaw("andere_wet".to_string())))
+        );
+
+        // Non-regelrecht:// source must be REJECTED, not silently skipped
+        // (the bypass the hostile review found).
+        let evil = serde_json::json!({"annotations": [
+            {"target": {"source": "https://evil/zorgtoeslagwet"}},
+        ]});
+        assert_eq!(
+            first_note_not_targeting_law(&evil, "zorgtoeslagwet"),
+            Some((0, NoteTargetError::NotRegelrechtUri))
+        );
+
+        // Absent target.source → Unparseable, also rejected.
+        let bare = serde_json::json!({"annotations": [{"target": {}}]});
+        assert_eq!(
+            first_note_not_targeting_law(&bare, "zorgtoeslagwet"),
+            Some((0, NoteTargetError::Unparseable))
+        );
+
+        // Empty / absent array is vacuously fine — the destructive-shrink
+        // guard, not this function, handles an empty body.
+        assert_eq!(
+            first_note_not_targeting_law(&serde_json::json!({"annotations": []}), "x"),
+            None
+        );
+        assert_eq!(
+            first_note_not_targeting_law(&serde_json::json!({}), "x"),
+            None
         );
     }
 }
