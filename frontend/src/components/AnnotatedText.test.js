@@ -165,4 +165,28 @@ describe('AnnotatedText markdown highlighting', () => {
     expect(wrapper.findComponent({ name: 'NoteCreator' }).exists()).toBe(true);
     expect(wrapper.element.querySelector('ol li')).toBeTruthy();
   });
+
+  it('tears down an open creator when the article changes', async () => {
+    const wrapper = mountWith(ART, [], {
+      canCreate: true,
+      lawId: 'zorgtoeslagwet',
+      engine: { resolveNote: () => ({ status: 'found', matches: [] }) },
+    });
+    await nextTick();
+    // Simulate a selection captured + creator opened against ART.
+    wrapper.vm.pendingRange = { start: 3, end: 9 };
+    wrapper.vm.openCreator();
+    await nextTick();
+    expect(wrapper.vm.creatorOpen).toBe(true);
+    expect(wrapper.vm.selectionRange).toEqual({ start: 3, end: 9 });
+    // Navigating to another article must reset the creation flow so
+    // NoteCreator never builds a selector with stale offsets against the
+    // new article's text (must-fix 2c).
+    await wrapper.setProps({
+      article: { number: '3', text: 'Een heel ander artikel hier.' },
+    });
+    await nextTick();
+    expect(wrapper.vm.creatorOpen).toBe(false);
+    expect(wrapper.vm.selectionRange).toBe(null);
+  });
 });

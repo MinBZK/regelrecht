@@ -263,6 +263,20 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber) {
   const exact = chars.slice(range.start, range.end).join('');
   const wantArticle = String(articleNumber);
 
+  // A whitespace-only quote is meaningless as an anchor: it satisfies the
+  // schema's minLength:1 and the resolver's non-empty guard, but a note
+  // quoting " " points at nothing a reader can see. selectionToRawRange
+  // already rejects an empty/zero-length range; this rejects the
+  // collapsed-whitespace-only case (a selection that maps to just the space
+  // between two words). Reported as orphaned so the UI asks for real text.
+  if (exact.trim() === '') {
+    return {
+      selector: { type: 'TextQuoteSelector', exact },
+      exact,
+      status: 'orphaned',
+    };
+  }
+
   // The resolver returns article-relative `char` offsets. range is into this
   // article's text, so a correct unique match has exactly these offsets in
   // this article.

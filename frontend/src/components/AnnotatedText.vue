@@ -291,11 +291,22 @@ const selBtnStyle = ref(null); // position of the floating "Notitie" button
 const anchorStyle = ref(null); // position of the popover anchor (persists)
 const selAnchorEl = useTemplateRef('selAnchorEl');
 
+// The raw [start,end) is captured here, at selectionchange time, NOT at
+// button-click time. applyHighlights mutates the DOM (it wraps <mark> and
+// calls parent.normalize(), which destroys the live Selection's boundary
+// nodes); if the DOM->raw mapping were deferred to openCreator() a draft
+// resolving between selection and click would collapse the selection and the
+// note could not be created while any other note is highlighted. Mapping the
+// selection the instant it is made — while the live selection and the DOM it
+// was made against are still in sync — removes that race entirely.
+const pendingRange = ref(null);
+
 function clearSelectionUi() {
   if (creatorOpen.value) return; // keep anchor + form while the form is open
   selBtnStyle.value = null;
   anchorStyle.value = null;
   selectionRange.value = null;
+  pendingRange.value = null;
 }
 
 function onSelectionChange() {
@@ -318,6 +329,16 @@ function onSelectionChange() {
     clearSelectionUi();
     return;
   }
+  // Map the selection to raw offsets NOW, against the DOM it was made in.
+  const rawText = props.article?.text || '';
+  const range = rawText ? selectionToRawRange(rawText, root) : null;
+  if (!range) {
+    // Unmappable selection (spans only stripped structure, or the render
+    // desynced) — no actionable note, drop the UI.
+    clearSelectionUi();
+    return;
+  }
+  pendingRange.value = range;
   // Position the button just below the selection, relative to the wrap. The
   // anchor sits at the selection start so the popover opens against the text.
   const top = rect.bottom - wrapRect.top + 6;
@@ -334,49 +355,76 @@ function onSelectionChange() {
 }
 
 function openCreator() {
-  const root = richTextEl.value;
-  const rawText = props.article?.text || '';
-  if (!root || !rawText) return;
-  const range = selectionToRawRange(rawText, root);
-  if (!range) {
-    // The selection could not be mapped (e.g. it spans only stripped
-    // structure). Drop the UI rather than open an unanchorable form.
-    selBtnStyle.value = null;
-    return;
-  }
-  selectionRange.value = range;
+  if (!pendingRange.value) return;
+  selectionRange.value = pendingRange.value;
   creatorOpen.value = true;
   selBtnStyle.value = null; // hide the button; the anchor persists for the popover
 }
 
-function onNoteCreated(note) {
+function resetCreator() {
   creatorOpen.value = false;
   selectionRange.value = null;
-  anchorStyle.value = null; // drop the now-orphaned invisible anchor span
+  pendingRange.value = null;
+  anchorStyle.value = null;
+}
+
+function onNoteCreated(note) {
+  resetCreator();
   window.getSelection?.()?.removeAllRanges();
   emit('create-note', note);
 }
 
 function onCreatorCancel() {
-  creatorOpen.value = false;
-  selectionRange.value = null;
-  anchorStyle.value = null;
+  resetCreator();
+}
+
+// The selected article can change while the creator is open (router nav).
+// selectionRange holds offsets into the OLD article text; NoteCreator's
+// :raw-text would switch to the new article and buildSelector would slice a
+// garbage substring at stale offsets — potentially persisting a note on the
+// wrong text. Tear the creation flow down on any article change.
+watch(
+  () => props.article,
+  () => {
+    resetCreator();
+    selBtnStyle.value = null;
+  },
+);
+
+// selectionchange fires on every caret move during a drag. onSelectionChange
+// rebuilds the raw<->DOM alignment (a full text-node walk), so debounce to
+// the selection settling rather than running it per tick.
+let selChangeTimer = null;
+function onSelectionChangeDebounced() {
+  if (selChangeTimer) clearTimeout(selChangeTimer);
+  selChangeTimer = setTimeout(() => {
+    selChangeTimer = null;
+    onSelectionChange();
+  }, 120);
 }
 
 watch(
   () => props.canCreate,
   (on) => {
     if (on) {
-      document.addEventListener('selectionchange', onSelectionChange);
+      document.addEventListener('selectionchange', onSelectionChangeDebounced);
     } else {
-      document.removeEventListener('selectionchange', onSelectionChange);
+      document.removeEventListener(
+        'selectionchange',
+        onSelectionChangeDebounced,
+      );
+      if (selChangeTimer) {
+        clearTimeout(selChangeTimer);
+        selChangeTimer = null;
+      }
       clearSelectionUi();
     }
   },
   { immediate: true },
 );
 onBeforeUnmount(() => {
-  document.removeEventListener('selectionchange', onSelectionChange);
+  document.removeEventListener('selectionchange', onSelectionChangeDebounced);
+  if (selChangeTimer) clearTimeout(selChangeTimer);
 });
 </script>
 

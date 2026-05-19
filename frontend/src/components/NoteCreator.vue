@@ -173,8 +173,14 @@ function buildBody() {
 }
 
 const statusMessage = computed(() => {
+  // 'ambiguous' here covers two cases buildSelector cannot tell apart from
+  // the caller's side: the quote genuinely repeats verbatim, or the resolver
+  // anchored a unique/fuzzy match somewhere other than the selection (so it
+  // was rejected as a mis-anchor). Both are fixed the same way — pick a
+  // longer, verbatim fragment — so the message covers both without
+  // over-claiming which it is.
   if (selectorStatus.value === 'ambiguous') {
-    return 'Deze selectie komt meerdere keren voor, ook met context. Selecteer een langer of unieker fragment.';
+    return 'Deze selectie kon niet eenduidig op de gekozen tekst worden vastgepind (komt vaker voor of week net af). Selecteer een langer fragment dat exact zo in de wettekst staat.';
   }
   if (selectorStatus.value === 'orphaned') {
     return 'De resolver vindt deze selectie niet terug. Selecteer tekst die exact in de wettekst staat.';

@@ -231,19 +231,63 @@ const notesForArticle = computed(() => [
   ...draftNotesForArticle.value,
 ]);
 
+// AnnotatedText paints a flat partition: a draft whose span overlaps a
+// committed note's span resolves fine but is silently not highlighted (the
+// earlier note wins, RFC-018's documented overlapping-notes limitation).
+// Through the write path that is confusing — the count says "1 concept" but
+// nothing lights up — so detect it and tell the user explicitly.
+const hiddenDraftCount = computed(() => {
+  const committed = committedNotesForArticle.value.flatMap((n) => n.spans);
+  let hidden = 0;
+  for (const d of draftNotesForArticle.value) {
+    for (const s of d.spans) {
+      const overlaps = committed.some(
+        (c) => s.start < c.end && c.start < s.end,
+      );
+      if (overlaps) {
+        hidden++;
+        break;
+      }
+    }
+  }
+  return hidden;
+});
+
 function onCreateNote(note) {
   addDraft(note);
 }
 
+// Wiping drafts is irreversible (local-only until exported), so it goes
+// through a confirm modal rather than firing on the bare button click.
+const clearDraftsModalEl = ref(null);
+function askClearDrafts() {
+  clearDraftsModalEl.value?.show?.();
+}
+function confirmClearDrafts() {
+  clearDrafts();
+  clearDraftsModalEl.value?.close?.();
+}
+
+const exporting = ref(false);
 async function exportNotes() {
-  const text = await exportYaml();
-  const blob = new Blob([text], { type: 'text/yaml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'annotations.yaml';
-  a.click();
-  URL.revokeObjectURL(url);
+  if (exporting.value) return; // a second click would download a duplicate
+  exporting.value = true;
+  let url;
+  try {
+    const text = await exportYaml();
+    const blob = new Blob([text], { type: 'text/yaml' });
+    url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'annotations.yaml';
+    a.click();
+  } finally {
+    // Revoke on a later tick: a programmatic anchor download starts
+    // asynchronously, and revoking synchronously after click() races the
+    // browser fetching the blob (unreliable in Safari/Firefox).
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 0);
+    exporting.value = false;
+  }
 }
 
 const resultSheetOpen = ref(false);
@@ -1445,6 +1489,14 @@ async function handleActionSave() {
                     >
                       <span class="draft-notes-bar__count">
                         {{ draftCount }} concept-notitie(s), nog niet opgeslagen
+                        <span
+                          v-if="hiddenDraftCount > 0"
+                          class="draft-notes-bar__hidden"
+                          data-testid="draft-overlap-warning"
+                        >
+                          — {{ hiddenDraftCount }} overlapt een bestaande
+                          notitie en wordt niet gemarkeerd
+                        </span>
                       </span>
                       <span class="draft-notes-bar__actions">
                         <nldd-button
@@ -1458,7 +1510,7 @@ async function handleActionSave() {
                           variant="destructive"
                           text="Concepten wissen"
                           data-testid="clear-drafts-btn"
-                          @click="clearDrafts"
+                          @click="askClearDrafts"
                         ></nldd-button>
                       </span>
                     </nldd-container>
@@ -1618,6 +1670,20 @@ async function handleActionSave() {
     @harvest-available="onSearchHarvestAvailable"
   />
 
+  <!-- Drafts are local-only until exported (RFC-018: git is the source of
+       truth). Wiping them is irreversible and the only copy, so confirm. -->
+  <nldd-modal-dialog
+    ref="clearDraftsModalEl"
+    variant="alert"
+    text="Alle concept-notities wissen?"
+    supporting-text="Niet-geëxporteerde concepten gaan definitief verloren. Exporteer eerst als je ze wilt bewaren."
+    data-testid="clear-drafts-confirm"
+    @close="clearDraftsModalEl?.close?.()"
+  >
+    <nldd-button slot="actions" variant="primary" text="Behoud concepten" @click="clearDraftsModalEl?.close?.()"></nldd-button>
+    <nldd-button slot="actions" variant="destructive" text="Wis alles" data-testid="clear-drafts-confirm-btn" @click="confirmClearDrafts"></nldd-button>
+  </nldd-modal-dialog>
+
   <!-- Trace sheet — execution trace + expected outcomes for the most
        recently executed scenario. Opened from a scenario card's "Toon
        resultaat" button. -->
@@ -1763,6 +1829,10 @@ async function handleActionSave() {
 .draft-notes-bar__count {
   font-size: 0.85rem;
   font-weight: 600;
+}
+.draft-notes-bar__hidden {
+  font-weight: 400;
+  color: #c2410c;
 }
 .draft-notes-bar__actions {
   display: flex;

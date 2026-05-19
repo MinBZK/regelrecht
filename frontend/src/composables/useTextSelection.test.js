@@ -105,6 +105,21 @@ describe('buildSelector', () => {
     };
   }
 
+  it('rejects a whitespace-only exact without calling the resolver', () => {
+    // A selection that maps to just the space between two words: schema
+    // minLength:1 and the resolver's non-empty guard would both pass it,
+    // but a note quoting " " anchors nothing visible. Must short-circuit.
+    const r = 'de  normpremie'; // two spaces at 2..4
+    let called = false;
+    const engine = engineReturning(() => {
+      called = true;
+      return { status: 'found', matches: [{}] };
+    });
+    const out = buildSelector(r, { start: 2, end: 4 }, 'w', engine, '1');
+    expect(out.status).toBe('orphaned');
+    expect(called).toBe(false);
+  });
+
   it('accepts a bare selector only when the unique match IS our selection', () => {
     const range = { start: 10, end: 20 }; // "normpremie" (first)
     const engine = engineReturning(() => ({
