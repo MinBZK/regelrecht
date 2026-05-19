@@ -1481,39 +1481,33 @@ async function handleActionSave() {
                          write path MVP: no write API, git stays the source
                          of truth). The export downloads committed + draft
                          notes as one sidecar YAML to commit by hand. -->
-                    <nldd-container
+                    <nldd-inline-dialog
                       v-if="canCreateNotes && draftCount > 0"
-                      padding="12"
-                      class="draft-notes-bar"
                       data-testid="draft-notes-bar"
+                      :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
+                      :supporting-text="
+                        hiddenDraftCount > 0
+                          ? `${hiddenDraftCount} overlapt een bestaande notitie en wordt niet gemarkeerd.`
+                          : undefined
+                      "
+                      :icon-color="hiddenDraftCount > 0 ? 'warning' : undefined"
                     >
-                      <span class="draft-notes-bar__count">
-                        {{ draftCount }} concept-notitie(s), nog niet opgeslagen
-                        <span
-                          v-if="hiddenDraftCount > 0"
-                          class="draft-notes-bar__hidden"
-                          data-testid="draft-overlap-warning"
-                        >
-                          — {{ hiddenDraftCount }} overlapt een bestaande
-                          notitie en wordt niet gemarkeerd
-                        </span>
-                      </span>
-                      <span class="draft-notes-bar__actions">
-                        <nldd-button
-                          size="md"
-                          text="Exporteer YAML"
-                          data-testid="export-notes-btn"
-                          @click="exportNotes"
-                        ></nldd-button>
-                        <nldd-button
-                          size="md"
-                          variant="destructive"
-                          text="Concepten wissen"
-                          data-testid="clear-drafts-btn"
-                          @click="askClearDrafts"
-                        ></nldd-button>
-                      </span>
-                    </nldd-container>
+                      <nldd-button
+                        slot="actions"
+                        size="md"
+                        text="Exporteer YAML"
+                        data-testid="export-notes-btn"
+                        @click="exportNotes"
+                      ></nldd-button>
+                      <nldd-button
+                        slot="actions"
+                        size="md"
+                        variant="destructive"
+                        text="Concepten wissen"
+                        data-testid="clear-drafts-btn"
+                        @click="askClearDrafts"
+                      ></nldd-button>
+                    </nldd-inline-dialog>
                   </template>
                 </template>
                 <ArticleText v-else :article="selectedArticle" />
@@ -1814,28 +1808,5 @@ async function handleActionSave() {
   padding: 8px 12px;
   border: 1px solid #fecaca;
   border-radius: 6px;
-}
-
-.draft-notes-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-  border: 1px dashed rgba(249, 115, 22, 0.6);
-  border-radius: 6px;
-}
-.draft-notes-bar__count {
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-.draft-notes-bar__hidden {
-  font-weight: 400;
-  color: #c2410c;
-}
-.draft-notes-bar__actions {
-  display: flex;
-  gap: 8px;
 }
 </style>
