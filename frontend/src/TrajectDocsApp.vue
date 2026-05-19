@@ -1,13 +1,10 @@
 <script setup>
 // Root view for the /trajects/:trajectId/docs/:sourceId?/:path* route.
 //
-// Two-pane layout: DocsSidebar (left) lists the traject's corpus sources
-// and their docs trees; DocsContent (right) renders the currently-selected
-// page as markdown (+ mermaid).
-//
-// Selection state lives in the URL; clicks update the router and let route
-// reactivity drive the data refetch. That way refresh/back/forward all
-// work without local-state tricks.
+// Layout mirrors LibraryApp: `nldd-app-view` → `nldd-navigation-split-view`
+// with a navigation pane on the left (DocsSidebar) and the main pane on
+// the right (DocsContent). Selection state lives in the URL — clicks push
+// the route, and the route drives all data refetches via the composables.
 
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -27,7 +24,7 @@ const path = computed(() => {
   return match || '';
 });
 
-const { tree, loading: treeLoading, error: treeError } = useDocsTree(trajectId);
+const { tree, error: treeError } = useDocsTree(trajectId);
 const {
   text,
   loading: pageLoading,
@@ -49,57 +46,37 @@ const hasSelection = computed(() => sourceId.value && path.value);
 </script>
 
 <template>
-  <div class="traject-docs">
-    <DocsSidebar
-      :tree="tree"
-      :selected-source="sourceId"
-      :selected-path="path"
-      @select="onSelect"
-    />
-    <main class="docs-main">
-      <div v-if="treeError" class="error">
-        Kon docs-overzicht niet laden. Mogelijk ben je geen lid van dit traject.
-      </div>
-      <div v-else-if="!hasSelection && !treeLoading" class="placeholder">
-        <h1>Documentatie</h1>
-        <p>Kies een pagina links om te lezen.</p>
-      </div>
-      <div v-else-if="pageError" class="error">
-        Kon de pagina niet laden.
-      </div>
-      <div v-else-if="pageLoading" class="placeholder">Laden…</div>
-      <DocsContent v-else :text="text" />
-    </main>
-  </div>
+  <nldd-app-view>
+    <nldd-navigation-split-view>
+      <nldd-split-view-pane slot="navigation">
+        <nldd-container padding="12">
+          <DocsSidebar
+            :tree="tree"
+            :selected-source="sourceId"
+            :selected-path="path"
+            @select="onSelect"
+          />
+        </nldd-container>
+      </nldd-split-view-pane>
+
+      <nldd-split-view-pane>
+        <nldd-container padding="16">
+          <nldd-inline-dialog
+            v-if="treeError"
+            text="Kon docs-overzicht niet laden. Mogelijk ben je geen lid van dit traject."
+          ></nldd-inline-dialog>
+          <nldd-inline-dialog
+            v-else-if="!hasSelection"
+            text="Kies een pagina links om te lezen."
+          ></nldd-inline-dialog>
+          <nldd-inline-dialog
+            v-else-if="pageError"
+            text="Kon de pagina niet laden."
+          ></nldd-inline-dialog>
+          <nldd-inline-dialog v-else-if="pageLoading" text="Laden…"></nldd-inline-dialog>
+          <DocsContent v-else :text="text" />
+        </nldd-container>
+      </nldd-split-view-pane>
+    </nldd-navigation-split-view>
+  </nldd-app-view>
 </template>
-
-<style scoped>
-.traject-docs {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) 1fr;
-  min-height: calc(100vh - var(--site-header-height, 56px));
-}
-
-.docs-main {
-  padding: 1.5rem 2rem;
-  overflow-x: hidden;
-}
-
-.placeholder {
-  color: var(--nldd-color-text-subtle, #666);
-}
-
-.error {
-  padding: 1rem;
-  background: var(--nldd-color-danger-subtle, #fdecea);
-  border-left: 4px solid var(--nldd-color-danger, #c1432a);
-  border-radius: 2px;
-  color: var(--nldd-color-danger-strong, #842c1e);
-}
-
-@media (max-width: 768px) {
-  .traject-docs {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

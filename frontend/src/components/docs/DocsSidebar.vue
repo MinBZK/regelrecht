@@ -1,15 +1,17 @@
 <script setup>
-// Left-rail navigation for the docs view: one section per source attached
-// to the traject, each section listing the markdown files in that source's
-// docs/ tree. Clicking a file emits ['select', { sourceId, path }] so the
-// parent (TrajectDocsApp) can update its router state.
+// Left-rail navigation for the docs view. One `<nldd-simple-section>` per
+// source the user has access to (typically one per corpus repo attached
+// to the traject), with files grouped by their top-level directory
+// (analysis/, diagrams/, etc.) into separate `<nldd-list>` blocks. Mirrors
+// the LibraryApp law/article sidebar pattern: nldd-list-item type="button"
+// with :selected, click emits ['select', { sourceId, path }].
 
 import { computed } from 'vue';
 
 const props = defineProps({
   /** Shape: { sources: [{ source_id, name, tree: [{ path }] }] } */
   tree: { type: Object, default: () => ({ sources: [] }) },
-  /** Currently selected page (highlight in sidebar). */
+  /** Currently selected page (highlights one row). */
   selectedSource: { type: String, default: '' },
   selectedPath: { type: String, default: '' },
 });
@@ -17,7 +19,7 @@ const props = defineProps({
 defineEmits(['select']);
 
 /** Group tree entries by their top-level folder so analysis/, diagrams/,
- * issues/ etc. each become a collapsible section per source. */
+ * etc. each become a labelled sub-list inside the source's section. */
 function group(tree) {
   const groups = new Map();
   for (const entry of tree || []) {
@@ -41,7 +43,7 @@ function isSelected(sourceId, path) {
 }
 
 function prettify(path) {
-  // Drop the .md extension and the folder prefix for the label.
+  // Drop the .md extension and the folder prefix; capitalize-ish.
   const segments = path.replace(/\.md$/, '').split('/');
   const tail = segments[segments.length - 1];
   return tail.replace(/[-_]/g, ' ');
@@ -49,101 +51,38 @@ function prettify(path) {
 </script>
 
 <template>
-  <nav class="docs-sidebar" aria-label="Docs-navigatie">
-    <div v-if="groupedSources.length === 0" class="empty">
-      Geen documentatie beschikbaar voor dit traject.
-    </div>
-    <section
-      v-for="src in groupedSources"
-      :key="src.source_id"
-      class="source-section"
-    >
-      <h2 class="source-name">{{ src.name }}</h2>
-      <div v-for="grp in src.groups" :key="grp.name" class="group">
-        <h3 class="group-name">{{ grp.name }}</h3>
-        <ul>
-          <li v-for="entry in grp.items" :key="entry.path">
-            <button
-              type="button"
-              :class="{ active: isSelected(src.source_id, entry.path) }"
-              @click="$emit('select', { sourceId: src.source_id, path: entry.path })"
-            >
-              {{ prettify(entry.path) }}
-            </button>
-          </li>
-        </ul>
-      </div>
-    </section>
-  </nav>
+  <nldd-inline-dialog
+    v-if="groupedSources.length === 0"
+    text="Geen documentatie beschikbaar voor dit traject."
+  ></nldd-inline-dialog>
+
+  <nldd-simple-section
+    v-for="src in groupedSources"
+    :key="src.source_id"
+    :heading="src.name"
+  >
+    <template v-for="grp in src.groups" :key="grp.name">
+      <nldd-title :text="grp.name" size="sm" class="docs-group-title"></nldd-title>
+      <nldd-list variant="simple">
+        <nldd-list-item
+          v-for="entry in grp.items"
+          :key="entry.path"
+          size="md"
+          type="button"
+          :selected="isSelected(src.source_id, entry.path) || undefined"
+          @click="$emit('select', { sourceId: src.source_id, path: entry.path })"
+        >
+          <nldd-text-cell :text="prettify(entry.path)"></nldd-text-cell>
+        </nldd-list-item>
+      </nldd-list>
+    </template>
+  </nldd-simple-section>
 </template>
 
 <style scoped>
-.docs-sidebar {
-  padding: 1rem;
-  font-size: 0.9rem;
-  border-right: 1px solid var(--nldd-color-border, #e5e5e5);
-  overflow-y: auto;
-}
-
-.docs-sidebar .empty {
-  color: var(--nldd-color-text-subtle, #666);
-  font-style: italic;
-}
-
-.source-section + .source-section {
-  margin-top: 1.25rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--nldd-color-border, #e5e5e5);
-}
-
-.source-name {
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin: 0 0 0.4rem;
-  color: var(--nldd-color-text-subtle, #555);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.group-name {
-  font-size: 0.78rem;
-  font-weight: 600;
-  margin: 0.6rem 0 0.25rem;
-  color: var(--nldd-color-text, #333);
-}
-
-.docs-sidebar ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.docs-sidebar li {
-  margin: 0.1rem 0;
-}
-
-.docs-sidebar button {
+.docs-group-title {
   display: block;
-  width: 100%;
-  padding: 0.3rem 0.5rem;
-  background: transparent;
-  border: none;
-  text-align: left;
-  font-size: inherit;
-  font-family: inherit;
-  color: inherit;
-  border-radius: 3px;
-  cursor: pointer;
   text-transform: capitalize;
-}
-
-.docs-sidebar button:hover {
-  background: var(--nldd-color-surface-subtle, #f0f0f0);
-}
-
-.docs-sidebar button.active {
-  background: var(--nldd-color-primary-subtle, #e6effe);
-  color: var(--nldd-color-primary, #0066cc);
-  font-weight: 500;
+  margin: 0.75rem 0 0.25rem;
 }
 </style>
