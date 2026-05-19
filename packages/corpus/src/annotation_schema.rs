@@ -119,23 +119,25 @@ pub enum AppendOutcome {
 /// and the new notes are appended as text.
 ///
 /// - Base has an `annotations:` block: serialise only the *new, deduped*
-///   notes as a YAML sequence, re-indent by two spaces, and append after
-///   the existing content. Existing bytes are untouched, so the git diff
-///   is exactly the added lines.
+///   notes as a YAML sequence, re-indented to match the base sequence's
+///   actual list-item indentation (detected from the text, not assumed),
+///   and append after the existing content. Existing bytes are untouched,
+///   so the git diff is exactly the added lines. This handles both the
+///   serde_yaml_ng `- ` at column 0 (what `serialize_annotation_doc`
+///   itself produces, so a first save's file and a second save's append
+///   agree) and a 2-space curated file.
 /// - No base, or a base without an `annotations:` key (nothing to
 ///   preserve): build a fresh full document. There is no history or
 ///   comment to protect in that case.
 /// - All new notes already present: [`AppendOutcome::NoChange`].
 ///
-/// Format assumption: the 2-space re-indent produces a valid file only
-/// when the base uses the 2-space LF list convention every corpus tool
-/// emits (`js-yaml` export, `serde_yaml_ng`, the committed sidecars). A
-/// hand-edited base with 4-space indent, a flow sequence, or CRLF endings
-/// would yield a malformed or mixed-ending result. This is **not** a
-/// silent corruption: the caller re-parses and schema-validates the
-/// produced text, so such a base fails the save loudly rather than
-/// committing garbage. It is a hard stop on an exotic layout, not a
-/// "preserves any file" guarantee.
+/// Remaining format assumption: a uniform-space block sequence with LF
+/// endings (every corpus tool: `js-yaml` export, `serde_yaml_ng`, the
+/// committed sidecars). A flow sequence (`annotations: [...]`) or CRLF
+/// base still yields a malformed result, but that is caught: the caller
+/// re-parses and schema-validates the produced text, so such a base fails
+/// the save loudly rather than committing garbage. Not a silent
+/// corruption, and no longer the everyday-path break it was.
 ///
 /// `new_notes` are assumed schema-checked by the caller; the caller must
 /// still validate the *resulting* document.
@@ -186,32 +188,74 @@ pub fn append_notes_to_sidecar(
         return Ok(AppendOutcome::Write(serialize_annotation_doc(&doc)?));
     }
 
-    // Serialise ONLY the new notes as a sequence, then re-indent every
-    // line by two spaces so the items sit under the existing
-    // `annotations:` key (the sidecar's list convention). serde_yaml_ng
-    // emits a top-level sequence as `- ...` at column 0 with 2-space field
-    // indentation; prefixing two spaces yields `  - ...`.
+    // Detect the base sequence's actual list-item indentation and match
+    // it. Earlier this hardcoded two spaces, which broke whenever the base
+    // used a different indent — including the common case where the base
+    // was itself produced by `serialize_annotation_doc` (serde_yaml_ng
+    // emits `- ` at column 0), so the first save's file and the second
+    // save's append disagreed and produced invalid YAML. We read the real
+    // indent from the file instead of assuming one.
+    let base = base_text.unwrap_or_default();
+    let base_indent = sequence_item_indent(base);
+
+    // serde_yaml_ng emits a top-level sequence as `- ...` at column 0.
+    // Re-indent each line by `base_indent` spaces so the new items sit at
+    // exactly the same depth as the existing ones under `annotations:`.
     let owned: Vec<serde_json::Value> = to_add.iter().map(|n| (*n).clone()).collect();
     let seq = serde_yaml_ng::to_string(&owned)
         .map_err(|e| format!("failed to serialise new notes: {e}"))?;
+    let pad = " ".repeat(base_indent);
     let indented: String = seq
         .lines()
         .map(|line| {
             if line.is_empty() {
                 String::from("\n")
             } else {
-                format!("  {line}\n")
+                format!("{pad}{line}\n")
             }
         })
         .collect();
 
-    let base = base_text.unwrap_or_default();
     // Exactly one newline between the existing content and the appended
     // items, regardless of whether the base ended with 0, 1 or more.
     let mut out = base.trim_end_matches('\n').to_string();
     out.push('\n');
     out.push_str(&indented);
     Ok(AppendOutcome::Write(out))
+}
+
+/// Indentation (in spaces) of the `annotations:` block-sequence items in a
+/// sidecar's text.
+///
+/// A YAML block sequence under `annotations:` has items written as
+/// `<indent>- ...`. serde_yaml_ng emits them at column 0; a hand-curated
+/// file may use 2. We must append new items at the *same* depth or the
+/// result is structurally invalid YAML (the bug that produced
+/// "did not find expected key"). Scans from the `annotations:` key to the
+/// first sequence-entry line and returns its leading-space count; falls
+/// back to 0 (serde_yaml_ng's native depth) when it cannot tell.
+fn sequence_item_indent(text: &str) -> usize {
+    let mut after_key = false;
+    for line in text.lines() {
+        if !after_key {
+            // Top-level `annotations:` key (no leading space).
+            if line.trim_end() == "annotations:" || line.starts_with("annotations:") {
+                after_key = true;
+            }
+            continue;
+        }
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed.starts_with("- ") || trimmed == "-" {
+            return line.len() - trimmed.len();
+        }
+        // First non-blank, non-comment line after the key that is not a
+        // sequence entry: not a block sequence we can match. Bail to 0.
+        break;
+    }
+    0
 }
 
 /// The law id a note's `target.source` URI refers to.
@@ -515,5 +559,51 @@ annotations:
             append_notes_to_sidecar(None, &[], "https://s"),
             Ok(AppendOutcome::NoChange)
         ));
+    }
+
+    #[test]
+    fn second_append_onto_a_serde_produced_base_stays_valid() {
+        // The live 500: the FIRST save builds the file via the fresh-doc
+        // path (serialize_annotation_doc → serde_yaml_ng → `- ` at column
+        // 0). The SECOND save reads that file as the base and appends. The
+        // old code re-indented by a hardcoded 2 spaces, producing a
+        // column-2 item after column-0 items → "did not find expected
+        // key". This pins the round-trip: serialise, then append, then the
+        // result must still parse and have grown by one.
+        let n1 = note("eerste");
+        let first = match append_notes_to_sidecar(None, &[n1], "https://s") {
+            Ok(AppendOutcome::Write(t)) => t,
+            _ => panic!("expected fresh-doc Write"),
+        };
+        // Sanity: the fresh doc really is column-0 (the failing shape).
+        assert_eq!(sequence_item_indent(&first), 0);
+
+        let n2 = note("tweede");
+        let second = match append_notes_to_sidecar(Some(&first), &[n2], "https://s") {
+            Ok(AppendOutcome::Write(t)) => t,
+            other => panic!(
+                "expected Write, got NoChange={}",
+                matches!(other, Ok(AppendOutcome::NoChange))
+            ),
+        };
+        // The whole point: it parses (it did NOT before the fix).
+        let doc: serde_json::Value = serde_yaml_ng::from_str(&second)
+            .expect("second append onto a serde-produced base must stay valid YAML");
+        assert_eq!(doc["annotations"].as_array().unwrap().len(), 2);
+        // Base preserved verbatim as prefix; only lines added.
+        assert!(second.starts_with(first.trim_end_matches('\n')));
+    }
+
+    #[test]
+    fn sequence_item_indent_reads_real_depth() {
+        // serde_yaml_ng / fresh-doc shape: column 0.
+        assert_eq!(
+            sequence_item_indent("$schema: x\nannotations:\n- type: Annotation\n"),
+            0
+        );
+        // Curated 2-space shape.
+        assert_eq!(sequence_item_indent(CURATED_BASE), 2);
+        // No sequence yet → fall back to 0 (fresh-doc path handles it).
+        assert_eq!(sequence_item_indent("$schema: x\nannotations: []\n"), 0);
     }
 }

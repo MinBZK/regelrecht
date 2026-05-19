@@ -325,6 +325,14 @@ const notesSaveError = ref(null);
 // the work vanished (the drafts get cleared either way).
 const notesSaveStatus = ref(null);
 const notesSourcesFailed = ref(false);
+// The save status/error describe the LAST save. Once the draft set
+// changes (a new note added, or drafts wiped), that confirmation is stale
+// and showing "Opslaan gelukt" next to "1 concept, nog niet opgeslagen"
+// is a contradictory state. Clear both whenever the draft count moves.
+watch(draftCount, () => {
+  notesSaveStatus.value = null;
+  notesSaveError.value = null;
+});
 async function loadNotesSources() {
   if (notesSources.value.length) return;
   try {
