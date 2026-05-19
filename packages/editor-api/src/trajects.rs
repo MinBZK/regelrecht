@@ -545,25 +545,52 @@ pub async fn add_member(
         .map_err(db_err("lookup account"))?;
     let target_id = target.ok_or(StatusCode::NOT_FOUND)?.0;
 
-    // If this upsert would convert an existing beheerder to lid, make sure
-    // at least one other beheerder remains — otherwise add_member would be
-    // a back-door around the same guard that update_member and remove_member
-    // already enforce.
-    if req.role != "beheerder" {
-        ensure_other_beheerder(pool, id, target_id).await?;
-    }
-
-    sqlx::query(
+    // Guard the "would demote the last beheerder" case atomically in the
+    // same statement so it can't race with a concurrent leave/remove.
+    // Without this, two concurrent calls each read the guard and see the
+    // other beheerder, then both writes commit, leaving the traject with
+    // zero beheerders. By embedding the guard in the INSERT … SELECT
+    // WHERE clause we tie the check to the same row-level lock the write
+    // takes.
+    //
+    // The WHERE evaluates to true when any of:
+    //   * the new role is `beheerder` (promotion/no-op, never reduces count)
+    //   * the target isn't currently a beheerder (no demotion happening)
+    //   * another beheerder exists for this traject (demotion is safe)
+    // When all three are false (target is the sole beheerder being demoted
+    // to lid) the SELECT returns no row, the INSERT runs zero times, no
+    // conflict triggers, and `rows_affected` is 0 → CONFLICT.
+    let affected = sqlx::query(
         "INSERT INTO traject_members (traject_id, account_id, role)
-         VALUES ($1, $2, $3::traject_role)
-         ON CONFLICT (traject_id, account_id) DO UPDATE SET role = EXCLUDED.role",
+         SELECT $1, $2, $3::traject_role
+         WHERE
+             $3::traject_role = 'beheerder'
+             OR NOT EXISTS (
+                 SELECT 1 FROM traject_members tm
+                 WHERE tm.traject_id = $1
+                   AND tm.account_id = $2
+                   AND tm.role = 'beheerder'
+             )
+             OR EXISTS (
+                 SELECT 1 FROM traject_members tm2
+                 WHERE tm2.traject_id = $1
+                   AND tm2.role = 'beheerder'
+                   AND tm2.account_id <> $2
+             )
+         ON CONFLICT (traject_id, account_id) DO UPDATE
+             SET role = EXCLUDED.role",
     )
     .bind(id)
     .bind(target_id)
     .bind(&req.role)
     .execute(pool)
     .await
-    .map_err(db_err("add member"))?;
+    .map_err(db_err("add member"))?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(StatusCode::CONFLICT);
+    }
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -579,13 +606,27 @@ pub async fn update_member(
     require_beheerder(pool, id, account.id).await?;
     validate_role(&req.role)?;
 
-    if req.role != "beheerder" {
-        ensure_other_beheerder(pool, id, account_id).await?;
-    }
-
+    // Atomic guard against demoting the last beheerder. The UPDATE only
+    // fires when at least one of these holds:
+    //   * the new role is `beheerder` (no demote)
+    //   * the row's current role isn't `beheerder` (no demote)
+    //   * another beheerder exists for this traject (demote is safe)
+    // Otherwise the row stays untouched, `rows_affected` is 0, and we
+    // disambiguate "row missing" (NOT_FOUND) from "guard blocked"
+    // (CONFLICT) via a follow-up read on the cold path.
     let affected = sqlx::query(
         "UPDATE traject_members SET role = $3::traject_role
-         WHERE traject_id = $1 AND account_id = $2",
+         WHERE traject_id = $1 AND account_id = $2
+           AND (
+               $3::traject_role = 'beheerder'
+               OR role <> 'beheerder'
+               OR EXISTS (
+                   SELECT 1 FROM traject_members tm2
+                   WHERE tm2.traject_id = $1
+                     AND tm2.role = 'beheerder'
+                     AND tm2.account_id <> $2
+               )
+           )",
     )
     .bind(id)
     .bind(account_id)
@@ -596,10 +637,9 @@ pub async fn update_member(
     .rows_affected();
 
     if affected == 0 {
-        Err(StatusCode::NOT_FOUND)
-    } else {
-        Ok(StatusCode::NO_CONTENT)
+        return distinguish_member_missing_or_conflict(pool, id, account_id).await;
     }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// DELETE /api/trajects/:id/members/:account_id — remove a member.
@@ -610,22 +650,35 @@ pub async fn remove_member(
 ) -> Result<StatusCode, StatusCode> {
     let pool = get_pool(&state)?;
     require_beheerder(pool, id, account.id).await?;
-    ensure_other_beheerder(pool, id, account_id).await?;
 
-    let affected =
-        sqlx::query("DELETE FROM traject_members WHERE traject_id = $1 AND account_id = $2")
-            .bind(id)
-            .bind(account_id)
-            .execute(pool)
-            .await
-            .map_err(db_err("remove member"))?
-            .rows_affected();
+    // Atomic guard: DELETE only succeeds when the target isn't the sole
+    // beheerder. The EXISTS condition is part of the same statement so
+    // two concurrent removes can't both pass the check and then both
+    // commit a delete.
+    let affected = sqlx::query(
+        "DELETE FROM traject_members
+         WHERE traject_id = $1 AND account_id = $2
+           AND (
+               role <> 'beheerder'
+               OR EXISTS (
+                   SELECT 1 FROM traject_members tm2
+                   WHERE tm2.traject_id = $1
+                     AND tm2.role = 'beheerder'
+                     AND tm2.account_id <> $2
+               )
+           )",
+    )
+    .bind(id)
+    .bind(account_id)
+    .execute(pool)
+    .await
+    .map_err(db_err("remove member"))?
+    .rows_affected();
 
     if affected == 0 {
-        Err(StatusCode::NOT_FOUND)
-    } else {
-        Ok(StatusCode::NO_CONTENT)
+        return distinguish_member_missing_or_conflict(pool, id, account_id).await;
     }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// POST /api/trajects/:id/leave — caller removes themselves from the
@@ -645,19 +698,39 @@ pub async fn leave(
 ) -> Result<StatusCode, StatusCode> {
     let pool = get_pool(&state)?;
     require_membership(pool, id, account.id).await?;
-    ensure_other_beheerder(pool, id, account.id).await?;
 
-    let affected =
-        sqlx::query("DELETE FROM traject_members WHERE traject_id = $1 AND account_id = $2")
-            .bind(id)
-            .bind(account.id)
-            .execute(pool)
-            .await
-            .map_err(db_err("leave traject"))?
-            .rows_affected();
+    // Atomic guard, same shape as remove_member: the DELETE only runs
+    // when the caller is a lid or another beheerder remains. Two
+    // beheerders calling `leave` concurrently can't both pass a separate
+    // count then both delete — the second one's DELETE re-evaluates the
+    // EXISTS under Postgres' READ COMMITTED snapshot semantics and ends
+    // up matching zero rows.
+    let affected = sqlx::query(
+        "DELETE FROM traject_members
+         WHERE traject_id = $1 AND account_id = $2
+           AND (
+               role <> 'beheerder'
+               OR EXISTS (
+                   SELECT 1 FROM traject_members tm2
+                   WHERE tm2.traject_id = $1
+                     AND tm2.role = 'beheerder'
+                     AND tm2.account_id <> $2
+               )
+           )",
+    )
+    .bind(id)
+    .bind(account.id)
+    .execute(pool)
+    .await
+    .map_err(db_err("leave traject"))?
+    .rows_affected();
 
     if affected == 0 {
-        return Err(StatusCode::NOT_FOUND);
+        // require_membership passed above, so the most likely cause is
+        // the guard. The narrow window where the row was concurrently
+        // removed between the membership check and the DELETE would
+        // also yield 0 — distinguish with one more read.
+        return distinguish_member_missing_or_conflict(pool, id, account.id).await;
     }
 
     let active: Option<Uuid> = session
@@ -674,25 +747,24 @@ pub async fn leave(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Guard that prevents removing the last beheerder of a traject.
-async fn ensure_other_beheerder(
+/// Disambiguate "row not found" (404) from "guard blocked the write"
+/// (409) after a DELETE/UPDATE on `traject_members` came back with zero
+/// rows affected. The atomic guards embedded in the write statements
+/// can't tell these apart by themselves; this lookup runs on the cold
+/// path only.
+async fn distinguish_member_missing_or_conflict(
     pool: &PgPool,
     traject_id: Uuid,
-    candidate: Uuid,
-) -> Result<(), StatusCode> {
-    let row: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM traject_members
-         WHERE traject_id = $1 AND role = 'beheerder' AND account_id <> $2",
-    )
-    .bind(traject_id)
-    .bind(candidate)
-    .fetch_one(pool)
-    .await
-    .map_err(db_err("count beheerders"))?;
-    if row.0 == 0 {
-        Err(StatusCode::CONFLICT)
+    account_id: Uuid,
+) -> Result<StatusCode, StatusCode> {
+    if member_role(pool, traject_id, account_id)
+        .await
+        .map_err(db_err("post-write membership lookup"))?
+        .is_none()
+    {
+        Err(StatusCode::NOT_FOUND)
     } else {
-        Ok(())
+        Err(StatusCode::CONFLICT)
     }
 }
 
