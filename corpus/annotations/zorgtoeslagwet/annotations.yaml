@@ -71,3 +71,32 @@ annotations:
         value: open-norm-partial
         purpose: tagging
     workflow: open
+
+  # The resolved end of the same lifecycle (RFC-018 Decision 6). The concrete
+  # percentage for a verzekerde with a toeslagpartner is spelled out in the
+  # law text and is modelled in machine_readable, so this part of the open
+  # norm is filled in: the questioning note is kept for audit history but its
+  # workflow is resolved.
+  - type: Annotation
+    motivation: questioning
+    creator: interpreter-team
+    target:
+      source: regelrecht://zorgtoeslagwet
+      selector:
+        type: TextQuoteSelector
+        exact: 4,273 procent
+        prefix: 'voor een verzekerde met een toeslagpartner '
+        suffix: ' van het'
+    body:
+      - type: TextualBody
+        value: >-
+          Het percentage voor een verzekerde met toeslagpartner is in de
+          wettekst opgenomen en gemodelleerd in machine_readable. Deze open
+          norm is daarmee ingevuld; de note blijft staan voor de auditketen.
+        purpose: questioning
+        format: text/plain
+        language: nl
+      - type: TextualBody
+        value: open-norm-partial
+        purpose: tagging
+    workflow: resolved
