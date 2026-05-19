@@ -196,6 +196,7 @@ defineExpose({ popoverEl });
     ref="popoverEl"
     accessible-label="Notitie aanmaken"
     placement="bottom-start"
+    width="480px"
   >
     <div v-if="range" class="note-creator" data-testid="note-creator">
       <div class="nc-quote">
@@ -314,13 +315,13 @@ defineExpose({ popoverEl });
 .note-creator {
   font-family: 'RijksSansVF', system-ui, sans-serif;
   padding: 16px;
-  /* Grow with the content (the 4-button type control + textarea are the
-     widest elements) instead of a fixed 360px that ellipsised the
-     segmented-control labels. Clamp so it stays readable and never wider
-     than the viewport. */
-  width: max-content;
-  min-width: 420px;
-  max-width: min(640px, 92vw);
+  /* The popover host owns the width (set via the `width="480px"` attribute on
+     <nldd-popover>, which it reflects to --components-popover-default-width;
+     its default is only 320px, too narrow for the 4-button type control).
+     The slotted card just fills that, so a child width here would only fight
+     the host. box-sizing keeps the 16px padding inside the 480px. */
+  box-sizing: border-box;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;

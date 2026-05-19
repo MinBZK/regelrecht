@@ -477,6 +477,7 @@ onBeforeUnmount(() => {
       ref="popoverEl"
       accessible-label="Notitie"
       placement="bottom-start"
+      width="380px"
       @mouseenter="cancelClose"
       @mouseleave="scheduleClose"
     >
