@@ -314,8 +314,13 @@ defineExpose({ popoverEl });
 .note-creator {
   font-family: 'RijksSansVF', system-ui, sans-serif;
   padding: 16px;
-  width: 360px;
-  max-width: 90vw;
+  /* Grow with the content (the 4-button type control + textarea are the
+     widest elements) instead of a fixed 360px that ellipsised the
+     segmented-control labels. Clamp so it stays readable and never wider
+     than the viewport. */
+  width: max-content;
+  min-width: 420px;
+  max-width: min(640px, 92vw);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -337,6 +342,9 @@ defineExpose({ popoverEl });
 .nc-quote__text {
   font-size: 0.88rem;
   font-style: italic;
+  /* A long selected fragment must wrap inside the card, not force it wider
+     than max-width or get clipped. */
+  overflow-wrap: anywhere;
 }
 .nc-field {
   display: flex;
@@ -346,6 +354,11 @@ defineExpose({ popoverEl });
 .nc-field__label {
   font-size: 0.78rem;
   font-weight: 600;
+}
+/* The type picker is the widest control; let it span the (now content-sized)
+   card so the four labels show in full instead of ellipsising. */
+.nc-field nldd-segmented-control {
+  width: 100%;
 }
 .nc-select,
 .nc-textarea {
