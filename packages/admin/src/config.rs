@@ -49,7 +49,9 @@ impl AppConfig {
         } else {
             tracing::warn!(
                 "OIDC authentication is DISABLED — admin panel is unprotected. \
-                 Configure OIDC environment variables to enable authentication."
+                 All routes (harvester-reader/writer/admin tiers) bypass auth checks. \
+                 Configure OIDC environment variables to enable authentication. \
+                 Do NOT run this configuration in production."
             );
         }
 
@@ -129,6 +131,7 @@ mod tests {
         env::set_var("OIDC_CLIENT_SECRET", "secret");
         env::set_var("KEYCLOAK_BASE_URL", "https://keycloak.example.com");
         env::set_var("KEYCLOAK_REALM", "test-realm");
+        env::set_var("OIDC_REQUIRED_ROLE", "harvester-reader");
     }
 
     #[test]

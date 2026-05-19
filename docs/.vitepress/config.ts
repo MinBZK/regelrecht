@@ -31,6 +31,7 @@ export default withMermaid(
         { text: 'Concepts', link: '/concepts/how-it-works' },
         { text: 'Components', link: '/components/engine' },
         { text: 'Operations', link: '/operations/deployment' },
+        { text: 'Auth & Roles', link: '/auth-and-roles' },
         { text: 'RFCs', link: '/rfcs/' },
         { text: 'Reference', link: '/reference/glossary' },
       ],
