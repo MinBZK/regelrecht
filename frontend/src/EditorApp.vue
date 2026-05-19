@@ -258,14 +258,28 @@ function onCreateNote(note) {
 }
 
 // Wiping drafts is irreversible (local-only until exported), so it goes
-// through a confirm modal rather than firing on the bare button click.
+// through a confirm modal. nldd-modal-dialog's API is show()/hide() (there
+// is no close()); a flag drives those via a watch, and @close just clears
+// the flag — same pattern as MachineReadable's delete confirm, which avoids
+// the hide() -> @close -> hide() recursion.
 const clearDraftsModalEl = ref(null);
+const clearDraftsPending = ref(false);
+watch(clearDraftsPending, (open) => {
+  const el = clearDraftsModalEl.value;
+  if (!el) return;
+  if (open && typeof el.show === 'function') el.show();
+  else if (!open && typeof el.hide === 'function') el.hide();
+});
 function askClearDrafts() {
-  clearDraftsModalEl.value?.show?.();
+  clearDraftsPending.value = true;
+}
+function cancelClearDrafts() {
+  if (clearDraftsPending.value === false) return; // idempotent: @close + button
+  clearDraftsPending.value = false;
 }
 function confirmClearDrafts() {
   clearDrafts();
-  clearDraftsModalEl.value?.close?.();
+  clearDraftsPending.value = false;
 }
 
 const exporting = ref(false);
@@ -1672,9 +1686,9 @@ async function handleActionSave() {
     text="Alle concept-notities wissen?"
     supporting-text="Niet-geëxporteerde concepten gaan definitief verloren. Exporteer eerst als je ze wilt bewaren."
     data-testid="clear-drafts-confirm"
-    @close="clearDraftsModalEl?.close?.()"
+    @close="cancelClearDrafts"
   >
-    <nldd-button slot="actions" variant="primary" text="Behoud concepten" @click="clearDraftsModalEl?.close?.()"></nldd-button>
+    <nldd-button slot="actions" variant="primary" text="Behoud concepten" @click="cancelClearDrafts"></nldd-button>
     <nldd-button slot="actions" variant="destructive" text="Wis alles" data-testid="clear-drafts-confirm-btn" @click="confirmClearDrafts"></nldd-button>
   </nldd-modal-dialog>
 
