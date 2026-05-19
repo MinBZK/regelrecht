@@ -10,6 +10,9 @@ pub mod handlers;
 pub mod middleware;
 pub mod oidc;
 
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils;
+
 pub use config::{parse_base_url, parse_oidc_from_env, OidcConfig};
 pub use handlers::{
     AuthStatus, PersonInfo, SESSION_KEY_AUTHENTICATED, SESSION_KEY_EMAIL, SESSION_KEY_NAME,

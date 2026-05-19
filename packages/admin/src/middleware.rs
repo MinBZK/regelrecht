@@ -592,69 +592,31 @@ mod tests {
     // --- Role-based gating ---
 
     /// Build an app gated on `role` with a `/seed?roles=` helper that
-    /// authenticates the session and inserts a roles list.
+    /// authenticates the session and inserts a roles list. The `/test` route
+    /// also accepts DELETE so we can exercise the API-key bypass path on a
+    /// destructive method against an admin-tier role.
     fn role_app(state: AppState, role: &'static str) -> Router {
         let store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(store);
 
-        Router::new()
-            .route("/test", get(|| async { "ok" }).post(|| async { "ok" }))
+        let gated = Router::new()
+            .route(
+                "/test",
+                get(|| async { "ok" })
+                    .post(|| async { "ok" })
+                    .delete(|| async { "ok" }),
+            )
             .route_layer(axum_middleware::from_fn_with_state(
                 state.clone(),
                 require_auth(role),
-            ))
-            .route(
-                "/seed",
-                get(
-                    |session: Session,
-                     axum::extract::Query(q): axum::extract::Query<SeedQuery>| async move {
-                        session
-                            .insert(SESSION_KEY_AUTHENTICATED, true)
-                            .await
-                            .expect("insert auth");
-                        let roles: Vec<String> = q
-                            .roles
-                            .split(',')
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect();
-                        session
-                            .insert(SESSION_KEY_ROLES, roles)
-                            .await
-                            .expect("insert roles");
-                        "seeded"
-                    },
-                ),
-            )
+            ));
+
+        regelrecht_auth::test_utils::with_seed_route(gated)
             .with_state(state)
             .layer(session_layer)
     }
 
-    #[derive(serde::Deserialize)]
-    struct SeedQuery {
-        roles: String,
-    }
-
-    async fn seed_and_get_cookie(app: &Router, roles: &str) -> String {
-        let response = app
-            .clone()
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri(format!("/seed?roles={roles}"))
-                    .body(Body::empty())
-                    .expect("request"),
-            )
-            .await
-            .expect("response");
-        assert_eq!(response.status(), StatusCode::OK);
-        response
-            .headers()
-            .get("set-cookie")
-            .expect("set-cookie")
-            .to_str()
-            .expect("cookie str")
-            .to_string()
-    }
+    use regelrecht_auth::test_utils::seed_session as seed_and_get_cookie;
 
     #[tokio::test]
     async fn reader_can_access_reader_route() {
@@ -717,6 +679,30 @@ mod tests {
         let response = app
             .oneshot(
                 axum::http::Request::builder()
+                    .uri("/test")
+                    .header("authorization", "Bearer test-key")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn api_key_bypasses_role_check_on_delete_admin_route() {
+        // Locks in the documented invariant: a valid API key is treated as
+        // regelrecht-admin-equivalent for the allowed methods, so DELETE on
+        // an admin-tier route succeeds even though the bearer path carries
+        // no role. If this invariant changes (e.g. API key gains a role
+        // restriction), this test must change deliberately — protecting any
+        // future admin-tier DELETE from a silent permission shift.
+        let state = test_state_with_api_key(true, Some("test-key"));
+        let app = role_app(state, "harvester-admin");
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("DELETE")
                     .uri("/test")
                     .header("authorization", "Bearer test-key")
                     .body(Body::empty())

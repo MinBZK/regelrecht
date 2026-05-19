@@ -341,70 +341,25 @@ mod tests {
     // --- require_role factory ---
 
     /// Build an app that gates `/test` with `require_role(role)` and exposes
-    /// `/seed?roles=a,b,c` to set up a fully authenticated session with the
-    /// given realm roles. Returns the app for chained .oneshot() calls.
+    /// `/seed?roles=a,b,c` (via `test_utils::with_seed_route`) to set up a
+    /// fully authenticated session with the given realm roles.
     fn role_test_app(state: TestState, role: &'static str) -> Router {
         let store = MemoryStore::default();
         let session_layer = SessionManagerLayer::new(store);
 
-        Router::new()
+        let gated = Router::new()
             .route("/test", get(|| async { "ok" }))
             .route_layer(axum_middleware::from_fn_with_state(
                 state.clone(),
                 require_role::<TestState>(role),
-            ))
-            .route(
-                "/seed",
-                get(
-                    |session: Session,
-                     axum::extract::Query(q): axum::extract::Query<SeedQuery>| async move {
-                        session
-                            .insert(SESSION_KEY_AUTHENTICATED, true)
-                            .await
-                            .expect("insert auth");
-                        let roles: Vec<String> = q
-                            .roles
-                            .split(',')
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string())
-                            .collect();
-                        session
-                            .insert(SESSION_KEY_ROLES, roles)
-                            .await
-                            .expect("insert roles");
-                        "seeded"
-                    },
-                ),
-            )
+            ));
+
+        crate::test_utils::with_seed_route(gated)
             .with_state(state)
             .layer(session_layer)
     }
 
-    #[derive(serde::Deserialize)]
-    struct SeedQuery {
-        roles: String,
-    }
-
-    async fn seed_session(app: &Router, roles: &str) -> String {
-        let response = app
-            .clone()
-            .oneshot(
-                axum::http::Request::builder()
-                    .uri(format!("/seed?roles={roles}"))
-                    .body(Body::empty())
-                    .expect("request"),
-            )
-            .await
-            .expect("response");
-        assert_eq!(response.status(), StatusCode::OK);
-        response
-            .headers()
-            .get("set-cookie")
-            .expect("set-cookie header")
-            .to_str()
-            .expect("cookie str")
-            .to_string()
-    }
+    use crate::test_utils::seed_session;
 
     async fn get_test(app: Router, cookie: &str) -> StatusCode {
         app.oneshot(
