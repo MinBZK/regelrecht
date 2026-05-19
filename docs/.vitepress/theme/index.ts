@@ -1,5 +1,11 @@
 import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
+// NLDD design-system stylesheet. This is plain CSS (no DOM), so it is
+// SSR-safe and MUST be a static import: a dynamic import() of a CSS-only
+// module is not reliably injected by Vite, which left the web components
+// (nldd-top-navigation-bar etc.) unstyled and collapsed. The Lit
+// *components* still load client-only below (they need the DOM).
+import '@nldd/design-system/styles'
 import './custom.css'
 import './landing.css'
 import Layout from './Layout.vue'
@@ -15,14 +21,9 @@ export default {
     app.component('SignupForm', SignupForm)
     app.component('RrNav', RrNav)
 
-    // @nldd/design-system is Lit-based: it needs the DOM and must not run
-    // during SSR. Import it client-side only. The landing degrades to plain
-    // semantic HTML with our token styling if this ever fails to load, so
-    // a failure is non-fatal but no longer expected (it is a real dep now).
+    // The Lit components need the DOM and must not run during SSR — load
+    // them client-side only. Styles are imported statically above.
     if (typeof window !== 'undefined') {
-      import('@nldd/design-system/styles').catch((e) => {
-        console.error('[docs] failed to load @nldd/design-system styles', e)
-      })
       import('@nldd/design-system').catch((e) => {
         console.error('[docs] failed to load @nldd/design-system components', e)
       })

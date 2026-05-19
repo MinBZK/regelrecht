@@ -94,24 +94,51 @@
   background: var(--vp-nav-bg-color);
   border-bottom: 1px solid var(--vp-c-divider);
 }
-/* The web component and the semantic fallback are both in the DOM. Show
-   exactly one: the fallback (SSR/no-JS) until the component upgrades,
-   then the component. Mirrors the nldd-card :defined pattern. */
-.rr-topnav-wc:not(:defined) {
-  display: none;
-}
-.rr-topnav-wc:defined ~ .rr-nav-fallback {
-  display: none;
-}
-.rr-nav-fallback {
+.rr-topnav-inner {
   max-width: 1100px;
   margin-inline: auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1.5rem;
+  gap: 1.5rem;
+  padding: 0.6rem 1.5rem;
   flex-wrap: wrap;
+}
+.rr-topnav .rr-brand {
+  flex-shrink: 0;
+}
+.rr-menubar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The NLDD menu bar and the semantic fallback are both in the DOM. Show
+   exactly one: the fallback (SSR / no-JS) until the web component
+   upgrades, then the component. Mirrors the nldd-card :defined pattern. */
+.rr-menubar:not(:defined) {
+  display: none;
+}
+.rr-menubar:defined ~ .rr-nav-fallback {
+  display: none;
+}
+.rr-nav-fallback {
+  flex: 1 1 auto;
+}
+.rr-nav-fallback .rr-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: wrap;
+}
+.rr-nav-fallback .rr-nav-links a {
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+  font-weight: 500;
+}
+.rr-nav-fallback .rr-nav-links a:hover {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
 }
 .rr-nav-fallback .rr-nav-links a[aria-current='page'] {
   color: var(--vp-c-brand-1);
