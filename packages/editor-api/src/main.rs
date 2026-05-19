@@ -23,6 +23,7 @@ mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod traject_docs;
 mod user_settings;
 
 use state::{AppState, CorpusState};
@@ -175,6 +176,19 @@ async fn main() {
             "/api/user/settings/{key}",
             axum::routing::put(user_settings::set)
                 .layer(axum::extract::DefaultBodyLimit::max(4096)),
+        )
+        // Per-traject docs reader. Both endpoints serve canned data today
+        // (see traject_docs::tree / ::page). Real DB-backed implementation
+        // lands after PR #632 (trajects) and PR #626 (layered RBAC) merge —
+        // at that point we also raise the role gate from `editor-reader`
+        // (implicit via `require_session_auth`) to the explicit role check.
+        .route(
+            "/api/trajects/{traject_id}/docs/tree",
+            get(traject_docs::tree),
+        )
+        .route(
+            "/api/trajects/{traject_id}/docs/page",
+            get(traject_docs::page),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),

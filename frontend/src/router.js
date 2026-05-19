@@ -29,6 +29,21 @@ const router = createRouter({
         },
       }),
     },
+    {
+      // Docs view for a specific traject. URL shape:
+      //   /trajects/:trajectId/docs                       → landing (sidebar only)
+      //   /trajects/:trajectId/docs/:sourceId             → source root
+      //   /trajects/:trajectId/docs/:sourceId/<path>      → specific .md page
+      //
+      // The pathMatch wildcard captures multi-segment paths (analysis/foo,
+      // diagrams/bar/baz, ...) verbatim. requiresAuth follows the editor
+      // pattern; the per-traject membership check happens server-side in
+      // packages/editor-api/src/traject_docs.rs.
+      path: '/trajects/:trajectId/docs/:sourceId?/:pathMatch(.*)*',
+      name: 'traject-docs',
+      component: () => import('./TrajectDocsApp.vue'),
+      meta: { title: 'Docs', requiresAuth: true },
+    },
   ],
 });
 
