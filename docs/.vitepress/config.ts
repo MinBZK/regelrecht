@@ -13,30 +13,47 @@ export default withMermaid(
       ['link', { rel: 'icon', type: 'image/svg+xml', href: '/regelrecht-icon.svg' }],
     ],
 
+    // VitePress' default light code theme (github-light) renders some tokens
+    // (e.g. the string/keyword green #22863A) at ~4.42:1 on the code-block
+    // background — below the WCAG 2.2 AA 4.5:1 threshold. The high-contrast
+    // GitHub themes keep every token >= 4.5:1. This fixes contrast in every
+    // code block site-wide, not just the landing.
+    markdown: {
+      theme: {
+        light: 'github-light-high-contrast',
+        dark: 'github-dark-high-contrast',
+      },
+    },
+
     ignoreDeadLinks: [
       /^https?:\/\/localhost/,
     ],
 
-    // i18n: English docs live at the root; the Dutch public-facing landing
-    // (plus the signup page) lives under /nl/. See https://vitepress.dev/guide/i18n
-    locales: {
-      root: { label: 'English', lang: 'en' },
-      nl: {
-        label: 'Nederlands',
-        lang: 'nl',
-        link: '/nl/',
-        themeConfig: {
-          nav: [
-            { text: 'Aanmelden', link: '/nl/aanmelden' },
-            { text: 'Documentatie (EN)', link: '/guide/what-is-regelrecht' },
-          ],
-        },
-      },
+    // The site default lang is `en` (the docs). The Dutch landing pages
+    // ("/" and "/aanmelden") must declare lang="nl" on <html> for WCAG 3.1.1.
+    // VitePress emits the site lang into the SSR HTML; rewrite it for the
+    // Dutch routes only. EN landing and all docs stay `en`.
+    transformHtml(code, id) {
+      // `id` is the absolute path of the emitted file in dist. Only the
+      // bare "index.html" (= "/") and "aanmelden.html" (= "/aanmelden")
+      // are the Dutch landing pages; everything else (incl. en/index.html,
+      // rfcs/index.html, all docs) stays English.
+      const rel = id.split('/dist/')[1] ?? ''
+      if (rel === 'index.html' || rel === 'aanmelden.html') {
+        return code.replace(/<html([^>]*?)\slang="en"/, '<html$1 lang="nl"')
+      }
     },
+
+    // The public-facing landing is bilingual and lives entirely in the custom
+    // theme Layout: Dutch at "/", English at "/en/". The English documentation
+    // stays at the root (/guide/, /concepts/, ...) — it is the only docs
+    // language, so VitePress `locales` are intentionally NOT used here.
+    // Landing language is derived from the route path in the Layout component.
 
     themeConfig: {
       logo: '/logo.svg',
       nav: [
+        { text: 'Home', link: '/en/' },
         { text: 'Guide', link: '/guide/what-is-regelrecht' },
         { text: 'Concepts', link: '/concepts/how-it-works' },
         { text: 'Components', link: '/components/engine' },

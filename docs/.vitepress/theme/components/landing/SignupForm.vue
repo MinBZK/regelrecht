@@ -1,11 +1,26 @@
 <script setup lang="ts">
-import { reactive, ref, nextTick } from 'vue'
+import { reactive, ref, computed, nextTick } from 'vue'
+import { useRoute } from 'vitepress'
+import { content, langFromPath } from './content'
 
 const WEBHOOK =
   'https://digilab.overheid.nl/chat/hooks/khcsah5zg3gy8notbfy5baoxwh'
+const EMAIL = 'regelrecht@minbzk.nl'
+
+const route = useRoute()
+const lang = computed(() => langFromPath(route.path))
+const s = computed(() => content[lang.value].signup)
+
+// Split a string on the support email so it can be rendered as a mailto link.
+function parts(text: string) {
+  const i = text.indexOf(EMAIL)
+  if (i === -1) return { before: text, after: '' }
+  return { before: text.slice(0, i), after: text.slice(i + EMAIL.length) }
+}
+const errorParts = computed(() => parts(s.value.errorBody))
+const successParts = computed(() => parts(s.value.successBody))
 
 type Status = 'idle' | 'submitting' | 'success' | 'error'
-
 const status = ref<Status>('idle')
 
 const form = reactive({
@@ -33,18 +48,17 @@ function validate(): boolean {
   errors.email = ''
   errors.naam = ''
   if (!form.email.trim()) {
-    errors.email = 'Vul je e-mailadres in.'
+    errors.email = s.value.errEmailEmpty
   } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-    errors.email = 'Vul een geldig e-mailadres in.'
+    errors.email = s.value.errEmailInvalid
   }
   if (!form.naam.trim()) {
-    errors.naam = 'Vul je volledige naam in.'
+    errors.naam = s.value.errName
   }
   return !errors.email && !errors.naam
 }
 
 async function onSubmit() {
-  // Honeypot: a real user never fills this.
   if (form.honeypot) return
 
   if (!validate()) {
@@ -73,9 +87,6 @@ async function onSubmit() {
       mode: 'no-cors',
       body: JSON.stringify({ text }),
     })
-    // no-cors yields an opaque response: a resolved promise means the
-    // request left the browser, not that the server accepted it. We frame
-    // the success copy accordingly.
     status.value = 'success'
     await nextTick()
     successHeading.value?.focus()
@@ -110,9 +121,8 @@ async function reset() {
       :aria-busy="status === 'submitting'"
       @submit.prevent="onSubmit"
     >
-      <!-- Honeypot, off-screen and out of the a11y tree -->
       <div class="rr-honeypot" aria-hidden="true">
-        <label for="rr-company">Bedrijf (niet invullen)</label>
+        <label for="rr-company">{{ s.companyHoneypot }}</label>
         <input
           id="rr-company"
           v-model="form.honeypot"
@@ -124,7 +134,7 @@ async function reset() {
       </div>
 
       <fieldset class="rr-fieldset">
-        <legend>Wil je bijdragen aan de (juridische) validatie van RegelRecht?</legend>
+        <legend>{{ s.legend }}</legend>
         <label class="rr-choice">
           <input
             ref="firstFieldFocus"
@@ -133,7 +143,7 @@ async function reset() {
             name="bijdragen"
             value="Ja"
           />
-          <span>Ja, ik wil bijdragen aan de validatie van RegelRecht</span>
+          <span>{{ s.radioYes }}</span>
         </label>
         <label class="rr-choice">
           <input
@@ -142,21 +152,22 @@ async function reset() {
             name="bijdragen"
             value="Nee"
           />
-          <span>Nee, ik wil niet bijdragen</span>
+          <span>{{ s.radioNo }}</span>
         </label>
       </fieldset>
 
       <div class="rr-field">
         <label class="rr-choice">
           <input v-model="form.opDeHoogte" type="checkbox" />
-          <span>Ik wil updates ontvangen over de ontwikkelingen van RegelRecht</span>
+          <span>{{ s.updates }}</span>
         </label>
       </div>
 
       <div class="rr-field">
         <label class="rr-label" for="rr-email">
-          E-mailadres <span class="rr-required" aria-hidden="true">*</span>
-          <span class="rr-visually-hidden">(verplicht)</span>
+          {{ s.emailLabel }}
+          <span class="rr-required" aria-hidden="true">{{ s.required }}</span>
+          <span class="rr-visually-hidden">{{ s.requiredSr }}</span>
         </label>
         <input
           id="rr-email"
@@ -177,8 +188,9 @@ async function reset() {
 
       <div class="rr-field">
         <label class="rr-label" for="rr-naam">
-          Volledige naam <span class="rr-required" aria-hidden="true">*</span>
-          <span class="rr-visually-hidden">(verplicht)</span>
+          {{ s.nameLabel }}
+          <span class="rr-required" aria-hidden="true">{{ s.required }}</span>
+          <span class="rr-visually-hidden">{{ s.requiredSr }}</span>
         </label>
         <input
           id="rr-naam"
@@ -198,31 +210,31 @@ async function reset() {
       </div>
 
       <div class="rr-field">
-        <label class="rr-label" for="rr-org">Organisatie (optioneel)</label>
+        <label class="rr-label" for="rr-org">{{ s.orgLabel }}</label>
         <input
           id="rr-org"
           v-model="form.organisatie"
           type="text"
           name="organisatie"
           autocomplete="organization"
-          placeholder="Bijv. Ministerie van BZK, Gemeente Amsterdam"
+          :placeholder="s.orgPlaceholder"
         />
       </div>
 
       <div class="rr-field">
-        <label class="rr-label" for="rr-functie">Functie (optioneel)</label>
+        <label class="rr-label" for="rr-functie">{{ s.roleLabel }}</label>
         <input
           id="rr-functie"
           v-model="form.functie"
           type="text"
           name="functie"
           autocomplete="organization-title"
-          placeholder="Bijv. jurist, beleidsmedewerker, wetgevingsjurist"
+          :placeholder="s.rolePlaceholder"
         />
       </div>
 
       <p class="rr-form-status" role="status" aria-live="polite">
-        <span v-if="status === 'submitting'">Bezig met versturen…</span>
+        <span v-if="status === 'submitting'">{{ s.submitting }}</span>
       </p>
 
       <button
@@ -230,7 +242,7 @@ async function reset() {
         class="rr-btn rr-btn--primary"
         :disabled="status === 'submitting'"
       >
-        {{ status === 'submitting' ? 'Bezig met versturen…' : 'Meld me aan' }}
+        {{ status === 'submitting' ? s.submitting : s.submit }}
       </button>
     </form>
 
@@ -240,14 +252,14 @@ async function reset() {
       role="status"
       aria-live="polite"
     >
-      <h3 ref="successHeading" tabindex="-1">Bedankt voor je aanmelding!</h3>
+      <h3 ref="successHeading" tabindex="-1">{{ s.successTitle }}</h3>
       <p>
-        We hebben je gegevens verstuurd. Je ontvangt bevestiging per e-mail
-        zodra je aanmelding is verwerkt. Klopt er iets niet? Mail dan naar
-        <a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a>.
+        {{ successParts.before
+        }}<a :href="`mailto:${EMAIL}`">{{ EMAIL }}</a
+        >{{ successParts.after }}
       </p>
       <button type="button" class="rr-btn rr-btn--ghost" @click="reset">
-        Nog iemand aanmelden
+        {{ s.successReset }}
       </button>
     </div>
 
@@ -257,13 +269,14 @@ async function reset() {
       role="alert"
       aria-live="assertive"
     >
-      <h3 ref="errorHeading" tabindex="-1">Er ging iets mis</h3>
+      <h3 ref="errorHeading" tabindex="-1">{{ s.errorTitle }}</h3>
       <p>
-        Het versturen is niet gelukt. Probeer het opnieuw of stuur een e-mail
-        naar <a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a>.
+        {{ errorParts.before
+        }}<a :href="`mailto:${EMAIL}`">{{ EMAIL }}</a
+        >{{ errorParts.after }}
       </p>
       <button type="button" class="rr-btn rr-btn--ghost" @click="reset">
-        Opnieuw proberen
+        {{ s.errorReset }}
       </button>
     </div>
   </div>

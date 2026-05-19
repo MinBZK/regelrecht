@@ -30,6 +30,40 @@ flowchart LR
 
 2. **Execution Engine**: a deterministic Rust engine that evaluates laws given inputs. It compiles to both native code and WebAssembly, running identically in every context.
 
+## What does a machine-readable law look like?
+
+```yaml
+# Wet op de zorgtoeslag, article 2
+- number: '2'
+  text: |
+    De verzekerde heeft aanspraak op een zorgtoeslag ter hoogte
+    van het verschil tussen de standaardpremie en de normpremie...
+  machine_readable:
+    execution:
+      input:
+        - name: toetsingsinkomen
+          source:
+            regulation: algemene_wet_inkomensafhankelijke_regelingen
+            output: toetsingsinkomen
+            parameters:
+              bsn: $bsn
+      output:
+        - name: hoogte_zorgtoeslag
+          type: amount
+      actions:
+        - output: hoogte_zorgtoeslag
+          value:
+            operation: MAX
+            values:
+              - 0
+              - operation: SUBTRACT
+                values:
+                  - $standaardpremie
+                  - $normpremie
+```
+
+Each article sits alongside the original legal text. The `machine_readable` section defines inputs, outputs, and the calculation logic. The engine executes this directly.
+
 ## Key Concepts
 
 ### Cross-Law References
@@ -61,6 +95,14 @@ Individual decisions (*beschikkingen*) are not instant computations - they are a
 | **Version control as governance** | Git history captures legislative evolution. Branches are proposals, merges are publication. |
 | **Traceability** | Every computed value points back to a specific article and paragraph. |
 | **Open by default** | Law, tooling, decisions — all publicly auditable. |
+
+## Who is this for?
+
+**Developers** building government services that implement Dutch law. Use the engine to compute legal outcomes instead of hand-coding rules.
+
+**Legal experts** validating whether machine-readable interpretations match the law. The execution-first methodology uses concrete test cases from parliamentary documents.
+
+**Policy makers** exploring how legislation works in practice. Run "what if" scenarios in the browser to see how changing a parameter affects outcomes across multiple laws.
 
 ## Next Steps
 
