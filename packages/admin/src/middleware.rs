@@ -11,7 +11,7 @@ use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
 pub use regelrecht_auth::middleware::security_headers;
-use regelrecht_auth::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES};
+use regelrecht_auth::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES, SESSION_KEY_SUB};
 
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -88,10 +88,13 @@ pub fn require_auth(
             if roles.iter().any(|r| r == required_role) {
                 Ok(next.run(request).await)
             } else {
-                tracing::warn!(required = %required_role, "user lacks required role for route");
-                Err(ApiError::Forbidden(format!(
-                    "role `{required_role}` required"
-                )))
+                let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
+                tracing::warn!(
+                    required = %required_role,
+                    sub = ?sub,
+                    "user lacks required role for route"
+                );
+                Err(ApiError::Forbidden("forbidden".to_string()))
             }
         })
     }

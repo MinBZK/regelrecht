@@ -8,7 +8,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use tower_sessions::Session;
 
-use crate::handlers::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES};
+use crate::handlers::{SESSION_KEY_AUTHENTICATED, SESSION_KEY_ROLES, SESSION_KEY_SUB};
 use crate::OidcAppState;
 
 type RequireRoleFuture = Pin<Box<dyn Future<Output = Result<Response, StatusCode>> + Send>>;
@@ -113,7 +113,12 @@ pub fn require_role<S: OidcAppState>(
             if roles.iter().any(|r| r == role) {
                 Ok(next.run(request).await)
             } else {
-                tracing::warn!(required = %role, "user lacks required role for route");
+                let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
+                tracing::warn!(
+                    required = %role,
+                    sub = ?sub,
+                    "user lacks required role for route"
+                );
                 Err(StatusCode::FORBIDDEN)
             }
         })
