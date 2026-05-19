@@ -87,6 +87,126 @@ pub fn serialize_annotation_doc(doc: &serde_json::Value) -> Result<String, Strin
     serde_yaml_ng::to_string(doc).map_err(|e| format!("failed to serialise notes: {e}"))
 }
 
+/// The notes already present in a sidecar's text, as JSON values.
+///
+/// Used to dedupe an append against what is already committed. Returns an
+/// empty vec when the file has no `annotations:` sequence (or is absent).
+pub fn notes_in_sidecar(base_text: &str) -> Vec<serde_json::Value> {
+    serde_yaml_ng::from_str::<serde_json::Value>(base_text)
+        .ok()
+        .and_then(|doc| doc.get("annotations").and_then(|a| a.as_array()).cloned())
+        .unwrap_or_default()
+}
+
+/// Outcome of preparing an append-only write of `new_notes` onto a sidecar.
+pub enum AppendOutcome {
+    /// Nothing to write: every new note was already present (dedup left
+    /// zero). The caller must skip the write/commit/PR entirely so a
+    /// no-op save produces no branch noise (review finding NEW-2).
+    NoChange,
+    /// The full text to write. Either the verbatim base with new note
+    /// items appended (history/comments preserved), or a freshly built
+    /// document when there was no base sequence to preserve.
+    Write(String),
+}
+
+/// Append `new_notes` to a sidecar **without rewriting the existing file**.
+///
+/// RFC-018 Decision 1 promises `git blame` shows who added each note and
+/// when; RFC-005's whole premise is that a stand-off file must not be
+/// rewritten under the content it annotates. Parsing the base and
+/// re-serialising it (even "losslessly") reorders keys, drops the curated
+/// *motivering* comments (RFC-018 §Why / AWB 3:46), and reassigns every
+/// line's blame to the last writer. So the base bytes are kept **verbatim**
+/// and the new notes are appended as text.
+///
+/// - Base has an `annotations:` block: serialise only the *new, deduped*
+///   notes as a YAML sequence, re-indent to the sidecar's 2-space list
+///   convention, and append after the existing content. Existing bytes are
+///   untouched, so the git diff is exactly the added lines.
+/// - No base, or a base without an `annotations:` key (nothing to
+///   preserve): build a fresh full document. There is no history or
+///   comment to protect in that case.
+/// - All new notes already present: [`AppendOutcome::NoChange`].
+///
+/// `new_notes` are assumed schema-checked by the caller; the caller must
+/// still validate the *resulting* document (a malformed base would
+/// otherwise pass through).
+pub fn append_notes_to_sidecar(
+    base_text: Option<&str>,
+    new_notes: &[serde_json::Value],
+    schema_url: &str,
+) -> Result<AppendOutcome, String> {
+    let base_notes: Vec<serde_json::Value> = base_text.map(notes_in_sidecar).unwrap_or_default();
+
+    let seen: std::collections::HashSet<String> = base_notes
+        .iter()
+        .filter_map(|n| serde_json::to_string(n).ok())
+        .collect();
+
+    // Preserve order; dedupe new notes against the base and against each
+    // other (a double-submit of the same draft is idempotent).
+    let mut to_add: Vec<&serde_json::Value> = Vec::new();
+    let mut added_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for note in new_notes {
+        let Ok(key) = serde_json::to_string(note) else {
+            continue;
+        };
+        if !seen.contains(&key) && added_keys.insert(key) {
+            to_add.push(note);
+        }
+    }
+
+    if to_add.is_empty() {
+        return Ok(AppendOutcome::NoChange);
+    }
+
+    // Decide whether there is a base sequence to preserve. We only treat
+    // the base as appendable when it actually parses and carries an
+    // `annotations` array; anything else is rebuilt from scratch (no
+    // history/comments at stake).
+    let base_has_sequence = base_text
+        .and_then(|t| serde_yaml_ng::from_str::<serde_json::Value>(t).ok())
+        .and_then(|d| d.get("annotations").map(|a| a.is_array()))
+        .unwrap_or(false);
+
+    if !base_has_sequence {
+        // Fresh document: base + new notes, full serialise is fine here
+        // because there is nothing to protect.
+        let mut all = base_notes;
+        all.extend(to_add.iter().map(|n| (*n).clone()));
+        let doc = serde_json::json!({ "$schema": schema_url, "annotations": all });
+        return Ok(AppendOutcome::Write(serialize_annotation_doc(&doc)?));
+    }
+
+    // Serialise ONLY the new notes as a sequence, then re-indent every
+    // line by two spaces so the items sit under the existing
+    // `annotations:` key (the sidecar's list convention). serde_yaml_ng
+    // emits a top-level sequence as `- ...` at column 0 with 2-space field
+    // indentation; prefixing two spaces yields `  - ...`.
+    let owned: Vec<serde_json::Value> = to_add.iter().map(|n| (*n).clone()).collect();
+    let seq = serde_yaml_ng::to_string(&owned)
+        .map_err(|e| format!("failed to serialise new notes: {e}"))?;
+    let indented: String = seq
+        .lines()
+        .map(|line| {
+            if line.is_empty() {
+                String::from("\n")
+            } else {
+                format!("  {line}\n")
+            }
+        })
+        .collect();
+
+    let base = base_text.unwrap_or_default();
+    // Exactly one newline between the existing content and the appended
+    // items, regardless of whether the base ended with 0, 1 or more.
+    let mut out = base.trim_end_matches('\n').to_string();
+    out.push('\n');
+    out.push_str(&indented);
+    Ok(AppendOutcome::Write(out))
+}
+
 /// The law id a note's `target.source` URI refers to.
 ///
 /// `target.source` is a `regelrecht://<law_id>[/...]` URI (RFC-005); the
@@ -264,5 +384,129 @@ annotations:
             first_note_not_targeting_law(&serde_json::json!({}), "x"),
             None
         );
+    }
+
+    // A base sidecar with the curated shape the real corpus file uses:
+    // `---`, comments, an explanatory header, semantic key order, a
+    // multi-line block scalar. Appending must not touch any of this.
+    const CURATED_BASE: &str = "\
+---
+# Stand-off notes. RFC-005 / RFC-018.
+$schema: https://example/schema.json
+annotations:
+  # Linking note: curated explanation that must survive.
+  - type: Annotation
+    motivation: linking
+    creator: Dienst Toeslagen
+    target:
+      source: regelrecht://zorgtoeslagwet
+      selector:
+        type: TextQuoteSelector
+        exact: zorgtoeslag
+    body:
+      type: SpecificResource
+      source: regelrecht://zorgtoeslagwet/x#y
+      purpose: linking
+";
+
+    fn note(exact: &str) -> serde_json::Value {
+        serde_json::json!({
+            "type": "Annotation",
+            "motivation": "commenting",
+            "creator": "tester",
+            "target": {
+                "source": "regelrecht://zorgtoeslagwet",
+                "selector": { "type": "TextQuoteSelector", "exact": exact }
+            },
+            "body": { "type": "TextualBody", "value": "x", "purpose": "commenting" }
+        })
+    }
+
+    #[test]
+    fn append_keeps_the_base_verbatim_and_only_adds_lines() {
+        let new = vec![note("normpremie")];
+        let out = match append_notes_to_sidecar(Some(CURATED_BASE), &new, "https://s") {
+            Ok(AppendOutcome::Write(t)) => t,
+            other => panic!(
+                "expected Write, got {:?}",
+                matches!(other, Ok(AppendOutcome::NoChange))
+            ),
+        };
+        // Every original byte/line is still there, in order: the comments,
+        // the $schema, the curated note. The base is a strict prefix
+        // (modulo the single trailing-newline normalisation).
+        assert!(out.starts_with(CURATED_BASE.trim_end_matches('\n')));
+        assert!(out.contains("# Linking note: curated explanation that must survive."));
+        assert!(out.contains("creator: Dienst Toeslagen"));
+        // The appended note sits under `annotations:` at the 2-space list
+        // convention and carries its content.
+        assert!(out.contains("\n  - "));
+        assert!(out.contains("normpremie"));
+        // Result parses and the sequence grew by exactly one.
+        let doc: serde_json::Value = serde_yaml_ng::from_str(&out).unwrap();
+        assert_eq!(doc["annotations"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn append_dedups_against_the_base_and_is_idempotent() {
+        // The base already contains the linking note; re-submitting an
+        // identical-content note must not duplicate it. Reconstruct that
+        // note exactly as it parses out of the base.
+        let base_doc: serde_json::Value = serde_yaml_ng::from_str(CURATED_BASE).unwrap();
+        let existing = base_doc["annotations"][0].clone();
+
+        // Only the existing note resubmitted → nothing to write.
+        assert!(matches!(
+            append_notes_to_sidecar(Some(CURATED_BASE), &[existing.clone()], "https://s"),
+            Ok(AppendOutcome::NoChange)
+        ));
+
+        // Existing + one genuinely new → only the new one is appended.
+        let out = match append_notes_to_sidecar(
+            Some(CURATED_BASE),
+            &[existing, note("uniek")],
+            "https://s",
+        ) {
+            Ok(AppendOutcome::Write(t)) => t,
+            _ => panic!("expected Write"),
+        };
+        let doc: serde_json::Value = serde_yaml_ng::from_str(&out).unwrap();
+        assert_eq!(doc["annotations"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn append_with_no_base_builds_a_fresh_document() {
+        let out = match append_notes_to_sidecar(None, &[note("a")], "https://s") {
+            Ok(AppendOutcome::Write(t)) => t,
+            _ => panic!("expected Write"),
+        };
+        let doc: serde_json::Value = serde_yaml_ng::from_str(&out).unwrap();
+        assert_eq!(doc["$schema"], "https://s");
+        assert_eq!(doc["annotations"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn append_to_base_without_annotations_key_rebuilds() {
+        // A file that parses but has no annotations sequence: nothing to
+        // preserve, so a fresh full doc is fine.
+        let bare = "$schema: https://old\n";
+        let out = match append_notes_to_sidecar(Some(bare), &[note("a")], "https://s") {
+            Ok(AppendOutcome::Write(t)) => t,
+            _ => panic!("expected Write"),
+        };
+        let doc: serde_json::Value = serde_yaml_ng::from_str(&out).unwrap();
+        assert_eq!(doc["annotations"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn append_empty_input_is_nochange() {
+        assert!(matches!(
+            append_notes_to_sidecar(Some(CURATED_BASE), &[], "https://s"),
+            Ok(AppendOutcome::NoChange)
+        ));
+        assert!(matches!(
+            append_notes_to_sidecar(None, &[], "https://s"),
+            Ok(AppendOutcome::NoChange)
+        ));
     }
 }
