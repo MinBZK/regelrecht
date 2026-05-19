@@ -193,6 +193,58 @@
   background: #e8eef4;
 }
 
+/* nldd-button variant="primary" is accent-blue — designed for light
+   backgrounds; on the dark-blue hero it fails contrast (measured 2.4:1).
+   NLDD has no on-dark button variant, and every NLDD neutral flips with
+   data-scheme, so no single soft token works on the dark hero in both
+   modes. We therefore set TWO explicit soft NLDD tones, one per scheme,
+   each measured >=4.5:1 on its hero background — soft (not pure
+   black/white), still inside the NLDD palette, scoped to the hero. */
+.rr-hero .rr-btn-wc {
+  /* light mode: soft off-white surface, dark text (~12:1 on hero) */
+  --semantics-buttons-accent-filled-background-color: var(
+    --primitives-color-coolgray-25
+  );
+  --semantics-buttons-accent-filled-content-color: var(
+    --primitives-color-coolgray-900
+  );
+  --semantics-buttons-accent-filled-is-hovered-background-color: var(
+    --primitives-color-coolgray-50
+  );
+  --semantics-buttons-accent-filled-is-hovered-content-color: var(
+    --primitives-color-coolgray-900
+  );
+  --semantics-buttons-accent-filled-is-active-background-color: var(
+    --primitives-color-coolgray-50
+  );
+  --semantics-buttons-accent-filled-is-active-content-color: var(
+    --primitives-color-coolgray-900
+  );
+}
+/* dark mode: a different soft NLDD tone. In the dark scheme coolgray-950
+   resolves to a soft light (~rgb(234,238,242), 13:1 on the dark hero)
+   and coolgray-50 to a soft dark — soft, not pure white/black. */
+.dark .rr-hero .rr-btn-wc {
+  --semantics-buttons-accent-filled-background-color: var(
+    --primitives-color-coolgray-950
+  );
+  --semantics-buttons-accent-filled-content-color: var(
+    --primitives-color-coolgray-50
+  );
+  --semantics-buttons-accent-filled-is-hovered-background-color: var(
+    --primitives-color-coolgray-900
+  );
+  --semantics-buttons-accent-filled-is-hovered-content-color: var(
+    --primitives-color-coolgray-50
+  );
+  --semantics-buttons-accent-filled-is-active-background-color: var(
+    --primitives-color-coolgray-900
+  );
+  --semantics-buttons-accent-filled-is-active-content-color: var(
+    --primitives-color-coolgray-50
+  );
+}
+
 /* --- Partners --- */
 .rr-partners {
   text-align: center;
@@ -228,8 +280,23 @@
 /* --- Card grids --- */
 .rr-grid {
   display: grid;
-  gap: 1.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* Fixed 3-up on wide screens (auto-fit left a ragged empty trailing
+     column). Cards keep their natural height — align to the top so a
+     short card next to a tall one doesn't stretch awkwardly. Generous
+     gap so the variable heights read as a calm rhythm, not clutter. */
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .rr-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .rr-grid {
+    grid-template-columns: 1fr;
+  }
 }
 /* Card box chrome. For plain .rr-card (no web component) this is the look.
    For <nldd-card> it is the no-JS / not-yet-upgraded fallback: once the
