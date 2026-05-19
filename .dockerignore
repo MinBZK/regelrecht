@@ -12,6 +12,12 @@ doc
 !package-lock.json
 !Cargo.toml
 !Cargo.lock
+# The note (annotation) JSON schema is embedded at compile time by
+# regelrecht-corpus (annotation-validation feature) in the editor-api
+# image build. The blanket *.json exclude above would drop it from the
+# build context; re-include the schema tree so `include_str!` resolves.
+!schema
+!schema/**
 .vscode
 .idea
 # Exclude .claude but keep skill files needed by the enrich worker image.

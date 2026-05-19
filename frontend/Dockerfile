@@ -74,6 +74,13 @@ COPY packages/engine/ engine/
 COPY packages/harvester/ harvester/
 COPY packages/pipeline/ pipeline/
 COPY packages/shared/ shared/
+# regelrecht-corpus (annotation-validation feature) embeds the note schema
+# via `include_str!("../../../schema/...")`, relative to packages/corpus/src/.
+# WORKDIR is /build and the crate is COPYed to /build/corpus/, so that
+# literal resolves to /schema/... here. Put the canonical schema there so
+# the embed compiles; this is the same file the source tree has at repo
+# root (no second copy — it is COPYed, not vendored).
+COPY schema/ /schema/
 # Invalidate cargo's fingerprint cache so it recompiles with real source
 # instead of using the stub binary from cargo-chef cook.
 RUN find . -name '*.rs' -exec touch {} + && \
