@@ -312,19 +312,17 @@ async function exportNotes() {
   }
 }
 
-// Note write-back: PUT the sidecar to editor-api, which validates it and
-// opens/updates the session PR. The "PR #N" toolbar badge is driven by the
-// shared lastSavedPr ref, so a successful save lights it up with no extra
-// wiring here. `notesSources` feeds the target-source dropdown; the law's
-// own source is the default, overridable for the federated case (RFC-018 §2).
-const notesSources = ref([]);
-const notesTargetSource = ref('');
+// Note write-back: PUT the new drafts to editor-api, which appends them to
+// the sidecar on the active traject's branch (same write model as law and
+// scenario edits since #632). No source picker — the traject's own corpus
+// config decides where the notes land. The "PR #N" toolbar badge is driven
+// by the shared lastSavedPr ref, so a save that produced a PR lights it up
+// with no extra wiring here.
 const savingNotes = ref(false);
 const notesSaveError = ref(null);
 // Explicit success signal: a PR-less / NoChange save must not look like
 // the work vanished (the drafts get cleared either way).
 const notesSaveStatus = ref(null);
-const notesSourcesFailed = ref(false);
 // The save status/error describe the LAST save. Once the draft set
 // changes (a new note added, or drafts wiped), that confirmation is stale
 // and showing "Opslaan gelukt" next to "1 concept, nog niet opgeslagen"
@@ -333,29 +331,13 @@ watch(draftCount, () => {
   notesSaveStatus.value = null;
   notesSaveError.value = null;
 });
-async function loadNotesSources() {
-  if (notesSources.value.length) return;
-  try {
-    const res = await fetch('/api/sources');
-    if (!res.ok) throw new Error(`sources ${res.status}`);
-    notesSources.value = await res.json();
-    notesSourcesFailed.value = false;
-  } catch {
-    // Surface the failure rather than silently defaulting to the law's
-    // source: a federated note that quietly lands in the wrong repo is
-    // worse than a visible "couldn't load targets, retry" state.
-    notesSourcesFailed.value = true;
-  }
-}
 async function saveNotesToRepo() {
   if (savingNotes.value) return;
   savingNotes.value = true;
   notesSaveError.value = null;
   notesSaveStatus.value = null;
   try {
-    const { pr, noChange } = await saveToRepo(
-      notesTargetSource.value || undefined,
-    );
+    const { pr, noChange } = await saveToRepo();
     if (noChange) {
       notesSaveStatus.value = 'Notities waren al opgeslagen.';
     } else if (pr) {
@@ -369,9 +351,6 @@ async function saveNotesToRepo() {
     savingNotes.value = false;
   }
 }
-watch(canCreateNotes, (on) => {
-  if (on) loadNotesSources();
-});
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1567,11 +1546,13 @@ async function handleActionSave() {
                       :supporting-text="noteIssues.map(i => i.reason).join('; ')"
                     ></nldd-inline-dialog>
                     <!-- Draft notes live in localStorage until written back.
-                         "Opslaan naar repo" PUTs the sidecar to editor-api,
-                         which validates it and opens the session PR (same
-                         branch+PR as law/scenario edits). The target source
-                         defaults to the law's own; the dropdown overrides it
-                         for a federated note (RFC-018 §2). "Exporteer YAML"
+                         "Opslaan naar repo" appends them to the sidecar on
+                         the active traject's branch (same write model as
+                         law/scenario edits since #632). No source picker —
+                         the traject's own corpus config decides the target.
+                         Without an active traject the save button is
+                         disabled, mirroring the law-edit buttons, so the
+                         backend 403 is never a surprise. "Exporteer YAML"
                          stays for the offline / manual-commit case. -->
                     <nldd-inline-dialog
                       v-if="canCreateNotes && draftCount > 0"
@@ -1584,27 +1565,12 @@ async function handleActionSave() {
                       "
                       :icon-color="hiddenDraftCount > 0 ? 'warning' : undefined"
                     >
-                      <nldd-dropdown
-                        v-if="notesSources.length >= 1"
-                        slot="actions"
-                        label="Opslaan naar"
-                        @change="notesTargetSource = $event.detail?.value ?? $event.target?.value ?? notesTargetSource"
-                      >
-                        <select :value="notesTargetSource" data-testid="notes-target-source">
-                          <option value="">Bron van de wet (standaard)</option>
-                          <option
-                            v-for="s in notesSources"
-                            :key="s.id"
-                            :value="s.id"
-                          >{{ s.name }}</option>
-                        </select>
-                      </nldd-dropdown>
                       <nldd-button
                         slot="actions"
                         size="md"
                         variant="primary"
                         :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
-                        :disabled="savingNotes || notesSourcesFailed || null"
+                        :disabled="savingNotes || !canEdit || null"
                         data-testid="save-notes-btn"
                         @click="saveNotesToRepo"
                       ></nldd-button>
@@ -1625,11 +1591,11 @@ async function handleActionSave() {
                       ></nldd-button>
                     </nldd-inline-dialog>
                     <nldd-inline-dialog
-                      v-if="notesSourcesFailed"
+                      v-if="canCreateNotes && draftCount > 0 && !canEdit"
                       variant="warning"
-                      data-testid="notes-sources-failed"
-                      text="Doelbronnen konden niet geladen worden"
-                      supporting-text="Opslaan naar repo is uitgeschakeld tot de bronlijst opnieuw geladen is. Exporteer YAML werkt wel."
+                      data-testid="notes-no-traject"
+                      text="Selecteer eerst een traject"
+                      supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
                     ></nldd-inline-dialog>
                     <nldd-inline-dialog
                       v-if="notesSaveError"

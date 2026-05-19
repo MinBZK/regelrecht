@@ -158,7 +158,9 @@ describe('useDraftNotes.saveToRepo', () => {
     expect(url).toBe('/api/corpus/laws/zorgtoeslagwet/annotations');
     expect(opts.method).toBe('PUT');
     expect(opts.headers['Content-Type']).toBe('application/json');
-    expect(opts.headers['X-Editor-Session']).toBeTruthy();
+    // No X-Editor-Session: the traject is implicit in the session cookie
+    // (same as law/scenario saves since #632).
+    expect(opts.headers['X-Editor-Session']).toBeUndefined();
     const sent = JSON.parse(opts.body);
     expect(Array.isArray(sent)).toBe(true);
     expect(sent).toHaveLength(1);
@@ -172,15 +174,17 @@ describe('useDraftNotes.saveToRepo', () => {
     });
   });
 
-  it('appends ?source= when a target source is given', async () => {
+  it('never appends a ?source= query — the traject decides the target', async () => {
     stubSave({ ok: true, json: async () => ({ pr: null }) });
     const { addDraft, saveToRepo } = useDraftNotes(ref('zorgtoeslagwet'));
     addDraft({ ...NOTE, __draft: true });
 
+    // saveToRepo takes no source argument anymore; even if one is passed
+    // it must not leak into the URL.
     await saveToRepo('amsterdam');
 
     expect(globalThis.fetch.mock.calls[0][0]).toBe(
-      '/api/corpus/laws/zorgtoeslagwet/annotations?source=amsterdam',
+      '/api/corpus/laws/zorgtoeslagwet/annotations',
     );
   });
 

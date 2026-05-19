@@ -14,11 +14,7 @@
  */
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
-import {
-  getEditorSessionId,
-  lastSavedPr,
-  sanitizeSavedPr,
-} from './useEditorSession.js';
+import { lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
 
 const STORAGE_PREFIX = 'regelrecht-draft-notes:';
 
@@ -152,37 +148,34 @@ export function useDraftNotes(lawId) {
   }
 
   /**
-   * Append the local drafts to the law's sidecar via editor-api and
-   * open/update the session PR. `targetSourceId` is optional: omit it for
-   * the law's own source (the common case); a value is only honoured by
-   * the backend when it passes the cross-tenant allowlist (the law's
-   * source or the unrestricted central corpus).
+   * Append the local drafts to the law's sidecar via editor-api. The save
+   * is routed through the session's active traject (same model as law and
+   * scenario edits since #632): the notes land in that traject's writable
+   * branch, so a note and a law edit made in the same session ride the
+   * same PR. No source is chosen here — the traject's own corpus config
+   * decides the target. With no active traject the backend returns 403.
    *
    * The request body is **only the new drafts**, not the merged file: the
-   * backend reads the current sidecar from the session branch and appends.
+   * backend reads the current sidecar from the traject branch and appends.
    * That is why there is no `/data` fetch here — rebuilding the file
    * client-side from the stale static mirror was the blind-overwrite bug.
    *
-   * On success the saved law's drafts are cleared (they are in the PR now)
-   * and the shared `lastSavedPr` ref is updated so EditorApp's badge shows
-   * the PR. Throws with the editor-api message on failure; drafts are left
-   * untouched so no work is lost.
+   * On success the saved law's drafts are cleared (they are committed now)
+   * and, if the save produced a PR, the shared `lastSavedPr` ref is
+   * updated so EditorApp's badge shows it. Throws with the editor-api
+   * message on failure; drafts are left untouched so no work is lost.
    */
-  async function saveToRepo(targetSourceId) {
+  async function saveToRepo() {
     const id = lawId.value;
     // Snapshot drafts BEFORE any await (watch(lawId) swaps drafts.value on
     // a law switch). Strip the internal __draft marker; the backend gets
     // clean W3C Annotation objects.
     const newNotes = drafts.value.map(stripDraftMarker);
-    let url = `/api/corpus/laws/${encodeURIComponent(id)}/annotations`;
-    if (targetSourceId) {
-      url += `?source=${encodeURIComponent(targetSourceId)}`;
-    }
+    const url = `/api/corpus/laws/${encodeURIComponent(id)}/annotations`;
     const res = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'X-Editor-Session': getEditorSessionId(),
       },
       body: JSON.stringify(newNotes),
     });
