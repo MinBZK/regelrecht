@@ -146,7 +146,80 @@ export function useNotes(lawId, selectedArticle) {
       })),
   );
 
-  return { resolved, notesForArticle, issues, loading, error, reload: load };
+  return { notesForArticle, issues, loading, error, reload: load };
+}
+
+/**
+ * Resolve a list of in-memory draft notes against the loaded law and project
+ * them onto the selected article, returning the same `{ note, spans }` shape
+ * as `notesForArticle` so the editor highlights drafts exactly like committed
+ * notes. Drafts live only in localStorage until exported (RFC-018 write path);
+ * they are resolved here per-note via the same WASM resolver, not refetched.
+ *
+ * @param {import('vue').Ref<Array>} draftNotes reactive list of W3C Annotation
+ * @param {import('vue').Ref<string>} lawId
+ * @param {import('vue').Ref<object>} selectedArticle
+ */
+export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
+  const { initEngine, loadDependency } = useEngine();
+  const resolvedDrafts = ref([]); // [{ note, match }]
+
+  // Generation guard: resolve() awaits initEngine/loadDependency (slow on a
+  // law switch). Without this, a resolve started before a law switch can
+  // finish after the one started by the switch and overwrite it with stale
+  // data — and because draft selectors resolve per-law, that would highlight
+  // the previous law's drafts on the new law. useNotes.load() guards the same
+  // race the same way.
+  let generation = 0;
+
+  async function resolve() {
+    const id = lawId.value;
+    const notes = draftNotes.value;
+    const gen = ++generation;
+    const isStale = () => gen !== generation;
+    if (!id || !notes || notes.length === 0) {
+      resolvedDrafts.value = [];
+      return;
+    }
+    try {
+      const engine = await initEngine();
+      if (!engine.hasLaw(id)) await loadDependency(id);
+      const out = [];
+      for (const note of notes) {
+        const selector = note?.target?.selector;
+        if (!selector) continue;
+        let match;
+        try {
+          match = engine.resolveNote(id, selector);
+        } catch {
+          continue; // a malformed draft selector simply does not highlight
+        }
+        out.push({ note, match });
+      }
+      if (!isStale()) resolvedDrafts.value = out;
+    } catch {
+      if (!isStale()) resolvedDrafts.value = [];
+    }
+  }
+
+  watch([draftNotes, lawId], resolve, { immediate: true, deep: true });
+
+  const draftNotesForArticle = computed(() => {
+    const articleNr = selectedArticle.value?.number;
+    if (articleNr == null || articleNr === '') return [];
+    const target = String(articleNr);
+    const out = [];
+    for (const entry of resolvedDrafts.value) {
+      if (!entry.match || entry.match.status !== 'found') continue;
+      const spans = entry.match.matches.filter(
+        (m) => String(m.article_number) === target,
+      );
+      if (spans.length > 0) out.push({ note: entry.note, spans });
+    }
+    return out;
+  });
+
+  return { draftNotesForArticle };
 }
 
 /**

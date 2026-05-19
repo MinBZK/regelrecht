@@ -21,6 +21,11 @@ static DEFAULTS: LazyLock<HashMap<String, bool>> = LazyLock::new(|| {
         // 400s and the frontend silently reverts it (see the editor.* note
         // below — same allow-list mechanism).
         ("panel.notes".into(), false),
+        // Note authoring (RFC-018 write path, MVP: localStorage + manual
+        // export). Separate gate from panel.notes so notes can be shown
+        // read-only without exposing creation. Same allow-list rule: without
+        // this key the toggle PUT 400s and the frontend silently reverts it.
+        ("notes.create".into(), false),
         // Editor capability flags — visibility is panel.*, editability is editor.*.
         // The frontend wires editor.article_text_edit (default off) to gate
         // write access on the Tekst pane. Without the key here the backend's

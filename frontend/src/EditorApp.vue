@@ -6,7 +6,8 @@ import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
-import { useNotes } from './composables/useNotes.js';
+import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
+import { useDraftNotes } from './composables/useDraftNotes.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { lastLibraryPath } from './composables/useLastVisitedRoute.js';
 import { SUPPORT_EMAIL } from './constants.js';
@@ -40,6 +41,10 @@ const editorPanelFlags = [
   // toggle that overlays resolved notes on the article text. Not a
   // separate pane (notes are a layer over the text, not other content).
   ['panel.notes', 'Notities'],
+  // Note authoring (RFC-018 write path). Separate gate from panel.notes so
+  // notes can be shown read-only without exposing the (MVP, local-only)
+  // creation + export flow.
+  ['notes.create', 'Notities aanmaken'],
   ['editor.article_text_edit', 'Tekst bewerken'],
 ];
 
@@ -170,7 +175,7 @@ const {
 
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
 const {
-  notesForArticle,
+  notesForArticle: committedNotesForArticle,
   issues: noteIssues,
   loading: notesLoading,
   error: notesError,
@@ -190,6 +195,114 @@ watch(showNotes, (v) => {
 const notesActive = computed(
   () => isEnabled('panel.notes') && showNotes.value && !canEditArticleText.value,
 );
+
+// Note authoring (RFC-018 write path). Draft notes live in localStorage per
+// law until exported; they resolve and highlight live alongside committed
+// ones, so the author sees the new note anchored immediately. The WASM engine
+// is handed to NoteCreator for selector-uniqueness checks; useNotes already
+// initialises it, this just exposes the instance once ready (null until then,
+// NoteCreator guards on it).
+const noteEngine = ref(null);
+useEngine()
+  .initEngine()
+  .then((e) => {
+    noteEngine.value = e;
+  })
+  .catch(() => {});
+const {
+  drafts: draftNotes,
+  draftCount,
+  addDraft,
+  clearDrafts,
+  exportYaml,
+} = useDraftNotes(lawId);
+const { draftNotesForArticle } = useResolvedDraftNotes(
+  draftNotes,
+  lawId,
+  selectedArticle,
+);
+const canCreateNotes = computed(
+  () => isEnabled('notes.create') && notesActive.value,
+);
+// Committed + draft notes share the highlight path. Draft entries already
+// carry __draft so the popover can mark them unsaved.
+const notesForArticle = computed(() => [
+  ...committedNotesForArticle.value,
+  ...draftNotesForArticle.value,
+]);
+
+// AnnotatedText paints a flat partition: a draft whose span overlaps a
+// committed note's span resolves fine but is silently not highlighted (the
+// earlier note wins, RFC-018's documented overlapping-notes limitation).
+// Through the write path that is confusing — the count says "1 concept" but
+// nothing lights up — so detect it and tell the user explicitly.
+const hiddenDraftCount = computed(() => {
+  const committed = committedNotesForArticle.value.flatMap((n) => n.spans);
+  let hidden = 0;
+  for (const d of draftNotesForArticle.value) {
+    for (const s of d.spans) {
+      const overlaps = committed.some(
+        (c) => s.start < c.end && c.start < s.end,
+      );
+      if (overlaps) {
+        hidden++;
+        break;
+      }
+    }
+  }
+  return hidden;
+});
+
+function onCreateNote(note) {
+  addDraft(note);
+}
+
+// Wiping drafts is irreversible (local-only until exported), so it goes
+// through a confirm modal. nldd-modal-dialog's API is show()/hide() (there
+// is no close()); a flag drives those via a watch, and @close just clears
+// the flag — same pattern as MachineReadable's delete confirm, which avoids
+// the hide() -> @close -> hide() recursion.
+const clearDraftsModalEl = ref(null);
+const clearDraftsPending = ref(false);
+watch(clearDraftsPending, (open) => {
+  const el = clearDraftsModalEl.value;
+  if (!el) return;
+  if (open && typeof el.show === 'function') el.show();
+  else if (!open && typeof el.hide === 'function') el.hide();
+});
+function askClearDrafts() {
+  clearDraftsPending.value = true;
+}
+function cancelClearDrafts() {
+  if (clearDraftsPending.value === false) return; // idempotent: @close + button
+  clearDraftsPending.value = false;
+}
+function confirmClearDrafts() {
+  clearDrafts();
+  clearDraftsPending.value = false;
+}
+
+const exporting = ref(false);
+async function exportNotes() {
+  if (exporting.value) return; // a second click would download a duplicate
+  exporting.value = true;
+  let url;
+  try {
+    const text = await exportYaml();
+    const blob = new Blob([text], { type: 'text/yaml' });
+    url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'annotations.yaml';
+    a.click();
+  } finally {
+    // Revoke on a later tick: a programmatic anchor download starts
+    // asynchronously, and revoking synchronously after click() races the
+    // browser fetching the blob (unreliable in Safari/Firefox).
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 0);
+    exporting.value = false;
+  }
+}
 
 const resultSheetOpen = ref(false);
 const graphSheetOpen = ref(false);
@@ -1367,6 +1480,10 @@ async function handleActionSave() {
                     <AnnotatedText
                       :article="selectedArticle"
                       :notes-for-article="notesForArticle"
+                      :can-create="canCreateNotes"
+                      :law-id="lawId"
+                      :engine="noteEngine"
+                      @create-note="onCreateNote"
                     />
                     <nldd-inline-dialog
                       v-if="noteIssues.length"
@@ -1374,6 +1491,37 @@ async function handleActionSave() {
                       :text="`${noteIssues.length} notitie(s) niet verankerd`"
                       :supporting-text="noteIssues.map(i => i.reason).join('; ')"
                     ></nldd-inline-dialog>
+                    <!-- Draft notes are local-only until exported (RFC-018
+                         write path MVP: no write API, git stays the source
+                         of truth). The export downloads committed + draft
+                         notes as one sidecar YAML to commit by hand. -->
+                    <nldd-inline-dialog
+                      v-if="canCreateNotes && draftCount > 0"
+                      data-testid="draft-notes-bar"
+                      :text="`${draftCount} concept-notitie(s), nog niet opgeslagen`"
+                      :supporting-text="
+                        hiddenDraftCount > 0
+                          ? `${hiddenDraftCount} overlapt een bestaande notitie en wordt niet gemarkeerd.`
+                          : undefined
+                      "
+                      :icon-color="hiddenDraftCount > 0 ? 'warning' : undefined"
+                    >
+                      <nldd-button
+                        slot="actions"
+                        size="md"
+                        text="Exporteer YAML"
+                        data-testid="export-notes-btn"
+                        @click="exportNotes"
+                      ></nldd-button>
+                      <nldd-button
+                        slot="actions"
+                        size="md"
+                        variant="destructive"
+                        text="Concepten wissen"
+                        data-testid="clear-drafts-btn"
+                        @click="askClearDrafts"
+                      ></nldd-button>
+                    </nldd-inline-dialog>
                   </template>
                 </template>
                 <ArticleText v-else :article="selectedArticle" />
@@ -1529,6 +1677,20 @@ async function handleActionSave() {
     @select-law="onSearchSelectLaw"
     @harvest-available="onSearchHarvestAvailable"
   />
+
+  <!-- Drafts are local-only until exported (RFC-018: git is the source of
+       truth). Wiping them is irreversible and the only copy, so confirm. -->
+  <nldd-modal-dialog
+    ref="clearDraftsModalEl"
+    variant="alert"
+    text="Alle concept-notities wissen?"
+    supporting-text="Niet-geëxporteerde concepten gaan definitief verloren. Exporteer eerst als je ze wilt bewaren."
+    data-testid="clear-drafts-confirm"
+    @close="cancelClearDrafts"
+  >
+    <nldd-button slot="actions" variant="primary" text="Behoud concepten" @click="cancelClearDrafts"></nldd-button>
+    <nldd-button slot="actions" variant="destructive" text="Wis alles" data-testid="clear-drafts-confirm-btn" @click="confirmClearDrafts"></nldd-button>
+  </nldd-modal-dialog>
 
   <!-- Trace sheet — execution trace + expected outcomes for the most
        recently executed scenario. Opened from a scenario card's "Toon
