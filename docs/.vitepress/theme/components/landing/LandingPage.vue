@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useData, useRoute } from 'vitepress'
 import { content, langFromPath } from './content'
-import RrFooter from './RrFooter.vue'
 
 const route = useRoute()
 const { frontmatter } = useData()
@@ -14,14 +13,9 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
 </script>
 
 <template>
-  <div class="rr-landing" :lang="lang">
-    <a class="rr-skip-link" href="#rr-main">
-      {{ lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud' }}
-    </a>
-
-    <RrNav />
-
-    <main id="rr-main">
+  <!-- Wrapper, skip-link, nav and footer live in the shared Layout
+       (polder pattern). This renders only the landing's page content. -->
+  <div>
       <!-- ===================== SIGNUP PAGE ===================== -->
       <template v-if="showSignup">
         <section class="rr-section" aria-labelledby="rr-signup-title">
@@ -305,8 +299,5 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
           </div>
         </section>
       </template>
-    </main>
-
-    <RrFooter />
   </div>
 </template>

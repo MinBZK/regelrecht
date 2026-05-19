@@ -1,17 +1,23 @@
 import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
-// NLDD design-system stylesheet. This is plain CSS (no DOM), so it is
-// SSR-safe and MUST be a static import: a dynamic import() of a CSS-only
-// module is not reliably injected by Vite, which left the web components
-// (nldd-top-navigation-bar etc.) unstyled and collapsed. The Lit
-// *components* still load client-only below (they need the DOM).
+// NLDD design-system stylesheet. Plain CSS (no DOM), SSR-safe, static import.
 import '@nldd/design-system/styles'
 import './custom.css'
 import './landing.css'
 import Layout from './Layout.vue'
+import { VPNavBarSearch } from 'vitepress/theme'
 import RfcIndexTable from './components/RfcIndexTable.vue'
 import SignupForm from './components/landing/SignupForm.vue'
-import RrNav from './components/RrNav.vue'
+
+// Eagerly register the NLDD Lit components on the client at module-eval
+// time — exactly like polder's body `<script>import '@nldd/design-system'`.
+// The earlier lazy import() inside enhanceApp() registered them too late
+// and unordered, so nldd-menu was undefined when the menu-bar overflow
+// fired (`showPopover is not a function`). Eager import fixes that race.
+// Guarded for SSR: Lit needs the DOM.
+if (typeof window !== 'undefined') {
+  import('@nldd/design-system')
+}
 
 export default {
   extends: DefaultTheme,
@@ -19,14 +25,6 @@ export default {
   enhanceApp({ app }) {
     app.component('RfcIndexTable', RfcIndexTable)
     app.component('SignupForm', SignupForm)
-    app.component('RrNav', RrNav)
-
-    // The Lit components need the DOM and must not run during SSR — load
-    // them client-side only. Styles are imported statically above.
-    if (typeof window !== 'undefined') {
-      import('@nldd/design-system').catch((e) => {
-        console.error('[docs] failed to load @nldd/design-system components', e)
-      })
-    }
+    app.component('VPNavBarSearch', VPNavBarSearch)
   },
 } satisfies Theme
