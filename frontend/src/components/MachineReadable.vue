@@ -2,6 +2,8 @@
 import { computed, ref, watch, nextTick } from 'vue';
 import { humanize } from '../utils/outputFormat.js';
 import { useCorpusLaws } from '../composables/useCorpusLaws.js';
+import BreakableName from './BreakableName.vue';
+import RowActionsMenu from './RowActionsMenu.vue';
 
 const { displayName: lawDisplayName } = useCorpusLaws();
 
@@ -21,7 +23,15 @@ const emit = defineEmits([
   'open-edit',
   'init-mr',
   'add-action',
+  // The Machine-pane "Opslaan" button — a real backend save of the law.
   'save',
+  /**
+   * Patch a single machine_readable field in place (no backend save, just
+   * marks the model dirty). Same `{ section, key, data }` shape the parent's
+   * handleSave dispatches on — used for inline edits like the produces
+   * dropdowns. Distinct from `save` (which is the law PUT).
+   */
+  'patch',
   /**
    * Delete a single item from the machine_readable. Payload shape mirrors
    * `open-edit` so the parent's `handleSave`/`handleDelete` can dispatch on
@@ -44,11 +54,37 @@ const definitions = computed(() => {
   return Object.entries(defs).map(([name, def]) => {
     const val = typeof def === 'object' ? def.value : def;
     const unit = typeof def === 'object' ? def.type_spec?.unit : undefined;
-    return { name, value: val, unit };
+    // Per-token parts for read-only display: a list keeps its raw items
+    // (each wrapped in <wbr>-breakable tokens), a scalar is the formatted
+    // single value. Lets long underscore identifiers wrap instead of
+    // overflowing the (no longer fit-content) value cell.
+    const isList = Array.isArray(val);
+    const parts = isList ? val.map((v) => String(v)) : [formatValue(val, unit)];
+    return { name, value: val, unit, isList, parts };
   });
 });
 
 const produces = computed(() => execution.value?.produces ?? null);
+
+// Enum values copied from the law schema. Keep in sync with
+// schema/latest/schema.json → execution.produces.legal_character.enum
+// and .decision_type.enum. Currently identical across v0.4.0..v0.5.2;
+// if the schema adds a value here, add it here too or the dropdown
+// silently can't set it.
+const LEGAL_CHARACTERS = [
+  'BESCHIKKING', 'TOETS', 'WAARDEBEPALING', 'BESLUIT_VAN_ALGEMENE_STREKKING', 'INFORMATIEF',
+];
+const DECISION_TYPES = [
+  'TOEKENNING', 'AFWIJZING', 'GOEDKEURING', 'GEEN_BESLUIT',
+  'ALGEMEEN_VERBINDEND_VOORSCHRIFT', 'BELEIDSREGEL', 'VOORBEREIDINGSBESLUIT',
+  'ANDERE_HANDELING', 'AANSLAG',
+];
+
+// Mutations live in the parent; emit a save with the produces section.
+// An empty selection clears the key (data: null).
+function updateProduces(key, value) {
+  emit('patch', { section: 'produces', key, data: value === '' ? null : value });
+}
 
 const parameters = computed(() =>
   (execution.value?.parameters ?? []).map((p) => ({
@@ -62,7 +98,10 @@ const inputs = computed(() =>
   (execution.value?.input ?? []).map((i) => ({
     name: i.name,
     type: i.type,
-    source: i.source?.regulation ?? i.source?.output ?? null,
+    // Only an actual source regulation gets a supporting line. A cross-law
+    // output reference humanises to roughly the field name, which would
+    // just duplicate it.
+    sourceRegulation: i.source?.regulation ?? null,
   }))
 );
 
@@ -84,6 +123,10 @@ function formatValue(val, unit) {
       return (val * 100).toLocaleString('nl-NL', { maximumFractionDigits: 3 }) + '%';
     }
   }
+  // A list definition value (YAML sequence) renders here; String([...])
+  // joins with a bare comma ("a,b,c") which has no break opportunity and
+  // pushes the column width. Use comma + space so it can wrap.
+  if (Array.isArray(val)) return val.join(', ');
   return String(val);
 }
 
@@ -227,17 +270,53 @@ function addOutput() {
 
     <!-- Metadata: produces -->
     <nldd-list v-if="produces" variant="box">
-      <nldd-list-item v-if="produces.legal_character" size="md">
-        <nldd-text-cell text="Juridische basis"></nldd-text-cell>
-        <nldd-cell v-if="editable">
-          <nldd-button size="md" expandable :text="humanize(produces.legal_character)"></nldd-button>
+      <nldd-list-item v-if="produces.legal_character || editable" size="md">
+        <nldd-text-cell text="Juridische basis" min-width="120px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-cell v-if="editable" width="full" min-width="120px" max-width="280px">
+          <nldd-dropdown size="md">
+            <select
+              :key="`lc-${article?.number}`"
+              aria-label="Juridische basis"
+              :value="produces.legal_character || ''"
+              @change="updateProduces('legal_character', $event.target.value)"
+            >
+              <option value="">(geen)</option>
+              <!-- Preserve a value the hardcoded enum doesn't know (e.g. a
+                   law authored against a newer schema, or set via the YAML
+                   view): show + keep it instead of silently collapsing to
+                   (geen), which any stray edit would then commit. -->
+              <option
+                v-if="produces.legal_character && !LEGAL_CHARACTERS.includes(produces.legal_character)"
+                :value="produces.legal_character"
+              >{{ humanize(produces.legal_character) }}</option>
+              <option v-for="v in LEGAL_CHARACTERS" :key="v" :value="v">{{ humanize(v) }}</option>
+            </select>
+          </nldd-dropdown>
         </nldd-cell>
         <nldd-text-cell v-else horizontal-alignment="right" :text="humanize(produces.legal_character)"></nldd-text-cell>
       </nldd-list-item>
-      <nldd-list-item v-if="produces.decision_type" size="md">
-        <nldd-text-cell text="Besluit-type"></nldd-text-cell>
-        <nldd-cell v-if="editable">
-          <nldd-button size="md" expandable :text="humanize(produces.decision_type)"></nldd-button>
+      <nldd-list-item v-if="produces.decision_type || editable" size="md">
+        <nldd-text-cell text="Besluit-type" min-width="120px"></nldd-text-cell>
+        <nldd-spacer-cell size="8"></nldd-spacer-cell>
+        <nldd-cell v-if="editable" width="full" min-width="120px" max-width="280px">
+          <nldd-dropdown size="md">
+            <select
+              :key="`dt-${article?.number}`"
+              aria-label="Besluit-type"
+              :value="produces.decision_type || ''"
+              @change="updateProduces('decision_type', $event.target.value)"
+            >
+              <option value="">(geen)</option>
+              <!-- Same as legal_character: keep an out-of-enum value
+                   visible/selected so it isn't silently cleared. -->
+              <option
+                v-if="produces.decision_type && !DECISION_TYPES.includes(produces.decision_type)"
+                :value="produces.decision_type"
+              >{{ humanize(produces.decision_type) }}</option>
+              <option v-for="v in DECISION_TYPES" :key="v" :value="v">{{ humanize(v) }}</option>
+            </select>
+          </nldd-dropdown>
         </nldd-cell>
         <nldd-text-cell v-else horizontal-alignment="right" :text="humanize(produces.decision_type)"></nldd-text-cell>
       </nldd-list-item>
@@ -245,35 +324,44 @@ function addOutput() {
 
     <!-- Definities -->
     <template v-if="definitions.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-definitions"><h5>Definities</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="def in definitions" :key="def.name" size="md">
           <template v-if="editable">
-            <nldd-text-cell :text="`${def.name} = ${formatValue(def.value, def.unit)}`"></nldd-text-cell>
+            <nldd-text-cell><BreakableName :name="def.name" /> = {{ formatValue(def.value, def.unit) }}</nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
           </template>
           <template v-else>
-            <nldd-text-cell :text="def.name"></nldd-text-cell>
+            <nldd-text-cell min-width="120px"><BreakableName :name="def.name" /></nldd-text-cell>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell width="fit-content" horizontal-alignment="right" :text="formatValue(def.value, def.unit)"></nldd-text-cell>
+            <nldd-text-cell
+              v-if="def.isList"
+              horizontal-alignment="right"
+            ><template
+              v-for="(part, i) in def.parts"
+              :key="i"
+            ><span v-if="i > 0">, </span><BreakableName :name="part" /></template></nldd-text-cell>
+            <nldd-text-cell
+              v-else
+              width="fit-content"
+              horizontal-alignment="right"
+              :text="def.parts[0]"
+            ></nldd-text-cell>
           </template>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button @click="editDef(def.name)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder definitie"
-                :data-testid="`def-${def.name}-delete-btn`"
-                @click="deleteDef(def.name)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor definitie ${def.name}`"
+              :delete-testid="`def-${def.name}-delete-btn`"
+              @edit="editDef(def.name)"
+              @delete="deleteDef(def.name)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Definitie toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-def-btn" @click="addDef" text="Definitie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -281,28 +369,25 @@ function addOutput() {
 
     <!-- Parameters -->
     <template v-if="parameters.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-parameters"><h5>Parameters</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(param, index) in parameters" :key="param.name" size="md">
-          <nldd-text-cell :text="`${param.name} (${param.type})`"></nldd-text-cell>
+          <nldd-text-cell><BreakableName :name="param.name" /> <nldd-tag size="sm" :text="param.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button @click="editParam(index)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder parameter"
-                :data-testid="`param-${param.name}-delete-btn`"
-                @click="deleteParam(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor parameter ${param.name}`"
+              :delete-testid="`param-${param.name}-delete-btn`"
+              @edit="editParam(index)"
+              @delete="deleteParam(index)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Parameter toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-param-btn" @click="addParam" text="Parameter toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -310,31 +395,28 @@ function addOutput() {
 
     <!-- Inputs -->
     <template v-if="inputs.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-inputs"><h5>Inputs</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(input, index) in inputs" :key="input.name" :data-testid="`input-row-${input.name}`" size="md">
           <nldd-text-cell
-            :text="`${input.name} (${input.type})`"
-            :supporting-text="input.source ? lawDisplayName(input.source) : undefined"
-          ></nldd-text-cell>
+            :supporting-text="input.sourceRegulation ? lawDisplayName(input.sourceRegulation) : undefined"
+          ><BreakableName :name="input.name" /> <nldd-tag size="sm" :text="input.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button :data-testid="`input-${input.name}-edit-btn`" @click="editInput(index)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder input"
-                :data-testid="`input-${input.name}-delete-btn`"
-                @click="deleteInput(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor input ${input.name}`"
+              :edit-testid="`input-${input.name}-edit-btn`"
+              :delete-testid="`input-${input.name}-delete-btn`"
+              @edit="editInput(index)"
+              @delete="deleteInput(index)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Input toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-input-btn" @click="addInput" text="Input toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -342,28 +424,25 @@ function addOutput() {
 
     <!-- Outputs -->
     <template v-if="outputs.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-outputs"><h5>Outputs</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item v-for="(output, index) in outputs" :key="output.name" size="md">
-          <nldd-text-cell :text="`${output.name} (${output.type})`"></nldd-text-cell>
+          <nldd-text-cell><BreakableName :name="output.name" /> <nldd-tag size="sm" :text="output.type"></nldd-tag></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button @click="editOutput(index)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder output"
-                :data-testid="`output-${output.name}-delete-btn`"
-                @click="deleteOutput(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor output ${output.name}`"
+              :delete-testid="`output-${output.name}-delete-btn`"
+              @edit="editOutput(index)"
+              @delete="deleteOutput(index)"
+            />
           </nldd-cell>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Output toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-output-btn" @click="addOutput" text="Output toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -371,9 +450,9 @@ function addOutput() {
 
     <!-- Acties -->
     <template v-if="actions.length || editable">
-      <nldd-spacer size="24"></nldd-spacer>
+      <nldd-spacer size="16"></nldd-spacer>
       <nldd-title size="5" data-testid="section-actions"><h5>Acties</h5></nldd-title>
-      <nldd-spacer size="12"></nldd-spacer>
+      <nldd-spacer size="8"></nldd-spacer>
       <nldd-list variant="box">
         <nldd-list-item
           v-for="(action, index) in actions"
@@ -385,15 +464,13 @@ function addOutput() {
           <nldd-text-cell :text="action.output"></nldd-text-cell>
           <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
           <nldd-cell v-if="editable">
-            <div class="mr-row-actions">
-              <nldd-button :data-testid="`action-${action.output}-edit-btn`" @click="emit('open-action', action)" text="Bewerk"></nldd-button>
-              <nldd-icon-button
-                icon="minus"
-                accessible-label="Verwijder actie"
-                :data-testid="`action-${action.output}-delete-btn`"
-                @click="deleteAction(index)"
-              ></nldd-icon-button>
-            </div>
+            <RowActionsMenu
+              :accessible-label="`Acties voor actie ${action.output}`"
+              :edit-testid="`action-${action.output}-edit-btn`"
+              :delete-testid="`action-${action.output}-delete-btn`"
+              @edit="emit('open-action', action)"
+              @delete="deleteAction(index)"
+            />
           </nldd-cell>
           <template v-else>
             <nldd-spacer-cell size="8"></nldd-spacer-cell>
@@ -403,8 +480,8 @@ function addOutput() {
           </template>
         </nldd-list-item>
         <nldd-list-item v-if="editable" size="md">
-          <nldd-cell width="stretch">
-            <nldd-button full-width start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Actie toevoegen"></nldd-button>
+          <nldd-cell width="full">
+            <nldd-button width="full" start-icon="plus-small" data-testid="add-action-btn" @click="emit('add-action')" text="Actie toevoegen"></nldd-button>
           </nldd-cell>
         </nldd-list-item>
       </nldd-list>
@@ -422,15 +499,3 @@ function addOutput() {
     <nldd-button slot="actions" variant="destructive" text="Verwijder" @click="confirmDelete"></nldd-button>
   </nldd-modal-dialog>
 </template>
-
-<style scoped>
-/* Row-level actions cluster: Bewerk button + minus icon button. flex-end
- * keeps them right-aligned within the row's value cell, and the gap matches
- * the spacing used in OperationSettings' value-row pattern. */
-.mr-row-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-</style>

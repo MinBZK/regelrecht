@@ -7,6 +7,9 @@ const props = defineProps({
   action: { type: Object, default: null },
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
+  /** A freshly added action — Save is always offered (you opened the
+   *  sheet to create it), regardless of the dirty snapshot. */
+  isNew: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['close', 'save', 'edit']);
@@ -23,6 +26,25 @@ const selectedOpIndex = ref(0);
 let actionSeq = 0;
 const actionKey = ref('none');
 
+// Snapshot the action when it opens so we can show "Opslaan" only when
+// something actually changed. Edits mutate the action in place, so a
+// JSON compare of the live action vs this baseline is the dirty signal.
+// Perf note: this is O(action tree) and re-runs whenever any nested
+// field changes (an edit), not on every unrelated render. It's the
+// same snapshot approach EditSheet/ScenarioBuilder use deliberately for
+// consistency. If a pathologically deep SWITCH/IF tree ever makes the
+// per-keystroke stringify noticeable, swap to a deep watch that flips a
+// boolean (O(change) instead of O(tree)).
+const actionBaseline = ref('');
+const isDirty = computed(() => {
+  if (!props.action) return false;
+  try {
+    return JSON.stringify(props.action) !== actionBaseline.value;
+  } catch {
+    return true;
+  }
+});
+
 watch(() => props.action, async (action) => {
   selectedOpIndex.value = 0;
   actionKey.value = action ? String(++actionSeq) : 'none';
@@ -31,6 +53,7 @@ watch(() => props.action, async (action) => {
     sheetEl.value?.hide();
     return;
   }
+  actionBaseline.value = JSON.stringify(action);
   await nextTick();
   sheetEl.value?.show();
 }, { immediate: true });
@@ -84,7 +107,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <nldd-sheet ref="sheetEl" placement="right" width="640px" full-height @close="emit('close')">
+  <nldd-sheet ref="sheetEl" placement="right" :width="editable ? '640px' : '480px'" @close="emit('close')">
     <!-- :key forces nldd-page to remount whenever a NEW action opens.
          nldd-page captures the sticky-header height ONCE per mount via
          requestAnimationFrame; when the sheet opens with a new action the
@@ -100,56 +123,48 @@ onUnmounted(() => {
       <nldd-top-title-bar slot="header" text="Actie" :dismiss-text="editable ? 'Annuleer' : 'Sluit'" @dismiss="emit('close')"></nldd-top-title-bar>
 
       <nldd-simple-section>
-        <!-- Output binding (editable view only).
-             The `&& action` guard prevents a render-time TypeError when the
-             sheet is mounted but `action` hasn't been set yet — the parent
-             always mounts the sheet eagerly and toggles visibility via the
-             web-component's show()/hide() methods, so `action` is null
-             whenever the sheet isn't actively editing something. -->
-        <template v-if="editable && action">
-          <nldd-list variant="box" class="settings-list" data-testid="action-output-binding">
-            <nldd-list-item size="md">
-              <nldd-text-cell text="Output" max-width="120px"></nldd-text-cell>
-              <nldd-spacer-cell size="8"></nldd-spacer-cell>
-              <nldd-cell>
-                <nldd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></nldd-text-field>
-              </nldd-cell>
-            </nldd-list-item>
-          </nldd-list>
-
-          <nldd-spacer size="8"></nldd-spacer>
-        </template>
+        <!-- Output binding lives inside the operation's settings list (via
+             OperationSettings' lead-row slot) at the top level, or in the
+             direct-value list below — so it sits in the same box as the
+             other root rows instead of a separate box. -->
 
         <!-- Section A: Bovenliggende operaties -->
         <template v-if="parentOperations.length">
           <nldd-list variant="box">
+            <!-- Back/up navigation — clickable parent rows with a
+                 chevron-left, identical in view and edit: click any
+                 ancestor to jump up one or more levels. -->
             <nldd-list-item
               v-for="op in parentOperations"
               :key="op.number"
               size="md"
               :data-testid="`parent-op-${op.number}`"
-              :type="editable ? undefined : 'button'"
-              @click="!editable && selectOperation(op)"
+              type="button"
+              @click="selectOperation(op)"
             >
-              <template v-if="!editable">
-                <nldd-icon-cell size="20">
-                  <nldd-icon name="chevron-left"></nldd-icon>
-                </nldd-icon-cell>
-                <nldd-spacer-cell size="12"></nldd-spacer-cell>
-              </template>
+              <nldd-icon-cell size="20">
+                <nldd-icon name="chevron-left"></nldd-icon>
+              </nldd-icon-cell>
+              <nldd-spacer-cell size="12"></nldd-spacer-cell>
               <nldd-text-cell :text="`${op.number}. ${op.title}`" :supporting-text="op.subtitle">
               </nldd-text-cell>
-              <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
-              <nldd-cell v-if="editable">
-                <nldd-button :data-testid="`parent-op-${op.number}-edit-btn`" @click="selectOperation(op)" text="Bewerk"></nldd-button>
-              </nldd-cell>
             </nldd-list-item>
           </nldd-list>
         </template>
 
         <!-- Section B: Operation Settings -->
         <nldd-spacer v-if="parentOperations.length && selectedOperation" size="24"></nldd-spacer>
-        <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" :editable="editable" @select-operation="selectOperationByNode" />
+        <OperationSettings v-if="selectedOperation" :operation="selectedOperation" :article="article" :editable="editable" :hide-title-row="editable && !parentOperations.length" @select-operation="selectOperationByNode">
+          <template #lead-row>
+            <nldd-list-item v-if="editable && action && !parentOperations.length" size="md">
+              <nldd-text-cell text="Output" width="120px"></nldd-text-cell>
+              <nldd-spacer-cell size="12"></nldd-spacer-cell>
+              <nldd-cell>
+                <nldd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></nldd-text-field>
+              </nldd-cell>
+            </nldd-list-item>
+          </template>
+        </OperationSettings>
 
         <!-- Direct value: action has no operation, just outputs a value
              (literal or $VAR reference). Mirror OperationSettings' Titel +
@@ -157,21 +172,24 @@ onUnmounted(() => {
              which action they're looking at. -->
         <nldd-list v-if="directValue" variant="box">
           <nldd-list-item size="md">
-            <nldd-text-cell text="Output" max-width="120px"></nldd-text-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
-            <nldd-text-cell horizontal-alignment="right" :text="action.output || '(leeg)'"></nldd-text-cell>
+            <nldd-text-cell text="Output" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
+            <nldd-cell v-if="editable">
+              <nldd-text-field size="md" :value="action.output" @input="action.output = $event.target?.value ?? $event.detail?.value ?? action.output" data-testid="action-output-field"></nldd-text-field>
+            </nldd-cell>
+            <nldd-text-cell v-else horizontal-alignment="right" :text="action.output || '(leeg)'"></nldd-text-cell>
           </nldd-list-item>
           <nldd-list-item size="md">
-            <nldd-text-cell text="Waarde" max-width="120px"></nldd-text-cell>
-            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-text-cell text="Waarde" width="fit-content"></nldd-text-cell>
+            <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-text-cell horizontal-alignment="right" :text="directValue.label"></nldd-text-cell>
           </nldd-list-item>
         </nldd-list>
       </nldd-simple-section>
 
       <nldd-container slot="footer" padding="16">
-        <nldd-button v-if="editable" variant="primary" size="md" full-width data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
-        <nldd-button v-else variant="secondary" size="md" full-width data-testid="action-sheet-edit-btn" @click="emit('edit')" text="Bewerken"></nldd-button>
+        <nldd-button v-if="editable && (isNew || isDirty)" variant="primary" size="md" width="full" data-testid="action-sheet-save-btn" @click="emit('save')" text="Opslaan"></nldd-button>
+        <nldd-button v-else-if="!editable" variant="secondary" size="md" width="full" data-testid="action-sheet-edit-btn" @click="emit('edit')" text="Bewerken"></nldd-button>
       </nldd-container>
     </nldd-page>
   </nldd-sheet>

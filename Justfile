@@ -36,9 +36,14 @@ build-check:
 validate *FILES:
     script/validate.sh {{FILES}}
 
-# Run all quality checks (format + lint + check + validate + tests)
+# Validate note sidecar files (RFC-005, RFC-016)
+# Orphaned/ambiguous notes and unknown tags are warnings, not errors.
+validate-annotations *FILES:
+    script/validate-annotations.sh {{FILES}}
+
+# Run all quality checks (format + lint + check + validate + validate-annotations + tests)
 # Note: pipeline-integration-test excluded — it requires Docker (testcontainers)
-check: format lint build-check validate test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
+check: format lint build-check validate validate-annotations test harvester-test pipeline-test admin-fmt admin-lint admin-check admin-test admin-frontend editor-api-fmt editor-api-lint editor-api-check
 
 # --- Tests ---
 

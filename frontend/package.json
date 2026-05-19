@@ -16,7 +16,7 @@
   "dependencies": {
     "@cucumber/gherkin": "^39.1.0",
     "@cucumber/messages": "^32.3.1",
-    "@nldd/design-system": "^0.8.41",
+    "@nldd/design-system": "^0.8.44",
     "@tiptap/core": "^3.22.4",
     "@tiptap/starter-kit": "^3.22.4",
     "@tiptap/vue-3": "^3.22.4",

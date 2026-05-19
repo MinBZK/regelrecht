@@ -9,7 +9,7 @@
     "preview": "vitepress preview"
   },
   "optionalDependencies": {
-    "@nldd/design-system": "^0.8.42"
+    "@nldd/design-system": "^0.8.44"
   },
   "overrides": {
     "esbuild": "^0.25.0",

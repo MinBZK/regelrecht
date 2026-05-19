@@ -112,12 +112,16 @@ function onSheetClose() {
     <nldd-sheet
       ref="sheetRef"
       placement="right"
-      full-height
       accessible-label="New harvest job"
       @close="onSheetClose"
     >
       <nldd-page sticky-header>
-        <nldd-top-title-bar slot="header" text="New harvest job" />
+        <nldd-top-title-bar
+          slot="header"
+          text="New harvest job"
+          dismiss-text="Cancel"
+          @dismiss="close"
+        />
         <nldd-simple-section>
           <nldd-form>
             <nldd-form-field

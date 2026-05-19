@@ -11,6 +11,12 @@ const DEFAULTS = {
   'panel.scenario_form': true,
   'panel.yaml_editor': true,
   'panel.machine_readable': true,
+  // Notes pane (RFC-005/RFC-018). Off by default until the feature is past
+  // the display-only MVP and the corpus has notes for more than one law.
+  'panel.notes': false,
+  // Note authoring (RFC-018 write path, MVP: localStorage + manual export).
+  // Off by default: it is a separate, opt-in capability on top of viewing.
+  'notes.create': false,
   // Gates write access on the Tekst pane independently from its visibility.
   // Default off so users see article text in read-only mode until they
   // explicitly opt in — the first-save markdown normalisation rewrites the

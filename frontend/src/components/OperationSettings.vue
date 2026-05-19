@@ -1,15 +1,27 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, useId } from 'vue';
 import {
   OPERATION_LABELS,
   collectAvailableVariables,
-  describeSubtitle,
   derivedTitle,
 } from '../utils/operationTree.js';
+import BreakableName from './BreakableName.vue';
+
+// Per-instance prefix for the per-value action menu DOM ids. operation.number
+// is stable within a law but identical across editor panes, so two panes
+// showing the same operation would collide and nldd-menu would anchor to the
+// first match (wrong pane). useId() is unique per component instance; ${i}
+// still disambiguates the value rows within one instance. Mirrors the
+// useId() pattern in RowActionsMenu.vue.
+const valueMenuId = useId();
 const props = defineProps({
   operation: { type: Object, default: null },
   article: { type: Object, default: null },
   editable: { type: Boolean, default: false },
+  // Suppress the read-only "Titel" row. The action sheet sets this at the
+  // top level in edit mode, where the editable Output field takes that
+  // first/name position instead (avoiding a duplicate name row).
+  hideTitleRow: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['select-operation']);
@@ -66,15 +78,6 @@ const canAddValue = computed(() => {
   // suppress the duplicate button.
   if (LOGICAL_OPS.has(op)) return false;
   return true;
-});
-
-const canAddNestedOperation = computed(() => {
-  if (!props.editable) return false;
-  const op = props.operation?.operation;
-  if (!op) return false;
-  // Same fixed-shape rule as canAddValue: structural-slot ops don't grow.
-  if (op === 'NOT' || op === 'IF' || op === 'SWITCH' || op === 'AGE') return false;
-  return !isComparisonOp.value;
 });
 
 // Required structural fields whose minus button must be hidden so the user
@@ -156,10 +159,6 @@ const operationValues = computed(() => {
   return vals;
 });
 
-const hasClickableRow = computed(() =>
-  !props.editable && operationValues.value.some(v => isNestedOperation(v._value))
-);
-
 function isNestedOperation(val) {
   return val != null && typeof val === 'object' && val.operation;
 }
@@ -168,9 +167,13 @@ function isLiteralValue(val) {
   return val === null || typeof val === 'number' || typeof val === 'boolean' || (typeof val === 'string' && !val.startsWith('$'));
 }
 
+// Mirror the read-only Waarde row (readonlyValueText): show the nested op's
+// own title when the author supplied one, falling back to the derived
+// expression. Keeps the dropdown label identical to the Titel row the user
+// sees after clicking "Bewerken" into that operation.
 function valueDropdownNestedOption(val) {
   if (!isNestedOperation(val)) return null;
-  return { value: '__nested__', label: `${derivedTitle(val)} (operatie)` };
+  return { value: '__nested__', label: `${val.title ?? derivedTitle(val)} (operatie)` };
 }
 
 function currentDropdownValue(val) {
@@ -340,12 +343,52 @@ function updateValue(val, event) {
 
 function updateDropdownValue(val, event) {
   const selected = event.target.value;
+  // The '__nested__' sentinel is just the current operation's own row in
+  // the list — re-picking it means "keep the operation" (edit it via the
+  // pencil), so it's a no-op. Picking anything else (a variable, literal,
+  // or the empty option) replaces the value, including replacing a nested
+  // operation — otherwise switching e.g. an IF op to $bsn silently does
+  // nothing and never marks the action dirty. Consequence: picking the
+  // empty "Selecteer…" option discards a nested op tree in one click,
+  // same destructive trade as changeValueKind(); recovery is the
+  // ActionSheet "Annuleren" snapshot-restore (smoke-test this path).
   if (selected === '__nested__') return;
-  if (isNestedOperation(val._value)) return;
   const newVal = selected.startsWith('$') ? selected : parseInputValue(selected);
   applyValueMutation(val, newVal);
 }
 
+
+// The Type radio (Waarde / Operatie) only applies to value slots that can
+// hold either a literal or a nested operation — not subject/date pickers.
+function canChangeValueKind(val) {
+  return val._kind !== 'subject'
+    && val._kind !== 'date_of_birth'
+    && val._kind !== 'reference_date';
+}
+
+// The actions menu only contains the Type group and Verwijder. When neither
+// applies (e.g. a comparison op's fixed subject/value), the menu would render
+// empty ("Geen opties beschikbaar"), so suppress the more-button entirely.
+function hasValueMenu(val) {
+  return canChangeValueKind(val) || canRemoveValue(val);
+}
+
+// Switch a value between a literal and a nested operation, writing through
+// applyValueMutation so it lands in the correct slot for this _kind. The
+// default operation mirrors the old "Operatie toevoegen" shape.
+function changeValueKind(val, kind) {
+  const isOp = isNestedOperation(val._value);
+  if (kind === 'operatie' && !isOp) {
+    applyValueMutation(val, { operation: 'ADD', values: [] });
+  } else if (kind === 'value' && isOp) {
+    // Replaces the whole nested op with '' in one click. Deliberately
+    // unconfirmed: this matches the equally-destructive sibling
+    // removeValue() in the same menu — both rely on the ActionSheet
+    // "Annuleren" snapshot-restore as the single, consistent undo,
+    // rather than introducing a one-off confirm dialog here.
+    applyValueMutation(val, '');
+  }
+}
 
 function readonlyValueText(val) {
   const v = val._value;
@@ -354,17 +397,11 @@ function readonlyValueText(val) {
   // derived expression. Mirrors the buildOperationTree title rule so the
   // Waarde row reads identically to the Titel row after clicking in.
   if (isNestedOperation(v)) return v.title ?? derivedTitle(v);
+  // A YAML list renders as a value; String([...]) joins with a bare comma
+  // ("a,b,c") which has no break opportunity and pushes the column width.
+  // Use comma + space so it can wrap and reads naturally.
+  if (Array.isArray(v)) return v.join(', ');
   return String(v);
-}
-
-// Supporting-text for a Waarde row holding a nested op: only show the
-// derived expression when a user-title masked it as the primary text.
-// Without a user-title the row text IS the derived expression, so a
-// supporting-text would just repeat it.
-function nestedSupportingText(val) {
-  const v = val._value;
-  if (!isNestedOperation(v) || !v.title) return undefined;
-  return derivedTitle(v);
 }
 
 function removeValue(val) {
@@ -410,17 +447,6 @@ function addValue() {
   }
 }
 
-function addNestedOperation() {
-  const node = props.operation?.node;
-  if (!node || isComparisonOp.value) return;
-  if (node.operation === 'NOT' || node.operation === 'IF' || node.operation === 'SWITCH') return;
-
-  if (Array.isArray(node.conditions)) {
-    node.conditions.push({ operation: 'EQUALS', subject: '', value: '' });
-  } else if (Array.isArray(node.values)) {
-    node.values.push({ operation: 'ADD', values: [] });
-  }
-}
 </script>
 
 <template>
@@ -432,33 +458,42 @@ function addNestedOperation() {
       <nldd-spacer size="12"></nldd-spacer>
     </template>
     <nldd-list variant="box" class="settings-list">
+      <!-- Optional lead row, rendered as the first item of THIS list so
+           the action sheet's Output field sits in the same box as Type /
+           conditions on the root of an action. -->
+      <slot name="lead-row"></slot>
       <!-- Titel -->
-      <nldd-list-item size="md">
-        <nldd-text-cell text="Titel" max-width="120px"></nldd-text-cell>
-        <nldd-text-cell horizontal-alignment="right" :text="operation.title || '(leeg)'"></nldd-text-cell>
-        <template v-if="!editable && hasClickableRow">
-          <nldd-spacer-cell size="12"></nldd-spacer-cell>
-          <nldd-icon-cell size="20"></nldd-icon-cell>
-        </template>
+      <nldd-list-item v-if="!hideTitleRow" size="md">
+        <nldd-text-cell text="Titel" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
+        <nldd-spacer-cell size="12"></nldd-spacer-cell>
+        <nldd-text-cell horizontal-alignment="right"><BreakableName :name="operation.title || '(leeg)'" /></nldd-text-cell>
       </nldd-list-item>
 
       <!-- Type -->
       <nldd-list-item size="md">
-        <nldd-text-cell text="Type" max-width="120px"></nldd-text-cell>
-        <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
+        <nldd-text-cell text="Type" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
+        <nldd-spacer-cell size="12"></nldd-spacer-cell>
         <nldd-cell v-if="editable">
           <nldd-dropdown size="md" data-testid="operation-type-dropdown">
-            <select aria-label="Operatie type" :value="operation.operation" @change="changeOperationType($event.target.value)">
+            <!-- Same stale-collapsed-label issue as the value dropdown: the
+                 <option> list (typeOptions) is constant, so navigating to a
+                 different operation only changes the bound value, and a
+                 native <select> reused in place keeps showing the previous
+                 op's type label. Key on the operation identity + its type so
+                 the element is recreated and the collapsed text stays in
+                 sync with the selected option. -->
+            <select
+              :key="`op-type-${operation.number}-${operation.operation}`"
+              aria-label="Operatie type"
+              :value="operation.operation"
+              @change="changeOperationType($event.target.value)"
+            >
               <option v-for="opt in typeOptions" :key="opt.value" :value="opt.value" :selected="opt.value === operation.operation">{{ opt.label }}</option>
             </select>
           </nldd-dropdown>
         </nldd-cell>
         <template v-else>
-          <nldd-text-cell horizontal-alignment="right" :text="OPERATION_LABELS[operation.operation] || operation.operation || '(leeg)'"></nldd-text-cell>
-          <template v-if="hasClickableRow">
-            <nldd-spacer-cell size="12"></nldd-spacer-cell>
-            <nldd-icon-cell size="20"></nldd-icon-cell>
-          </template>
+          <nldd-text-cell horizontal-alignment="right"><BreakableName :name="OPERATION_LABELS[operation.operation] || operation.operation || '(leeg)'" /></nldd-text-cell>
         </template>
       </nldd-list-item>
 
@@ -471,16 +506,16 @@ function addNestedOperation() {
         :type="!editable && isNestedOperation(val._value) ? 'button' : undefined"
         @click="!editable && isNestedOperation(val._value) && emit('select-operation', val._value)"
       >
-        <nldd-text-cell :text="val._label" max-width="120px"></nldd-text-cell>
-        <nldd-spacer-cell v-if="editable" size="8"></nldd-spacer-cell>
-        <nldd-cell v-if="editable">
-          <div class="value-row">
+        <nldd-text-cell :text="val._label" :width="editable ? '120px' : 'fit-content'"></nldd-text-cell>
+        <nldd-spacer-cell size="12"></nldd-spacer-cell>
+        <template v-if="editable">
+          <nldd-cell>
             <!-- Subject/date fields show a dropdown of available variables.
                  If the field already holds a literal value (e.g. "2025-01-01"),
                  it's included as the first option so it stays visible and
                  selectable. -->
             <template v-if="val._kind === 'subject' || val._kind === 'date_of_birth' || val._kind === 'reference_date'">
-              <nldd-dropdown size="md" style="flex: 1; min-width: 0;">
+              <nldd-dropdown size="md">
                 <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
                   <option value="">Selecteer...</option>
                   <option v-if="isLiteralValue(val._value) && val._value !== '' && val._value !== null" :value="String(val._value)" :selected="true">{{ String(val._value) }}</option>
@@ -492,13 +527,28 @@ function addNestedOperation() {
             </template>
             <!-- Literal values show a text field -->
             <template v-else-if="isLiteralValue(val._value)">
-              <nldd-text-field size="md" :value="String(val._value)" is-full-width @input="updateValue(val, $event)"></nldd-text-field>
+              <nldd-text-field size="md" :value="String(val._value)" width="full" @input="updateValue(val, $event)"></nldd-text-field>
             </template>
             <!-- Variable references and nested operations show a full dropdown -->
             <template v-else>
-              <nldd-dropdown size="md" style="flex: 1; min-width: 0;">
-                <select :aria-label="val._label" :value="currentDropdownValue(val._value)" @change="updateDropdownValue(val, $event)">
-                  <template v-for="nestedOpt in [valueDropdownNestedOption(val._value)]" :key="'nested'">
+              <nldd-dropdown size="md">
+                <!-- A nested op's option value is the constant '__nested__',
+                     and so is the select's bound value. Native <select>
+                     only re-renders its COLLAPSED label when value changes,
+                     so navigating to a different operation (which only swaps
+                     the option TEXT, not its value) leaves the closed
+                     control showing the previous op's label while the open
+                     list shows the correct one. Keying the <select> on the
+                     displayed identity forces a fresh element so the
+                     collapsed text always matches the selected option. -->
+                <select
+                  :key="`val-sel-${i}-${valueDropdownNestedOption(val._value)?.label ?? currentDropdownValue(val._value)}`"
+                  :aria-label="val._label"
+                  :value="currentDropdownValue(val._value)"
+                  @change="updateDropdownValue(val, $event)"
+                >
+                  <option value="">Selecteer...</option>
+                  <template v-for="nestedOpt in [valueDropdownNestedOption(val._value)]" :key="nestedOpt?.label ?? 'nested'">
                     <option v-if="nestedOpt" :value="nestedOpt.value" :selected="currentDropdownValue(val._value) === '__nested__'">{{ nestedOpt.label }}</option>
                   </template>
                   <optgroup v-for="[category, opts] in variableGroups" :key="category" :label="category">
@@ -507,35 +557,67 @@ function addNestedOperation() {
                 </select>
               </nldd-dropdown>
             </template>
-            <nldd-icon-button v-if="canRemoveValue(val)" icon="minus" title="Verwijder waarde" @click="removeValue(val)">
-            </nldd-icon-button>
-          </div>
-          <p v-if="isNestedOperation(val._value)" class="value-help-text">
-            {{ describeSubtitle(val._value) }}
-            <a href="#" @click.prevent="emit('select-operation', val._value)">Bewerk</a>
-          </p>
-        </nldd-cell>
+          </nldd-cell>
+          <template v-if="isNestedOperation(val._value)">
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-icon-button
+              icon="edit"
+              text="Bewerken"
+              tooltip-timing="never"
+              variant="neutral-tinted"
+              @click="emit('select-operation', val._value)"
+            ></nldd-icon-button>
+          </template>
+          <template v-if="hasValueMenu(val)">
+            <nldd-spacer-cell size="8"></nldd-spacer-cell>
+            <nldd-icon-button
+              :id="`val-actions-${valueMenuId}-${i}`"
+              icon="more"
+              text="Acties"
+              tooltip-timing="never"
+              variant="neutral-tinted"
+            ></nldd-icon-button>
+            <nldd-menu :anchor="`val-actions-${valueMenuId}-${i}`">
+              <nldd-menu-group v-if="canChangeValueKind(val)" text="Type">
+                <nldd-menu-item
+                  type="radio"
+                  text="Waarde"
+                  :selected="!isNestedOperation(val._value) || undefined"
+                  @click.stop="changeValueKind(val, 'value')"
+                ></nldd-menu-item>
+                <nldd-menu-item
+                  type="radio"
+                  text="Operatie"
+                  :selected="isNestedOperation(val._value) || undefined"
+                  @click.stop="changeValueKind(val, 'operatie')"
+                ></nldd-menu-item>
+              </nldd-menu-group>
+              <nldd-menu-divider v-if="canChangeValueKind(val) && canRemoveValue(val)"></nldd-menu-divider>
+              <nldd-menu-item
+                v-if="canRemoveValue(val)"
+                text="Verwijder"
+                icon="delete"
+                @click.stop="removeValue(val)"
+              ></nldd-menu-item>
+            </nldd-menu>
+          </template>
+        </template>
         <template v-else>
-          <nldd-text-cell
-            horizontal-alignment="right"
-            :text="readonlyValueText(val)"
-            :supporting-text="nestedSupportingText(val)"
-          ></nldd-text-cell>
-          <template v-if="hasClickableRow">
+          <nldd-text-cell horizontal-alignment="right"><BreakableName :name="readonlyValueText(val)" /></nldd-text-cell>
+          <template v-if="isNestedOperation(val._value)">
             <nldd-spacer-cell size="12"></nldd-spacer-cell>
             <nldd-icon-cell size="20">
-              <nldd-icon v-if="isNestedOperation(val._value)" name="chevron-right"></nldd-icon>
+              <nldd-icon name="chevron-right"></nldd-icon>
             </nldd-icon-cell>
           </template>
         </template>
       </nldd-list-item>
 
       <!-- Add value -->
-      <nldd-list-item v-if="canAddValue || canAddNestedOperation" size="md">
-        <div class="add-value-buttons">
-          <nldd-button v-if="canAddValue" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Waarde toevoegen"></nldd-button>
-          <nldd-button v-if="canAddNestedOperation" size="md" start-icon="plus-small" data-testid="add-nested-op-btn" @click="addNestedOperation" text="Operatie toevoegen"></nldd-button>
-        </div>
+      <nldd-list-item v-if="canAddValue" size="md">
+        <nldd-cell width="full">
+          <nldd-button width="full" size="md" start-icon="plus-small" data-testid="add-value-btn" @click="addValue" text="Voeg waarde toe"></nldd-button>
+        </nldd-cell>
       </nldd-list-item>
     </nldd-list>
   </template>
@@ -563,41 +645,5 @@ function addNestedOperation() {
 .settings-list nldd-text-field,
 .settings-list nldd-dropdown {
   width: 100%;
-}
-
-.value-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-}
-.value-row nldd-text-field,
-.value-row nldd-dropdown {
-  flex: 1;
-  min-width: 0;
-}
-
-.add-value-buttons {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-}
-
-.value-help-text {
-  font-family: var(--primitives-font-family-body, 'RijksSansVF', sans-serif);
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.25;
-  color: var(--semantics-text-secondary-color, #545D68);
-  margin: 2px 0 0 0;
-}
-
-.value-help-text a {
-  color: var(--semantics-text-accent-color, #007BC7);
-  text-decoration: none;
-}
-
-.value-help-text a:hover {
-  text-decoration: underline;
 }
 </style>

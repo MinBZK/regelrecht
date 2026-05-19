@@ -123,7 +123,6 @@ const codeSections = computed(() => {
     <nldd-sheet
       ref="sheetRef"
       placement="right"
-      full-height
       accessible-label="Jobs"
       @close="onSheetClose"
     >
@@ -132,12 +131,16 @@ const codeSections = computed(() => {
           v-if="!selectedJob"
           slot="header"
           :text="`Jobs for ${lawId || ''}`"
+          dismiss-text="Close"
+          @dismiss="close"
         />
         <nldd-top-title-bar
           v-else
           slot="header"
           :back-text="`Jobs for ${lawId}`"
+          dismiss-text="Close"
           @back="onBack"
+          @dismiss="close"
         />
 
         <nldd-simple-section v-if="!selectedJob">
@@ -162,12 +165,13 @@ const codeSections = computed(() => {
               @click="selectedJob = job"
             >
               <nldd-text-cell
-                :text="job.id"
-                :supporting-text="jobSubtitle(job)"
+                :overline="job.id"
+                :text="jobSubtitle(job)"
+                :supporting-text="job.result?.error || undefined"
               />
               <nldd-spacer-cell size="12" />
               <nldd-cell width="fit-content">
-                <StatusBadge :status="job.status || 'unknown'" :error-message="job.result?.error" />
+                <StatusBadge :status="job.status || 'unknown'" />
               </nldd-cell>
               <nldd-spacer-cell size="12" />
               <nldd-icon-cell icon="chevron-right" size="20" />
@@ -189,7 +193,7 @@ const codeSections = computed(() => {
               <nldd-spacer-cell size="12" />
               <nldd-cell
                 v-if="label === 'Status'"
-                width="stretch"
+                width="full"
                 style="align-items: flex-end"
               >
                 <StatusBadge :status="value" size="md" />

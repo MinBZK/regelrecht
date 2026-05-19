@@ -14,7 +14,7 @@ function onPageChange(event) {
 <template>
   <nldd-pagination
     v-if="totalPages > 1"
-    full-width
+    centered
     :current="currentPage"
     :total="totalPages"
     @page-change="onPageChange"

@@ -17,13 +17,15 @@ const { authenticated, loading: authLoading, oidcConfigured, person, login, logo
 const { isEnabled, toggle: toggleFlag } = useFeatureFlags();
 const { colorScheme, setColorScheme } = useColorScheme();
 
-// Single source of truth for the library home title — used as the
-// sidebar header and as the back-text on the secondary-sidebar so the
-// two stay in sync.
-const LIBRARY_HOME_TITLE = 'Wetten en regels';
+// Library home title (sidebar header + home heading) and the label of
+// the back-button that returns to it from underlying pages. They differ
+// intentionally: the page is titled "RegelRecht", but a back-button
+// reads more naturally as "Home".
+const LIBRARY_HOME_TITLE = 'RegelRecht';
+const LIBRARY_HOME_BACK_TEXT = 'Home';
 
 const colorSchemeOptions = [
-  ['auto', 'Automatisch'],
+  ['auto', 'Systeem'],
   ['light', 'Licht'],
   ['dark', 'Donker'],
 ];
@@ -453,9 +455,9 @@ loadIndex();
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar size="md">
-                <nldd-tab-bar-item selected text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+              <nldd-tab-bar size="md" navigation>
+                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -464,10 +466,8 @@ loadIndex();
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -476,7 +476,8 @@ loadIndex();
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-md-${value}`"
@@ -485,6 +486,7 @@ loadIndex();
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
@@ -499,9 +501,9 @@ loadIndex();
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar size="md">
-                <nldd-tab-bar-item selected text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
+              <nldd-tab-bar size="md" navigation>
+                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="center" min-width="240px" width="33%">
@@ -515,10 +517,8 @@ loadIndex();
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -527,7 +527,8 @@ loadIndex();
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-lg-${value}`"
@@ -536,6 +537,7 @@ loadIndex();
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
@@ -556,7 +558,7 @@ loadIndex();
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
 
-              <nldd-simple-section full-width>
+              <nldd-simple-section width="full">
                 <nldd-title id="home-titel" size="3"><h3>{{ LIBRARY_HOME_TITLE }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="loading" text="Laden..."></nldd-inline-dialog>
@@ -591,11 +593,11 @@ loadIndex();
               <nldd-top-title-bar
                 slot="header"
                 :text="lawName || indexedLawName || 'Selecteer een wet'"
-                :back-text="LIBRARY_HOME_TITLE"
+                :back-text="LIBRARY_HOME_BACK_TEXT"
                 collapse-anchor="wet-titel"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section full-width>
+              <nldd-simple-section width="full">
                 <nldd-title id="wet-titel" size="3"><h3>{{ lawName || 'Selecteer een wet' }}</h3></nldd-title>
                 <nldd-spacer size="16"></nldd-spacer>
                 <nldd-inline-dialog v-if="selectedLawLoading" text="Laden..."></nldd-inline-dialog>
@@ -628,11 +630,11 @@ loadIndex();
                 slot="header"
                 :text="selectedArticle ? `Artikel ${selectedArticle.number}` : undefined"
                 :supporting-text="selectedArticle ? lawName : undefined"
-                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_TITLE : (lawName || 'Terug'))"
+                :back-text="indexError ? undefined : (lawError ? LIBRARY_HOME_BACK_TEXT : (lawName || 'Terug'))"
                 :collapse-anchor="selectedArticle ? 'article-titel' : undefined"
               ></nldd-top-title-bar>
 
-              <nldd-simple-section full-width v-if="indexError">
+              <nldd-simple-section width="full" v-if="indexError">
                 <nldd-inline-dialog
                   variant="alert"
                   text="Wetten en regels zijn niet geladen"
@@ -642,10 +644,10 @@ loadIndex();
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="!selectedLawId">
+              <nldd-simple-section width="full" v-else-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="lawError">
+              <nldd-simple-section width="full" v-else-if="lawError">
                 <nldd-inline-dialog
                   variant="alert"
                   :text="`${indexedLawName} is niet geladen`"
@@ -655,7 +657,7 @@ loadIndex();
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="articleNotFound">
+              <nldd-simple-section width="full" v-else-if="articleNotFound">
                 <nldd-inline-dialog
                   variant="alert"
                   :text="`Artikel ${selectedArticleNumber} van ${lawName || indexedLawName} bestaat niet`"
@@ -665,11 +667,11 @@ loadIndex();
                   <nldd-button slot="actions" variant="secondary" text="Neem contact op via e-mail" :href="`mailto:${SUPPORT_EMAIL}`"></nldd-button>
                 </nldd-inline-dialog>
               </nldd-simple-section>
-              <nldd-simple-section full-width v-else-if="!selectedArticle">
+              <nldd-simple-section width="full" v-else-if="!selectedArticle">
                 <nldd-inline-dialog text="Selecteer een artikel"></nldd-inline-dialog>
               </nldd-simple-section>
               <template v-else>
-                <nldd-simple-section full-width>
+                <nldd-simple-section width="full">
                   <nldd-title id="article-titel" size="3">
                     <h3>Artikel {{ selectedArticle.number }}</h3>
                     <span slot="subtitle">{{ lawName }}</span>
@@ -689,7 +691,7 @@ loadIndex();
                   </nldd-toolbar>
                   <nldd-spacer size="24"></nldd-spacer>
                   <KeepAlive>
-                    <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" />
+                    <ArticleText v-if="detailView === 'tekst'" :article="selectedArticle" centered />
                     <MachineReadable v-else-if="detailView === 'machine'" :article="selectedArticle" @open-action="activeAction = $event" />
                     <YamlView v-else-if="detailView === 'yaml'" :article="selectedArticle" />
                   </KeepAlive>
@@ -706,9 +708,9 @@ loadIndex();
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar compact>
-                <nldd-tab-bar-item selected icon="stack" text="Bibliotheek"></nldd-tab-bar-item>
-                <nldd-tab-bar-item :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
+              <nldd-tab-bar compact navigation>
+                <nldd-tab-bar-item :selected="route.name === 'library' || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
+                <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
@@ -721,10 +723,8 @@ loadIndex();
                 <nldd-icon-button id="settings-menu-btn-sm" size="lg" icon="global-settings" text="Instellingen" popovertarget="settings-menu-sm"></nldd-icon-button>
               </span>
               <nldd-menu id="settings-menu-sm" anchor="settings-menu-btn-sm">
-                <template v-if="!authLoading && authenticated">
-                  <nldd-menu-item :text="person?.name || person?.email" disabled></nldd-menu-item>
-                  <nldd-menu-divider></nldd-menu-divider>
-                </template>
+                <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
+                <nldd-menu-group text="Functies">
                 <nldd-menu-item
                   v-for="[key, label] in editorPanelFlags"
                   :key="key"
@@ -733,7 +733,8 @@ loadIndex();
                   :text="label"
                   @select="toggleFlag(key)"
                 ></nldd-menu-item>
-                <nldd-menu-divider></nldd-menu-divider>
+                </nldd-menu-group>
+                <nldd-menu-group text="Thema">
                 <nldd-menu-item
                   v-for="[value, label] in colorSchemeOptions"
                   :key="`scheme-sm-${value}`"
@@ -742,6 +743,7 @@ loadIndex();
                   :text="label"
                   @select="setColorScheme(value)"
                 ></nldd-menu-item>
+                </nldd-menu-group>
                 <nldd-menu-divider></nldd-menu-divider>
                 <nldd-menu-item v-if="!authLoading && authenticated" text="Uitloggen" @click="logout"></nldd-menu-item>
                 <nldd-menu-item v-else-if="!authLoading && oidcConfigured" text="Inloggen" @click="login"></nldd-menu-item>
