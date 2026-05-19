@@ -1253,4 +1253,189 @@ mod tests {
         assert_eq!(pr.url, "https://github.com/x/y/pull/42");
         assert_eq!(pr.branch, "editor/session-sess-abc");
     }
+
+    // -----------------------------------------------------------------
+    // Query-parser helpers for GET /api/related
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn parse_direction_none_defaults_to_both() {
+        let dir = parse_direction(None).unwrap();
+        assert_eq!(dir, Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_empty_string_defaults_to_both() {
+        // An explicit `?direction=` from a sloppy client should be treated
+        // the same as omitting the parameter rather than rejected outright.
+        let dir = parse_direction(Some("")).unwrap();
+        assert_eq!(dir, Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_whitespace_only_defaults_to_both() {
+        let dir = parse_direction(Some("   ")).unwrap();
+        assert_eq!(dir, Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_accepts_each_variant() {
+        assert_eq!(
+            parse_direction(Some("incoming")).unwrap(),
+            Direction::Incoming
+        );
+        assert_eq!(
+            parse_direction(Some("outgoing")).unwrap(),
+            Direction::Outgoing
+        );
+        assert_eq!(parse_direction(Some("both")).unwrap(), Direction::Both);
+    }
+
+    #[test]
+    fn parse_direction_trims_whitespace_around_variant() {
+        assert_eq!(
+            parse_direction(Some("  incoming  ")).unwrap(),
+            Direction::Incoming
+        );
+    }
+
+    #[test]
+    fn parse_direction_unknown_value_is_400_with_documented_message() {
+        let err = parse_direction(Some("sideways")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(
+            err.1.contains("incoming|outgoing|both"),
+            "error message should document the allowed variants, got: {}",
+            err.1
+        );
+        assert!(err.1.contains("sideways"));
+    }
+
+    #[test]
+    fn parse_relation_type_accepts_all_five_variants() {
+        assert_eq!(
+            parse_relation_type("cross_law_dataflow").unwrap(),
+            RelationType::CrossLawDataflow
+        );
+        assert_eq!(
+            parse_relation_type("implementation").unwrap(),
+            RelationType::Implementation
+        );
+        assert_eq!(
+            parse_relation_type("open_term_declaration").unwrap(),
+            RelationType::OpenTermDeclaration
+        );
+        assert_eq!(
+            parse_relation_type("legal_basis").unwrap(),
+            RelationType::LegalBasis
+        );
+        assert_eq!(
+            parse_relation_type("intra_law_dataflow").unwrap(),
+            RelationType::IntraLawDataflow
+        );
+    }
+
+    #[test]
+    fn parse_relation_type_trims_whitespace() {
+        assert_eq!(
+            parse_relation_type("  legal_basis  ").unwrap(),
+            RelationType::LegalBasis
+        );
+    }
+
+    #[test]
+    fn parse_relation_type_unknown_is_400() {
+        let err = parse_relation_type("not_a_real_type").unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("not_a_real_type"));
+    }
+
+    #[test]
+    fn parse_type_filter_none_returns_ok_none() {
+        let out = parse_type_filter(None).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn parse_type_filter_empty_string_returns_ok_none() {
+        // An explicit `?types=` should behave like omitting the parameter
+        // — return all types — rather than reject.
+        let out = parse_type_filter(Some("")).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn parse_type_filter_whitespace_only_returns_ok_none() {
+        let out = parse_type_filter(Some("   ,  , ")).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn parse_type_filter_single_value_returns_one_element_vec() {
+        let out = parse_type_filter(Some("legal_basis")).unwrap();
+        assert_eq!(out, Some(vec![RelationType::LegalBasis]));
+    }
+
+    #[test]
+    fn parse_type_filter_comma_separated_returns_vec() {
+        let out = parse_type_filter(Some("cross_law_dataflow,implementation,legal_basis")).unwrap();
+        assert_eq!(
+            out,
+            Some(vec![
+                RelationType::CrossLawDataflow,
+                RelationType::Implementation,
+                RelationType::LegalBasis,
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_type_filter_tolerates_whitespace_around_commas() {
+        let out = parse_type_filter(Some(" cross_law_dataflow ,  implementation , legal_basis "))
+            .unwrap();
+        assert_eq!(
+            out,
+            Some(vec![
+                RelationType::CrossLawDataflow,
+                RelationType::Implementation,
+                RelationType::LegalBasis,
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_type_filter_bad_entry_in_list_returns_400() {
+        let err = parse_type_filter(Some("legal_basis,bogus,implementation")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("bogus"));
+    }
+
+    #[test]
+    fn require_non_empty_none_passes_through() {
+        let out = require_non_empty("article", None).unwrap();
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn require_non_empty_whitespace_only_returns_400() {
+        // An explicit `?article=   ` is a client bug — the index would
+        // never match — and must be surfaced as a 400, not silently
+        // turned into an empty result.
+        let err = require_non_empty("article", Some("   ")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("article"));
+    }
+
+    #[test]
+    fn require_non_empty_empty_string_returns_400() {
+        let err = require_non_empty("article", Some("")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert!(err.1.contains("article"));
+    }
+
+    #[test]
+    fn require_non_empty_value_is_trimmed() {
+        let out = require_non_empty("article", Some("  3a  ")).unwrap();
+        assert_eq!(out, Some("3a".to_string()));
+    }
 }

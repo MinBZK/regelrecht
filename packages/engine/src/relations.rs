@@ -3,8 +3,8 @@
 //! Walks the parsed law structures and emits a [`Relation`] for every
 //! explicit pointer between articles (cross-law dataflow on inputs,
 //! `implements` ↔ `open_terms` IoC pairs, `legal_basis`, and intra-law
-//! dataflow). Tekstuele referenties in `articles[].text` worden hier
-//! niet opgepikt — die vragen om regex/NLP en zijn out-of-scope.
+//! dataflow). Textual references in `articles[].text` are not picked up
+//! here — those require regex/NLP and are out of scope.
 //!
 //! The output is collected into a [`RelationIndex`] with O(1) lookups by
 //! law, article, and output, so query endpoints can answer
@@ -12,11 +12,11 @@
 //!
 //! Weights are returned as `f64` with hard-coded defaults per
 //! [`RelationType`]. The data model has room for explicit weights later
-//! (RFC-?? om in YAML te declareren); deze iteratie gebruikt alleen de
+//! (a future RFC may declare them in YAML); this iteration only uses the
 //! defaults.
 //!
 //! See `corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml`
-//! voor een werkend IoC-voorbeeld dat alle vier de relatietypes raakt.
+//! for a working IoC example that exercises all four relation types.
 
 use crate::article::ArticleBasedLaw;
 use serde::{Deserialize, Serialize};
@@ -26,30 +26,30 @@ use std::collections::{BTreeMap, HashMap};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RelationType {
-    /// `input.source.regulation` op een ander wet-id — wet A heeft de
-    /// output van wet B nodig om dit artikel te kunnen uitvoeren.
+    /// `input.source.regulation` pointing at another law id — law A
+    /// needs the output of law B to execute this article.
     CrossLawDataflow,
-    /// `implements` declaratie — dit artikel vult een open_term van een
-    /// hoger artikel/wet in (IoC, "Gelet op …").
+    /// `implements` declaration — this article fills an open_term of a
+    /// higher article/law (IoC, "Gelet op …").
     Implementation,
-    /// `open_terms` declaratie — dit artikel laat een term open voor een
-    /// lagere regelgever (de keerzijde van [`Self::Implementation`]).
+    /// `open_terms` declaration — this article leaves a term open for a
+    /// lower regulator to fill in (the inverse of [`Self::Implementation`]).
     OpenTermDeclaration,
-    /// `legal_basis` op law-niveau — de hele regeling heeft een grondslag
-    /// in een hoger wet-artikel.
+    /// `legal_basis` at law level — the whole regulation has a basis in
+    /// a higher law article.
     LegalBasis,
-    /// `input.source.output` zonder `regulation` — een ander artikel in
-    /// dezelfde wet levert deze input.
+    /// `input.source.output` without `regulation` — another article in
+    /// the same law produces this input.
     IntraLawDataflow,
 }
 
 impl RelationType {
-    /// Default weight per relation type. Hand-tuned op basis van hoe
-    /// "hard" de koppeling is: dataflow is hardste (zonder de bron geen
-    /// resultaat), open_term/implements iets zachter (delegatie), legal_basis
-    /// nog zachter (gronding, niet altijd runtime nodig), intra-law dataflow
-    /// het laagst alleen omdat intra-law relaties typisch minder waardevol
-    /// zijn voor een cross-corpus graaf.
+    /// Default weight per relation type. Hand-tuned based on how "hard"
+    /// the coupling is: dataflow is the hardest (no result without the
+    /// source), open_term/implements is slightly softer (delegation),
+    /// legal_basis softer still (grounding, not always needed at
+    /// runtime), and intra-law dataflow is lowest only because intra-law
+    /// relations are typically less valuable in a cross-corpus graph.
     pub fn default_weight(self) -> f64 {
         match self {
             Self::CrossLawDataflow => 1.0,
@@ -61,13 +61,13 @@ impl RelationType {
     }
 }
 
-/// Een specifiek punt in het corpus waar een relatie aan of vanaf hangt.
+/// A specific point in the corpus that a relation attaches to or from.
 ///
-/// `law_id` is verplicht. `article` is `None` wanneer de relatie aan een
-/// hele wet hangt (bv. `legal_basis` op law-niveau heeft geen bron-artikel).
-/// `output` / `input` zijn alleen gevuld wanneer de relatie aan een
-/// specifiek veld in `machine_readable.execution` hangt — anders blijven
-/// ze leeg zodat artikel-niveau queries het endpoint vinden.
+/// `law_id` is required. `article` is `None` when the relation attaches
+/// to a whole law (e.g. `legal_basis` at law level has no source article).
+/// `output` / `input` are only populated when the relation attaches to a
+/// specific field in `machine_readable.execution` — otherwise they stay
+/// empty so that article-level queries find the endpoint.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RelationEndpoint {
     pub law_id: String,
@@ -99,50 +99,50 @@ impl RelationEndpoint {
     }
 }
 
-/// Eén gerichte relatie tussen twee endpoints in het corpus.
+/// A single directed relation between two endpoints in the corpus.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Relation {
     pub from: RelationEndpoint,
     pub to: RelationEndpoint,
     pub relation_type: RelationType,
     pub weight: f64,
-    /// Vrije metadata voor type-specifieke details: bv.
-    /// `{"open_term": "standaardpremie"}` voor Implementation, of
+    /// Free-form metadata for type-specific details: e.g.
+    /// `{"open_term": "standaardpremie"}` for Implementation, or
     /// `{"input": "toetsingsinkomen", "output": "toetsingsinkomen"}`
-    /// voor CrossLawDataflow.
+    /// for CrossLawDataflow.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, String>,
 }
 
-/// Richting waarin een relatie t.o.v. een query-endpoint wordt opgevraagd.
+/// Direction in which a relation is queried relative to a query endpoint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
-    /// Relaties waar het query-endpoint de `to` is (anderen wijzen naar mij).
+    /// Relations where the query endpoint is the `to` (others point at me).
     Incoming,
-    /// Relaties waar het query-endpoint de `from` is (ik wijs naar anderen).
+    /// Relations where the query endpoint is the `from` (I point at others).
     Outgoing,
-    /// Beide kanten.
+    /// Both sides.
     #[default]
     Both,
 }
 
-/// In-memory index over alle [`Relation`]s in het corpus, met side-indexen
-/// per granulariteit zodat `for_*` queries O(1) lookup zijn.
+/// In-memory index over all [`Relation`]s in the corpus, with side
+/// indexes per granularity so that `for_*` queries are O(1) lookups.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RelationIndex {
     relations: Vec<Relation>,
-    /// `law_id` → indexen in `relations` waar deze wet de `from` is.
+    /// `law_id` → indexes in `relations` where this law is the `from`.
     out_by_law: HashMap<String, Vec<usize>>,
-    /// `law_id` → indexen in `relations` waar deze wet de `to` is.
+    /// `law_id` → indexes in `relations` where this law is the `to`.
     in_by_law: HashMap<String, Vec<usize>>,
-    /// `(law_id, article)` → indexen waar dit artikel de `from` is.
+    /// `(law_id, article)` → indexes where this article is the `from`.
     out_by_article: HashMap<(String, String), Vec<usize>>,
-    /// `(law_id, article)` → indexen waar dit artikel de `to` is.
+    /// `(law_id, article)` → indexes where this article is the `to`.
     in_by_article: HashMap<(String, String), Vec<usize>>,
-    /// `(law_id, article, output)` → indexen waar deze output de `from` is.
+    /// `(law_id, article, output)` → indexes where this output is the `from`.
     out_by_output: HashMap<(String, String, String), Vec<usize>>,
-    /// `(law_id, article, output)` → indexen waar deze output de `to` is.
+    /// `(law_id, article, output)` → indexes where this output is the `to`.
     in_by_output: HashMap<(String, String, String), Vec<usize>>,
 }
 
@@ -208,10 +208,11 @@ impl RelationIndex {
 
     /// Relations that touch a specific named input on an article.
     ///
-    /// Inputs zelf zitten niet in een side-index (een artikel heeft typisch
-    /// veel inputs en de hoofd-pivot is altijd de bron-output); we filteren
-    /// daarom de artikel-set op `metadata["input"]`. Voor de huidige
-    /// corpus-grootte is dat <1ms en het houdt de index klein.
+    /// Inputs themselves are not held in a side index (an article
+    /// typically has many inputs and the main pivot is always the
+    /// source output); we therefore filter the article set on
+    /// `metadata["input"]`. For the current corpus size that is <1ms
+    /// and it keeps the index small.
     pub fn for_input(
         &self,
         law_id: &str,
@@ -376,10 +377,11 @@ fn extract_article_relations(
                         .find(|l| l.id == other_law)
                         .and_then(|l| l.find_article_by_output(source_output))
                         .map(|a| a.number.clone());
-                    // Als het target-artikel niet resolved kan worden (de wet
-                    // is niet geladen), shippen we `output` toch — dat is voor
-                    // de client een nuttig spoor. `push()` houdt de output-side
-                    // index netjes leeg zolang `article` ontbreekt.
+                    // If the target article cannot be resolved (the law
+                    // is not loaded), we still ship `output` — that is a
+                    // useful trail for the client. `push()` keeps the
+                    // output-side index empty as long as `article` is
+                    // missing.
                     let to = RelationEndpoint {
                         law_id: other_law.to_string(),
                         article: target_article,
