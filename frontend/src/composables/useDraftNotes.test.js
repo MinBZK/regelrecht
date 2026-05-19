@@ -184,6 +184,29 @@ describe('useDraftNotes.saveToRepo', () => {
     );
   });
 
+  it('keeps the existing PR badge on a NoChange re-save', async () => {
+    // Regression for hostile-review #4: a PR-less 200 (every note already
+    // committed) must NOT null an existing badge and must report noChange
+    // so the UI can say "already saved" instead of looking like loss.
+    lastSavedPr.value = { url: 'https://github.com/x/y/pull/3', number: 3, branch: 'b' };
+    stubSave({ ok: true, json: async () => ({ pr: null, no_change: true }) });
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('w'));
+    addDraft({ ...NOTE, __draft: true });
+
+    const result = await saveToRepo();
+
+    expect(result).toEqual({ pr: null, noChange: true });
+    // Badge untouched — the earlier PR is still shown.
+    expect(lastSavedPr.value).toEqual({
+      url: 'https://github.com/x/y/pull/3',
+      number: 3,
+      branch: 'b',
+    });
+    // Drafts cleared (they are already upstream) — that is fine because
+    // the caller now has noChange to show an explicit message.
+    expect(drafts.value).toHaveLength(0);
+  });
+
   it('throws the editor-api message and keeps drafts on a 400', async () => {
     stubSave({
       ok: false,

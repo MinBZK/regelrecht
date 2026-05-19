@@ -1,15 +1,20 @@
 //! Note (annotation) YAML schema validation.
 //!
 //! The editor write path (`PUT /api/corpus/laws/{id}/annotations`) must
-//! reject a malformed note file *before* a commit and PR are created —
-//! once a branch exists, an invalid file is a dead PR someone has to clean
-//! up. This is the technical half of the two-layer review: schema
-//! correctness is enforced here, resolve correctness (orphaned/ambiguous
-//! selectors) stays a warning in `validate-annotations` per RFC-018 §8.
+//! reject a malformed note file before a commit and PR are created. Once a
+//! branch exists, an invalid file is a dead PR someone has to clean up.
+//! This is the technical half of the two-layer review: schema correctness
+//! is enforced here, resolve correctness (orphaned/ambiguous selectors)
+//! stays a warning in `validate-annotations` per RFC-018 §8.
 //!
-//! The same schema is embedded by the `validate-annotations` engine binary.
-//! Keeping a second compiled copy here avoids editor-api depending on the
-//! engine crate; the schema file itself is the single source of truth.
+//! NOTE: this is a *second* embedded copy of
+//! `schema/v0.5.2/annotation-schema.json`. The `validate-annotations`
+//! engine binary embeds the same file independently (it does not call this
+//! module), so editor-api need not depend on the engine crate. The JSON
+//! file is the single source of truth; the duplication is a known drift
+//! risk. `schema_compiles` pins this copy at build time; the engine binary
+//! pins the other. If they ever diverge, the file is what is authoritative
+//! and both `include_str!`s must point at it.
 
 use std::sync::LazyLock;
 
@@ -20,9 +25,9 @@ use jsonschema::Validator;
 const ANNOTATION_SCHEMA: &str = include_str!("../../../schema/v0.5.2/annotation-schema.json");
 
 /// Compiled once on first use. The embedded schema not compiling is a
-/// build/release fault, not a per-request one — but the workspace bans
+/// build/release fault, not a per-request one, but the workspace bans
 /// `expect()`, so init is total: the error is carried in the `Result` and
-/// surfaced from [`validate_annotation_yaml`]. `schema_compiles` pins the
+/// surfaced from [`validate_annotation_doc`]. `schema_compiles` pins the
 /// build-time guarantee that this `Err` arm is unreachable in practice.
 static VALIDATOR: LazyLock<Result<Validator, String>> = LazyLock::new(|| {
     let schema: serde_json::Value = serde_json::from_str(ANNOTATION_SCHEMA)
@@ -70,13 +75,6 @@ pub fn validate_annotation_doc(doc: &serde_json::Value) -> Result<(), Vec<String
     }
 }
 
-/// Validate without keeping the parsed document. Thin wrapper over
-/// [`parse_and_validate_annotation_yaml`] for callers that only need the
-/// pass/fail (e.g. the `validate-annotations` style check).
-pub fn validate_annotation_yaml(yaml: &str) -> Result<(), Vec<String>> {
-    parse_and_validate_annotation_yaml(yaml).map(|_| ())
-}
-
 /// Serialise a sidecar document back to YAML for writing.
 ///
 /// The editor write path builds the merged document as JSON in-memory;
@@ -121,17 +119,26 @@ pub enum AppendOutcome {
 /// and the new notes are appended as text.
 ///
 /// - Base has an `annotations:` block: serialise only the *new, deduped*
-///   notes as a YAML sequence, re-indent to the sidecar's 2-space list
-///   convention, and append after the existing content. Existing bytes are
-///   untouched, so the git diff is exactly the added lines.
+///   notes as a YAML sequence, re-indent by two spaces, and append after
+///   the existing content. Existing bytes are untouched, so the git diff
+///   is exactly the added lines.
 /// - No base, or a base without an `annotations:` key (nothing to
 ///   preserve): build a fresh full document. There is no history or
 ///   comment to protect in that case.
 /// - All new notes already present: [`AppendOutcome::NoChange`].
 ///
+/// Format assumption: the 2-space re-indent produces a valid file only
+/// when the base uses the 2-space LF list convention every corpus tool
+/// emits (`js-yaml` export, `serde_yaml_ng`, the committed sidecars). A
+/// hand-edited base with 4-space indent, a flow sequence, or CRLF endings
+/// would yield a malformed or mixed-ending result. This is **not** a
+/// silent corruption: the caller re-parses and schema-validates the
+/// produced text, so such a base fails the save loudly rather than
+/// committing garbage. It is a hard stop on an exotic layout, not a
+/// "preserves any file" guarantee.
+///
 /// `new_notes` are assumed schema-checked by the caller; the caller must
-/// still validate the *resulting* document (a malformed base would
-/// otherwise pass through).
+/// still validate the *resulting* document.
 pub fn append_notes_to_sidecar(
     base_text: Option<&str>,
     new_notes: &[serde_json::Value],
@@ -300,7 +307,7 @@ annotations:
       purpose: commenting
 "#
         );
-        assert!(validate_annotation_yaml(&yaml).is_ok());
+        assert!(parse_and_validate_annotation_yaml(&yaml).is_ok());
     }
 
     #[test]
@@ -314,13 +321,13 @@ annotations:
     motivation: commenting
 "#
         );
-        let errs = validate_annotation_yaml(&yaml).unwrap_err();
+        let errs = parse_and_validate_annotation_yaml(&yaml).unwrap_err();
         assert!(!errs.is_empty());
     }
 
     #[test]
     fn malformed_yaml_reports_parse_error() {
-        let errs = validate_annotation_yaml("annotations: [unterminated").unwrap_err();
+        let errs = parse_and_validate_annotation_yaml("annotations: [unterminated").unwrap_err();
         assert_eq!(errs.len(), 1);
         assert!(errs[0].contains("YAML parse error"));
     }

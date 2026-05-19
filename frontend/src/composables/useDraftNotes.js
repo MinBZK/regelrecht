@@ -198,15 +198,30 @@ export function useDraftNotes(lawId) {
       }
       throw new Error(text);
     }
+    let pr = null;
+    let noChange = false;
     try {
       const json = await res.json();
-      lastSavedPr.value = sanitizeSavedPr(json?.pr);
+      pr = sanitizeSavedPr(json?.pr);
+      // Backend sets no_change when every submitted note was already
+      // committed and it skipped the write/commit/PR entirely.
+      noChange = json?.no_change === true;
     } catch {
-      // Local source → no PR body; treat as success, keep any prior PR.
+      // No JSON body — treat as success, pr stays null.
+    }
+    // Only OVERWRITE the badge when this save produced a PR. A PR-less
+    // 200 (local source, or a NoChange re-save) must NOT null an existing
+    // badge — same "keep any prior PR" rule as useLaw.saveLaw. Nulling it
+    // here made a re-save look like the work vanished.
+    if (pr) {
+      lastSavedPr.value = pr;
     }
     // Clear the law we saved, not lawId.value, which may have switched
     // during the await.
     clearDrafts(id);
+    // Caller shows an explicit "opgeslagen (PR #N)" vs "waren al
+    // opgeslagen" instead of silently emptying drafts with no signal.
+    return { pr, noChange };
   }
 
   const draftCount = computed(() => drafts.value.length);

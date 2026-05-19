@@ -321,6 +321,9 @@ const notesSources = ref([]);
 const notesTargetSource = ref('');
 const savingNotes = ref(false);
 const notesSaveError = ref(null);
+// Explicit success signal: a PR-less / NoChange save must not look like
+// the work vanished (the drafts get cleared either way).
+const notesSaveStatus = ref(null);
 const notesSourcesFailed = ref(false);
 async function loadNotesSources() {
   if (notesSources.value.length) return;
@@ -340,8 +343,18 @@ async function saveNotesToRepo() {
   if (savingNotes.value) return;
   savingNotes.value = true;
   notesSaveError.value = null;
+  notesSaveStatus.value = null;
   try {
-    await saveToRepo(notesTargetSource.value || undefined);
+    const { pr, noChange } = await saveToRepo(
+      notesTargetSource.value || undefined,
+    );
+    if (noChange) {
+      notesSaveStatus.value = 'Notities waren al opgeslagen.';
+    } else if (pr) {
+      notesSaveStatus.value = `Opgeslagen in PR #${pr.number}.`;
+    } else {
+      notesSaveStatus.value = 'Notities opgeslagen.';
+    }
   } catch (e) {
     notesSaveError.value = e?.message || 'Opslaan mislukt';
   } finally {
@@ -1616,6 +1629,13 @@ async function handleActionSave() {
                       data-testid="notes-save-error"
                       text="Notities opslaan mislukt"
                       :supporting-text="notesSaveError"
+                    ></nldd-inline-dialog>
+                    <nldd-inline-dialog
+                      v-if="notesSaveStatus && !notesSaveError"
+                      variant="success"
+                      data-testid="notes-save-status"
+                      text="Opslaan gelukt"
+                      :supporting-text="notesSaveStatus"
                     ></nldd-inline-dialog>
                   </template>
                 </template>
