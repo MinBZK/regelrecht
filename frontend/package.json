@@ -26,6 +26,7 @@
     "@vue-flow/minimap": "^1.5.4",
     "dompurify": "^3.4.2",
     "marked": "^18.0.3",
+    "mermaid": "^11.4.1",
     "tiptap-markdown": "^0.9.0"
   },
   "overrides": {
