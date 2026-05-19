@@ -172,20 +172,41 @@ function buildBody() {
   return text;
 }
 
-const statusMessage = computed(() => {
-  // 'ambiguous' here covers two cases buildSelector cannot tell apart from
-  // the caller's side: the quote genuinely repeats verbatim, or the resolver
-  // anchored a unique/fuzzy match somewhere other than the selection (so it
-  // was rejected as a mis-anchor). Both are fixed the same way — pick a
-  // longer, verbatim fragment — so the message covers both without
-  // over-claiming which it is.
+// Why a selection is unusable, explained concretely. The resolver matches
+// against the *raw* law text, but the editor renders it through markdown:
+// numbered-lid prefixes ("1. ") and collapsed whitespace are stripped from
+// what you see, so a visually-exact selection can still miss. The hints name
+// the actual likely causes and the fix, instead of a generic "select exact
+// text" that does not tell the user what went wrong.
+const statusInfo = computed(() => {
+  const q = exact.value.trim();
+  const short = q.length > 0 && q.length < 4;
   if (selectorStatus.value === 'ambiguous') {
-    return 'Deze selectie kon niet eenduidig op de gekozen tekst worden vastgepind (komt vaker voor of week net af). Selecteer een langer fragment dat exact zo in de wettekst staat.';
+    return {
+      title: 'Selectie komt vaker voor',
+      lead:
+        'Dit fragment staat op meerdere plekken in de wet (of week net te veel af), dus de notitie kan niet eenduidig aan één plek worden gekoppeld.',
+      hints: [
+        short
+          ? `"${q}" is te kort en komt overal voor — selecteer een langere, kenmerkende zinsnede.`
+          : 'Selecteer een langer fragment, inclusief de omringende, kenmerkende woorden.',
+        'Begin en eindig op een woordgrens; selecteer een hele zin of zinsdeel in plaats van een los woord.',
+      ],
+    };
   }
   if (selectorStatus.value === 'orphaned') {
-    return 'De resolver vindt deze selectie niet terug. Selecteer tekst die exact in de wettekst staat.';
+    return {
+      title: 'Selectie niet teruggevonden',
+      lead:
+        'De wettekst wordt opgemaakt weergegeven; de notitie wordt op de onbewerkte brontekst verankerd. Daardoor kan een selectie die er hetzelfde uitziet toch nét niet matchen.',
+      hints: [
+        'Selecteer geen lidnummer ("1.", "2.") of opsommingsteken mee — die staan niet in de brontekst zoals ze hier getoond worden.',
+        'Blijf binnen één lid of zin; selecteer niet over een witregel of lid-grens heen.',
+        'Vermijd het meeselecteren van inspringing of dubbele spaties aan begin of eind; selecteer strak om de woorden.',
+      ],
+    };
   }
-  return '';
+  return null;
 });
 
 defineExpose({ popoverEl });
@@ -207,14 +228,18 @@ defineExpose({ popoverEl });
       <!-- Unusable selection (ambiguous/orphaned): the form would only lead
            to a permanently-disabled save, so show just the warning and a way
            out. The full form appears once the selection resolves uniquely. -->
-      <template v-if="statusMessage">
+      <template v-if="statusInfo">
         <nldd-inline-dialog
           icon="warning"
           icon-color="warning"
-          text="Selectie niet bruikbaar"
-          :supporting-text="statusMessage"
+          :text="statusInfo.title"
+          :supporting-text="statusInfo.lead"
           data-testid="note-creator-status"
-        ></nldd-inline-dialog>
+        >
+          <ul class="nc-hints">
+            <li v-for="(h, i) in statusInfo.hints" :key="i">{{ h }}</li>
+          </ul>
+        </nldd-inline-dialog>
         <div class="nc-actions">
           <nldd-button size="md" text="Annuleren" data-testid="note-cancel" @click="cancel"></nldd-button>
         </div>
@@ -387,6 +412,15 @@ defineExpose({ popoverEl });
 .nc-hint {
   font-size: 0.74rem;
   opacity: 0.6;
+}
+.nc-hints {
+  margin: 8px 0 0;
+  padding-left: 1.1em;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.nc-hints li + li {
+  margin-top: 4px;
 }
 .nc-actions {
   display: flex;
