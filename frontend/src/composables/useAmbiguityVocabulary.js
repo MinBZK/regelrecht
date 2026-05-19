@@ -42,7 +42,15 @@ async function load() {
   return cached;
 }
 
+// loaded.value stays false until load()'s finally settles, so two components
+// mounting in the same tick would each dispatch a fetch. Hold the in-flight
+// promise so the second caller reuses the first load.
+let loadPromise = null;
 export function useAmbiguityVocabulary() {
-  if (!loaded.value) load();
+  if (!loaded.value && !loadPromise) {
+    loadPromise = load().finally(() => {
+      loadPromise = null;
+    });
+  }
   return { items, loaded, reload: load };
 }

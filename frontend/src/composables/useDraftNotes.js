@@ -96,6 +96,11 @@ export function useDraftNotes(lawId) {
    */
   async function exportYaml() {
     const id = lawId.value;
+    // Snapshot drafts BEFORE the await: watch(lawId) swaps drafts.value
+    // synchronously on a law switch, so reading it after the fetch could mix
+    // law A's committed notes with law B's drafts. Drafts are the only copy
+    // of unsaved work — silent loss is the worst outcome here.
+    const snapshotDrafts = [...drafts.value];
     let committed = [];
     try {
       const res = await fetch(
@@ -112,7 +117,7 @@ export function useDraftNotes(lawId) {
     }
     const annotations = [
       ...committed.map(stripDraftMarker),
-      ...drafts.value.map(stripDraftMarker),
+      ...snapshotDrafts.map(stripDraftMarker),
     ];
     const doc = {
       $schema:

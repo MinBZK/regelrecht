@@ -101,11 +101,16 @@ watch(
       }
     } else {
       pop.hidePopover?.();
+      // Clear the form too: range goes null on cancel/article-switch, and
+      // stale commentText/linkTarget/tag would otherwise pre-fill the next
+      // selection's form.
+      reset();
     }
   },
 );
 
 function reset() {
+  motivation.value = 'commenting'; // back to the default, not sticky on linking
   commentText.value = '';
   linkTarget.value = '';
   ambiguityTag.value = '';
@@ -197,8 +202,6 @@ const statusInfo = computed(() => {
       };
   }
 });
-
-defineExpose({ popoverEl });
 </script>
 
 <template>
@@ -248,15 +251,15 @@ defineExpose({ popoverEl });
       <!-- Linking: pick a machine_readable element of this article. -->
       <label v-if="motivation === 'linking'" class="nc-field">
         <span class="nc-field__label">Koppel aan element</span>
-        <select
-          class="nc-select"
-          :value="linkTarget"
-          data-testid="note-link-target"
-          @change="linkTarget = $event.target.value"
+        <nldd-dropdown
+          size="md"
+          @change="linkTarget = $event.detail?.value ?? $event.target?.value ?? linkTarget"
         >
-          <option value="" disabled>Kies een element…</option>
-          <option v-for="el in linkableElements" :key="el" :value="el">{{ el }}</option>
-        </select>
+          <select :value="linkTarget" data-testid="note-link-target">
+            <option value="" disabled>Kies een element…</option>
+            <option v-for="el in linkableElements" :key="el" :value="el">{{ el }}</option>
+          </select>
+        </nldd-dropdown>
         <span v-if="linkableElements.length === 0" class="nc-hint">
           Dit artikel heeft geen machine_readable-elementen om aan te koppelen.
         </span>
@@ -265,13 +268,13 @@ defineExpose({ popoverEl });
       <!-- Comment / question body. -->
       <label v-if="motivation === 'commenting' || motivation === 'questioning'" class="nc-field">
         <span class="nc-field__label">{{ motivation === 'questioning' ? 'Vraag' : 'Toelichting' }}</span>
-        <textarea
-          class="nc-textarea"
-          rows="3"
+        <nldd-multi-line-text-field
           :value="commentText"
+          rows="3"
+          resize="auto"
           data-testid="note-comment-text"
-          @input="commentText = $event.target.value"
-        ></textarea>
+          @input="commentText = $event.target?.value ?? $event.detail?.value ?? commentText"
+        ></nldd-multi-line-text-field>
       </label>
 
       <!-- Ambiguity tag: required for tagging, optional for questioning. -->
@@ -279,17 +282,17 @@ defineExpose({ popoverEl });
         <span class="nc-field__label">
           Ambiguïteit-label{{ motivation === 'questioning' ? ' (optioneel)' : '' }}
         </span>
-        <select
-          class="nc-select"
-          :value="ambiguityTag"
-          data-testid="note-ambiguity-tag"
-          @change="ambiguityTag = $event.target.value"
+        <nldd-dropdown
+          size="md"
+          @change="ambiguityTag = $event.detail?.value ?? $event.target?.value ?? ambiguityTag"
         >
-          <option value="">{{ motivation === 'tagging' ? 'Kies een label…' : 'Geen' }}</option>
-          <option v-for="t in ambiguityItems" :key="t.id" :value="t.id">
-            {{ t.label }}
-          </option>
-        </select>
+          <select :value="ambiguityTag" data-testid="note-ambiguity-tag">
+            <option value="">{{ motivation === 'tagging' ? 'Kies een label…' : 'Geen' }}</option>
+            <option v-for="t in ambiguityItems" :key="t.id" :value="t.id">
+              {{ t.label }}
+            </option>
+          </select>
+        </nldd-dropdown>
       </label>
 
       <!-- Workflow only applies to questioning notes (RFC-018 Decision 6). -->
@@ -380,19 +383,6 @@ defineExpose({ popoverEl });
    card so the four labels show in full instead of ellipsising. */
 .nc-field nldd-segmented-control {
   width: 100%;
-}
-.nc-select,
-.nc-textarea {
-  font: inherit;
-  padding: 6px 8px;
-  border: 1px solid rgba(15, 23, 42, 0.25);
-  border-radius: 4px;
-  background: var(--nldd-color-surface, #fff);
-  color: inherit;
-}
-.nc-textarea {
-  resize: vertical;
-  min-height: 60px;
 }
 .nc-hint {
   font-size: 0.74rem;
