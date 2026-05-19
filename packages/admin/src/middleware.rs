@@ -749,6 +749,83 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn merged_split_path_preserves_per_method_role_gate() {
+        // Regression guard for the split-path setup in `main.rs`, where
+        // `GET /api/jobs` lives behind `harvester-reader` (in `reader_routes`)
+        // and `DELETE /api/jobs` behind `harvester-admin` (in `admin_routes`),
+        // wired together via `.merge()`. Axum bakes `route_layer` into each
+        // method's `MethodRouter` before the merge, so the per-method
+        // middleware must survive — but if axum ever changes that semantic,
+        // a reader session would silently gain the admin DELETE. This test
+        // locks that invariant explicitly.
+        //
+        // Builds two single-method sub-routers on the same path with
+        // different role gates, merges them, and asserts a reader session
+        // gets 200 on GET but 403 on DELETE.
+        let store = MemoryStore::default();
+        let state = test_state(true);
+        let session_layer = SessionManagerLayer::new(store);
+
+        let reader_branch = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_auth("harvester-reader"),
+            ));
+
+        let admin_branch = Router::new()
+            .route("/test", axum::routing::delete(|| async { "ok" }))
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_auth("harvester-admin"),
+            ));
+
+        let merged = reader_branch.merge(admin_branch);
+
+        let app = regelrecht_auth::test_utils::with_seed_route(merged)
+            .with_state(state)
+            .layer(session_layer);
+
+        let cookie = seed_and_get_cookie(&app, "harvester-reader").await;
+
+        // GET passes (reader has the role).
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/test")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "GET should succeed for harvester-reader"
+        );
+
+        // DELETE is gated on harvester-admin — reader must be rejected.
+        let response = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("DELETE")
+                    .uri("/test")
+                    .header("cookie", &cookie)
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "DELETE must reject harvester-reader — per-method middleware did not survive merge"
+        );
+    }
+
+    #[tokio::test]
     async fn api_key_post_still_rejected_regardless_of_role() {
         // POST is not in API_KEY_ALLOWED_METHODS — the bearer path rejects
         // it before role checks. Verifies the order of operations is unchanged.

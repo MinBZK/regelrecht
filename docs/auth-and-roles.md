@@ -162,9 +162,12 @@ with no per-route gating. To migrate without locking anyone out:
    etc., not `allowed-user`.
 2. **Deploy the new code**. If `OIDC_REQUIRED_ROLE` is unset on the existing
    deployment, the new code falls back to `allowed-user` and logs a warning —
-   so login keeps working during the transition without any prep. Setting
-   the env var explicitly to `allowed-user` is still recommended for clarity.
-   Keep the `allowed-user` role granted to all migrated users.
+   so the login redirect keeps working during the rolling deploy (provided
+   step 1 is complete). Per-route checks gate on the new roles immediately,
+   so users without one of the new roles will see 403 on every protected
+   request until step 1 is rolled out for them. Setting the env var
+   explicitly to `allowed-user` is still recommended for clarity. Keep the
+   `allowed-user` role granted to all migrated users.
 3. **Switch `OIDC_REQUIRED_ROLE`** on each component to its new value
    (`editor-reader` / `harvester-reader`).
 4. **Remove the `allowed-user` role** from the realm.
