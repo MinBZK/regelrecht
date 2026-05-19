@@ -24,13 +24,23 @@ use uuid::Uuid;
 
 use crate::state::{BackendEntry, CorpusState};
 
-/// Resolved corpus state for a single traject, plus the id of the source
-/// that receives writes.
+/// Resolved corpus state for a single traject, plus per-source write
+/// routing.
 pub struct TrajectCorpus {
     pub corpus: CorpusState,
-    /// `source_id` of the row with `is_writable_own = TRUE` in
-    /// `traject_corpus_sources`. Writes from save handlers route here.
-    pub writable_own_source_id: String,
+    /// Maps the `source_id` a law was loaded from to the `source_id`
+    /// whose backend should receive the write. When the read source is
+    /// itself writable (local source, or a GitHub source that doesn't
+    /// need a traject-specific branch override), there's no entry and
+    /// the caller falls back to the read `source_id` directly.
+    ///
+    /// Today this map carries one entry: the writable-own's `auth_ref`
+    /// (which points at the seed source it shadows, e.g. `minbzk-central`)
+    /// mapped to the writable-own's own `source_id`. That gives "save
+    /// the law back where it came from" for laws read from the seed,
+    /// routed through the traject's own branch on the same upstream
+    /// repo.
+    pub write_target_for_source: HashMap<String, String>,
 }
 
 /// Lazy registry of per-traject corpora, mirroring the
@@ -138,11 +148,30 @@ async fn build_traject_corpus(
         return Err(TrajectCorpusError::NotFound);
     }
 
+    // Confirm the traject has a writable_own source — without one we
+    // can't route saves on laws read from the seed sources. The actual
+    // routing happens via `write_target_for_source` below; the local
+    // here is just the guard against a misconfigured traject.
     let writable_own_source_id = rows
         .iter()
         .find(|r| r.is_writable_own)
         .map(|r| r.source_id.clone())
         .ok_or(TrajectCorpusError::NoWritableOwn)?;
+
+    // Build the read-source → write-target-source map. The writable_own
+    // row carries `auth_ref` pointing at the seed source it shadows;
+    // saves for laws read from that seed get routed through the
+    // writable_own's traject-branched backend instead of pushing to the
+    // seed's read-only branch. Laws read from sources without an entry
+    // (e.g. the local source) write back through their own backend.
+    let mut write_target_for_source: HashMap<String, String> = HashMap::new();
+    for row in &rows {
+        if row.is_writable_own {
+            if let Some(target_seed) = row.auth_ref.as_deref() {
+                write_target_for_source.insert(target_seed.to_string(), row.source_id.clone());
+            }
+        }
+    }
 
     let sources: Vec<Source> = rows.iter().map(|r| r.to_source()).collect();
     let registry = CorpusRegistry::from_sources(sources.clone());
@@ -278,7 +307,7 @@ async fn build_traject_corpus(
             backends,
             auth_file: auth_file.map(|p| p.to_path_buf()),
         },
-        writable_own_source_id,
+        write_target_for_source,
     }))
 }
 

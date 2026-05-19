@@ -619,10 +619,22 @@ async fn resolve_traject_law_write(
         .get_law(law_id)
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?
         .clone();
+
+    // "Save back where the law came from": laws from a source that has
+    // an entry in `write_target_for_source` get routed through that
+    // mapped backend (typically the writable_own's traject-branched
+    // backend on the same upstream repo). Laws from a source without an
+    // entry — e.g. the local source, which is natively writable on its
+    // scratch dir — write directly through their own source's backend.
+    let write_target_source_id = traject
+        .write_target_for_source
+        .get(&law.source_id)
+        .cloned()
+        .unwrap_or_else(|| law.source_id.clone());
     let entry = traject
         .corpus
         .backends
-        .get(&traject.writable_own_source_id)
+        .get(&write_target_source_id)
         .ok_or((
             StatusCode::SERVICE_UNAVAILABLE,
             "Writable backend not initialised".to_string(),
