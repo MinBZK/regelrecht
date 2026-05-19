@@ -296,7 +296,6 @@ body {
 }
 .rr-topbar {
   background: var(--vp-nav-bg-color);
-  border-bottom: 1px solid var(--vp-c-divider);
 }
 .rr-topbar nldd-top-navigation-bar {
   display: block;
