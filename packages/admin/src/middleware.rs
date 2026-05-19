@@ -656,11 +656,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_key_bypasses_role_check_on_get() {
-        // The API key is an out-of-band trust path: it skips role checks
-        // entirely on allowed methods.
+    async fn api_key_bypasses_role_check_on_get_reader_route() {
+        // Reader-tier baseline: a GET request with a valid API key reaches a
+        // reader-tier route without a session. Today reader_routes already
+        // contains GETs (e.g. `GET /api/jobs`), so this case is exercised in
+        // production — this test locks the invariant. Pairs with the writer-
+        // and admin-tier variants below to cover all three tiers explicitly.
         let state = test_state_with_api_key(true, Some("test-key"));
-        let app = role_app(state, "harvester-admin");
+        let app = role_app(state, "harvester-reader");
         let response = app
             .oneshot(
                 axum::http::Request::builder()

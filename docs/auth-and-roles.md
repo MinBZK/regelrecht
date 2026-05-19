@@ -139,6 +139,15 @@ zad component edit harvester-admin --deployment regelrecht \
     --env OIDC_REQUIRED_ROLE=harvester-reader
 ```
 
+### Pre-existing sessions at deploy time
+
+Sessions created before this code shipped carry `authenticated = true` but no
+`SESSION_KEY_ROLES` key. The per-route role check distinguishes "key absent"
+(pre-RBAC session) from "key present but empty list" (a legitimately
+mis-configured Keycloak): the former returns 401, which triggers the OIDC
+re-login redirect — the callback then populates `SESSION_KEY_ROLES` from the
+JWT and the session self-heals. **No session flush is required at deploy.**
+
 ## Migration from the legacy `allowed-user` role
 
 Earlier deployments used a single `allowed-user` realm role checked at login,

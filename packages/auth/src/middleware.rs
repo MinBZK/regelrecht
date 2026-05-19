@@ -50,18 +50,30 @@ pub async fn check_session_role(session: &Session, required_role: &str) -> RoleC
         return RoleCheck::NotAuthenticated;
     }
 
-    let roles: Vec<String> = session
-        .get(SESSION_KEY_ROLES)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or_default();
-
-    if roles.iter().any(|r| r == required_role) {
-        RoleCheck::Allowed
-    } else {
-        let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
-        RoleCheck::MissingRole { sub }
+    // Distinguish "no roles key in session at all" (pre-RBAC session from
+    // before this code shipped) from "key is present but empty" (legitimate
+    // misconfiguration — Keycloak issued an empty `realm_access.roles`).
+    //
+    // The former must return `NotAuthenticated` so the caller maps to 401 and
+    // triggers the OIDC re-login flow — that login repopulates the roles key
+    // from the JWT and the session self-heals. Returning 403 here would leave
+    // pre-existing sessions stuck (403 does not redirect to login), so during
+    // a rolling deploy of this code every logged-in user would see "forbidden"
+    // on routes they actually have permission to reach.
+    //
+    // An explicitly empty list still falls through to `MissingRole`, which is
+    // the correct response for a user whose Keycloak roles are genuinely empty.
+    let roles: Option<Vec<String>> = session.get(SESSION_KEY_ROLES).await.ok().flatten();
+    match roles {
+        None => RoleCheck::NotAuthenticated,
+        Some(roles) => {
+            if roles.iter().any(|r| r == required_role) {
+                RoleCheck::Allowed
+            } else {
+                let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
+                RoleCheck::MissingRole { sub }
+            }
+        }
     }
 }
 
@@ -531,5 +543,68 @@ mod tests {
         let app = role_test_app(test_state(true), "editor-reader");
         let cookie = seed_session(&app, "").await;
         assert_eq!(get_test(app, &cookie).await, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn pre_rbac_session_without_roles_key_returns_401() {
+        // Simulates a session created BEFORE this PR shipped: the session
+        // carries `SESSION_KEY_AUTHENTICATED = true` but the
+        // `SESSION_KEY_ROLES` key was never written. The check must report
+        // `NotAuthenticated` (→ 401) so the caller's response triggers an
+        // OIDC re-login — that login then populates `SESSION_KEY_ROLES` from
+        // the JWT and the session self-heals.
+        //
+        // Returning 403 here (what an `unwrap_or_default()` empty-Vec would
+        // produce) would break the user experience during the rolling deploy
+        // because 403 does not redirect to the login flow.
+        let store = MemoryStore::default();
+        let state = test_state(true);
+        let session_layer = SessionManagerLayer::new(store);
+
+        let gated = Router::new()
+            .route("/test", get(|| async { "ok" }))
+            .route_layer(axum_middleware::from_fn_with_state(
+                state.clone(),
+                require_role::<TestState>("editor-reader"),
+            ));
+
+        // Mount a `/seed-pre-rbac` route that ONLY sets
+        // SESSION_KEY_AUTHENTICATED and deliberately omits SESSION_KEY_ROLES.
+        let app = gated
+            .route(
+                "/seed-pre-rbac",
+                get(|session: Session| async move {
+                    session
+                        .insert(SESSION_KEY_AUTHENTICATED, true)
+                        .await
+                        .expect("insert auth");
+                    "seeded"
+                }),
+            )
+            .with_state(state)
+            .layer(session_layer);
+
+        // Seed the pre-RBAC session.
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/seed-pre-rbac")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let cookie = response
+            .headers()
+            .get("set-cookie")
+            .expect("set-cookie header")
+            .to_str()
+            .expect("cookie str")
+            .to_string();
+
+        // The gated request must return 401 (NotAuthenticated), not 403.
+        assert_eq!(get_test(app, &cookie).await, StatusCode::UNAUTHORIZED);
     }
 }
