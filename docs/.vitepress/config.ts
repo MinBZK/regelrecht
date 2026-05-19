@@ -1,7 +1,6 @@
 import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
 import { rfcSidebarItems } from './rfcs'
-import { docsNav } from './navLinks'
 
 export default withMermaid(
   defineConfig({
@@ -14,48 +13,28 @@ export default withMermaid(
       ['link', { rel: 'icon', type: 'image/svg+xml', href: '/regelrecht-icon.svg' }],
     ],
 
-    // VitePress' default light code theme (github-light) renders some tokens
-    // (e.g. the string/keyword green #22863A) at ~4.42:1 on the code-block
-    // background — below the WCAG 2.2 AA 4.5:1 threshold. The high-contrast
-    // GitHub themes keep every token >= 4.5:1. This fixes contrast in every
-    // code block site-wide, not just the landing.
-    markdown: {
-      theme: {
-        light: 'github-light-high-contrast',
-        dark: 'github-dark-high-contrast',
-      },
-    },
-
     ignoreDeadLinks: [
       /^https?:\/\/localhost/,
     ],
 
-    // The site default lang is `en` (the docs). The Dutch landing pages
-    // ("/" and "/aanmelden") must declare lang="nl" on <html> for WCAG 3.1.1.
-    // VitePress emits the site lang into the SSR HTML; rewrite it for the
-    // Dutch routes only. EN landing and all docs stay `en`.
-    transformHtml(code, id) {
-      // `id` is the absolute path of the emitted file in dist. Only the
-      // bare "index.html" (= "/") and "aanmelden.html" (= "/aanmelden")
-      // are the Dutch landing pages; everything else (incl. en/index.html,
-      // rfcs/index.html, all docs) stays English.
-      const rel = id.split('/dist/')[1] ?? ''
-      if (rel === 'index.html' || rel === 'aanmelden.html') {
-        return code.replace(/<html([^>]*?)\slang="en"/, '<html$1 lang="nl"')
-      }
+    // i18n: add Dutch locale here when translations are ready.
+    // See https://vitepress.dev/guide/i18n for setup.
+    locales: {
+      root: { label: 'English', lang: 'en' },
+      // nl: { label: 'Nederlands', lang: 'nl', link: '/nl/' },
     },
-
-    // The public-facing landing is bilingual and lives entirely in the custom
-    // theme Layout: Dutch at "/", English at "/en/". The English documentation
-    // stays at the root (/guide/, /concepts/, ...) — it is the only docs
-    // language, so VitePress `locales` are intentionally NOT used here.
-    // Landing language is derived from the route path in the Layout component.
 
     themeConfig: {
       logo: '/logo.svg',
-      // The visible header is the custom theme Layout; this nav stays
-      // shared via ./navLinks for VitePress metadata/prev-next consistency.
-      nav: docsNav.map(({ text, link }) => ({ text, link })),
+      nav: [
+        { text: 'Guide', link: '/guide/what-is-regelrecht' },
+        { text: 'Concepts', link: '/concepts/how-it-works' },
+        { text: 'Components', link: '/components/engine' },
+        { text: 'Operations', link: '/operations/deployment' },
+        { text: 'Auth & Roles', link: '/auth-and-roles' },
+        { text: 'RFCs', link: '/rfcs/' },
+        { text: 'Reference', link: '/reference/glossary' },
+      ],
       sidebar: {
         '/guide/': [
           {
@@ -200,20 +179,17 @@ export default withMermaid(
     vue: {
       template: {
         compilerOptions: {
-          isCustomElement: (tag: string) =>
-            tag.startsWith('rr-') || tag.startsWith('nldd-'),
+          isCustomElement: (tag: string) => tag.startsWith('rr-'),
         },
       },
     },
 
     vite: {
-      // @nldd/design-system (Lit web components) is bundled for the client so
-      // <nldd-*> elements actually upgrade in the browser. It must NOT run
-      // during SSR (Lit needs the DOM): the theme imports it client-only,
-      // guarded by `typeof window`, and ssr.noExternal keeps Vite from trying
-      // to externalize/evaluate it on the server.
-      ssr: {
-        noExternal: ['@nldd/design-system'],
+      build: {
+        rollupOptions: {
+          // @nldd/design-system is optional — externalize if not installed
+          external: (id: string) => id.startsWith('@nldd/design-system'),
+        },
       },
     },
 

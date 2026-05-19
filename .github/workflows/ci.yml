@@ -23,7 +23,6 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
       admin: ${{ steps.filter.outputs.admin }}
       editor-api: ${{ steps.filter.outputs.editor-api }}
-      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
@@ -55,9 +54,6 @@ jobs:
               - packages/pipeline/**
               - packages/harvester/**
               - Justfile
-              - .github/workflows/ci.yml
-            docs:
-              - docs/**
               - .github/workflows/ci.yml
 
   protect-schema:
@@ -559,31 +555,3 @@ jobs:
       - name: Skip (no relevant changes)
         if: needs.changes.outputs.editor-api != 'true'
         run: echo "No editor-api changes, skipping"
-
-  docs-a11y:
-    name: Docs accessibility
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
-
-      - name: Set up Node
-        if: needs.changes.outputs.docs == 'true'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
-
-      - name: Install dependencies
-        if: needs.changes.outputs.docs == 'true'
-        run: cd docs && npm ci
-
-      - name: Run accessibility audit (WCAG 2.2 AA)
-        if: needs.changes.outputs.docs == 'true'
-        run: cd docs && npm run a11y
-
-      - name: Skip (no relevant changes)
-        if: needs.changes.outputs.docs != 'true'
-        run: echo "No docs changes, skipping"
