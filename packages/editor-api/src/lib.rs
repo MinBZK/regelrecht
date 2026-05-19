@@ -7,6 +7,7 @@
 
 pub mod accounts;
 pub mod config;
+pub mod corpus_handlers;
 pub mod state;
 pub mod traject_corpus;
 pub mod trajects;

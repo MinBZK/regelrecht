@@ -10,6 +10,10 @@ use tower_sessions::Session;
 use uuid::Uuid;
 
 use regelrecht_auth::handlers::{SESSION_KEY_EMAIL, SESSION_KEY_NAME, SESSION_KEY_SUB};
+use regelrecht_corpus::annotation_schema::{
+    append_notes_to_sidecar, first_note_not_targeting_law, parse_and_validate_annotation_yaml,
+    validate_annotation_doc, AppendOutcome,
+};
 use regelrecht_corpus::backend::{EditorUser, PersistOutcome, RepoBackend, WriteContext};
 use regelrecht_corpus::dto::{build_source_summaries, PaginationParams, SourceSummary};
 use regelrecht_corpus::source_map::{
@@ -30,6 +34,13 @@ use crate::trajects::read_active_from_session;
 #[derive(Debug, Serialize)]
 pub struct SaveResponse {
     pub pr: Option<SavePrInfo>,
+    /// `true` when a notes save was a no-op: every submitted note was
+    /// already present on the branch, so nothing was written/committed.
+    /// Lets the frontend show "al opgeslagen" and keep any existing PR
+    /// badge instead of treating a PR-less 200 as a lost save (review
+    /// finding NEW-2). Always `false` for law/scenario saves; those
+    /// clients ignore it.
+    pub no_change: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -672,6 +683,29 @@ async fn resolve_traject_scenario_target(
     })
 }
 
+/// Resolve the write target for a law's stand-off notes sidecar within the
+/// active traject.
+///
+/// The path is `annotations/{law_id}/annotations.yaml` at the source root,
+/// NOT under the law's own `regulation/...` directory: RFC-018 §1 keys the
+/// sidecar by law id, independent of where the law file lives. Routing,
+/// writability and membership checks all come from `resolve_traject_law_write`
+/// (same backend the law/scenario writes use), so notes land in the same
+/// traject branch/PR as the rest of the edits in the session.
+async fn resolve_traject_annotation_target(
+    state: &AppState,
+    session: &Session,
+    law_id: &str,
+) -> Result<EditorWriteTarget, (StatusCode, String)> {
+    let (_law, backend) = resolve_traject_law_write(state, session, law_id).await?;
+    Ok(EditorWriteTarget {
+        relative_path: PathBuf::from("annotations")
+            .join(law_id)
+            .join("annotations.yaml"),
+        backend,
+    })
+}
+
 /// Build a [`SaveResponse`] for a traject write. Traject backends commit
 /// straight to the configured branch without opening a PR for now, so the
 /// outcome typically carries `pr: None` and the response is just `{ pr:
@@ -683,6 +717,7 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
             url: pr.html_url,
             number: pr.number,
         }),
+        no_change: false,
     }
 }
 
@@ -718,6 +753,182 @@ pub async fn save_scenario(
         })
         .await
         .map_err(corpus_write_error("scenario"))?;
+
+    Ok(Json(save_response_from_traject(outcome)))
+}
+
+/// Schema the produced notes document is validated against before it is
+/// written. Must match the version embedded in `regelrecht-corpus`'
+/// annotation validator (kept in lockstep with the engine's resolver).
+const ANNOTATION_SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.2/annotation-schema.json";
+
+/// Upper bound on notes accepted in a single save. The body limit on the
+/// route already caps raw size; this caps the *count* so a single request
+/// cannot append an unreasonable number of notes in one commit.
+const MAX_NOTES_PER_SAVE: usize = 500;
+
+/// PUT /api/corpus/laws/{law_id}/annotations — append stand-off notes.
+///
+/// Requires an active traject, exactly like `save_law`/`save_scenario`:
+/// the notes land in that traject's writable backend (its branch), so a
+/// note and a law edit made in the same session ride the same PR. Without
+/// an active traject the underlying `resolve_traject_law_write` returns 403.
+///
+/// The body is a JSON array of *new* notes (drafts). The handler reads the
+/// sidecar as it stands on the traject branch and appends only the new,
+/// deduped notes, keeping the existing bytes verbatim (RFC-018 Dec. 1 /
+/// RFC-005: per-note `git blame` and the curated motivering comments must
+/// survive). Error bodies are deliberately generic — schema instance paths
+/// can echo attacker-controlled map keys and would flow into an nldd
+/// dialog (the self-XSS vector `save_law` also avoids).
+pub async fn save_annotations(
+    State(state): State<AppState>,
+    session: Session,
+    Path(law_id): Path<String>,
+    body: String,
+) -> Result<Json<SaveResponse>, (StatusCode, String)> {
+    let author = editor_user_from_session(&session).await;
+
+    // Body is a JSON array of new notes. Parse + bound it before touching
+    // the backend.
+    let new_notes: Vec<serde_json::Value> = serde_json::from_str(&body).map_err(|e| {
+        tracing::debug!(law_id = %law_id, error = %e, "save_annotations: body is not a JSON note array");
+        (
+            StatusCode::BAD_REQUEST,
+            "Request body must be a JSON array of notes".to_string(),
+        )
+    })?;
+    if new_notes.len() > MAX_NOTES_PER_SAVE {
+        return Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!("Too many notes in one save (max {})", MAX_NOTES_PER_SAVE),
+        ));
+    }
+
+    let target = resolve_traject_annotation_target(&state, &session, &law_id).await?;
+    let EditorWriteTarget {
+        relative_path,
+        backend,
+    } = target;
+
+    // Read the current sidecar from the traject backend (the branch this
+    // traject's PR is built on — read-your-writes within the traject).
+    // Absent file = first notes for this law.
+    let base_text: Option<String> = backend
+        .read_file(&relative_path)
+        .await
+        .map_err(corpus_write_error("annotations"))?;
+
+    // Validate the EXISTING file first, before merging in the new notes.
+    // The post-merge validation below cannot tell "your note is invalid"
+    // from "the file on the branch was already invalid" — same generic
+    // message for both, so a user with a perfectly good note would edit it
+    // forever while the real fault is a pre-existing note they did not
+    // write. Schema drift on a committed sidecar is rare, but when it
+    // happens the user must get a distinct, actionable error. Accepted
+    // limitation documented in RFC-018 §10.
+    if let Some(text) = base_text.as_deref() {
+        if !text.trim().is_empty() {
+            if let Err(errors) = parse_and_validate_annotation_yaml(text) {
+                tracing::warn!(
+                    law_id = %law_id,
+                    errors = ?errors,
+                    "save_annotations: existing sidecar fails the current schema; blocking append"
+                );
+                return Err((
+                    StatusCode::CONFLICT,
+                    "The notes file on the branch is itself invalid against the \
+                     current schema. This is not a problem with your note; the \
+                     existing file must be repaired before new notes can be added."
+                        .to_string(),
+                ));
+            }
+        }
+    }
+
+    // Append-only: keep the base file's bytes verbatim (preserves the
+    // curated motivering comments and per-note git blame, RFC-018 Dec. 1 /
+    // RFC-005) and append only the new, deduped notes. NoChange short-
+    // circuits the whole write/commit so a no-op save is silent.
+    let new_text =
+        match append_notes_to_sidecar(base_text.as_deref(), &new_notes, ANNOTATION_SCHEMA_URL)
+            .map_err(|e| {
+                tracing::error!(law_id = %law_id, error = %e, "save_annotations: append failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to prepare notes for writing".to_string(),
+                )
+            })? {
+            AppendOutcome::NoChange => {
+                // Nothing new survived dedup (re-save of already-committed
+                // notes). Skip write/commit entirely — no empty commit, no
+                // branch noise (review finding NEW-2). `no_change: true` tells
+                // the frontend to show "al opgeslagen" and keep the existing
+                // PR badge instead of treating a PR-less 200 as a lost save.
+                tracing::debug!(law_id = %law_id, "save_annotations: no new notes, skipping write");
+                return Ok(Json(SaveResponse {
+                    pr: None,
+                    no_change: true,
+                }));
+            }
+            AppendOutcome::Write(text) => text,
+        };
+
+    // Validate the *resulting* document. The base was already validated
+    // separately above (a pre-existing-invalid file returns a distinct
+    // 409), so a failure here means the newly submitted notes are bad, or
+    // serialisation produced something off. Detailed errors are logged,
+    // never returned (self-XSS stance, as `save_law`).
+    let doc: serde_json::Value = serde_yaml_ng::from_str(&new_text).map_err(|e| {
+        tracing::error!(law_id = %law_id, error = %e, "save_annotations: produced YAML does not parse");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Produced an invalid notes file".to_string(),
+        )
+    })?;
+    if let Err(errors) = validate_annotation_doc(&doc) {
+        tracing::debug!(
+            law_id = %law_id,
+            errors = ?errors,
+            "save_annotations rejected: resulting document failed schema validation"
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Notes are not valid against the annotation schema".to_string(),
+        ));
+    }
+
+    // Every note must be about the law this path writes to (RFC-018 §1
+    // keys the sidecar by law id). Allowlist, not blocklist: a note whose
+    // `target.source` is absent or not a parseable `regelrecht://{law_id}`
+    // is rejected, not silently ignored — the note-side analogue of
+    // `save_law`'s `$id`/path guard. Runs on the merged result so a hostile
+    // appended note cannot reference another law.
+    if let Some((idx, err)) = first_note_not_targeting_law(&doc, &law_id) {
+        tracing::debug!(
+            law_id = %law_id,
+            note_index = idx,
+            reason = ?err,
+            "save_annotations rejected: a note's target.source does not resolve to this law"
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "A note's target does not match the law it is being saved to".to_string(),
+        ));
+    }
+
+    backend
+        .write_file(&relative_path, &new_text)
+        .await
+        .map_err(corpus_write_error("annotations"))?;
+
+    let outcome = backend
+        .persist(&WriteContext {
+            message: format!("Notities bijgewerkt voor {}", law_id),
+            author,
+        })
+        .await
+        .map_err(corpus_write_error("annotations"))?;
 
     Ok(Json(save_response_from_traject(outcome)))
 }
@@ -950,5 +1161,7 @@ mod tests {
     fn save_response_from_traject_returns_none_for_plain_commit() {
         let body = save_response_from_traject(PersistOutcome { pr: None });
         assert!(body.pr.is_none());
+        // Law/scenario saves are never a notes no-op.
+        assert!(!body.no_change);
     }
 }

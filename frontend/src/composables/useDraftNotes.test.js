@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ref } from 'vue';
 import yaml from 'js-yaml';
 import { useDraftNotes } from './useDraftNotes.js';
+import { lastSavedPr } from './useEditorSession.js';
 
 /** Stub the sidecar fetch exportYaml does. `committed` is the file's notes. */
 function stubSidecar(committed) {
@@ -125,5 +126,133 @@ describe('useDraftNotes', () => {
     // lineWidth -1: the value stays on one logical line (no YAML fold marker).
     const reparsed = yaml.load(await exportYaml());
     expect(reparsed.annotations[0].body.value).toBe(longValue);
+  });
+});
+
+// saveToRepo now does ONE request: a PUT whose body is the JSON array of
+// new drafts. No /data GET — the backend reads the base from the session
+// branch and appends. Single stub for the PUT.
+function stubSave(putResponse) {
+  globalThis.fetch = vi.fn(() => Promise.resolve(putResponse));
+}
+
+describe('useDraftNotes.saveToRepo', () => {
+  beforeEach(() => {
+    lastSavedPr.value = null;
+  });
+
+  it('PUTs only the new drafts as JSON, clears drafts, sets the PR', async () => {
+    stubSave({
+      ok: true,
+      json: async () => ({
+        pr: { url: 'https://github.com/x/y/pull/7', number: 7, branch: 'b' },
+      }),
+    });
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('zorgtoeslagwet'));
+    addDraft({ ...NOTE, __draft: true });
+
+    await saveToRepo();
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+    const [url, opts] = globalThis.fetch.mock.calls[0];
+    expect(url).toBe('/api/corpus/laws/zorgtoeslagwet/annotations');
+    expect(opts.method).toBe('PUT');
+    expect(opts.headers['Content-Type']).toBe('application/json');
+    // No X-Editor-Session: the traject is implicit in the session cookie
+    // (same as law/scenario saves since #632).
+    expect(opts.headers['X-Editor-Session']).toBeUndefined();
+    const sent = JSON.parse(opts.body);
+    expect(Array.isArray(sent)).toBe(true);
+    expect(sent).toHaveLength(1);
+    // The internal __draft marker must never reach the wire.
+    expect(JSON.stringify(sent)).not.toContain('__draft');
+    expect(drafts.value).toHaveLength(0);
+    expect(lastSavedPr.value).toEqual({
+      url: 'https://github.com/x/y/pull/7',
+      number: 7,
+      branch: 'b',
+    });
+  });
+
+  it('never appends a ?source= query — the traject decides the target', async () => {
+    stubSave({ ok: true, json: async () => ({ pr: null }) });
+    const { addDraft, saveToRepo } = useDraftNotes(ref('zorgtoeslagwet'));
+    addDraft({ ...NOTE, __draft: true });
+
+    // saveToRepo takes no source argument anymore; even if one is passed
+    // it must not leak into the URL.
+    await saveToRepo('amsterdam');
+
+    expect(globalThis.fetch.mock.calls[0][0]).toBe(
+      '/api/corpus/laws/zorgtoeslagwet/annotations',
+    );
+  });
+
+  it('keeps the existing PR badge on a NoChange re-save', async () => {
+    // Regression for hostile-review #4: a PR-less 200 (every note already
+    // committed) must NOT null an existing badge and must report noChange
+    // so the UI can say "already saved" instead of looking like loss.
+    lastSavedPr.value = { url: 'https://github.com/x/y/pull/3', number: 3, branch: 'b' };
+    stubSave({ ok: true, json: async () => ({ pr: null, no_change: true }) });
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('w'));
+    addDraft({ ...NOTE, __draft: true });
+
+    const result = await saveToRepo();
+
+    expect(result).toEqual({ pr: null, noChange: true });
+    // Badge untouched — the earlier PR is still shown.
+    expect(lastSavedPr.value).toEqual({
+      url: 'https://github.com/x/y/pull/3',
+      number: 3,
+      branch: 'b',
+    });
+    // Drafts cleared (they are already upstream) — that is fine because
+    // the caller now has noChange to show an explicit message.
+    expect(drafts.value).toHaveLength(0);
+  });
+
+  it('throws the editor-api message and keeps drafts on a 400', async () => {
+    stubSave({
+      ok: false,
+      status: 400,
+      headers: { get: () => 'text/plain; charset=utf-8' },
+      text: async () => 'Notes are not valid against the annotation schema',
+    });
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(ref('w'));
+    addDraft({ ...NOTE, __draft: true });
+
+    await expect(saveToRepo()).rejects.toThrow(/not valid against/);
+    expect(drafts.value).toHaveLength(1);
+  });
+
+  it('clears the saved law, not the law switched to mid-save', async () => {
+    // Regression for the hostile-review finding: a law switch during the
+    // PUT must not wipe the new law's drafts nor leave the saved law's.
+    let resolvePut;
+    globalThis.fetch = vi.fn(
+      () => new Promise((r) => { resolvePut = r; }),
+    );
+    const lawId = ref('lawA');
+    const { addDraft, saveToRepo, drafts } = useDraftNotes(lawId);
+    addDraft({ ...NOTE, __draft: true }); // a draft on lawA
+
+    const p = saveToRepo(); // snapshots id = 'lawA'
+    // User switches to lawB before the PUT resolves; lawB has its own draft.
+    localStorage.setItem(
+      'regelrecht-draft-notes:lawB',
+      JSON.stringify([{ ...NOTE, body: { ...NOTE.body, value: 'B' } }]),
+    );
+    lawId.value = 'lawB';
+    await Promise.resolve(); // let watch(lawId) resync drafts to lawB
+    resolvePut({ ok: true, json: async () => ({ pr: null }) });
+    await p;
+
+    // lawB's draft (on screen now) is untouched.
+    expect(drafts.value).toHaveLength(1);
+    expect(drafts.value[0].body.value).toBe('B');
+    // lawA's drafts were cleared in storage (they are in the PR).
+    expect(
+      JSON.parse(localStorage.getItem('regelrecht-draft-notes:lawA')),
+    ).toEqual([]);
   });
 });

@@ -187,6 +187,11 @@ async fn main() {
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
         )
         .route(
+            "/api/corpus/laws/{law_id}/annotations",
+            axum::routing::put(corpus_handlers::save_annotations)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
+        )
+        .route(
             "/api/favorites/{law_id}",
             axum::routing::put(favorites::add).delete(favorites::remove),
         )

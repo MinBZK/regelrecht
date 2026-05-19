@@ -222,6 +222,7 @@ const {
   addDraft,
   clearDrafts,
   exportYaml,
+  saveToRepo,
 } = useDraftNotes(lawId);
 const { draftNotesForArticle } = useResolvedDraftNotes(
   draftNotes,
@@ -308,6 +309,51 @@ async function exportNotes() {
     // browser fetching the blob (unreliable in Safari/Firefox).
     if (url) setTimeout(() => URL.revokeObjectURL(url), 0);
     exporting.value = false;
+  }
+}
+
+// Note write-back: PUT the new drafts to editor-api, which appends them to
+// the sidecar on the active traject's branch (same write model as law and
+// scenario edits since #632). No source picker — the traject's own corpus
+// config decides where the notes land. The "PR #N" toolbar badge is driven
+// by the shared lastSavedPr ref, so a save that produced a PR lights it up
+// with no extra wiring here.
+const savingNotes = ref(false);
+const notesSaveError = ref(null);
+// Explicit success signal: a PR-less / NoChange save must not look like
+// the work vanished (the drafts get cleared either way).
+const notesSaveStatus = ref(null);
+// The save status/error describe the LAST save. A NEW draft appearing
+// after that save makes the confirmation stale ("Opslaan gelukt" next to
+// "1 concept, nog niet opgeslagen" is contradictory), so clear it then.
+// But a successful save itself drains drafts to zero — clearing on a
+// DECREASE would wipe the very confirmation `saveNotesToRepo` is about to
+// set, a race that previously only worked by microtask-ordering luck.
+// Only react to an increase; the count going down is the save completing.
+watch(draftCount, (count, prev) => {
+  if (count > prev) {
+    notesSaveStatus.value = null;
+    notesSaveError.value = null;
+  }
+});
+async function saveNotesToRepo() {
+  if (savingNotes.value) return;
+  savingNotes.value = true;
+  notesSaveError.value = null;
+  notesSaveStatus.value = null;
+  try {
+    const { pr, noChange } = await saveToRepo();
+    if (noChange) {
+      notesSaveStatus.value = 'Notities waren al opgeslagen.';
+    } else if (pr) {
+      notesSaveStatus.value = `Opgeslagen in PR #${pr.number}.`;
+    } else {
+      notesSaveStatus.value = 'Notities opgeslagen.';
+    }
+  } catch (e) {
+    notesSaveError.value = e?.message || 'Opslaan mislukt';
+  } finally {
+    savingNotes.value = false;
   }
 }
 
@@ -1504,10 +1550,15 @@ async function handleActionSave() {
                       :text="`${noteIssues.length} notitie(s) niet verankerd`"
                       :supporting-text="noteIssues.map(i => i.reason).join('; ')"
                     ></nldd-inline-dialog>
-                    <!-- Draft notes are local-only until exported (RFC-018
-                         write path MVP: no write API, git stays the source
-                         of truth). The export downloads committed + draft
-                         notes as one sidecar YAML to commit by hand. -->
+                    <!-- Draft notes live in localStorage until written back.
+                         "Opslaan naar repo" appends them to the sidecar on
+                         the active traject's branch (same write model as
+                         law/scenario edits since #632). No source picker —
+                         the traject's own corpus config decides the target.
+                         Without an active traject the save button is
+                         disabled, mirroring the law-edit buttons, so the
+                         backend 403 is never a surprise. "Exporteer YAML"
+                         stays for the offline / manual-commit case. -->
                     <nldd-inline-dialog
                       v-if="canCreateNotes && draftCount > 0"
                       data-testid="draft-notes-bar"
@@ -1519,6 +1570,15 @@ async function handleActionSave() {
                       "
                       :icon-color="hiddenDraftCount > 0 ? 'warning' : undefined"
                     >
+                      <nldd-button
+                        slot="actions"
+                        size="md"
+                        variant="primary"
+                        :text="savingNotes ? 'Opslaan…' : 'Opslaan naar repo'"
+                        :disabled="savingNotes || !canEdit || null"
+                        data-testid="save-notes-btn"
+                        @click="saveNotesToRepo"
+                      ></nldd-button>
                       <nldd-button
                         slot="actions"
                         size="md"
@@ -1535,6 +1595,27 @@ async function handleActionSave() {
                         @click="askClearDrafts"
                       ></nldd-button>
                     </nldd-inline-dialog>
+                    <nldd-inline-dialog
+                      v-if="canCreateNotes && draftCount > 0 && !canEdit"
+                      variant="warning"
+                      data-testid="notes-no-traject"
+                      text="Selecteer eerst een traject"
+                      supporting-text="Opslaan naar repo werkt pas als er een actief traject is. Exporteer YAML werkt wel."
+                    ></nldd-inline-dialog>
+                    <nldd-inline-dialog
+                      v-if="notesSaveError"
+                      variant="alert"
+                      data-testid="notes-save-error"
+                      text="Notities opslaan mislukt"
+                      :supporting-text="notesSaveError"
+                    ></nldd-inline-dialog>
+                    <nldd-inline-dialog
+                      v-if="notesSaveStatus && !notesSaveError"
+                      variant="success"
+                      data-testid="notes-save-status"
+                      text="Opslaan gelukt"
+                      :supporting-text="notesSaveStatus"
+                    ></nldd-inline-dialog>
                   </template>
                 </template>
                 <ArticleText v-else :article="selectedArticle" />

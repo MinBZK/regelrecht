@@ -1,0 +1,286 @@
+//! Integration tests for the traject-routed notes write path
+//! (`corpus_handlers::save_annotations`).
+//!
+//! This is the first end-to-end coverage of the traject save path at all:
+//! #632 shipped the traject model with handler-CRUD tests only, and PR
+//! #652's earlier tests were against the deleted per-session backend. The
+//! path is hard to exercise by hand locally (it needs an authenticated
+//! user + an active traject, and OIDC is off in the local stack), so it
+//! is pinned here instead.
+//!
+//! Each test spins up an isolated Postgres container via
+//! `regelrecht_pipeline::test_utils::TestDb` (so `0014_trajects.sql` runs
+//! for real) and a hermetic, **local** writable-own traject source backed
+//! by a `tempfile` corpus — no GitHub clone, no network. The handler is
+//! called directly with inline `axum` extractors, exactly like
+//! `trajects_test.rs`.
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use std::collections::HashSet;
+use std::sync::Arc;
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::Json;
+use pretty_assertions::assert_eq;
+use sqlx::PgPool;
+use tokio::sync::{Mutex, RwLock};
+use tower_sessions::Session;
+use tower_sessions_memory_store::MemoryStore;
+use uuid::Uuid;
+
+use regelrecht_auth::handlers::SESSION_KEY_SUB;
+use regelrecht_editor_api::config::AppConfig;
+use regelrecht_editor_api::corpus_handlers::{save_annotations, SaveResponse};
+use regelrecht_editor_api::state::{AppState, CorpusState};
+use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
+use regelrecht_editor_api::trajects::SESSION_KEY_ACTIVE_TRAJECT;
+
+use regelrecht_pipeline::test_utils::TestDb;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const LAW_ID: &str = "zorgtoeslagwet";
+
+fn empty_state(pool: PgPool) -> AppState {
+    AppState {
+        corpus: Arc::new(RwLock::new(CorpusState::empty())),
+        oidc_client: None,
+        end_session_url: None,
+        config: Arc::new(AppConfig {
+            oidc: None,
+            base_url: None,
+        }),
+        http_client: reqwest::Client::new(),
+        pool: Some(pool),
+        pipeline_api_url: None,
+        reload_lock: Arc::new(Mutex::new(())),
+        trajects: Arc::new(TrajectCorpusCache::new()),
+        favorites: Arc::new(HashSet::new()),
+    }
+}
+
+/// Seed an account and return its `person_sub` (what the session carries).
+async fn seed_account(pool: &PgPool, email: &str) -> (Uuid, String) {
+    let sub = format!("sub-{email}");
+    let (id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO accounts (person_sub, email, name) VALUES ($1, $2, $3) RETURNING id",
+    )
+    .bind(&sub)
+    .bind(email)
+    .bind("Test User")
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    (id, sub)
+}
+
+/// A minimal but schema-valid law file so the source map's `$id` scan
+/// resolves `LAW_ID` to a file with a `relative_path`.
+fn write_law(corpus_dir: &std::path::Path) {
+    let law_dir = corpus_dir.join("wet").join(LAW_ID);
+    std::fs::create_dir_all(&law_dir).unwrap();
+    std::fs::write(
+        law_dir.join("2025-01-01.yaml"),
+        format!("$id: {LAW_ID}\nname: Zorgtoeslagwet\n"),
+    )
+    .unwrap();
+}
+
+/// One well-formed W3C annotation targeting `target_law`, as the browser
+/// would send it (no `__draft` marker — that is stripped client-side).
+fn note(target_law: &str, exact: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "Annotation",
+        "motivation": "commenting",
+        "creator": "tester",
+        "target": {
+            "source": format!("regelrecht://{target_law}"),
+            "selector": { "type": "TextQuoteSelector", "exact": exact }
+        },
+        "body": { "type": "TextualBody", "value": "een toelichting", "purpose": "commenting" }
+    })
+}
+
+/// Create a traject with a single **local** writable-own source whose
+/// path is `corpus_dir`. No GitHub seed, so `build_traject_corpus` never
+/// touches the network. Returns the traject id; `owner_id` is made a
+/// member so the handler's membership re-check passes.
+async fn local_traject(pool: &PgPool, owner_id: Uuid, corpus_dir: &std::path::Path) -> Uuid {
+    let (traject_id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, description, scope, created_by)
+         VALUES ('Test', '', '', $1) RETURNING id",
+    )
+    .bind(owner_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'beheerder')",
+    )
+    .bind(traject_id)
+    .bind(owner_id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // The local source is writable_own with no auth_ref: it writes back
+    // through its own backend (no write_target_for_source entry needed —
+    // the law is read from this very source).
+    sqlx::query(
+        "INSERT INTO traject_corpus_sources
+         (traject_id, source_id, name, source_type, local_path,
+          priority, scopes, is_writable_own)
+         VALUES ($1, 'local', 'Local', 'local'::corpus_source_type, $2,
+                 0, '[]'::jsonb, TRUE)",
+    )
+    .bind(traject_id)
+    .bind(corpus_dir.to_string_lossy().to_string())
+    .execute(pool)
+    .await
+    .unwrap();
+
+    traject_id
+}
+
+async fn session_for(sub: &str, traject_id: Option<Uuid>) -> Session {
+    let session = Session::new(None, Arc::new(MemoryStore::default()), None);
+    session.insert(SESSION_KEY_SUB, sub).await.unwrap();
+    if let Some(id) = traject_id {
+        session
+            .insert(SESSION_KEY_ACTIVE_TRAJECT, id)
+            .await
+            .unwrap();
+    }
+    session
+}
+
+fn sidecar_path(corpus_dir: &std::path::Path) -> std::path::PathBuf {
+    corpus_dir
+        .join("annotations")
+        .join(LAW_ID)
+        .join("annotations.yaml")
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn writes_a_note_to_the_traject_local_sidecar() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path());
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+    let session = session_for(&sub, Some(traject_id)).await;
+
+    let body = serde_json::to_string(&[note(LAW_ID, "zorgtoeslag")]).unwrap();
+    let Json(SaveResponse { pr, no_change }) =
+        save_annotations(State(state), session, Path(LAW_ID.to_string()), body)
+            .await
+            .expect("save should succeed");
+
+    // A local backend commits in place, no PR; the note is new, so it is
+    // not a no-op.
+    assert!(pr.is_none());
+    assert!(!no_change);
+
+    // The sidecar landed at annotations/{law_id}/annotations.yaml under
+    // the source root and contains the note.
+    let written = std::fs::read_to_string(sidecar_path(corpus.path()))
+        .expect("sidecar must exist on the traject source");
+    let doc: serde_json::Value = serde_yaml_ng::from_str(&written).unwrap();
+    let notes = doc["annotations"].as_array().unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0]["target"]["selector"]["exact"], "zorgtoeslag");
+}
+
+#[tokio::test]
+async fn no_active_traject_is_403() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (_owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+    // Session has a subject but NO active traject.
+    let session = session_for(&sub, None).await;
+
+    let body = serde_json::to_string(&[note(LAW_ID, "x")]).unwrap();
+    let err = save_annotations(State(state), session, Path(LAW_ID.to_string()), body)
+        .await
+        .expect_err("must refuse without an active traject");
+
+    assert_eq!(err.0, StatusCode::FORBIDDEN, "{}", err.1);
+}
+
+#[tokio::test]
+async fn a_note_targeting_another_law_is_rejected() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path());
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+    let session = session_for(&sub, Some(traject_id)).await;
+
+    // The note's target.source points at a DIFFERENT law than the path.
+    let body = serde_json::to_string(&[note("andere_wet", "x")]).unwrap();
+    let err = save_annotations(State(state), session, Path(LAW_ID.to_string()), body)
+        .await
+        .expect_err("cross-law note must be rejected");
+
+    assert_eq!(err.0, StatusCode::BAD_REQUEST, "{}", err.1);
+    // And nothing was written.
+    assert!(!sidecar_path(corpus.path()).exists());
+}
+
+#[tokio::test]
+async fn re_saving_an_already_committed_note_is_a_no_op() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path());
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+
+    let body = serde_json::to_string(&[note(LAW_ID, "zorgtoeslag")]).unwrap();
+
+    // First save writes the note.
+    let session1 = session_for(&sub, Some(traject_id)).await;
+    let _ = save_annotations(
+        State(state.clone()),
+        session1,
+        Path(LAW_ID.to_string()),
+        body.clone(),
+    )
+    .await
+    .expect("first save ok");
+    let after_first = std::fs::read_to_string(sidecar_path(corpus.path())).unwrap();
+
+    // Second save of the SAME note: dedup leaves nothing, so no_change is
+    // reported and the file is byte-identical (no empty commit / churn).
+    let session2 = session_for(&sub, Some(traject_id)).await;
+    let Json(SaveResponse { pr, no_change }) =
+        save_annotations(State(state), session2, Path(LAW_ID.to_string()), body)
+            .await
+            .expect("second save ok");
+
+    assert!(pr.is_none());
+    assert!(
+        no_change,
+        "a re-save of an already-present note must be a no-op"
+    );
+    let after_second = std::fs::read_to_string(sidecar_path(corpus.path())).unwrap();
+    assert_eq!(
+        after_first, after_second,
+        "the sidecar must not change on a no-op re-save"
+    );
+}

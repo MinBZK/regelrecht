@@ -1,10 +1,12 @@
 /**
  * useDraftNotes — local-only note authoring store (RFC-018 write path, MVP).
  *
- * The MVP does not write the sidecar back to the repo: notes a user creates in
- * the editor live in `localStorage`, keyed per law, and are exported as a YAML
- * document the user commits to `corpus/annotations/{lawId}/annotations.yaml`
- * by hand (RFC-018 step 6 — git stays the source of truth, no write API).
+ * Notes a user creates in the editor live in `localStorage`, keyed per law,
+ * until they are written back. Two ways out: `exportYaml` produces a YAML
+ * document for a manual commit (the original RFC-018 §10 MVP, still here for
+ * the offline case), and `saveToRepo` PUTs that same document to editor-api,
+ * which validates it and opens a PR against the chosen source — the same
+ * per-(session, source) branch+PR path law and scenario edits already use.
  *
  * Draft notes are merged into the resolved-notes list by the caller so they
  * highlight live, exactly like committed notes; they just carry an extra
@@ -12,6 +14,7 @@
  */
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
+import { lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
 
 const STORAGE_PREFIX = 'regelrecht-draft-notes:';
 
@@ -74,10 +77,22 @@ export function useDraftNotes(lawId) {
     persist(lawId.value, drafts.value);
   }
 
-  /** Drop every draft for the current law (after a successful export/commit). */
-  function clearDrafts() {
-    drafts.value = [];
-    persist(lawId.value, []);
+  /**
+   * Drop every draft for a law (after a successful save/commit).
+   *
+   * `lawIdOverride` lets a caller clear the *law it actually saved* rather
+   * than `lawId.value`, which may have changed during the save's awaits. A
+   * `watch(lawId)` resyncs `drafts` to the now-current law, so this also
+   * persists the cleared list under the right key and only resets the
+   * in-memory `drafts` ref when it still belongs to the saved law (clearing
+   * it would otherwise wipe the freshly-switched law's drafts on screen).
+   */
+  function clearDrafts(lawIdOverride) {
+    const id = lawIdOverride ?? lawId.value;
+    persist(id, []);
+    if (lawId.value === id) {
+      drafts.value = [];
+    }
   }
 
   /**
@@ -94,8 +109,11 @@ export function useDraftNotes(lawId) {
    * for a law that has no committed notes yet — the export is then just the
    * drafts.
    */
-  async function exportYaml() {
-    const id = lawId.value;
+  async function exportYaml(lawIdOverride) {
+    // saveToRepo passes its own snapshot so the PUT URL and the exported
+    // body provably share one law id even if the law switches in the
+    // synchronous gap before this call. Default: read it here.
+    const id = lawIdOverride ?? lawId.value;
     // Snapshot drafts BEFORE the await: watch(lawId) swaps drafts.value
     // synchronously on a law switch, so reading it after the fetch could mix
     // law A's committed notes with law B's drafts. Drafts are the only copy
@@ -129,6 +147,76 @@ export function useDraftNotes(lawId) {
     return yaml.dump(doc, { lineWidth: -1, noRefs: true });
   }
 
+  /**
+   * Append the local drafts to the law's sidecar via editor-api. The save
+   * is routed through the session's active traject (same model as law and
+   * scenario edits since #632): the notes land in that traject's writable
+   * branch, so a note and a law edit made in the same session ride the
+   * same PR. No source is chosen here — the traject's own corpus config
+   * decides the target. With no active traject the backend returns 403.
+   *
+   * The request body is **only the new drafts**, not the merged file: the
+   * backend reads the current sidecar from the traject branch and appends.
+   * That is why there is no `/data` fetch here — rebuilding the file
+   * client-side from the stale static mirror was the blind-overwrite bug.
+   *
+   * On success the saved law's drafts are cleared (they are committed now)
+   * and, if the save produced a PR, the shared `lastSavedPr` ref is
+   * updated so EditorApp's badge shows it. Throws with the editor-api
+   * message on failure; drafts are left untouched so no work is lost.
+   */
+  async function saveToRepo() {
+    const id = lawId.value;
+    // Snapshot drafts BEFORE any await (watch(lawId) swaps drafts.value on
+    // a law switch). Strip the internal __draft marker; the backend gets
+    // clean W3C Annotation objects.
+    const newNotes = drafts.value.map(stripDraftMarker);
+    const url = `/api/corpus/laws/${encodeURIComponent(id)}/annotations`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(newNotes),
+    });
+    if (!res.ok) {
+      // Same content-type guard as useLaw.saveLaw: only render the body
+      // when it's editor-api's own text/plain error, never a proxy's HTML.
+      let text = `Opslaan mislukt: ${res.status}`;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.startsWith('text/plain')) {
+        try {
+          text = (await res.text()) || text;
+        } catch { /* keep status fallback */ }
+      }
+      throw new Error(text);
+    }
+    let pr = null;
+    let noChange = false;
+    try {
+      const json = await res.json();
+      pr = sanitizeSavedPr(json?.pr);
+      // Backend sets no_change when every submitted note was already
+      // committed and it skipped the write/commit/PR entirely.
+      noChange = json?.no_change === true;
+    } catch {
+      // No JSON body — treat as success, pr stays null.
+    }
+    // Only OVERWRITE the badge when this save produced a PR. A PR-less
+    // 200 (local source, or a NoChange re-save) must NOT null an existing
+    // badge — same "keep any prior PR" rule as useLaw.saveLaw. Nulling it
+    // here made a re-save look like the work vanished.
+    if (pr) {
+      lastSavedPr.value = pr;
+    }
+    // Clear the law we saved, not lawId.value, which may have switched
+    // during the await.
+    clearDrafts(id);
+    // Caller shows an explicit "opgeslagen (PR #N)" vs "waren al
+    // opgeslagen" instead of silently emptying drafts with no signal.
+    return { pr, noChange };
+  }
+
   const draftCount = computed(() => drafts.value.length);
 
   return {
@@ -138,6 +226,7 @@ export function useDraftNotes(lawId) {
     removeDraft,
     clearDrafts,
     exportYaml,
+    saveToRepo,
   };
 }
 
