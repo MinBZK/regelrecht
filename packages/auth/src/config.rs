@@ -48,7 +48,7 @@ fn parse_oidc_config(client_id: String) -> Result<OidcConfig, String> {
     // gates on top. Defaults to `allowed-user` for backwards compatibility
     // with the pre-RBAC deployment; operators should set it explicitly to the
     // per-app reader role (`editor-reader` / `harvester-reader`) once the
-    // migration in `docs/operations/auth.md` is complete.
+    // migration in `docs/auth-and-roles.md` is complete.
     let required_role = env::var("OIDC_REQUIRED_ROLE")
         .ok()
         .filter(|s| !s.is_empty())

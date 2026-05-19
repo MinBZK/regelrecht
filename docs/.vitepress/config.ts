@@ -31,6 +31,7 @@ export default withMermaid(
         { text: 'Concepts', link: '/concepts/how-it-works' },
         { text: 'Components', link: '/components/engine' },
         { text: 'Operations', link: '/operations/deployment' },
+        { text: 'Auth & Roles', link: '/auth-and-roles' },
         { text: 'RFCs', link: '/rfcs/' },
         { text: 'Reference', link: '/reference/glossary' },
       ],
@@ -126,7 +127,6 @@ export default withMermaid(
             items: [
               { text: 'CI/CD Pipeline', link: '/operations/ci-cd' },
               { text: 'Deployment', link: '/operations/deployment' },
-              { text: 'Authentication & Roles', link: '/operations/auth' },
             ],
           },
           {
