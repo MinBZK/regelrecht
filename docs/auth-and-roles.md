@@ -192,8 +192,10 @@ service's database:
 
 ```sql
 -- Revoke all live sessions for a specific user (by Keycloak sub):
+-- The session stores the Keycloak subject under the key `person_sub`
+-- (see SESSION_KEY_SUB in packages/auth/src/handlers.rs).
 DELETE FROM tower_sessions.session
-WHERE data::jsonb -> 'data' ->> 'sub' = '<keycloak-sub>';
+WHERE data::jsonb -> 'data' ->> 'person_sub' = '<keycloak-sub>';
 
 -- Nuclear option — invalidate every active session on the service:
 TRUNCATE tower_sessions.session;
