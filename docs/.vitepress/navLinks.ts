@@ -17,6 +17,7 @@ export const docsNav: DocsNavItem[] = [
   { text: 'Concepts', link: '/concepts/how-it-works', match: '/concepts/' },
   { text: 'Components', link: '/components/engine', match: '/components/' },
   { text: 'Operations', link: '/operations/deployment', match: '/operations/' },
+  { text: 'Auth & Roles', link: '/auth-and-roles', match: '/auth-and-roles' },
   { text: 'RFCs', link: '/rfcs/', match: '/rfcs/' },
   { text: 'Reference', link: '/reference/glossary', match: '/reference/' },
 ]

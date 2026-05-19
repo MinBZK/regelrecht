@@ -45,6 +45,7 @@ sha2.workspace = true
 
 [dev-dependencies]
 regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
+regelrecht-auth = { path = "../auth", features = ["test-utils"] }
 tower.workspace = true
 tower-sessions-memory-store.workspace = true
 wiremock.workspace = true

@@ -20,6 +20,13 @@ serde_json.workspace = true
 tracing.workspace = true
 tower-http = { workspace = true, features = ["fs"] }
 url.workspace = true
+tower = { workspace = true, optional = true }
+tower-sessions-memory-store = { workspace = true, optional = true }
+
+[features]
+# Exposes regelrecht_auth::test_utils with router/session seeding helpers used
+# by downstream crates' middleware tests (e.g. admin).
+test-utils = ["dep:tower", "dep:tower-sessions-memory-store"]
 
 [dev-dependencies]
 tower.workspace = true

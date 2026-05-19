@@ -1,1 +1,1 @@
-pub use regelrecht_auth::middleware::{require_session_auth, security_headers};
+pub use regelrecht_auth::middleware::{require_role, security_headers};

@@ -72,6 +72,17 @@ impl CorpusRegistry {
         Ok(Self { sources })
     }
 
+    /// Build a registry from an in-memory list of sources.
+    ///
+    /// Used by the trajects layer to construct a per-traject registry from
+    /// rows stored in `traject_corpus_sources` — no YAML file involved.
+    /// Sources are sorted by priority on construction so the rest of the
+    /// API behaves identically to a yaml-loaded registry.
+    pub fn from_sources(mut sources: Vec<Source>) -> Self {
+        sources.sort_by_key(|s| s.priority);
+        Self { sources }
+    }
+
     /// Load from a YAML string (useful for testing).
     pub fn from_yaml(yaml: &str) -> Result<Self> {
         let manifest: RegistryManifest = serde_yaml_ng::from_str(yaml)

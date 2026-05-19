@@ -150,6 +150,11 @@ editor-api-lint:
 editor-api-fmt:
     cd packages && cargo fmt --check --package regelrecht-editor-api
 
+# Run editor API integration tests (requires Docker for testcontainers).
+# Excluded from `just check` for the same reason `pipeline-integration-test` is.
+editor-api-integration-test:
+    cd packages && {{ci_flags}} cargo test --package regelrecht-editor-api --test '*'
+
 # --- Development (native with hot reload) ---
 
 compose := "docker compose -f docker-compose.dev.yml"

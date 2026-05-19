@@ -7,6 +7,11 @@ pub struct CorpusConfig {
     pub repo_url: String,
     pub repo_path: PathBuf,
     pub branch: String,
+    /// Branch to clone-then-branch-from when `branch` doesn't yet exist on
+    /// the remote. `None` keeps the legacy hardcoded fallback to
+    /// `"development"`; set this for sources whose default base is `main`
+    /// or a traject-specific upstream branch.
+    pub base_branch: Option<String>,
     pub git_author_name: String,
     pub git_author_email: String,
     git_token: Option<String>,
@@ -21,6 +26,7 @@ impl std::fmt::Debug for CorpusConfig {
             .field("repo_url", &self.repo_url)
             .field("repo_path", &self.repo_path)
             .field("branch", &self.branch)
+            .field("base_branch", &self.base_branch)
             .field("git_author_name", &self.git_author_name)
             .field("git_author_email", &self.git_author_email)
             .field("git_token", &self.git_token.as_ref().map(|_| "***"))
@@ -89,6 +95,7 @@ impl CorpusConfig {
             repo_url: repo_url.into(),
             repo_path: repo_path.into(),
             branch: "development".into(),
+            base_branch: None,
             git_author_name: "regelrecht-harvester".into(),
             git_author_email: "noreply@minbzk.nl".into(),
             git_token: None,
@@ -133,6 +140,7 @@ impl CorpusConfig {
             repo_url,
             repo_path,
             branch,
+            base_branch: None,
             git_author_name,
             git_author_email,
             git_token,
@@ -192,6 +200,7 @@ mod tests {
             repo_url: "https://github.com/MinBZK/regelrecht-corpus.git".into(),
             repo_path: "/tmp/test".into(),
             branch: "main".into(),
+            base_branch: None,
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
@@ -209,6 +218,7 @@ mod tests {
             repo_url: "https://github.com/MinBZK/regelrecht-corpus.git".into(),
             repo_path: "/tmp/test".into(),
             branch: "main".into(),
+            base_branch: None,
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: None,
@@ -226,6 +236,7 @@ mod tests {
             repo_url: "git@github.com:MinBZK/regelrecht-corpus.git".into(),
             repo_path: "/tmp/test".into(),
             branch: "main".into(),
+            base_branch: None,
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),
@@ -406,6 +417,7 @@ mod tests {
             repo_url: "https://github.com/MinBZK/regelrecht-corpus.git".into(),
             repo_path: "/tmp/test".into(),
             branch: "main".into(),
+            base_branch: None,
             git_author_name: "test".into(),
             git_author_email: "test@test.nl".into(),
             git_token: Some("ghp_abc123".into()),

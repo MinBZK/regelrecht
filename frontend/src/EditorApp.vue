@@ -5,6 +5,8 @@ import yaml from 'js-yaml';
 import { useLaw, fetchLaw } from './composables/useLaw.js';
 import { useEngine } from './composables/useEngine.js';
 import { useAuth } from './composables/useAuth.js';
+import { useTrajects } from './composables/useTrajects.js';
+import TrajectMenu from './components/TrajectMenu.vue';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useNotes, useResolvedDraftNotes } from './composables/useNotes.js';
 import { useDraftNotes } from './composables/useDraftNotes.js';
@@ -141,12 +143,17 @@ function setPaneView(idx, viewId) {
   paneViews.value = next;
 }
 
-// All edit operations are gated behind SSO. When OIDC is configured the user
-// must be authenticated; when OIDC is disabled the editor is fully open.
-// In practice the `requiresAuth` router guard already awaits the auth-check
-// and blocks unauthenticated users before this component mounts, so canEdit
-// is always true here — the computed remains as a safety net.
-const canEdit = computed(() => !oidcConfigured.value || authenticated.value);
+// All edit operations are gated behind SSO + an active traject. SSO gates
+// access to the editor as a whole; the active traject scopes writes to a
+// branch on a corpus source — without it the editor renders read-only and
+// the save handlers return 403. The `requiresAuth` router guard awaits
+// the auth-check before this component mounts so the SSO half of the
+// guard is in practice always true; the traject half can flip at runtime
+// when the user picks a different option from the TrajectMenu.
+const { activeTrajectId } = useTrajects();
+const canEdit = computed(
+  () => (!oidcConfigured.value || authenticated.value) && activeTrajectId.value !== null,
+);
 // Tekst-pane is only editable when the user has write access AND the
 // `editor.article_text_edit` flag is on. Visibility of the pane is
 // controlled separately by `panel.article_text`.
@@ -1180,6 +1187,9 @@ async function handleActionSave() {
               <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="md" />
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
               <nldd-menu id="settings-menu-md" anchor="settings-menu-btn-md">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
@@ -1240,6 +1250,9 @@ async function handleActionSave() {
                 target="_blank"
                 rel="noopener"
               ></nldd-button>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="lg" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
@@ -1631,6 +1644,9 @@ async function handleActionSave() {
               <span>
                 <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
               </span>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="sm" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <span>

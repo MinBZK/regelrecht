@@ -147,13 +147,40 @@ async fn main() {
         .with_http_only(true)
         .with_secure(true);
 
-    let api_routes = Router::new()
+    // Reader routes — anyone with `harvester-reader` (or higher) can list
+    // jobs, sources, law entries, and platform info.
+    // Note: `/api/jobs` is split by HTTP method across this router and
+    // `admin_routes` (GET here, DELETE there). This works because each
+    // router's `route_layer` is baked into its `MethodRouter` before merge,
+    // so the per-method middleware stays attached when the routers combine.
+    let reader_routes = Router::new()
         .route("/api/law_entries", get(handlers::list_law_entries))
         .route("/api/jobs", get(handlers::list_jobs))
         .route("/api/jobs/summary", get(handlers::list_jobs_summary))
         .route("/api/jobs/{job_id}", get(handlers::get_job))
+        .route("/api/sources", get(corpus_handlers::list_sources))
+        .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
+        .route("/api/info", get(handlers::platform_info))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_auth("harvester-reader"),
+        ));
+
+    // Writer routes — `harvester-writer` can enqueue work.
+    let writer_routes = Router::new()
         .route("/api/harvest-jobs", post(handlers::create_harvest_job))
         .route("/api/enrich-jobs", post(handlers::create_enrich_jobs))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_auth("harvester-writer"),
+        ));
+
+    // Admin routes — destructive/state-mutating ops require `harvester-admin`.
+    // Reset-exhausted and source sync change shared state across the queue.
+    // Job deletion is destructive even though it's a DELETE method.
+    // Note: `DELETE /api/jobs` shares its path with `GET /api/jobs` in
+    // `reader_routes`; see the comment there for why this is safe.
+    let admin_routes = Router::new()
         .route(
             "/api/jobs",
             delete(handlers::delete_jobs).layer(axum::extract::DefaultBodyLimit::max(64 * 1024)),
@@ -162,16 +189,13 @@ async fn main() {
             "/api/law_entries/{law_id}/reset-exhausted",
             post(handlers::reset_exhausted),
         )
-        .route("/api/sources", get(corpus_handlers::list_sources))
-        .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
         .route(
             "/api/sources/{source_id}/sync",
             post(corpus_handlers::sync_source),
         )
-        .route("/api/info", get(handlers::platform_info))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
-            middleware::require_auth,
+            middleware::require_auth("harvester-admin"),
         ));
 
     let auth_routes = regelrecht_auth::auth_routes::<AppState>();
@@ -187,7 +211,9 @@ async fn main() {
         .route("/health", get(health))
         .merge(metrics_route)
         .merge(auth_routes)
-        .merge(api_routes)
+        .merge(reader_routes)
+        .merge(writer_routes)
+        .merge(admin_routes)
         .with_state(app_state)
         .layer(session_layer)
         .layer(axum_middleware::from_fn(middleware::security_headers))
