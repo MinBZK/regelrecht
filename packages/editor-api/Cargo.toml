@@ -7,6 +7,10 @@ description = "RegelRecht editor API — lightweight Axum server for the law edi
 license = "EUPL-1.2"
 repository = "https://github.com/MinBZK/regelrecht"
 
+[lib]
+name = "regelrecht_editor_api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "regelrecht-editor-api"
 path = "src/main.rs"
@@ -23,12 +27,17 @@ tower-sessions.workspace = true
 tower-sessions-sqlx-store.workspace = true
 tower-sessions-memory-store.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres"] }
+sqlx = { workspace = true, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }
+uuid = { workspace = true, features = ["v4"] }
 serde.workspace = true
 serde_json.workspace = true
 time.workspace = true
 tracing.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+regelrecht-pipeline = { path = "../pipeline", features = ["test-utils"] }
+pretty_assertions.workspace = true
 
 [lints]
 workspace = true

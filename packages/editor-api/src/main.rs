@@ -16,6 +16,7 @@ use tower_sessions::SessionManagerLayer;
 use tower_sessions_memory_store::MemoryStore;
 use tower_sessions_sqlx_store::PostgresStore;
 
+mod accounts;
 mod config;
 mod corpus_handlers;
 mod favorites;
@@ -23,6 +24,8 @@ mod feature_flags;
 mod harvest_proxy;
 mod middleware;
 mod state;
+mod traject_corpus;
+mod trajects;
 mod user_settings;
 
 use state::{AppState, CorpusState};
@@ -58,7 +61,8 @@ async fn main() {
 
     // --- Corpus init ---
     let static_dir = env::var("STATIC_DIR").unwrap_or_else(|_| "static".to_string());
-    let corpus_state = init_corpus(&static_dir).await;
+    let favorites = Arc::new(load_favorites(&static_dir));
+    let corpus_state = init_corpus(&favorites).await;
 
     let hostname = env::var("HOSTNAME").ok();
     let pipeline_api_url =
@@ -74,16 +78,46 @@ async fn main() {
         ),
     }
 
-    let mut app_state = AppState {
+    // The pool has to be created BEFORE `app_state` is built, because the
+    // `route_layer(from_fn_with_state(app_state.clone(), …))` below captures
+    // a snapshot of `app_state` at call time — anything we mutate on the
+    // outer binding after that point is invisible to the middleware.
+    // Migrations + session-store setup still live in the auth-enabled
+    // branch further down; here we only spin up the connection.
+    let pool: Option<sqlx::PgPool> = if app_config.is_auth_enabled() {
+        let database_url = env::var("DATABASE_URL")
+            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
+            .unwrap_or_else(|_| {
+                tracing::error!(
+                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
+                );
+                std::process::exit(1);
+            });
+        Some(
+            sqlx::postgres::PgPoolOptions::new()
+                .max_connections(5)
+                .connect(&database_url)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::error!(error = %e, "failed to connect to database");
+                    std::process::exit(1);
+                }),
+        )
+    } else {
+        None
+    };
+
+    let app_state = AppState {
         corpus: Arc::new(RwLock::new(corpus_state)),
         oidc_client,
         end_session_url,
         config: Arc::new(app_config),
         http_client,
-        pool: None, // set below when auth is enabled
+        pool: pool.clone(),
         pipeline_api_url,
         reload_lock: Arc::new(tokio::sync::Mutex::new(())),
-        sessions: Arc::new(state::SessionRegistry::new()),
+        trajects: Arc::new(traject_corpus::TrajectCorpusCache::new()),
+        favorites,
     };
 
     let index_file = PathBuf::from(&static_dir).join("index.html");
@@ -176,6 +210,33 @@ async fn main() {
             axum::routing::put(user_settings::set)
                 .layer(axum::extract::DefaultBodyLimit::max(4096)),
         )
+        .route("/api/trajects", get(trajects::list).post(trajects::create))
+        .route(
+            "/api/trajects/{id}",
+            get(trajects::get)
+                .patch(trajects::update)
+                .delete(trajects::delete),
+        )
+        .route(
+            "/api/trajects/{id}/leave",
+            axum::routing::post(trajects::leave),
+        )
+        .route(
+            "/api/trajects/{id}/members",
+            axum::routing::post(trajects::add_member),
+        )
+        .route(
+            "/api/trajects/{id}/members/{account_id}",
+            axum::routing::patch(trajects::update_member).delete(trajects::remove_member),
+        )
+        .route(
+            "/api/session/active-traject",
+            get(trajects::get_active).put(trajects::set_active),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
             middleware::require_session_auth::<AppState>,
@@ -185,34 +246,24 @@ async fn main() {
     // SessionManagerLayer is generic over the store type, so we build the
     // router in two branches depending on whether auth is enabled.
     if app_state.config.is_auth_enabled() {
-        let database_url = env::var("DATABASE_URL")
-            .or_else(|_| env::var("DATABASE_SERVER_FULL"))
-            .unwrap_or_else(|_| {
-                tracing::error!(
-                    "DATABASE_URL is required when OIDC is enabled (for session storage)"
-                );
-                std::process::exit(1);
-            });
-
-        let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
-            .connect(&database_url)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::error!(error = %e, "failed to connect to database");
-                std::process::exit(1);
-            });
+        // Pool was created above app_state so the route_layer middleware
+        // sees a populated app_state.pool. The outer `is_auth_enabled`
+        // branch above already returned `Some`, but we still take the
+        // safe path here so a refactor that breaks the invariant fails
+        // with a clear error instead of a panic.
+        let Some(pool) = pool else {
+            tracing::error!("pool was not created despite auth being enabled");
+            std::process::exit(1);
+        };
 
         // The editor shares a database with the pipeline; ensure_schema runs
-        // all pipeline migrations (including 0008_user_favorites). If the
-        // services are ever split to separate databases this should be replaced
-        // with an editor-specific migration runner.
+        // all pipeline migrations (including 0008_user_favorites and 0014
+        // trajects). If the services are ever split to separate databases
+        // this should be replaced with an editor-specific migration runner.
         if let Err(e) = regelrecht_pipeline::ensure_schema(&pool).await {
             tracing::error!(error = %e, "database migration failed");
             std::process::exit(1);
         }
-
-        app_state.pool = Some(pool.clone());
 
         let session_store = PostgresStore::new(pool);
         if let Err(e) = session_store.migrate().await {
@@ -313,7 +364,7 @@ async fn serve(
 
 /// Initialize the corpus: load local sources, then fetch only the
 /// favorites that are missing from GitHub sources.
-async fn init_corpus(static_dir: &str) -> CorpusState {
+async fn init_corpus(favorites: &HashSet<String>) -> CorpusState {
     let manifest_str =
         env::var("CORPUS_REGISTRY_PATH").unwrap_or_else(|_| "corpus-registry.yaml".to_string());
     let local_str = env::var("CORPUS_REGISTRY_LOCAL_PATH")
@@ -339,14 +390,13 @@ async fn init_corpus(static_dir: &str) -> CorpusState {
         regelrecht_corpus::CorpusRegistry::empty()
     };
 
-    let favorites = load_favorites(static_dir);
     let auth_file = if auth_path.exists() {
         Some(auth_path.as_path())
     } else {
         None
     };
 
-    let source_map = match registry.load_favorites_async(&favorites, auth_file).await {
+    let source_map = match registry.load_favorites_async(favorites, auth_file).await {
         Ok(map) => {
             tracing::info!(laws = map.len(), "loaded corpus laws");
             map

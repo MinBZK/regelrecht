@@ -25,7 +25,17 @@ impl TestDb {
         let container = Postgres::default().start().await.unwrap();
 
         let host_port = container.get_host_port_ipv4(5432).await.unwrap();
-        let database_url = format!("postgres://postgres:postgres@127.0.0.1:{host_port}/postgres");
+        // testcontainers reports the published port on the docker host. From a
+        // native Linux dev environment `127.0.0.1` is correct; from a dev
+        // container talking to Docker Desktop on a different host (WSL2,
+        // remote docker) the docker host is reachable as
+        // `host.docker.internal` instead. `TESTCONTAINERS_HOST_OVERRIDE` lets
+        // those setups point at the right host without forking this helper.
+        let host = std::env::var("TESTCONTAINERS_HOST_OVERRIDE")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "127.0.0.1".to_string());
+        let database_url = format!("postgres://postgres:postgres@{host}:{host_port}/postgres");
 
         let config = PipelineConfig::new(&database_url);
         let pool = db::create_pool(&config).await.unwrap();
