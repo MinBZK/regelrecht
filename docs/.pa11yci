@@ -16,6 +16,7 @@
     "http://localhost:4173/aanmelden",
     "http://localhost:4173/en/",
     "http://localhost:4173/en/signup",
-    "http://localhost:4173/guide/what-is-regelrecht"
+    "http://localhost:4173/guide/what-is-regelrecht",
+    "http://localhost:4173/this-page-does-not-exist"
   ]
 }

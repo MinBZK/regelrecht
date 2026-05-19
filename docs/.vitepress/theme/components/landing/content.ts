@@ -454,7 +454,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       contactTitle: 'Contact',
       partOfTitle: 'Onderdeel van',
       copyright:
-        '© 2025 Ministerie van Binnenlandse Zaken en Koninkrijksrelaties. Alle rechten voorbehouden.',
+        '© 2026 Ministerie van Binnenlandse Zaken en Koninkrijksrelaties. Alle rechten voorbehouden.',
       links: [
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
@@ -836,7 +836,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       contactTitle: 'Contact',
       partOfTitle: 'Part of',
       copyright:
-        '© 2025 Ministry of the Interior and Kingdom Relations. All rights reserved.',
+        '© 2026 Ministry of the Interior and Kingdom Relations. All rights reserved.',
       links: [
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },

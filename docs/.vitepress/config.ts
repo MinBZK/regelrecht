@@ -53,8 +53,8 @@ export default withMermaid(
 
     themeConfig: {
       logo: '/logo.svg',
-      // Shared with the RrNav component (see ./navLinks). The visible header
-      // is RrNav; this stays for VitePress metadata/prev-next consistency.
+      // The visible header is the custom theme Layout; this nav stays
+      // shared via ./navLinks for VitePress metadata/prev-next consistency.
       nav: docsNav.map(({ text, link }) => ({ text, link })),
       sidebar: {
         '/guide/': [

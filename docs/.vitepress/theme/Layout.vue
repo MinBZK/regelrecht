@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, watch, onMounted, onUnmounted } from 'vue'
 import { useData, useRoute, Content } from 'vitepress'
-// Internal but stable DefaultTheme composables/components. We deliberately
-// do NOT use the DefaultTheme <Layout>; we rebuild the docs chrome inside
-// the NLDD app-view/page shell (the proven polder pattern), but reuse
-// VitePress' own sidebar resolution and search so config stays the single
-// source of truth and search keeps working.
+// We replace the DefaultTheme <Layout> entirely with this NLDD-based
+// shell, but reuse `useSidebar` (a public vitepress/theme export) so the
+// sidebar stays config-driven, and mount VitePress' own search component
+// so local search keeps working.
 import { useSidebar } from 'vitepress/theme'
 import { content, langFromPath } from './components/landing/content'
 import { docsNav } from '../navLinks'
@@ -14,12 +13,16 @@ import RrDocSidebar from './components/RrDocSidebar.vue'
 import RrDocFooter from './components/RrDocFooter.vue'
 import RrDocOutline from './components/RrDocOutline.vue'
 import RrFooter from './components/landing/RrFooter.vue'
+import RrNotFound from './components/RrNotFound.vue'
 
 const route = useRoute()
 const { frontmatter, isDark, page } = useData()
 const { sidebarGroups, hasSidebar } = useSidebar()
 
-const isLanding = computed(() => frontmatter.value.layout === 'landing')
+const isNotFound = computed(() => page.value.isNotFound === true)
+const isLanding = computed(
+  () => !isNotFound.value && frontmatter.value.layout === 'landing'
+)
 
 // Landing is bilingual (path-driven); docs are English-only.
 const lang = computed<'nl' | 'en'>(() =>
@@ -84,6 +87,9 @@ const themeLabel = computed(() =>
 const skipText = computed(() =>
   lang.value === 'en' ? 'Skip to content' : 'Direct naar de inhoud'
 )
+const navLabel = computed(() =>
+  lang.value === 'en' ? 'Main navigation' : 'Hoofdnavigatie'
+)
 
 // NLDD colours resolve via CSS light-dark()/data-scheme. VitePress drives
 // its own dark mode independently, so mirror isDark onto both so NLDD
@@ -99,6 +105,38 @@ if (typeof document !== 'undefined') {
     },
     { immediate: true }
   )
+
+  // VitePress' root app runs its own watchEffect (onMounted) that sets
+  // document.documentElement.lang from the site config (always 'en' here,
+  // since we intentionally don't use VitePress locales). That effect wins
+  // any ordering race, so a plain watcher can't keep <html lang> correct
+  // for the Dutch pages. A MutationObserver on the lang attribute
+  // deterministically re-corrects it whenever it diverges from the route's
+  // actual language — WCAG 3.1.1/3.1.2.
+  const applyLang = () => {
+    const want = lang.value
+    if (document.documentElement.getAttribute('lang') !== want) {
+      document.documentElement.setAttribute('lang', want)
+    }
+  }
+  const langObserver = new MutationObserver(applyLang)
+  watch(
+    () => route.path,
+    () => {
+      applyLang()
+      // Re-assert on the next frame too, after VitePress' own effect.
+      requestAnimationFrame(applyLang)
+    },
+    { immediate: true }
+  )
+  onMounted(() => {
+    applyLang()
+    langObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['lang'],
+    })
+  })
+  onUnmounted(() => langObserver.disconnect())
 }
 
 function openSearch() {
@@ -164,16 +202,55 @@ function toggleTheme() {
           icon="code"
         />
       </nldd-top-navigation-bar>
+
+      <!-- Semantic fallback: real <a> links rendered server-side, so the
+           site is navigable without JS / before @nldd upgrades. Hidden
+           once <nldd-top-navigation-bar> is :defined (see CSS). -->
+      <nav class="rr-nav-fallback" :aria-label="navLabel">
+        <a class="rr-nav-fallback-brand" :href="home">RegelRecht</a>
+        <ul>
+          <li v-for="item in globalLinks" :key="item.href">
+            <a
+              :href="item.href"
+              :aria-current="item.current ? 'page' : undefined"
+              >{{ item.text }}</a
+            >
+          </li>
+          <li v-if="langToggle">
+            <a :href="langToggle.href">{{ langToggle.text }}</a>
+          </li>
+          <li>
+            <a href="https://github.com/MinBZK/regelrecht">GitHub</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+
+    <!-- 404 -->
+    <div v-if="isNotFound" id="rr-main" tabindex="-1" :lang="lang">
+      <RrNotFound />
     </div>
 
     <!-- LANDING -->
-    <div v-if="isLanding" id="rr-main" class="rr-landing" :lang="lang">
+    <div
+      v-else-if="isLanding"
+      id="rr-main"
+      tabindex="-1"
+      class="rr-landing"
+      :lang="lang"
+    >
       <LandingPage />
       <RrFooter />
     </div>
 
     <!-- DOCS -->
-    <div v-else id="rr-main" class="rr-docs" :class="{ 'has-sidebar': hasSidebar }">
+    <div
+      v-else
+      id="rr-main"
+      tabindex="-1"
+      class="rr-docs"
+      :class="{ 'has-sidebar': hasSidebar }"
+    >
       <RrDocSidebar v-if="hasSidebar" :groups="sidebarGroups" />
       <div class="rr-docs-body">
         <main class="vp-doc rr-docs-content">
@@ -185,13 +262,14 @@ function toggleTheme() {
     </div>
   </div>
 
-  <!-- Mounted only for its search modal (teleports to <body>) and the
-       global Cmd/Ctrl+K listener. Its own visible button is hidden — the
-       visible trigger is the "Search" item in our nav, which dispatches
-       the hotkey. Kept in the DOM (not display:none) so the component
-       and its listener stay alive; just moved off-screen. -->
+  <!-- Mounted only for its search modal and the global Cmd/Ctrl+K
+       listener; the visible trigger is the "Search" item in our nav.
+       Hidden via display:none (see CSS) — safe because the hotkey
+       listener binds to `window` via VueUse onKeyStroke (not to this
+       element) and the modal teleports to <body>, so neither depends on
+       this wrapper being visible. -->
   <ClientOnly>
-    <div class="rr-search-host" aria-hidden="true">
+    <div class="rr-search-host">
       <VPNavBarSearch />
     </div>
   </ClientOnly>
@@ -233,6 +311,69 @@ body {
 .rr-search-host .VPNavBarSearch {
   display: none;
 }
+
+/* No-JS / pre-upgrade navigation fallback. The semantic <nav> is the
+   SSR-rendered, always-functional navigation. Once @nldd loads and the
+   web component upgrades (:defined), show the rich nav and hide the
+   fallback. Without JS the fallback simply stays. */
+.rr-nav-fallback {
+  max-width: 1440px;
+  margin-inline: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  padding: 0.75rem 1.5rem;
+}
+.rr-nav-fallback-brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+}
+.rr-nav-fallback ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rr-nav-fallback a {
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+}
+.rr-nav-fallback a:hover {
+  color: var(--vp-c-brand-1);
+}
+.rr-nav-fallback a[aria-current='page'] {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+.rr-topbar nldd-top-navigation-bar:not(:defined) {
+  display: none;
+}
+.rr-topbar nldd-top-navigation-bar:defined ~ .rr-nav-fallback {
+  display: none;
+}
+
+/* Visible focus indicator across the whole shell (was scoped to
+   .rr-landing only, leaving the docs sidebar/outline/footer with just
+   the weak UA default — WCAG 2.2 SC 2.4.13). */
+.rr-shell a:focus-visible,
+.rr-shell button:focus-visible,
+.rr-shell summary:focus-visible,
+.rr-shell [tabindex]:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* #rr-main is only a programmatic skip-link target; no visible ring. */
+#rr-main:focus,
+#rr-main:focus-visible {
+  outline: none;
+}
+
 .rr-docs.has-sidebar {
   display: grid;
   grid-template-columns: 272px minmax(0, 1fr) 240px;

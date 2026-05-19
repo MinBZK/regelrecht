@@ -1,7 +1,7 @@
 /*
  * Single source of truth for the documentation navigation.
- * Imported by both config.ts (VitePress themeConfig.nav) and the shared
- * RrNav component, so the docs header and VitePress metadata never drift.
+ * Imported by both config.ts (VitePress themeConfig.nav) and the theme
+ * Layout, so the docs header and VitePress metadata never drift.
  *
  * `match` is a path prefix used to mark the active item (aria-current).
  */
