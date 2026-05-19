@@ -219,13 +219,14 @@ impl RelationIndex {
         input: &str,
         direction: Direction,
     ) -> Vec<&Relation> {
+        // Canonical source of truth for "which input" is the metadata
+        // field — the extractor sets it at the same site where `from.input`
+        // is set for dataflow edges, and no extractor populates `to.input`.
+        // Checking only `metadata["input"]` keeps the predicate aligned
+        // with the producer and prevents future divergence.
         self.for_article(law_id, article, direction)
             .into_iter()
-            .filter(|rel| {
-                rel.from.input.as_deref() == Some(input)
-                    || rel.to.input.as_deref() == Some(input)
-                    || rel.metadata.get("input").map(String::as_str) == Some(input)
-            })
+            .filter(|rel| rel.metadata.get("input").map(String::as_str) == Some(input))
             .collect()
     }
 

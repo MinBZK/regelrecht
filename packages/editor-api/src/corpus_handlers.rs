@@ -832,6 +832,13 @@ pub async fn save_law(
                 "save_law wrote to backend but law vanished from source_map between write and cache refresh"
             );
         }
+        // Rebuild the relation index from the now-updated source_map so
+        // /api/related reflects the edit without a full corpus reload.
+        // Without this, the graph stays stale until the client posts
+        // /api/corpus/reload.
+        corpus.relation_index = Arc::new(crate::relations::build_index_from_source_map(
+            &corpus.source_map,
+        ));
     }
 
     Ok(Json(save_response_from(outcome, &session_id)))
@@ -1061,13 +1068,21 @@ pub async fn find_related(
             "Missing required query parameter 'law_id'".to_string(),
         ));
     }
-    if params.output.is_some() && params.input.is_some() {
+
+    // An explicit empty `?article=`/`?output=`/`?input=` is a client bug,
+    // not an empty result — the index would never match. Reject up front so
+    // the caller gets a clear 400 instead of a silently-empty 200.
+    let article = require_non_empty("article", params.article.as_deref())?;
+    let output = require_non_empty("output", params.output.as_deref())?;
+    let input = require_non_empty("input", params.input.as_deref())?;
+
+    if output.is_some() && input.is_some() {
         return Err((
             StatusCode::BAD_REQUEST,
             "Specify at most one of 'output' or 'input'".to_string(),
         ));
     }
-    if (params.output.is_some() || params.input.is_some()) && params.article.is_none() {
+    if (output.is_some() || input.is_some()) && article.is_none() {
         return Err((
             StatusCode::BAD_REQUEST,
             "'output' and 'input' require 'article'".to_string(),
@@ -1087,10 +1102,10 @@ pub async fn find_related(
     let index = corpus.relation_index.clone();
     drop(corpus);
 
-    let relations: Vec<Relation> = if let Some(article) = params.article.as_deref() {
-        let matches = if let Some(output) = params.output.as_deref() {
+    let relations: Vec<Relation> = if let Some(article) = article.as_deref() {
+        let matches = if let Some(output) = output.as_deref() {
             index.for_output(&params.law_id, article, output, direction)
-        } else if let Some(input) = params.input.as_deref() {
+        } else if let Some(input) = input.as_deref() {
             index.for_input(&params.law_id, article, input, direction)
         } else {
             index.for_article(&params.law_id, article, direction)
@@ -1115,13 +1130,30 @@ pub async fn find_related(
     Ok(Json(RelatedResponse {
         query: RelatedQueryEcho {
             law_id: params.law_id,
-            article: params.article,
-            output: params.output,
-            input: params.input,
+            article,
+            output,
+            input,
             direction,
         },
         relations,
     }))
+}
+
+/// Normalise an optional query string: pass `None` through, reject
+/// explicit-empty/whitespace-only `Some` values with a 400, and trim
+/// surrounding whitespace from anything else.
+fn require_non_empty(
+    name: &str,
+    val: Option<&str>,
+) -> Result<Option<String>, (StatusCode, String)> {
+    match val {
+        None => Ok(None),
+        Some(s) if s.trim().is_empty() => Err((
+            StatusCode::BAD_REQUEST,
+            format!("Query parameter '{name}' must not be empty when provided"),
+        )),
+        Some(s) => Ok(Some(s.trim().to_string())),
+    }
 }
 
 #[cfg(test)]
