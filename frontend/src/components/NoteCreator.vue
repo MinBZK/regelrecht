@@ -73,6 +73,7 @@ const selectorResult = computed(() => {
 
 const exact = computed(() => selectorResult.value?.exact ?? '');
 const selectorStatus = computed(() => selectorResult.value?.status ?? null);
+const selectorReason = computed(() => selectorResult.value?.reason ?? null);
 
 const canSave = computed(() => {
   if (!selectorResult.value) return false;
@@ -172,41 +173,29 @@ function buildBody() {
   return text;
 }
 
-// Why a selection is unusable, explained concretely. The resolver matches
-// against the *raw* law text, but the editor renders it through markdown:
-// numbered-lid prefixes ("1. ") and collapsed whitespace are stripped from
-// what you see, so a visually-exact selection can still miss. The hints name
-// the actual likely causes and the fix, instead of a generic "select exact
-// text" that does not tell the user what went wrong.
+// One sharp line per failure reason — what went wrong + the single most
+// useful fix. No bullet wall: the reason from buildSelector already
+// distinguishes "too common" from "not located", so the message can be
+// precise instead of listing every possibility.
 const statusInfo = computed(() => {
-  const q = exact.value.trim();
-  const short = q.length > 0 && q.length < 4;
-  if (selectorStatus.value === 'ambiguous') {
-    return {
-      title: 'Selectie komt vaker voor',
-      lead:
-        'Dit fragment staat op meerdere plekken in de wet (of week net te veel af), dus de notitie kan niet eenduidig aan één plek worden gekoppeld.',
-      hints: [
-        short
-          ? `"${q}" is te kort en komt overal voor — selecteer een langere, kenmerkende zinsnede.`
-          : 'Selecteer een langer fragment, inclusief de omringende, kenmerkende woorden.',
-        'Begin en eindig op een woordgrens; selecteer een hele zin of zinsdeel in plaats van een los woord.',
-      ],
-    };
+  if (!selectorStatus.value || selectorStatus.value === 'found') return null;
+  switch (selectorReason.value) {
+    case 'too-common':
+      return {
+        title: 'Te algemeen',
+        lead: 'Dit fragment komt te vaak voor om aan één plek te koppelen. Selecteer een langere, kenmerkende zinsnede.',
+      };
+    case 'mis-anchor':
+      return {
+        title: 'Niet eenduidig',
+        lead: 'Dit fragment is hier niet uniek. Breid de selectie uit met de omringende woorden.',
+      };
+    default: // 'not-found'
+      return {
+        title: 'Niet teruggevonden',
+        lead: 'Selecteer geen lidnummer ("1.") of opsommingsteken mee en blijf binnen één lid.',
+      };
   }
-  if (selectorStatus.value === 'orphaned') {
-    return {
-      title: 'Selectie niet teruggevonden',
-      lead:
-        'De wettekst wordt opgemaakt weergegeven; de notitie wordt op de onbewerkte brontekst verankerd. Daardoor kan een selectie die er hetzelfde uitziet toch nét niet matchen.',
-      hints: [
-        'Selecteer geen lidnummer ("1.", "2.") of opsommingsteken mee — die staan niet in de brontekst zoals ze hier getoond worden.',
-        'Blijf binnen één lid of zin; selecteer niet over een witregel of lid-grens heen.',
-        'Vermijd het meeselecteren van inspringing of dubbele spaties aan begin of eind; selecteer strak om de woorden.',
-      ],
-    };
-  }
-  return null;
 });
 
 defineExpose({ popoverEl });
@@ -235,11 +224,7 @@ defineExpose({ popoverEl });
           :text="statusInfo.title"
           :supporting-text="statusInfo.lead"
           data-testid="note-creator-status"
-        >
-          <ul class="nc-hints">
-            <li v-for="(h, i) in statusInfo.hints" :key="i">{{ h }}</li>
-          </ul>
-        </nldd-inline-dialog>
+        ></nldd-inline-dialog>
         <div class="nc-actions">
           <nldd-button size="md" text="Annuleren" data-testid="note-cancel" @click="cancel"></nldd-button>
         </div>
@@ -412,15 +397,6 @@ defineExpose({ popoverEl });
 .nc-hint {
   font-size: 0.74rem;
   opacity: 0.6;
-}
-.nc-hints {
-  margin: 8px 0 0;
-  padding-left: 1.1em;
-  font-size: 0.82rem;
-  line-height: 1.5;
-}
-.nc-hints li + li {
-  margin-top: 4px;
 }
 .nc-actions {
   display: flex;

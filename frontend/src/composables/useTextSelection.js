@@ -256,7 +256,13 @@ export function selectionToRawRange(rawText, rootEl) {
  *   selector: object,
  *   exact: string,
  *   status: 'found'|'ambiguous'|'orphaned',
+ *   reason: 'ok'|'too-common'|'not-found'|'mis-anchor',
  * }}
+ *   `reason` is for the UI message only; it does not change accept/reject.
+ *   'too-common' = the bare quote already matched several places (RFC-018
+ *   §5.4 "common word without context") even if widening context later
+ *   degrades to orphaned; 'not-found' = genuinely not locatable; 'mis-anchor'
+ *   = a unique match landed off the selection.
  */
 export function buildSelector(rawText, range, lawId, engine, articleNumber) {
   const chars = Array.from(rawText);
@@ -274,6 +280,7 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber) {
       selector: { type: 'TextQuoteSelector', exact },
       exact,
       status: 'orphaned',
+      reason: 'not-found',
     };
   }
 
@@ -296,6 +303,11 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber) {
   // double. Short-circuit as soon as the match is provably our selection.
   const widths = [0, CONTEXT, CONTEXT * 2];
   let last = null;
+  // The bare quote (no context) matching several places is the RFC-018 §5.4
+  // "common word" case. Remember it: even if widening context later degrades
+  // to orphaned (markdown-stripped prefix/suffix no longer matches), the
+  // user-facing reason is still "too common", not "not found".
+  let sawMultiple = false;
   for (const w of widths) {
     const prefix =
       w > 0 ? chars.slice(Math.max(0, range.start - w), range.start).join('') : '';
@@ -310,20 +322,27 @@ export function buildSelector(rawText, range, lawId, engine, articleNumber) {
       result = engine.resolveNote(lawId, selector);
     } catch {
       // Resolver threw (law not loaded etc.) — caller surfaces it.
-      return { selector, exact, status: 'orphaned' };
+      return { selector, exact, status: 'orphaned', reason: 'not-found' };
     }
     if (isExactlyOurSelection(result)) {
-      return { selector, exact, status: 'found' };
+      return { selector, exact, status: 'found', reason: 'ok' };
     }
+    if ((result?.matches?.length ?? 0) > 1) sawMultiple = true;
     // A unique `found` that is NOT our selection is a mis-anchor: treat it as
     // ambiguous (more context may still pin the right one) rather than
     // accepting it. Only a genuine orphaned short-circuits.
-    const status = result?.status === 'orphaned' ? 'orphaned' : 'ambiguous';
-    last = { selector, exact, status };
-    if (status === 'orphaned') return last;
+    const orphaned = result?.status === 'orphaned';
+    const status = orphaned ? 'orphaned' : 'ambiguous';
+    const reason = sawMultiple
+      ? 'too-common'
+      : orphaned
+        ? 'not-found'
+        : result?.status === 'found'
+          ? 'mis-anchor'
+          : 'too-common';
+    last = { selector, exact, status, reason };
+    if (orphaned) return last;
   }
-  // Widest context still did not provably pin our selection: report ambiguous
-  // so the UI asks for a longer/uniquer selection. Carry the widest selector
-  // so a human extending it starts from maximum context.
+  // Widest context still did not provably pin our selection.
   return last;
 }

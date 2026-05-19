@@ -157,6 +157,29 @@ describe('buildSelector', () => {
     expect(out.status).toBe('ambiguous');
   });
 
+  it('reports reason "too-common" when the bare quote matched many, even if widening degrades to orphaned', () => {
+    // The "in"-case: no-context match is ambiguous (occurs everywhere), but
+    // with markdown-stripped context the wider attempts can't relocate it and
+    // the resolver returns orphaned. The user-facing reason must stay
+    // "too-common", not "not-found".
+    const range = { start: 10, end: 20 };
+    const engine = engineReturning((sel) =>
+      !sel.prefix && !sel.suffix
+        ? { status: 'ambiguous', matches: [{}, {}, {}] }
+        : { status: 'orphaned', matches: [] },
+    );
+    const out = buildSelector(raw, range, 'w', engine, '1');
+    expect(out.reason).toBe('too-common');
+  });
+
+  it('reports reason "not-found" when nothing matched at any width', () => {
+    const range = { start: 10, end: 20 };
+    const engine = engineReturning(() => ({ status: 'orphaned', matches: [] }));
+    const out = buildSelector(raw, range, 'w', engine, '1');
+    expect(out.status).toBe('orphaned');
+    expect(out.reason).toBe('not-found');
+  });
+
   it('grows context until the match lands on our exact selection', () => {
     const range = { start: 10, end: 20 }; // "normpremie", appears twice
     const calls = [];
