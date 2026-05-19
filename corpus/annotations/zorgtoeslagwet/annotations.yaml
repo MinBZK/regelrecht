@@ -86,7 +86,7 @@ annotations:
         type: TextQuoteSelector
         exact: 4,273 procent
         prefix: 'voor een verzekerde met een toeslagpartner '
-        suffix: ' van het drempelinkomen'
+        suffix: ' van het'
     body:
       - type: TextualBody
         value: >-
