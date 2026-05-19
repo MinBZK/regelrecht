@@ -385,7 +385,3 @@ docs-build:
 # Preview production docs build
 docs-preview:
     cd docs && npm run preview
-
-# Accessibility audit of the built site (WCAG 2.2 AA, axe + htmlcs)
-docs-a11y:
-    cd docs && npm run a11y
