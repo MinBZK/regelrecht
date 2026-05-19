@@ -37,6 +37,14 @@ allow = [
 allow = ["LGPL-2.1-or-later"]
 crate = "r-efi"
 
+# borrow-or-share is MIT-0 (MIT No Attribution): OSI-approved and strictly
+# more permissive than the allowed MIT (it drops the attribution clause).
+# Pulled transitively via jsonschema -> fluent-uri for the editor-api note
+# schema validation. Scoped exception rather than allowing MIT-0 globally.
+[[licenses.exceptions]]
+allow = ["MIT-0"]
+crate = "borrow-or-share"
+
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"
