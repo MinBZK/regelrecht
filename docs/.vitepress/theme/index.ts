@@ -5,6 +5,7 @@ import './landing.css'
 import Layout from './Layout.vue'
 import RfcIndexTable from './components/RfcIndexTable.vue'
 import SignupForm from './components/landing/SignupForm.vue'
+import RrNav from './components/RrNav.vue'
 
 export default {
   extends: DefaultTheme,
@@ -12,6 +13,7 @@ export default {
   enhanceApp({ app }) {
     app.component('RfcIndexTable', RfcIndexTable)
     app.component('SignupForm', SignupForm)
+    app.component('RrNav', RrNav)
 
     // @nldd/design-system is Lit-based: it needs the DOM and must not run
     // during SSR. Import it client-side only. The landing degrades to plain

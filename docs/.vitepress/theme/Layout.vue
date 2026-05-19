@@ -9,5 +9,11 @@ const { frontmatter } = useData()
 
 <template>
   <LandingPage v-if="frontmatter.layout === 'landing'" />
-  <Layout v-else />
+  <Layout v-else>
+    <!-- Replace the (CSS-hidden) VitePress navbar with our shared nav,
+         rendered above the preserved sidebar/content/footer. -->
+    <template #layout-top>
+      <RrNav />
+    </template>
+  </Layout>
 </template>

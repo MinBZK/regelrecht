@@ -86,7 +86,56 @@
   margin: 0 0 2.5rem;
 }
 
-/* --- Header / nav --- */
+/* --- Shared top navigation (RrNav) --- */
+.rr-topnav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--vp-nav-bg-color);
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+/* The web component and the semantic fallback are both in the DOM. Show
+   exactly one: the fallback (SSR/no-JS) until the component upgrades,
+   then the component. Mirrors the nldd-card :defined pattern. */
+.rr-topnav-wc:not(:defined) {
+  display: none;
+}
+.rr-topnav-wc:defined ~ .rr-nav-fallback {
+  display: none;
+}
+.rr-nav-fallback {
+  max-width: 1100px;
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  flex-wrap: wrap;
+}
+.rr-nav-fallback .rr-nav-links a[aria-current='page'] {
+  color: var(--vp-c-brand-1);
+  font-weight: 700;
+}
+.dark .rr-nav-fallback .rr-nav-links a[aria-current='page'] {
+  color: var(--vp-c-brand-2);
+}
+.rr-nav-iconbtn {
+  background: none;
+  border: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-1);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.rr-nav-iconbtn:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+
+/* --- Header / nav (legacy landing header wrapper, kept for spacing) --- */
 .rr-header {
   position: sticky;
   top: 0;

@@ -10,7 +10,6 @@ const { frontmatter } = useData()
 const lang = computed(() => langFromPath(route.path))
 const t = computed(() => content[lang.value])
 const home = computed(() => (lang.value === 'en' ? '/en/' : '/'))
-const docsHref = '/guide/what-is-regelrecht'
 const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
 </script>
 
@@ -20,46 +19,7 @@ const showSignup = computed(() => frontmatter.value.page === 'aanmelden')
       {{ lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud' }}
     </a>
 
-    <header class="rr-header">
-      <nav
-        class="rr-nav"
-        :aria-label="lang === 'en' ? 'Main navigation' : 'Hoofdnavigatie'"
-      >
-        <a class="rr-brand" :href="home">
-          <b>RegelRecht</b>
-          <small>{{ t.nav.brandTagline }}</small>
-        </a>
-        <ul class="rr-nav-links">
-          <li v-if="!showSignup">
-            <a :href="home + '#what-is-it'">{{ t.nav.what }}</a>
-          </li>
-          <li v-if="!showSignup">
-            <a :href="home + '#how-it-works'">{{ t.nav.how }}</a>
-          </li>
-          <li v-if="!showSignup">
-            <a :href="home + '#tools'">{{ t.nav.tools }}</a>
-          </li>
-          <li v-if="!showSignup">
-            <a :href="home + '#example'">{{ t.nav.example }}</a>
-          </li>
-          <li v-if="!showSignup">
-            <a :href="home + '#faq'">{{ t.nav.faq }}</a>
-          </li>
-          <li>
-            <a :href="t.feedback.ctaHref">{{ t.nav.signup }}</a>
-          </li>
-          <li><a :href="docsHref">{{ t.nav.docs }}</a></li>
-          <li>
-            <a :href="lang === 'en' ? '/' : '/en/'">
-              {{ lang === 'en' ? 'Nederlands' : 'English' }}
-            </a>
-          </li>
-          <li>
-            <a href="https://github.com/MinBZK/regelrecht">GitHub</a>
-          </li>
-        </ul>
-      </nav>
-    </header>
+    <RrNav />
 
     <main id="rr-main">
       <!-- ===================== SIGNUP PAGE ===================== -->

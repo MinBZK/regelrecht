@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
 import { rfcSidebarItems } from './rfcs'
+import { docsNav } from './navLinks'
 
 export default withMermaid(
   defineConfig({
@@ -52,15 +53,9 @@ export default withMermaid(
 
     themeConfig: {
       logo: '/logo.svg',
-      nav: [
-        { text: 'Home', link: '/en/' },
-        { text: 'Guide', link: '/guide/what-is-regelrecht' },
-        { text: 'Concepts', link: '/concepts/how-it-works' },
-        { text: 'Components', link: '/components/engine' },
-        { text: 'Operations', link: '/operations/deployment' },
-        { text: 'RFCs', link: '/rfcs/' },
-        { text: 'Reference', link: '/reference/glossary' },
-      ],
+      // Shared with the RrNav component (see ./navLinks). The visible header
+      // is RrNav; this stays for VitePress metadata/prev-next consistency.
+      nav: docsNav.map(({ text, link }) => ({ text, link })),
       sidebar: {
         '/guide/': [
           {

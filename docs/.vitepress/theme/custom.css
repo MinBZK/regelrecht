@@ -125,3 +125,22 @@
 .VPButton.brand {
   border-radius: 6px;
 }
+
+/* The shared RrNav (rendered via the layout-top slot) replaces the
+   default VitePress navbar site-wide. Hide VPNav with display:none —
+   NOT the `navbar: false` frontmatter — so VPNavBarSearch stays mounted
+   and the Cmd/Ctrl+K search hotkey keeps working (RrNav re-triggers it).
+   The mobile sidebar toggle lives in .VPLocalNav, not .VPNav, so it is
+   unaffected. */
+.VPNav {
+  display: none !important;
+}
+
+/* VPNav was fixed-positioned; with it gone the doc content no longer
+   needs the navbar height offset. RrNav provides its own sticky bar. */
+:root {
+  --vp-nav-height: 0px;
+}
+.VPLocalNav {
+  top: 0;
+}
