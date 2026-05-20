@@ -44,6 +44,7 @@ interface NavItem {
   text: string;
   href: string;
   current?: boolean;
+  icon?: string;
 }
 
 // Landing home for this language, used as the base for the section anchors.
@@ -67,6 +68,7 @@ if (isLanding) {
     text: n.text,
     href: n.link,
     current: n.match ? pathname.startsWith(n.match) : false,
+    icon: n.icon,
   }));
 }
 
@@ -158,6 +160,7 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
                 slot="global"
                 href={item.href}
                 text={item.text}
+                icon={item.icon || undefined}
                 current={item.current || undefined}
               />
             ))

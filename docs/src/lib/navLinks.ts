@@ -9,10 +9,13 @@ export interface DocsNavItem {
   text: string
   link: string
   match?: string
+  /** Optional NLDD icon name; when set the item shows the icon (text stays
+   *  as the accessible label). */
+  icon?: string
 }
 
 export const docsNav: DocsNavItem[] = [
-  { text: 'Home', link: '/en/', match: '/en/' },
+  { text: 'Home', link: '/en/', match: '/en/', icon: 'home' },
   { text: 'Guide', link: '/guide/what-is-regelrecht', match: '/guide/' },
   { text: 'Concepts', link: '/concepts/how-it-works', match: '/concepts/' },
   { text: 'Components', link: '/components/engine', match: '/components/' },
