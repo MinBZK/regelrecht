@@ -3,6 +3,7 @@ import '@nldd/design-system/styles';
 import '~/styles/tokens.css';
 import '~/styles/landing.css';
 import '~/styles/docs.css';
+import { ClientRouter } from 'astro:transitions';
 import { content, langFromPath } from '~/lib/landing-content';
 import { docsNav } from '~/lib/navLinks';
 
@@ -109,6 +110,10 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       href="/regelrecht-icon.svg"
     />
     <slot name="head" />
+    {/* View transitions keep the DOM/CSS/fonts live between navigations, so
+        the NLDD Lit components do not re-upgrade on every page change — that
+        re-upgrade was the flicker on full page loads. */}
+    <ClientRouter />
     <script is:inline>
       // NLDD colours resolve via data-scheme; the landing/chrome CSS uses
       // the `.dark` class. Restore the persisted theme before first paint
@@ -271,33 +276,35 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
     <script>
       // Theme toggle: NLDD reads data-scheme; the ported landing/chrome CSS
       // keys off the `.dark` class. Toggle both, persist to localStorage.
-      const themeBtn = document.getElementById('rr-theme-toggle');
-      themeBtn?.addEventListener('click', () => {
-        const root = document.documentElement;
-        const dark = root.getAttribute('data-scheme') !== 'dark';
-        root.setAttribute('data-scheme', dark ? 'dark' : 'light');
-        root.style.colorScheme = dark ? 'dark' : 'light';
-        root.classList.toggle('dark', dark);
-        try {
-          localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
-        } catch (e) {}
-        const el = themeBtn as HTMLElement;
-        el.setAttribute(
-          'text',
-          dark
-            ? el.dataset.labelDark || 'Light mode'
-            : el.dataset.labelLight || 'Dark mode'
-        );
-        el.setAttribute('icon', dark ? 'sun' : 'moon');
-      });
-      // Reflect the pre-paint state onto the toggle label/icon.
-      if (document.documentElement.getAttribute('data-scheme') === 'dark') {
-        const el = themeBtn as HTMLElement | null;
-        if (el) {
-          el.setAttribute('text', el.dataset.labelDark || 'Light mode');
-          el.setAttribute('icon', 'sun');
+      // The toggle element is replaced on each ClientRouter navigation, so
+      // (re)bind on astro:page-load (which also fires on the first load).
+      function wireThemeToggle() {
+        const themeBtn = document.getElementById('rr-theme-toggle');
+        if (!themeBtn) return;
+        themeBtn.addEventListener('click', () => {
+          const root = document.documentElement;
+          const dark = root.getAttribute('data-scheme') !== 'dark';
+          root.setAttribute('data-scheme', dark ? 'dark' : 'light');
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          root.classList.toggle('dark', dark);
+          try {
+            localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
+          } catch (e) {}
+          themeBtn.setAttribute(
+            'text',
+            dark
+              ? themeBtn.dataset.labelDark || 'Light mode'
+              : themeBtn.dataset.labelLight || 'Dark mode'
+          );
+          themeBtn.setAttribute('icon', dark ? 'sun' : 'moon');
+        });
+        // Reflect the current scheme onto the freshly-rendered toggle.
+        if (document.documentElement.getAttribute('data-scheme') === 'dark') {
+          themeBtn.setAttribute('text', themeBtn.dataset.labelDark || 'Light mode');
+          themeBtn.setAttribute('icon', 'sun');
         }
       }
+      document.addEventListener('astro:page-load', wireThemeToggle);
     </script>
 
     <script
@@ -312,13 +319,16 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       // only the presentation is ours. The headless module is emitted to
       // /pagefind/pagefind.js by astro-pagefind during the build and is absent
       // in `astro dev` — the dynamic import is guarded so dev degrades to a hint.
-      const dialog = document.getElementById('rr-search-dialog');
-      const trigger = document.getElementById('rr-search-trigger');
-      const field = document.getElementById('rr-search-input');
-      const resultsEl = document.getElementById('rr-search-results');
+      // These elements are replaced on each ClientRouter navigation, so they
+      // are `let` and re-resolved in wireSearch() on astro:page-load.
+      let dialog = null;
+      let trigger = null;
+      let field = null;
+      let resultsEl = null;
 
       // Pagefind instance (loaded lazily on first open). `null` until loaded,
       // `false` once an import attempt has failed (e.g. in `astro dev`).
+      // Module-scope so it survives navigations and is loaded at most once.
       let pagefind = null;
       let pagefindFailed = false;
       let loading = false;
@@ -464,13 +474,6 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       // event.detail (whose `.value` is not a plain string and broke
       // query.trim()).
       const fieldValue = () => field?.value ?? '';
-      field?.addEventListener('input', () => {
-        onInput(fieldValue());
-      });
-      field?.addEventListener('search', () => {
-        window.clearTimeout(debounceTimer);
-        runQuery(fieldValue());
-      });
 
       function openSearch() {
         if (!dialog) return;
@@ -479,35 +482,54 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
         field?.focus();
       }
 
-      trigger?.addEventListener('click', openSearch);
+      // (Re)resolve the search elements and bind their listeners. The elements
+      // are recreated on each ClientRouter navigation, so this runs on every
+      // astro:page-load. The global Cmd/Ctrl+K listener is bound once below
+      // (it reads the live `dialog`/`field` via openSearch).
+      function wireSearch() {
+        dialog = document.getElementById('rr-search-dialog');
+        trigger = document.getElementById('rr-search-trigger');
+        field = document.getElementById('rr-search-input');
+        resultsEl = document.getElementById('rr-search-results');
+
+        field?.addEventListener('input', () => onInput(fieldValue()));
+        field?.addEventListener('search', () => {
+          window.clearTimeout(debounceTimer);
+          runQuery(fieldValue());
+        });
+        trigger?.addEventListener('click', openSearch);
+
+        // Keyboard a11y within the modal: arrows move through the focusable
+        // <a> result list, Enter follows the active one, Escape closes (native
+        // <dialog>). Backdrop click closes.
+        dialog?.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive(activeIndex + 1);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive(activeIndex - 1);
+          } else if (e.key === 'Enter') {
+            const links = resultLinks();
+            if (activeIndex >= 0 && links[activeIndex]) {
+              e.preventDefault();
+              links[activeIndex].click();
+            }
+          }
+        });
+        dialog?.addEventListener('click', (e) => {
+          if (e.target === dialog) dialog.close();
+        });
+      }
+      document.addEventListener('astro:page-load', wireSearch);
+
+      // Global hotkey bound once for the document's lifetime (not per page-load,
+      // which would stack duplicate listeners). Uses the live element refs.
       document.addEventListener('keydown', (e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
           e.preventDefault();
           openSearch();
         }
-      });
-
-      // Keyboard a11y within the modal: arrows move through the focusable <a>
-      // result list, Enter follows the active one, Escape closes the dialog.
-      dialog?.addEventListener('keydown', (e) => {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setActive(activeIndex + 1);
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setActive(activeIndex - 1);
-        } else if (e.key === 'Enter') {
-          const links = resultLinks();
-          if (activeIndex >= 0 && links[activeIndex]) {
-            e.preventDefault();
-            links[activeIndex].click();
-          }
-        }
-        // Escape closes the native <dialog> automatically.
-      });
-
-      dialog?.addEventListener('click', (e) => {
-        if (e.target === dialog) dialog.close();
       });
     </script>
 
