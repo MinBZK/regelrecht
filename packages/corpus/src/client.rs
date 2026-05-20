@@ -398,6 +398,12 @@ impl CorpusClient {
             "--single-branch",
         ];
         if sparse {
+            // Partial clone: don't ship blobs in the pack. Combined with the
+            // cone-mode sparse-checkout below, only blobs inside the sparse
+            // paths get fetched lazily when `git checkout` materialises the
+            // working tree — turning a full-corpus download into a few-files
+            // download for per-job enrichment checkouts.
+            args.push("--filter=blob:none");
             args.push("--no-checkout");
         }
         args.push(&url);
@@ -449,6 +455,7 @@ impl CorpusClient {
             "--single-branch",
         ];
         if sparse {
+            args.push("--filter=blob:none");
             args.push("--no-checkout");
         }
         args.push(&url);
