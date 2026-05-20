@@ -1,5 +1,5 @@
 ---
-$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.0/schema.json
+$schema: https://raw.githubusercontent.com/MinBZK/regelrecht/refs/heads/main/schema/v0.5.1/schema.json
 $id: wetboek_van_strafrecht
 regulatory_layer: WET
 publication_date: '2026-01-01'
@@ -43,6 +43,97 @@ articles:
       instandhouding van de onderlinge verhouding tussen de bedragen van de geldboetecategorieën, de bedragen van de
       tweede tot en met de zesde geldboetecategorie bepaald.
     url: https://wetten.overheid.nl/BWBR0001854/2026-01-01#Artikel23
+    machine_readable:
+      definitions:
+        boetecategorie_1:
+          value: 33500
+          description: Eerste categorie, het bedrag van EUR 335 (lid 4)
+        boetecategorie_2:
+          value: 335000
+          description: Tweede categorie, het bedrag van EUR 3.350 (lid 4)
+        boetecategorie_3:
+          value: 670000
+          description: Derde categorie, het bedrag van EUR 6.700 (lid 4)
+        boetecategorie_4:
+          value: 1675000
+          description: Vierde categorie, het bedrag van EUR 16.750 (lid 4)
+        boetecategorie_5:
+          value: 6700000
+          description: Vijfde categorie, het bedrag van EUR 67.000 (lid 4)
+        boetecategorie_6:
+          value: 67000000
+          description: Zesde categorie, het bedrag van EUR 670.000 (lid 4)
+        minimum_geldboete_bedrag:
+          value: 300
+          description: Het bedrag van de geldboete is ten minste EUR 3 (lid 2)
+      execution:
+        parameters:
+          - name: boetecategorie
+            type: number
+            required: true
+            description: De geldboetecategorie (1 t/m 6) die voor het strafbare feit is bepaald
+        output:
+          - name: minimum_geldboete
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Ondergrens van de geldboete (lid 2)
+          - name: maximum_geldboete
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Ten hoogste op te leggen geldboete, gelijk aan het bedrag van de categorie (lid 3)
+          - name: bedrag_eerste_categorie
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Het bedrag van de geldboete van de eerste categorie (lid 4)
+        actions:
+          - output: minimum_geldboete
+            value: $minimum_geldboete_bedrag
+            legal_basis:
+              law: Wetboek van Strafrecht
+              article: '23'
+          - output: bedrag_eerste_categorie
+            value: $boetecategorie_1
+            legal_basis:
+              law: Wetboek van Strafrecht
+              article: '23'
+          # Lid 3: de ten hoogste op te leggen geldboete is gelijk aan het bedrag
+          # van de categorie die voor dat feit is bepaald (lid 4 noemt de zes bedragen).
+          - output: maximum_geldboete
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $boetecategorie
+                    value: 1
+                  then: $boetecategorie_1
+                - when:
+                    operation: EQUALS
+                    subject: $boetecategorie
+                    value: 2
+                  then: $boetecategorie_2
+                - when:
+                    operation: EQUALS
+                    subject: $boetecategorie
+                    value: 3
+                  then: $boetecategorie_3
+                - when:
+                    operation: EQUALS
+                    subject: $boetecategorie
+                    value: 4
+                  then: $boetecategorie_4
+                - when:
+                    operation: EQUALS
+                    subject: $boetecategorie
+                    value: 5
+                  then: $boetecategorie_5
+              default: $boetecategorie_6
+            legal_basis:
+              law: Wetboek van Strafrecht
+              article: '23'
   - number: '24'
     text: |-
       Bij de vaststelling van de geldboete wordt rekening gehouden met de draagkracht van de verdachte in de mate
@@ -61,6 +152,52 @@ articles:
       uitspraak tezamen een tijdvak van twee jaar niet overschrijden; in het geval van een strafbeschikking mogen
       zij een tijdvak van een jaar niet overschrijden.
     url: https://wetten.overheid.nl/BWBR0001854/2026-01-01#Artikel24a
+    machine_readable:
+      definitions:
+        drempel_gespreide_betaling:
+          value: 22500
+          description: Vanaf EUR 225 kan betaling in gedeelten worden bepaald (lid 1)
+        minimum_gedeelte_bedrag:
+          value: 4500
+          description: Elk gedeelte bedraagt ten minste EUR 45 (lid 1)
+      execution:
+        parameters:
+          - name: geldboete_bedrag
+            type: number
+            required: true
+            description: Het opgelegde geldboetebedrag in eurocent
+        output:
+          - name: gespreide_betaling_mogelijk
+            type: boolean
+            description: Of betaling in gedeelten kan worden bepaald (lid 1)
+          - name: minimum_gedeelte
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Ondergrens van elk gedeelte (lid 1)
+          - name: minimum_termijn_maanden
+            type: number
+            description: Ondergrens van elke betalingstermijn (lid 3)
+          - name: maximum_termijn_maanden
+            type: number
+            description: Bovengrens van elke betalingstermijn (lid 3)
+        actions:
+          # Lid 1: betaling in gedeelten kan worden bepaald indien de geldboete
+          # ten minste EUR 225 bedraagt.
+          - output: gespreide_betaling_mogelijk
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $geldboete_bedrag
+              value: $drempel_gespreide_betaling
+            legal_basis:
+              law: Wetboek van Strafrecht
+              article: 24a
+          - output: minimum_gedeelte
+            value: $minimum_gedeelte_bedrag
+          - output: minimum_termijn_maanden
+            value: 1
+          - output: maximum_termijn_maanden
+            value: 3
   - number: 24c
     text: |-
       1. Bij de uitspraak waarbij geldboete wordt opgelegd, beveelt de rechter voor het geval dat noch volledige
@@ -71,6 +208,31 @@ articles:
       3. De vervangende hechtenis beloopt ten minste één dag en ten hoogste een jaar. Voor elke volle € 25 van de
       geldboete wordt niet meer dan één dag opgelegd.
     url: https://wetten.overheid.nl/BWBR0001854/2026-01-01#Artikel24c
+    machine_readable:
+      untranslatables:
+        - construct: voor elke volle EUR 25 van de geldboete niet meer dan een dag
+          reason: >-
+            Het maximum aantal dagen vergt gehele deling (floor) van het
+            geldboetebedrag door 25; de engine kent geen FLOOR- of
+            geheeltallige-deling-operatie.
+          suggestion: Voeg een FLOOR- of geheeltallige-deling-operatie toe aan de engine.
+          legal_text_excerpt: >-
+            Voor elke volle EUR 25 van de geldboete wordt niet meer dan een dag
+            opgelegd.
+          accepted: false
+      execution:
+        output:
+          - name: minimum_vervangende_hechtenis_dagen
+            type: number
+            description: De vervangende hechtenis beloopt ten minste een dag (lid 3)
+          - name: maximum_vervangende_hechtenis_jaren
+            type: number
+            description: De vervangende hechtenis beloopt ten hoogste een jaar (lid 3)
+        actions:
+          - output: minimum_vervangende_hechtenis_dagen
+            value: 1
+          - output: maximum_vervangende_hechtenis_jaren
+            value: 1
   - number: 36e
     text: |-
       1. Op vordering van het openbaar ministerie kan bij een afzonderlijke rechterlijke beslissing aan degene die
@@ -124,6 +286,25 @@ articles:
       duur wordt voor elke volle € 25 van het opgelegde bedrag niet meer dan één dag gerekend. De duur beloopt ten
       hoogste drie jaar.
     url: https://wetten.overheid.nl/BWBR0001854/2026-01-01#Artikel36e
+    machine_readable:
+      untranslatables:
+        - construct: voor elke volle EUR 25 van het opgelegde bedrag niet meer dan een dag gijzeling
+          reason: >-
+            De duur van de gijzeling vergt gehele deling (floor) van het
+            opgelegde bedrag door 25; de engine kent geen FLOOR-operatie.
+          suggestion: Voeg een FLOOR- of geheeltallige-deling-operatie toe aan de engine.
+          legal_text_excerpt: >-
+            Bij het bepalen van de duur wordt voor elke volle EUR 25 van het
+            opgelegde bedrag niet meer dan een dag gerekend.
+          accepted: false
+      execution:
+        output:
+          - name: maximum_gijzeling_jaren
+            type: number
+            description: De duur van de gijzeling beloopt ten hoogste drie jaar (lid 11)
+        actions:
+          - output: maximum_gijzeling_jaren
+            value: 3
   - number: 36f
     text: |-
       1. Aan degene die bij rechterlijke uitspraak wegens een strafbaar feit wordt veroordeeld tot een straf of aan
@@ -145,3 +326,22 @@ articles:
       voor elke volle € 25 van het opgelegde bedrag niet meer dan één dag gerekend. De duur beloopt ten hoogste één
       jaar.
     url: https://wetten.overheid.nl/BWBR0001854/2026-01-01#Artikel36f
+    machine_readable:
+      untranslatables:
+        - construct: voor elke volle EUR 25 van het opgelegde bedrag niet meer dan een dag gijzeling
+          reason: >-
+            De duur van de gijzeling vergt gehele deling (floor) van het
+            opgelegde bedrag door 25; de engine kent geen FLOOR-operatie.
+          suggestion: Voeg een FLOOR- of geheeltallige-deling-operatie toe aan de engine.
+          legal_text_excerpt: >-
+            Bij het bepalen van de duur wordt voor elke volle EUR 25 van het
+            opgelegde bedrag niet meer dan een dag gerekend.
+          accepted: false
+      execution:
+        output:
+          - name: maximum_gijzeling_jaren
+            type: number
+            description: De duur van de gijzeling beloopt ten hoogste een jaar (lid 5)
+        actions:
+          - output: maximum_gijzeling_jaren
+            value: 1

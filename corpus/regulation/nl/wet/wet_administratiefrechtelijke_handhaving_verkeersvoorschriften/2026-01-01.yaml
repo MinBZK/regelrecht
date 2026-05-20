@@ -51,6 +51,54 @@ articles:
       6. Een algemene maatregel van bestuur, als bedoeld in het vijfde lid, wordt vastgesteld op voordracht van Onze
       Minister en Onze Minister van Infrastructuur en Milieu.
     url: https://wetten.overheid.nl/BWBR0004581/2026-01-01#Artikel2
+    machine_readable:
+      execution:
+        parameters:
+          - name: basis_geldsom
+            type: number
+            required: true
+            description: De voor de gedraging in de bijlage bepaalde geldsom, in eurocent
+          - name: leeftijd_ten_tijde_gedraging
+            type: number
+            required: true
+            description: Leeftijd in jaren van de betrokkene ten tijde van de gedraging
+        input:
+          - name: bedrag_eerste_categorie
+            type: amount
+            source:
+              regulation: wetboek_van_strafrecht
+              output: bedrag_eerste_categorie
+              parameters:
+                boetecategorie: '1'
+            type_spec:
+              unit: eurocent
+        output:
+          - name: geldsom
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De aan de Staat te betalen geldsom voor de gedraging
+        actions:
+          # Lid 4: voor personen jonger dan 16 jaar wordt de geldsom gehalveerd.
+          # Lid 3: de geldsom kan niet meer zijn dan het bedrag van de geldboete
+          # van de eerste categorie (artikel 23 Wetboek van Strafrecht).
+          - output: geldsom
+            value:
+              operation: MIN
+              values:
+                - operation: IF
+                  cases:
+                    - when:
+                        operation: LESS_THAN
+                        subject: $leeftijd_ten_tijde_gedraging
+                        value: 16
+                      then:
+                        operation: DIVIDE
+                        values:
+                          - $basis_geldsom
+                          - 2
+                  default: $basis_geldsom
+                - $bedrag_eerste_categorie
   - number: 2a
     text: |-
       De titels 4.4, 5.1 en 5.4 van de Algemene wet bestuursrecht zijn niet van toepassing op het opleggen en de
@@ -99,6 +147,33 @@ articles:
       wijze waarop de sanctie, alsmede de verhogingen die krachtens artikel 23, derde lid, en artikel 25 op de
       administratieve sanctie vallen, indien deze niet tijdig wordt voldaan, dient te worden voldaan.
     url: https://wetten.overheid.nl/BWBR0004581/2026-01-01#Artikel4
+    machine_readable:
+      execution:
+        parameters:
+          - name: gedraging_datum
+            type: date
+            required: true
+            description: Datum waarop de gedraging heeft plaatsgevonden
+        output:
+          - name: bekendmaking_termijn_datum
+            type: date
+            description: De beschikking wordt binnen vier maanden na de gedraging bekendgemaakt (lid 2)
+          - name: uiterste_bekendmaking_datum
+            type: date
+            description: Bekendmaking geschiedt uiterlijk vijf jaar na de gedraging (lid 2)
+        actions:
+          # Lid 2: bekendmaking binnen vier maanden na de gedraging; bij toezending
+          # aan de kentekenhouder uiterlijk binnen vijf jaar na de gedraging.
+          - output: bekendmaking_termijn_datum
+            value:
+              operation: DATE_ADD
+              date: $gedraging_datum
+              months: 4
+          - output: uiterste_bekendmaking_datum
+            value:
+              operation: DATE_ADD
+              date: $gedraging_datum
+              years: 5
   - number: '5'
     text: |-
       Indien is vastgesteld dat de gedraging heeft plaatsgevonden met of door middel van een motorrijtuig waarvoor
@@ -226,6 +301,64 @@ articles:
       gemachtigde in rekening te brengen vergoedingen is het ter zake bepaalde bij of krachtens de Wet
       griffierechten burgerlijke zaken van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0004581/2026-01-01#Artikel11
+    machine_readable:
+      definitions:
+        zekerheidsbedrag_standaard:
+          value: 22500
+          description: Zekerheid wordt gesteld voor de betaling van EUR 225 (lid 2)
+      execution:
+        parameters:
+          - name: sanctiebedrag
+            type: number
+            required: true
+            description: Het bedrag van de opgelegde administratieve sanctie in eurocent
+          - name: jonger_dan_16
+            type: boolean
+            required: true
+            description: Of de betrokkene ten tijde van de gedraging jonger dan 16 jaar was
+        output:
+          - name: zekerheidstelling_vereist
+            type: boolean
+            description: Of zekerheid moet worden gesteld voor de betaling (lid 2)
+          - name: zekerheidsbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Bedrag waarvoor zekerheid wordt gesteld, exclusief administratiekosten (lid 2)
+        actions:
+          # Lid 2: zekerheidstelling indien de sanctie ten minste EUR 225 bedraagt;
+          # voor personen jonger dan 16 jaar gelden de helft van die bedragen.
+          - output: zekerheidstelling_vereist
+            value:
+              operation: GREATER_THAN_OR_EQUAL
+              subject: $sanctiebedrag
+              value:
+                operation: IF
+                cases:
+                  - when:
+                      operation: EQUALS
+                      subject: $jonger_dan_16
+                      value: true
+                    then:
+                      operation: DIVIDE
+                      values:
+                        - $zekerheidsbedrag_standaard
+                        - 2
+                default: $zekerheidsbedrag_standaard
+          - output: zekerheidsbedrag
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $jonger_dan_16
+                    value: true
+                  then:
+                    operation: DIVIDE
+                    values:
+                      - $zekerheidsbedrag_standaard
+                      - 2
+              default: $zekerheidsbedrag_standaard
   - number: '12'
     text: |-
       1. De kantonrechter stelt, alvorens te beslissen, partijen in de gelegenheid om op een door de kantonrechter
@@ -454,6 +587,55 @@ articles:
       3. De sanctie wordt van rechtswege met vijftig procent verhoogd indien het in de gestelde termijn of termijnen
       verschuldigde bedrag niet tijdig geheel wordt voldaan.
     url: https://wetten.overheid.nl/BWBR0004581/2026-01-01#Artikel23
+    machine_readable:
+      definitions:
+        verhogingspercentage:
+          value: 0.5
+          description: De sanctie wordt van rechtswege met vijftig procent verhoogd (lid 3)
+      execution:
+        parameters:
+          - name: sanctiebedrag
+            type: number
+            required: true
+            description: Het bedrag van de opgelegde administratieve sanctie in eurocent
+          - name: tijdig_voldaan
+            type: boolean
+            required: true
+            description: Of het in de gestelde termijn verschuldigde bedrag tijdig geheel is voldaan
+        output:
+          - name: verhoging
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De verhoging van rechtswege bij niet-tijdige betaling (lid 3)
+          - name: bedrag_na_verhoging
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Het verschuldigde bedrag na de verhoging van vijftig procent
+        actions:
+          # Lid 3: van rechtswege +50% indien het verschuldigde bedrag niet tijdig
+          # geheel wordt voldaan.
+          - output: verhoging
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $tijdig_voldaan
+                    value: false
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $sanctiebedrag
+                      - $verhogingspercentage
+              default: 0
+          - output: bedrag_na_verhoging
+            value:
+              operation: ADD
+              values:
+                - $sanctiebedrag
+                - $verhoging
   - number: '24'
     text: |-
       1. Degene aan wie een administratieve sanctie is opgelegd, is verplicht tot betaling van het ingevolge artikel
@@ -461,6 +643,23 @@ articles:
       2. Indien na de verhoging het verschuldigde bedrag behoudens de administratiekosten, ten minste € 225
       bedraagt, is artikel 23, tweede lid, van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0004581/2026-01-01#Artikel24
+    machine_readable:
+      execution:
+        parameters:
+          - name: aanmaning_datum
+            type: date
+            required: true
+            description: Datum waarop Onze Minister de aanmaning heeft toegezonden
+        output:
+          - name: uiterste_betaaldatum_na_aanmaning
+            type: date
+            description: Betaling van het verhoogde bedrag binnen vier weken na de aanmaning (lid 1)
+        actions:
+          - output: uiterste_betaaldatum_na_aanmaning
+            value:
+              operation: DATE_ADD
+              date: $aanmaning_datum
+              weeks: 4
   - number: '25'
     text: |-
       1. Indien degene aan wie een administratieve sanctie is opgelegd, nalaat het in de op grond van artikel 24
@@ -480,6 +679,67 @@ articles:
       4. Het recht om verhaal te nemen vervalt door het overlijden van degene aan wie een administratieve sanctie is
       opgelegd.
     url: https://wetten.overheid.nl/BWBR0004581/2026-01-01#Artikel25
+    machine_readable:
+      definitions:
+        tweede_verhogingspercentage:
+          value: 1.0
+          description: Verhoging met honderd procent (lid 1)
+      execution:
+        parameters:
+          - name: sanctiebedrag
+            type: number
+            required: true
+            description: Het bedrag van de opgelegde administratieve sanctie in eurocent
+          - name: tijdig_voldaan
+            type: boolean
+            required: true
+            description: Of het na artikel 23 verschuldigde bedrag tijdig geheel is voldaan
+          - name: tijdig_voldaan_na_aanmaning
+            type: boolean
+            required: true
+            description: Of het in de op grond van artikel 24 gestelde termijn verschuldigde bedrag tijdig is voldaan
+        input:
+          - name: bedrag_na_eerste_verhoging
+            type: amount
+            source:
+              output: bedrag_na_verhoging
+            type_spec:
+              unit: eurocent
+        output:
+          - name: tweede_verhoging
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De verhoging van rechtswege met honderd procent (lid 1)
+          - name: bedrag_na_tweede_verhoging
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: Het verschuldigde bedrag na de verhoging van honderd procent
+        actions:
+          # Lid 1: indien betaling na artikel 24 uitblijft, +100% van het bedrag
+          # van de sanctie en de daarop inmiddels gevallen verhoging (= het na
+          # artikel 23 verschuldigde bedrag).
+          - output: tweede_verhoging
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $tijdig_voldaan_na_aanmaning
+                    value: false
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - $bedrag_na_eerste_verhoging
+                      - $tweede_verhogingspercentage
+              default: 0
+          - output: bedrag_na_tweede_verhoging
+            value:
+              operation: ADD
+              values:
+                - $bedrag_na_eerste_verhoging
+                - $tweede_verhoging
   - number: '26'
     text: |-
       1. Verhaal op de goederen van degene aan wie de administratieve sanctie is opgelegd geschiedt krachtens een
