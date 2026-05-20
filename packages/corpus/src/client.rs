@@ -455,6 +455,7 @@ impl CorpusClient {
             "--single-branch",
         ];
         if sparse {
+            // Partial clone — see `git_clone` for the rationale.
             args.push("--filter=blob:none");
             args.push("--no-checkout");
         }
