@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use pretty_assertions::assert_eq;
 use sqlx::PgPool;
 use tokio::sync::{Mutex, RwLock};
@@ -262,4 +261,128 @@ async fn revoked_membership_falls_back_to_global_instead_of_403() {
         "revoked membership must degrade to global, not 403; got: {}",
         err.1
     );
+}
+
+/// Provision a traject with TWO local sources — a `seed` source at low
+/// priority that carries the existing law file, and a `writable_own`
+/// at priority 0 that starts empty. The shape mirrors a real federated
+/// deploy where the seed is read-only (baked into the container or
+/// pulled from a central repo) and the writable_own is the traject's
+/// own branch on the writable upstream. Returns the traject id.
+async fn seeded_traject(
+    pool: &PgPool,
+    owner_id: Uuid,
+    seed_dir: &std::path::Path,
+    writable_own_dir: &std::path::Path,
+) -> Uuid {
+    let (traject_id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, description, scope, created_by)
+         VALUES ('Test', '', '', $1) RETURNING id",
+    )
+    .bind(owner_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'beheerder')",
+    )
+    .bind(traject_id)
+    .bind(owner_id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // Seed source — read-only logically (we treat it as such; the
+    // LocalBackend's write_path is what makes the test crisp).
+    sqlx::query(
+        "INSERT INTO traject_corpus_sources
+         (traject_id, source_id, name, source_type, local_path,
+          priority, scopes, is_writable_own)
+         VALUES ($1, 'seed', 'Seed', 'local'::corpus_source_type, $2,
+                 5, '[]'::jsonb, FALSE)",
+    )
+    .bind(traject_id)
+    .bind(seed_dir.to_string_lossy().to_string())
+    .execute(pool)
+    .await
+    .unwrap();
+
+    // Writable-own source at priority 0 (highest priority). Starts
+    // empty; first save lands here.
+    sqlx::query(
+        "INSERT INTO traject_corpus_sources
+         (traject_id, source_id, name, source_type, local_path,
+          priority, scopes, is_writable_own)
+         VALUES ($1, 'writable_own', 'Writable Own',
+                 'local'::corpus_source_type, $2,
+                 0, '[]'::jsonb, TRUE)",
+    )
+    .bind(traject_id)
+    .bind(writable_own_dir.to_string_lossy().to_string())
+    .execute(pool)
+    .await
+    .unwrap();
+
+    traject_id
+}
+
+#[tokio::test]
+async fn save_on_seed_loaded_law_lands_on_writable_own_backend() {
+    // Regression test for the routing bug where a law loaded from a
+    // seed source (e.g. the baked-in `local` corpus on the editor
+    // container) had its save fall back to the seed's own backend
+    // instead of being routed to the writable_own's branch. Symptom:
+    // save returned 200, read-your-writes worked via the overlay, but
+    // no commit landed on the traject branch. The fix routes every
+    // non-writable_own source to the writable_own at build time, not
+    // just the source matching `auth_ref`.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let seed = tempfile::tempdir().unwrap();
+    let writable_own = tempfile::tempdir().unwrap();
+    // Seed has the law; writable_own starts empty.
+    write_law(seed.path(), "SEED_VERSION");
+    let traject_id = seeded_traject(&db.pool, owner, seed.path(), writable_own.path()).await;
+
+    // Sanity check: pre-save, the writable_own dir does NOT have the
+    // law file. The read falls through priority order and lands on
+    // the seed copy.
+    let writable_own_law_path = writable_own
+        .path()
+        .join("wet")
+        .join(LAW_ID)
+        .join("2025-01-01.yaml");
+    assert!(!writable_own_law_path.exists());
+
+    let new_body = format!("$id: {LAW_ID}\nname: SAVED_TO_WRITABLE_OWN\n");
+    let _ = save_law(
+        State(state.clone()),
+        session_for(&sub, Some(traject_id)).await,
+        Path(LAW_ID.to_string()),
+        new_body.clone(),
+    )
+    .await
+    .expect("save should succeed");
+
+    // The file must now exist on the writable_own's backend root.
+    // Before the fix the save silently landed on the seed source
+    // (because write_target_for_source only fired for sources whose
+    // id matched the writable_own's auth_ref) and this assertion
+    // failed.
+    let written = std::fs::read_to_string(&writable_own_law_path)
+        .expect("save must land on the writable_own backend, not the seed");
+    assert!(
+        written.contains("SAVED_TO_WRITABLE_OWN"),
+        "writable_own file must contain the saved body; got: {written}"
+    );
+
+    // The seed file is left untouched — saves never reach the seed's
+    // backend.
+    let seed_law_path = seed.path().join("wet").join(LAW_ID).join("2025-01-01.yaml");
+    let seed_text = std::fs::read_to_string(&seed_law_path).unwrap();
+    assert!(seed_text.contains("SEED_VERSION"));
+    assert!(!seed_text.contains("SAVED_TO_WRITABLE_OWN"));
 }

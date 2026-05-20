@@ -196,18 +196,19 @@ async fn build_traject_corpus(
         .map(|r| r.source_id.clone())
         .ok_or(TrajectCorpusError::NoWritableOwn)?;
 
-    // Build the read-source → write-target-source map. The writable_own
-    // row carries `auth_ref` pointing at the seed source it shadows;
-    // saves for laws read from that seed get routed through the
-    // writable_own's traject-branched backend instead of pushing to the
-    // seed's read-only branch. Laws read from sources without an entry
-    // (e.g. the local source) write back through their own backend.
+    // Build the read-source → write-target-source map. Every non-
+    // writable_own source (local seed, GitHub seed, …) is routed to the
+    // writable_own's backend so a save on any read-only seed-loaded law
+    // lands on the traject's branch. The earlier `auth_ref`-only
+    // mapping only fired when the writable_own's auth_ref matched a
+    // seed's source_id verbatim, which broke for preview/local-stack
+    // deploys where the seed is `local` but auth_ref still resolves a
+    // GitHub token — saves on those laws then silently fell back to
+    // the local backend and never reached the traject branch.
     let mut write_target_for_source: HashMap<String, String> = HashMap::new();
     for row in &rows {
-        if row.is_writable_own {
-            if let Some(target_seed) = row.auth_ref.as_deref() {
-                write_target_for_source.insert(target_seed.to_string(), row.source_id.clone());
-            }
+        if !row.is_writable_own {
+            write_target_for_source.insert(row.source_id.clone(), writable_own_source_id.clone());
         }
     }
 
