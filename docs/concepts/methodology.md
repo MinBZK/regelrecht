@@ -47,3 +47,7 @@ The MvT is the explanatory memorandum that accompanies Dutch legislation. It con
 - Edge cases the legislature considered
 
 These examples serve as the primary test cases for machine-readable interpretations.
+
+## Beyond the automated loop
+
+The automated loop above produces a candidate rule specification, but a candidate is not yet validated. Validation is organised around a *casus* — a real-world question with a defined scope of laws — not around a single law. On top of the loop, an expert review layer adds *annotations* (where review work lands), *hypotheses* (testable claims about how the law should behave), and a four-phase method that ensures both are resolved before a casus is signed off. See [Validation Methodology (full)](./validation-methodology.md) for the complete description.
