@@ -21,7 +21,7 @@ use regelrecht_corpus::source_map::{
 };
 use regelrecht_corpus::CorpusError;
 
-use crate::state::AppState;
+use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{TrajectCorpus, TrajectCorpusError};
 use crate::trajects::read_active_from_session;
 
@@ -81,11 +81,119 @@ pub struct LawOutputEntry {
     pub parameters: Vec<LawParamEntry>,
 }
 
+/// Read-time scope for the corpus endpoints. Either the per-traject
+/// corpus (when an active traject and a valid membership are both
+/// present), or the global corpus state under a read lock (anonymous /
+/// no-traject browsing). Both variants expose a `&CorpusState` view so
+/// the handlers stay agnostic.
+///
+/// Membership re-check and DB lookups for an active traject can fail
+/// (revoked member, deleted traject, transient DB error). In contrast
+/// with the write path (which 403s on any failure to protect the
+/// branch), the read path **degrades gracefully** to the global corpus
+/// so a user can still browse — saves will still be denied by the
+/// stricter `require_traject_corpus` guard on the write handlers.
+enum ReadScope {
+    Traject(Arc<TrajectCorpus>),
+    Global(tokio::sync::OwnedRwLockReadGuard<CorpusState>),
+}
+
+impl ReadScope {
+    fn corpus(&self) -> &CorpusState {
+        match self {
+            ReadScope::Traject(t) => &t.corpus,
+            ReadScope::Global(g) => g,
+        }
+    }
+
+    /// Look up a law's YAML content within the active scope. For a
+    /// traject, the read-your-writes overlay (populated by `save_law`)
+    /// takes precedence over the source_map snapshot, so a save +
+    /// re-open in the same traject returns the new content without a
+    /// full source_map rebuild.
+    async fn law_yaml(&self, law_id: &str) -> Option<String> {
+        match self {
+            ReadScope::Traject(t) => t.law_yaml(law_id).await,
+            ReadScope::Global(g) => g.source_map.get_law(law_id).map(|l| l.yaml_content.clone()),
+        }
+    }
+}
+
+async fn resolve_read_corpus(state: &AppState, session: &Session) -> ReadScope {
+    // No active traject → straight to global (no DB hit).
+    let traject_id = match read_active_from_session(session).await {
+        Ok(Some(id)) => id,
+        _ => return ReadScope::Global(state.corpus.clone().read_owned().await),
+    };
+    let pool = match state.pool.as_ref() {
+        Some(p) => p,
+        None => return ReadScope::Global(state.corpus.clone().read_owned().await),
+    };
+
+    // Membership re-check. Same shape as `require_traject_corpus` but
+    // log-and-fall-back rather than 403 on any failure, so a stale
+    // session can't lock the user out of read access entirely.
+    let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
+    let Some(sub) = sub else {
+        return ReadScope::Global(state.corpus.clone().read_owned().await);
+    };
+    let membership: Result<(bool,), _> = sqlx::query_as(
+        "SELECT EXISTS(
+             SELECT 1 FROM accounts a
+             JOIN traject_members m ON m.account_id = a.id
+             WHERE a.person_sub = $1 AND m.traject_id = $2
+         )",
+    )
+    .bind(&sub)
+    .bind(traject_id)
+    .fetch_one(pool)
+    .await;
+    let is_member = match membership {
+        Ok((b,)) => b,
+        Err(e) => {
+            tracing::warn!(error = %e, "membership check failed in resolve_read_corpus; falling back to global");
+            return ReadScope::Global(state.corpus.clone().read_owned().await);
+        }
+    };
+    if !is_member {
+        // Drop the stale pointer so the next switch from the menu rebinds
+        // cleanly. Matches the same clear in `require_traject_corpus`.
+        let _: Option<Uuid> = session
+            .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
+            .await
+            .unwrap_or(None);
+        return ReadScope::Global(state.corpus.clone().read_owned().await);
+    }
+
+    let auth_file = {
+        let corpus = state.corpus.read().await;
+        corpus.auth_file.clone()
+    };
+    match state
+        .trajects
+        .get_or_build(pool, traject_id, auth_file, &state.favorites)
+        .await
+    {
+        Ok(traject) => ReadScope::Traject(traject),
+        Err(e) => {
+            // A traject_corpus build failure (DB row missing, source
+            // misconfigured, …) shouldn't fail an anonymous-looking GET.
+            // Log and serve the global view instead; the user's next
+            // write would surface the real error via the stricter
+            // `require_traject_corpus`.
+            tracing::warn!(error = %e, "traject corpus build failed in read path; falling back to global");
+            ReadScope::Global(state.corpus.clone().read_owned().await)
+        }
+    }
+}
+
 /// GET /api/sources — list all registered corpus sources with law counts.
 pub async fn list_sources(
     State(state): State<AppState>,
+    session: Session,
 ) -> Result<Json<Vec<SourceSummary>>, (StatusCode, String)> {
-    let corpus = state.corpus.read().await;
+    let scope = resolve_read_corpus(&state, &session).await;
+    let corpus = scope.corpus();
     Ok(Json(build_source_summaries(
         &corpus.registry,
         &corpus.source_map,
@@ -98,9 +206,11 @@ pub async fn list_sources(
 /// maximum is 1000.
 pub async fn list_corpus_laws(
     State(state): State<AppState>,
+    session: Session,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
-    let corpus = state.corpus.read().await;
+    let scope = resolve_read_corpus(&state, &session).await;
+    let corpus = scope.corpus();
     let limit = params.effective_limit();
 
     let mut entries: Vec<CorpusLawEntry> = corpus
@@ -132,6 +242,7 @@ pub async fn list_corpus_laws(
 /// GET /api/corpus/laws/{law_id} — return raw YAML content for a specific law.
 pub async fn get_corpus_law(
     State(state): State<AppState>,
+    session: Session,
     Path(law_id): Path<String>,
 ) -> Result<
     (
@@ -141,33 +252,31 @@ pub async fn get_corpus_law(
     ),
     (StatusCode, String),
 > {
-    let corpus = state.corpus.read().await;
-
-    let law = corpus
-        .source_map
-        .get_law(&law_id)
+    let scope = resolve_read_corpus(&state, &session).await;
+    let yaml = scope
+        .law_yaml(&law_id)
+        .await
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
-
     Ok((
         StatusCode::OK,
         [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
-        law.yaml_content.clone(),
+        yaml,
     ))
 }
 
 /// GET /api/corpus/laws/{law_id}/outputs — list all outputs declared across articles.
 pub async fn list_law_outputs(
     State(state): State<AppState>,
+    session: Session,
     Path(law_id): Path<String>,
 ) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
-    let corpus = state.corpus.read().await;
-
-    let law = corpus
-        .source_map
-        .get_law(&law_id)
+    let scope = resolve_read_corpus(&state, &session).await;
+    let yaml = scope
+        .law_yaml(&law_id)
+        .await
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
 
-    let outputs: Vec<LawOutputEntry> = collect_law_outputs(&law.yaml_content)
+    let outputs: Vec<LawOutputEntry> = collect_law_outputs(&yaml)
         .into_iter()
         .map(|out| LawOutputEntry {
             name: out.name,
@@ -193,20 +302,15 @@ pub struct ScenarioEntry {
 /// GET /api/corpus/laws/{law_id}/scenarios — list available scenario files.
 pub async fn list_scenarios(
     State(state): State<AppState>,
+    session: Session,
     Path(law_id): Path<String>,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    // Reads use the global backend resolution (writable fallback included).
-    // For federated GitHub sources this is NOT the same backend writes use
-    // (writes go through the per-session `SessionGitBackend`), so a save
-    // followed immediately by a list/get returns the pre-edit content from
-    // the global clone until the session branch is rebased back into it.
-    // Frontend already keeps the just-saved content in local state, so
-    // editor UX is unaffected; a follow-up can route reads through the
-    // session backend if a strict read-your-writes guarantee is needed.
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        resolve_backend_for_law(&corpus, &law_id).await?
-    };
+    // Route through the active traject's backends when one is selected;
+    // otherwise fall back to the global corpus state. Saves still land
+    // on the traject branch, so the same scope serves read-your-writes
+    // and cross-traject isolation in one go.
+    let scope = resolve_read_corpus(&state, &session).await;
+    let resolved = resolve_backend_for_law(scope.corpus(), &law_id).await?;
 
     let scenarios_dir = match law_relative_dir(&resolved.law) {
         Ok(dir) => dir.join("scenarios"),
@@ -241,6 +345,7 @@ pub async fn list_scenarios(
 /// GET /api/corpus/laws/{law_id}/scenarios/{filename} — return raw .feature content.
 pub async fn get_scenario(
     State(state): State<AppState>,
+    session: Session,
     Path((law_id, filename)): Path<(String, String)>,
 ) -> Result<
     (
@@ -252,10 +357,8 @@ pub async fn get_scenario(
 > {
     validate_scenario_filename(&filename)?;
 
-    let resolved = {
-        let corpus = state.corpus.read().await;
-        resolve_backend_for_law(&corpus, &law_id).await?
-    };
+    let scope = resolve_read_corpus(&state, &session).await;
+    let resolved = resolve_backend_for_law(scope.corpus(), &law_id).await?;
 
     let scenarios_dir = law_relative_dir(&resolved.law)?.join("scenarios");
     let relative_path = scenarios_dir.join(&filename);
@@ -997,6 +1100,10 @@ pub async fn save_law(
         ));
     }
 
+    // Resolve the write target AND keep a handle on the per-traject
+    // corpus so we can mirror the saved body into its read-your-writes
+    // overlay after `persist` succeeds.
+    let traject = require_traject_corpus(&state, &session).await?;
     let target = resolve_traject_law_target(&state, &session, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
@@ -1017,14 +1124,15 @@ pub async fn save_law(
             .map_err(corpus_write_error("law"))?
     };
 
-    // Deliberately NOT mirroring the new YAML into `state.corpus.source_map`:
-    // that cache is the read source for `/api/corpus/laws/...` for users
-    // *outside* the active traject (and anyone browsing without a traject),
-    // so pushing a traject's in-progress edits into it would leak unmerged
-    // changes across users. GET handlers under `state.corpus.*` will keep
-    // returning the last globally-loaded content until `POST
-    // /api/corpus/reload` runs — routing GETs through the per-traject
-    // corpus when a traject is active is a separate follow-up.
+    // The global `state.corpus.source_map` is still NOT touched here:
+    // it feeds GET handlers when no traject is active, so writing a
+    // traject's in-progress edits into it would leak unmerged changes
+    // across users.
+    //
+    // We DO mirror into the per-traject overlay so a subsequent GET in
+    // the same traject (any session) sees the new content — that is
+    // the read-your-writes follow-up that used to be punted.
+    traject.record_save(law_id.clone(), body).await;
 
     Ok(Json(save_response_from_traject(outcome)))
 }

@@ -20,11 +20,15 @@ serde_yaml_ng.workspace = true
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
 serde_json = { workspace = true, optional = true }
 jsonschema = { version = "0.46", optional = true }
+base64 = { workspace = true, optional = true }
 walkdir.workspace = true
 
 [features]
 default = ["github"]
-github = ["dep:reqwest"]
+# The GitHub API backend (write path through Contents/Refs API) needs
+# JSON bodies and base64-encoded file contents, so `github` pulls both
+# in alongside reqwest.
+github = ["dep:reqwest", "dep:serde_json", "dep:base64"]
 # Schema validation for note (annotation) YAML. Pulls in jsonschema; only
 # the editor-api write path needs it, so it stays optional.
 annotation-validation = ["dep:jsonschema", "dep:serde_json"]

@@ -7,13 +7,76 @@
 mod inner {
     use std::collections::{HashMap, HashSet};
 
+    use base64::Engine;
     use reqwest::header::{
-        HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, IF_NONE_MATCH, USER_AGENT,
+        HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, IF_NONE_MATCH, USER_AGENT,
     };
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
     use crate::error::{CorpusError, Result};
     use crate::models::GitHubSource;
+
+    /// Commit identity used on Contents/Git Data API writes. Both
+    /// `committer` and `author` accept this shape — currently we set them
+    /// to the same value so the human editor shows up on both sides of the
+    /// git commit, and rely on the GitHub token's account for the actual
+    /// push credentials.
+    #[derive(Debug, Clone, Serialize)]
+    pub struct Committer {
+        pub name: String,
+        pub email: String,
+    }
+
+    /// Single entry returned by a Contents API directory listing. Only the
+    /// fields the backend needs are pulled off the JSON; GitHub returns
+    /// quite a bit more (url, html_url, size, …) that we don't use.
+    #[derive(Debug, Clone)]
+    pub struct DirectoryEntry {
+        pub name: String,
+        pub path: String,
+        /// `"file"` or `"dir"`. GitHub also reports `"submodule"` and
+        /// `"symlink"`; the backend filters to `"file"` for listing.
+        pub entry_type: String,
+    }
+
+    /// Raw shape of the Contents API response for a single path. Used both
+    /// for file reads (where `type == "file"`) and directory listings
+    /// (returned as a JSON array of these).
+    #[derive(Debug, Deserialize)]
+    struct ContentsItem {
+        name: String,
+        path: String,
+        sha: String,
+        #[serde(rename = "type")]
+        entry_type: String,
+        #[serde(default)]
+        content: Option<String>,
+        #[serde(default)]
+        encoding: Option<String>,
+    }
+
+    /// Subset of the Contents-API PUT response we care about. The full
+    /// response carries `content` and `commit` blocks; we only need the
+    /// new file SHA so callers can chain another write without re-reading.
+    #[derive(Debug, Deserialize)]
+    struct PutResponse {
+        content: PutContent,
+    }
+    #[derive(Debug, Deserialize)]
+    struct PutContent {
+        sha: String,
+    }
+
+    /// Refs-API response for `GET /git/ref/heads/{branch}`. We only need
+    /// the object SHA to use as the base for a new branch.
+    #[derive(Debug, Deserialize)]
+    struct RefResponse {
+        object: RefObject,
+    }
+    #[derive(Debug, Deserialize)]
+    struct RefObject {
+        sha: String,
+    }
 
     /// Result of fetching a GitHub source.
     #[derive(Debug)]
@@ -48,6 +111,10 @@ mod inner {
     /// GitHub fetcher with ETag caching and rate limit awareness.
     pub struct GitHubFetcher {
         client: reqwest::Client,
+        /// API base URL — overridable for tests against a wiremock server.
+        /// Production default is `"https://api.github.com"`. No trailing
+        /// slash; all callers prefix their `/...` path themselves.
+        api_base: String,
         /// ETag cache: URL → ETag value
         etag_cache: HashMap<String, String>,
         /// Remaining API calls before rate limit
@@ -66,9 +133,25 @@ mod inner {
 
             Ok(Self {
                 client,
+                api_base: "https://api.github.com".to_string(),
                 etag_cache: HashMap::new(),
                 rate_limit_remaining: None,
             })
+        }
+
+        /// Override the API base URL — for tests that point at a wiremock
+        /// server. Production callers use [`GitHubFetcher::new`] which
+        /// already points at `api.github.com`.
+        pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+            self.set_base_url(base_url);
+            self
+        }
+
+        /// In-place variant of [`with_base_url`] for call sites that already
+        /// hold the fetcher by `&mut` (e.g. `GitHubApiBackend::with_api_base`
+        /// reaching through its `Mutex<Inner>`).
+        pub fn set_base_url(&mut self, base_url: impl Into<String>) {
+            self.api_base = base_url.into().trim_end_matches('/').to_string();
         }
 
         /// Fetch all YAML regulation files from a GitHub source.
@@ -242,8 +325,8 @@ mod inner {
             token: Option<&str>,
         ) -> Result<Option<Vec<String>>> {
             let url = format!(
-                "https://api.github.com/repos/{}/git/trees/{}?recursive=1",
-                repo, branch
+                "{}/repos/{}/git/trees/{}?recursive=1",
+                self.api_base, repo, branch
             );
 
             let mut headers = self.default_headers(token);
@@ -330,8 +413,8 @@ mod inner {
             token: Option<&str>,
         ) -> Result<String> {
             let url = format!(
-                "https://api.github.com/repos/{}/contents/{}?ref={}",
-                repo, path, branch
+                "{}/repos/{}/contents/{}?ref={}",
+                self.api_base, repo, path, branch
             );
 
             let mut headers = self.default_headers(token);
@@ -409,6 +492,387 @@ mod inner {
         pub fn rate_limit_remaining(&self) -> Option<u32> {
             self.rate_limit_remaining
         }
+
+        // -----------------------------------------------------------------
+        // Backend-oriented API (used by GitHubApiBackend; no ETag cache —
+        // backend reads want the current state of the branch on every
+        // call, not the cached one).
+        // -----------------------------------------------------------------
+
+        /// Fetch a single file's content **plus** its blob SHA. The SHA is
+        /// what the Contents API expects on a subsequent update PUT for
+        /// optimistic concurrency. Returns `Ok(None)` on 404.
+        pub async fn fetch_file_with_sha(
+            &mut self,
+            repo: &str,
+            branch: &str,
+            path: &str,
+            token: Option<&str>,
+        ) -> Result<Option<(String, String)>> {
+            let url = format!(
+                "{}/repos/{}/contents/{}?ref={}",
+                self.api_base, repo, path, branch
+            );
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            if response.status() == reqwest::StatusCode::NOT_FOUND {
+                return Ok(None);
+            }
+            if !response.status().is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub Contents API returned {} for {}: {}",
+                    response.status(),
+                    path,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+
+            let item: ContentsItem = response.json().await.map_err(|e| {
+                CorpusError::Git(format!("Failed to parse contents response: {}", e))
+            })?;
+            if item.entry_type != "file" {
+                return Err(CorpusError::Git(format!(
+                    "Path '{}' is a {}, not a file",
+                    path, item.entry_type
+                )));
+            }
+            let content = decode_contents_payload(&item)?;
+            Ok(Some((content, item.sha)))
+        }
+
+        /// List a directory via the Contents API. For a directory the
+        /// response is a JSON array of [`ContentsItem`]; for a missing
+        /// directory we return an empty list (404). Files only — sub-
+        /// directories, symlinks and submodules are filtered out by the
+        /// caller via [`DirectoryEntry::entry_type`].
+        pub async fn list_directory(
+            &mut self,
+            repo: &str,
+            branch: &str,
+            dir: &str,
+            token: Option<&str>,
+        ) -> Result<Vec<DirectoryEntry>> {
+            let url = format!(
+                "{}/repos/{}/contents/{}?ref={}",
+                self.api_base, repo, dir, branch
+            );
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            // 404 on a directory listing is the "no scenarios yet" path —
+            // same shape as the local LocalBackend.list_files when the
+            // directory doesn't exist.
+            if response.status() == reqwest::StatusCode::NOT_FOUND {
+                return Ok(Vec::new());
+            }
+            if !response.status().is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub Contents API returned {} for {}: {}",
+                    response.status(),
+                    dir,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+
+            // The endpoint returns an array for directories and a single
+            // object for files. We only call this for directories, but if
+            // someone calls it on a file path we still return Ok([]) (the
+            // file is not a directory).
+            let body = response.text().await.map_err(|e| {
+                CorpusError::Git(format!("Failed to read directory listing: {}", e))
+            })?;
+            let trimmed = body.trim_start();
+            if !trimmed.starts_with('[') {
+                tracing::debug!(dir = %dir, "list_directory: path is not a directory");
+                return Ok(Vec::new());
+            }
+            let items: Vec<ContentsItem> = serde_json::from_str(&body).map_err(|e| {
+                CorpusError::Git(format!("Failed to parse directory listing: {}", e))
+            })?;
+            Ok(items
+                .into_iter()
+                .map(|i| DirectoryEntry {
+                    name: i.name,
+                    path: i.path,
+                    entry_type: i.entry_type,
+                })
+                .collect())
+        }
+
+        /// Upsert a file via Contents API PUT. Pass `base_sha = None` to
+        /// create a new file, `Some(sha)` to update an existing one. The
+        /// branch must exist (see [`ensure_branch`]). Returns the new blob
+        /// SHA so callers can chain writes without an extra GET.
+        ///
+        /// Maps 409 to [`CorpusError::Conflict`] so backends can detect a
+        /// concurrent-write race and retry; everything else is `Git`.
+        #[allow(clippy::too_many_arguments)]
+        pub async fn put_file(
+            &mut self,
+            repo: &str,
+            branch: &str,
+            path: &str,
+            content: &str,
+            base_sha: Option<&str>,
+            committer: &Committer,
+            message: &str,
+            token: Option<&str>,
+        ) -> Result<String> {
+            let url = format!("{}/repos/{}/contents/{}", self.api_base, repo, path);
+            let mut body = serde_json::json!({
+                "message": message,
+                "content": base64::engine::general_purpose::STANDARD.encode(content.as_bytes()),
+                "branch": branch,
+                "committer": committer,
+                "author": committer,
+            });
+            if let Some(sha) = base_sha {
+                body["sha"] = serde_json::Value::String(sha.to_string());
+            }
+
+            let mut headers = self.default_headers(token);
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+            let response = self
+                .client
+                .put(&url)
+                .headers(headers)
+                .body(body.to_string())
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            let status = response.status();
+            if status == reqwest::StatusCode::CONFLICT {
+                return Err(CorpusError::Conflict(format!(
+                    "Contents API PUT {} hit a 409 (stale sha)",
+                    path
+                )));
+            }
+            if !status.is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub Contents API PUT {} returned {}: {}",
+                    path,
+                    status,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+            let parsed: PutResponse = response
+                .json()
+                .await
+                .map_err(|e| CorpusError::Git(format!("Failed to parse PUT response: {}", e)))?;
+            Ok(parsed.content.sha)
+        }
+
+        /// Delete a file via Contents API DELETE. Requires the current
+        /// blob SHA. 404 is treated as "already gone" (idempotent — same
+        /// shape as [`crate::backend::RepoBackend::delete_file`]).
+        #[allow(clippy::too_many_arguments)]
+        pub async fn delete_file_via_api(
+            &mut self,
+            repo: &str,
+            branch: &str,
+            path: &str,
+            sha: &str,
+            committer: &Committer,
+            message: &str,
+            token: Option<&str>,
+        ) -> Result<()> {
+            let url = format!("{}/repos/{}/contents/{}", self.api_base, repo, path);
+            let body = serde_json::json!({
+                "message": message,
+                "sha": sha,
+                "branch": branch,
+                "committer": committer,
+                "author": committer,
+            });
+
+            let mut headers = self.default_headers(token);
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
+            let response = self
+                .client
+                .delete(&url)
+                .headers(headers)
+                .body(body.to_string())
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            let status = response.status();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Ok(());
+            }
+            if status == reqwest::StatusCode::CONFLICT {
+                return Err(CorpusError::Conflict(format!(
+                    "Contents API DELETE {} hit a 409 (stale sha)",
+                    path
+                )));
+            }
+            if !status.is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub Contents API DELETE {} returned {}: {}",
+                    path,
+                    status,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+            Ok(())
+        }
+
+        /// Check whether a branch exists. Returns `Ok(true)` on 200,
+        /// `Ok(false)` on 404, error on anything else.
+        pub async fn branch_exists(
+            &mut self,
+            repo: &str,
+            branch: &str,
+            token: Option<&str>,
+        ) -> Result<bool> {
+            let url = format!("{}/repos/{}/git/ref/heads/{}", self.api_base, repo, branch);
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+
+            let status = response.status();
+            if status.is_success() {
+                return Ok(true);
+            }
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Ok(false);
+            }
+            Err(CorpusError::Git(format!(
+                "GitHub Refs API returned {} for {}@{}: {}",
+                status,
+                repo,
+                branch,
+                response.text().await.unwrap_or_default()
+            )))
+        }
+
+        /// Create `branch` pointing at the tip of `base_branch`. The base
+        /// branch must already exist; the target branch must NOT exist
+        /// (GitHub returns 422 otherwise — surfaced as `Git`).
+        pub async fn create_branch(
+            &mut self,
+            repo: &str,
+            branch: &str,
+            base_branch: &str,
+            token: Option<&str>,
+        ) -> Result<()> {
+            // 1) resolve the base ref's SHA
+            let base_url = format!(
+                "{}/repos/{}/git/ref/heads/{}",
+                self.api_base, repo, base_branch
+            );
+            let headers = self.default_headers(token);
+            let response = self
+                .client
+                .get(&base_url)
+                .headers(headers)
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+            if !response.status().is_success() {
+                return Err(CorpusError::Git(format!(
+                    "Could not resolve base branch {}@{}: {}",
+                    repo,
+                    base_branch,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+            let parsed: RefResponse = response
+                .json()
+                .await
+                .map_err(|e| CorpusError::Git(format!("Failed to parse base ref: {}", e)))?;
+
+            // 2) POST a new ref pointing at the same SHA
+            let post_url = format!("{}/repos/{}/git/refs", self.api_base, repo);
+            let body = serde_json::json!({
+                "ref": format!("refs/heads/{}", branch),
+                "sha": parsed.object.sha,
+            });
+            let mut headers = self.default_headers(token);
+            headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            let response = self
+                .client
+                .post(&post_url)
+                .headers(headers)
+                .body(body.to_string())
+                .send()
+                .await
+                .map_err(|e| CorpusError::Git(format!("GitHub API request failed: {}", e)))?;
+            self.track_rate_limit(&response);
+            if !response.status().is_success() {
+                return Err(CorpusError::Git(format!(
+                    "GitHub Refs API POST returned {} for {}@{}: {}",
+                    response.status(),
+                    repo,
+                    branch,
+                    response.text().await.unwrap_or_default()
+                )));
+            }
+            Ok(())
+        }
+    }
+
+    /// Decode a Contents-API response's content payload. The API returns
+    /// either base64-encoded content (default `encoding: "base64"`) or a
+    /// raw string when `application/vnd.github.raw+json` was requested —
+    /// but the JSON path always gives us base64, so we only handle that.
+    /// Files larger than 1 MiB come back without `content` (encoding
+    /// `"none"`); for those the Git Blob API is the documented route.
+    fn decode_contents_payload(item: &ContentsItem) -> Result<String> {
+        let encoding = item.encoding.as_deref().unwrap_or("base64");
+        if encoding != "base64" {
+            return Err(CorpusError::Git(format!(
+                "Contents API returned unsupported encoding '{}' for {} \
+                 (large file? use the Blob API)",
+                encoding, item.path
+            )));
+        }
+        let content = item.content.as_deref().ok_or_else(|| {
+            CorpusError::Git(format!(
+                "Contents API returned no content for {} (possibly >1 MiB)",
+                item.path
+            ))
+        })?;
+        // The API wraps the base64 at 60 chars per line — strip whitespace
+        // before decoding.
+        let cleaned: String = content
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(cleaned.as_bytes())
+            .map_err(|e| {
+                CorpusError::Git(format!("Base64 decode failed for {}: {}", item.path, e))
+            })?;
+        String::from_utf8(bytes)
+            .map_err(|e| CorpusError::Git(format!("UTF-8 decode failed for {}: {}", item.path, e)))
     }
 }
 

@@ -41,6 +41,36 @@ pub struct TrajectCorpus {
     /// routed through the traject's own branch on the same upstream
     /// repo.
     pub write_target_for_source: HashMap<String, String>,
+    /// Read-your-writes overlay for law YAML content. After a successful
+    /// `save_law` we mirror the persisted body here so subsequent reads
+    /// in the same traject (any session, any user) see the new content
+    /// without forcing a full source_map rebuild against GitHub. The
+    /// overlay is content-only — `LoadedLaw` metadata
+    /// (source_id/relative_path) doesn't change with a content edit, so
+    /// backend resolution keeps using `corpus.source_map`.
+    overlay: RwLock<HashMap<String, String>>,
+}
+
+impl TrajectCorpus {
+    /// Resolve the YAML content for a law in this traject, preferring the
+    /// post-save overlay over the source_map snapshot built at traject
+    /// activation time.
+    pub async fn law_yaml(&self, law_id: &str) -> Option<String> {
+        if let Some(text) = self.overlay.read().await.get(law_id) {
+            return Some(text.clone());
+        }
+        self.corpus
+            .source_map
+            .get_law(law_id)
+            .map(|l| l.yaml_content.clone())
+    }
+
+    /// Mirror a freshly-saved law's content into the read-your-writes
+    /// overlay. Called by `save_law` after a successful `backend.persist`,
+    /// so the next GET on the same law (or a refresh) sees the new body.
+    pub async fn record_save(&self, law_id: String, body: String) {
+        self.overlay.write().await.insert(law_id, body);
+    }
 }
 
 /// Lazy registry of per-traject corpora, mirroring the
@@ -308,47 +338,36 @@ async fn build_traject_corpus(
             auth_file: auth_file.map(|p| p.to_path_buf()),
         },
         write_target_for_source,
+        overlay: RwLock::new(HashMap::new()),
     }))
 }
 
-/// Build a [`GitBackend`] whose clone path lives under a traject-specific
-/// directory, so two trajects writing to the same upstream repo never
-/// share a working tree.
+/// Build a [`GitHubApiBackend`] for a traject source — no clone, no
+/// `/tmp` working tree. Reads, writes, branch-creation all go through
+/// the GitHub REST API. The branch on the writable_own source is
+/// created lazily (in `ensure_ready`) from `base_branch` if it doesn't
+/// yet exist on the remote — preserving the "first save creates the
+/// branch" behaviour the old `GitBackend` clone path had.
 fn build_traject_github_backend(
-    traject_id: Uuid,
-    source: &Source,
+    _traject_id: Uuid,
+    _source: &Source,
     github: &GitHubSource,
     base_branch: Option<&str>,
     token: Option<&str>,
 ) -> Result<Box<dyn regelrecht_corpus::backend::RepoBackend>, regelrecht_corpus::error::CorpusError>
 {
-    use regelrecht_corpus::backend::GitBackend;
-    use regelrecht_corpus::config::CorpusConfig;
-    use regelrecht_corpus::CorpusClient;
+    use regelrecht_corpus::github_api_backend::GitHubApiBackend;
 
-    let host_id = std::env::var("HOSTNAME").unwrap_or_else(|_| "local".to_string());
-    let repo_path = std::env::temp_dir()
-        .join("regelrecht-editor-corpus")
-        .join("trajects")
-        .join(host_id)
-        .join(traject_id.to_string())
-        .join(&source.id);
-
-    let repo_url = format!("https://github.com/{}/{}.git", github.owner, github.repo);
-    let mut config = CorpusConfig::new(&repo_url, &repo_path);
-    config.branch = github.effective_ref().to_string();
-    // For traject writable branches we expect the branch to not yet exist
-    // on the remote on first clone — `git_clone_and_create_branch` will
-    // fall back to `base_branch` and push a new branch. Default to `main`
-    // for trajects (overrides the global default of `development`); the
-    // caller can override per-source when their writable repo's default
-    // branch is something else.
-    config.base_branch = Some(base_branch.unwrap_or("main").to_string());
-    if let Some(t) = token {
-        config = config.with_token(t);
-    }
-    let client = CorpusClient::new(config);
-    Ok(Box::new(GitBackend::new(client, github.path.clone())))
+    // `traject_id` and `source.id` used to namespace the on-disk clone
+    // path; with the API backend the branch + URL already disambiguate,
+    // so the parameters are kept on the signature for call-site
+    // symmetry only.
+    let backend = GitHubApiBackend::new(
+        github,
+        Some(base_branch.unwrap_or("main").to_string()),
+        token.map(|t| t.to_string()),
+    )?;
+    Ok(Box::new(backend))
 }
 
 /// DB row mirror for `traject_corpus_sources`. `gh_base_branch` is kept

@@ -16,6 +16,14 @@ pub enum CorpusError {
 
     #[error("write not supported: {0}")]
     ReadOnly(String),
+
+    /// Optimistic-concurrency conflict on a remote write (e.g. GitHub
+    /// Contents API returned 409 because the file's `sha` moved between
+    /// the read and the PUT). Surfaced separately from `Git` so a backend
+    /// can recognise it and retry with a fresh SHA without parsing error
+    /// strings.
+    #[error("conflict: {0}")]
+    Conflict(String),
 }
 
 pub type Result<T> = std::result::Result<T, CorpusError>;
