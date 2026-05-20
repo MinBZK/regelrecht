@@ -51,4 +51,18 @@ if (failures.length) {
   for (const f of failures) console.error(`  ${f}`);
   process.exit(1);
 }
+
+// Fail loudly on zero diagrams: the site has many mermaid diagrams, so finding
+// none means the selector or the render strategy changed (e.g. rehype-mermaid
+// switched away from inline-svg, or the id prefix changed) and this check is
+// silently testing nothing. A green run must mean diagrams were actually seen.
+if (total === 0) {
+  console.error(
+    'Mermaid accessible-name check found NO inline mermaid SVGs. The site has ' +
+      'diagrams, so this means the selector or render strategy changed and the ' +
+      'check is testing nothing. Failing rather than passing vacuously.',
+  );
+  process.exit(1);
+}
+
 console.log(`Mermaid accessible-name check passed: ${total} diagram(s), all labelled.`);

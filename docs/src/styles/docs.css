@@ -48,10 +48,12 @@
 }
 
 /* Data tables (e.g. the RFC index) — no nldd-table component exists.
-   rehypeTableScroll wraps each table in <div class="rr-table-scroll"
-   tabindex="0" role="region">; the wrapper owns the horizontal overflow so the
-   focusable, labelled region is what scrolls (WCAG 2.1.1), not the bare table.
-   The table itself stays a normal table so headers/cells lay out correctly. */
+   rehypeTableScroll (and RfcIndexTable by hand) wraps each table in
+   <div class="rr-table-scroll" tabindex="0">; the wrapper owns the horizontal
+   overflow so the focusable element is what scrolls (WCAG 2.1.1), not the bare
+   table. No role/aria-label — the axe rule only needs keyboard reach, and a
+   named region per narrow table is screen-reader noise. The table itself stays
+   a normal table so headers/cells lay out correctly. */
 .rr-table-scroll {
   overflow-x: auto;
   margin: 1.5rem 0;
