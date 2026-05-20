@@ -303,11 +303,13 @@ impl RepoBackend for GitHubApiBackend {
         let repo = self.full_repo();
         let mut new_shas: HashMap<PathBuf, String> = HashMap::new();
 
-        // Capture the buffer back if anything fails partway through, so
-        // a caller-side retry isn't forced to re-collect the same writes.
-        // GitHubFetcher methods are `&mut`, so a single lock guard around
-        // the whole loop is cheap (no other writer can pile on while we
-        // flush).
+        // Take one lock guard for the whole loop so the &mut GitHubFetcher
+        // calls inside don't pay re-acquire cost per-write. The pending
+        // buffer was already drained above; if any write fails we propagate
+        // via `?` and the remaining (still-untaken-from-buffer) entries are
+        // dropped — fine in practice because each handler only enqueues a
+        // single write before calling persist, so there is no partially-
+        // applied multi-write batch to recover here.
         let mut inner = self.inner.lock().await;
         for (path, pw) in pending {
             let api_path = self.api_path(&path)?;
@@ -396,16 +398,43 @@ impl RepoBackend for GitHubApiBackend {
                 self.branch, self.owner, self.repo
             ))
         })?;
-        inner
+        // TOCTOU on lazy branch creation: between our `branch_exists`
+        // returning false and this POST, another activation (different
+        // backend instance, same traject) can win the race and create
+        // the branch first. GitHub then 422s us with "Reference already
+        // exists". Re-check `branch_exists` on any create_branch failure;
+        // if the branch is present now the desired post-condition holds
+        // and we treat the create as a benign no-op.
+        match inner
             .fetcher
             .create_branch(&repo, &self.branch, base, self.token.as_deref())
-            .await?;
-        tracing::info!(
-            repo = %repo,
-            branch = %self.branch,
-            base = %base,
-            "GitHubApiBackend: created traject branch from base"
-        );
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    repo = %repo,
+                    branch = %self.branch,
+                    base = %base,
+                    "GitHubApiBackend: created traject branch from base"
+                );
+            }
+            Err(e) => {
+                let now_exists = inner
+                    .fetcher
+                    .branch_exists(&repo, &self.branch, self.token.as_deref())
+                    .await
+                    .unwrap_or(false);
+                if now_exists {
+                    tracing::info!(
+                        repo = %repo,
+                        branch = %self.branch,
+                        "GitHubApiBackend: create_branch lost a benign race; branch already exists"
+                    );
+                } else {
+                    return Err(e);
+                }
+            }
+        }
         Ok(())
     }
 

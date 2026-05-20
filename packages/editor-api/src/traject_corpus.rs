@@ -245,8 +245,9 @@ async fn build_traject_corpus(
             );
         }
 
-        // For GitHub sources we override the clone path so each traject
-        // gets its own working tree. Local sources keep their configured
+        // GitHub sources go through the in-memory Contents-API backend
+        // (one isolated `GitHubApiBackend` per traject — no clone, no
+        // working tree on disk). Local sources keep their configured
         // path — they're already isolated by definition.
         let backend_result = match &source.source_type {
             SourceType::GitHub { github } => build_traject_github_backend(

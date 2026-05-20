@@ -548,6 +548,14 @@ async fn resolve_backend_for_law(
 fn corpus_write_error(kind: &'static str) -> impl FnOnce(CorpusError) -> (StatusCode, String) {
     move |e| match e {
         CorpusError::ReadOnly(_) => (StatusCode::FORBIDDEN, e.to_string()),
+        // Optimistic-concurrency race (remote SHA moved between read and
+        // write). The frontend needs to discriminate this from a generic
+        // 500 so it can prompt a refresh-and-retry instead of an error
+        // toast.
+        CorpusError::Conflict(_) => (
+            StatusCode::CONFLICT,
+            "Concurrent edit detected, please retry".to_string(),
+        ),
         _ => {
             tracing::warn!(error = %e, kind = %kind, "corpus write/persist failed");
             (
