@@ -2,6 +2,7 @@ import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import pagefind from 'astro-pagefind';
 import rehypeMermaid from 'rehype-mermaid';
+import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
 
 export default defineConfig({
   site: 'https://docs.regelrecht.rijks.app',
@@ -30,7 +31,13 @@ export default defineConfig({
         dark: 'github-dark-high-contrast',
       },
     },
-    rehypePlugins: [[rehypeMermaid, { strategy: 'img-svg', dark: false }]],
+    // rehypeMermaidAlt runs AFTER rehype-mermaid: it fills the empty `alt`
+    // on each generated diagram <img> with the nearest preceding heading
+    // (WCAG 1.1.1). Order matters — the <img> must exist first.
+    rehypePlugins: [
+      [rehypeMermaid, { strategy: 'img-svg', dark: false }],
+      rehypeMermaidAlt,
+    ],
   },
   vite: {
     ssr: {
