@@ -1,0 +1,65 @@
+---
+/*
+ * RFC overview table. The relanding version fed this from a VitePress
+ * data loader; here getRfcs() is called directly at build time (it is
+ * pure Node, reads docs/src/content/rfcs/rfc-*.md). Same columns the
+ * loader produced: id, title, status, link.
+ */
+import { getRfcs } from '~/lib/rfcs';
+
+const rfcs = getRfcs();
+---
+
+<table class="rr-rfc-table">
+  <thead>
+    <tr>
+      <th>RFC</th>
+      <th>Title</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      rfcs.map((r) => (
+        <tr>
+          <td>
+            <a href={r.link}>{r.id}</a>
+          </td>
+          <td>{r.title}</td>
+          <td>{r.status}</td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>
+
+<style>
+  .rr-rfc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+  }
+  .rr-rfc-table th,
+  .rr-rfc-table td {
+    text-align: left;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--vp-c-divider);
+    vertical-align: top;
+  }
+  .rr-rfc-table th {
+    font-weight: 600;
+    background: var(--vp-c-bg-soft);
+  }
+  .rr-rfc-table a {
+    color: var(--vp-c-brand-1);
+    text-decoration: none;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  :global(.dark) .rr-rfc-table a {
+    color: var(--vp-c-brand-2);
+  }
+  .rr-rfc-table a:hover {
+    text-decoration: underline;
+  }
+</style>

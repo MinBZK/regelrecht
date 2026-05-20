@@ -1,0 +1,21 @@
+---
+import Base from '~/layouts/Base.astro';
+import LandingSections from '~/components/LandingSections.astro';
+import Footer from '~/components/Footer.astro';
+import { content } from '~/lib/landing-content';
+
+const t = content.en;
+const title = `${t.nav.signup} — RegelRecht`;
+const description = t.signup.lede;
+---
+
+<Base
+  lang="en"
+  kind="landing"
+  pathname="/en/signup"
+  title={title}
+  description={description}
+>
+  <LandingSections lang="en" showSignup={true} />
+  <Footer lang="en" />
+</Base>

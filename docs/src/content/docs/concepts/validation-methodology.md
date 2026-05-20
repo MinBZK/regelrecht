@@ -123,7 +123,6 @@ flowchart TD
     E --> F{{"❓ Legal validation\n(missing)"}}
     F --> G[Executable rule specification]
 
-    style F fill:#ff6b6b,color:#fff,stroke:#ff0000
 ```
 
 The automated steps cover:

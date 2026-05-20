@@ -1,0 +1,60 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '~/layouts/Base.astro';
+import DocsSidebar from '~/components/DocsSidebar.astro';
+import DocsOutline from '~/components/DocsOutline.astro';
+import DocsFooter from '~/components/DocsFooter.astro';
+import { sidebarForPath } from '~/lib/sidebar';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs');
+  return docs.map((entry) => ({
+    // Collection id keeps the .md suffix; strip it for the site path.
+    params: { slug: entry.id.replace(/\.mdx?$/, '') },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+
+const pathname = '/' + entry.id.replace(/\.mdx?$/, '');
+// `sidebarForPath` returns null for pages outside a sidebar section
+// (e.g. /auth-and-roles); those render in the centered no-sidebar layout
+// instead of leaving an empty sidebar column that skews the grid.
+const groups = sidebarForPath(pathname);
+const hasSidebar = groups !== null && groups.length > 0;
+
+const title =
+  (entry.data.title ?? headings.find((h) => h.depth === 1)?.text ?? entry.id) +
+  ' · RegelRecht';
+const description = entry.data.description;
+---
+
+<Base
+  lang="en"
+  kind="docs"
+  pathname={pathname}
+  hasSidebar={hasSidebar}
+  title={title}
+  description={description}
+>
+  {hasSidebar && <DocsSidebar groups={groups} pathname={pathname} />}
+  <div class="rr-docs-body">
+    <main class="vp-doc rr-docs-content">
+      {/* nldd-rich-text is a light-DOM component: the markdown body stays in
+          the light DOM (SSR/no-JS safe) and gets the official NLDD prose
+          typography (headings, lists, links, code). The footer chrome stays
+          outside it. */}
+      <nldd-rich-text>
+        <Content />
+      </nldd-rich-text>
+      <DocsFooter
+        entryId={entry.id}
+        collection="docs"
+        pathname={pathname}
+      />
+    </main>
+  </div>
+  {hasSidebar && <DocsOutline headings={headings} />}
+</Base>

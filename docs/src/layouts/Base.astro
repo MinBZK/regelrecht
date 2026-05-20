@@ -1,0 +1,710 @@
+---
+import '@nldd/design-system/styles';
+import '~/styles/tokens.css';
+import '~/styles/landing.css';
+import '~/styles/docs.css';
+import { ClientRouter } from 'astro:transitions';
+import { content } from '~/lib/landing-content';
+import { docsNav } from '~/lib/navLinks';
+
+interface Props {
+  lang: 'nl' | 'en';
+  title: string;
+  description?: string;
+  kind: 'landing' | 'docs' | 'notfound';
+  pathname: string;
+  // Docs pages without a sidebar group (e.g. /auth-and-roles) render in the
+  // narrower centered layout instead of the 3-column grid. Defaults to true
+  // so the common sidebar'd docs pages need not pass it.
+  hasSidebar?: boolean;
+}
+
+const {
+  lang,
+  title,
+  description,
+  kind,
+  pathname,
+  hasSidebar = true,
+} = Astro.props;
+
+const isLanding = kind === 'landing';
+const isNotFound = kind === 'notfound';
+
+const t = content[lang];
+// Landing is bilingual (path-driven); docs are English-only.
+const home = isLanding ? (lang === 'en' ? '/en/' : '/') : '/en/';
+// One brand subtitle everywhere (per language): the same tagline on the
+// landing and the docs, not a separate docs string.
+const brandSubtitle = t.nav.brandTagline;
+// The signup variant of the landing has no in-page anchor nav.
+const showSignup = isLanding && /\/aanmelden|\/en\/signup/.test(pathname);
+
+interface NavItem {
+  text: string;
+  href: string;
+  current?: boolean;
+  icon?: string;
+}
+
+// Landing home for this language, used as the base for the section anchors.
+const landingHome = lang === 'en' ? '/en/' : '/';
+let globalLinks: NavItem[];
+if (isLanding) {
+  // Same menu on the landing and the signup page. On signup the in-page
+  // anchors do not exist, so they point at the landing home's sections
+  // (landingHome + '#...') rather than being dropped entirely.
+  globalLinks = [
+    { text: t.nav.what, href: landingHome + '#what-is-it' },
+    { text: t.nav.how, href: landingHome + '#how-it-works' },
+    { text: t.nav.tools, href: landingHome + '#tools' },
+    { text: t.nav.example, href: landingHome + '#example' },
+    { text: t.nav.faq, href: landingHome + '#faq' },
+    { text: t.nav.signup, href: t.feedback.ctaHref, icon: 'envelope' },
+    { text: t.nav.docs, href: '/guide/what-is-regelrecht', icon: 'books' },
+  ];
+} else {
+  globalLinks = docsNav.map((n) => ({
+    text: n.text,
+    href: n.link,
+    current: n.match ? pathname.startsWith(n.match) : false,
+    icon: n.icon,
+  }));
+}
+
+// Language switch lives on the right (utility) side of the bar. Only the
+// landing is bilingual; docs are English-only so no switch there. On the
+// signup page the switch stays on signup (NL /aanmelden <-> EN /en/signup)
+// instead of jumping back to the home.
+const langToggle: NavItem | null = isLanding
+  ? {
+      text: lang === 'en' ? 'Nederlands' : 'English',
+      href: showSignup
+        ? lang === 'en'
+          ? '/aanmelden'
+          : '/en/signup'
+        : lang === 'en'
+          ? '/'
+          : '/en/',
+    }
+  : null;
+
+const searchLabel = lang === 'en' ? 'Search' : 'Zoeken';
+const searchPlaceholder =
+  lang === 'en' ? 'Search documentation' : 'Doorzoek de documentatie';
+const searchResultsLabel =
+  lang === 'en' ? 'Search results' : 'Zoekresultaten';
+const searchHint =
+  lang === 'en'
+    ? 'Type to search the documentation.'
+    : 'Typ om de documentatie te doorzoeken.';
+const searchNoResults =
+  lang === 'en' ? 'No results found.' : 'Geen resultaten gevonden.';
+const searchDevHint =
+  lang === 'en'
+    ? 'Search is available in the production build.'
+    : 'Zoeken is beschikbaar in de productiebuild.';
+const skipText = lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud';
+const navLabel = lang === 'en' ? 'Main navigation' : 'Hoofdnavigatie';
+const themeLabelLight = lang === 'en' ? 'Dark mode' : 'Donkere modus';
+const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
+---
+
+<!doctype html>
+<html lang={lang} data-scheme="light" style="color-scheme: light;">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/regelrecht-icon.svg"
+    />
+    <slot name="head" />
+    {/* View transitions keep the DOM/CSS/fonts live between navigations, so
+        the NLDD Lit components do not re-upgrade on every page change — that
+        re-upgrade was the flicker on full page loads. */}
+    <ClientRouter />
+    <script is:inline>
+      // NLDD colours resolve via data-scheme; the landing/chrome CSS uses
+      // the `.dark` class. Restore the persisted theme before first paint
+      // so there is no flash. Default light. Single authority, no Vue.
+      (function () {
+        try {
+          var stored = localStorage.getItem('rr-theme');
+          var dark = stored === 'dark';
+          var root = document.documentElement;
+          root.setAttribute('data-scheme', dark ? 'dark' : 'light');
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          root.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="rr-skip-link" href="#rr-main">{skipText}</a>
+
+    <div class="rr-shell">
+      <header class="rr-topbar">
+        <nldd-top-navigation-bar
+          logo-title="RegelRecht"
+          logo-subtitle={brandSubtitle}
+          logo-href={home}
+          website-href={home}
+        >
+          {
+            globalLinks.map((item) => (
+              <nldd-menu-bar-item
+                slot="global"
+                href={item.href}
+                text={item.text}
+                icon={item.icon || undefined}
+                current={item.current || undefined}
+              />
+            ))
+          }
+          <nldd-menu-bar-item
+            slot="utility"
+            id="rr-search-trigger"
+            text={searchLabel}
+            icon="search"
+          ></nldd-menu-bar-item>
+          <nldd-menu-bar-item
+            slot="utility"
+            id="rr-theme-toggle"
+            text={themeLabelLight}
+            data-label-light={themeLabelLight}
+            data-label-dark={themeLabelDark}
+            icon="moon"
+          ></nldd-menu-bar-item>
+          {
+            langToggle && (
+              <nldd-menu-bar-item
+                slot="utility"
+                text={langToggle.text}
+                href={langToggle.href}
+              />
+            )
+          }
+          <nldd-menu-bar-item
+            slot="utility"
+            text="GitHub"
+            href="https://github.com/MinBZK/regelrecht"
+            icon="code"
+          ></nldd-menu-bar-item>
+        </nldd-top-navigation-bar>
+
+        {/* Semantic fallback: real <a> links rendered server-side, so the
+            site is navigable without JS / before @nldd upgrades. Hidden
+            once <nldd-top-navigation-bar> is :defined (see CSS). */}
+        <nav class="rr-nav-fallback" aria-label={navLabel}>
+          <a class="rr-nav-fallback-brand" href={home}>RegelRecht</a>
+          <ul>
+            {
+              globalLinks.map((item) => (
+                <li>
+                  <a
+                    href={item.href}
+                    aria-current={item.current ? 'page' : undefined}
+                  >
+                    {item.text}
+                  </a>
+                </li>
+              ))
+            }
+            {
+              langToggle && (
+                <li>
+                  <a href={langToggle.href}>{langToggle.text}</a>
+                </li>
+              )
+            }
+            <li>
+              <a href="https://github.com/MinBZK/regelrecht">GitHub</a>
+            </li>
+          </ul>
+        </nav>
+      </header>
+
+      {
+        isNotFound && (
+          <div id="rr-main" tabindex="-1" lang={lang}>
+            <slot />
+          </div>
+        )
+      }
+
+      {
+        isLanding && !isNotFound && (
+          <div id="rr-main" tabindex="-1" class="rr-landing" lang={lang}>
+            <slot />
+          </div>
+        )
+      }
+
+      {
+        kind === 'docs' && (
+          <div
+            id="rr-main"
+            tabindex="-1"
+            class:list={['rr-docs', { 'has-sidebar': hasSidebar }]}
+          >
+            <slot />
+          </div>
+        )
+      }
+    </div>
+
+    {/* Search modal host. Pagefind does the search logic (indexing, ranking,
+        highlighting, sub-results) via its HEADLESS API; the presentation is
+        custom NLDD. Pagefind only indexes after `astro build`, so the headless
+        module is absent in `astro dev` (guarded in the script below). */}
+    <dialog
+      id="rr-search-dialog"
+      class="rr-search-dialog"
+      aria-label={searchLabel}
+    >
+      <div class="rr-search-panel">
+        <nldd-search-field
+          id="rr-search-input"
+          placeholder={searchPlaceholder}
+          accessible-label={searchPlaceholder}
+        ></nldd-search-field>
+        <div
+          id="rr-search-results"
+          class="rr-search-results"
+          role="listbox"
+          aria-label={searchResultsLabel}
+        >
+          <p class="rr-search-state" data-state="hint">{searchHint}</p>
+        </div>
+      </div>
+    </dialog>
+
+    <script>
+      import '@nldd/design-system';
+    </script>
+
+    <script>
+      // Theme toggle: NLDD reads data-scheme; the ported landing/chrome CSS
+      // keys off the `.dark` class. Toggle both, persist to localStorage.
+      // The toggle element is replaced on each ClientRouter navigation, so
+      // (re)bind on astro:page-load (which also fires on the first load).
+      function wireThemeToggle() {
+        const themeBtn = document.getElementById('rr-theme-toggle');
+        if (!themeBtn) return;
+        themeBtn.addEventListener('click', () => {
+          const root = document.documentElement;
+          const dark = root.getAttribute('data-scheme') !== 'dark';
+          root.setAttribute('data-scheme', dark ? 'dark' : 'light');
+          root.style.colorScheme = dark ? 'dark' : 'light';
+          root.classList.toggle('dark', dark);
+          try {
+            localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
+          } catch (e) {}
+          themeBtn.setAttribute(
+            'text',
+            dark
+              ? themeBtn.dataset.labelDark || 'Light mode'
+              : themeBtn.dataset.labelLight || 'Dark mode'
+          );
+          themeBtn.setAttribute('icon', dark ? 'sun' : 'moon');
+        });
+        // Reflect the current scheme onto the freshly-rendered toggle.
+        if (document.documentElement.getAttribute('data-scheme') === 'dark') {
+          themeBtn.setAttribute('text', themeBtn.dataset.labelDark || 'Light mode');
+          themeBtn.setAttribute('icon', 'sun');
+        }
+      }
+      document.addEventListener('astro:page-load', wireThemeToggle);
+    </script>
+
+    <script
+      define:vars={{
+        searchHint,
+        searchNoResults,
+        searchDevHint,
+      }}
+    >
+      // Custom NLDD search UI on top of Pagefind's HEADLESS API. Pagefind keeps
+      // doing the search logic (indexing, ranking, highlighting, sub-results);
+      // only the presentation is ours. The headless module is emitted to
+      // /pagefind/pagefind.js by astro-pagefind during the build and is absent
+      // in `astro dev` — the dynamic import is guarded so dev degrades to a hint.
+      // These elements are replaced on each ClientRouter navigation, so they
+      // are `let` and re-resolved in wireSearch() on astro:page-load.
+      let dialog = null;
+      let trigger = null;
+      let field = null;
+      let resultsEl = null;
+
+      // Pagefind instance (loaded lazily on first open). `null` until loaded,
+      // `false` once an import attempt has failed (e.g. in `astro dev`).
+      // Module-scope so it survives navigations and is loaded at most once.
+      let pagefind = null;
+      let pagefindFailed = false;
+      let loading = false;
+      let debounceTimer = 0;
+      let activeIndex = -1; // currently highlighted result, -1 = none
+
+      function setState(stateText, kind) {
+        if (!resultsEl) return;
+        activeIndex = -1;
+        resultsEl.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'rr-search-state';
+        p.dataset.state = kind;
+        p.textContent = stateText;
+        resultsEl.appendChild(p);
+      }
+
+      async function ensurePagefind() {
+        if (pagefind || pagefindFailed || loading) return;
+        loading = true;
+        try {
+          // Vite would try to resolve a static '/pagefind/pagefind.js' import at
+          // build time (the file does not exist yet then), so build the path
+          // dynamically to keep it a pure runtime fetch.
+          const modulePath = '/pagefind/pagefind.js';
+          pagefind = await import(/* @vite-ignore */ modulePath);
+          if (pagefind.options) {
+            await pagefind.options({ excerptLength: 15 });
+          }
+        } catch (e) {
+          // Expected in `astro dev`: the index has not been built. Degrade to a
+          // hint instead of throwing. Don't spam the console on every open.
+          pagefindFailed = true;
+          setState(searchDevHint, 'dev');
+        } finally {
+          loading = false;
+        }
+      }
+
+      // Render a list of resolved Pagefind result records as NLDD-styled links.
+      function renderResults(records) {
+        if (!resultsEl) return;
+        activeIndex = -1;
+        resultsEl.innerHTML = '';
+        if (!records.length) {
+          setState(searchNoResults, 'empty');
+          return;
+        }
+        const frag = document.createDocumentFragment();
+        for (const rec of records) {
+          const item = document.createElement('a');
+          item.className = 'rr-search-result';
+          item.href = rec.url;
+          item.setAttribute('role', 'option');
+          item.tabIndex = -1;
+
+          const title = document.createElement('span');
+          title.className = 'rr-search-result-title';
+          title.textContent = (rec.meta && rec.meta.title) || rec.url;
+          item.appendChild(title);
+
+          const excerpt = document.createElement('span');
+          excerpt.className = 'rr-search-result-excerpt';
+          // Pagefind's excerpt is its own sanitized output with <mark> wrapping
+          // the matched terms — safe to inject as HTML.
+          excerpt.innerHTML = rec.excerpt;
+          item.appendChild(excerpt);
+
+          frag.appendChild(item);
+
+          // Sub-results (deep links into the same page, e.g. headings).
+          const subs = (rec.sub_results || []).slice(0, 3);
+          for (const sub of subs) {
+            // The top result of sub_results usually duplicates the page itself.
+            if (sub.url === rec.url) continue;
+            const subItem = document.createElement('a');
+            subItem.className = 'rr-search-result rr-search-subresult';
+            subItem.href = sub.url;
+            subItem.setAttribute('role', 'option');
+            subItem.tabIndex = -1;
+
+            const subTitle = document.createElement('span');
+            subTitle.className = 'rr-search-result-title';
+            subTitle.textContent = sub.title;
+            subItem.appendChild(subTitle);
+
+            if (sub.excerpt) {
+              const subExcerpt = document.createElement('span');
+              subExcerpt.className = 'rr-search-result-excerpt';
+              subExcerpt.innerHTML = sub.excerpt;
+              subItem.appendChild(subExcerpt);
+            }
+            frag.appendChild(subItem);
+          }
+        }
+        resultsEl.appendChild(frag);
+      }
+
+      function resultLinks() {
+        return resultsEl
+          ? Array.from(resultsEl.querySelectorAll('a.rr-search-result'))
+          : [];
+      }
+
+      function setActive(index) {
+        const links = resultLinks();
+        if (!links.length) return;
+        activeIndex = (index + links.length) % links.length;
+        links.forEach((a, i) => {
+          const on = i === activeIndex;
+          a.classList.toggle('is-active', on);
+          if (on) {
+            a.focus();
+            a.scrollIntoView({ block: 'nearest' });
+          }
+        });
+      }
+
+      async function runQuery(query) {
+        const q = String(query ?? '').trim();
+        if (!q) {
+          setState(searchHint, 'hint');
+          return;
+        }
+        await ensurePagefind();
+        if (!pagefind) return; // dev hint already shown
+        const search = await pagefind.search(q);
+        const records = await Promise.all(
+          search.results.slice(0, 8).map((r) => r.data())
+        );
+        renderResults(records);
+      }
+
+      function onInput(value) {
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => {
+          runQuery(value);
+        }, 200);
+      }
+
+      // nldd-search-field reflects its value onto the element's `.value`
+      // property (a string) and onto the inner input — read that, not
+      // event.detail (whose `.value` is not a plain string and broke
+      // query.trim()).
+      const fieldValue = () => field?.value ?? '';
+
+      function openSearch() {
+        if (!dialog) return;
+        ensurePagefind();
+        if (!dialog.open) dialog.showModal();
+        field?.focus();
+      }
+
+      // (Re)resolve the search elements and bind their listeners. The elements
+      // are recreated on each ClientRouter navigation, so this runs on every
+      // astro:page-load. The global Cmd/Ctrl+K listener is bound once below
+      // (it reads the live `dialog`/`field` via openSearch).
+      function wireSearch() {
+        dialog = document.getElementById('rr-search-dialog');
+        trigger = document.getElementById('rr-search-trigger');
+        field = document.getElementById('rr-search-input');
+        resultsEl = document.getElementById('rr-search-results');
+
+        field?.addEventListener('input', () => onInput(fieldValue()));
+        field?.addEventListener('search', () => {
+          window.clearTimeout(debounceTimer);
+          runQuery(fieldValue());
+        });
+        trigger?.addEventListener('click', openSearch);
+
+        // Keyboard a11y within the modal: arrows move through the focusable
+        // <a> result list, Enter follows the active one, Escape closes (native
+        // <dialog>). Backdrop click closes.
+        dialog?.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive(activeIndex + 1);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive(activeIndex - 1);
+          } else if (e.key === 'Enter') {
+            const links = resultLinks();
+            if (activeIndex >= 0 && links[activeIndex]) {
+              e.preventDefault();
+              links[activeIndex].click();
+            }
+          }
+        });
+        dialog?.addEventListener('click', (e) => {
+          if (e.target === dialog) dialog.close();
+        });
+      }
+      document.addEventListener('astro:page-load', wireSearch);
+
+      // Global hotkey bound once for the document's lifetime (not per page-load,
+      // which would stack duplicate listeners). Uses the live element refs.
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          openSearch();
+        }
+      });
+    </script>
+
+    <style>
+      /* No nldd-app-view / nldd-page: those impose an internal scroll model
+         that fights the document scroll. The document scrolls normally —
+         one scrollbar. nldd-top-navigation-bar only needs WIDTH for its
+         container-query layout, which a plain full-width bar provides. */
+      html {
+        /* Reserve the scrollbar's space permanently so opening the search
+           modal (which sets overflow:hidden on body) does not shift the
+           viewport ~15px and jump content. */
+        scrollbar-gutter: stable;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      .rr-shell {
+        min-height: 100vh;
+      }
+      .rr-topbar {
+        background: var(--vp-nav-bg-color);
+      }
+      .rr-topbar nldd-top-navigation-bar {
+        display: block;
+        width: 100%;
+      }
+
+      /* No-JS / pre-upgrade navigation fallback. The semantic <nav> is the
+         SSR-rendered, always-functional navigation. Once @nldd loads and
+         the web component upgrades (:defined), show the rich nav and hide
+         the fallback. Without JS the fallback simply stays. */
+      .rr-nav-fallback {
+        max-width: 1440px;
+        margin-inline: auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1rem 1.5rem;
+        padding: 0.75rem 1.5rem;
+      }
+      .rr-nav-fallback-brand {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--vp-c-text-1);
+        text-decoration: none;
+      }
+      .rr-nav-fallback ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1.25rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .rr-nav-fallback a {
+        color: var(--vp-c-text-2);
+        text-decoration: none;
+      }
+      .rr-nav-fallback a:hover {
+        color: var(--vp-c-brand-1);
+      }
+      .rr-nav-fallback a[aria-current='page'] {
+        color: var(--vp-c-brand-1);
+        font-weight: 600;
+      }
+      .rr-topbar nldd-top-navigation-bar:not(:defined) {
+        display: none;
+      }
+      .rr-topbar nldd-top-navigation-bar:defined ~ .rr-nav-fallback {
+        display: none;
+      }
+
+      /* Visible focus indicator across the whole shell (WCAG 2.2
+         SC 2.4.13). */
+      .rr-shell a:focus-visible,
+      .rr-shell button:focus-visible,
+      .rr-shell summary:focus-visible,
+      .rr-shell [tabindex]:focus-visible {
+        outline: 3px solid var(--vp-c-brand-1);
+        outline-offset: 2px;
+        border-radius: 2px;
+      }
+      /* #rr-main is only a programmatic skip-link target; no visible ring. */
+      #rr-main:focus,
+      #rr-main:focus-visible {
+        outline: none;
+      }
+
+      .rr-docs.has-sidebar {
+        display: grid;
+        grid-template-columns: 272px minmax(0, 1fr) 240px;
+        gap: 2rem;
+        max-width: 1440px;
+        margin-inline: auto;
+        padding: 1.5rem 1.5rem 4rem;
+      }
+      .rr-docs:not(.has-sidebar) {
+        max-width: 960px;
+        margin-inline: auto;
+        padding: 1.5rem 1.5rem 4rem;
+      }
+      .rr-docs-body {
+        min-width: 0;
+      }
+      .rr-docs-content {
+        min-width: 0;
+      }
+      /* Column changes only. The matching outline/sidebar hides live in those
+         components' own <style> — a cross-component selector here would be
+         stamped with Base's data-cid and never match (see DocsOutline.astro /
+         DocsSidebar.astro). */
+      @media (max-width: 1100px) {
+        .rr-docs.has-sidebar {
+          grid-template-columns: 240px minmax(0, 1fr);
+        }
+      }
+      @media (max-width: 768px) {
+        .rr-docs.has-sidebar {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      /* Custom NLDD search modal. The visible trigger is the nav "Search"
+         item; the search logic is Pagefind's headless API. */
+      .rr-search-dialog {
+        border: none;
+        border-radius: 10px;
+        padding: 1.25rem;
+        width: min(40rem, 92vw);
+        max-height: 80vh;
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text-1);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+      }
+      .rr-search-dialog::backdrop {
+        background: rgba(0, 0, 0, 0.45);
+      }
+      .rr-search-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .rr-search-results {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+      .rr-search-state {
+        margin: 0;
+        padding: 0.75rem 0.25rem;
+        color: var(--vp-c-text-2);
+        font-size: 0.9rem;
+      }
+      /* The search RESULT items are generated by JS (createElement) and so
+         do not carry Astro's scoped data-cid attribute — their styles must
+         be global. They live in docs.css. The field/panel/results-container
+         chrome below is server-rendered, so it can stay scoped here. */
+    </style>
+  </body>
+</html>

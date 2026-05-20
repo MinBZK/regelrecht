@@ -1,0 +1,140 @@
+---
+/*
+ * The documentation overview cards, shown at the top of the docs entry page
+ * (/guide/what-is-regelrecht — where the "Documentatie" nav lands). These are
+ * the six capability cards from the former VitePress home, each linking to the
+ * docs section that covers it. Same nldd-collection/nldd-card styling as the
+ * landing's card grids.
+ */
+const cards = [
+  {
+    title: 'Executable Law',
+    body: 'Dutch legislation encoded in YAML and executed by a deterministic engine. Every decision traces back to its legal source.',
+    href: '/concepts/how-it-works',
+  },
+  {
+    title: 'Cross-Law References',
+    body: 'Laws reference each other just as in statute books. The engine resolves dependencies automatically across the entire corpus.',
+    href: '/concepts/cross-law-references',
+  },
+  {
+    title: 'Delegation and IoC',
+    body: 'Higher laws delegate to lower regulations. The engine discovers implementations at runtime, matching the real legal hierarchy.',
+    href: '/concepts/inversion-of-control',
+  },
+  {
+    title: 'Test-Driven Legislation',
+    body: 'BDD scenarios derived from the Memorie van Toelichting verify that machine-readable law matches what Parliament intended.',
+    href: '/concepts/methodology',
+  },
+  {
+    title: 'Multi-Organization Execution',
+    body: 'Different government organizations handle different laws. The engine models these boundaries and can exchange signed results between organizations.',
+    href: '/concepts/multi-org-execution',
+  },
+  {
+    title: 'Open Source',
+    body: 'Built by the Dutch Ministry of the Interior (MinBZK). All law, all tooling, all decisions are open and auditable.',
+    href: 'https://github.com/MinBZK/regelrecht',
+  },
+];
+
+// Action buttons above the cards (the former VitePress home hero CTAs).
+const actions = [
+  { text: 'How It Works', href: '/concepts/how-it-works', variant: 'primary' },
+  { text: 'Get Started', href: '/guide/getting-started', variant: 'secondary' },
+  { text: 'GitHub', href: 'https://github.com/MinBZK/regelrecht', variant: 'secondary' },
+];
+---
+
+<p class="rr-docs-actions">
+  {
+    actions.map((a) => (
+      <Fragment>
+        {/* nldd-button renders its label in shadow DOM (invisible without JS),
+            so each ships a real <a> fallback; CSS shows exactly one. */}
+        <nldd-button
+          class="rr-btn-wc"
+          variant={a.variant}
+          href={a.href}
+          text={a.text}
+        />
+        <a
+          class={`rr-btn rr-btn--${a.variant === 'primary' ? 'primary' : 'ghost'} rr-btn-fallback`}
+          href={a.href}
+        >
+          {a.text}
+        </a>
+      </Fragment>
+    ))
+  }
+</p>
+
+<div class="rr-docs-cards">
+  {
+    cards.map((c) => (
+      <nldd-card class="rr-card" accessible-label={c.title}>
+        <a class="rr-docs-card-link" href={c.href}>
+          <nldd-rich-text class="rr-card-inner">
+            <h2>{c.title}</h2>
+            <p>{c.body}</p>
+          </nldd-rich-text>
+        </a>
+      </nldd-card>
+    ))
+  }
+</div>
+
+<style>
+  /* Action buttons row above the card grid. */
+  .rr-docs-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 1.5rem 0 2rem;
+  }
+
+  /* Explicit 2-column grid instead of nldd-collection: the collection uses
+     repeat(auto-fill, minmax(item-width, 1fr)), which adds a 3rd column on
+     wide content and let cards overflow / sit unequal. minmax(0, 1fr) keeps
+     two equal columns that never overflow; one column on narrow screens. */
+  .rr-docs-cards {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+    margin: 0 0 2.5rem;
+  }
+  @media (max-width: 640px) {
+    .rr-docs-cards {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  /* The whole card is a link to its docs section. Keep the prose colour
+     (no link-blue body text); the heading hints the affordance on hover. */
+  .rr-docs-card-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    height: 100%;
+  }
+  /* nldd-rich-text applies its full prose heading spacing to the card title,
+     which is too airy inside a compact card (big gap under the title, cramped
+     body). Tighten the title/body rhythm for the card context. */
+  .rr-docs-cards .rr-card-inner :global(h2) {
+    margin: 0 0 0.5rem;
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+  .rr-docs-cards .rr-card-inner :global(p) {
+    margin: 0;
+  }
+  .rr-docs-card-link:hover :global(h2),
+  .rr-docs-card-link:focus-visible :global(h2) {
+    color: var(--vp-c-brand-1);
+  }
+  .rr-docs-card-link:focus-visible {
+    outline: 3px solid var(--vp-c-brand-1);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+</style>

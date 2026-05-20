@@ -1,11 +1,11 @@
 // Single source of truth for the RFC list.
 //
-// Both the VitePress sidebar (config.ts) and the index table (via a data
-// loader) are generated from docs/rfcs/rfc-*.md, so they cannot drift apart.
-// This module is pure Node — no Vue/VitePress imports — so it runs in the
-// VitePress config and in the data loader at build time.
+// Both the docs sidebar (via sidebar.ts) and the RFC index table
+// (RfcIndexTable.astro) are generated from src/content/rfcs/rfc-*.md, so they
+// cannot drift apart. This module is pure Node, so it runs at build time.
 
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export interface RfcEntry {
@@ -23,7 +23,18 @@ export interface RfcEntry {
   link: string
 }
 
-const RFCS_DIR = fileURLToPath(new URL('../rfcs', import.meta.url))
+// At `astro dev` this module runs from src/lib; at `astro build` it is
+// bundled into dist/.prerender/chunks, so a path relative to import.meta
+// no longer points at the RFC sources. Resolve from the project root
+// (the docs/ working directory) and fall back to the module-relative
+// path for the dev case.
+function resolveRfcsDir(): string {
+  const fromCwd = resolve(process.cwd(), 'src/content/rfcs')
+  if (existsSync(fromCwd)) return fromCwd
+  return fileURLToPath(new URL('../content/rfcs', import.meta.url))
+}
+
+const RFCS_DIR = resolveRfcsDir()
 
 const RFC_FILE = /^rfc-(\d+)\.md$/
 const H1 = /^#\s*RFC-(\d+):\s*(.+?)\s*$/m
@@ -67,9 +78,7 @@ export function getRfcs(): RfcEntry[] {
     const shortTitle = content.match(SHORT_TITLE)?.[1] ?? title
 
     // The link is derived from a filename we just read, so it provably
-    // resolves to a real page. This is why a bare <a href> in the index
-    // component is safe even though it sidesteps VitePress dead-link
-    // checking: a non-existent target cannot be produced here.
+    // resolves to a real page: a non-existent target cannot be produced here.
     entries.push({
       num,
       id: `RFC-${String(num).padStart(3, '0')}`,

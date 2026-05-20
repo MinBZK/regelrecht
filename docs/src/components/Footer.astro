@@ -1,0 +1,51 @@
+---
+/* Ported verbatim from the relanding RrFooter.vue <template>. */
+import { content } from '~/lib/landing-content';
+
+interface Props {
+  lang: 'nl' | 'en';
+}
+const { lang } = Astro.props;
+const f = content[lang].footer;
+---
+
+<footer
+  class="rr-footer"
+  aria-label={lang === 'en' ? 'Site footer' : 'Sitevoettekst'}
+>
+  <div class="rr-footer-grid">
+    <div>
+      <h3>RegelRecht</h3>
+      <p>{f.blurb}</p>
+    </div>
+    <div>
+      <h4>{f.linksTitle}</h4>
+      <ul>
+        {
+          f.links.map((l) => (
+            <li>
+              <a href={l.href}>{l.label}</a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+    <div>
+      <h4>{f.contactTitle}</h4>
+      <ul>
+        <li>
+          <a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a>
+        </li>
+      </ul>
+    </div>
+    <div>
+      <h4>{f.partOfTitle}</h4>
+      <ul>
+        {f.partOf.map((o) => <li>{o}</li>)}
+      </ul>
+    </div>
+  </div>
+  <div class="rr-footer-bottom">
+    <p>{f.copyright}</p>
+  </div>
+</footer>

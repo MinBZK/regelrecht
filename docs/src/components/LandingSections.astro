@@ -1,0 +1,388 @@
+---
+/*
+ * Landing page content, ported verbatim from the relanding LandingPage.vue
+ * <template>. Wrapper/skip-link/nav/footer live in Base.astro. NLDD elements
+ * render their slotted content in light DOM so the real headings/paragraphs
+ * are server-rendered and work without JS; only nldd-button is the
+ * exception, so every button ships a real <a> fallback next to the
+ * <nldd-button> and CSS shows exactly one (see landing.css).
+ */
+import { content } from '~/lib/landing-content';
+import SignupForm from './SignupForm.astro';
+
+interface Props {
+  lang: 'nl' | 'en';
+  showSignup: boolean;
+}
+
+const { lang, showSignup } = Astro.props;
+const t = content[lang];
+const home = lang === 'en' ? '/en/' : '/';
+---
+
+<div>
+  {
+    showSignup ? (
+      <section class="rr-section" aria-labelledby="rr-signup-title">
+        <nldd-container padding="0" class="rr-container">
+          <nldd-title size="1">
+            <h1 id="rr-signup-title" class="rr-section-title">
+              {t.signup.pageTitle}
+            </h1>
+          </nldd-title>
+          <nldd-rich-text>
+            <p class="rr-lede">{t.signup.lede}</p>
+          </nldd-rich-text>
+          <SignupForm lang={lang} />
+          <noscript>
+            <p>{t.signup.noscript}</p>
+          </noscript>
+        </nldd-container>
+      </section>
+    ) : (
+      <Fragment>
+        <section class="rr-hero" aria-labelledby="rr-hero-title">
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="1">
+              <h1 id="rr-hero-title">
+                RegelRecht
+                <small>{t.hero.titleSmall}</small>
+              </h1>
+            </nldd-title>
+            <nldd-rich-text>
+              <p>{t.hero.intro}</p>
+            </nldd-rich-text>
+            <p class="rr-cta">
+              <nldd-button
+                class="rr-btn-wc"
+                variant="primary"
+                href={home + '#what-is-it'}
+                text={t.hero.cta}
+              />
+              <a
+                class="rr-btn rr-btn--primary rr-btn-fallback"
+                href={home + '#what-is-it'}
+              >
+                {t.hero.cta}
+              </a>
+            </p>
+          </nldd-container>
+        </section>
+
+        <section
+          class="rr-section rr-partners"
+          aria-labelledby="rr-partners-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <h2 id="rr-partners-title" class="rr-visually-hidden">
+              {t.partners.label}
+            </h2>
+            <p>{t.partners.label}</p>
+            <ul>
+              {t.partners.items.map((p) => (
+                <li>
+                  <a href={p.href}>{p.label}</a>
+                </li>
+              ))}
+            </ul>
+          </nldd-container>
+        </section>
+
+        <section
+          id="what-is-it"
+          class="rr-section rr-section--alt"
+          aria-labelledby="rr-what-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-what-title" class="rr-section-title">
+                {t.whatIsIt.title}
+              </h2>
+            </nldd-title>
+            <nldd-rich-text>
+              <p class="rr-lede">{t.whatIsIt.lede}</p>
+            </nldd-rich-text>
+            <nldd-collection layout="grid" item-width="300px" class="rr-grid">
+              {t.whatIsIt.cards.map((c) => (
+                <nldd-card class="rr-card" accessible-label={c.h}>
+                  <nldd-rich-text class="rr-card-inner">
+                    <h3>{c.h}</h3>
+                    <p>{c.p}</p>
+                  </nldd-rich-text>
+                </nldd-card>
+              ))}
+            </nldd-collection>
+          </nldd-container>
+        </section>
+
+        <section
+          id="why-important"
+          class="rr-section"
+          aria-labelledby="rr-why-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-why-title" class="rr-section-title">
+                {t.whyImportant.title}
+              </h2>
+            </nldd-title>
+            <nldd-rich-text>
+              <p class="rr-lede">{t.whyImportant.lede}</p>
+            </nldd-rich-text>
+            <div class="rr-ps-list">
+              {t.whyImportant.problemSolutions.map((ps) => (
+                <div
+                  class="rr-ps"
+                  role="group"
+                  aria-label={ps.problemTitle + ' — ' + ps.solutionTitle}
+                >
+                  <div class="rr-ps-problem">
+                    <nldd-tag color="critical" size="md">
+                      {lang === 'en' ? 'The problem' : 'Het probleem'}
+                    </nldd-tag>
+                    <h3>{ps.problemTitle}</h3>
+                    <p>{ps.problemText}</p>
+                  </div>
+                  <div class="rr-ps-solution">
+                    <nldd-tag color="accent" size="md">
+                      {lang === 'en'
+                        ? 'Possible direction'
+                        : 'Mogelijke richting'}
+                    </nldd-tag>
+                    <h3>{ps.solutionTitle}</h3>
+                    <p>{ps.solutionText}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </nldd-container>
+        </section>
+
+        <section
+          id="how-it-works"
+          class="rr-section rr-section--alt"
+          aria-labelledby="rr-how-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-how-title" class="rr-section-title">
+                {t.howItWorks.title}
+              </h2>
+            </nldd-title>
+            <nldd-rich-text>
+              <p class="rr-lede">{t.howItWorks.lede}</p>
+            </nldd-rich-text>
+            <ol class="rr-steps">
+              {t.howItWorks.steps.map((step) => (
+                <li>
+                  <h3>{step.title}</h3>
+                  <p>{step.text}</p>
+                </li>
+              ))}
+            </ol>
+          </nldd-container>
+        </section>
+
+        <section
+          id="tools"
+          class="rr-section"
+          aria-labelledby="rr-tools-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-tools-title" class="rr-section-title">
+                {t.tools.title}
+              </h2>
+            </nldd-title>
+            <nldd-collection layout="grid" item-width="300px" class="rr-grid">
+              {t.tools.items.map((tool) => (
+                <nldd-card class="rr-card" accessible-label={tool.title}>
+                  <div class="rr-card-inner">
+                    {tool.link ? (
+                      <a class="rr-card-link" href={tool.link.href}>
+                        {tool.link.label}
+                      </a>
+                    ) : (
+                      <nldd-tag color="neutral" size="md">
+                        {tool.meta}
+                      </nldd-tag>
+                    )}
+                    <nldd-rich-text>
+                      <h3>{tool.title}</h3>
+                      <p>{tool.text}</p>
+                    </nldd-rich-text>
+                  </div>
+                </nldd-card>
+              ))}
+            </nldd-collection>
+          </nldd-container>
+        </section>
+
+        <section
+          id="example"
+          class="rr-section rr-section--alt"
+          aria-labelledby="rr-example-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-example-title" class="rr-section-title">
+                {t.example.title}
+              </h2>
+            </nldd-title>
+            <nldd-rich-text>
+              <p class="rr-lede">{t.example.lede}</p>
+            </nldd-rich-text>
+
+            {t.example.cases.map((ex) => (
+              <div
+                class:list={[
+                  'rr-example',
+                  { 'rr-example--reverse': ex.reverse },
+                ]}
+              >
+                <figure>
+                  <img src={ex.img} alt={ex.alt} />
+                  <figcaption>{ex.caption}</figcaption>
+                </figure>
+                <nldd-rich-text>
+                  <h3>{ex.h}</h3>
+                  <p>{ex.p}</p>
+                  <ul>
+                    {ex.bullets.map((b) => (
+                      <li>{b}</li>
+                    ))}
+                  </ul>
+                </nldd-rich-text>
+              </div>
+            ))}
+          </nldd-container>
+        </section>
+
+        <section
+          id="innovation"
+          class="rr-section"
+          aria-labelledby="rr-innovation-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-innovation-title" class="rr-section-title">
+                {t.innovation.title}
+              </h2>
+            </nldd-title>
+            <nldd-rich-text>
+              <p class="rr-lede">
+                {t.innovation.ledeBefore}
+                <a href={t.innovation.ledeLink.href}>
+                  {t.innovation.ledeLink.label}
+                </a>
+                {t.innovation.ledeAfter}
+              </p>
+            </nldd-rich-text>
+            <nldd-collection layout="grid" item-width="300px" class="rr-grid">
+              {t.innovation.cards.map((c) => (
+                <nldd-card class="rr-card" accessible-label={c.h}>
+                  <div class="rr-card-inner">
+                    <nldd-tag color="accent" size="md">
+                      {c.meta}
+                    </nldd-tag>
+                    <nldd-rich-text>
+                      <h3>{c.h}</h3>
+                      <p>{c.p}</p>
+                    </nldd-rich-text>
+                  </div>
+                </nldd-card>
+              ))}
+            </nldd-collection>
+          </nldd-container>
+        </section>
+
+        <section
+          id="references"
+          class="rr-section rr-section--alt"
+          aria-labelledby="rr-refs-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-refs-title" class="rr-section-title">
+                {t.references.title}
+              </h2>
+            </nldd-title>
+            <nldd-rich-text>
+              <p class="rr-lede">{t.references.lede}</p>
+            </nldd-rich-text>
+            <ul class="rr-refs">
+              {t.references.items.map((ref) => (
+                <li>
+                  <nldd-rich-text>
+                    <h3>{ref.title}</h3>
+                    <p class="rr-ref-meta">{ref.meta}</p>
+                    <p>{ref.text}</p>
+                  </nldd-rich-text>
+                  <a href={ref.href}>
+                    {ref.linkLabel}
+                    <span class="rr-visually-hidden">— {ref.title}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nldd-container>
+        </section>
+
+        <section
+          id="faq"
+          class="rr-section"
+          aria-labelledby="rr-faq-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-faq-title" class="rr-section-title">
+                {t.faq.title}
+              </h2>
+            </nldd-title>
+            <div class="rr-faq">
+              {t.faq.items.map((item) => (
+                <details>
+                  <summary>{item.q}</summary>
+                  <nldd-rich-text>
+                    <p>{item.a}</p>
+                  </nldd-rich-text>
+                </details>
+              ))}
+            </div>
+          </nldd-container>
+        </section>
+
+        <section
+          id="feedback"
+          class="rr-section rr-section--alt rr-feedback"
+          aria-labelledby="rr-feedback-title"
+        >
+          <nldd-container padding="0" class="rr-container">
+            <nldd-title size="2">
+              <h2 id="rr-feedback-title" class="rr-section-title">
+                {t.feedback.title}
+              </h2>
+            </nldd-title>
+            <nldd-rich-text>
+              <p>{t.feedback.body}</p>
+            </nldd-rich-text>
+            <p class="rr-cta">
+              <nldd-button
+                class="rr-btn-wc"
+                variant="primary"
+                href={t.feedback.ctaHref}
+                text={t.feedback.cta}
+              />
+              <a
+                class="rr-btn rr-btn--primary rr-btn-fallback"
+                href={t.feedback.ctaHref}
+              >
+                {t.feedback.cta}
+              </a>
+            </p>
+          </nldd-container>
+        </section>
+      </Fragment>
+    )
+  }
+</div>

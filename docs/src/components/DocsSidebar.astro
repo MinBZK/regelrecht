@@ -1,0 +1,127 @@
+---
+/*
+ * Ported from the relanding RrDocSidebar.vue. The `groups` come from
+ * sidebar.ts (the former config.ts themeConfig.sidebar object literal),
+ * so the structure stays config-driven. Active item by normalized
+ * pathname equality, same normalize() as the Vue source.
+ */
+import type { SidebarGroup } from '~/lib/sidebar';
+
+interface Props {
+  groups: SidebarGroup[];
+  pathname: string;
+}
+const { groups, pathname } = Astro.props;
+
+function normalize(path: string) {
+  return path.replace(/(index)?\.(md|html)$/, '').replace(/\/$/, '');
+}
+function isActive(link?: string) {
+  if (!link) return false;
+  return normalize(pathname) === normalize(link);
+}
+---
+
+<nav class="rr-doc-sidebar" aria-label="Documentation navigation">
+  {
+    groups.map((group) => (
+      <div class="rr-doc-sidebar-group">
+        {group.text && <p class="rr-doc-sidebar-title">{group.text}</p>}
+        <ul>
+          {group.items.map((item) => (
+            <li>
+              {item.link ? (
+                <a
+                  href={item.link}
+                  aria-current={isActive(item.link) ? 'page' : undefined}
+                  class:list={[{ 'is-active': isActive(item.link) }]}
+                >
+                  {item.text}
+                </a>
+              ) : (
+                <span>{item.text}</span>
+              )}
+              {item.items && item.items.length > 0 && (
+                <ul>
+                  {item.items.map((sub) => (
+                    <li>
+                      {sub.link && (
+                        <a
+                          href={sub.link}
+                          aria-current={
+                            isActive(sub.link) ? 'page' : undefined
+                          }
+                          class:list={[{ 'is-active': isActive(sub.link) }]}
+                        >
+                          {sub.text}
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ))
+  }
+</nav>
+
+<style>
+  .rr-doc-sidebar {
+    font-size: 0.9rem;
+    position: sticky;
+    top: 1.5rem;
+    align-self: start;
+    max-height: calc(100vh - 6rem);
+    overflow-y: auto;
+  }
+  /* Hide on narrow screens. Must be scoped here in the component: Astro stamps
+     every selector in a component's <style> with that component's data-cid, so
+     a rule written in Base.astro targeting .rr-doc-sidebar would be stamped
+     with Base's cid and never match this element. Below 768px the docs grid is
+     a single column; a sticky sidebar would otherwise overlap the content. */
+  @media (max-width: 768px) {
+    .rr-doc-sidebar {
+      display: none;
+    }
+  }
+  .rr-doc-sidebar-group {
+    margin-bottom: 1.5rem;
+  }
+  .rr-doc-sidebar-title {
+    font-weight: 700;
+    margin: 0 0 0.5rem;
+    color: var(--vp-c-text-1);
+  }
+  .rr-doc-sidebar ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .rr-doc-sidebar ul ul {
+    margin-left: 0.75rem;
+    border-left: 1px solid var(--vp-c-divider);
+    padding-left: 0.75rem;
+  }
+  .rr-doc-sidebar li {
+    margin: 0.3rem 0;
+  }
+  .rr-doc-sidebar a {
+    color: var(--vp-c-text-2);
+    text-decoration: none;
+    display: block;
+    padding: 0.15rem 0;
+  }
+  .rr-doc-sidebar a:hover {
+    color: var(--vp-c-brand-1);
+  }
+  .rr-doc-sidebar a.is-active {
+    color: var(--vp-c-brand-1);
+    font-weight: 600;
+  }
+  :global(.dark) .rr-doc-sidebar a.is-active {
+    color: var(--vp-c-brand-2);
+  }
+</style>

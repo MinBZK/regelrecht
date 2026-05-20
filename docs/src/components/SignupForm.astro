@@ -1,0 +1,370 @@
+---
+/*
+ * Signup form, built on @nldd/design-system form components.
+ *
+ * NLDD controls (upgraded by the single body <script> import in Base.astro):
+ *  - email + name: nldd-form-field > nldd-text-field + nldd-form-field-error-text.
+ *    The form-field auto-wires the accessible label (aria-label), aria-invalid
+ *    (from the field's `invalid` attribute), aria-describedby (via the field's
+ *    error-message-ids), and toggles the error-text visibility. We drive
+ *    `invalid` + `error-message` from the same validation as before.
+ *  - org + role: optional nldd-form-field > nldd-text-field (no validation).
+ *  - bijdragen: nldd-form-field (group label) > nldd-radio-button-group >
+ *    nldd-radio-button-field. The group renders role=radiogroup with the label
+ *    forwarded as aria-label.
+ *  - opDeHoogte: nldd-checkbox-field (self-labelled).
+ *
+ * Two controls stay bare HTML on purpose:
+ *  - the honeypot (off-screen, aria-hidden) for spam protection;
+ *  - the submit + reset buttons. nldd-button renders its <button> inside shadow
+ *    DOM, so the WCAG htmlcs runner reports the form as having no submit button
+ *    (it only walks light DOM). A native <button type="submit"> keeps the gate
+ *    green and guarantees the visible label. The .rr-btn classes match the rest
+ *    of the landing.
+ *
+ * Vue reactivity is replaced by a vanilla TypeScript handler in the inline
+ * <script>: honeypot early-return, the same email/name validation (regex
+ * /^[^\s@]+@[^\s@]+\.[^\s@]+$/, same error strings), the exact markdown webhook
+ * payload, fetch in no-cors mode, and focus management. The three states
+ * (idle/success/error) are rendered and toggled with `hidden`. Values are read
+ * from the element properties (.value / .checked), never from event.detail.
+ */
+import { content } from '~/lib/landing-content';
+
+interface Props {
+  lang: 'nl' | 'en';
+}
+const { lang } = Astro.props;
+const s = content[lang].signup;
+
+const EMAIL = 'regelrecht@minbzk.nl';
+
+// Split a string on the support email so it can be rendered as a mailto link.
+function parts(text: string) {
+  const i = text.indexOf(EMAIL);
+  if (i === -1) return { before: text, after: '' };
+  return { before: text.slice(0, i), after: text.slice(i + EMAIL.length) };
+}
+const errorParts = parts(s.errorBody);
+const successParts = parts(s.successBody);
+
+// Screen-reader accessible labels include the "(required)" hint so the SR name
+// matches the original markup (visible label + visually-hidden requiredSr span).
+const emailA11yLabel = `${s.emailLabel} ${s.requiredSr}`;
+const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
+---
+
+<div
+  class="rr-signup-root"
+  data-err-email-empty={s.errEmailEmpty}
+  data-err-email-invalid={s.errEmailInvalid}
+  data-err-name={s.errName}
+  data-submitting={s.submitting}
+  data-submit={s.submit}
+>
+  <form
+    class="rr-form"
+    novalidate
+    data-state="idle"
+  >
+    <div class="rr-honeypot" aria-hidden="true">
+      <label for="rr-company">{s.companyHoneypot}</label>
+      <input
+        id="rr-company"
+        type="text"
+        name="_honey"
+        tabindex="-1"
+        autocomplete="off"
+      />
+    </div>
+
+    <nldd-form-field class="rr-field" label={s.legend}>
+      <nldd-radio-button-group name="bijdragen" data-field="bijdragen">
+        <nldd-radio-button-field value="Ja" label={s.radioYes} checked />
+        <nldd-radio-button-field value="Nee" label={s.radioNo} />
+      </nldd-radio-button-group>
+    </nldd-form-field>
+
+    <div class="rr-field">
+      <nldd-checkbox-field
+        name="opDeHoogte"
+        label={s.updates}
+        data-field="opDeHoogte"
+        checked
+      ></nldd-checkbox-field>
+    </div>
+
+    <nldd-form-field class="rr-field" label={emailA11yLabel}>
+      <nldd-text-field
+        data-field="email"
+        type="email"
+        name="email"
+        data-autocomplete="email"
+        required
+        error-message="rr-email-error"
+      ></nldd-text-field>
+      <nldd-form-field-error-text id="rr-email-error"></nldd-form-field-error-text>
+    </nldd-form-field>
+
+    <nldd-form-field class="rr-field" label={nameA11yLabel}>
+      <nldd-text-field
+        data-field="naam"
+        type="text"
+        name="naam"
+        data-autocomplete="name"
+        required
+        error-message="rr-naam-error"
+      ></nldd-text-field>
+      <nldd-form-field-error-text id="rr-naam-error"></nldd-form-field-error-text>
+    </nldd-form-field>
+
+    <nldd-form-field class="rr-field" label={s.orgLabel}>
+      <nldd-text-field
+        data-field="organisatie"
+        type="text"
+        name="organisatie"
+        data-autocomplete="organization"
+        placeholder={s.orgPlaceholder}
+      ></nldd-text-field>
+    </nldd-form-field>
+
+    <nldd-form-field class="rr-field" label={s.roleLabel}>
+      <nldd-text-field
+        data-field="functie"
+        type="text"
+        name="functie"
+        data-autocomplete="organization-title"
+        placeholder={s.rolePlaceholder}
+      ></nldd-text-field>
+    </nldd-form-field>
+
+    <p class="rr-form-status" role="status" aria-live="polite">
+      <span class="rr-form-status-submitting" hidden>{s.submitting}</span>
+    </p>
+
+    <button type="submit" class="rr-submit rr-btn rr-btn--primary">
+      {s.submit}
+    </button>
+  </form>
+
+  <div
+    class="rr-status-box rr-status-box--ok"
+    role="status"
+    aria-live="polite"
+    hidden
+  >
+    <h3 tabindex="-1">{s.successTitle}</h3>
+    <p>
+      {successParts.before}<a href={`mailto:${EMAIL}`}>{EMAIL}</a>{
+        successParts.after
+      }
+    </p>
+    <button type="button" class="rr-reset rr-btn rr-btn--ghost">
+      {s.successReset}
+    </button>
+  </div>
+
+  <div
+    class="rr-status-box rr-status-box--err"
+    role="alert"
+    aria-live="assertive"
+    hidden
+  >
+    <h3 tabindex="-1">{s.errorTitle}</h3>
+    <p>
+      {errorParts.before}<a href={`mailto:${EMAIL}`}>{EMAIL}</a>{
+        errorParts.after
+      }
+    </p>
+    <button type="button" class="rr-reset rr-btn rr-btn--ghost">
+      {s.errorReset}
+    </button>
+  </div>
+</div>
+
+<script>
+  const WEBHOOK =
+    'https://digilab.overheid.nl/chat/hooks/khcsah5zg3gy8notbfy5baoxwh';
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // Minimal structural views over the NLDD custom elements. We read .value /
+  // .checked off the element (set by the component on input/change), never off
+  // event.detail.
+  interface NlddValueField extends HTMLElement {
+    value: string;
+    invalid: boolean;
+    autocomplete: string;
+    focus(options?: FocusOptions): void;
+  }
+  interface NlddCheckedField extends HTMLElement {
+    checked: boolean;
+    value: string;
+  }
+
+  document.querySelectorAll<HTMLElement>('.rr-signup-root').forEach((root) => {
+    const form = root.querySelector('form.rr-form') as HTMLFormElement | null;
+    if (!form) return;
+
+    const labels = {
+      emailEmpty: root.dataset.errEmailEmpty || '',
+      emailInvalid: root.dataset.errEmailInvalid || '',
+      name: root.dataset.errName || '',
+      submitting: root.dataset.submitting || '',
+      submit: root.dataset.submit || '',
+    };
+
+    const honeypot = form.querySelector(
+      'input[name="_honey"]'
+    ) as HTMLInputElement;
+    const emailField = form.querySelector(
+      '[data-field="email"]'
+    ) as NlddValueField;
+    const naamField = form.querySelector(
+      '[data-field="naam"]'
+    ) as NlddValueField;
+    const orgField = form.querySelector(
+      '[data-field="organisatie"]'
+    ) as NlddValueField;
+    const functieField = form.querySelector(
+      '[data-field="functie"]'
+    ) as NlddValueField;
+    const bijdragenGroup = form.querySelector(
+      '[data-field="bijdragen"]'
+    ) as HTMLElement;
+    const radioFields = Array.from(
+      bijdragenGroup.querySelectorAll('nldd-radio-button-field')
+    ) as NlddCheckedField[];
+    const opDeHoogte = form.querySelector(
+      '[data-field="opDeHoogte"]'
+    ) as NlddCheckedField;
+    const emailErr = form.querySelector('#rr-email-error') as HTMLElement;
+    const naamErr = form.querySelector('#rr-naam-error') as HTMLElement;
+    const submitting = form.querySelector(
+      '.rr-form-status-submitting'
+    ) as HTMLElement;
+    const submitBtn = form.querySelector('.rr-submit') as HTMLButtonElement;
+
+    // Set autocomplete as a JS property (not a host attribute) so nldd-text-field
+    // forwards it to the inner native <input autocomplete>. Keeping it off the
+    // custom-element host avoids a WCAG 1.3.5 false positive: the htmlcs runner
+    // rejects an autocomplete token on a non-text-control host, but the real
+    // input that receives the forwarded value validates fine.
+    [emailField, naamField, orgField, functieField].forEach((field) => {
+      const hint = field.dataset.autocomplete;
+      if (hint) field.autocomplete = hint;
+    });
+
+    const boxes = root.querySelectorAll<HTMLElement>('.rr-status-box');
+    const successBox = root.querySelector(
+      '.rr-status-box--ok'
+    ) as HTMLElement;
+    const errorBox = root.querySelector(
+      '.rr-status-box--err'
+    ) as HTMLElement;
+
+    // Setting `invalid` + filling the error-text drives nldd-form-field's
+    // _syncErrorText: it toggles the error-text visible and forwards the id to
+    // the inner <input aria-describedby>. aria-invalid follows `invalid`.
+    function setFieldError(
+      field: NlddValueField,
+      el: HTMLElement,
+      msg: string
+    ) {
+      el.textContent = msg;
+      field.invalid = Boolean(msg);
+    }
+
+    function validate(): boolean {
+      let emailMsg = '';
+      let naamMsg = '';
+      const email = emailField.value.trim();
+      const naam = naamField.value.trim();
+      if (!email) emailMsg = labels.emailEmpty;
+      else if (!EMAIL_RE.test(email)) emailMsg = labels.emailInvalid;
+      if (!naam) naamMsg = labels.name;
+      setFieldError(emailField, emailErr, emailMsg);
+      setFieldError(naamField, naamErr, naamMsg);
+      return !emailMsg && !naamMsg;
+    }
+
+    function showState(state: 'idle' | 'submitting' | 'success' | 'error') {
+      if (state === 'success' || state === 'error') {
+        form.hidden = true;
+        const box = state === 'success' ? successBox : errorBox;
+        boxes.forEach((b) => (b.hidden = b !== box));
+        const h = box.querySelector('h3') as HTMLElement;
+        h.focus();
+      } else {
+        form.hidden = false;
+        boxes.forEach((b) => (b.hidden = true));
+        const busy = state === 'submitting';
+        form.setAttribute('aria-busy', busy ? 'true' : 'false');
+        submitting.hidden = !busy;
+        submitBtn.disabled = busy;
+        submitBtn.textContent = busy ? labels.submitting : labels.submit;
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (honeypot.value) return;
+
+      if (!validate()) {
+        if (emailField.invalid) {
+          emailField.focus();
+        } else {
+          naamField.focus();
+        }
+        return;
+      }
+
+      showState('submitting');
+
+      const bijdragen =
+        radioFields.find((f) => f.checked)?.value || 'Ja';
+
+      const text =
+        '#### Nieuwe aanmelding: RegelRecht\n' +
+        '| Veld | Waarde |\n' +
+        '|:-----|:-------|\n' +
+        `| **Naam** | ${naamField.value} |\n` +
+        `| **E-mail** | ${emailField.value} |\n` +
+        `| **Organisatie** | ${orgField.value || '-'} |\n` +
+        `| **Functie** | ${functieField.value || '-'} |\n` +
+        `| **Bijdragen aan validatie** | ${bijdragen} |\n` +
+        `| **Op de hoogte blijven** | ${opDeHoogte.checked ? 'Ja' : 'Nee'} |`;
+
+      try {
+        await fetch(WEBHOOK, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify({ text }),
+        });
+        showState('success');
+      } catch {
+        showState('error');
+      }
+    });
+
+    root.querySelectorAll<HTMLElement>('.rr-reset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        emailField.value = '';
+        naamField.value = '';
+        orgField.value = '';
+        functieField.value = '';
+        radioFields.forEach((f) => (f.checked = f.value === 'Ja'));
+        opDeHoogte.checked = true;
+        setFieldError(emailField, emailErr, '');
+        setFieldError(naamField, naamErr, '');
+        showState('idle');
+        // nldd-radio-button-field has no delegated focus; reach the inner
+        // native <input> through the shadow chain (field > radio-button > input),
+        // mirroring the group's own keyboard navigation.
+        const firstRadioInput = radioFields[0]?.shadowRoot
+          ?.querySelector('nldd-radio-button')
+          ?.shadowRoot?.querySelector('input');
+        firstRadioInput?.focus();
+      });
+    });
+  });
+</script>

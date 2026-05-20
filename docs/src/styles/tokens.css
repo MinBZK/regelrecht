@@ -110,15 +110,10 @@
   --vp-nav-bg-color: #0F172A;
 }
 
-/* Slightly tighter line height like the main app */
-.vp-doc p,
-.vp-doc li {
-  line-height: 1.625;
-}
-
-/* Match border radius with design system */
-.vp-doc div[class*='language-'] {
-  border-radius: 6px;
+html {
+  font-family: var(--vp-font-family-base);
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-bg);
 }
 
 /* Home page hero button styling */

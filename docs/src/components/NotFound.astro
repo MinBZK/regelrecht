@@ -1,0 +1,91 @@
+---
+/*
+ * Ported from the relanding RrNotFound.vue. Language comes from the
+ * request path prefix (langFromPath), same as the Vue source.
+ */
+import { langFromPath } from '~/lib/landing-content';
+
+interface Props {
+  pathname: string;
+}
+const { pathname } = Astro.props;
+
+const lang = langFromPath(pathname);
+const home = lang === 'en' ? '/en/' : '/';
+
+const t =
+  lang === 'en'
+    ? {
+        code: '404',
+        title: 'Page not found',
+        body: 'The page you were looking for does not exist or has moved.',
+        home: 'Back to home',
+        docs: 'Documentation',
+      }
+    : {
+        code: '404',
+        title: 'Pagina niet gevonden',
+        body: 'De pagina die je zocht bestaat niet of is verplaatst.',
+        home: 'Terug naar de startpagina',
+        docs: 'Documentatie',
+      };
+---
+
+<section class="rr-notfound" lang={lang}>
+  <p class="rr-notfound-code">{t.code}</p>
+  <h1>{t.title}</h1>
+  <p class="rr-notfound-body">{t.body}</p>
+  <p class="rr-notfound-actions">
+    {/* nldd-button renders its label in shadow DOM (invisible without JS),
+        so each button ships a real <a> fallback. CSS shows exactly one
+        (see .rr-btn-wc / .rr-btn-fallback in landing.css). */}
+    <nldd-button
+      class="rr-btn-wc"
+      variant="primary"
+      href={home}
+      text={t.home}
+    />
+    <a class="rr-btn rr-btn--primary rr-btn-fallback" href={home}>{t.home}</a>
+    <nldd-button
+      class="rr-btn-wc"
+      variant="secondary"
+      href="/guide/what-is-regelrecht"
+      text={t.docs}
+    />
+    <a class="rr-btn rr-btn--ghost rr-btn-fallback" href="/guide/what-is-regelrecht">
+      {t.docs}
+    </a>
+  </p>
+</section>
+
+<style>
+  .rr-notfound {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: clamp(3rem, 10vw, 7rem) 1.5rem;
+    text-align: center;
+  }
+  .rr-notfound-code {
+    font-size: clamp(3rem, 12vw, 6rem);
+    font-weight: 700;
+    line-height: 1;
+    margin: 0;
+    color: var(--vp-c-brand-1);
+  }
+  .rr-notfound h1 {
+    margin: 0.5rem 0 1rem;
+    font-size: clamp(1.5rem, 5vw, 2.2rem);
+    color: var(--vp-c-text-1);
+  }
+  .rr-notfound-body {
+    color: var(--vp-c-text-2);
+    font-size: 1.1rem;
+    margin: 0 0 2rem;
+  }
+  .rr-notfound-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+  }
+</style>

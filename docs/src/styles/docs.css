@@ -1,0 +1,202 @@
+/*
+ * Docs body styles that COMPLEMENT nldd-rich-text.
+ *
+ * The markdown body is wrapped in <nldd-rich-text> (a light-DOM component),
+ * which provides the NLDD prose typography — headings, paragraphs, lists,
+ * links, inline code. We only add what rich-text does not style: fenced code
+ * blocks (Shiki output), data tables, images and horizontal rules. Do NOT
+ * re-add heading/paragraph/link rules here — they would fight (and lose to,
+ * or worse, override) the NLDD typography.
+ *
+ * Imported by Base.astro.
+ */
+
+/* Fenced code blocks. Shiki sets the background inline on the <pre> via the
+   high-contrast theme; the light bg is white, so a border sets the block off
+   against the page. Scoped under nldd-rich-text so it survives the prose
+   reset. The inner <code> keeps Shiki's token colors, no extra bg/padding. */
+.rr-docs-content nldd-rich-text pre,
+.vp-doc pre {
+  margin: 1.25rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--vp-c-divider, #e2e8f0);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.rr-docs-content nldd-rich-text pre code,
+.vp-doc pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+/* Dark mode: Shiki emits dual-theme output — the light colors are inline
+   `color`/`background-color`, the dark ones are `--shiki-dark`/`--shiki-dark-bg`
+   custom properties. Astro does not switch them itself, so apply the dark
+   variants under our `.dark` class (set by the theme toggle) on the <pre> and
+   every highlighted token. */
+.dark .astro-code {
+  background-color: var(--shiki-dark-bg) !important;
+  color: var(--shiki-dark) !important;
+}
+.dark .astro-code span {
+  color: var(--shiki-dark) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+/* Data tables (e.g. the RFC index) — no nldd-table component exists. */
+.rr-docs-content table,
+.vp-doc table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  display: block;
+  overflow-x: auto;
+}
+.rr-docs-content th,
+.rr-docs-content td,
+.vp-doc th,
+.vp-doc td {
+  text-align: left;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--vp-c-divider, #e2e8f0);
+  vertical-align: top;
+}
+.rr-docs-content th,
+.vp-doc th {
+  font-weight: 600;
+  background: var(--vp-c-bg-soft, #f8fafc);
+}
+
+.rr-docs-content img,
+.vp-doc img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mermaid diagrams (inline-svg). Mermaid's `base` theme writes its colours
+   into a scoped <style> inside each <svg id="mermaid-N">, so these overrides
+   need !important to win. Colours come from NLDD tokens and follow the .dark
+   toggle (the SVG background is transparent, so the page surface shows
+   through). Tuned for the flowchart node/edge/cluster classes. */
+.rr-docs-content svg.flowchart,
+.rr-docs-content svg[id^='mermaid-'] {
+  /* Light defaults */
+  --rr-mm-node-fill: var(--vp-c-bg-soft, #f1f5f9);
+  --rr-mm-node-stroke: var(--vp-c-brand-1, #154273);
+  --rr-mm-text: var(--vp-c-text-1, #1a1a1a);
+  --rr-mm-edge: var(--vp-c-text-2, #475569);
+  --rr-mm-cluster-fill: transparent;
+  --rr-mm-cluster-stroke: var(--vp-c-divider, #cbd5e1);
+  max-width: 100%;
+  height: auto;
+}
+.dark .rr-docs-content svg.flowchart,
+.dark .rr-docs-content svg[id^='mermaid-'] {
+  --rr-mm-node-fill: #1f2a44;
+  --rr-mm-node-stroke: #6ea8e0;
+  --rr-mm-text: #e6edf3;
+  --rr-mm-edge: #9fb3c8;
+  --rr-mm-cluster-fill: rgba(255, 255, 255, 0.03);
+  --rr-mm-cluster-stroke: #33415c;
+}
+/* Node boxes */
+.rr-docs-content svg[id^='mermaid-'] .node rect,
+.rr-docs-content svg[id^='mermaid-'] .node polygon,
+.rr-docs-content svg[id^='mermaid-'] .node circle,
+.rr-docs-content svg[id^='mermaid-'] .node path {
+  fill: var(--rr-mm-node-fill) !important;
+  stroke: var(--rr-mm-node-stroke) !important;
+}
+/* Cluster (subgraph) boxes */
+.rr-docs-content svg[id^='mermaid-'] .cluster rect {
+  fill: var(--rr-mm-cluster-fill) !important;
+  stroke: var(--rr-mm-cluster-stroke) !important;
+}
+/* All label text */
+.rr-docs-content svg[id^='mermaid-'] .nodeLabel,
+.rr-docs-content svg[id^='mermaid-'] .edgeLabel,
+.rr-docs-content svg[id^='mermaid-'] .cluster-label,
+.rr-docs-content svg[id^='mermaid-'] span,
+.rr-docs-content svg[id^='mermaid-'] p,
+.rr-docs-content svg[id^='mermaid-'] text {
+  color: var(--rr-mm-text) !important;
+  fill: var(--rr-mm-text) !important;
+  background: transparent !important;
+}
+/* Edges (arrows + lines) */
+.rr-docs-content svg[id^='mermaid-'] .edgePath .path,
+.rr-docs-content svg[id^='mermaid-'] .flowchart-link {
+  stroke: var(--rr-mm-edge) !important;
+}
+.rr-docs-content svg[id^='mermaid-'] .arrowMarkerPath,
+.rr-docs-content svg[id^='mermaid-'] marker path {
+  fill: var(--rr-mm-edge) !important;
+  stroke: var(--rr-mm-edge) !important;
+}
+/* The edge-label background chip mermaid draws behind link text. */
+.rr-docs-content svg[id^='mermaid-'] .edgeLabel rect,
+.rr-docs-content svg[id^='mermaid-'] .labelBkg {
+  fill: transparent !important;
+  background: transparent !important;
+}
+
+.rr-docs-content hr,
+.vp-doc hr {
+  border: none;
+  border-top: 1px solid var(--vp-c-divider, #e2e8f0);
+  margin: 2rem 0;
+}
+
+/* Search result items. Generated by JS (createElement) in Base.astro's
+   search script, so they lack Astro's scoped data-cid — these rules must be
+   global, not scoped in the component <style>. The field/panel/dialog chrome
+   is server-rendered and stays scoped in Base.astro. */
+.rr-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--vp-c-text-1, #1a1a1a);
+  border: 1px solid transparent;
+}
+.rr-search-result:hover,
+.rr-search-result.is-active,
+.rr-search-result:focus-visible {
+  background: var(--vp-c-bg-soft, #f8fafc);
+  border-color: var(--vp-c-divider, #e2e8f0);
+  outline: none;
+}
+.rr-search-subresult {
+  margin-left: 1rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+}
+.rr-search-result-title {
+  display: block;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--vp-c-text-1, #1a1a1a);
+}
+.rr-search-subresult .rr-search-result-title {
+  font-weight: 500;
+  font-size: 0.9rem;
+  color: var(--vp-c-brand-1, #154273);
+}
+.rr-search-result-excerpt {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--vp-c-text-2, #475569);
+}
+.rr-search-result-excerpt mark {
+  background: var(--vp-c-brand-soft, #dbeafe);
+  color: var(--vp-c-text-1, #1a1a1a);
+  padding: 0 0.1em;
+  border-radius: 3px;
+}
