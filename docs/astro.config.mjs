@@ -42,11 +42,27 @@ export default defineConfig({
         dark: 'github-dark-high-contrast',
       },
     },
-    // rehypeMermaidAlt runs AFTER rehype-mermaid: it fills the empty `alt`
-    // on each generated diagram <img> with the nearest preceding heading
-    // (WCAG 1.1.1). Order matters — the <img> must exist first.
+    // inline-svg renders the diagram as an inline <svg> in the DOM (not an
+    // <img>), so its colours can be themed with CSS and follow the .dark
+    // toggle. Mermaid's `base` theme with neutral themeVariables hands the
+    // colouring to docs.css (.mermaid svg rules), keyed off currentColor and
+    // NLDD tokens, light and dark.
     rehypePlugins: [
-      [rehypeMermaid, { strategy: 'img-svg', dark: false }],
+      [
+        rehypeMermaid,
+        {
+          strategy: 'inline-svg',
+          mermaidConfig: {
+            theme: 'base',
+            themeVariables: {
+              fontFamily: 'RijksSans, system-ui, sans-serif',
+              // Transparent plate so the page background (light/dark) shows
+              // through; nodes/edges/text are set in docs.css.
+              background: 'transparent',
+            },
+          },
+        },
+      ],
       rehypeMermaidAlt,
     ],
   },

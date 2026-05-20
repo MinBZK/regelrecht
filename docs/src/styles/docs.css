@@ -71,18 +71,77 @@
   background: var(--vp-c-bg-soft, #f8fafc);
 }
 
-/* Images and diagrams. SVG diagrams (mermaid) get a white plate so they read
-   on any surface. */
 .rr-docs-content img,
 .vp-doc img {
   max-width: 100%;
   height: auto;
 }
-.rr-docs-content img[src^='data:image/svg'],
-.rr-docs-content img[src$='.svg'],
-.vp-doc img[src$='.svg'] {
-  background: #fff;
-  border-radius: 6px;
+
+/* Mermaid diagrams (inline-svg). Mermaid's `base` theme writes its colours
+   into a scoped <style> inside each <svg id="mermaid-N">, so these overrides
+   need !important to win. Colours come from NLDD tokens and follow the .dark
+   toggle (the SVG background is transparent, so the page surface shows
+   through). Tuned for the flowchart node/edge/cluster classes. */
+.rr-docs-content svg.flowchart,
+.rr-docs-content svg[id^='mermaid-'] {
+  /* Light defaults */
+  --rr-mm-node-fill: var(--vp-c-bg-soft, #f1f5f9);
+  --rr-mm-node-stroke: var(--vp-c-brand-1, #154273);
+  --rr-mm-text: var(--vp-c-text-1, #1a1a1a);
+  --rr-mm-edge: var(--vp-c-text-2, #475569);
+  --rr-mm-cluster-fill: transparent;
+  --rr-mm-cluster-stroke: var(--vp-c-divider, #cbd5e1);
+  max-width: 100%;
+  height: auto;
+}
+.dark .rr-docs-content svg.flowchart,
+.dark .rr-docs-content svg[id^='mermaid-'] {
+  --rr-mm-node-fill: #1f2a44;
+  --rr-mm-node-stroke: #6ea8e0;
+  --rr-mm-text: #e6edf3;
+  --rr-mm-edge: #9fb3c8;
+  --rr-mm-cluster-fill: rgba(255, 255, 255, 0.03);
+  --rr-mm-cluster-stroke: #33415c;
+}
+/* Node boxes */
+.rr-docs-content svg[id^='mermaid-'] .node rect,
+.rr-docs-content svg[id^='mermaid-'] .node polygon,
+.rr-docs-content svg[id^='mermaid-'] .node circle,
+.rr-docs-content svg[id^='mermaid-'] .node path {
+  fill: var(--rr-mm-node-fill) !important;
+  stroke: var(--rr-mm-node-stroke) !important;
+}
+/* Cluster (subgraph) boxes */
+.rr-docs-content svg[id^='mermaid-'] .cluster rect {
+  fill: var(--rr-mm-cluster-fill) !important;
+  stroke: var(--rr-mm-cluster-stroke) !important;
+}
+/* All label text */
+.rr-docs-content svg[id^='mermaid-'] .nodeLabel,
+.rr-docs-content svg[id^='mermaid-'] .edgeLabel,
+.rr-docs-content svg[id^='mermaid-'] .cluster-label,
+.rr-docs-content svg[id^='mermaid-'] span,
+.rr-docs-content svg[id^='mermaid-'] p,
+.rr-docs-content svg[id^='mermaid-'] text {
+  color: var(--rr-mm-text) !important;
+  fill: var(--rr-mm-text) !important;
+  background: transparent !important;
+}
+/* Edges (arrows + lines) */
+.rr-docs-content svg[id^='mermaid-'] .edgePath .path,
+.rr-docs-content svg[id^='mermaid-'] .flowchart-link {
+  stroke: var(--rr-mm-edge) !important;
+}
+.rr-docs-content svg[id^='mermaid-'] .arrowMarkerPath,
+.rr-docs-content svg[id^='mermaid-'] marker path {
+  fill: var(--rr-mm-edge) !important;
+  stroke: var(--rr-mm-edge) !important;
+}
+/* The edge-label background chip mermaid draws behind link text. */
+.rr-docs-content svg[id^='mermaid-'] .edgeLabel rect,
+.rr-docs-content svg[id^='mermaid-'] .labelBkg {
+  fill: transparent !important;
+  background: transparent !important;
 }
 
 .rr-docs-content hr,
