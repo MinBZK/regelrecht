@@ -76,6 +76,20 @@ const langToggle: NavItem | null = isLanding
   : null;
 
 const searchLabel = lang === 'en' ? 'Search' : 'Zoeken';
+const searchPlaceholder =
+  lang === 'en' ? 'Search documentation' : 'Doorzoek de documentatie';
+const searchResultsLabel =
+  lang === 'en' ? 'Search results' : 'Zoekresultaten';
+const searchHint =
+  lang === 'en'
+    ? 'Type to search the documentation.'
+    : 'Typ om de documentatie te doorzoeken.';
+const searchNoResults =
+  lang === 'en' ? 'No results found.' : 'Geen resultaten gevonden.';
+const searchDevHint =
+  lang === 'en'
+    ? 'Search is available in the production build.'
+    : 'Zoeken is beschikbaar in de productiebuild.';
 const skipText = lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud';
 const navLabel = lang === 'en' ? 'Main navigation' : 'Hoofdnavigatie';
 const themeLabelLight = lang === 'en' ? 'Dark mode' : 'Donkere modus';
@@ -224,10 +238,30 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       }
     </div>
 
-    {/* Pagefind search modal host. Pagefind only indexes after `astro
-        build`, so this is empty in `astro dev` by design. */}
-    <dialog id="rr-search-dialog" class="rr-search-dialog" aria-label={searchLabel}>
-      <div id="rr-search-ui"></div>
+    {/* Search modal host. Pagefind does the search logic (indexing, ranking,
+        highlighting, sub-results) via its HEADLESS API; the presentation is
+        custom NLDD. Pagefind only indexes after `astro build`, so the headless
+        module is absent in `astro dev` (guarded in the script below). */}
+    <dialog
+      id="rr-search-dialog"
+      class="rr-search-dialog"
+      aria-label={searchLabel}
+    >
+      <div class="rr-search-panel">
+        <nldd-search-field
+          id="rr-search-input"
+          placeholder={searchPlaceholder}
+          accessible-label={searchPlaceholder}
+        ></nldd-search-field>
+        <div
+          id="rr-search-results"
+          class="rr-search-results"
+          role="listbox"
+          aria-label={searchResultsLabel}
+        >
+          <p class="rr-search-state" data-state="hint">{searchHint}</p>
+        </div>
+      </div>
     </dialog>
 
     <script>
@@ -266,52 +300,183 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       }
     </script>
 
-    <script>
-      // Pagefind search modal. The UI bundle is emitted to /pagefind/ by
-      // astro-pagefind during the build; load it lazily on first open.
-      const dialog = document.getElementById(
-        'rr-search-dialog'
-      ) as HTMLDialogElement | null;
+    <script
+      define:vars={{
+        searchHint,
+        searchNoResults,
+        searchDevHint,
+      }}
+    >
+      // Custom NLDD search UI on top of Pagefind's HEADLESS API. Pagefind keeps
+      // doing the search logic (indexing, ranking, highlighting, sub-results);
+      // only the presentation is ours. The headless module is emitted to
+      // /pagefind/pagefind.js by astro-pagefind during the build and is absent
+      // in `astro dev` — the dynamic import is guarded so dev degrades to a hint.
+      const dialog = document.getElementById('rr-search-dialog');
       const trigger = document.getElementById('rr-search-trigger');
-      let pagefindLoaded = false;
+      const field = document.getElementById('rr-search-input');
+      const resultsEl = document.getElementById('rr-search-results');
 
-      function ensurePagefind() {
-        if (pagefindLoaded || !dialog) return;
-        pagefindLoaded = true;
-        // Pagefind's UI bundle is emitted to /pagefind/ by astro-pagefind
-        // during the build (absent in `astro dev`). Load it as a runtime
-        // asset via injected <link>/<script> so the bundler does not try
-        // to resolve it at build time.
-        const css = document.createElement('link');
-        css.rel = 'stylesheet';
-        css.href = '/pagefind/pagefind-ui.css';
-        document.head.appendChild(css);
-        const js = document.createElement('script');
-        js.src = '/pagefind/pagefind-ui.js';
-        js.onload = () => {
-          // @ts-expect-error - global from the UI bundle
-          if (window.PagefindUI) {
-            // @ts-expect-error - global from the UI bundle
-            new window.PagefindUI({
-              element: '#rr-search-ui',
-              showSubResults: true,
-            });
-          }
-        };
-        js.onerror = () => {
-          pagefindLoaded = false;
-        };
-        document.body.appendChild(js);
+      // Pagefind instance (loaded lazily on first open). `null` until loaded,
+      // `false` once an import attempt has failed (e.g. in `astro dev`).
+      let pagefind = null;
+      let pagefindFailed = false;
+      let loading = false;
+      let debounceTimer = 0;
+      let activeIndex = -1; // currently highlighted result, -1 = none
+
+      function setState(stateText, kind) {
+        if (!resultsEl) return;
+        activeIndex = -1;
+        resultsEl.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'rr-search-state';
+        p.dataset.state = kind;
+        p.textContent = stateText;
+        resultsEl.appendChild(p);
       }
+
+      async function ensurePagefind() {
+        if (pagefind || pagefindFailed || loading) return;
+        loading = true;
+        try {
+          // Vite would try to resolve a static '/pagefind/pagefind.js' import at
+          // build time (the file does not exist yet then), so build the path
+          // dynamically to keep it a pure runtime fetch.
+          const modulePath = '/pagefind/pagefind.js';
+          pagefind = await import(/* @vite-ignore */ modulePath);
+          if (pagefind.options) {
+            await pagefind.options({ excerptLength: 15 });
+          }
+        } catch (e) {
+          // Expected in `astro dev`: the index has not been built. Degrade to a
+          // hint instead of throwing. Don't spam the console on every open.
+          pagefindFailed = true;
+          setState(searchDevHint, 'dev');
+        } finally {
+          loading = false;
+        }
+      }
+
+      // Render a list of resolved Pagefind result records as NLDD-styled links.
+      function renderResults(records) {
+        if (!resultsEl) return;
+        activeIndex = -1;
+        resultsEl.innerHTML = '';
+        if (!records.length) {
+          setState(searchNoResults, 'empty');
+          return;
+        }
+        const frag = document.createDocumentFragment();
+        for (const rec of records) {
+          const item = document.createElement('a');
+          item.className = 'rr-search-result';
+          item.href = rec.url;
+          item.setAttribute('role', 'option');
+          item.tabIndex = -1;
+
+          const title = document.createElement('span');
+          title.className = 'rr-search-result-title';
+          title.textContent = (rec.meta && rec.meta.title) || rec.url;
+          item.appendChild(title);
+
+          const excerpt = document.createElement('span');
+          excerpt.className = 'rr-search-result-excerpt';
+          // Pagefind's excerpt is its own sanitized output with <mark> wrapping
+          // the matched terms — safe to inject as HTML.
+          excerpt.innerHTML = rec.excerpt;
+          item.appendChild(excerpt);
+
+          frag.appendChild(item);
+
+          // Sub-results (deep links into the same page, e.g. headings).
+          const subs = (rec.sub_results || []).slice(0, 3);
+          for (const sub of subs) {
+            // The top result of sub_results usually duplicates the page itself.
+            if (sub.url === rec.url) continue;
+            const subItem = document.createElement('a');
+            subItem.className = 'rr-search-result rr-search-subresult';
+            subItem.href = sub.url;
+            subItem.setAttribute('role', 'option');
+            subItem.tabIndex = -1;
+
+            const subTitle = document.createElement('span');
+            subTitle.className = 'rr-search-result-title';
+            subTitle.textContent = sub.title;
+            subItem.appendChild(subTitle);
+
+            if (sub.excerpt) {
+              const subExcerpt = document.createElement('span');
+              subExcerpt.className = 'rr-search-result-excerpt';
+              subExcerpt.innerHTML = sub.excerpt;
+              subItem.appendChild(subExcerpt);
+            }
+            frag.appendChild(subItem);
+          }
+        }
+        resultsEl.appendChild(frag);
+      }
+
+      function resultLinks() {
+        return resultsEl
+          ? Array.from(resultsEl.querySelectorAll('a.rr-search-result'))
+          : [];
+      }
+
+      function setActive(index) {
+        const links = resultLinks();
+        if (!links.length) return;
+        activeIndex = (index + links.length) % links.length;
+        links.forEach((a, i) => {
+          const on = i === activeIndex;
+          a.classList.toggle('is-active', on);
+          if (on) {
+            a.focus();
+            a.scrollIntoView({ block: 'nearest' });
+          }
+        });
+      }
+
+      async function runQuery(query) {
+        const q = String(query ?? '').trim();
+        if (!q) {
+          setState(searchHint, 'hint');
+          return;
+        }
+        await ensurePagefind();
+        if (!pagefind) return; // dev hint already shown
+        const search = await pagefind.search(q);
+        const records = await Promise.all(
+          search.results.slice(0, 8).map((r) => r.data())
+        );
+        renderResults(records);
+      }
+
+      function onInput(value) {
+        window.clearTimeout(debounceTimer);
+        debounceTimer = window.setTimeout(() => {
+          runQuery(value);
+        }, 200);
+      }
+
+      // nldd-search-field reflects its value onto the element's `.value`
+      // property (a string) and onto the inner input — read that, not
+      // event.detail (whose `.value` is not a plain string and broke
+      // query.trim()).
+      const fieldValue = () => field?.value ?? '';
+      field?.addEventListener('input', () => {
+        onInput(fieldValue());
+      });
+      field?.addEventListener('search', () => {
+        window.clearTimeout(debounceTimer);
+        runQuery(fieldValue());
+      });
 
       function openSearch() {
         if (!dialog) return;
         ensurePagefind();
         if (!dialog.open) dialog.showModal();
-        const input = dialog.querySelector(
-          'input'
-        ) as HTMLInputElement | null;
-        input?.focus();
+        field?.focus();
       }
 
       trigger?.addEventListener('click', openSearch);
@@ -321,6 +486,26 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
           openSearch();
         }
       });
+
+      // Keyboard a11y within the modal: arrows move through the focusable <a>
+      // result list, Enter follows the active one, Escape closes the dialog.
+      dialog?.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setActive(activeIndex + 1);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setActive(activeIndex - 1);
+        } else if (e.key === 'Enter') {
+          const links = resultLinks();
+          if (activeIndex >= 0 && links[activeIndex]) {
+            e.preventDefault();
+            links[activeIndex].click();
+          }
+        }
+        // Escape closes the native <dialog> automatically.
+      });
+
       dialog?.addEventListener('click', (e) => {
         if (e.target === dialog) dialog.close();
       });
@@ -449,7 +634,8 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
         }
       }
 
-      /* Pagefind modal host. The visible trigger is the nav "Search" item. */
+      /* Custom NLDD search modal. The visible trigger is the nav "Search"
+         item; the search logic is Pagefind's headless API. */
       .rr-search-dialog {
         border: none;
         border-radius: 10px;
@@ -463,6 +649,28 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       .rr-search-dialog::backdrop {
         background: rgba(0, 0, 0, 0.45);
       }
+      .rr-search-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      .rr-search-results {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        max-height: 60vh;
+        overflow-y: auto;
+      }
+      .rr-search-state {
+        margin: 0;
+        padding: 0.75rem 0.25rem;
+        color: var(--vp-c-text-2);
+        font-size: 0.9rem;
+      }
+      /* The search RESULT items are generated by JS (createElement) and so
+         do not carry Astro's scoped data-cid attribute — their styles must
+         be global. They live in docs.css. The field/panel/results-container
+         chrome below is server-rendered, so it can stay scoped here. */
     </style>
   </body>
 </html>
