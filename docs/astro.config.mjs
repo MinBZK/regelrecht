@@ -3,6 +3,7 @@ import mdx from '@astrojs/mdx';
 import pagefind from 'astro-pagefind';
 import rehypeMermaid from 'rehype-mermaid';
 import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
+import { rehypeTableScroll } from './src/lib/rehype-table-scroll.ts';
 
 export default defineConfig({
   site: 'https://docs.regelrecht.rijks.app',
@@ -64,6 +65,7 @@ export default defineConfig({
         },
       ],
       rehypeMermaidAlt,
+      rehypeTableScroll,
     ],
   },
   vite: {

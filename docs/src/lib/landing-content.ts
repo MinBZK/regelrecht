@@ -460,6 +460,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'Hoe het werkt', href: '/#how-it-works' },
         { label: 'Op de hoogte blijven', href: SIGNUP_NL_PATH },
         { label: 'Documentatie (Engels)', href: GUIDE_PATH },
+        { label: 'Toegankelijkheid', href: '/reference/toegankelijkheid' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -842,6 +843,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'How it works', href: '/en/#how-it-works' },
         { label: 'Stay informed', href: SIGNUP_EN_PATH },
         { label: 'Documentation', href: GUIDE_PATH },
+        { label: 'Accessibility (Dutch)', href: '/reference/toegankelijkheid' },
       ],
       partOf: [
         'Bureau Architectuur',

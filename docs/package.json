@@ -7,7 +7,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "a11y": "astro build && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'"
+    "a11y": "astro build && node scripts/check-mermaid-alt.mjs && node scripts/gen-pa11yci.mjs && start-server-and-test 'astro preview --port 4173' http://localhost:4173 'pa11y-ci'"
   },
   "dependencies": {
     "@astrojs/mdx": "^5",
