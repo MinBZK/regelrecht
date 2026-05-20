@@ -69,19 +69,19 @@ features = ["env-filter", "fmt", "registry"]
 optional = true
 
 [dependencies.tracing-opentelemetry]
-version = "0.32"
+version = "0.33"
 optional = true
 
 [dependencies.opentelemetry]
-version = "0.31"
+version = "0.32"
 optional = true
 
 [dependencies.opentelemetry_sdk]
-version = "0.31"
+version = "0.32"
 optional = true
 
 [dependencies.opentelemetry-otlp]
-version = "0.31"
+version = "0.32"
 optional = true
 
 [dev-dependencies]
