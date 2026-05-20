@@ -131,15 +131,33 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       // NLDD colours resolve via data-scheme; the landing/chrome CSS uses
       // the `.dark` class. Restore the persisted theme before first paint
       // so there is no flash. Default light. Single authority, no Vue.
+      //
+      // ClientRouter (view transitions) swaps the document on navigation and
+      // re-renders <html> from the new page's server markup, which does NOT
+      // carry the client-set data-scheme/.dark — so the theme would reset on
+      // every navigation. Re-apply on astro:after-swap (fires after the new DOM
+      // is in place, before paint) to keep the choice sticky across navigations.
       (function () {
-        try {
-          var stored = localStorage.getItem('rr-theme');
-          var dark = stored === 'dark';
+        // In-memory fallback so the choice survives navigations even when
+        // localStorage is unavailable (private mode, blocked storage). It lives
+        // on window so the persistent inline script and the after-swap handler
+        // share it across the document swap.
+        function read() {
+          try {
+            var v = localStorage.getItem('rr-theme');
+            if (v) return v;
+          } catch (e) {}
+          return window.__rrTheme || null;
+        }
+        function applyTheme() {
+          var dark = read() === 'dark';
           var root = document.documentElement;
           root.setAttribute('data-scheme', dark ? 'dark' : 'light');
           root.style.colorScheme = dark ? 'dark' : 'light';
           root.classList.toggle('dark', dark);
-        } catch (e) {}
+        }
+        applyTheme();
+        document.addEventListener('astro:after-swap', applyTheme);
       })();
     </script>
   </head>
@@ -311,6 +329,10 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
           root.setAttribute('data-scheme', dark ? 'dark' : 'light');
           root.style.colorScheme = dark ? 'dark' : 'light';
           root.classList.toggle('dark', dark);
+          // Persist to localStorage when available, and always to the in-memory
+          // fallback so the choice sticks across ClientRouter navigations even
+          // if storage is blocked.
+          window.__rrTheme = dark ? 'dark' : 'light';
           try {
             localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
           } catch (e) {}
