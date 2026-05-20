@@ -259,16 +259,30 @@ fn validate_role(role: &str) -> Result<(), StatusCode> {
     }
 }
 
-/// Normalise an email for storage and comparison: trim whitespace and
-/// lowercase. Empty results become `None` so callers can return 400
-/// instead of inserting an empty key.
+/// Normalise an email for storage and comparison: trim whitespace,
+/// lowercase, and reject obvious non-emails so junk addresses can't
+/// accumulate as pending invites that will never promote.
+///
+/// We intentionally avoid pulling in a full RFC 5322 parser: invite
+/// creation is owner-only behind OIDC, so this is correctness/data
+/// hygiene rather than a security boundary. The structural check is:
+/// exactly one `@`, non-empty local part, non-empty domain part, and a
+/// `.` in the domain. The IdP is the source of truth for whether an
+/// address is actually deliverable.
 fn normalize_email(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_lowercase())
+        return None;
     }
+    let at_count = trimmed.bytes().filter(|b| *b == b'@').count();
+    if at_count != 1 {
+        return None;
+    }
+    let (local, domain) = trimmed.split_once('@')?;
+    if local.is_empty() || domain.is_empty() || !domain.contains('.') {
+        return None;
+    }
+    Some(trimmed.to_lowercase())
 }
 
 fn validate_status(status: &str) -> Result<(), StatusCode> {
@@ -338,16 +352,25 @@ pub async fn get(
     .await
     .map_err(db_err("traject members fetch failed"))?;
 
-    let pending_invites: Vec<TrajectInvite> = sqlx::query_as(
-        "SELECT email, role::text AS role
-         FROM traject_invites
-         WHERE traject_id = $1
-         ORDER BY invited_at",
-    )
-    .bind(id)
-    .fetch_all(pool)
-    .await
-    .map_err(db_err("traject invites fetch failed"))?;
+    // Pending invites carry the email addresses of people the owner has
+    // invited but who haven't yet logged in. Only owners — who can act
+    // on invites (cancel, re-invite, change role) — get to see them;
+    // contributors get an empty list. This keeps invitee emails out of
+    // a non-owner's view by default.
+    let pending_invites: Vec<TrajectInvite> = if role == "owner" {
+        sqlx::query_as(
+            "SELECT email, role::text AS role
+             FROM traject_invites
+             WHERE traject_id = $1
+             ORDER BY invited_at",
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("traject invites fetch failed"))?
+    } else {
+        Vec::new()
+    };
 
     let sources: Vec<TrajectSourceDto> = sqlx::query_as(
         "SELECT source_id, name, source_type::text AS source_type,
@@ -646,6 +669,18 @@ pub async fn add_member(
         if affected == 0 {
             return Err(StatusCode::CONFLICT);
         }
+        // Clean up any stale invite for this email on the same traject.
+        // Race: an account can be created between an earlier
+        // `add_member` that parked an invite and a later `add_member`
+        // that found the account — without this delete, GET would
+        // return the user in both `members` and `pending_invites` until
+        // their next request triggered `promote_pending_invites`.
+        sqlx::query("DELETE FROM traject_invites WHERE traject_id = $1 AND email = $2")
+            .bind(id)
+            .bind(&email)
+            .execute(pool)
+            .await
+            .map_err(db_err("clean up stale invite"))?;
         return Ok(Json(AddMemberResponse {
             status: "active",
             email,

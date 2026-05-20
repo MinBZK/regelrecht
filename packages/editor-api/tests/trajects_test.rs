@@ -846,3 +846,114 @@ async fn remove_invite_requires_owner() {
     .unwrap_err();
     assert_eq!(err, StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn add_member_active_path_cleans_up_stale_invite() {
+    // Race window: invite an unknown email → ghost's account gets
+    // created later (e.g. they registered with the IdP but haven't
+    // hit any API yet, so promote_pending_invites hasn't run) → owner
+    // re-invites. The active path must clean up the stale invite so
+    // GET doesn't return ghost in both members and pending_invites.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "ghost@test.local",
+            "contributor"
+        )
+        .await,
+        Ok("pending")
+    );
+
+    // Ghost's account materialises (e.g. via OIDC login) but
+    // promote_pending_invites hasn't run yet.
+    let _ghost = seed_account(&db.pool, "ghost@test.local", "Ghost").await;
+
+    // Owner re-invites — now the active path is taken.
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "ghost@test.local",
+            "contributor"
+        )
+        .await,
+        Ok("active")
+    );
+
+    let (invite_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM traject_invites WHERE traject_id = $1")
+            .bind(traject_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(invite_count, 0, "stale invite must be cleaned up");
+}
+
+#[tokio::test]
+async fn get_hides_pending_invites_from_contributors() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+    add_member(&state, &alice, traject_id, &bob.email, "contributor")
+        .await
+        .unwrap();
+    add_member(
+        &state,
+        &alice,
+        traject_id,
+        "ghost@test.local",
+        "contributor",
+    )
+    .await
+    .unwrap();
+
+    // Alice (owner) sees the pending invite.
+    let Json(owner_view) = trajects::get(State(state.clone()), Extension(alice), Path(traject_id))
+        .await
+        .unwrap();
+    assert_eq!(owner_view.pending_invites.len(), 1);
+
+    // Bob (contributor) does not.
+    let Json(contributor_view) = trajects::get(State(state), Extension(bob), Path(traject_id))
+        .await
+        .unwrap();
+    assert_eq!(contributor_view.pending_invites.len(), 0);
+    assert_eq!(
+        contributor_view.members.len(),
+        2,
+        "members list itself still visible to contributors"
+    );
+}
+
+#[tokio::test]
+async fn add_member_rejects_malformed_emails() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    for bad in [
+        "notanemail",
+        "@nolocal.com",
+        "nodomain@",
+        "no-dot-in-domain@localhost",
+        "two@@signs.com",
+        "   ",
+    ] {
+        assert_eq!(
+            add_member(&state, &alice, traject_id, bad, "contributor").await,
+            Err(StatusCode::BAD_REQUEST),
+            "expected 400 for {bad:?}",
+        );
+    }
+}
