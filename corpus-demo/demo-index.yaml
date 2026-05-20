@@ -1,0 +1,21 @@
+---
+# Welke wetten zichtbaar zijn in frontend-demo.
+# Pad is relatief aan de repo-root.
+# Law-faithful wetten worden hergebruikt uit corpus/regulation/.
+# Demo-only wetten staan in corpus-demo/regulation/.
+#
+# `dependencies` zijn cross-law YAMLs die mee-geladen moeten worden in de
+# engine voordat de hoofdwet kan executen (cross-law `source.regulation` +
+# `implements` voor open_terms).
+
+laws:
+  - id: zorgtoeslagwet
+    path: corpus/regulation/nl/wet/wet_op_de_zorgtoeslag/2025-01-01.yaml
+    output: hoogte_zorgtoeslag
+    label: Zorgtoeslag
+    summary: Maandelijkse tegemoetkoming in de premie van je zorgverzekering.
+    dependencies:
+      - corpus/regulation/nl/wet/zorgverzekeringswet/2025-01-01.yaml
+      - corpus/regulation/nl/wet/algemene_wet_inkomensafhankelijke_regelingen/2025-01-01.yaml
+      - corpus/regulation/nl/wet/wet_inkomstenbelasting_2001/2025-01-01.yaml
+      - corpus/regulation/nl/ministeriele_regeling/regeling_standaardpremie/2025-01-01.yaml

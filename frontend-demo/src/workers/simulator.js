@@ -1,0 +1,156 @@
+// Dedicated Web Worker that runs the engine against a synthetic population.
+//
+// Protocol:
+//   Main -> Worker: { type: 'run', lawYamls, lawEntry, population, calculationDate }
+//   Worker -> Main (progress): { type: 'progress', done, total }
+//   Worker -> Main (result):   { type: 'result', results: [{ amount, eligible }], summary }
+//   Worker -> Main (error):    { type: 'error', message }
+
+import { deriveLawId } from '../utils/lawUtils.js';
+
+// Load the WASM engine lazily. /wasm/pkg/ is served from the public dir at
+// runtime — fetch the glue, wrap in a Blob, and dynamic-import via blob URL
+// with @vite-ignore so the bundler doesn't try to resolve the path at build.
+let engine = null;
+
+async function ensureEngine() {
+  if (engine) return engine;
+  const jsRes = await fetch('/wasm/pkg/regelrecht_engine.js');
+  if (!jsRes.ok) throw new Error(`WASM glue fetch failed: ${jsRes.status}`);
+  const jsText = await jsRes.text();
+  const blob = new Blob([jsText], { type: 'application/javascript' });
+  const blobUrl = URL.createObjectURL(blob);
+  const mod = await import(/* @vite-ignore */ blobUrl);
+  URL.revokeObjectURL(blobUrl);
+  await mod.default({ module_or_path: '/wasm/pkg/regelrecht_engine_bg.wasm' });
+  engine = new mod.WasmEngine();
+  return engine;
+}
+
+function personRecords(person) {
+  return [
+    { service: 'RVIG', table: 'personal_data', key: 'bsn', records: [{
+      bsn: person.bsn,
+      geboortedatum: person.geboortedatum,
+      verblijfsadres: 'Amsterdam',
+      land_verblijf: 'NEDERLAND',
+    }] },
+    { service: 'RVIG', table: 'relationship_data', key: 'bsn', records: [{
+      bsn: person.bsn,
+      partnerschap_type: person.hasPartner ? 'GEREGISTREERD_PARTNERSCHAP' : 'GEEN',
+      partner_bsn: person.partner_bsn ?? null,
+    }] },
+    { service: 'RVZ', table: 'insurance', key: 'bsn', records: [{
+      bsn: person.bsn,
+      polis_status: 'ACTIEF',
+      verdragsinschrijving: false,
+    }] },
+    { service: 'BELASTINGDIENST', table: 'box1', key: 'bsn', records: [{
+      bsn: person.bsn,
+      loon_uit_dienstbetrekking: person.inkomen,
+      uitkeringen_en_pensioenen: 0,
+      winst_uit_onderneming: 0,
+      resultaat_overige_werkzaamheden: 0,
+      eigen_woning: 0,
+      buitenlands_inkomen: 0,
+    }] },
+    { service: 'BELASTINGDIENST', table: 'box2', key: 'bsn', records: [{
+      bsn: person.bsn,
+      reguliere_voordelen: 0,
+      vervreemdingsvoordelen: 0,
+    }] },
+    { service: 'BELASTINGDIENST', table: 'box3', key: 'bsn', records: [{
+      bsn: person.bsn,
+      spaargeld: person.vermogen,
+      beleggingen: 0,
+      onroerend_goed: 0,
+      schulden: 0,
+    }] },
+    { service: 'DJI', table: 'detenties', key: 'bsn', records: [{
+      bsn: person.bsn,
+      detentiestatus: null,
+      inrichting_type: null,
+      zorgtype: null,
+      juridische_grondslag: null,
+    }] },
+  ];
+}
+
+async function runSimulation({ lawYamls, lawEntry, population, calculationDate }) {
+  const e = await ensureEngine();
+  for (const yaml of lawYamls) {
+    const id = deriveLawId(yaml);
+    if (id && !e.hasLaw(id)) e.loadLaw(yaml);
+  }
+
+  const results = new Array(population.length);
+  let eligible = 0;
+  let totalAmount = 0;
+
+  for (let i = 0; i < population.length; i++) {
+    const person = population[i];
+    e.clearDataSources();
+    for (const ds of personRecords(person)) {
+      e.registerDataSource(ds.table, ds.key, ds.records);
+    }
+    let amount = 0;
+    let err = null;
+    try {
+      const result = e.execute(
+        lawEntry.id,
+        lawEntry.output,
+        { bsn: person.bsn },
+        calculationDate,
+      );
+      const raw = result?.outputs?.[lawEntry.output];
+      amount = typeof raw === 'number' ? raw : Number(raw ?? 0);
+    } catch (ex) {
+      err = formatErr(ex);
+    }
+    const isEligible = !err && amount > 0;
+    results[i] = { bsn: person.bsn, amount, eligible: isEligible, error: err };
+    if (isEligible) {
+      eligible += 1;
+      totalAmount += amount;
+    }
+    if (i % 50 === 49 || i === population.length - 1) {
+      postMessage({ type: 'progress', done: i + 1, total: population.length });
+    }
+  }
+
+  const amounts = results.filter((r) => r.eligible).map((r) => r.amount).sort((a, b) => a - b);
+  const median = amounts.length ? amounts[Math.floor(amounts.length / 2)] : 0;
+  const firstError = results.find((r) => r.error)?.error ?? null;
+  const errorCount = results.reduce((n, r) => n + (r.error ? 1 : 0), 0);
+
+  postMessage({
+    type: 'result',
+    results,
+    firstError,
+    errorCount,
+    summary: {
+      total: population.length,
+      eligible,
+      percentageEligible: population.length ? eligible / population.length : 0,
+      averageAmount: eligible ? totalAmount / eligible : 0,
+      medianAmount: median,
+    },
+  });
+}
+
+function formatErr(e) {
+  if (!e) return 'Onbekende fout';
+  if (typeof e === 'string') return e;
+  if (e.message) return e.message;
+  if (e.error) return e.error;
+  try { return JSON.stringify(e); } catch { return String(e); }
+}
+
+onmessage = (event) => {
+  const msg = event.data;
+  if (msg?.type === 'run') {
+    runSimulation(msg).catch((err) => {
+      postMessage({ type: 'error', message: formatErr(err) });
+    });
+  }
+};
