@@ -638,6 +638,12 @@ pub async fn add_member(
         // demoted to contributor) the SELECT returns no row, the INSERT
         // runs zero times, no conflict triggers, and `rows_affected` is
         // 0 → CONFLICT.
+        //
+        // Transaction: the INSERT and the stale-invite cleanup must
+        // commit together. If the cleanup failed mid-flight, GET would
+        // briefly return the user in both `members` and `pending_invites`
+        // until `promote_pending_invites` next ran.
+        let mut tx = pool.begin().await.map_err(db_err("begin add_member tx"))?;
         let affected = sqlx::query(
             "INSERT INTO traject_members (traject_id, account_id, role)
              SELECT $1, $2, $3::traject_role
@@ -661,7 +667,7 @@ pub async fn add_member(
         .bind(id)
         .bind(target_id)
         .bind(&req.role)
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(db_err("add member"))?
         .rows_affected();
@@ -669,18 +675,13 @@ pub async fn add_member(
         if affected == 0 {
             return Err(StatusCode::CONFLICT);
         }
-        // Clean up any stale invite for this email on the same traject.
-        // Race: an account can be created between an earlier
-        // `add_member` that parked an invite and a later `add_member`
-        // that found the account — without this delete, GET would
-        // return the user in both `members` and `pending_invites` until
-        // their next request triggered `promote_pending_invites`.
         sqlx::query("DELETE FROM traject_invites WHERE traject_id = $1 AND email = $2")
             .bind(id)
             .bind(&email)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(db_err("clean up stale invite"))?;
+        tx.commit().await.map_err(db_err("commit add_member tx"))?;
         return Ok(Json(AddMemberResponse {
             status: "active",
             email,

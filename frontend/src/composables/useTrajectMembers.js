@@ -47,7 +47,13 @@ export function useTrajectMembers() {
       body: JSON.stringify({ email, role }),
     });
     if (!resp.ok) {
-      throw new Error((await resp.text()) || `Uitnodigen mislukt: ${resp.status}`);
+      const reason = await resp.text();
+      // 400 from normalize_email/validate_role comes back with an empty
+      // body; surface a specific message instead of "Uitnodigen mislukt: 400".
+      if (resp.status === 400) {
+        throw new Error(reason || 'Ongeldig e-mailadres of rol');
+      }
+      throw new Error(reason || `Uitnodigen mislukt: ${resp.status}`);
     }
     const body = await resp.json();
     await load(trajectId);
