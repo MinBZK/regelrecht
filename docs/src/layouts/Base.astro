@@ -60,8 +60,8 @@ if (isLanding) {
     { text: t.nav.tools, href: landingHome + '#tools' },
     { text: t.nav.example, href: landingHome + '#example' },
     { text: t.nav.faq, href: landingHome + '#faq' },
-    { text: t.nav.signup, href: t.feedback.ctaHref },
-    { text: t.nav.docs, href: '/guide/what-is-regelrecht' },
+    { text: t.nav.signup, href: t.feedback.ctaHref, icon: 'envelope' },
+    { text: t.nav.docs, href: '/guide/what-is-regelrecht', icon: 'books' },
   ];
 } else {
   globalLinks = docsNav.map((n) => ({
