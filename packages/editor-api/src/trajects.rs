@@ -591,11 +591,16 @@ pub async fn add_member(
 
     // `accounts.email` keeps the IdP-supplied casing, so the lookup
     // lowercases on the DB side to match our normalised key.
-    let target: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM accounts WHERE lower(email) = $1")
-        .bind(&email)
-        .fetch_optional(pool)
-        .await
-        .map_err(db_err("lookup account"))?;
+    // LIMIT 1 because the UNIQUE constraint is on raw `email`, not on
+    // `lower(email)`. The IdP should never produce two case-variants of
+    // the same address, but if it ever does we still want a deterministic
+    // pick instead of a runtime panic in `fetch_optional`.
+    let target: Option<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM accounts WHERE lower(email) = $1 LIMIT 1")
+            .bind(&email)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err("lookup account"))?;
 
     if let Some((target_id,)) = target {
         // Known account → write traject_members. Guard the "would demote

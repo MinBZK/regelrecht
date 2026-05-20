@@ -17,8 +17,13 @@ export function useTrajectMembers() {
   const error = ref(null);
 
   async function load(trajectId) {
+    // Reset state before the await so a reopen against a different
+    // traject can't briefly flash the previous traject's members.
     loading.value = true;
     error.value = null;
+    members.value = [];
+    pendingInvites.value = [];
+    callerRole.value = null;
     try {
       const resp = await fetch(`/api/trajects/${trajectId}`);
       if (!resp.ok) {
