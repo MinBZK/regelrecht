@@ -10,6 +10,7 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
+        args: [--maxkb=4096]
       - id: check-merge-conflict
       - id: check-case-conflict
 

@@ -25,17 +25,17 @@
 /// typically involves ~10-20 interconnected regulations).
 pub const MAX_LOADED_LAWS: usize = 100;
 
-/// Maximum YAML document size in bytes (1 MB).
+/// Maximum YAML document size in bytes (5 MB).
 ///
 /// Prevents YAML bomb attacks and excessive memory usage during parsing.
-/// 1 MB is sufficient for any reasonable law document (typical laws are 10-100 KB).
-pub const MAX_YAML_SIZE: usize = 1_000_000;
+/// Large laws like the Besluit activiteiten leefomgeving can exceed 3 MB.
+pub const MAX_YAML_SIZE: usize = 5_000_000;
 
 /// Maximum number of elements in any array within a law document.
 ///
 /// Prevents DoS via documents with extremely large arrays.
-/// 1000 elements is sufficient for any reasonable law structure.
-pub const MAX_ARRAY_SIZE: usize = 1_000;
+/// Large laws like the Besluit activiteiten leefomgeving have 10,000+ articles.
+pub const MAX_ARRAY_SIZE: usize = 15_000;
 
 /// Maximum depth for internal reference resolution within a single law.
 ///
@@ -85,7 +85,7 @@ mod tests {
         assert!(MAX_YAML_SIZE <= 10_000_000, "Should not allow 10MB+");
 
         assert!(MAX_ARRAY_SIZE >= 100, "Should allow reasonable arrays");
-        assert!(MAX_ARRAY_SIZE <= 10_000, "Should not allow huge arrays");
+        assert!(MAX_ARRAY_SIZE <= 16_000, "Should not allow huge arrays");
 
         assert!(
             MAX_RESOLUTION_DEPTH >= 10,

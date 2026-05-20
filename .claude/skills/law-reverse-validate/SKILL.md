@@ -115,6 +115,23 @@ as untranslatable:
 3. Re-run `just validate <file>`
 4. Report in the findings
 
+## Domain Knowledge Leak Check
+
+Verify that no domain knowledge has been hardcoded into translations:
+
+- **Holiday dates**: If a `definitions` block contains a hardcoded date matching
+  a known holiday (January 1, December 25, April 27, etc.), flag it. Holiday dates
+  must be parameters populated from `corpus/context/nl/calendar/`.
+- **Institutional facts**: If a `definitions` block contains a specific institution
+  name, municipality code, or organizational fact not stated in the article text,
+  flag it.
+- **Cross-cutting law logic**: If the machine_readable reimplements logic from a
+  hook-based law (AWB motiveringsplicht, Termijnenwet deadline extension) instead
+  of relying on hooks, flag as a scope violation. Consult `corpus/context/nl/hooks/`
+  for the list of hook-based laws.
+- **The test**: Can every element in the machine_readable be traced back to the
+  article text without external knowledge? If not, domain knowledge has leaked in.
+
 ## Report
 
 Report findings to the user:

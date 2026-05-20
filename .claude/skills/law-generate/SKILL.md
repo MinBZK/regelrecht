@@ -272,6 +272,50 @@ machine_readable:
         value: true
 ```
 
+### The Hooks Principle — When NOT to Add Cross-Law References
+
+When a cross-cutting law applies by force of its own text — not because the
+target law references it — it fires via **hooks**, not via `source.regulation`.
+
+**The test:** Does the target law's article text mention the cross-cutting law?
+- YES ("in afwijking van artikel 6:7 Awb") → use `overrides:` or `source:`
+- NO (the cross-cutting law just applies by default) → it fires via hooks. Do NOT add a reference.
+
+**Examples:**
+- The Omgevingswet says "binnen acht weken" — it does NOT say "met inachtneming
+  van de Algemene termijnenwet." So do NOT add `source: { regulation: algemene_termijnenwet }`.
+  The Termijnenwet fires via a hook on deadline outputs.
+- AWB art 3:46 (motiveringsplicht) applies to every BESCHIKKING. No law references it.
+  It fires via `hooks: [{ hook_point: pre_actions, applies_to: { legal_character: BESCHIKKING }}]`.
+
+**Consult the hook register** at `corpus/context/nl/hooks/` to see which laws fire
+via hooks. If a law appears there, do not add cross-law references to it from the
+target law's `machine_readable`.
+
+**When a new hook is defined** in a law's `machine_readable`, always add a
+corresponding entry to the hook register in `corpus/context/nl/hooks/`.
+
+### Context Data — Domain Knowledge Stays Out of Translations
+
+Domain knowledge — holiday dates, institutional facts, calendar data — NEVER
+goes into `machine_readable` sections. If the law text does not state a specific
+date or fact, it must come from `corpus/context/` at execution time, supplied as
+parameters.
+
+**The test:** Can a reviewer verify the machine_readable by reading ONLY the
+article text? If verification requires external knowledge (knowing that Kerstdag
+is December 25, knowing that Hemelvaartsdag depends on Easter), then that
+knowledge is context, not translation.
+
+**Example:** The Algemene termijnenwet says "de beide Kerstdagen" — the
+machine_readable declares `eerste_kerstdag` and `tweede_kerstdag` as
+**parameters** (type: date), not as definitions with hardcoded dates `2025-12-25`.
+The actual dates come from `corpus/context/nl/calendar/{year}.yaml`.
+
+**Where context lives:**
+- `corpus/context/nl/calendar/` — holiday dates per year
+- `corpus/context/nl/hooks/` — hook register per cross-cutting law
+
 ### Overrides — Lex Specialis Declarations
 
 When a specific law overrides a general law's output (e.g., Vreemdelingenwet

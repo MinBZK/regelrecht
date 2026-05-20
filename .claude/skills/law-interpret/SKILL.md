@@ -100,6 +100,16 @@ Additionally:
 - If the law declares `overrides`, verify the target law/article/output exists
 - If `produces` has `procedure_id`, verify the corresponding procedure definition exists
 
+Additionally, check for **context dependencies**:
+- If the law's `machine_readable` sections declare parameters matching holiday
+  date names (nieuwjaarsdag, koningsdag, goede_vrijdag, etc.), note that these
+  must be populated from `corpus/context/nl/calendar/{year}.yaml` at execution time.
+- If the law produces a `legal_character: BESCHIKKING`, check the hook registers
+  at `corpus/context/nl/hooks/` to identify which cross-cutting laws will fire
+  automatically (motiveringsplicht, bezwaartermijn, termijnverlenging).
+- If the law defines new `hooks:` in any article, verify that the hook register
+  in `corpus/context/nl/hooks/` has been updated with a matching entry.
+
 This helps the user understand what additional work is needed for full execution.
 
 ## Step 6: Final Report
