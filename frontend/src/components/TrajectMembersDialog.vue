@@ -192,37 +192,39 @@ async function clickLeave() {
         <template v-else>
           <nldd-simple-section heading="Actieve leden">
             <nldd-list variant="box">
-              <nldd-list-item v-for="m in members" :key="m.account_id" size="md">
-                <nldd-text-cell
-                  :text="m.name || m.email"
-                  :supporting-text="m.name ? m.email : null"
-                ></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell>
-                  <select
-                    class="members-role-select"
-                    :value="m.role"
-                    :disabled="!isOwner || rowBusy.has(m.account_id) || undefined"
-                    @change="changeMemberRole(m, $event.target.value)"
-                  >
-                    <option value="owner">Owner</option>
-                    <option value="contributor">Contributor</option>
-                  </select>
-                </nldd-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell v-if="isOwner">
-                  <nldd-button
-                    variant="ghost"
-                    size="sm"
-                    text="Verwijder"
-                    :disabled="rowBusy.has(m.account_id) || undefined"
-                    @click="clickRemoveMember(m)"
-                  ></nldd-button>
-                </nldd-cell>
+              <template v-for="m in members" :key="m.account_id">
+                <nldd-list-item size="md">
+                  <nldd-text-cell
+                    :text="m.name || m.email"
+                    :supporting-text="m.name ? m.email : null"
+                  ></nldd-text-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-cell>
+                    <select
+                      class="members-role-select"
+                      :value="m.role"
+                      :disabled="!isOwner || rowBusy.has(m.account_id) || undefined"
+                      @change="changeMemberRole(m, $event.target.value)"
+                    >
+                      <option value="owner">Owner</option>
+                      <option value="contributor">Contributor</option>
+                    </select>
+                  </nldd-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-cell v-if="isOwner">
+                    <nldd-button
+                      variant="ghost"
+                      size="sm"
+                      text="Verwijder"
+                      :disabled="rowBusy.has(m.account_id) || undefined"
+                      @click="clickRemoveMember(m)"
+                    ></nldd-button>
+                  </nldd-cell>
+                </nldd-list-item>
                 <div v-if="rowError.get(m.account_id)" class="members-row-error">
                   {{ rowError.get(m.account_id) }}
                 </div>
-              </nldd-list-item>
+              </template>
             </nldd-list>
           </nldd-simple-section>
 
@@ -231,29 +233,31 @@ async function clickLeave() {
             heading="Openstaande uitnodigingen"
           >
             <nldd-list variant="box">
-              <nldd-list-item v-for="inv in pendingInvites" :key="inv.email" size="md">
-                <nldd-text-cell
-                  :text="inv.email"
-                  supporting-text="Wacht op eerste login"
-                ></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell>
-                  <span class="members-pending-role">{{ inv.role }}</span>
-                </nldd-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell v-if="isOwner">
-                  <nldd-button
-                    variant="ghost"
-                    size="sm"
-                    text="Trek in"
-                    :disabled="rowBusy.has(inv.email) || undefined"
-                    @click="clickRemoveInvite(inv)"
-                  ></nldd-button>
-                </nldd-cell>
+              <template v-for="inv in pendingInvites" :key="inv.email">
+                <nldd-list-item size="md">
+                  <nldd-text-cell
+                    :text="inv.email"
+                    supporting-text="Wacht op eerste login"
+                  ></nldd-text-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-cell>
+                    <span class="members-pending-role">{{ inv.role }}</span>
+                  </nldd-cell>
+                  <nldd-spacer-cell size="8"></nldd-spacer-cell>
+                  <nldd-cell v-if="isOwner">
+                    <nldd-button
+                      variant="ghost"
+                      size="sm"
+                      text="Trek in"
+                      :disabled="rowBusy.has(inv.email) || undefined"
+                      @click="clickRemoveInvite(inv)"
+                    ></nldd-button>
+                  </nldd-cell>
+                </nldd-list-item>
                 <div v-if="rowError.get(inv.email)" class="members-row-error">
                   {{ rowError.get(inv.email) }}
                 </div>
-              </nldd-list-item>
+              </template>
             </nldd-list>
           </nldd-simple-section>
 
