@@ -149,6 +149,23 @@ articles:
       tenzij de beschikking een later tijdstip vermeldt.
       2. Bij of krachtens wettelijk voorschrift kan een andere termijn voor de betaling worden vastgesteld.
     url: https://wetten.overheid.nl/BWBR0005537/2026-01-01#Artikel4:87
+    machine_readable:
+      execution:
+        parameters:
+          - name: bekendmaking_datum
+            type: date
+            required: true
+            description: Datum waarop de beschikking op de voorgeschreven wijze is bekendgemaakt
+        output:
+          - name: betaaltermijn_einddatum
+            type: date
+            description: De betaling geschiedt binnen zes weken na bekendmaking (lid 1)
+        actions:
+          - output: betaaltermijn_einddatum
+            value:
+              operation: DATE_ADD
+              date: $bekendmaking_datum
+              weeks: 6
   - number: 4:88
     text: |-
       1. Bij wettelijk voorschrift kan worden bepaald dat een geldsom moet worden betaald zonder dat dit bij
@@ -248,6 +265,22 @@ articles:
     text: |-
       De schuldenaar is in verzuim indien hij niet binnen de voorgeschreven termijn heeft betaald.
     url: https://wetten.overheid.nl/BWBR0005537/2026-01-01#Artikel4:97
+    machine_readable:
+      execution:
+        parameters:
+          - name: tijdig_betaald
+            type: boolean
+            required: true
+            description: Of binnen de voorgeschreven betalingstermijn is betaald
+        output:
+          - name: in_verzuim
+            type: boolean
+            description: De schuldenaar is in verzuim indien niet tijdig is betaald
+        actions:
+          - output: in_verzuim
+            value:
+              operation: NOT
+              value: $tijdig_betaald
   - number: 4:98
     text: |-
       1. Het verzuim heeft de verschuldigdheid van wettelijke rente tot gevolg overeenkomstig de artikelen 119,
@@ -257,6 +290,58 @@ articles:
       3. Indien na het intreden van het verzuim de koers van het geld waarin de geldschuld moet worden betaald zich
       heeft gewijzigd, is artikel 125 van Boek 6 van het Burgerlijk Wetboek van overeenkomstige toepassing.
     url: https://wetten.overheid.nl/BWBR0005537/2026-01-01#Artikel4:98
+    machine_readable:
+      definitions:
+        rentedrempel_schuldenaar:
+          value: 2000
+          description: Wettelijke rente is niet verschuldigd indien het bedrag minder dan EUR 20 is (lid 2)
+        rentedrempel_bestuursorgaan:
+          value: 1000
+          description: Drempel van EUR 10 indien het bestuursorgaan de schuldenaar is (lid 2)
+      execution:
+        parameters:
+          - name: tijdig_betaald
+            type: boolean
+            required: true
+            description: Of binnen de voorgeschreven betalingstermijn is betaald
+          - name: rentebedrag
+            type: number
+            required: true
+            description: Het berekende bedrag aan wettelijke rente in eurocent
+          - name: bestuursorgaan_is_schuldenaar
+            type: boolean
+            required: true
+            description: Of het bestuursorgaan zelf de schuldenaar van de geldschuld is
+        input:
+          - name: in_verzuim
+            type: boolean
+            source:
+              output: in_verzuim
+        output:
+          - name: wettelijke_rente_verschuldigd
+            type: boolean
+            description: Of wettelijke rente verschuldigd is (lid 1 en 2)
+        actions:
+          # Lid 1: het verzuim heeft de verschuldigdheid van wettelijke rente tot gevolg.
+          # Lid 2: niet verschuldigd indien het bedrag minder dan EUR 20 (of EUR 10) is.
+          - output: wettelijke_rente_verschuldigd
+            value:
+              operation: AND
+              conditions:
+                - operation: EQUALS
+                  subject: $in_verzuim
+                  value: true
+                - operation: GREATER_THAN_OR_EQUAL
+                  subject: $rentebedrag
+                  value:
+                    operation: IF
+                    cases:
+                      - when:
+                          operation: EQUALS
+                          subject: $bestuursorgaan_is_schuldenaar
+                          value: true
+                        then: $rentedrempel_bestuursorgaan
+                    default: $rentedrempel_schuldenaar
   - number: 4:99
     text: |-
       Het bestuursorgaan stelt het bedrag van de verschuldigde wettelijke rente bij beschikking vast.
@@ -300,6 +385,23 @@ articles:
       2. Na voltooiing van de verjaring kan het bestuursorgaan zijn bevoegdheden tot aanmaning en verrekening en tot
       uitvaardiging en tenuitvoerlegging van een dwangbevel niet meer uitoefenen.
     url: https://wetten.overheid.nl/BWBR0005537/2026-01-01#Artikel4:104
+    machine_readable:
+      execution:
+        parameters:
+          - name: betaaltermijn_einddatum
+            type: date
+            required: true
+            description: De dag waarop de voorgeschreven betalingstermijn is verstreken
+        output:
+          - name: verjaringsdatum
+            type: date
+            description: De rechtsvordering tot betaling verjaart vijf jaar na afloop van de betalingstermijn (lid 1)
+        actions:
+          - output: verjaringsdatum
+            value:
+              operation: DATE_ADD
+              date: $betaaltermijn_einddatum
+              years: 5
   - number: 4:105
     text: |-
       1. De verjaring wordt gestuit door een daad van rechtsvervolging overeenkomstig artikel 316, eerste lid, van
@@ -356,12 +458,64 @@ articles:
       3. De aanmaning vermeldt dat bij niet tijdige betaling deze kan worden afgedwongen door op kosten van de
       schuldenaar uit te voeren invorderingsmaatregelen.
     url: https://wetten.overheid.nl/BWBR0005537/2026-01-01#Artikel4:112
+    machine_readable:
+      execution:
+        parameters:
+          - name: aanmaning_datum
+            type: date
+            required: true
+            description: Datum waarop de aanmaning is toegezonden
+        output:
+          - name: aanmaning_betaaltermijn_einddatum
+            type: date
+            description: De schuldenaar wordt aangemaand binnen twee weken te betalen (lid 1)
+        actions:
+          # Lid 1: betaling binnen twee weken, gerekend vanaf de dag na toezending.
+          - output: aanmaning_betaaltermijn_einddatum
+            value:
+              operation: DATE_ADD
+              date: $aanmaning_datum
+              weeks: 2
   - number: 4:113
     text: |-
       1. Het bestuursorgaan kan voor de aanmaning een vergoeding in rekening brengen. De vergoeding bedraagt € 9
       indien de schuld minder dan € 454 bedraagt en € 20 indien de schuld € 454 of meer bedraagt.
       2. De aanmaning vermeldt de vergoeding die in rekening wordt gebracht.
     url: https://wetten.overheid.nl/BWBR0005537/2026-01-01#Artikel4:113
+    machine_readable:
+      definitions:
+        aanmaningsvergoeding_laag:
+          value: 900
+          description: Vergoeding van EUR 9 indien de schuld minder dan EUR 454 bedraagt (lid 1)
+        aanmaningsvergoeding_hoog:
+          value: 2000
+          description: Vergoeding van EUR 20 indien de schuld EUR 454 of meer bedraagt (lid 1)
+        schuldgrens_aanmaningsvergoeding:
+          value: 45400
+          description: Grensbedrag van EUR 454 (lid 1)
+      execution:
+        parameters:
+          - name: schuldbedrag
+            type: number
+            required: true
+            description: Het bedrag van de schuld in eurocent
+        output:
+          - name: aanmaningsvergoeding
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De vergoeding die voor de aanmaning in rekening kan worden gebracht (lid 1)
+        actions:
+          - output: aanmaningsvergoeding
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: LESS_THAN
+                    subject: $schuldbedrag
+                    value: $schuldgrens_aanmaningsvergoeding
+                  then: $aanmaningsvergoeding_laag
+              default: $aanmaningsvergoeding_hoog
   - number: 4:114
     text: |-
       Onder dwangbevel wordt verstaan: een schriftelijk bevel van een bestuursorgaan dat ertoe strekt de betaling

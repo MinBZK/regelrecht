@@ -53,6 +53,23 @@ articles:
       tweede of derde lid, een executoriaal beslag heeft gelegd dat is vernietigd, heeft niettemin bevrijdend
       betaald.
     url: https://wetten.overheid.nl/BWBR0001827/2026-01-01#Artikel475c
+    machine_readable:
+      execution:
+        parameters:
+          - name: beslag_datum
+            type: date
+            required: true
+            description: Datum waarop het beslag is gelegd
+        output:
+          - name: vernietigingstermijn_einddatum
+            type: date
+            description: Een beslag in strijd met lid 2 of 3 kan binnen drie jaar worden vernietigd (lid 6)
+        actions:
+          - output: vernietigingstermijn_einddatum
+            value:
+              operation: DATE_ADD
+              date: $beslag_datum
+              years: 3
   - number: 475d
     text: |-
       1. Voor de vaststelling van de beslagvrije voet wordt gebruik gemaakt van het belastbaar inkomen van de
@@ -85,6 +102,23 @@ articles:
       7. Het tweede en derde lid zijn niet van toepassing bij opgave van de beslagvrije voet op de wijze, bedoeld in
       artikel 475dc, tweede lid.
     url: https://wetten.overheid.nl/BWBR0001827/2026-01-01#Artikel475d
+    machine_readable:
+      execution:
+        parameters:
+          - name: vaststelling_datum
+            type: date
+            required: true
+            description: Datum waarop de beslagvrije voet is vastgesteld
+        output:
+          - name: beslagvrije_voet_geldig_tot
+            type: date
+            description: De vaststelling van de beslagvrije voet geldt voor de duur van twaalf maanden (lid 2)
+        actions:
+          - output: beslagvrije_voet_geldig_tot
+            value:
+              operation: DATE_ADD
+              date: $vaststelling_datum
+              months: 12
   - number: 475da
     text: |-
       1. De beslagvrije voet bedraagt ten hoogste:
@@ -163,6 +197,270 @@ articles:
       eerste lid, onderdeel a, van die wet. De gewijzigde bedragen worden door of namens Onze Minister van Sociale
       Zaken en Werkgelegenheid medegedeeld in de Staatscourant.
     url: https://wetten.overheid.nl/BWBR0001827/2026-01-01#Artikel475da
+    machine_readable:
+      definitions:
+        max_alleenstaande:
+          value: 219142
+          description: Beslagvrije voet ten hoogste EUR 2.191,42 voor een alleenstaande (lid 1a)
+        max_alleenstaande_ouder:
+          value: 252669
+          description: Beslagvrije voet ten hoogste EUR 2.526,69 voor een alleenstaande ouder (lid 1b)
+        max_gehuwden_zonder_kinderen:
+          value: 288141
+          description: Beslagvrije voet ten hoogste EUR 2.881,41 voor gehuwden zonder kinderen (lid 1c)
+        max_gehuwden_met_kinderen:
+          value: 315531
+          description: Beslagvrije voet ten hoogste EUR 3.155,31 voor gehuwden met kinderen (lid 1d)
+        percentage_norm:
+          value: 0.95
+          description: De beslagvrije voet bevat 95 procent van de toepasselijke norm (lid 2)
+        percentage_geen_nl_adres:
+          value: 0.475
+          description: Zonder woonadres in Nederland bedraagt de beslagvrije voet 47,5 procent (lid 4)
+      execution:
+        parameters:
+          - name: leefsituatie
+            type: string
+            required: true
+            description: ALLEENSTAANDE, ALLEENSTAANDE_OUDER, GEHUWD_ZONDER_KINDEREN of GEHUWD_MET_KINDEREN
+          - name: norm_alleenstaande_pw
+            type: number
+            required: true
+            description: A — de norm genoemd in artikel 21 onderdeel a Participatiewet, in eurocent
+          - name: norm_gehuwden_pw
+            type: number
+            required: true
+            description: B — de norm genoemd in artikel 21 onderdeel b Participatiewet, in eurocent
+          - name: jaarinkomen
+            type: number
+            required: true
+            description: C — het tot een jaarinkomen herleide belastbaar inkomen (artikel 475d lid 1), in eurocent
+          - name: drempelbedrag_zorgtoeslag
+            type: number
+            required: true
+            description: Drempelbedrag artikel 1 lid 1 onderdeel f Wet op de zorgtoeslag, in eurocent
+          - name: percentage_zorgtoeslag
+            type: number
+            required: true
+            description: E — percentage artikel 2 lid 3 Wet op de zorgtoeslag
+          - name: afbouwpercentage_eenpersoons
+            type: number
+            required: true
+            description: F — afbouwpercentage eenpersoonshuishouden artikel 21 lid 2a Wet op de huurtoeslag
+          - name: afbouwpercentage_meerpersoons
+            type: number
+            required: true
+            description: G — afbouwpercentage meerpersoonshuishouden artikel 21 lid 2b Wet op de huurtoeslag
+          - name: maximale_rekenhuur
+            type: number
+            required: true
+            description: H — maximale rekenhuur artikel 13 lid 1a Wet op de huurtoeslag, in eurocent
+          - name: inkomen_boven_ijkpunt
+            type: number
+            required: true
+            description: I — belastbaar inkomen C verminderd met het minimum-inkomensijkpunt, in eurocent
+          - name: basishuur
+            type: number
+            required: true
+            description: J — de basishuur bedoeld in artikel 16 Wet op de huurtoeslag, in eurocent
+          - name: percentage_kindgebonden_budget
+            type: number
+            required: true
+            description: K — percentage artikel 2 lid 7 Wet op het kindgebonden budget
+          - name: verhoging_drempelinkomen_kgb
+            type: number
+            required: true
+            description: L — verhoging drempelinkomen artikel 2 lid 8 Wet op het kindgebonden budget, in eurocent
+          - name: maximum_zorgtoeslagcomponent
+            type: number
+            required: true
+            description: Bovengrens van de zorgtoeslagcomponent (lid 3), in eurocent
+        output:
+          - name: maximum_beslagvrije_voet
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De ten hoogste geldende beslagvrije voet bij de leefsituatie (lid 1)
+          - name: norm
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De toepasselijke Participatiewet-norm A of B (lid 2)
+          - name: drempelbedrag
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: D — het drempelbedrag, of C indien C lager is (lid 2)
+          - name: zorgtoeslagcomponent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De component ((C - D) / 12) x E, begrensd op grond van lid 3
+          - name: huurtoeslagcomponent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De component I x (F of G / 12), of H - J als dat minder is (lid 2)
+          - name: kindgebondenbudgetcomponent
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De kindcomponent ((C - D) / 12) x K voor leefsituaties met kinderen (lid 2)
+          - name: beslagvrije_voet
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De beslagvrije voet volgens lid 2, met inachtneming van het maximum uit lid 1
+          - name: beslagvrije_voet_geen_nl_adres
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De beslagvrije voet zonder woonadres in Nederland (lid 4)
+        actions:
+          # Lid 1: het bij de leefsituatie horende maximum.
+          - output: maximum_beslagvrije_voet
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $leefsituatie
+                    value: ALLEENSTAANDE
+                  then: $max_alleenstaande
+                - when:
+                    operation: EQUALS
+                    subject: $leefsituatie
+                    value: ALLEENSTAANDE_OUDER
+                  then: $max_alleenstaande_ouder
+                - when:
+                    operation: EQUALS
+                    subject: $leefsituatie
+                    value: GEHUWD_ZONDER_KINDEREN
+                  then: $max_gehuwden_zonder_kinderen
+              default: $max_gehuwden_met_kinderen
+          # Lid 2: A voor alleenstaanden, B voor gehuwden.
+          - output: norm
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: IN
+                    subject: $leefsituatie
+                    values:
+                      - ALLEENSTAANDE
+                      - ALLEENSTAANDE_OUDER
+                  then: $norm_alleenstaande_pw
+              default: $norm_gehuwden_pw
+          # Lid 2: D is het drempelbedrag, of C indien C lager is dan dat bedrag.
+          - output: drempelbedrag
+            value:
+              operation: MIN
+              values:
+                - $drempelbedrag_zorgtoeslag
+                - $jaarinkomen
+          # Lid 2 en 3: ((C - D) / 12) x E, ten hoogste de zorgtoeslagcomponent uit lid 3.
+          - output: zorgtoeslagcomponent
+            value:
+              operation: MIN
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - operation: DIVIDE
+                      values:
+                        - operation: SUBTRACT
+                          values:
+                            - $jaarinkomen
+                            - $drempelbedrag
+                        - 12
+                    - $percentage_zorgtoeslag
+                - $maximum_zorgtoeslagcomponent
+          # Lid 2: I x (F / 12) voor een alleenstaande, anders I x (G / 12);
+          # of, als dat minder is, H - J.
+          - output: huurtoeslagcomponent
+            value:
+              operation: MIN
+              values:
+                - operation: MULTIPLY
+                  values:
+                    - $inkomen_boven_ijkpunt
+                    - operation: DIVIDE
+                      values:
+                        - operation: IF
+                          cases:
+                            - when:
+                                operation: EQUALS
+                                subject: $leefsituatie
+                                value: ALLEENSTAANDE
+                              then: $afbouwpercentage_eenpersoons
+                          default: $afbouwpercentage_meerpersoons
+                        - 12
+                - operation: SUBTRACT
+                  values:
+                    - $maximale_rekenhuur
+                    - $basishuur
+          # Lid 2: ((C - D) / 12) x K voor de alleenstaande ouder;
+          # ((C - (D + L)) / 12) x K voor gehuwden met kinderen; anders nihil.
+          - output: kindgebondenbudgetcomponent
+            value:
+              operation: IF
+              cases:
+                - when:
+                    operation: EQUALS
+                    subject: $leefsituatie
+                    value: ALLEENSTAANDE_OUDER
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - operation: DIVIDE
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - $jaarinkomen
+                              - $drempelbedrag
+                          - 12
+                      - $percentage_kindgebonden_budget
+                - when:
+                    operation: EQUALS
+                    subject: $leefsituatie
+                    value: GEHUWD_MET_KINDEREN
+                  then:
+                    operation: MULTIPLY
+                    values:
+                      - operation: DIVIDE
+                        values:
+                          - operation: SUBTRACT
+                            values:
+                              - $jaarinkomen
+                              - operation: ADD
+                                values:
+                                  - $drempelbedrag
+                                  - $verhoging_drempelinkomen_kgb
+                          - 12
+                      - $percentage_kindgebonden_budget
+              default: 0
+          # Lid 2 met inachtneming van lid 1: de som van de componenten, ten hoogste
+          # het bij de leefsituatie horende maximum.
+          - output: beslagvrije_voet
+            value:
+              operation: MIN
+              values:
+                - operation: ADD
+                  values:
+                    - operation: MULTIPLY
+                      values:
+                        - $percentage_norm
+                        - $norm
+                    - $zorgtoeslagcomponent
+                    - $huurtoeslagcomponent
+                    - $kindgebondenbudgetcomponent
+                - $maximum_beslagvrije_voet
+          # Lid 4: zonder woonadres in Nederland 47,5% van de norm voor gehuwden.
+          - output: beslagvrije_voet_geen_nl_adres
+            value:
+              operation: MULTIPLY
+              values:
+                - $percentage_geen_nl_adres
+                - $norm_gehuwden_pw
   - number: 475db
     text: |-
       1. De beslagvrije voet, bedoeld in de artikelen 475da en 475e, tweede lid, wordt in de onderstaande volgorde
@@ -197,6 +495,39 @@ articles:
       geëxecuteerde geldende bijstandsnorm inclusief vakantiebijslag, verminderd met het inkomen, bedoeld in artikel
       32 van de Participatiewet.
     url: https://wetten.overheid.nl/BWBR0001827/2026-01-01#Artikel475dc
+    machine_readable:
+      definitions:
+        percentage_inkomen:
+          value: 0.95
+          description: De beslagvrije voet bedraagt ten hoogste 95 procent van het maandinkomen (lid 1)
+      execution:
+        parameters:
+          - name: beslagvrije_voet_475da_475db
+            type: number
+            required: true
+            description: De op grond van de artikelen 475da en 475db berekende beslagvrije voet, in eurocent
+          - name: maandinkomen
+            type: number
+            required: true
+            description: Het maandelijkse inkomen inclusief vakantiebijslag uit de vorderingen 475c lid 1 a-i
+        output:
+          - name: beslagvrije_voet_begrensd_op_inkomen
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De beslagvrije voet, ten hoogste 95 procent van het maandinkomen (lid 1)
+        actions:
+          # Lid 1: leidt toepassing van 475da en 475db tot een beslagvrije voet
+          # hoger dan 95% van het maandinkomen, dan geldt 95% van het maandinkomen.
+          - output: beslagvrije_voet_begrensd_op_inkomen
+            value:
+              operation: MIN
+              values:
+                - $beslagvrije_voet_475da_475db
+                - operation: MULTIPLY
+                  values:
+                    - $percentage_inkomen
+                    - $maandinkomen
   - number: 475e
     text: |-
       1. Indien de geëxecuteerde over een niet in de basisregistratie personen opgenomen vaste woon- of
@@ -208,6 +539,43 @@ articles:
       a. twee derde van de bijstandsnorm, genoemd in artikel 23, eerste lid, van de Participatiewet;
       b. het bedrag, genoemd in artikel 23, tweede lid, van de Participatiewet.
     url: https://wetten.overheid.nl/BWBR0001827/2026-01-01#Artikel475e
+    machine_readable:
+      execution:
+        parameters:
+          - name: verzorgingsprijs
+            type: number
+            required: true
+            description: De prijs verschuldigd voor verzorging of verpleging in de inrichting, in eurocent
+          - name: bijstandsnorm_artikel_23_lid_1
+            type: number
+            required: true
+            description: De bijstandsnorm genoemd in artikel 23 lid 1 Participatiewet, in eurocent
+          - name: bedrag_artikel_23_lid_2
+            type: number
+            required: true
+            description: Het bedrag genoemd in artikel 23 lid 2 Participatiewet, in eurocent
+        output:
+          - name: beslagvrije_voet_inrichting
+            type: amount
+            type_spec:
+              unit: eurocent
+            description: De beslagvrije voet bij opname ter verzorging of verpleging (lid 2)
+        actions:
+          # Lid 2: de verzorgingsprijs verhoogd met twee derde van de bijstandsnorm
+          # (artikel 23 lid 1 Participatiewet) en het bedrag uit artikel 23 lid 2.
+          - output: beslagvrije_voet_inrichting
+            value:
+              operation: ADD
+              values:
+                - $verzorgingsprijs
+                - operation: DIVIDE
+                  values:
+                    - operation: MULTIPLY
+                      values:
+                        - $bijstandsnorm_artikel_23_lid_1
+                        - 2
+                    - 3
+                - $bedrag_artikel_23_lid_2
   - number: 475fa
     text: |-
       Indien de toepassing van de artikelen 475da tot en met 475e leidt tot een kennelijk onevenredige hardheid als
