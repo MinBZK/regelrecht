@@ -121,7 +121,7 @@ async fn local_traject(pool: &PgPool, owner_id: Uuid, corpus_dir: &std::path::Pa
 
     sqlx::query(
         "INSERT INTO traject_members (traject_id, account_id, role)
-         VALUES ($1, $2, 'beheerder')",
+         VALUES ($1, $2, 'owner')",
     )
     .bind(traject_id)
     .bind(owner_id)

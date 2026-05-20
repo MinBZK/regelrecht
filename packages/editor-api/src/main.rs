@@ -257,6 +257,10 @@ async fn main() {
             axum::routing::patch(trajects::update_member).delete(trajects::remove_member),
         )
         .route(
+            "/api/trajects/{id}/invites/{email}",
+            axum::routing::delete(trajects::remove_invite),
+        )
+        .route(
             "/api/session/active-traject",
             get(trajects::get_active).put(trajects::set_active),
         )

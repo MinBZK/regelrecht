@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
 import { useTrajects } from '../composables/useTrajects.js';
+import TrajectMembersDialog from './TrajectMembersDialog.vue';
 
 const props = defineProps({
   // Suffix to keep ids unique when this component is mounted in multiple
@@ -57,6 +58,18 @@ function openCreate() {
   createError.value = null;
   form.value = emptyForm();
   showCreate.value = true;
+}
+
+// --- Members dialog state ---
+const showMembers = ref(false);
+const membersTrajectId = ref(null);
+const membersTrajectName = ref('');
+
+function openMembersForActive() {
+  if (!activeTraject.value) return;
+  membersTrajectId.value = activeTraject.value.id;
+  membersTrajectName.value = activeTraject.value.name;
+  showMembers.value = true;
 }
 
 function closeCreate() {
@@ -133,11 +146,23 @@ function bind(field) {
     ></nldd-menu-item>
     <nldd-menu-divider></nldd-menu-divider>
     <nldd-menu-item
+      v-if="activeTraject"
+      text="Beheer leden…"
+      start-icon="users"
+      @click="openMembersForActive"
+    ></nldd-menu-item>
+    <nldd-menu-item
       text="Nieuw traject…"
       start-icon="plus"
       @click="openCreate"
     ></nldd-menu-item>
   </nldd-menu>
+
+  <TrajectMembersDialog
+    v-model="showMembers"
+    :traject-id="membersTrajectId"
+    :traject-name="membersTrajectName"
+  />
 
   <!-- Teleport the sheet out of the toolbar so it doesn't inherit the
        toolbar's positioning / clipping. Matches the ScenarioBuilder
