@@ -2,19 +2,17 @@
 import Base from '~/layouts/Base.astro';
 import LandingSections from '~/components/LandingSections.astro';
 import Footer from '~/components/Footer.astro';
+import { content } from '~/lib/landing-content';
 
-// Frontmatter from .relanding-ref/en-index.md.
-const title = 'RegelRecht — from statute to digital execution';
-const description =
-  'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.';
+const t = content.en;
 ---
 
 <Base
   lang="en"
   kind="landing"
   pathname="/en/"
-  title={title}
-  description={description}
+  title={t.meta.title}
+  description={t.meta.description}
 >
   <LandingSections lang="en" showSignup={false} />
   <Footer lang="en" />

@@ -4,7 +4,7 @@ import '~/styles/tokens.css';
 import '~/styles/landing.css';
 import '~/styles/docs.css';
 import { ClientRouter } from 'astro:transitions';
-import { content, langFromPath } from '~/lib/landing-content';
+import { content } from '~/lib/landing-content';
 import { docsNav } from '~/lib/navLinks';
 
 interface Props {
@@ -653,20 +653,18 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       .rr-docs-content {
         min-width: 0;
       }
+      /* Column changes only. The matching outline/sidebar hides live in those
+         components' own <style> — a cross-component selector here would be
+         stamped with Base's data-cid and never match (see DocsOutline.astro /
+         DocsSidebar.astro). */
       @media (max-width: 1100px) {
         .rr-docs.has-sidebar {
           grid-template-columns: 240px minmax(0, 1fr);
-        }
-        .rr-docs.has-sidebar .rr-doc-outline {
-          display: none;
         }
       }
       @media (max-width: 768px) {
         .rr-docs.has-sidebar {
           grid-template-columns: minmax(0, 1fr);
-        }
-        .rr-docs.has-sidebar .rr-doc-sidebar {
-          display: none;
         }
       }
 

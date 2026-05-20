@@ -1,7 +1,6 @@
 /*
- * Single source of truth for the documentation navigation.
- * Imported by both config.ts (VitePress themeConfig.nav) and the theme
- * Layout, so the docs header and VitePress metadata never drift.
+ * Single source of truth for the documentation navigation, consumed by
+ * Base.astro to build the docs header (and its no-JS fallback nav).
  *
  * `match` is a path prefix used to mark the active item (aria-current).
  */

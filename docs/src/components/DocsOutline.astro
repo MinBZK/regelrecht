@@ -41,8 +41,11 @@ const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     max-height: calc(100vh - 6rem);
     overflow-y: auto;
   }
-  /* Hide below 1100px (the grid drops the outline column there). Scoped in the
-     component so it reliably wins over a cross-component grid selector. */
+  /* Hide below 1100px (the grid drops the outline column there). Must be scoped
+     here in the component: Astro stamps every selector in a component's <style>
+     with that component's data-cid, so a rule written in Base.astro targeting
+     .rr-doc-outline would be stamped with Base's cid and never match this
+     element. */
   @media (max-width: 1100px) {
     .rr-doc-outline {
       display: none;

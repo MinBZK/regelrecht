@@ -77,10 +77,11 @@ function isActive(link?: string) {
     max-height: calc(100vh - 6rem);
     overflow-y: auto;
   }
-  /* Hide on narrow screens. Scoped here in the component so it reliably wins
-     over the grid (a cross-component selector from Base would not match this
-     component's scoped class). Below 768px the docs grid is a single column;
-     a sticky sidebar would otherwise overlap the content. */
+  /* Hide on narrow screens. Must be scoped here in the component: Astro stamps
+     every selector in a component's <style> with that component's data-cid, so
+     a rule written in Base.astro targeting .rr-doc-sidebar would be stamped
+     with Base's cid and never match this element. Below 768px the docs grid is
+     a single column; a sticky sidebar would otherwise overlap the content. */
   @media (max-width: 768px) {
     .rr-doc-sidebar {
       display: none;

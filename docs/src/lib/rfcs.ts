@@ -1,9 +1,8 @@
 // Single source of truth for the RFC list.
 //
-// Both the VitePress sidebar (config.ts) and the index table (via a data
-// loader) are generated from docs/rfcs/rfc-*.md, so they cannot drift apart.
-// This module is pure Node — no Vue/VitePress imports — so it runs in the
-// VitePress config and in the data loader at build time.
+// Both the docs sidebar (via sidebar.ts) and the RFC index table
+// (RfcIndexTable.astro) are generated from src/content/rfcs/rfc-*.md, so they
+// cannot drift apart. This module is pure Node, so it runs at build time.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -79,9 +78,7 @@ export function getRfcs(): RfcEntry[] {
     const shortTitle = content.match(SHORT_TITLE)?.[1] ?? title
 
     // The link is derived from a filename we just read, so it provably
-    // resolves to a real page. This is why a bare <a href> in the index
-    // component is safe even though it sidesteps VitePress dead-link
-    // checking: a non-existent target cannot be produced here.
+    // resolves to a real page: a non-existent target cannot be produced here.
     entries.push({
       num,
       id: `RFC-${String(num).padStart(3, '0')}`,

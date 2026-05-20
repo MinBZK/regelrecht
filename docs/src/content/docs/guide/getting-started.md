@@ -74,7 +74,7 @@ regelrecht/
 ├── corpus/           # Machine-readable laws (YAML)
 ├── features/         # BDD test scenarios (Gherkin)
 ├── schema/           # Law format JSON schema
-└── docs/             # Documentation site (VitePress) + RFCs
+└── docs/             # Documentation site (Astro) + RFCs
 ```
 
 ## Next Steps
