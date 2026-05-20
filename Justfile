@@ -374,7 +374,7 @@ local-clean:
 docs-install:
     cd docs && npm ci
 
-# Start docs dev server (VitePress)
+# Start docs dev server (Astro, with HMR) at http://localhost:4321
 docs:
     cd docs && npm run dev
 
@@ -382,6 +382,10 @@ docs:
 docs-build:
     cd docs && npm run build
 
-# Preview production docs build
+# Preview production docs build (Pagefind search works here, not in dev)
 docs-preview:
     cd docs && npm run preview
+
+# Run the accessibility gate (build + pa11y-ci, WCAG 2.2 AA)
+docs-a11y:
+    cd docs && npm run a11y
