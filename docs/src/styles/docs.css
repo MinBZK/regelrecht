@@ -1,111 +1,39 @@
 /*
- * Markdown body typography for the docs pages. VitePress' default theme
- * supplied the `.vp-doc` rules; this is a minimal, token-consistent
- * replacement (headings, code, tables, links, lists) using the same
- * --vp-* variables defined in tokens.css. Deliberately restrained: it
- * only needs to render long-form documentation legibly, not reproduce
- * VitePress chrome.
+ * Docs body styles that COMPLEMENT nldd-rich-text.
+ *
+ * The markdown body is wrapped in <nldd-rich-text> (a light-DOM component),
+ * which provides the NLDD prose typography — headings, paragraphs, lists,
+ * links, inline code. We only add what rich-text does not style: fenced code
+ * blocks (Shiki output), data tables, images and horizontal rules. Do NOT
+ * re-add heading/paragraph/link rules here — they would fight (and lose to,
+ * or worse, override) the NLDD typography.
+ *
+ * Imported by Base.astro.
  */
-.vp-doc {
-  font-size: 16px;
-  line-height: 1.7;
-  color: var(--vp-c-text-1);
-}
 
-.vp-doc h1,
-.vp-doc h2,
-.vp-doc h3,
-.vp-doc h4,
-.vp-doc h5,
-.vp-doc h6 {
-  color: var(--vp-c-text-1);
-  font-weight: 700;
-  line-height: 1.25;
-  scroll-margin-top: 5rem;
-}
-.vp-doc h1 {
-  font-size: 2rem;
-  margin: 0 0 1.5rem;
-}
-.vp-doc h2 {
-  font-size: 1.5rem;
-  margin: 2.5rem 0 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--vp-c-divider);
-}
-.vp-doc h3 {
-  font-size: 1.2rem;
-  margin: 2rem 0 0.75rem;
-}
-.vp-doc h4 {
-  font-size: 1.05rem;
-  margin: 1.5rem 0 0.5rem;
-}
-
-.vp-doc p,
-.vp-doc li {
-  line-height: 1.625;
-}
-.vp-doc p {
-  margin: 1rem 0;
-}
-
-.vp-doc a {
-  color: var(--vp-c-brand-1);
-  text-decoration: none;
-  font-weight: 500;
-}
-.dark .vp-doc a {
-  color: var(--vp-c-brand-2);
-}
-.vp-doc a:hover {
-  text-decoration: underline;
-}
-
-.vp-doc ul,
-.vp-doc ol {
-  padding-left: 1.5rem;
-  margin: 1rem 0;
-}
-.vp-doc li {
-  margin: 0.4rem 0;
-}
-.vp-doc li > ul,
-.vp-doc li > ol {
-  margin: 0.4rem 0;
-}
-
-.vp-doc blockquote {
-  margin: 1.5rem 0;
-  padding-left: 1rem;
-  border-left: 3px solid var(--vp-c-divider);
-  color: var(--vp-c-text-2);
-}
-
-.vp-doc code {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.875em;
-  background: var(--vp-c-bg-mute);
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-}
+/* Fenced code blocks. Shiki sets the background inline on the <pre> via the
+   high-contrast theme; the light bg is white, so a border sets the block off
+   against the page. Scoped under nldd-rich-text so it survives the prose
+   reset. The inner <code> keeps Shiki's token colors, no extra bg/padding. */
+.rr-docs-content nldd-rich-text pre,
 .vp-doc pre {
   margin: 1.25rem 0;
   padding: 1rem 1.25rem;
+  border: 1px solid var(--vp-c-divider, #e2e8f0);
   border-radius: 6px;
   overflow-x: auto;
   font-size: 0.875rem;
   line-height: 1.6;
 }
+.rr-docs-content nldd-rich-text pre code,
 .vp-doc pre code {
   background: none;
   padding: 0;
   font-size: inherit;
 }
-.vp-doc div[class*='language-'] {
-  border-radius: 6px;
-}
 
+/* Data tables (e.g. the RFC index) — no nldd-table component exists. */
+.rr-docs-content table,
 .vp-doc table {
   width: 100%;
   border-collapse: collapse;
@@ -113,38 +41,38 @@
   display: block;
   overflow-x: auto;
 }
+.rr-docs-content th,
+.rr-docs-content td,
 .vp-doc th,
 .vp-doc td {
   text-align: left;
   padding: 0.6rem 0.9rem;
-  border: 1px solid var(--vp-c-divider);
+  border: 1px solid var(--vp-c-divider, #e2e8f0);
   vertical-align: top;
 }
+.rr-docs-content th,
 .vp-doc th {
   font-weight: 600;
-  background: var(--vp-c-bg-soft);
+  background: var(--vp-c-bg-soft, #f8fafc);
 }
 
+/* Images and diagrams. SVG diagrams (mermaid) get a white plate so they read
+   on any surface. */
+.rr-docs-content img,
 .vp-doc img {
   max-width: 100%;
   height: auto;
 }
+.rr-docs-content img[src^='data:image/svg'],
+.rr-docs-content img[src$='.svg'],
 .vp-doc img[src$='.svg'] {
   background: #fff;
   border-radius: 6px;
 }
 
+.rr-docs-content hr,
 .vp-doc hr {
   border: none;
-  border-top: 1px solid var(--vp-c-divider);
+  border-top: 1px solid var(--vp-c-divider, #e2e8f0);
   margin: 2rem 0;
-}
-
-.vp-doc > :first-child {
-  margin-top: 0;
-}
-.vp-doc h1 + h2,
-.vp-doc h2:first-child {
-  border-top: none;
-  padding-top: 0;
 }

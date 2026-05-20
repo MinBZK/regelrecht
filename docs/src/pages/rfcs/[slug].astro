@@ -34,7 +34,10 @@ const title =
   {groups && <DocsSidebar groups={groups} pathname={pathname} />}
   <div class="rr-docs-body">
     <main class="vp-doc rr-docs-content">
-      <Content />
+      {/* Light-DOM NLDD prose typography for the RFC body (SSR/no-JS safe). */}
+      <nldd-rich-text>
+        <Content />
+      </nldd-rich-text>
       <DocsFooter
         entryId={entry.id}
         collection="rfcs"

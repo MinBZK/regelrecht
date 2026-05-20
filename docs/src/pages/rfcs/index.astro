@@ -24,29 +24,35 @@ const groups = sidebarForPath(pathname);
   {groups && <DocsSidebar groups={groups} pathname={pathname} />}
   <div class="rr-docs-body">
     <main class="vp-doc rr-docs-content">
-      <h1>RFCs (Requests for Comments)</h1>
-      <p>
-        Design decisions in RegelRecht are documented through RFCs. Each RFC
-        captures the problem, considered alternatives, and the chosen
-        approach.
-      </p>
-      <h2>Index</h2>
+      {/* NLDD prose typography (light DOM) for the page copy; the RFC table
+          stays a bare <table> between the two rich-text blocks. */}
+      <nldd-rich-text>
+        <h1>RFCs (Requests for Comments)</h1>
+        <p>
+          Design decisions in RegelRecht are documented through RFCs. Each RFC
+          captures the problem, considered alternatives, and the chosen
+          approach.
+        </p>
+        <h2>Index</h2>
+      </nldd-rich-text>
       <RfcIndexTable />
-      <h2>Writing an RFC</h2>
-      <p>
-        See <a href="/rfcs/rfc-000">RFC-000</a> for the process. RFCs are
-        warranted for:
-      </p>
-      <ul>
-        <li>Law representation format changes</li>
-        <li>Execution engine architecture changes</li>
-        <li>Cross-cutting design patterns</li>
-        <li>Integration patterns between components</li>
-      </ul>
-      <p>
-        The template is at <code>docs/src/content/rfcs/template.md</code> in
-        the repository.
-      </p>
+      <nldd-rich-text>
+        <h2>Writing an RFC</h2>
+        <p>
+          See <a href="/rfcs/rfc-000">RFC-000</a> for the process. RFCs are
+          warranted for:
+        </p>
+        <ul>
+          <li>Law representation format changes</li>
+          <li>Execution engine architecture changes</li>
+          <li>Cross-cutting design patterns</li>
+          <li>Integration patterns between components</li>
+        </ul>
+        <p>
+          The template is at <code>docs/src/content/rfcs/template.md</code> in
+          the repository.
+        </p>
+      </nldd-rich-text>
       <DocsFooter entryId="index.md" collection="rfcs" pathname={pathname} />
     </main>
   </div>

@@ -42,7 +42,13 @@ const description = entry.data.description;
   {hasSidebar && <DocsSidebar groups={groups} pathname={pathname} />}
   <div class="rr-docs-body">
     <main class="vp-doc rr-docs-content">
-      <Content />
+      {/* nldd-rich-text is a light-DOM component: the markdown body stays in
+          the light DOM (SSR/no-JS safe) and gets the official NLDD prose
+          typography (headings, lists, links, code). The footer chrome stays
+          outside it. */}
+      <nldd-rich-text>
+        <Content />
+      </nldd-rich-text>
       <DocsFooter
         entryId={entry.id}
         collection="docs"
