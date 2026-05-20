@@ -41,6 +41,13 @@ const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     max-height: calc(100vh - 6rem);
     overflow-y: auto;
   }
+  /* Hide below 1100px (the grid drops the outline column there). Scoped in the
+     component so it reliably wins over a cross-component grid selector. */
+  @media (max-width: 1100px) {
+    .rr-doc-outline {
+      display: none;
+    }
+  }
   .rr-doc-outline-title {
     font-weight: 700;
     margin: 0 0 0.5rem;

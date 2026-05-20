@@ -77,6 +77,15 @@ function isActive(link?: string) {
     max-height: calc(100vh - 6rem);
     overflow-y: auto;
   }
+  /* Hide on narrow screens. Scoped here in the component so it reliably wins
+     over the grid (a cross-component selector from Base would not match this
+     component's scoped class). Below 768px the docs grid is a single column;
+     a sticky sidebar would otherwise overlap the content. */
+  @media (max-width: 768px) {
+    .rr-doc-sidebar {
+      display: none;
+    }
+  }
   .rr-doc-sidebar-group {
     margin-bottom: 1.5rem;
   }
