@@ -38,7 +38,37 @@ const cards = [
     href: 'https://github.com/MinBZK/regelrecht',
   },
 ];
+
+// Action buttons above the cards (the former VitePress home hero CTAs).
+const actions = [
+  { text: 'How It Works', href: '/concepts/how-it-works', variant: 'primary' },
+  { text: 'Get Started', href: '/guide/getting-started', variant: 'secondary' },
+  { text: 'GitHub', href: 'https://github.com/MinBZK/regelrecht', variant: 'secondary' },
+];
 ---
+
+<p class="rr-docs-actions">
+  {
+    actions.map((a) => (
+      <Fragment>
+        {/* nldd-button renders its label in shadow DOM (invisible without JS),
+            so each ships a real <a> fallback; CSS shows exactly one. */}
+        <nldd-button
+          class="rr-btn-wc"
+          variant={a.variant}
+          href={a.href}
+          text={a.text}
+        />
+        <a
+          class={`rr-btn rr-btn--${a.variant === 'primary' ? 'primary' : 'ghost'} rr-btn-fallback`}
+          href={a.href}
+        >
+          {a.text}
+        </a>
+      </Fragment>
+    ))
+  }
+</p>
 
 <div class="rr-docs-cards">
   {
@@ -56,6 +86,14 @@ const cards = [
 </div>
 
 <style>
+  /* Action buttons row above the card grid. */
+  .rr-docs-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 1.5rem 0 2rem;
+  }
+
   /* Explicit 2-column grid instead of nldd-collection: the collection uses
      repeat(auto-fill, minmax(item-width, 1fr)), which adds a 3rd column on
      wide content and let cards overflow / sit unequal. minmax(0, 1fr) keeps
