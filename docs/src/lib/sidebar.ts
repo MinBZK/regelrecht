@@ -135,6 +135,7 @@ export const sidebar: Record<string, SidebarGroup[]> = {
       items: [
         { text: 'Glossary', link: '/reference/glossary' },
         { text: 'Schema', link: '/reference/schema' },
+        { text: 'Toegankelijkheid', link: '/reference/toegankelijkheid' },
       ],
     },
     {

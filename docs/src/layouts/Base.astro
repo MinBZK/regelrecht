@@ -228,6 +228,16 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
         </nav>
       </header>
 
+      {/*
+        Landing and 404 keep a plain <div id="rr-main"> rather than <main>.
+        Their slot includes the page <footer aria-label="…">, and a <footer>
+        is only a contentinfo landmark when it has no sectioning ancestor — wrap
+        the slot in <main> and the footer stops being contentinfo, which also
+        makes its aria-label a prohibited attribute (axe aria-prohibited-attr).
+        The div keeps the footer as a valid top-level contentinfo; the skip-link
+        still targets #rr-main. (Docs pages use a real <main>, see below — there
+        the footer is a deliberate in-content sub-footer, not contentinfo.)
+      */}
       {
         isNotFound && (
           <div id="rr-main" tabindex="-1" lang={lang}>
