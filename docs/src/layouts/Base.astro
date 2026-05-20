@@ -34,9 +34,9 @@ const isNotFound = kind === 'notfound';
 const t = content[lang];
 // Landing is bilingual (path-driven); docs are English-only.
 const home = isLanding ? (lang === 'en' ? '/en/' : '/') : '/en/';
-const brandSubtitle = isLanding
-  ? t.nav.brandTagline
-  : 'Machine-readable Dutch law';
+// One brand subtitle everywhere (per language): the same tagline on the
+// landing and the docs, not a separate docs string.
+const brandSubtitle = t.nav.brandTagline;
 // The signup variant of the landing has no in-page anchor nav.
 const showSignup = isLanding && /\/aanmelden|\/en\/signup/.test(pathname);
 
@@ -46,19 +46,22 @@ interface NavItem {
   current?: boolean;
 }
 
+// Landing home for this language, used as the base for the section anchors.
+const landingHome = lang === 'en' ? '/en/' : '/';
 let globalLinks: NavItem[];
 if (isLanding) {
-  globalLinks = showSignup
-    ? []
-    : [
-        { text: t.nav.what, href: home + '#what-is-it' },
-        { text: t.nav.how, href: home + '#how-it-works' },
-        { text: t.nav.tools, href: home + '#tools' },
-        { text: t.nav.example, href: home + '#example' },
-        { text: t.nav.faq, href: home + '#faq' },
-        { text: t.nav.signup, href: t.feedback.ctaHref },
-        { text: t.nav.docs, href: '/guide/what-is-regelrecht' },
-      ];
+  // Same menu on the landing and the signup page. On signup the in-page
+  // anchors do not exist, so they point at the landing home's sections
+  // (landingHome + '#...') rather than being dropped entirely.
+  globalLinks = [
+    { text: t.nav.what, href: landingHome + '#what-is-it' },
+    { text: t.nav.how, href: landingHome + '#how-it-works' },
+    { text: t.nav.tools, href: landingHome + '#tools' },
+    { text: t.nav.example, href: landingHome + '#example' },
+    { text: t.nav.faq, href: landingHome + '#faq' },
+    { text: t.nav.signup, href: t.feedback.ctaHref },
+    { text: t.nav.docs, href: '/guide/what-is-regelrecht' },
+  ];
 } else {
   globalLinks = docsNav.map((n) => ({
     text: n.text,
@@ -68,11 +71,19 @@ if (isLanding) {
 }
 
 // Language switch lives on the right (utility) side of the bar. Only the
-// landing is bilingual; docs are English-only so no switch there.
+// landing is bilingual; docs are English-only so no switch there. On the
+// signup page the switch stays on signup (NL /aanmelden <-> EN /en/signup)
+// instead of jumping back to the home.
 const langToggle: NavItem | null = isLanding
   ? {
       text: lang === 'en' ? 'Nederlands' : 'English',
-      href: lang === 'en' ? '/' : '/en/',
+      href: showSignup
+        ? lang === 'en'
+          ? '/aanmelden'
+          : '/en/signup'
+        : lang === 'en'
+          ? '/'
+          : '/en/',
     }
   : null;
 
