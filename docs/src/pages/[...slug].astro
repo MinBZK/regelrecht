@@ -10,7 +10,7 @@ export async function getStaticPaths() {
   const docs = await getCollection('docs');
   return docs.map((entry) => ({
     // Collection id keeps the .md suffix; strip it for the site path.
-    params: { slug: entry.id.replace(/\.md$/, '') },
+    params: { slug: entry.id.replace(/\.mdx?$/, '') },
     props: { entry },
   }));
 }
@@ -18,7 +18,7 @@ export async function getStaticPaths() {
 const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 
-const pathname = '/' + entry.id.replace(/\.md$/, '');
+const pathname = '/' + entry.id.replace(/\.mdx?$/, '');
 // `sidebarForPath` returns null for pages outside a sidebar section
 // (e.g. /auth-and-roles); those render in the centered no-sidebar layout
 // instead of leaving an empty sidebar column that skews the grid.
