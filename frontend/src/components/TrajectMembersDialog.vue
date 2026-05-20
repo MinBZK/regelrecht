@@ -82,11 +82,6 @@ function close() {
   emit('update:modelValue', false);
 }
 
-function bindValue(target) {
-  return (event) =>
-    (target.value = event.target?.value ?? event.detail?.value ?? target.value);
-}
-
 async function submitInvite() {
   inviteError.value = null;
   inviteResult.value = null;
@@ -200,15 +195,18 @@ async function clickLeave() {
                   ></nldd-text-cell>
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-cell>
-                    <select
-                      class="members-role-select"
-                      :value="m.role"
-                      :disabled="!isOwner || rowBusy.has(m.account_id) || undefined"
-                      @change="changeMemberRole(m, $event.target.value)"
+                    <nldd-dropdown
+                      size="md"
+                      @change="changeMemberRole(m, $event.detail?.value ?? $event.target?.value ?? m.role)"
                     >
-                      <option value="owner">Owner</option>
-                      <option value="contributor">Contributor</option>
-                    </select>
+                      <select
+                        :value="m.role"
+                        :disabled="!isOwner || rowBusy.has(m.account_id) || undefined"
+                      >
+                        <option value="owner">Owner</option>
+                        <option value="contributor">Contributor</option>
+                      </select>
+                    </nldd-dropdown>
                   </nldd-cell>
                   <nldd-spacer-cell size="8"></nldd-spacer-cell>
                   <nldd-cell v-if="isOwner">
@@ -262,40 +260,33 @@ async function clickLeave() {
           </nldd-simple-section>
 
           <nldd-simple-section v-if="isOwner" heading="Iemand uitnodigen">
-            <nldd-list variant="box">
-              <nldd-list-item size="md">
-                <nldd-text-cell
-                  text="E-mail"
-                  supporting-text="Toegang wordt actief bij de eerste login als er nog geen account bestaat."
-                  max-width="180px"
-                ></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell>
-                  <nldd-text-field
-                    size="md"
-                    type="email"
-                    :value="inviteEmail"
-                    @input="bindValue(inviteEmail)($event)"
-                  ></nldd-text-field>
-                </nldd-cell>
-              </nldd-list-item>
-              <nldd-list-item size="md">
-                <nldd-text-cell text="Rol" max-width="180px"></nldd-text-cell>
-                <nldd-spacer-cell size="8"></nldd-spacer-cell>
-                <nldd-cell>
-                  <select
-                    class="members-role-select"
-                    :value="inviteRole"
-                    @change="inviteRole = $event.target.value"
-                  >
-                    <option value="contributor">Contributor</option>
-                    <option value="owner">Owner</option>
-                  </select>
-                </nldd-cell>
-              </nldd-list-item>
-            </nldd-list>
+            <nldd-form-field label="E-mail" supporting-label="Toegang wordt actief bij de eerste login als er nog geen account bestaat.">
+              <nldd-text-field
+                size="md"
+                type="email"
+                :value="inviteEmail"
+                :invalid="inviteError ? true : undefined"
+                :error-message="inviteError ? 'invite-email-error' : undefined"
+                @input="inviteEmail = $event.target?.value ?? $event.detail?.value ?? inviteEmail"
+              ></nldd-text-field>
+              <nldd-form-field-error-text id="invite-email-error">
+                {{ inviteError }}
+              </nldd-form-field-error-text>
+            </nldd-form-field>
+
+            <nldd-form-field label="Rol">
+              <nldd-dropdown
+                size="md"
+                @change="inviteRole = $event.detail?.value ?? $event.target?.value ?? inviteRole"
+              >
+                <select :value="inviteRole">
+                  <option value="contributor">Contributor</option>
+                  <option value="owner">Owner</option>
+                </select>
+              </nldd-dropdown>
+            </nldd-form-field>
+
             <div v-if="inviteResult" class="members-info">{{ inviteResult }}</div>
-            <div v-if="inviteError" class="members-error">{{ inviteError }}</div>
             <nldd-button
               variant="primary"
               size="md"
@@ -342,13 +333,6 @@ async function clickLeave() {
   color: var(--nldd-color-text-error, #c62828);
   font-size: 13px;
   margin-top: 8px;
-}
-.members-role-select {
-  padding: 4px 6px;
-  font-size: 13px;
-  border-radius: 4px;
-  border: 1px solid var(--nldd-color-border, #ccc);
-  background: var(--semantics-surfaces-background-color, #fff);
 }
 .members-pending-role {
   font-size: 13px;
