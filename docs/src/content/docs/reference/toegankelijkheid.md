@@ -32,17 +32,18 @@ audit is geweest, claimt RegelRecht geen volledige naleving.
 op elke wijziging die de documentatie raakt. De toets bouwt de site en draait
 [pa11y-ci](https://github.com/pa11y/pa11y-ci) met twee onafhankelijke engines,
 HTML_CodeSniffer en axe-core 4.11, tegen elke gegenereerde pagina (op dit moment
-60). De URL-lijst wordt uit de build afgeleid, zodat een nieuwe pagina
-automatisch meegetoetst wordt en niet stilletjes buiten de controle valt. De
-toets is lokaal te draaien met `just docs-a11y`.
+61). De URL-lijst wordt uit de build afgeleid, zodat een nieuwe pagina
+automatisch meegetoetst wordt en niet stilletjes buiten de controle valt.
+Dezelfde toets is lokaal te draaien met `just docs-a11y`.
 
 **Handmatig, voor wat tools niet zien.** HTML_CodeSniffer en axe dekken de
 klassieke criteria (contrast, labels, koppenstructuur, landmarks, alt-teksten),
 maar niet alles. Het team controleerde daarnaast met de hand:
 
-- de negen nieuwe WCAG 2.2-criteria (focus niet afgedekt, focusverschijning,
-  sleepbewegingen, klikdoelgrootte, consistente hulp, herhaalde invoer,
-  toegankelijke authenticatie);
+- alle nieuwe WCAG 2.2-succescriteria, over deze thema's: focus niet afgedekt
+  (minimum en uitgebreid), focusverschijning, sleepbewegingen, klikdoelgrootte,
+  consistente hulp, herhaalde invoer en toegankelijke authenticatie (minimum en
+  uitgebreid);
 - de werking met alleen toetsenbord, inclusief de sla-over-link en de
   focusvolgorde;
 - de donkere modus, op contrast en leesbaarheid;
@@ -70,8 +71,9 @@ configuratie:
   beoordelen; beide uiteinden van het verloop zijn donker genoeg (wit op de
   lichtste stop ongeveer 9:1).
 
-De toegankelijke naam van elk diagram (rol en label) wordt apart tegen de
-bouwoutput gecontroleerd, niet via de uitgesloten meting.
+De toegankelijke naam van elk diagram (`role="img"` plus een `aria-label`) wordt
+in dezelfde gate apart tegen de bouwoutput gecontroleerd, los van de uitgesloten
+contrastmeting.
 
 ## Wat nog niet gedekt is
 

@@ -117,16 +117,29 @@
   max-width: 100%;
   height: auto;
 }
-/* Node boxes — flowchart (.node) and state-diagram (.statediagram-state). */
+/* Node boxes — flowchart (.node), state-diagram (.statediagram-state) and
+   sequence-diagram actor/note boxes (.actor rect, rect.note). The sequence
+   classes ship with a pale-yellow base-theme fill that our token rules below
+   would otherwise leave untouched. */
 .rr-docs-content svg[id^='mermaid-'] .node rect,
 .rr-docs-content svg[id^='mermaid-'] .node polygon,
 .rr-docs-content svg[id^='mermaid-'] .node circle,
 .rr-docs-content svg[id^='mermaid-'] .node path,
 .rr-docs-content svg[id^='mermaid-'] .statediagram-state > rect,
 .rr-docs-content svg[id^='mermaid-'] .statediagram-state > polygon,
-.rr-docs-content svg[id^='mermaid-'] .statediagram-state > circle {
+.rr-docs-content svg[id^='mermaid-'] .statediagram-state > circle,
+.rr-docs-content svg[id^='mermaid-'] rect.actor,
+.rr-docs-content svg[id^='mermaid-'] .actor > rect,
+.rr-docs-content svg[id^='mermaid-'] rect.note {
   fill: var(--rr-mm-node-fill) !important;
   stroke: var(--rr-mm-node-stroke) !important;
+}
+/* Sequence-diagram lifelines and the loop/alt/opt frame borders. */
+.rr-docs-content svg[id^='mermaid-'] line.actor-line,
+.rr-docs-content svg[id^='mermaid-'] .actor-line,
+.rr-docs-content svg[id^='mermaid-'] .loopLine,
+.rr-docs-content svg[id^='mermaid-'] line.loopLine {
+  stroke: var(--rr-mm-edge) !important;
 }
 /* Cluster / composite-state (subgraph) boxes. */
 .rr-docs-content svg[id^='mermaid-'] .cluster rect,
@@ -156,13 +169,16 @@
   fill: var(--rr-mm-text) !important;
   background: transparent !important;
 }
-/* Edges (lines) — flowchart (.edgePath/.flowchart-link) and state-diagram
-   (.transition). The state-diagram transitions default to a transparent
-   stroke, so this is what makes their arrows visible. */
+/* Edges (lines) — flowchart (.edgePath/.flowchart-link), state-diagram
+   (.transition) and sequence-diagram message arrows (.messageLine0/1). The
+   state-diagram transitions default to a transparent stroke, so this is what
+   makes their arrows visible. */
 .rr-docs-content svg[id^='mermaid-'] .edgePath .path,
 .rr-docs-content svg[id^='mermaid-'] .flowchart-link,
 .rr-docs-content svg[id^='mermaid-'] path.transition,
-.rr-docs-content svg[id^='mermaid-'] .transition {
+.rr-docs-content svg[id^='mermaid-'] .transition,
+.rr-docs-content svg[id^='mermaid-'] .messageLine0,
+.rr-docs-content svg[id^='mermaid-'] .messageLine1 {
   stroke: var(--rr-mm-edge) !important;
   fill: none !important;
 }
