@@ -48,6 +48,14 @@ pub struct TrajectCorpus {
     /// overlay is content-only — `LoadedLaw` metadata
     /// (source_id/relative_path) doesn't change with a content edit, so
     /// backend resolution keeps using `corpus.source_map`.
+    ///
+    /// Unbounded growth is intentional: in practice the size is bounded
+    /// by the number of distinct laws edited in this traject, with a
+    /// memory budget of roughly N laws × YAML size (KBs). The overlay
+    /// is cleared when the `TrajectCorpus` cache entry is invalidated
+    /// (e.g. on source config change). If a bulk-edit flow is ever
+    /// added that touches many laws per traject, revisit with an LRU
+    /// cap.
     overlay: RwLock<HashMap<String, String>>,
 }
 

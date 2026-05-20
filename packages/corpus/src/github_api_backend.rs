@@ -60,8 +60,11 @@ enum PendingOp {
 struct Inner {
     fetcher: GitHubFetcher,
     /// Map from source-relative path → most recently observed blob SHA.
-    /// Populated by `read_file`, consumed by `persist`. Cleared on
-    /// successful persist so a new edit cycle starts from a fresh read.
+    /// Populated by `read_file`. On persist: entries for paths that were
+    /// written are refreshed with the post-commit SHA; entries for paths
+    /// that were deleted are removed. Stale entries for paths neither
+    /// written nor deleted may linger — the next write's 409/retry path
+    /// covers that, so it stays correct.
     sha_cache: HashMap<PathBuf, String>,
     /// Buffered writes/deletes, in insertion order.
     pending: Vec<(PathBuf, PendingWrite)>,

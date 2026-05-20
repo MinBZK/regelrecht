@@ -33,7 +33,6 @@ mod inner {
     #[derive(Debug, Clone)]
     pub struct DirectoryEntry {
         pub name: String,
-        pub path: String,
         /// `"file"` or `"dir"`. GitHub also reports `"submodule"` and
         /// `"symlink"`; the backend filters to `"file"` for listing.
         pub entry_type: String,
@@ -608,7 +607,6 @@ mod inner {
                 .into_iter()
                 .map(|i| DirectoryEntry {
                     name: i.name,
-                    path: i.path,
                     entry_type: i.entry_type,
                 })
                 .collect())
