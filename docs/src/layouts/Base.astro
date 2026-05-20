@@ -11,9 +11,20 @@ interface Props {
   description?: string;
   kind: 'landing' | 'docs' | 'notfound';
   pathname: string;
+  // Docs pages without a sidebar group (e.g. /auth-and-roles) render in the
+  // narrower centered layout instead of the 3-column grid. Defaults to true
+  // so the common sidebar'd docs pages need not pass it.
+  hasSidebar?: boolean;
 }
 
-const { lang, title, description, kind, pathname } = Astro.props;
+const {
+  lang,
+  title,
+  description,
+  kind,
+  pathname,
+  hasSidebar = true,
+} = Astro.props;
 
 const isLanding = kind === 'landing';
 const isNotFound = kind === 'notfound';
@@ -201,7 +212,11 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
 
       {
         kind === 'docs' && (
-          <div id="rr-main" tabindex="-1" class="rr-docs has-sidebar">
+          <div
+            id="rr-main"
+            tabindex="-1"
+            class:list={['rr-docs', { 'has-sidebar': hasSidebar }]}
+          >
             <slot />
           </div>
         )

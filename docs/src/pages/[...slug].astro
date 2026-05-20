@@ -19,7 +19,11 @@ const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 
 const pathname = '/' + entry.id.replace(/\.md$/, '');
+// `sidebarForPath` returns null for pages outside a sidebar section
+// (e.g. /auth-and-roles); those render in the centered no-sidebar layout
+// instead of leaving an empty sidebar column that skews the grid.
 const groups = sidebarForPath(pathname);
+const hasSidebar = groups !== null && groups.length > 0;
 
 const title =
   (entry.data.title ?? headings.find((h) => h.depth === 1)?.text ?? entry.id) +
@@ -31,14 +35,11 @@ const description = entry.data.description;
   lang="en"
   kind="docs"
   pathname={pathname}
+  hasSidebar={hasSidebar}
   title={title}
   description={description}
 >
-  {
-    groups && (
-      <DocsSidebar groups={groups} pathname={pathname} />
-    )
-  }
+  {hasSidebar && <DocsSidebar groups={groups} pathname={pathname} />}
   <div class="rr-docs-body">
     <main class="vp-doc rr-docs-content">
       <Content />
@@ -49,5 +50,5 @@ const description = entry.data.description;
       />
     </main>
   </div>
-  <DocsOutline headings={headings} />
+  {hasSidebar && <DocsOutline headings={headings} />}
 </Base>
