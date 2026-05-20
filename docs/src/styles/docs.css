@@ -166,7 +166,11 @@
 .rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) .cluster-label,
 .rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) span,
 .rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) p,
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) text {
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) text,
+/* Sequence-diagram actor/note labels render their text in a <tspan> that
+   carries its own fill (#333 from the base theme); the parent <text> fill does
+   not cascade to it, so without this the labels stay dark-on-dark in dark mode. */
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) text tspan {
   color: var(--rr-mm-text) !important;
   fill: var(--rr-mm-text) !important;
   background: transparent !important;
