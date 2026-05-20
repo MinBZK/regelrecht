@@ -365,6 +365,17 @@ nldd-card.rr-card:defined .rr-card-inner {
 .rr-card-link:hover {
   text-decoration: underline;
 }
+/* NLDD components carry no margins of their own (whitespace is meant to come
+   from <nldd-spacer>, which only exists once JS upgrades the element). This
+   site renders without JS, so the gap between a tag and the heading below it
+   is set here instead, matching the .rr-card-link spacing above. Covers both
+   the cards (.rr-card-inner) and the problem/solution pairs (.rr-ps-*). */
+.rr-card-inner nldd-tag,
+.rr-ps-problem nldd-tag,
+.rr-ps-solution nldd-tag {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+}
 
 /* --- Problem / solution pairs --- */
 .rr-ps-list {
