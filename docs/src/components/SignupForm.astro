@@ -14,13 +14,24 @@
  *    forwarded as aria-label.
  *  - opDeHoogte: nldd-checkbox-field (self-labelled).
  *
- * Two controls stay bare HTML on purpose:
- *  - the honeypot (off-screen, aria-hidden) for spam protection;
- *  - the submit + reset buttons. nldd-button renders its <button> inside shadow
- *    DOM, so the WCAG htmlcs runner reports the form as having no submit button
- *    (it only walks light DOM). A native <button type="submit"> keeps the gate
- *    green and guarantees the visible label. The .rr-btn classes match the rest
- *    of the landing.
+ * The <form> is wrapped in <nldd-form> in user-provided-form mode: nldd-form
+ * is a shadow-less plain element that renders a real light-DOM <form>, and when
+ * it finds a <form> child it only mirrors attributes (no DOM migration), which
+ * is SSR/Astro-safe. That pulls in NLDD's form vertical-rhythm CSS (from the
+ * global @nldd/design-system/styles import in Base.astro) so field spacing
+ * comes from the design system.
+ *
+ * Submit + reset use nldd-button inside nldd-form-actions. nldd-button is NOT
+ * form-associated — it renders its <button> in shadow DOM and does not wire it
+ * to the surrounding form — so a click never triggers submit on its own. The
+ * inline script bridges this: a click on the submit nldd-button calls
+ * form.requestSubmit(), and the reset buttons are handled as before. Because
+ * the real submit control then lives in shadow DOM, the htmlcs runner (which
+ * walks light DOM only) would flag the form as having no submit button, so we
+ * keep a visually-hidden native <button type="submit"> in the light DOM purely
+ * to satisfy the a11y gate and the no-JS path.
+ *
+ * The honeypot (off-screen, aria-hidden) stays bare HTML for spam protection.
  *
  * Vue reactivity is replaced by a vanilla TypeScript handler in the inline
  * <script>: honeypot early-return, the same email/name validation (regex
@@ -62,6 +73,7 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
   data-submitting={s.submitting}
   data-submit={s.submit}
 >
+  <nldd-form novalidate>
   <form
     class="rr-form"
     novalidate
@@ -142,10 +154,30 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
       <span class="rr-form-status-submitting" hidden>{s.submitting}</span>
     </p>
 
-    <button type="submit" class="rr-submit rr-btn rr-btn--primary">
-      {s.submit}
-    </button>
+    {/*
+      Submit: same nldd-button + light-DOM fallback pattern as the rest of the
+      site (.rr-btn-wc upgrades, .rr-btn-fallback shows until it does), with two
+      twists specific to a form control:
+       - the fallback is a native <button type="submit">, not an <a>, so it is
+         a real submit control. It is the keyboard Enter-to-submit default and
+         the no-JS submit path, and it keeps htmlcs from flagging WCAG H32.2
+         (the nldd-button's <button> is in shadow DOM, invisible to the runner).
+       - nldd-button is not form-associated, so a click on it never fires the
+         form's submit. The inline script bridges it to form.requestSubmit().
+    */}
+    <nldd-form-actions>
+      <nldd-button
+        class="rr-submit rr-btn-wc"
+        variant="primary"
+        type="submit"
+        text={s.submit}
+      ></nldd-button>
+      <button type="submit" class="rr-btn rr-btn--primary rr-btn-fallback">
+        {s.submit}
+      </button>
+    </nldd-form-actions>
   </form>
+  </nldd-form>
 
   <div
     class="rr-status-box rr-status-box--ok"
@@ -159,9 +191,12 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
         successParts.after
       }
     </p>
-    <button type="button" class="rr-reset rr-btn rr-btn--ghost">
-      {s.successReset}
-    </button>
+    <nldd-button
+      class="rr-reset"
+      variant="secondary"
+      type="button"
+      text={s.successReset}
+    ></nldd-button>
   </div>
 
   <div
@@ -176,9 +211,12 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
         errorParts.after
       }
     </p>
-    <button type="button" class="rr-reset rr-btn rr-btn--ghost">
-      {s.errorReset}
-    </button>
+    <nldd-button
+      class="rr-reset"
+      variant="secondary"
+      type="button"
+      text={s.errorReset}
+    ></nldd-button>
   </div>
 </div>
 
@@ -242,7 +280,13 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
     const submitting = form.querySelector(
       '.rr-form-status-submitting'
     ) as HTMLElement;
-    const submitBtn = form.querySelector('.rr-submit') as HTMLButtonElement;
+    // nldd-button host: `disabled` is an attribute, the label is the `text`
+    // property. It is not form-associated, so a click does not submit on its
+    // own — we bridge it to form.requestSubmit() below.
+    const submitBtn = form.querySelector('.rr-submit') as HTMLElement & {
+      disabled: boolean;
+      text: string;
+    };
 
     // Set autocomplete as a JS property (not a host attribute) so nldd-text-field
     // forwards it to the inner native <input autocomplete>. Keeping it off the
@@ -301,9 +345,17 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
         form.setAttribute('aria-busy', busy ? 'true' : 'false');
         submitting.hidden = !busy;
         submitBtn.disabled = busy;
-        submitBtn.textContent = busy ? labels.submitting : labels.submit;
+        submitBtn.text = busy ? labels.submitting : labels.submit;
       }
     }
+
+    // nldd-button is not form-associated: clicking it never fires the form's
+    // submit event. Bridge it to requestSubmit() (which runs our submit
+    // handler). Skip while disabled so a double-click during the in-flight
+    // request can't re-submit.
+    submitBtn.addEventListener('click', () => {
+      if (!submitBtn.disabled) form.requestSubmit();
+    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
