@@ -101,16 +101,20 @@ async fn create_traject(state: &AppState, owner: &AccountRecord, name: &str) -> 
     summary.id
 }
 
+/// Test helper that calls `trajects::add_member` and returns either the
+/// resulting `(StatusCode::OK, "active" | "pending")` on success or the
+/// error status on failure. Tests that care about the response body call
+/// `trajects::add_member` directly.
 async fn add_member(
     state: &AppState,
-    beheerder: &AccountRecord,
+    owner: &AccountRecord,
     traject_id: Uuid,
     invitee_email: &str,
     role: &str,
-) -> StatusCode {
+) -> Result<&'static str, StatusCode> {
     trajects::add_member(
         State(state.clone()),
-        Extension(beheerder.clone()),
+        Extension(owner.clone()),
         Path(traject_id),
         Json(AddMemberRequest {
             email: invitee_email.to_string(),
@@ -118,7 +122,7 @@ async fn add_member(
         }),
     )
     .await
-    .unwrap_or_else(|s| s)
+    .map(|Json(body)| body.status)
 }
 
 fn make_session() -> Session {
@@ -130,7 +134,7 @@ fn make_session() -> Session {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn create_inserts_traject_with_owner_as_beheerder_and_writable_own_source() {
+async fn create_inserts_traject_with_creator_as_owner_and_writable_own_source() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
@@ -146,7 +150,7 @@ async fn create_inserts_traject_with_owner_as_beheerder_and_writable_own_source(
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(summary.name, "Tarief");
     assert_eq!(summary.status, "bezig");
-    assert_eq!(summary.role, "beheerder");
+    assert_eq!(summary.role, "owner");
 
     let (role,): (String,) = sqlx::query_as(
         "SELECT role::text FROM traject_members WHERE traject_id = $1 AND account_id = $2",
@@ -156,7 +160,7 @@ async fn create_inserts_traject_with_owner_as_beheerder_and_writable_own_source(
     .fetch_one(&db.pool)
     .await
     .unwrap();
-    assert_eq!(role, "beheerder");
+    assert_eq!(role, "owner");
 
     let (priority, is_writable_own, gh_branch): (i32, bool, String) = sqlx::query_as(
         "SELECT priority, is_writable_own, gh_branch
@@ -241,7 +245,7 @@ async fn get_returns_detail_for_member() {
         .await
         .unwrap();
     assert_eq!(detail.summary.id, traject_id);
-    assert_eq!(detail.summary.role, "beheerder");
+    assert_eq!(detail.summary.role, "owner");
     assert_eq!(detail.members.len(), 1);
     assert_eq!(detail.members[0].account_id, alice.id);
     // Only the writable-own source is present because the empty CorpusState
@@ -255,15 +259,15 @@ async fn get_returns_detail_for_member() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn update_rejects_lid_and_accepts_beheerder() {
+async fn update_rejects_contributor_and_accepts_owner() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
     let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
     let traject_id = create_traject(&state, &alice, "Tarief").await;
     assert_eq!(
-        add_member(&state, &alice, traject_id, &bob.email, "lid").await,
-        StatusCode::NO_CONTENT
+        add_member(&state, &alice, traject_id, &bob.email, "contributor").await,
+        Ok("active")
     );
 
     let body = UpdateTrajectRequest {
@@ -273,7 +277,7 @@ async fn update_rejects_lid_and_accepts_beheerder() {
         status: None,
     };
 
-    // lid → 403
+    // contributor → 403
     let err = trajects::update(
         State(state.clone()),
         Extension(bob),
@@ -289,7 +293,7 @@ async fn update_rejects_lid_and_accepts_beheerder() {
     .unwrap_err();
     assert_eq!(err, StatusCode::FORBIDDEN);
 
-    // beheerder → 204
+    // owner → 204
     let ok = trajects::update(
         State(state.clone()),
         Extension(alice.clone()),
@@ -336,14 +340,75 @@ async fn update_validates_status_enum() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn add_member_returns_404_when_email_has_no_account() {
+async fn add_member_with_unknown_email_creates_pending_invite() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
     let traject_id = create_traject(&state, &alice, "Tarief").await;
 
-    let status = add_member(&state, &alice, traject_id, "ghost@test.local", "lid").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    let status = add_member(
+        &state,
+        &alice,
+        traject_id,
+        "ghost@test.local",
+        "contributor",
+    )
+    .await;
+    assert_eq!(status, Ok("pending"));
+
+    let (email, role): (String, String) =
+        sqlx::query_as("SELECT email, role::text FROM traject_invites WHERE traject_id = $1")
+            .bind(traject_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(email, "ghost@test.local");
+    assert_eq!(role, "contributor");
+
+    // No traject_members row was created — only the inviter.
+    let (member_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM traject_members WHERE traject_id = $1")
+            .bind(traject_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(member_count, 1);
+}
+
+#[tokio::test]
+async fn add_member_normalizes_email_case_for_pending_invites() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "Mixed@Case.LOCAL",
+            "contributor"
+        )
+        .await,
+        Ok("pending")
+    );
+    // A re-invite using a different casing of the same email must
+    // collide on the (traject_id, email) primary key.
+    assert_eq!(
+        add_member(&state, &alice, traject_id, "mixed@case.local", "owner").await,
+        Ok("pending")
+    );
+
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT email, role::text FROM traject_invites WHERE traject_id = $1")
+            .bind(traject_id)
+            .fetch_all(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(rows.len(), 1, "case variants must collide");
+    assert_eq!(rows[0].0, "mixed@case.local");
+    assert_eq!(rows[0].1, "owner", "re-invite updates the role");
 }
 
 #[tokio::test]
@@ -355,12 +420,12 @@ async fn add_member_upserts_role_on_conflict() {
     let traject_id = create_traject(&state, &alice, "Tarief").await;
 
     assert_eq!(
-        add_member(&state, &alice, traject_id, &bob.email, "lid").await,
-        StatusCode::NO_CONTENT
+        add_member(&state, &alice, traject_id, &bob.email, "contributor").await,
+        Ok("active")
     );
     assert_eq!(
-        add_member(&state, &alice, traject_id, &bob.email, "beheerder").await,
-        StatusCode::NO_CONTENT
+        add_member(&state, &alice, traject_id, &bob.email, "owner").await,
+        Ok("active")
     );
 
     let (role,): (String,) = sqlx::query_as(
@@ -371,24 +436,24 @@ async fn add_member_upserts_role_on_conflict() {
     .fetch_one(&db.pool)
     .await
     .unwrap();
-    assert_eq!(role, "beheerder");
+    assert_eq!(role, "owner");
 }
 
 #[tokio::test]
-async fn add_member_blocks_demoting_last_beheerder_via_upsert() {
+async fn add_member_blocks_demoting_last_owner_via_upsert() {
     // Without this guard, add_member would be a back-door around the
-    // last-beheerder check that update_member already enforces.
+    // last-owner check that update_member already enforces.
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
     let traject_id = create_traject(&state, &alice, "Tarief").await;
 
-    let status = add_member(&state, &alice, traject_id, &alice.email, "lid").await;
-    assert_eq!(status, StatusCode::CONFLICT);
+    let status = add_member(&state, &alice, traject_id, &alice.email, "contributor").await;
+    assert_eq!(status, Err(StatusCode::CONFLICT));
 }
 
 #[tokio::test]
-async fn update_member_blocks_demoting_last_beheerder() {
+async fn update_member_blocks_demoting_last_owner() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
@@ -399,7 +464,7 @@ async fn update_member_blocks_demoting_last_beheerder() {
         Extension(alice.clone()),
         Path((traject_id, alice.id)),
         Json(UpdateMemberRequest {
-            role: "lid".to_string(),
+            role: "contributor".to_string(),
         }),
     )
     .await
@@ -408,7 +473,7 @@ async fn update_member_blocks_demoting_last_beheerder() {
 }
 
 #[tokio::test]
-async fn remove_member_blocks_removing_last_beheerder() {
+async fn remove_member_blocks_removing_last_owner() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
@@ -429,24 +494,24 @@ async fn remove_member_blocks_removing_last_beheerder() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn delete_is_beheerder_only_and_cascades() {
+async fn delete_is_owner_only_and_cascades() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
     let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
     let traject_id = create_traject(&state, &alice, "Tarief").await;
     assert_eq!(
-        add_member(&state, &alice, traject_id, &bob.email, "lid").await,
-        StatusCode::NO_CONTENT
+        add_member(&state, &alice, traject_id, &bob.email, "contributor").await,
+        Ok("active")
     );
 
-    // lid cannot delete
+    // contributor cannot delete
     let err = trajects::delete(State(state.clone()), Extension(bob), Path(traject_id))
         .await
         .unwrap_err();
     assert_eq!(err, StatusCode::FORBIDDEN);
 
-    // beheerder can
+    // owner can
     let ok = trajects::delete(State(state.clone()), Extension(alice), Path(traject_id))
         .await
         .unwrap();
@@ -472,7 +537,7 @@ async fn delete_is_beheerder_only_and_cascades() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn leave_blocks_last_beheerder() {
+async fn leave_blocks_last_owner() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
@@ -486,15 +551,15 @@ async fn leave_blocks_last_beheerder() {
 }
 
 #[tokio::test]
-async fn leave_allows_lid_and_clears_active_session_when_leaving_active_traject() {
+async fn leave_allows_contributor_and_clears_active_session_when_leaving_active_traject() {
     let db = TestDb::new().await;
     let state = empty_state(db.pool.clone());
     let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
     let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
     let traject_id = create_traject(&state, &alice, "Tarief").await;
     assert_eq!(
-        add_member(&state, &alice, traject_id, &bob.email, "lid").await,
-        StatusCode::NO_CONTENT
+        add_member(&state, &alice, traject_id, &bob.email, "contributor").await,
+        Ok("active")
     );
 
     let session = make_session();
@@ -578,4 +643,317 @@ async fn set_active_clears_session_when_traject_id_is_null() {
 
     let active: Option<Uuid> = session.get(SESSION_KEY_ACTIVE_TRAJECT).await.unwrap();
     assert_eq!(active, None);
+}
+
+// ---------------------------------------------------------------------------
+// Pending invites + promotion
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn pending_invite_is_promoted_to_membership_on_login() {
+    // End-to-end: owner invites an unknown email, the invitee later logs
+    // in (their account is upserted), and the next time
+    // `account_middleware` runs the invite turns into a real membership.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "Ghost@Test.Local",
+            "contributor"
+        )
+        .await,
+        Ok("pending")
+    );
+
+    // Simulate the invitee logging in: a new accounts row is created.
+    let ghost = seed_account(&db.pool, "ghost@test.local", "Ghost").await;
+
+    // Simulate `account_middleware` post-upsert step.
+    regelrecht_editor_api::accounts::promote_pending_invites(&db.pool, ghost.id, &ghost.email)
+        .await;
+
+    let (invite_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM traject_invites WHERE traject_id = $1")
+            .bind(traject_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(invite_count, 0);
+
+    let (role,): (String,) = sqlx::query_as(
+        "SELECT role::text FROM traject_members WHERE traject_id = $1 AND account_id = $2",
+    )
+    .bind(traject_id)
+    .bind(ghost.id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(role, "contributor");
+
+    let Json(list) = trajects::list(State(state.clone()), Extension(ghost.clone()))
+        .await
+        .unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, traject_id);
+    assert_eq!(list[0].role, "contributor");
+}
+
+#[tokio::test]
+async fn promotion_is_idempotent_when_user_is_already_a_member() {
+    // Defence-in-depth: even if an invite somehow co-exists with a
+    // membership for the same email + traject, promotion must not error
+    // and the invite must be cleaned up. Bob's existing role wins.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    add_member(&state, &alice, traject_id, &bob.email, "contributor")
+        .await
+        .unwrap();
+
+    sqlx::query(
+        "INSERT INTO traject_invites (traject_id, email, role, invited_by)
+         VALUES ($1, $2, 'owner', $3)",
+    )
+    .bind(traject_id)
+    .bind(&bob.email)
+    .bind(alice.id)
+    .execute(&db.pool)
+    .await
+    .unwrap();
+
+    regelrecht_editor_api::accounts::promote_pending_invites(&db.pool, bob.id, &bob.email).await;
+
+    let (invite_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM traject_invites WHERE email = $1")
+            .bind(&bob.email)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(invite_count, 0);
+
+    let (role,): (String,) = sqlx::query_as(
+        "SELECT role::text FROM traject_members WHERE traject_id = $1 AND account_id = $2",
+    )
+    .bind(traject_id)
+    .bind(bob.id)
+    .fetch_one(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(role, "contributor");
+}
+
+#[tokio::test]
+async fn get_returns_pending_invites_alongside_members() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "ghost@test.local",
+            "contributor"
+        )
+        .await,
+        Ok("pending")
+    );
+
+    let Json(detail) = trajects::get(State(state), Extension(alice), Path(traject_id))
+        .await
+        .unwrap();
+    assert_eq!(detail.members.len(), 1, "alice is still the only member");
+    assert_eq!(detail.pending_invites.len(), 1);
+    assert_eq!(detail.pending_invites[0].email, "ghost@test.local");
+    assert_eq!(detail.pending_invites[0].role, "contributor");
+}
+
+#[tokio::test]
+async fn remove_invite_deletes_and_is_idempotent_404() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "ghost@test.local",
+            "contributor"
+        )
+        .await,
+        Ok("pending")
+    );
+
+    let ok = trajects::remove_invite(
+        State(state.clone()),
+        Extension(alice.clone()),
+        Path((traject_id, "ghost@test.local".to_string())),
+    )
+    .await
+    .unwrap();
+    assert_eq!(ok, StatusCode::NO_CONTENT);
+
+    let err = trajects::remove_invite(
+        State(state),
+        Extension(alice),
+        Path((traject_id, "ghost@test.local".to_string())),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn remove_invite_requires_owner() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+    add_member(&state, &alice, traject_id, &bob.email, "contributor")
+        .await
+        .unwrap();
+    add_member(
+        &state,
+        &alice,
+        traject_id,
+        "ghost@test.local",
+        "contributor",
+    )
+    .await
+    .unwrap();
+
+    let err = trajects::remove_invite(
+        State(state),
+        Extension(bob),
+        Path((traject_id, "ghost@test.local".to_string())),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn add_member_active_path_cleans_up_stale_invite() {
+    // Race window: invite an unknown email → ghost's account gets
+    // created later (e.g. they registered with the IdP but haven't
+    // hit any API yet, so promote_pending_invites hasn't run) → owner
+    // re-invites. The active path must clean up the stale invite so
+    // GET doesn't return ghost in both members and pending_invites.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "ghost@test.local",
+            "contributor"
+        )
+        .await,
+        Ok("pending")
+    );
+
+    // Ghost's account materialises (e.g. via OIDC login) but
+    // promote_pending_invites hasn't run yet.
+    let _ghost = seed_account(&db.pool, "ghost@test.local", "Ghost").await;
+
+    // Owner re-invites — now the active path is taken.
+    assert_eq!(
+        add_member(
+            &state,
+            &alice,
+            traject_id,
+            "ghost@test.local",
+            "contributor"
+        )
+        .await,
+        Ok("active")
+    );
+
+    let (invite_count,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM traject_invites WHERE traject_id = $1")
+            .bind(traject_id)
+            .fetch_one(&db.pool)
+            .await
+            .unwrap();
+    assert_eq!(invite_count, 0, "stale invite must be cleaned up");
+}
+
+#[tokio::test]
+async fn get_hides_pending_invites_from_contributors() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let bob = seed_account(&db.pool, "bob@test.local", "Bob").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+    add_member(&state, &alice, traject_id, &bob.email, "contributor")
+        .await
+        .unwrap();
+    add_member(
+        &state,
+        &alice,
+        traject_id,
+        "ghost@test.local",
+        "contributor",
+    )
+    .await
+    .unwrap();
+
+    // Alice (owner) sees the pending invite.
+    let Json(owner_view) = trajects::get(State(state.clone()), Extension(alice), Path(traject_id))
+        .await
+        .unwrap();
+    assert_eq!(owner_view.pending_invites.len(), 1);
+
+    // Bob (contributor) does not.
+    let Json(contributor_view) = trajects::get(State(state), Extension(bob), Path(traject_id))
+        .await
+        .unwrap();
+    assert_eq!(contributor_view.pending_invites.len(), 0);
+    assert_eq!(
+        contributor_view.members.len(),
+        2,
+        "members list itself still visible to contributors"
+    );
+}
+
+#[tokio::test]
+async fn add_member_rejects_malformed_emails() {
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let alice = seed_account(&db.pool, "alice@test.local", "Alice").await;
+    let traject_id = create_traject(&state, &alice, "Tarief").await;
+
+    for bad in [
+        "notanemail",
+        "@nolocal.com",
+        "nodomain@",
+        "no-dot-in-domain@localhost",
+        "two@@signs.com",
+        "   ",
+    ] {
+        assert_eq!(
+            add_member(&state, &alice, traject_id, bad, "contributor").await,
+            Err(StatusCode::BAD_REQUEST),
+            "expected 400 for {bad:?}",
+        );
+    }
 }

@@ -121,6 +121,53 @@ pub async fn ensure_account(
     }))
 }
 
+/// Promote any pending `traject_invites` rows matching the user's email
+/// into real `traject_members` rows, then clear those invites.
+///
+/// Called on every authenticated request after the account upsert. The
+/// happy path (no invites for this email) costs one indexed lookup that
+/// returns zero rows and a no-op DELETE — sub-millisecond.
+///
+/// The INSERT … SELECT uses `ON CONFLICT DO NOTHING` so a user who's
+/// somehow already a member of the matched traject (concurrent invite +
+/// direct add, account email change races) just keeps their existing
+/// row. The unconditional DELETE is intentional: after the INSERT runs,
+/// every invite for this email is by definition obsolete — the account
+/// exists and is now a member of each matching traject.
+///
+/// Failures are logged but not propagated to the caller: the user has
+/// already been authenticated and their account upserted, so a transient
+/// promotion failure just delays access to a freshly-invited traject
+/// until the next request. Failing the entire request would be worse UX
+/// than the lag.
+pub async fn promote_pending_invites(pool: &PgPool, account_id: Uuid, email: &str) {
+    let email_lower = email.trim().to_lowercase();
+    if email_lower.is_empty() {
+        return;
+    }
+    let result = sqlx::query(
+        "WITH _ins AS (
+             INSERT INTO traject_members (traject_id, account_id, role)
+             SELECT i.traject_id, $1, i.role
+               FROM traject_invites i
+              WHERE i.email = $2
+             ON CONFLICT (traject_id, account_id) DO NOTHING
+         )
+         DELETE FROM traject_invites WHERE email = $2",
+    )
+    .bind(account_id)
+    .bind(&email_lower)
+    .execute(pool)
+    .await;
+    if let Err(e) = result {
+        tracing::error!(
+            error = %e,
+            account_id = %account_id,
+            "promote_pending_invites failed; user will retry on next request"
+        );
+    }
+}
+
 /// Axum middleware that ensures the authenticated user has a row in
 /// `accounts` and exposes it to downstream handlers via
 /// `axum::Extension<AccountRecord>`.
@@ -151,6 +198,7 @@ pub async fn account_middleware(
         );
         StatusCode::SERVICE_UNAVAILABLE
     })?;
+    promote_pending_invites(pool, account.id, &account.email).await;
     request.extensions_mut().insert(account);
     Ok(next.run(request).await)
 }

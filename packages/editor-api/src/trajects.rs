@@ -56,11 +56,18 @@ pub struct TrajectSourceDto {
     pub is_writable_own: bool,
 }
 
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct TrajectInvite {
+    pub email: String,
+    pub role: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct TrajectDetail {
     #[serde(flatten)]
     pub summary: TrajectSummary,
     pub members: Vec<TrajectMember>,
+    pub pending_invites: Vec<TrajectInvite>,
     pub sources: Vec<TrajectSourceDto>,
 }
 
@@ -107,9 +114,11 @@ pub struct ActiveTrajectResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct AddMemberRequest {
-    /// Email of an existing account to invite. Returns 404 when no
-    /// matching account exists — we deliberately do not create stub
-    /// accounts on invite so OIDC stays the only path that produces them.
+    /// Email of the user to invite. If an account already exists for
+    /// this email the row lands in `traject_members` (active). If not,
+    /// it goes into `traject_invites` (pending) and is promoted to a
+    /// real membership the next time someone with that email claim hits
+    /// any authenticated endpoint — see `accounts::ensure_account`.
     pub email: String,
     pub role: String,
 }
@@ -117,6 +126,16 @@ pub struct AddMemberRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateMemberRequest {
     pub role: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AddMemberResponse {
+    /// `"active"` when a `traject_members` row was created (account
+    /// existed), `"pending"` when only a `traject_invites` row was
+    /// created (no account yet for this email).
+    pub status: &'static str,
+    /// Normalised (lowercased + trimmed) email used as the key.
+    pub email: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -219,13 +238,13 @@ async fn require_membership(
         .ok_or(StatusCode::FORBIDDEN)
 }
 
-async fn require_beheerder(
+async fn require_owner(
     pool: &PgPool,
     traject_id: Uuid,
     account_id: Uuid,
 ) -> Result<(), StatusCode> {
     let role = require_membership(pool, traject_id, account_id).await?;
-    if role == "beheerder" {
+    if role == "owner" {
         Ok(())
     } else {
         Err(StatusCode::FORBIDDEN)
@@ -233,11 +252,37 @@ async fn require_beheerder(
 }
 
 fn validate_role(role: &str) -> Result<(), StatusCode> {
-    if role == "beheerder" || role == "lid" {
+    if role == "owner" || role == "contributor" {
         Ok(())
     } else {
         Err(StatusCode::BAD_REQUEST)
     }
+}
+
+/// Normalise an email for storage and comparison: trim whitespace,
+/// lowercase, and reject obvious non-emails so junk addresses can't
+/// accumulate as pending invites that will never promote.
+///
+/// We intentionally avoid pulling in a full RFC 5322 parser: invite
+/// creation is owner-only behind OIDC, so this is correctness/data
+/// hygiene rather than a security boundary. The structural check is:
+/// exactly one `@`, non-empty local part, non-empty domain part, and a
+/// `.` in the domain. The IdP is the source of truth for whether an
+/// address is actually deliverable.
+fn normalize_email(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let at_count = trimmed.bytes().filter(|b| *b == b'@').count();
+    if at_count != 1 {
+        return None;
+    }
+    let (local, domain) = trimmed.split_once('@')?;
+    if local.is_empty() || domain.is_empty() || !domain.contains('.') {
+        return None;
+    }
+    Some(trimmed.to_lowercase())
 }
 
 fn validate_status(status: &str) -> Result<(), StatusCode> {
@@ -307,6 +352,26 @@ pub async fn get(
     .await
     .map_err(db_err("traject members fetch failed"))?;
 
+    // Pending invites carry the email addresses of people the owner has
+    // invited but who haven't yet logged in. Only owners — who can act
+    // on invites (cancel, re-invite, change role) — get to see them;
+    // contributors get an empty list. This keeps invitee emails out of
+    // a non-owner's view by default.
+    let pending_invites: Vec<TrajectInvite> = if role == "owner" {
+        sqlx::query_as(
+            "SELECT email, role::text AS role
+             FROM traject_invites
+             WHERE traject_id = $1
+             ORDER BY invited_at",
+        )
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        .map_err(db_err("traject invites fetch failed"))?
+    } else {
+        Vec::new()
+    };
+
     let sources: Vec<TrajectSourceDto> = sqlx::query_as(
         "SELECT source_id, name, source_type::text AS source_type,
                 gh_owner, gh_repo, gh_branch, gh_base_branch, gh_path, gh_ref,
@@ -323,6 +388,7 @@ pub async fn get(
     Ok(Json(TrajectDetail {
         summary,
         members,
+        pending_invites,
         sources,
     }))
 }
@@ -361,7 +427,7 @@ pub async fn create(
 
     sqlx::query(
         "INSERT INTO traject_members (traject_id, account_id, role)
-         VALUES ($1, $2, 'beheerder')",
+         VALUES ($1, $2, 'owner')",
     )
     .bind(traject_id)
     .bind(account.id)
@@ -450,12 +516,12 @@ pub async fn create(
         description: req.description,
         scope: req.scope,
         status: "bezig".to_string(),
-        role: "beheerder".to_string(),
+        role: "owner".to_string(),
     };
     Ok((StatusCode::CREATED, Json(summary)))
 }
 
-/// PATCH /api/trajects/:id — beheerder-only update of metadata fields.
+/// PATCH /api/trajects/:id — owner-only update of metadata fields.
 pub async fn update(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
@@ -463,7 +529,7 @@ pub async fn update(
     Json(req): Json<UpdateTrajectRequest>,
 ) -> Result<StatusCode, StatusCode> {
     let pool = get_pool(&state)?;
-    require_beheerder(pool, id, account.id).await?;
+    require_owner(pool, id, account.id).await?;
     if let Some(ref s) = req.status {
         validate_status(s)?;
     }
@@ -495,7 +561,7 @@ pub async fn update(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// DELETE /api/trajects/:id — beheerder-only hard delete.
+/// DELETE /api/trajects/:id — owner-only hard delete.
 ///
 /// FK cascades on `traject_members` and `traject_corpus_sources` clean
 /// up the dependent rows. The cached `TrajectCorpus` is invalidated so
@@ -510,7 +576,7 @@ pub async fn delete(
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let pool = get_pool(&state)?;
-    require_beheerder(pool, id, account.id).await?;
+    require_owner(pool, id, account.id).await?;
 
     let affected = sqlx::query("DELETE FROM trajects WHERE id = $1")
         .bind(id)
@@ -527,71 +593,147 @@ pub async fn delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /api/trajects/:id/members — invite an existing account by email.
+/// POST /api/trajects/:id/members — invite by email.
+///
+/// If the email already maps to an account, a `traject_members` row is
+/// created (or updated, idempotently) and the response status is
+/// `"active"`. If not, a `traject_invites` row is created and the
+/// response status is `"pending"`; that row is promoted to a real
+/// membership the next time someone with the matching email claim hits
+/// any authenticated endpoint (see `accounts::ensure_account`).
 pub async fn add_member(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
     Path(id): Path<Uuid>,
     Json(req): Json<AddMemberRequest>,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<Json<AddMemberResponse>, StatusCode> {
     let pool = get_pool(&state)?;
-    require_beheerder(pool, id, account.id).await?;
+    require_owner(pool, id, account.id).await?;
     validate_role(&req.role)?;
+    let email = normalize_email(&req.email).ok_or(StatusCode::BAD_REQUEST)?;
 
-    let target: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM accounts WHERE email = $1")
-        .bind(&req.email)
+    // `accounts.email` keeps the IdP-supplied casing, so the lookup
+    // lowercases on the DB side to match our normalised key. The
+    // functional unique index `idx_accounts_email_lower` (migration
+    // 0016) makes this index-only and case-insensitively unique, so
+    // `fetch_optional` is sound by construction.
+    let target: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM accounts WHERE lower(email) = $1")
+        .bind(&email)
         .fetch_optional(pool)
         .await
         .map_err(db_err("lookup account"))?;
-    let target_id = target.ok_or(StatusCode::NOT_FOUND)?.0;
 
-    // Guard the "would demote the last beheerder" case atomically in the
-    // same statement so it can't race with a concurrent leave/remove.
-    // Without this, two concurrent calls each read the guard and see the
-    // other beheerder, then both writes commit, leaving the traject with
-    // zero beheerders. By embedding the guard in the INSERT … SELECT
-    // WHERE clause we tie the check to the same row-level lock the write
-    // takes.
-    //
-    // The WHERE evaluates to true when any of:
-    //   * the new role is `beheerder` (promotion/no-op, never reduces count)
-    //   * the target isn't currently a beheerder (no demotion happening)
-    //   * another beheerder exists for this traject (demotion is safe)
-    // When all three are false (target is the sole beheerder being demoted
-    // to lid) the SELECT returns no row, the INSERT runs zero times, no
-    // conflict triggers, and `rows_affected` is 0 → CONFLICT.
-    let affected = sqlx::query(
-        "INSERT INTO traject_members (traject_id, account_id, role)
-         SELECT $1, $2, $3::traject_role
-         WHERE
-             $3::traject_role = 'beheerder'
-             OR NOT EXISTS (
-                 SELECT 1 FROM traject_members tm
-                 WHERE tm.traject_id = $1
-                   AND tm.account_id = $2
-                   AND tm.role = 'beheerder'
-             )
-             OR EXISTS (
-                 SELECT 1 FROM traject_members tm2
-                 WHERE tm2.traject_id = $1
-                   AND tm2.role = 'beheerder'
-                   AND tm2.account_id <> $2
-             )
-         ON CONFLICT (traject_id, account_id) DO UPDATE
-             SET role = EXCLUDED.role",
-    )
-    .bind(id)
-    .bind(target_id)
-    .bind(&req.role)
-    .execute(pool)
-    .await
-    .map_err(db_err("add member"))?
-    .rows_affected();
+    if let Some((target_id,)) = target {
+        // Known account → write traject_members. Guard the "would demote
+        // the last owner" case atomically in the same statement so it
+        // can't race with a concurrent leave/remove.
+        //
+        // The WHERE evaluates to true when any of:
+        //   * the new role is `owner` (promotion/no-op, never reduces count)
+        //   * the target isn't currently an owner (no demotion happening)
+        //   * another owner exists for this traject (demotion is safe)
+        // When all three are false (target is the sole owner being
+        // demoted to contributor) the SELECT returns no row, the INSERT
+        // runs zero times, no conflict triggers, and `rows_affected` is
+        // 0 → CONFLICT.
+        //
+        // Transaction: the INSERT and the stale-invite cleanup must
+        // commit together. If the cleanup failed mid-flight, GET would
+        // briefly return the user in both `members` and `pending_invites`
+        // until `promote_pending_invites` next ran.
+        let mut tx = pool.begin().await.map_err(db_err("begin add_member tx"))?;
+        let affected = sqlx::query(
+            "INSERT INTO traject_members (traject_id, account_id, role)
+             SELECT $1, $2, $3::traject_role
+             WHERE
+                 $3::traject_role = 'owner'
+                 OR NOT EXISTS (
+                     SELECT 1 FROM traject_members tm
+                     WHERE tm.traject_id = $1
+                       AND tm.account_id = $2
+                       AND tm.role = 'owner'
+                 )
+                 OR EXISTS (
+                     SELECT 1 FROM traject_members tm2
+                     WHERE tm2.traject_id = $1
+                       AND tm2.role = 'owner'
+                       AND tm2.account_id <> $2
+                 )
+             ON CONFLICT (traject_id, account_id) DO UPDATE
+                 SET role = EXCLUDED.role",
+        )
+        .bind(id)
+        .bind(target_id)
+        .bind(&req.role)
+        .execute(&mut *tx)
+        .await
+        .map_err(db_err("add member"))?
+        .rows_affected();
 
-    if affected == 0 {
-        return Err(StatusCode::CONFLICT);
+        if affected == 0 {
+            return Err(StatusCode::CONFLICT);
+        }
+        sqlx::query("DELETE FROM traject_invites WHERE traject_id = $1 AND email = $2")
+            .bind(id)
+            .bind(&email)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_err("clean up stale invite"))?;
+        tx.commit().await.map_err(db_err("commit add_member tx"))?;
+        return Ok(Json(AddMemberResponse {
+            status: "active",
+            email,
+        }));
     }
 
+    // Unknown account → park the invite. Re-inviting the same email
+    // with a different role just updates the role (last write wins).
+    sqlx::query(
+        "INSERT INTO traject_invites (traject_id, email, role, invited_by)
+         VALUES ($1, $2, $3::traject_role, $4)
+         ON CONFLICT (traject_id, email) DO UPDATE
+             SET role = EXCLUDED.role,
+                 invited_by = EXCLUDED.invited_by,
+                 invited_at = now()",
+    )
+    .bind(id)
+    .bind(&email)
+    .bind(&req.role)
+    .bind(account.id)
+    .execute(pool)
+    .await
+    .map_err(db_err("add invite"))?;
+
+    Ok(Json(AddMemberResponse {
+        status: "pending",
+        email,
+    }))
+}
+
+/// DELETE /api/trajects/:id/invites/:email — owner-only removal of a
+/// pending invite. Returns 404 when no invite exists for the (traject,
+/// email) pair, so the operation is idempotent against repeated
+/// cancellations.
+pub async fn remove_invite(
+    State(state): State<AppState>,
+    Extension(account): Extension<AccountRecord>,
+    Path((id, email)): Path<(Uuid, String)>,
+) -> Result<StatusCode, StatusCode> {
+    let pool = get_pool(&state)?;
+    require_owner(pool, id, account.id).await?;
+    let email = normalize_email(&email).ok_or(StatusCode::BAD_REQUEST)?;
+
+    let affected = sqlx::query("DELETE FROM traject_invites WHERE traject_id = $1 AND email = $2")
+        .bind(id)
+        .bind(&email)
+        .execute(pool)
+        .await
+        .map_err(db_err("remove invite"))?
+        .rows_affected();
+
+    if affected == 0 {
+        return Err(StatusCode::NOT_FOUND);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -603,14 +745,14 @@ pub async fn update_member(
     Json(req): Json<UpdateMemberRequest>,
 ) -> Result<StatusCode, StatusCode> {
     let pool = get_pool(&state)?;
-    require_beheerder(pool, id, account.id).await?;
+    require_owner(pool, id, account.id).await?;
     validate_role(&req.role)?;
 
-    // Atomic guard against demoting the last beheerder. The UPDATE only
+    // Atomic guard against demoting the last owner. The UPDATE only
     // fires when at least one of these holds:
-    //   * the new role is `beheerder` (no demote)
-    //   * the row's current role isn't `beheerder` (no demote)
-    //   * another beheerder exists for this traject (demote is safe)
+    //   * the new role is `owner` (no demote)
+    //   * the row's current role isn't `owner` (no demote)
+    //   * another owner exists for this traject (demote is safe)
     // Otherwise the row stays untouched, `rows_affected` is 0, and we
     // disambiguate "row missing" (NOT_FOUND) from "guard blocked"
     // (CONFLICT) via a follow-up read on the cold path.
@@ -618,12 +760,12 @@ pub async fn update_member(
         "UPDATE traject_members SET role = $3::traject_role
          WHERE traject_id = $1 AND account_id = $2
            AND (
-               $3::traject_role = 'beheerder'
-               OR role <> 'beheerder'
+               $3::traject_role = 'owner'
+               OR role <> 'owner'
                OR EXISTS (
                    SELECT 1 FROM traject_members tm2
                    WHERE tm2.traject_id = $1
-                     AND tm2.role = 'beheerder'
+                     AND tm2.role = 'owner'
                      AND tm2.account_id <> $2
                )
            )",
@@ -649,21 +791,21 @@ pub async fn remove_member(
     Path((id, account_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, StatusCode> {
     let pool = get_pool(&state)?;
-    require_beheerder(pool, id, account.id).await?;
+    require_owner(pool, id, account.id).await?;
 
     // Atomic guard: DELETE only succeeds when the target isn't the sole
-    // beheerder. The EXISTS condition is part of the same statement so
+    // owner. The EXISTS condition is part of the same statement so
     // two concurrent removes can't both pass the check and then both
     // commit a delete.
     let affected = sqlx::query(
         "DELETE FROM traject_members
          WHERE traject_id = $1 AND account_id = $2
            AND (
-               role <> 'beheerder'
+               role <> 'owner'
                OR EXISTS (
                    SELECT 1 FROM traject_members tm2
                    WHERE tm2.traject_id = $1
-                     AND tm2.role = 'beheerder'
+                     AND tm2.role = 'owner'
                      AND tm2.account_id <> $2
                )
            )",
@@ -684,8 +826,8 @@ pub async fn remove_member(
 /// POST /api/trajects/:id/leave — caller removes themselves from the
 /// traject.
 ///
-/// A `lid` can always leave. A `beheerder` cannot leave when they are
-/// the last beheerder — they must hand over the role or delete the
+/// A `contributor` can always leave. An `owner` cannot leave when they are
+/// the last owner — they must hand over the role or delete the
 /// traject. When the caller leaves the traject they currently have
 /// active in their session, that session pointer is cleared so the
 /// next save handler doesn't try to resolve a traject they no longer
@@ -700,8 +842,8 @@ pub async fn leave(
     require_membership(pool, id, account.id).await?;
 
     // Atomic guard, same shape as remove_member: the DELETE only runs
-    // when the caller is a lid or another beheerder remains. Two
-    // beheerders calling `leave` concurrently can't both pass a separate
+    // when the caller is a contributor or another owner remains. Two
+    // owners calling `leave` concurrently can't both pass a separate
     // count then both delete — the second one's DELETE re-evaluates the
     // EXISTS under Postgres' READ COMMITTED snapshot semantics and ends
     // up matching zero rows.
@@ -709,11 +851,11 @@ pub async fn leave(
         "DELETE FROM traject_members
          WHERE traject_id = $1 AND account_id = $2
            AND (
-               role <> 'beheerder'
+               role <> 'owner'
                OR EXISTS (
                    SELECT 1 FROM traject_members tm2
                    WHERE tm2.traject_id = $1
-                     AND tm2.role = 'beheerder'
+                     AND tm2.role = 'owner'
                      AND tm2.account_id <> $2
                )
            )",
