@@ -16,7 +16,18 @@ export default defineConfig({
   build: {
     format: 'directory',
   },
-  integrations: [mdx(), pagefind()],
+  integrations: [
+    mdx(),
+    // force_language: en builds ONE index for the whole site instead of
+    // splitting per <html lang>. The docs are English (57 pages); the
+    // bilingual landing is the only Dutch page. Without this, Pagefind makes
+    // a separate near-empty `nl` index and a search FROM the Dutch landing
+    // never finds the docs (it only queries the index matching the page's
+    // lang). One forced-English index makes all content searchable from
+    // every page. (Verified at runtime: there is no client-side override —
+    // init('en')/mergeIndex/options.language do not switch the index.)
+    pagefind({ indexConfig: { forceLanguage: 'en' } }),
+  ],
   markdown: {
     // Exclude `mermaid` from Shiki so the fenced block reaches
     // rehype-mermaid as a real <pre><code class="language-mermaid">
