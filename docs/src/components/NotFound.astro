@@ -36,8 +36,23 @@ const t =
   <h1>{t.title}</h1>
   <p class="rr-notfound-body">{t.body}</p>
   <p class="rr-notfound-actions">
-    <a class="rr-btn rr-btn--primary" href={home}>{t.home}</a>
-    <a class="rr-btn rr-btn--ghost" href="/guide/what-is-regelrecht">
+    {/* nldd-button renders its label in shadow DOM (invisible without JS),
+        so each button ships a real <a> fallback. CSS shows exactly one
+        (see .rr-btn-wc / .rr-btn-fallback in landing.css). */}
+    <nldd-button
+      class="rr-btn-wc"
+      variant="primary"
+      href={home}
+      text={t.home}
+    />
+    <a class="rr-btn rr-btn--primary rr-btn-fallback" href={home}>{t.home}</a>
+    <nldd-button
+      class="rr-btn-wc"
+      variant="secondary"
+      href="/guide/what-is-regelrecht"
+      text={t.docs}
+    />
+    <a class="rr-btn rr-btn--ghost rr-btn-fallback" href="/guide/what-is-regelrecht">
       {t.docs}
     </a>
   </p>
