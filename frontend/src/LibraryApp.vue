@@ -757,7 +757,7 @@ watch(trajectSwitchEpoch, () => {
         <nldd-container padding="8">
           <nldd-toolbar size="md">
             <nldd-toolbar-item slot="start">
-              <nldd-tab-bar compact navigation>
+              <nldd-tab-bar variant="compact" navigation>
                 <nldd-tab-bar-item :selected="route.name === 'library' || undefined" icon="books" text="Bibliotheek"></nldd-tab-bar-item>
                 <nldd-tab-bar-item :selected="route.name === 'editor' || undefined" :href="lastEditorPath" @click.prevent="router.push(lastEditorPath)" icon="edit" text="Editor"></nldd-tab-bar-item>
               </nldd-tab-bar>
