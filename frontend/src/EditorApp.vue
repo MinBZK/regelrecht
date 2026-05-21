@@ -387,11 +387,20 @@ const graphSheetOpen = ref(false);
 const corpusLaws = ref([]);
 const searchPopoverRef = ref(null);
 
+// Guard against stale responses when the user switches trajects in quick
+// succession: a slower A-fetch resolving after a faster B-fetch would
+// otherwise overwrite B's list, briefly flashing A's display name in the
+// search popover and the 404 inline-dialog. Mirrors the loadIndex /
+// loadLaw generation pattern in LibraryApp.vue.
+let corpusLawsGeneration = 0;
+
 async function loadCorpusLaws() {
+  const gen = ++corpusLawsGeneration;
   try {
     const res = await fetch('/api/corpus/laws?limit=1000');
     if (!res.ok) return;
     const list = await res.json();
+    if (gen !== corpusLawsGeneration) return; // stale response, discard
     corpusLaws.value = list.sort((a, b) => a.law_id.localeCompare(b.law_id));
   } catch { /* ignore — search is a convenience */ }
 }
