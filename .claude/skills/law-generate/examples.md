@@ -369,7 +369,7 @@ actions:
 ```
 
 **Key points:**
-- Use `IF` with `cases`/`default` for multi-branch conditionals (SWITCH was removed in v0.5.1)
+- Use `IF` with `cases`/`default` for multi-branch conditionals (SWITCH was removed in v0.5.0)
 - Cases are evaluated in order; the first matching case wins
 - Each case has `when` (condition) and `then` (result value)
 - `default` is the fallback if no case matches
