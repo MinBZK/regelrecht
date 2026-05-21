@@ -1,4 +1,6 @@
 import { computed, ref } from 'vue';
+import router from '../router.js';
+import { clearLawCache } from './useLaw.js';
 
 const trajects = ref([]);
 const activeTrajectId = ref(null);
@@ -53,6 +55,23 @@ export async function switchTraject(trajectId) {
   if (!resp.ok) throw new Error(`Failed to switch traject: ${resp.status}`);
   const body = await resp.json();
   activeTrajectId.value = body.traject_id || null;
+
+  // After a successful switch the read scope on the server changed —
+  // GET /api/corpus/laws/... now serves the new traject's branch
+  // content (or the global view when the active id was cleared). Drop
+  // every cached law-content entry so the next fetch hits the API and
+  // navigate to the library so any open editor doesn't keep showing a
+  // mix of old (cached) and new (refetched) content.
+  clearLawCache();
+  // `navigate from anywhere` — non-Vue context, so we use the router
+  // export directly. Best-effort: if we're already at `/library`,
+  // `push` is a no-op.
+  try {
+    await router.push('/library');
+  } catch (_e) {
+    // NavigationDuplicated / NavigationAborted is benign; the cache
+    // clear above is the actually-load-bearing part of the switch.
+  }
   return activeTrajectId.value;
 }
 

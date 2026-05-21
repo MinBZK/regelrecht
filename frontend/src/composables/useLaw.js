@@ -5,6 +5,20 @@ import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSes
 // --- Shared law cache ---
 const lawCache = new Map();
 
+/**
+ * Drop every cached law-content entry. Called by the traject switcher
+ * after a successful active-traject change so the next read fetches the
+ * new traject's content via the API instead of returning a previously
+ * cached version from another traject (or from the no-traject scope).
+ *
+ * `lawCache` is keyed by law_id only — without this clear, switching
+ * trajecten with the editor open shows whichever traject the law was
+ * first opened in.
+ */
+export function clearLawCache() {
+  lawCache.clear();
+}
+
 export function resolveLawName(law) {
   if (!law) return '';
   const nameRef = law.name;

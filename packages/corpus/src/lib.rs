@@ -8,6 +8,8 @@ pub mod dto;
 pub mod error;
 #[cfg(feature = "github")]
 pub mod github;
+#[cfg(feature = "github")]
+pub mod github_api_backend;
 pub mod models;
 #[cfg(feature = "github")]
 pub mod pr_client;
@@ -23,6 +25,8 @@ pub use config::{deployment_from_hostname, CorpusConfig};
 pub use error::CorpusError;
 #[cfg(feature = "github")]
 pub use github::{FetchResult, GitHubFetcher};
+#[cfg(feature = "github")]
+pub use github_api_backend::GitHubApiBackend;
 pub use models::{RegistryManifest, Source, SourceType};
 #[cfg(feature = "github")]
 pub use pr_client::PullRequestClient;
