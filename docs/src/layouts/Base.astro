@@ -55,12 +55,12 @@ if (isLanding) {
   // anchors do not exist, so they point at the landing home's sections
   // (landingHome + '#...') rather than being dropped entirely.
   globalLinks = [
+    { text: t.nav.home, href: landingHome, current: !showSignup },
     { text: t.nav.what, href: landingHome + '#what-is-it' },
     { text: t.nav.how, href: landingHome + '#how-it-works' },
     { text: t.nav.tools, href: landingHome + '#tools' },
     { text: t.nav.example, href: landingHome + '#example' },
     { text: t.nav.faq, href: landingHome + '#faq' },
-    { text: t.nav.signup, href: t.feedback.ctaHref, icon: 'envelope' },
     { text: t.nav.docs, href: '/guide/what-is-regelrecht', icon: 'books' },
   ];
 } else {
@@ -72,22 +72,23 @@ if (isLanding) {
   }));
 }
 
-// Language switch lives on the right (utility) side of the bar. Only the
-// landing is bilingual; docs are English-only so no switch there. On the
-// signup page the switch stays on signup (NL /aanmelden <-> EN /en/signup)
-// instead of jumping back to the home.
-const langToggle: NavItem | null = isLanding
-  ? {
-      text: lang === 'en' ? 'Nederlands' : 'English',
-      href: showSignup
-        ? lang === 'en'
-          ? '/aanmelden'
-          : '/en/signup'
-        : lang === 'en'
-          ? '/'
-          : '/en/',
-    }
+// Language switch lives on the right (utility) side of the bar as an
+// expandable menu. Only the landing is bilingual; docs are English-only so
+// no switch there. On the signup page the options stay on signup
+// (NL /aanmelden <-> EN /en/signup) instead of jumping back to the home.
+interface LangOption {
+  code: 'nl' | 'en';
+  label: string;
+  href: string;
+}
+const langOptions: LangOption[] | null = isLanding
+  ? [
+      { code: 'nl', label: 'Nederlands', href: showSignup ? '/aanmelden' : '/' },
+      { code: 'en', label: 'English', href: showSignup ? '/en/signup' : '/en/' },
+    ]
   : null;
+// The non-current language, for the no-JS fallback link.
+const langOther = langOptions?.find((o) => o.code !== lang) ?? null;
 
 const searchLabel = lang === 'en' ? 'Search' : 'Zoeken';
 const searchPlaceholder =
@@ -106,8 +107,13 @@ const searchDevHint =
     : 'Zoeken is beschikbaar in de productiebuild.';
 const skipText = lang === 'en' ? 'Skip to content' : 'Direct naar de inhoud';
 const navLabel = lang === 'en' ? 'Main navigation' : 'Hoofdnavigatie';
-const themeLabelLight = lang === 'en' ? 'Dark mode' : 'Donkere modus';
-const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
+const themeMenuLabel = lang === 'en' ? 'Theme' : 'Thema';
+const themeOptions = [
+  { value: 'system', label: lang === 'en' ? 'System' : 'Systeem' },
+  { value: 'light', label: lang === 'en' ? 'Light' : 'Licht' },
+  { value: 'dark', label: lang === 'en' ? 'Dark' : 'Donker' },
+];
+const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
 ---
 
 <!doctype html>
@@ -128,9 +134,9 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
         re-upgrade was the flicker on full page loads. */}
     <ClientRouter />
     <script is:inline>
-      // NLDD colours resolve via data-scheme; the landing/chrome CSS uses
-      // the `.dark` class. Restore the persisted theme before first paint
-      // so there is no flash. Default light. Single authority, no Vue.
+      // Three-state theme: 'system' | 'light' | 'dark' (default 'system').
+      // NLDD colours resolve via data-scheme; the landing/chrome CSS uses the
+      // `.dark` class. Resolve + apply before first paint so there is no flash.
       //
       // ClientRouter (view transitions) swaps the document on navigation and
       // re-renders <html> from the new page's server markup, which does NOT
@@ -142,22 +148,40 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
         // localStorage is unavailable (private mode, blocked storage). It lives
         // on window so the persistent inline script and the after-swap handler
         // share it across the document swap.
-        function read() {
+        function readPref() {
           try {
             var v = localStorage.getItem('rr-theme');
             if (v) return v;
           } catch (e) {}
-          return window.__rrTheme || null;
+          return window.__rrTheme || 'system';
+        }
+        function prefersDark() {
+          return (
+            !!window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches
+          );
         }
         function applyTheme() {
-          var dark = read() === 'dark';
+          var pref = readPref();
+          var dark = pref === 'dark' || (pref === 'system' && prefersDark());
           var root = document.documentElement;
           root.setAttribute('data-scheme', dark ? 'dark' : 'light');
           root.style.colorScheme = dark ? 'dark' : 'light';
           root.classList.toggle('dark', dark);
         }
+        // Exposed so the deferred wiring module can re-apply on option clicks.
+        window.__rrReadThemePref = readPref;
+        window.__rrApplyTheme = applyTheme;
         applyTheme();
         document.addEventListener('astro:after-swap', applyTheme);
+        // Follow the OS while the choice is 'system'.
+        if (window.matchMedia) {
+          window
+            .matchMedia('(prefers-color-scheme: dark)')
+            .addEventListener('change', function () {
+              if (readPref() === 'system') applyTheme();
+            });
+        }
       })();
     </script>
   </head>
@@ -190,25 +214,43 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
               text={searchLabel}
               icon="search"
             ></nldd-menu-bar-item>
-            <nldd-menu-bar-item
-              id="rr-theme-toggle"
-              text={themeLabelLight}
-              data-label-light={themeLabelLight}
-              data-label-dark={themeLabelDark}
-              icon="moon"
-            ></nldd-menu-bar-item>
             {
-              langToggle && (
+              langOptions && (
                 <nldd-menu-bar-item
-                  text={langToggle.text}
-                  href={langToggle.href}
-                />
+                  id="rr-lang-menu"
+                  text={lang === 'en' ? 'EN' : 'NL'}
+                  accessible-label={langMenuLabel}
+                  icon="languages"
+                  expandable
+                >
+                  {langOptions.map((opt) => (
+                    <nldd-menu-item
+                      data-menu="lang"
+                      type="radio"
+                      value={opt.href}
+                      text={opt.label}
+                      selected={opt.code === lang || undefined}
+                    />
+                  ))}
+                </nldd-menu-bar-item>
               )
             }
+            <nldd-menu-bar-item id="rr-theme-menu" text={themeMenuLabel} expandable>
+              {
+                themeOptions.map((opt) => (
+                  <nldd-menu-item
+                    data-menu="theme"
+                    type="radio"
+                    value={opt.value}
+                    text={opt.label}
+                    selected={opt.value === 'system' || undefined}
+                  />
+                ))
+              }
+            </nldd-menu-bar-item>
             <nldd-menu-bar-item
               text="GitHub"
               href="https://github.com/MinBZK/regelrecht"
-              icon="code"
             ></nldd-menu-bar-item>
           </nldd-menu-bar>
         </nldd-top-navigation-bar>
@@ -232,9 +274,9 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
               ))
             }
             {
-              langToggle && (
+              langOther && (
                 <li>
-                  <a href={langToggle.href}>{langToggle.text}</a>
+                  <a href={langOther.href}>{langOther.label}</a>
                 </li>
               )
             }
@@ -315,41 +357,49 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
     </script>
 
     <script>
-      // Theme toggle: NLDD reads data-scheme; the ported landing/chrome CSS
-      // keys off the `.dark` class. Toggle both, persist to localStorage.
-      // The toggle element is replaced on each ClientRouter navigation, so
-      // (re)bind on astro:page-load (which also fires on the first load).
-      function wireThemeToggle() {
-        const themeBtn = document.getElementById('rr-theme-toggle');
-        if (!themeBtn) return;
-        themeBtn.addEventListener('click', () => {
-          const root = document.documentElement;
-          const dark = root.getAttribute('data-scheme') !== 'dark';
-          root.setAttribute('data-scheme', dark ? 'dark' : 'light');
-          root.style.colorScheme = dark ? 'dark' : 'light';
-          root.classList.toggle('dark', dark);
-          // Persist to localStorage when available, and always to the in-memory
-          // fallback so the choice sticks across ClientRouter navigations even
-          // if storage is blocked.
-          window.__rrTheme = dark ? 'dark' : 'light';
-          try {
-            localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
-          } catch (e) {}
-          themeBtn.setAttribute(
-            'text',
-            dark
-              ? themeBtn.dataset.labelDark || 'Light mode'
-              : themeBtn.dataset.labelLight || 'Dark mode'
-          );
-          themeBtn.setAttribute('icon', dark ? 'sun' : 'moon');
-        });
-        // Reflect the current scheme onto the freshly-rendered toggle.
-        if (document.documentElement.getAttribute('data-scheme') === 'dark') {
-          themeBtn.setAttribute('text', themeBtn.dataset.labelDark || 'Light mode');
-          themeBtn.setAttribute('icon', 'sun');
-        }
+      // Theme + language live in expandable <nldd-menu-bar-item> popovers.
+      // The popover clones its slotted <nldd-menu-item>s (cloneNode drops JS
+      // listeners), so selection is handled via event delegation on the
+      // document: the `select` event bubbles and is composed. It carries no
+      // detail, so composedPath() identifies the firing item and the owning
+      // menu. Theme persists + re-applies; language navigates.
+      // The popover is portalled to <body> (top layer), so the cloned item's
+      // composedPath does NOT include #rr-theme-menu — identify the menu by the
+      // item's own data-menu attribute (cloned with the node) instead. Update
+      // ALL matching items (source + live clones) so the radio reflects the
+      // current choice whether the popover is open or freshly re-cloned.
+      function syncThemeRadios() {
+        const pref =
+          (window.__rrReadThemePref && window.__rrReadThemePref()) || 'system';
+        document
+          .querySelectorAll('nldd-menu-item[data-menu="theme"]')
+          .forEach((item) => {
+            if (item.getAttribute('value') === pref)
+              item.setAttribute('selected', '');
+            else item.removeAttribute('selected');
+          });
       }
-      document.addEventListener('astro:page-load', wireThemeToggle);
+      document.addEventListener('astro:page-load', syncThemeRadios);
+
+      document.addEventListener('select', (e) => {
+        const path = e.composedPath ? e.composedPath() : [];
+        const item = path.find((n) => n && n.tagName === 'NLDD-MENU-ITEM');
+        if (!item) return;
+        const kind = item.getAttribute('data-menu');
+        const value = item.getAttribute('value');
+        if (kind === 'theme') {
+          // Persist to localStorage when available, and always to the in-memory
+          // fallback so the choice sticks across ClientRouter navigations.
+          window.__rrTheme = value;
+          try {
+            localStorage.setItem('rr-theme', value);
+          } catch (err) {}
+          if (window.__rrApplyTheme) window.__rrApplyTheme();
+          syncThemeRadios();
+        } else if (kind === 'lang') {
+          if (value) window.location.assign(value);
+        }
+      });
     </script>
 
     <script

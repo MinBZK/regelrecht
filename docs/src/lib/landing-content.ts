@@ -15,6 +15,7 @@ export interface LandingContent {
   meta: { title: string; description: string }
   nav: {
     brandTagline: string
+    home: string
     what: string
     how: string
     tools: string
@@ -128,6 +129,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     nav: {
       brandTagline: 'Een verkenning van het Ministerie van BZK',
+      home: 'Home',
       what: 'Wat',
       how: 'Hoe',
       tools: 'Ecosysteem',
@@ -511,6 +513,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     nav: {
       brandTagline: 'An exploration by the Dutch Ministry of the Interior',
+      home: 'Home',
       what: 'What',
       how: 'How',
       tools: 'Ecosystem',
