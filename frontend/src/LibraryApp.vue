@@ -265,9 +265,10 @@ async function loadIndex() {
       loadFavorites(),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
+    // Gate before and after json(): skip parsing for stale 200s, and catch races during it.
+    if (gen !== loadIndexGeneration) return;
     const corpusLaws = await corpusRes.json();
-
-    if (gen !== loadIndexGeneration) return; // stale response, discard
+    if (gen !== loadIndexGeneration) return;
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
   } catch (e) {
     if (gen !== loadIndexGeneration) return;
