@@ -68,10 +68,11 @@ export async function switchTraject(trajectId) {
   // every cached law-content entry so the next fetch hits the API.
   //
   // Stay on the current route: LibraryApp and EditorApp watch
-  // `activeTrajectId` and re-fetch the open law (or surface a 404 when
-  // the law isn't part of the new traject). Navigating away on every
-  // switch destroyed that context — the user landed on the library
-  // overview even when they were halfway through editing.
+  // `trajectSwitchEpoch` (bumped just above) and re-fetch the open law
+  // (or surface a 404 when the law isn't part of the new traject).
+  // Navigating away on every switch destroyed that context — the user
+  // landed on the library overview even when they were halfway through
+  // editing.
   clearLawCache();
   return activeTrajectId.value;
 }
