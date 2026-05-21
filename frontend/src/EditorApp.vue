@@ -150,7 +150,7 @@ function setPaneView(idx, viewId) {
 // the auth-check before this component mounts so the SSO half of the
 // guard is in practice always true; the traject half can flip at runtime
 // when the user picks a different option from the TrajectMenu.
-const { activeTrajectId, trajectsReady } = useTrajects();
+const { activeTrajectId, trajectSwitchEpoch } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectId.value !== null,
 );
@@ -185,12 +185,15 @@ const {
 // Re-run `switchLaw` against the same lawId/article to pick up the
 // new traject's content (or surface a 404 when the law isn't part
 // of the new traject — handled by the error-state UI below).
-// Gated on `trajectsReady` so the initial null → session-traject-id
-// transition done by `loadTrajects` (which runs asynchronously after
-// mount) doesn't spuriously trigger a duplicate `switchLaw` on cold
-// load. Only user-driven `switchTraject` calls fire the watcher.
-watch(activeTrajectId, () => {
-  if (!trajectsReady.value) return;
+// Watch `trajectSwitchEpoch` (bumped only by user-driven
+// `switchTraject` calls) rather than `activeTrajectId` itself: the
+// initial null → session-traject-id settle done by `loadTrajects`
+// does not touch the counter, so the cold-load transition is ignored.
+// Using a counter (instead of a one-shot `trajectsReady` gate) also
+// closes the race where a user click lands in the same microtask as
+// the settle — both writes go to `activeTrajectId`, but only the
+// user-driven one bumps the epoch and triggers the refetch.
+watch(trajectSwitchEpoch, () => {
   if (lawId.value) {
     switchLaw(lawId.value, selectedArticleNumber.value);
   }

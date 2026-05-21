@@ -257,7 +257,10 @@ async function toggleFavorite(lawId) {
   }
 }
 
+let loadIndexGeneration = 0;
+
 async function loadIndex() {
+  const gen = ++loadIndexGeneration;
   try {
     const [corpusRes] = await Promise.all([
       fetch('/api/corpus/laws?limit=1000'),
@@ -266,11 +269,15 @@ async function loadIndex() {
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
     const corpusLaws = await corpusRes.json();
 
+    if (gen !== loadIndexGeneration) return; // stale response, discard
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
   } catch (e) {
+    if (gen !== loadIndexGeneration) return;
     indexError.value = e;
   } finally {
-    loading.value = false;
+    if (gen === loadIndexGeneration) {
+      loading.value = false;
+    }
   }
 }
 
@@ -463,15 +470,17 @@ loadIndex();
 
 // React to traject switches: the URL stays put (no router.push in
 // `switchTraject`), but the server-side read scope changes — so the
-// law index and the currently-open law need to be refetched. Skip
-// the initial fire by gating on `trajectsReady`: that flag flips on
-// only *after* `loadTrajects` has settled `activeTrajectId` from
-// null → session-traject-id and Vue has flushed the resulting watch
-// callbacks. So the cold-load transition is ignored and only real
-// user-driven `switchTraject` calls trigger a reload.
-const { activeTrajectId, trajectsReady } = useTrajects();
-watch(activeTrajectId, () => {
-  if (!trajectsReady.value) return;
+// law index and the currently-open law need to be refetched. Watch
+// `trajectSwitchEpoch` (bumped only by user-driven `switchTraject`
+// calls) rather than `activeTrajectId` itself: the initial null →
+// session-traject-id settle done by `loadTrajects` does not touch
+// the counter, so the cold-load transition is ignored. Using a
+// counter (instead of a one-shot `trajectsReady` gate) also closes
+// the race where a user click lands in the same microtask as the
+// settle — both writes go to `activeTrajectId`, but only the
+// user-driven one bumps the epoch and triggers the refetch.
+const { trajectSwitchEpoch } = useTrajects();
+watch(trajectSwitchEpoch, () => {
   // Reset error so the loading-gate kicks in before any new 404
   // (e.g. when the open law isn't part of the new traject's corpus).
   lawError.value = null;
