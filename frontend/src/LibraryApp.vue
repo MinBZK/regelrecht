@@ -10,6 +10,7 @@ import SearchPopover from './components/SearchPopover.vue';
 import TrajectMenu from './components/TrajectMenu.vue';
 import { useAuth } from './composables/useAuth.js';
 import { useTrajects } from './composables/useTrajects.js';
+import { lawFetchError } from './composables/useLaw.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { SUPPORT_EMAIL } from './constants.js';
@@ -167,10 +168,7 @@ const articleNotFound = computed(() =>
   !!(selectedLaw.value && selectedArticleNumber.value && !selectedArticle.value)
 );
 
-// 404 from `loadLaw` typically means the law isn't part of the active
-// traject's corpus (e.g. after switching to a traject that doesn't
-// include this law); the error UI branches on this to render a
-// traject-specific message instead of a generic "niet geladen".
+// 404 means the law isn't in the active traject's corpus; the error UI shows a traject-specific message.
 const lawErrorIs404 = computed(() => lawError.value?.status === 404);
 
 // Reflect navigation depth in the document title:
@@ -288,19 +286,8 @@ async function loadLaw(lawId) {
   try {
     selectedLawLoading.value = true;
     const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
-    if (!res.ok) {
-      // Attach the HTTP status so the error UI can render a 404
-      // ("niet beschikbaar in dit traject") differently from a 5xx
-      // without re-parsing the message.
-      const err = new Error(`Failed to fetch: ${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
-    // Two staleness checks: the first short-circuits a stale 200
-    // BEFORE we await the response body (saves the body read), the
-    // second catches a newer `loadLaw` call that landed *during*
-    // `res.text()` — the body-read await is a real race window that
-    // a single before-body check would miss.
+    if (!res.ok) throw lawFetchError(res.status);
+    // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
     if (gen !== loadLawGeneration) return;
     const text = await res.text();
     if (gen !== loadLawGeneration) return;
@@ -474,17 +461,7 @@ if (route.params.lawId) {
 }
 loadIndex();
 
-// React to traject switches: the URL stays put (no router.push in
-// `switchTraject`), but the server-side read scope changes — so the
-// law index and the currently-open law need to be refetched. Watch
-// `trajectSwitchEpoch` (bumped only by user-driven `switchTraject`
-// calls) rather than `activeTrajectId` itself: the initial null →
-// session-traject-id settle done by `loadTrajects` does not touch
-// the counter, so the cold-load transition is ignored. Using a
-// counter (instead of a one-shot `trajectsReady` gate) also closes
-// the race where a user click lands in the same microtask as the
-// settle — both writes go to `activeTrajectId`, but only the
-// user-driven one bumps the epoch and triggers the refetch.
+// On user-driven traject switch (epoch bump): refetch corpus index and the open law.
 const { trajectSwitchEpoch } = useTrajects();
 watch(trajectSwitchEpoch, () => {
   // Reset error so the loading-gate kicks in before any new 404
@@ -706,18 +683,11 @@ watch(trajectSwitchEpoch, () => {
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="selectedLawLoading">
-                <!-- Show the loading dialog before any error so a stale
-                     `lawError` from the previous fetch (or a 404 from
-                     before a traject switch) doesn't flash in front of
-                     the user while the new request is still on the
-                     wire. -->
+                <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
                 <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
               </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
-                <!-- 404 typically means "law isn't part of the active
-                     traject" (the most common path after a traject
-                     switch on /library/:lawId). Give the user a way
-                     out without leading with a generic error. -->
+                <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->
                 <nldd-inline-dialog
                   v-if="lawErrorIs404"
                   variant="alert"

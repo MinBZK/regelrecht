@@ -35,13 +35,8 @@ export function resolveLawName(law) {
   return nameRef || law.$id || '';
 }
 
-/**
- * Build an `Error` carrying the HTTP status of a failed law fetch so
- * call-site error UI can distinguish "law isn't there" (404 — typically
- * surfaces as a traject-specific "niet beschikbaar in dit traject"
- * message) from generic transport/server failures.
- */
-function lawFetchError(status) {
+// Carry HTTP status on the Error so callers can branch on `.status === 404`.
+export function lawFetchError(status) {
   const err = new Error(`Failed to fetch: ${status}`);
   err.status = status;
   return err;
@@ -96,31 +91,17 @@ export function useLaw(lawParam, articleParam) {
     ) ?? null;
   });
 
-  // Shared discriminator for the initial `load()` and every subsequent
-  // `switchLaw()`. Bumped at the start of each operation; awaits compare
-  // their captured version against the latest one before writing reactive
-  // state, so an in-flight load that's been superseded by a traject switch
-  // (or a follow-up switchLaw) cannot clobber the new law's content.
+  // Shared version counter for `load()` and `switchLaw()`; stale awaits compare and discard.
   let switchVersion = 0;
 
-  /**
-   * Initial fetch for the law passed to `useLaw`. Shares the
-   * `switchVersion` discriminator with `switchLaw` so a traject switch
-   * fired while this XHR is in flight (the traject watcher in
-   * `EditorApp.vue` calls `switchLaw` on epoch change) cannot have its
-   * fresh content overwritten by the stale initial load's late
-   * resolution.
-   */
+  // Initial fetch; shares `switchVersion` with `switchLaw` so a mid-flight traject switch wins.
   async function load() {
     const version = ++switchVersion;
     try {
       loading.value = true;
       const res = await fetch(yamlUrl);
       if (!res.ok) throw lawFetchError(res.status);
-      // Two staleness checks: before the body-read await to short-
-      // circuit a stale 200 without paying for `res.text()`, and after
-      // it to catch a `switchLaw` (or a follow-up `load`) that started
-      // *during* the body read.
+      // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
       if (version !== switchVersion) return;
       const text = await res.text();
       if (version !== switchVersion) return;

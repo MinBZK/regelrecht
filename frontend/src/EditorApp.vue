@@ -180,22 +180,7 @@ const {
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber);
 
-// React to traject switches: switchTraject now stays on the current
-// route (URL preserved), so the URL alone won't trigger a refetch.
-// Re-run `switchLaw` against the same lawId/article to pick up the
-// new traject's content (or surface a 404 when the law isn't part
-// of the new traject — handled by the error-state UI below).
-// Watch `trajectSwitchEpoch` (bumped only by user-driven
-// `switchTraject` calls) rather than `activeTrajectId` itself: the
-// initial null → session-traject-id settle done by `loadTrajects`
-// does not touch the counter, so the cold-load transition is ignored.
-// Using a counter (instead of a one-shot `trajectsReady` gate) also
-// closes the race where a user click lands in the same microtask as
-// the settle — both writes go to `activeTrajectId`, but only the
-// user-driven one bumps the epoch and triggers the refetch.
-// We also refresh the corpus index so the search popover AND the
-// `failedLawName` lookup (used by the 404 inline-dialog) reflect the
-// new traject's law set instead of the previous traject's names.
+// On user-driven traject switch (epoch bump): refresh corpus index and refetch the open law.
 watch(trajectSwitchEpoch, () => {
   loadCorpusLaws();
   if (lawId.value) {
@@ -387,11 +372,7 @@ const graphSheetOpen = ref(false);
 const corpusLaws = ref([]);
 const searchPopoverRef = ref(null);
 
-// Guard against stale responses when the user switches trajects in quick
-// succession: a slower A-fetch resolving after a faster B-fetch would
-// otherwise overwrite B's list, briefly flashing A's display name in the
-// search popover and the 404 inline-dialog. Mirrors the loadIndex /
-// loadLaw generation pattern in LibraryApp.vue.
+// Generation counter to discard stale responses across rapid traject switches.
 let corpusLawsGeneration = 0;
 
 async function loadCorpusLaws() {
@@ -1408,11 +1389,7 @@ async function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Loading state — has priority over the error pane below, so a
-             stale `error` from the previous law/traject doesn't briefly
-             flash "Wet is niet geladen" while the new fetch is still in
-             flight. The design system has no dedicated spinner, so we
-             reuse the inline-dialog pattern. -->
+        <!-- Loading takes precedence over `error` to avoid flashing a stale error during a refetch. -->
         <nldd-page v-else-if="loading">
           <nldd-simple-section width="full">
             <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
