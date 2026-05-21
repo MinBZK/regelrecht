@@ -180,6 +180,17 @@ const {
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber);
 
+// React to traject switches: switchTraject now stays on the current
+// route (URL preserved), so the URL alone won't trigger a refetch.
+// Re-run `switchLaw` against the same lawId/article to pick up the
+// new traject's content (or surface a 404 when the law isn't part
+// of the new traject — handled by the error-state UI below).
+watch(activeTrajectId, () => {
+  if (lawId.value) {
+    switchLaw(lawId.value, selectedArticleNumber.value);
+  }
+});
+
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
 const {
   notesForArticle: committedNotesForArticle,
@@ -388,6 +399,14 @@ const failedLawName = computed(() => {
   if (!id) return '';
   return corpusLaws.value.find(l => l.law_id === id)?.name || id;
 });
+
+/**
+ * Whether the current `error` is a 404 from the law fetch — i.e. the
+ * law does not exist (or is not part of the active traject's corpus).
+ * `useLaw.load` / `fetchLaw` decorate the thrown Error with `.status`
+ * so we can branch the error UI without re-parsing the message.
+ */
+const lawErrorIs404 = computed(() => error.value?.status === 404);
 
 /**
  * Retry the failed law fetch. switchLaw clears `error` and re-runs the
@@ -1368,10 +1387,35 @@ async function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Error state — mirrors the library's law-load failure pattern. -->
+        <!-- Loading state — has priority over the error pane below, so a
+             stale `error` from the previous law/traject doesn't briefly
+             flash "Wet is niet geladen" while the new fetch is still in
+             flight. The design system has no dedicated spinner, so we
+             reuse the inline-dialog pattern. -->
+        <nldd-page v-else-if="loading">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
+        <!-- Error state — mirrors the library's law-load failure pattern.
+             404s typically mean "the law isn't part of the active traject"
+             (e.g. after a traject switch); we surface a traject-specific
+             message and a quick "Naar bibliotheek" exit. Other failures
+             keep the generic copy + retry. -->
         <nldd-page v-else-if="error">
           <nldd-simple-section width="full">
             <nldd-inline-dialog
+              v-if="lawErrorIs404"
+              variant="alert"
+              :text="`${failedLawName} is niet beschikbaar in dit traject`"
+              supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
+            >
+              <nldd-button slot="actions" variant="primary" text="Naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+            </nldd-inline-dialog>
+            <nldd-inline-dialog
+              v-else
               variant="alert"
               :text="`${failedLawName} is niet geladen`"
               supporting-text="De gegevens konden niet worden opgehaald."

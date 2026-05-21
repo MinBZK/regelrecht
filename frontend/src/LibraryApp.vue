@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, nextTick, watchEffect } from 'vue';
+import { ref, computed, shallowRef, nextTick, watch, watchEffect } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -7,7 +7,9 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
+import TrajectMenu from './components/TrajectMenu.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useTrajects } from './composables/useTrajects.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { SUPPORT_EMAIL } from './constants.js';
@@ -165,6 +167,12 @@ const articleNotFound = computed(() =>
   !!(selectedLaw.value && selectedArticleNumber.value && !selectedArticle.value)
 );
 
+// 404 from `loadLaw` typically means the law isn't part of the active
+// traject's corpus (e.g. after switching to a traject that doesn't
+// include this law); the error UI branches on this to render a
+// traject-specific message instead of a generic "niet geladen".
+const lawErrorIs404 = computed(() => lawError.value?.status === 404);
+
 // Reflect navigation depth in the document title:
 //   "Art. 5 · Wet op de zorgtoeslag · RegelRecht"
 // Most-specific first so browser tab truncation preserves the article number.
@@ -273,7 +281,14 @@ async function loadLaw(lawId) {
   try {
     selectedLawLoading.value = true;
     const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
-    if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+    if (!res.ok) {
+      // Attach the HTTP status so the error UI can render a 404
+      // ("niet beschikbaar in dit traject") differently from a 5xx
+      // without re-parsing the message.
+      const err = new Error(`Failed to fetch: ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
     if (gen !== loadLawGeneration) return; // stale response, discard
     const text = await res.text();
     selectedLaw.value = yaml.load(text);
@@ -445,6 +460,24 @@ if (route.params.lawId) {
   loadLaw(route.params.lawId);
 }
 loadIndex();
+
+// React to traject switches: the URL stays put (no router.push in
+// `switchTraject`), but the server-side read scope changes — so the
+// law index and the currently-open law need to be refetched. Skip
+// the initial fire when the ref settles to its starting value; only
+// real switches should trigger a reload.
+const { activeTrajectId } = useTrajects();
+watch(activeTrajectId, () => {
+  // Reset error so the loading-gate kicks in before any new 404
+  // (e.g. when the open law isn't part of the new traject's corpus).
+  lawError.value = null;
+  indexError.value = null;
+  loading.value = true;
+  loadIndex();
+  if (selectedLawId.value) {
+    loadLaw(selectedLawId.value);
+  }
+});
 </script>
 
 <template>
@@ -462,6 +495,9 @@ loadIndex();
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="lib-md" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
@@ -513,6 +549,9 @@ loadIndex();
                 @click="openSearch"
                 @keydown="onBarSearchKeydown"
               ></nldd-search-field>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="lib-lg" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
@@ -647,8 +686,30 @@ loadIndex();
               <nldd-simple-section width="full" v-else-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
+              <nldd-simple-section width="full" v-else-if="selectedLawLoading">
+                <!-- Show the loading dialog before any error so a stale
+                     `lawError` from the previous fetch (or a 404 from
+                     before a traject switch) doesn't flash in front of
+                     the user while the new request is still on the
+                     wire. -->
+                <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+              </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
+                <!-- 404 typically means "law isn't part of the active
+                     traject" (the most common path after a traject
+                     switch on /library/:lawId). Give the user a way
+                     out without leading with a generic error. -->
                 <nldd-inline-dialog
+                  v-if="lawErrorIs404"
+                  variant="alert"
+                  :text="`${indexedLawName} is niet beschikbaar in dit traject`"
+                  supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
+                >
+                  <nldd-button slot="actions" variant="primary" text="Naar overzicht" @click="goToLibraryRoot"></nldd-button>
+                  <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+                </nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-else
                   variant="alert"
                   :text="`${indexedLawName} is niet geladen`"
                   supporting-text="De gegevens konden niet worden opgehaald."
@@ -717,6 +778,9 @@ loadIndex();
               <span>
                 <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
               </span>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="lib-sm" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <span>

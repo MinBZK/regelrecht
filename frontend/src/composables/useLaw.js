@@ -35,10 +35,22 @@ export function resolveLawName(law) {
   return nameRef || law.$id || '';
 }
 
+/**
+ * Build an `Error` carrying the HTTP status of a failed law fetch so
+ * call-site error UI can distinguish "law isn't there" (404 — typically
+ * surfaces as a traject-specific "niet beschikbaar in dit traject"
+ * message) from generic transport/server failures.
+ */
+function lawFetchError(status) {
+  const err = new Error(`Failed to fetch: ${status}`);
+  err.status = status;
+  return err;
+}
+
 export async function fetchLaw(lawId) {
   if (lawCache.has(lawId)) return lawCache.get(lawId);
   const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
-  if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+  if (!res.ok) throw lawFetchError(res.status);
   const text = await res.text();
   const law = yaml.load(text);
   const entry = { law, rawYaml: text, lawName: resolveLawName(law) };
@@ -88,7 +100,7 @@ export function useLaw(lawParam, articleParam) {
     try {
       loading.value = true;
       const res = await fetch(yamlUrl);
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      if (!res.ok) throw lawFetchError(res.status);
       const text = await res.text();
       rawYaml.value = text;
       law.value = yaml.load(text);
