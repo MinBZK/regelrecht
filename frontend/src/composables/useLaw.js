@@ -117,8 +117,13 @@ export function useLaw(lawParam, articleParam) {
       loading.value = true;
       const res = await fetch(yamlUrl);
       if (!res.ok) throw lawFetchError(res.status);
+      // Two staleness checks: before the body-read await to short-
+      // circuit a stale 200 without paying for `res.text()`, and after
+      // it to catch a `switchLaw` (or a follow-up `load`) that started
+      // *during* the body read.
+      if (version !== switchVersion) return;
       const text = await res.text();
-      if (version !== switchVersion) return; // stale, discard
+      if (version !== switchVersion) return;
       rawYaml.value = text;
       law.value = yaml.load(text);
       // Populate cache

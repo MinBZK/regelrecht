@@ -296,8 +296,14 @@ async function loadLaw(lawId) {
       err.status = res.status;
       throw err;
     }
+    // Two staleness checks: the first short-circuits a stale 200
+    // BEFORE we await the response body (saves the body read), the
+    // second catches a newer `loadLaw` call that landed *during*
+    // `res.text()` — the body-read await is a real race window that
+    // a single before-body check would miss.
+    if (gen !== loadLawGeneration) return;
     const text = await res.text();
-    if (gen !== loadLawGeneration) return; // stale response, discard
+    if (gen !== loadLawGeneration) return;
     selectedLaw.value = yaml.load(text);
     // selectedArticleNumber is set from the route on initial mount and via
     // onBeforeRouteUpdate; we don't validate here so an invalid number
