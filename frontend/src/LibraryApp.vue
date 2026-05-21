@@ -464,10 +464,14 @@ loadIndex();
 // React to traject switches: the URL stays put (no router.push in
 // `switchTraject`), but the server-side read scope changes — so the
 // law index and the currently-open law need to be refetched. Skip
-// the initial fire when the ref settles to its starting value; only
-// real switches should trigger a reload.
-const { activeTrajectId } = useTrajects();
+// the initial fire by gating on `trajectsReady`: that flag flips on
+// only *after* `loadTrajects` has settled `activeTrajectId` from
+// null → session-traject-id and Vue has flushed the resulting watch
+// callbacks. So the cold-load transition is ignored and only real
+// user-driven `switchTraject` calls trigger a reload.
+const { activeTrajectId, trajectsReady } = useTrajects();
 watch(activeTrajectId, () => {
+  if (!trajectsReady.value) return;
   // Reset error so the loading-gate kicks in before any new 404
   // (e.g. when the open law isn't part of the new traject's corpus).
   lawError.value = null;

@@ -150,7 +150,7 @@ function setPaneView(idx, viewId) {
 // the auth-check before this component mounts so the SSO half of the
 // guard is in practice always true; the traject half can flip at runtime
 // when the user picks a different option from the TrajectMenu.
-const { activeTrajectId } = useTrajects();
+const { activeTrajectId, trajectsReady } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectId.value !== null,
 );
@@ -185,7 +185,12 @@ const {
 // Re-run `switchLaw` against the same lawId/article to pick up the
 // new traject's content (or surface a 404 when the law isn't part
 // of the new traject — handled by the error-state UI below).
+// Gated on `trajectsReady` so the initial null → session-traject-id
+// transition done by `loadTrajects` (which runs asynchronously after
+// mount) doesn't spuriously trigger a duplicate `switchLaw` on cold
+// load. Only user-driven `switchTraject` calls fire the watcher.
 watch(activeTrajectId, () => {
+  if (!trajectsReady.value) return;
   if (lawId.value) {
     switchLaw(lawId.value, selectedArticleNumber.value);
   }

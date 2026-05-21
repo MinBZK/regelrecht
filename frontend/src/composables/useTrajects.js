@@ -1,10 +1,11 @@
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { clearLawCache } from './useLaw.js';
 
 const trajects = ref([]);
 const activeTrajectId = ref(null);
 const loading = ref(true);
 const error = ref(null);
+const trajectsReady = ref(false);
 
 let readyPromise = null;
 
@@ -31,6 +32,13 @@ async function loadTrajects() {
   } finally {
     loading.value = false;
   }
+  // Mark trajects ready *after* Vue has flushed the watchers on
+  // `activeTrajectId` for the initial settle. Page-component
+  // watchers gate on `trajectsReady.value` so they skip the
+  // null → session-id transition done by this loader, and only
+  // react to user-driven `switchTraject` calls after that.
+  await nextTick();
+  trajectsReady.value = true;
 }
 
 export function ensureTrajectsReady() {
@@ -96,6 +104,7 @@ export function useTrajects() {
     activeTraject,
     loading,
     error,
+    trajectsReady,
     switchTraject,
     createTraject,
     refreshTrajects,
