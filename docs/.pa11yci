@@ -55,6 +55,7 @@
     "http://localhost:4173/operations/ci-cd",
     "http://localhost:4173/operations/contributing",
     "http://localhost:4173/operations/deployment",
+    "http://localhost:4173/reference/accessibility",
     "http://localhost:4173/reference/glossary",
     "http://localhost:4173/reference/issues/issue-article-id-collision",
     "http://localhost:4173/reference/issues/issue-phased-implementation",
