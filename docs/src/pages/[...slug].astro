@@ -32,7 +32,7 @@ const description = entry.data.description;
 ---
 
 <Base
-  lang="en"
+  lang={entry.data.lang ?? 'en'}
   kind="docs"
   pathname={pathname}
   hasSidebar={hasSidebar}

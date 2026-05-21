@@ -47,14 +47,31 @@
   text-decoration: var(--shiki-dark-text-decoration) !important;
 }
 
-/* Data tables (e.g. the RFC index) — no nldd-table component exists. */
+/* Data tables (e.g. the RFC index) — no nldd-table component exists.
+   rehypeTableScroll (and RfcIndexTable by hand) wraps each table in
+   <div class="rr-table-scroll" tabindex="0">; the wrapper owns the horizontal
+   overflow so the focusable element is what scrolls (WCAG 2.1.1), not the bare
+   table. No role/aria-label — the axe rule only needs keyboard reach, and a
+   named region per narrow table is screen-reader noise. The table itself stays
+   a normal table so headers/cells lay out correctly. */
+.rr-table-scroll {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+.rr-table-scroll:focus-visible {
+  outline: 3px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 .rr-docs-content table,
 .vp-doc table {
   width: 100%;
   border-collapse: collapse;
+  /* Tables not wrapped (none today, but defensive) keep their own margin. */
   margin: 1.5rem 0;
-  display: block;
-  overflow-x: auto;
+}
+.rr-table-scroll table {
+  margin: 0;
 }
 .rr-docs-content th,
 .rr-docs-content td,
@@ -79,59 +96,117 @@
 
 /* Mermaid diagrams (inline-svg). Mermaid's `base` theme writes its colours
    into a scoped <style> inside each <svg id="mermaid-N">, so these overrides
-   need !important to win. Colours come from NLDD tokens and follow the .dark
-   toggle (the SVG background is transparent, so the page surface shows
-   through). Tuned for the flowchart node/edge/cluster classes. */
+   need !important to win. Every colour is an NLDD palette token; the tokens
+   are light-dark() pairs, so the diagram follows the .dark toggle on its own
+   (the SVG background is transparent, so the page surface shows through).
+   Covers both flowchart classes (.node, .edgePath, .flowchart-link) AND state
+   diagrams (.statediagram-state, .statediagram-cluster, .transition), which
+   use different class names — the state-diagram edges in particular ship with
+   a transparent stroke from the base theme, so without these rules the arrows
+   between states are invisible.
+
+   Contrast (light mode, white text on the fill): donkerblauw-900 text on
+   lichtblauw-50 fill = 13.4:1; donkerblauw-500 node stroke on that fill =
+   3.9:1 (past the 3:1 non-text bar). Dark mode flips via the tokens. */
 .rr-docs-content svg.flowchart,
 .rr-docs-content svg[id^='mermaid-'] {
-  /* Light defaults */
-  --rr-mm-node-fill: var(--vp-c-bg-soft, #f1f5f9);
-  --rr-mm-node-stroke: var(--vp-c-brand-1, #154273);
-  --rr-mm-text: var(--vp-c-text-1, #1a1a1a);
-  --rr-mm-edge: var(--vp-c-text-2, #475569);
-  --rr-mm-cluster-fill: transparent;
-  --rr-mm-cluster-stroke: var(--vp-c-divider, #cbd5e1);
+  --rr-mm-node-fill: var(--primitives-color-lichtblauw-50);
+  --rr-mm-node-stroke: var(--primitives-color-donkerblauw-500);
+  --rr-mm-text: var(--primitives-color-donkerblauw-900);
+  --rr-mm-edge: var(--primitives-color-donkerblauw-500);
+  --rr-mm-cluster-fill: var(--primitives-color-lichtblauw-25);
+  --rr-mm-cluster-stroke: var(--primitives-color-donkerblauw-300);
   max-width: 100%;
   height: auto;
 }
-.dark .rr-docs-content svg.flowchart,
-.dark .rr-docs-content svg[id^='mermaid-'] {
-  --rr-mm-node-fill: #1f2a44;
-  --rr-mm-node-stroke: #6ea8e0;
-  --rr-mm-text: #e6edf3;
-  --rr-mm-edge: #9fb3c8;
-  --rr-mm-cluster-fill: rgba(255, 255, 255, 0.03);
-  --rr-mm-cluster-stroke: #33415c;
-}
-/* Node boxes */
+/* Node boxes — flowchart (.node), state-diagram (.statediagram-state) and
+   sequence-diagram actor/note boxes (.actor rect, rect.note). The sequence
+   classes ship with a pale-yellow base-theme fill that our token rules below
+   would otherwise leave untouched. */
 .rr-docs-content svg[id^='mermaid-'] .node rect,
 .rr-docs-content svg[id^='mermaid-'] .node polygon,
 .rr-docs-content svg[id^='mermaid-'] .node circle,
-.rr-docs-content svg[id^='mermaid-'] .node path {
+.rr-docs-content svg[id^='mermaid-'] .node path,
+.rr-docs-content svg[id^='mermaid-'] .statediagram-state > rect,
+.rr-docs-content svg[id^='mermaid-'] .statediagram-state > polygon,
+.rr-docs-content svg[id^='mermaid-'] .statediagram-state > circle,
+.rr-docs-content svg[id^='mermaid-'] rect.actor,
+.rr-docs-content svg[id^='mermaid-'] .actor > rect,
+.rr-docs-content svg[id^='mermaid-'] rect.note {
   fill: var(--rr-mm-node-fill) !important;
   stroke: var(--rr-mm-node-stroke) !important;
 }
-/* Cluster (subgraph) boxes */
-.rr-docs-content svg[id^='mermaid-'] .cluster rect {
+/* Sequence-diagram lifelines and the loop/alt/opt frame borders. */
+.rr-docs-content svg[id^='mermaid-'] line.actor-line,
+.rr-docs-content svg[id^='mermaid-'] .actor-line,
+.rr-docs-content svg[id^='mermaid-'] .loopLine,
+.rr-docs-content svg[id^='mermaid-'] line.loopLine {
+  stroke: var(--rr-mm-edge) !important;
+}
+/* Cluster / composite-state (subgraph) boxes. */
+.rr-docs-content svg[id^='mermaid-'] .cluster rect,
+.rr-docs-content svg[id^='mermaid-'] .statediagram-cluster rect,
+.rr-docs-content svg[id^='mermaid-'] .statediagram-cluster > rect {
   fill: var(--rr-mm-cluster-fill) !important;
   stroke: var(--rr-mm-cluster-stroke) !important;
 }
-/* All label text */
-.rr-docs-content svg[id^='mermaid-'] .nodeLabel,
-.rr-docs-content svg[id^='mermaid-'] .edgeLabel,
-.rr-docs-content svg[id^='mermaid-'] .cluster-label,
-.rr-docs-content svg[id^='mermaid-'] span,
-.rr-docs-content svg[id^='mermaid-'] p,
-.rr-docs-content svg[id^='mermaid-'] text {
+/* The small start/end state dots inherit the node stroke as their fill. */
+.rr-docs-content svg[id^='mermaid-'] .statediagram-state .state-start,
+.rr-docs-content svg[id^='mermaid-'] circle.state-start,
+.rr-docs-content svg[id^='mermaid-'] .statediagram-state circle[class*='end'] {
+  fill: var(--rr-mm-node-stroke) !important;
+  stroke: var(--rr-mm-node-stroke) !important;
+}
+/* All label text — but NOT C4 diagrams (aria-roledescription="c4"). C4 draws
+   its boxes in dark blue and titles in white (white on #08427B ≈ 10:1), which
+   is correct, so forcing our dark text onto them would break the titles. C4 is
+   therefore excluded here — but see the C4-specific rule below: its DESCRIPTION
+   sublabels ship as dark grey (#444) on those same dark boxes (≈ 2.3:1), which
+   is a real failure we do fix. */
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) .nodeLabel,
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) .edgeLabel,
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) .cluster-label,
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) span,
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) p,
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) text,
+/* Sequence-diagram actor/note labels render their text in a <tspan> that
+   carries its own fill (#333 from the base theme); the parent <text> fill does
+   not cascade to it, so without this the labels stay dark-on-dark in dark mode. */
+.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) text tspan {
   color: var(--rr-mm-text) !important;
   fill: var(--rr-mm-text) !important;
   background: transparent !important;
 }
-/* Edges (arrows + lines) */
-.rr-docs-content svg[id^='mermaid-'] .edgePath .path,
-.rr-docs-content svg[id^='mermaid-'] .flowchart-link {
-  stroke: var(--rr-mm-edge) !important;
+/* C4 description sublabels: the base theme paints them dark grey (inline
+   fill="#444444") on the dark-blue boxes — unreadable (≈ 2.3:1). The titles are
+   white and stay white; only the grey descriptions are lifted to white so they
+   match the titles and clear the box (white on #08427B ≈ 10:1). */
+.rr-docs-content svg[id^='mermaid-'][aria-roledescription='c4'] text[fill='#444444'],
+.rr-docs-content svg[id^='mermaid-'][aria-roledescription='c4'] text[fill='#444'] {
+  fill: #fff !important;
 }
+/* C4 diagram title sits on the page background (not a box) as a class-less
+   <text> with no inline fill, painted #333 by the theme stylesheet — dark on a
+   dark page. Box labels always carry an inline fill (#FFFFFF / #444444), so
+   `text:not([fill])` targets the title and other on-page chrome only, and gives
+   it the scheme-following token (dark in light mode, light in dark). */
+.rr-docs-content svg[id^='mermaid-'][aria-roledescription='c4'] text:not([fill]) {
+  fill: var(--rr-mm-text) !important;
+}
+/* Edges (lines) — flowchart (.edgePath/.flowchart-link), state-diagram
+   (.transition) and sequence-diagram message arrows (.messageLine0/1). The
+   state-diagram transitions default to a transparent stroke, so this is what
+   makes their arrows visible. */
+.rr-docs-content svg[id^='mermaid-'] .edgePath .path,
+.rr-docs-content svg[id^='mermaid-'] .flowchart-link,
+.rr-docs-content svg[id^='mermaid-'] path.transition,
+.rr-docs-content svg[id^='mermaid-'] .transition,
+.rr-docs-content svg[id^='mermaid-'] .messageLine0,
+.rr-docs-content svg[id^='mermaid-'] .messageLine1 {
+  stroke: var(--rr-mm-edge) !important;
+  fill: none !important;
+}
+/* Arrowheads. */
 .rr-docs-content svg[id^='mermaid-'] .arrowMarkerPath,
 .rr-docs-content svg[id^='mermaid-'] marker path {
   fill: var(--rr-mm-edge) !important;

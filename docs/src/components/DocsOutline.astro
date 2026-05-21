@@ -72,7 +72,9 @@ const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
     color: var(--vp-c-text-2);
     text-decoration: none;
     display: block;
-    padding-left: 0.75rem;
+    /* padding-block gives each link ~28px height so adjacent targets clear the
+       WCAG 2.5.8 (Target Size, Minimum) 24px spacing without overlap. */
+    padding: 0.35rem 0 0.35rem 0.75rem;
     margin-left: -1px;
     border-left: 2px solid transparent;
   }

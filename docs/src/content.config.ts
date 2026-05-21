@@ -6,6 +6,10 @@ const docs = defineCollection({
   schema: z.object({
     title: z.string().optional(),
     description: z.string().optional(),
+    // Per-page language override. Docs default to English; a Dutch page (e.g.
+    // the accessibility statement) sets `lang: nl` so its <html lang> — and
+    // thus screen-reader pronunciation — matches the content.
+    lang: z.enum(['en', 'nl']).optional(),
   }),
 });
 
