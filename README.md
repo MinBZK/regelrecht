@@ -36,8 +36,7 @@ Machine-readable Dutch law execution. regelrecht takes legal texts, encodes them
 |-----------|-------------|
 | [frontend/](frontend/) | Law editor UI (Vue 3 + Vite) |
 | [frontend-lawmaking/](frontend-lawmaking/) | Law-making process visualization (Vue 3 + Vite) |
-| [landing/](landing/) | Landing page |
-| [docs/](docs/) | Documentation site (VitePress) |
+| [docs/](docs/) | Astro site: landing page + documentation |
 
 ### Data and testing
 

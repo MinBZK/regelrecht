@@ -36,8 +36,7 @@ The preview deployment and its GHCR images are cleaned up automatically.
 | Harvester Worker | `regelrecht-harvester-worker` | (no web UI) |
 | Enrich Worker | `regelrecht-enrich-worker` | (no web UI) |
 | Lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
-| Landing | `regelrecht-landing` | `regelrecht.rijks.app` |
-| Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` |
+| Docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | Grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
 ## ZAD CLI
@@ -55,8 +54,8 @@ zad deployment list
 zad logs --deployment regelrecht --lines 50
 
 # Add a new component
-zad component add landing \
-    --image ghcr.io/minbzk/regelrecht-landing:latest \
+zad component add docs \
+    --image ghcr.io/minbzk/regelrecht-docs:latest \
     --deployment regelrecht \
     --port 8000 \
     --service publish-on-web
