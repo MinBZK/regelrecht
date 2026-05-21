@@ -193,7 +193,11 @@ const {
 // closes the race where a user click lands in the same microtask as
 // the settle — both writes go to `activeTrajectId`, but only the
 // user-driven one bumps the epoch and triggers the refetch.
+// We also refresh the corpus index so the search popover AND the
+// `failedLawName` lookup (used by the 404 inline-dialog) reflect the
+// new traject's law set instead of the previous traject's names.
 watch(trajectSwitchEpoch, () => {
+  loadCorpusLaws();
   if (lawId.value) {
     switchLaw(lawId.value, selectedArticleNumber.value);
   }

@@ -96,12 +96,29 @@ export function useLaw(lawParam, articleParam) {
     ) ?? null;
   });
 
+  // Shared discriminator for the initial `load()` and every subsequent
+  // `switchLaw()`. Bumped at the start of each operation; awaits compare
+  // their captured version against the latest one before writing reactive
+  // state, so an in-flight load that's been superseded by a traject switch
+  // (or a follow-up switchLaw) cannot clobber the new law's content.
+  let switchVersion = 0;
+
+  /**
+   * Initial fetch for the law passed to `useLaw`. Shares the
+   * `switchVersion` discriminator with `switchLaw` so a traject switch
+   * fired while this XHR is in flight (the traject watcher in
+   * `EditorApp.vue` calls `switchLaw` on epoch change) cannot have its
+   * fresh content overwritten by the stale initial load's late
+   * resolution.
+   */
   async function load() {
+    const version = ++switchVersion;
     try {
       loading.value = true;
       const res = await fetch(yamlUrl);
       if (!res.ok) throw lawFetchError(res.status);
       const text = await res.text();
+      if (version !== switchVersion) return; // stale, discard
       rawYaml.value = text;
       law.value = yaml.load(text);
       // Populate cache
@@ -117,9 +134,12 @@ export function useLaw(lawParam, articleParam) {
         }
       }
     } catch (e) {
+      if (version !== switchVersion) return; // stale, discard
       error.value = e;
     } finally {
-      loading.value = false;
+      if (version === switchVersion) {
+        loading.value = false;
+      }
     }
   }
 
@@ -127,8 +147,6 @@ export function useLaw(lawParam, articleParam) {
 
   // Derive the law ID from the parsed law or the original param
   const lawId = computed(() => law.value?.$id || lawParam);
-
-  let switchVersion = 0;
 
   async function switchLaw(newLawId, articleNumber) {
     const version = ++switchVersion;
