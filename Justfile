@@ -386,6 +386,6 @@ docs-build:
 docs-preview:
     cd docs && npm run preview
 
-# Run the accessibility gate (build + mermaid-alt check + pa11y-ci htmlcs+axe, WCAG 2.2 AA)
+# Run the accessibility gate (build + mermaid-alt check + pa11y-ci htmlcs+axe, WCAG 2.1 AA)
 docs-a11y:
     cd docs && npm run a11y

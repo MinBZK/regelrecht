@@ -1,6 +1,6 @@
 ---
 title: Toegankelijkheid
-description: Toegankelijkheidsverklaring voor RegelRecht (WCAG 2.2 AA, concept).
+description: Toegankelijkheidsverklaring voor RegelRecht (WCAG 2.1 AA, concept).
 lang: nl
 ---
 
@@ -12,11 +12,14 @@ Engelstalige documentatie; bij verschil tussen beide is deze Nederlandse tekst
 leidend.
 
 De verklaring beschrijft in hoeverre RegelRecht voldoet aan de
-toegankelijkheidseisen voor overheidswebsites. De norm is WCAG 2.2 niveau AA,
-zoals die sinds oktober 2024 via EN 301 549 geldt en in Nederland verplicht is
-onder het Tijdelijk besluit digitale toegankelijkheid overheid. Ze geldt voor de
-site die op `regelrecht.rijks.app` en op `docs.regelrecht.rijks.app` wordt
-aangeboden, dus voor de landingspagina, het aanmeldformulier en de documentatie.
+toegankelijkheidseisen voor overheidswebsites. De wettelijke norm is op dit
+moment WCAG 2.1 niveau AA, via EN 301 549 en verplicht onder het Besluit
+digitale toegankelijkheid overheid. WCAG 2.2 is door W3C gepubliceerd maar nog
+niet in EN 301 549 opgenomen; zodra de Europese norm naar 2.2 gaat, volgt
+Nederland. RegelRecht heeft daarom ook al tegen de negen nieuwe 2.2-criteria
+getoetst, vooruitlopend op die overgang. De verklaring geldt voor de site die op
+`regelrecht.rijks.app` en op `docs.regelrecht.rijks.app` wordt aangeboden, dus
+voor de landingspagina, het aanmeldformulier en de documentatie.
 
 **Dit is een concept.** De status hieronder berust op een geautomatiseerde toets
 in de bouwstraat en een handmatige controle door het team. Een onderzoek door een
@@ -45,21 +48,19 @@ dekt WCAG 3.1.1 (taal van de pagina) en 3.1.2 (taal van onderdelen).
 **Geautomatiseerd, bij elke wijziging.** Een toegankelijkheidstoets draait in CI
 op elke wijziging die de documentatie raakt. De toets bouwt de site en draait
 [pa11y-ci](https://github.com/pa11y/pa11y-ci) met twee onafhankelijke engines,
-HTML_CodeSniffer en axe-core 4.11, tegen elke gegenereerde pagina (op dit moment
-61). De URL-lijst komt uit de build, zodat een nieuwe pagina automatisch
-meegetoetst wordt en niet buiten de controle valt. De toets is lokaal te draaien
-met `just docs-a11y`.
+HTML_CodeSniffer en axe-core 4.11, tegen elke gegenereerde pagina. De URL-lijst
+komt uit de build, zodat een nieuwe pagina automatisch meegetoetst wordt en niet
+buiten de controle valt. De toets is lokaal te draaien met `just docs-a11y`.
 
-Die twee engines dekken een groot deel van WCAG 2.2 dat machinaal te meten is:
-contrast, formulierlabels, koppenstructuur, landmarks, alt-teksten, en een deel
-van de in 2.2 toegevoegde criteria. Wat een tool niet betrouwbaar ziet, is met de
-hand gecontroleerd.
+Die twee engines dekken een groot deel van wat machinaal te meten is: contrast,
+formulierlabels, koppenstructuur, landmarks en alt-teksten. Wat een tool niet
+betrouwbaar ziet, is met de hand gecontroleerd.
 
-**Handmatig, voor de rest van 2.2.** Het team liep de negen succescriteria na die
-WCAG 2.2 toevoegt: focus niet afgedekt (minimum en uitgebreid), focusverschijning,
-sleepbewegingen, klikdoelgrootte, consistente hulp, herhaalde invoer, en
-toegankelijke authenticatie (minimum en uitgebreid). Daarnaast is met de hand
-getest:
+**Handmatig, inclusief vooruitlopen op 2.2.** Het team liep de negen
+succescriteria na die WCAG 2.2 toevoegt, hoewel die nog geen wettelijke eis zijn:
+focus niet afgedekt (minimum en uitgebreid), focusverschijning, sleepbewegingen,
+klikdoelgrootte, consistente hulp, herhaalde invoer, en toegankelijke
+authenticatie (minimum en uitgebreid). Daarnaast is met de hand getest:
 
 - de werking met alleen een toetsenbord, inclusief de sla-over-link en de
   focusvolgorde;

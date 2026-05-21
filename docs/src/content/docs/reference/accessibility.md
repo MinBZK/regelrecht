@@ -1,6 +1,6 @@
 ---
 title: Accessibility
-description: Accessibility statement for RegelRecht (WCAG 2.2 AA, draft).
+description: Accessibility statement for RegelRecht (WCAG 2.1 AA, draft).
 lang: en
 ---
 
@@ -12,11 +12,14 @@ one: it is the legally required form for a Dutch government site, and where the
 two differ, the Dutch text prevails.
 
 The statement describes how far RegelRecht meets the accessibility requirements
-for government websites. The standard is WCAG 2.2 level AA, which has applied
-through EN 301 549 since October 2024 and is mandatory in the Netherlands under
-the Tijdelijk besluit digitale toegankelijkheid overheid. It covers the site
-served at `regelrecht.rijks.app` and at `docs.regelrecht.rijks.app`, so the
-landing page, the sign-up form, and the documentation.
+for government websites. The legal standard right now is WCAG 2.1 level AA, via
+EN 301 549 and mandatory in the Netherlands under the Besluit digitale
+toegankelijkheid overheid. WCAG 2.2 has been published by the W3C but is not yet
+part of EN 301 549; once the European standard moves to 2.2, the Netherlands
+follows. RegelRecht has therefore already tested against the nine new 2.2
+criteria, ahead of that transition. The statement covers the site served at
+`regelrecht.rijks.app` and at `docs.regelrecht.rijks.app`, so the landing page,
+the sign-up form, and the documentation.
 
 **This is a draft.** The status below rests on an automated test in the build
 pipeline and a manual review by the team. No independent party has audited the
@@ -45,19 +48,19 @@ WCAG 3.1.1 (language of page) and 3.1.2 (language of parts).
 **Automated, on every change.** An accessibility test runs in CI on every change
 that touches the documentation. It builds the site and runs
 [pa11y-ci](https://github.com/pa11y/pa11y-ci) with two independent engines,
-HTML_CodeSniffer and axe-core 4.11, against every generated page (61 at the
-moment). The URL list comes from the build, so a new page is tested
-automatically and does not slip past the check. The test runs locally with
-`just docs-a11y`.
+HTML_CodeSniffer and axe-core 4.11, against every generated page. The URL list
+comes from the build, so a new page is tested automatically and does not slip
+past the check. The test runs locally with `just docs-a11y`.
 
-Those two engines cover a large part of WCAG 2.2 that can be measured by machine:
-contrast, form labels, heading structure, landmarks, alt text, and some of the
-criteria added in 2.2. What a tool does not see reliably was checked by hand.
+Those two engines cover a large part of what can be measured by machine:
+contrast, form labels, heading structure, landmarks, and alt text. What a tool
+does not see reliably was checked by hand.
 
-**Manual, for the rest of 2.2.** The team went through the nine success criteria
-that WCAG 2.2 adds: focus not obscured (minimum and enhanced), focus appearance,
-dragging movements, target size, consistent help, redundant entry, and accessible
-authentication (minimum and enhanced). Beyond that, hand-tested:
+**Manual, including a head start on 2.2.** The team went through the nine success
+criteria that WCAG 2.2 adds, although they are not yet a legal requirement: focus
+not obscured (minimum and enhanced), focus appearance, dragging movements, target
+size, consistent help, redundant entry, and accessible authentication (minimum
+and enhanced). Beyond that, hand-tested:
 
 - keyboard-only operation, including the skip link and the focus order;
 - dark mode, for contrast and legibility;

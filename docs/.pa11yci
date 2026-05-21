@@ -27,7 +27,6 @@
     "http://localhost:4173/components/frontend",
     "http://localhost:4173/components/grafana",
     "http://localhost:4173/components/harvester",
-    "http://localhost:4173/components/landing",
     "http://localhost:4173/components/lawmaking",
     "http://localhost:4173/components/pipeline",
     "http://localhost:4173/components/tui",
