@@ -65,8 +65,9 @@ const config = {
     //    carry inline fill="…" attributes. axe's color-contrast algorithm can't
     //    resolve the effective background through that structure and flags every
     //    label, even though the rendered contrast is fine (state/flowchart text
-    //    is donkerblauw-900 on lichtblauw-50 ≈ 13:1; C4 keeps its native white
-    //    on #08427B ≈ 10:1 — both verified manually in the browser). The
+    //    is donkerblauw-900 on lichtblauw-50 ≈ 14.4:1; C4 keeps its native white
+    //    on dark blue, well above the requirement — both measured in the
+    //    browser). The
     //    diagrams' accessible name (role=img + aria-label) is asserted by
     //    scripts/check-mermaid-alt.mjs, which the a11y npm script runs against
     //    the build before this gate, so hiding the SVG here does not lose that
@@ -75,15 +76,16 @@ const config = {
     //    (color:<light>;--shiki-dark:<dark>, same for bg). axe evaluates the
     //    static light color against a background it samples inconsistently and
     //    reports phantom contrast failures on box-drawing/whitespace tokens,
-    //    while the actually-rendered text is 18.9:1 in light and 17.6:1 in dark
-    //    (both verified in the browser, both themes). The high-contrast GitHub
-    //    themes are deliberately chosen for this; the gate can't see it.
+    //    while the actually-rendered text clears the 4.5:1 AA requirement in
+    //    both themes. The high-contrast GitHub themes are deliberately chosen
+    //    for this; the gate can't see it.
     //  - hero text over the gradient (#rr-hero-title and the intro paragraph):
     //    the hero keeps a decorative donkerblauw gradient on top of a solid
     //    donkerblauw-900 fallback. axe cannot evaluate text contrast over a
     //    gradient and flags these, but both gradient stops are deep blue (white
-    //    text ≈ 9:1 on the lighter stop, ≈ 15:1 on the darker / solid fallback —
-    //    verified in the browser). Only the gradient TEXT is hidden, NOT the
+    //    text ≈ 11.4:1 on the lighter stop, ≈ 15.5:1 on the darker / solid
+    //    fallback — measured in the browser). Only the gradient TEXT is hidden,
+    //    NOT the
     //    whole .rr-hero: the CTA button/link inside it stays in the evaluation.
     hideElements:
       '.pagefind-ui, svg[id^="mermaid-"], pre.astro-code, #rr-hero-title, .rr-hero nldd-rich-text p',

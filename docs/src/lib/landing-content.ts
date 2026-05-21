@@ -843,7 +843,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'How it works', href: '/en/#how-it-works' },
         { label: 'Stay informed', href: SIGNUP_EN_PATH },
         { label: 'Documentation', href: GUIDE_PATH },
-        { label: 'Accessibility (Dutch)', href: '/reference/toegankelijkheid' },
+        { label: 'Accessibility', href: '/reference/accessibility' },
       ],
       partOf: [
         'Bureau Architectuur',
