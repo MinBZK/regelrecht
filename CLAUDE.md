@@ -17,8 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `packages/grafana/` - Grafana monitoring with provisioned dashboards
 - `frontend/` - Law editor (Vue/Vite + editor-api backend)
 - `frontend-lawmaking/` - Law-making process visualization (Vue/Vite)
-- `landing/` - Static landing page (regelrecht.rijks.app)
-- `docs/` - Documentation site (VitePress)
+- `docs/` - Astro site serving both the landing page (regelrecht.rijks.app) and the docs (docs.regelrecht.rijks.app)
 - `corpus/regulation/` - Dutch legal regulations in machine-readable YAML format
 - `features/` - Gherkin BDD feature files (used by Rust cucumber-rs)
 
@@ -134,9 +133,8 @@ CI runs via `.github/workflows/ci.yml`.
 | harvester-admin | `regelrecht-admin` | `harvester-admin.regelrecht.rijks.app` |
 | harvester-worker | `regelrecht-harvester-worker` | (no web UI) |
 | enrichworker | `regelrecht-enrich-worker` | (no web UI) |
-| landing | `regelrecht-landing` | `regelrecht.rijks.app` |
 | lawmaking | `regelrecht-lawmaking` | `lawmaking.regelrecht.rijks.app` |
-| docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` |
+| docs | `regelrecht-docs` | `docs.regelrecht.rijks.app` + `regelrecht.rijks.app` (landing) |
 | grafana | `regelrecht-grafana` | `grafana.regelrecht.rijks.app` |
 
 ### How It Works
@@ -168,8 +166,8 @@ uv tool install git+https://github.com/RijksICTGilde/zad-cli.git
 uv tool upgrade zad-cli
 
 # Add a new component
-zad component add landing \
-    --image ghcr.io/minbzk/regelrecht-landing:latest \
+zad component add docs \
+    --image ghcr.io/minbzk/regelrecht-docs:latest \
     --deployment regelrecht \
     --port 8000 \
     --service publish-on-web

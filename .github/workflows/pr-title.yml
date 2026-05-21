@@ -36,7 +36,6 @@ jobs:
             corpus
             frontend
             lawmaking
-            landing
             docs
             grafana
             ci

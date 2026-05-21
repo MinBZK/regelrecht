@@ -91,7 +91,6 @@ export const sidebar: Record<string, SidebarGroup[]> = {
         { text: 'Editor API', link: '/components/editor-api' },
         { text: 'Admin Dashboard', link: '/components/admin' },
         { text: 'Lawmaking Frontend', link: '/components/lawmaking' },
-        { text: 'Landing Page', link: '/components/landing' },
         { text: 'TUI', link: '/components/tui' },
       ],
     },
