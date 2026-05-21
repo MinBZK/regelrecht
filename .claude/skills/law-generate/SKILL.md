@@ -19,7 +19,7 @@ Generates `machine_readable` sections for Dutch law YAML files through an iterat
 cycle of creation, validation, and BDD testing.
 
 **CRITICAL**: All generated YAML MUST pass `just validate <file>`. The schema is the
-single source of truth. When in doubt, consult `schema/v0.5.1/schema.json` and study
+single source of truth. When in doubt, consult `schema/latest/schema.json` and study
 working examples in the corpus.
 
 ## Setup
