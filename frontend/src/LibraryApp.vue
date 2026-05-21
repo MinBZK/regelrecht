@@ -587,9 +587,7 @@ watch(trajectSwitchEpoch, () => {
       <nldd-split-view-pane slot="main">
         <nldd-navigation-split-view @back="onPaneBack">
 
-          <!-- Sidebar: Wetten Browser. Hidden on corpus load failure so the
-               navigation-split-view collapses and the main pane carries the
-               error state on its own (mirrors the law-load failure pattern). -->
+          <!-- Sidebar hidden on corpus load failure so the main pane carries the error alone (mirrors law-load failure pattern). -->
           <nldd-split-view-pane v-if="!indexError" slot="sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>

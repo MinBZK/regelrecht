@@ -55,24 +55,10 @@ export async function switchTraject(trajectId) {
   if (!resp.ok) throw new Error(`Failed to switch traject: ${resp.status}`);
   const body = await resp.json();
   activeTrajectId.value = body.traject_id || null;
-  // Bump on every user-driven switch. Page components watch this
-  // counter instead of `activeTrajectId` for refetch triggers, so
-  // `loadTrajects`'s null → session-id settle (which does NOT touch
-  // this counter) never causes a spurious reload, and a user click
-  // arriving in the same microtask as the settle is still observed.
+  // Page components watch this counter (not activeTrajectId) so the initial null→id settle doesn't trigger a spurious refetch.
   trajectSwitchEpoch.value++;
 
-  // After a successful switch the read scope on the server changed —
-  // GET /api/corpus/laws/... now serves the new traject's branch
-  // content (or the global view when the active id was cleared). Drop
-  // every cached law-content entry so the next fetch hits the API.
-  //
-  // Stay on the current route: LibraryApp and EditorApp watch
-  // `trajectSwitchEpoch` (bumped just above) and re-fetch the open law
-  // (or surface a 404 when the law isn't part of the new traject).
-  // Navigating away on every switch destroyed that context — the user
-  // landed on the library overview even when they were halfway through
-  // editing.
+  // Read scope changed server-side; drop cached law content so the next fetch hits the API. Stay on route — pages watch the epoch and refetch in place.
   clearLawCache();
   return activeTrajectId.value;
 }

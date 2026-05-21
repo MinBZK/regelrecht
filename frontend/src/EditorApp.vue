@@ -380,6 +380,7 @@ async function loadCorpusLaws() {
   try {
     const res = await fetch('/api/corpus/laws?limit=1000');
     if (!res.ok) return;
+    if (gen !== corpusLawsGeneration) return; // stale response, discard
     const list = await res.json();
     if (gen !== corpusLawsGeneration) return; // stale response, discard
     corpusLaws.value = list.sort((a, b) => a.law_id.localeCompare(b.law_id));
@@ -402,12 +403,7 @@ const failedLawName = computed(() => {
   return corpusLaws.value.find(l => l.law_id === id)?.name || id;
 });
 
-/**
- * Whether the current `error` is a 404 from the law fetch — i.e. the
- * law does not exist (or is not part of the active traject's corpus).
- * `useLaw.load` / `fetchLaw` decorate the thrown Error with `.status`
- * so we can branch the error UI without re-parsing the message.
- */
+// True when the law fetch errored with 404 (law missing or not in active traject's corpus).
 const lawErrorIs404 = computed(() => error.value?.status === 404);
 
 /**
