@@ -171,9 +171,12 @@ export function useLaw(lawParam, articleParam) {
         selectedArticleNumber.value = String(articles.value[0].number);
       }
     } catch (e) {
+      if (version !== switchVersion) return; // stale, discard
       error.value = e;
     } finally {
-      loading.value = false;
+      if (version === switchVersion) {
+        loading.value = false;
+      }
     }
   }
 

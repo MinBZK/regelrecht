@@ -296,8 +296,8 @@ async function loadLaw(lawId) {
       err.status = res.status;
       throw err;
     }
-    if (gen !== loadLawGeneration) return; // stale response, discard
     const text = await res.text();
+    if (gen !== loadLawGeneration) return; // stale response, discard
     selectedLaw.value = yaml.load(text);
     // selectedArticleNumber is set from the route on initial mount and via
     // onBeforeRouteUpdate; we don't validate here so an invalid number
