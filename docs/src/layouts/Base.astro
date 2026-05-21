@@ -172,46 +172,45 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
           logo-href={home}
           website-href={home}
         >
-          {
-            globalLinks.map((item) => (
-              <nldd-menu-bar-item
-                slot="global"
-                href={item.href}
-                text={item.text}
-                icon={item.icon || undefined}
-                current={item.current || undefined}
-              />
-            ))
-          }
-          <nldd-menu-bar-item
-            slot="utility"
-            id="rr-search-trigger"
-            text={searchLabel}
-            icon="search"
-          ></nldd-menu-bar-item>
-          <nldd-menu-bar-item
-            slot="utility"
-            id="rr-theme-toggle"
-            text={themeLabelLight}
-            data-label-light={themeLabelLight}
-            data-label-dark={themeLabelDark}
-            icon="moon"
-          ></nldd-menu-bar-item>
-          {
-            langToggle && (
-              <nldd-menu-bar-item
-                slot="utility"
-                text={langToggle.text}
-                href={langToggle.href}
-              />
-            )
-          }
-          <nldd-menu-bar-item
-            slot="utility"
-            text="GitHub"
-            href="https://github.com/MinBZK/regelrecht"
-            icon="code"
-          ></nldd-menu-bar-item>
+          <nldd-menu-bar slot="global">
+            {
+              globalLinks.map((item) => (
+                <nldd-menu-bar-item
+                  href={item.href}
+                  text={item.text}
+                  icon={item.icon || undefined}
+                  current={item.current || undefined}
+                />
+              ))
+            }
+          </nldd-menu-bar>
+          <nldd-menu-bar slot="utility">
+            <nldd-menu-bar-item
+              id="rr-search-trigger"
+              text={searchLabel}
+              icon="search"
+            ></nldd-menu-bar-item>
+            <nldd-menu-bar-item
+              id="rr-theme-toggle"
+              text={themeLabelLight}
+              data-label-light={themeLabelLight}
+              data-label-dark={themeLabelDark}
+              icon="moon"
+            ></nldd-menu-bar-item>
+            {
+              langToggle && (
+                <nldd-menu-bar-item
+                  text={langToggle.text}
+                  href={langToggle.href}
+                />
+              )
+            }
+            <nldd-menu-bar-item
+              text="GitHub"
+              href="https://github.com/MinBZK/regelrecht"
+              icon="code"
+            ></nldd-menu-bar-item>
+          </nldd-menu-bar>
         </nldd-top-navigation-bar>
 
         {/* Semantic fallback: real <a> links rendered server-side, so the
