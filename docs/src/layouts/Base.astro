@@ -809,9 +809,12 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
         flex-wrap: wrap;
         gap: 0 1.5rem;
         margin: 0;
-        /* Match the NLDD bar's 1.5rem inset so the first link lines up under
-           the top-bar menu items. */
-        padding: 0 1.5rem;
+        /* Line up with the top bar's menu items. The NLDD bar insets its
+           content by the page-section margin token, so the second layer uses
+           the same token instead of a hard-coded value — they stay aligned
+           across NLDD's responsive breakpoints. */
+        padding-inline: var(--semantics-page-sections-lg-margin-inline, 48px);
+        padding-block: 0;
         list-style: none;
       }
       .rr-jumpnav a,
