@@ -150,7 +150,7 @@ function setPaneView(idx, viewId) {
 // the auth-check before this component mounts so the SSO half of the
 // guard is in practice always true; the traject half can flip at runtime
 // when the user picks a different option from the TrajectMenu.
-const { activeTrajectId } = useTrajects();
+const { activeTrajectId, trajectSwitchEpoch } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectId.value !== null,
 );
@@ -179,6 +179,14 @@ const {
   saveLaw,
   lastSavedPr,
 } = useLaw(route.params.lawId, route.params.articleNumber);
+
+// On user-driven traject switch (epoch bump): refresh corpus index and refetch the open law.
+watch(trajectSwitchEpoch, () => {
+  loadCorpusLaws();
+  if (lawId.value) {
+    switchLaw(lawId.value, selectedArticleNumber.value);
+  }
+});
 
 // Notes (RFC-005/RFC-018) for the current law, resolved against its text.
 const {
@@ -364,11 +372,17 @@ const graphSheetOpen = ref(false);
 const corpusLaws = ref([]);
 const searchPopoverRef = ref(null);
 
+// Generation counter to discard stale responses across rapid traject switches.
+let corpusLawsGeneration = 0;
+
 async function loadCorpusLaws() {
+  const gen = ++corpusLawsGeneration;
   try {
     const res = await fetch('/api/corpus/laws?limit=1000');
     if (!res.ok) return;
+    if (gen !== corpusLawsGeneration) return; // stale response, discard
     const list = await res.json();
+    if (gen !== corpusLawsGeneration) return; // stale response, discard
     corpusLaws.value = list.sort((a, b) => a.law_id.localeCompare(b.law_id));
   } catch { /* ignore — search is a convenience */ }
 }
@@ -388,6 +402,9 @@ const failedLawName = computed(() => {
   if (!id) return '';
   return corpusLaws.value.find(l => l.law_id === id)?.name || id;
 });
+
+// True when the law fetch errored with 404 (law missing or not in active traject's corpus).
+const lawErrorIs404 = computed(() => error.value?.status === 404);
 
 /**
  * Retry the failed law fetch. switchLaw clears `error` and re-runs the
@@ -1368,10 +1385,31 @@ async function handleActionSave() {
           </nldd-simple-section>
         </nldd-page>
 
-        <!-- Error state — mirrors the library's law-load failure pattern. -->
+        <!-- Loading takes precedence over `error` to avoid flashing a stale error during a refetch. -->
+        <nldd-page v-else-if="loading">
+          <nldd-simple-section width="full">
+            <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+          </nldd-simple-section>
+        </nldd-page>
+
+        <!-- Error state — mirrors the library's law-load failure pattern.
+             404s typically mean "the law isn't part of the active traject"
+             (e.g. after a traject switch); we surface a traject-specific
+             message and a quick "Naar bibliotheek" exit. Other failures
+             keep the generic copy + retry. -->
         <nldd-page v-else-if="error">
           <nldd-simple-section width="full">
             <nldd-inline-dialog
+              v-if="lawErrorIs404"
+              variant="alert"
+              :text="`${failedLawName} is niet beschikbaar in dit traject`"
+              supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
+            >
+              <nldd-button slot="actions" variant="primary" text="Naar bibliotheek" :href="lastLibraryPath" @click.prevent="router.push(lastLibraryPath)"></nldd-button>
+              <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+            </nldd-inline-dialog>
+            <nldd-inline-dialog
+              v-else
               variant="alert"
               :text="`${failedLawName} is niet geladen`"
               supporting-text="De gegevens konden niet worden opgehaald."

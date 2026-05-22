@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, shallowRef, nextTick, watchEffect } from 'vue';
+import { ref, computed, shallowRef, nextTick, watch, watchEffect } from 'vue';
 import { useRoute, useRouter, onBeforeRouteUpdate } from 'vue-router';
 import yaml from 'js-yaml';
 import ArticleText from './components/ArticleText.vue';
@@ -7,7 +7,10 @@ import MachineReadable from './components/MachineReadable.vue';
 import YamlView from './components/YamlView.vue';
 import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
+import TrajectMenu from './components/TrajectMenu.vue';
 import { useAuth } from './composables/useAuth.js';
+import { useTrajects } from './composables/useTrajects.js';
+import { lawFetchError } from './composables/useLaw.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
 import { SUPPORT_EMAIL } from './constants.js';
@@ -165,6 +168,9 @@ const articleNotFound = computed(() =>
   !!(selectedLaw.value && selectedArticleNumber.value && !selectedArticle.value)
 );
 
+// 404 means the law isn't in the active traject's corpus; the error UI shows a traject-specific message.
+const lawErrorIs404 = computed(() => lawError.value?.status === 404);
+
 // Reflect navigation depth in the document title:
 //   "Art. 5 · Wet op de zorgtoeslag · RegelRecht"
 // Most-specific first so browser tab truncation preserves the article number.
@@ -249,20 +255,28 @@ async function toggleFavorite(lawId) {
   }
 }
 
+let loadIndexGeneration = 0;
+
 async function loadIndex() {
+  const gen = ++loadIndexGeneration;
   try {
     const [corpusRes] = await Promise.all([
       fetch('/api/corpus/laws?limit=1000'),
       loadFavorites(),
     ]);
     if (!corpusRes.ok) throw new Error(`Failed to load corpus: ${corpusRes.status}`);
+    // Gate before and after json(): skip parsing for stale 200s, and catch races during it.
+    if (gen !== loadIndexGeneration) return;
     const corpusLaws = await corpusRes.json();
-
+    if (gen !== loadIndexGeneration) return;
     laws.value = corpusLaws.sort((a, b) => a.law_id.localeCompare(b.law_id));
   } catch (e) {
+    if (gen !== loadIndexGeneration) return;
     indexError.value = e;
   } finally {
-    loading.value = false;
+    if (gen === loadIndexGeneration) {
+      loading.value = false;
+    }
   }
 }
 
@@ -273,9 +287,11 @@ async function loadLaw(lawId) {
   try {
     selectedLawLoading.value = true;
     const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
-    if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-    if (gen !== loadLawGeneration) return; // stale response, discard
+    if (!res.ok) throw lawFetchError(res.status);
+    // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
+    if (gen !== loadLawGeneration) return;
     const text = await res.text();
+    if (gen !== loadLawGeneration) return;
     selectedLaw.value = yaml.load(text);
     // selectedArticleNumber is set from the route on initial mount and via
     // onBeforeRouteUpdate; we don't validate here so an invalid number
@@ -445,6 +461,20 @@ if (route.params.lawId) {
   loadLaw(route.params.lawId);
 }
 loadIndex();
+
+// On user-driven traject switch (epoch bump): refetch corpus index and the open law.
+const { trajectSwitchEpoch } = useTrajects();
+watch(trajectSwitchEpoch, () => {
+  // Reset error so the loading-gate kicks in before any new 404
+  // (e.g. when the open law isn't part of the new traject's corpus).
+  lawError.value = null;
+  indexError.value = null;
+  loading.value = true;
+  loadIndex();
+  if (selectedLawId.value) {
+    loadLaw(selectedLawId.value);
+  }
+});
 </script>
 
 <template>
@@ -462,6 +492,9 @@ loadIndex();
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button size="md" start-icon="search" text="Zoeken" @click="openSearch"></nldd-button>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="lib-md" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-md" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-md"></nldd-button>
@@ -515,6 +548,9 @@ loadIndex();
               ></nldd-search-field>
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="lib-lg" />
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
               <nldd-button id="settings-menu-btn-lg" size="md" start-icon="global-settings" text="Instellingen" expandable popovertarget="settings-menu-lg"></nldd-button>
               <nldd-menu id="settings-menu-lg" anchor="settings-menu-btn-lg">
                 <nldd-menu-item v-if="!authLoading && authenticated" :text="person?.name || person?.email" disabled></nldd-menu-item>
@@ -551,9 +587,7 @@ loadIndex();
       <nldd-split-view-pane slot="main">
         <nldd-navigation-split-view @back="onPaneBack">
 
-          <!-- Sidebar: Wetten Browser. Hidden on corpus load failure so the
-               navigation-split-view collapses and the main pane carries the
-               error state on its own (mirrors the law-load failure pattern). -->
+          <!-- Sidebar hidden on corpus load failure so the main pane carries the error alone (mirrors law-load failure pattern). -->
           <nldd-split-view-pane v-if="!indexError" slot="sidebar" has-content>
             <nldd-page sticky-header>
               <nldd-top-title-bar slot="header" :text="LIBRARY_HOME_TITLE" collapse-anchor="home-titel"></nldd-top-title-bar>
@@ -647,8 +681,23 @@ loadIndex();
               <nldd-simple-section width="full" v-else-if="!selectedLawId">
                 <nldd-inline-dialog text="Selecteer een wet"></nldd-inline-dialog>
               </nldd-simple-section>
+              <nldd-simple-section width="full" v-else-if="selectedLawLoading">
+                <!-- Loading takes precedence over `lawError` to avoid flashing a stale error during a refetch. -->
+                <nldd-inline-dialog text="Wet laden…"></nldd-inline-dialog>
+              </nldd-simple-section>
               <nldd-simple-section width="full" v-else-if="lawError">
+                <!-- 404 = law not in active traject; give the user an exit instead of a generic error. -->
                 <nldd-inline-dialog
+                  v-if="lawErrorIs404"
+                  variant="alert"
+                  :text="`${indexedLawName} is niet beschikbaar in dit traject`"
+                  supporting-text="Wissel van traject via het menu rechtsboven of ga terug naar het overzicht."
+                >
+                  <nldd-button slot="actions" variant="primary" text="Naar overzicht" @click="goToLibraryRoot"></nldd-button>
+                  <nldd-button slot="actions" variant="secondary" text="Probeer opnieuw" @click="retryLoadLaw"></nldd-button>
+                </nldd-inline-dialog>
+                <nldd-inline-dialog
+                  v-else
                   variant="alert"
                   :text="`${indexedLawName} is niet geladen`"
                   supporting-text="De gegevens konden niet worden opgehaald."
@@ -717,6 +766,9 @@ loadIndex();
               <span>
                 <nldd-icon-button size="lg" icon="search" text="Zoeken" @click="openSearch"></nldd-icon-button>
               </span>
+            </nldd-toolbar-item>
+            <nldd-toolbar-item slot="end">
+              <TrajectMenu id-suffix="lib-sm" />
             </nldd-toolbar-item>
             <nldd-toolbar-item slot="end">
               <span>

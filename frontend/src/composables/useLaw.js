@@ -35,10 +35,17 @@ export function resolveLawName(law) {
   return nameRef || law.$id || '';
 }
 
+// Carry HTTP status on the Error so callers can branch on `.status === 404`.
+export function lawFetchError(status) {
+  const err = new Error(`Failed to fetch: ${status}`);
+  err.status = status;
+  return err;
+}
+
 export async function fetchLaw(lawId) {
   if (lawCache.has(lawId)) return lawCache.get(lawId);
   const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
-  if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+  if (!res.ok) throw lawFetchError(res.status);
   const text = await res.text();
   const law = yaml.load(text);
   const entry = { law, rawYaml: text, lawName: resolveLawName(law) };
@@ -84,12 +91,20 @@ export function useLaw(lawParam, articleParam) {
     ) ?? null;
   });
 
+  // Shared version counter for `load()` and `switchLaw()`; stale awaits compare and discard.
+  let switchVersion = 0;
+
+  // Initial fetch; shares `switchVersion` with `switchLaw` so a mid-flight traject switch wins.
   async function load() {
+    const version = ++switchVersion;
     try {
       loading.value = true;
       const res = await fetch(yamlUrl);
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      if (!res.ok) throw lawFetchError(res.status);
+      // Gate before and after `res.text()`: skip the body read for stale 200s, and catch races during it.
+      if (version !== switchVersion) return;
       const text = await res.text();
+      if (version !== switchVersion) return;
       rawYaml.value = text;
       law.value = yaml.load(text);
       // Populate cache
@@ -105,9 +120,12 @@ export function useLaw(lawParam, articleParam) {
         }
       }
     } catch (e) {
+      if (version !== switchVersion) return; // stale, discard
       error.value = e;
     } finally {
-      loading.value = false;
+      if (version === switchVersion) {
+        loading.value = false;
+      }
     }
   }
 
@@ -115,8 +133,6 @@ export function useLaw(lawParam, articleParam) {
 
   // Derive the law ID from the parsed law or the original param
   const lawId = computed(() => law.value?.$id || lawParam);
-
-  let switchVersion = 0;
 
   async function switchLaw(newLawId, articleNumber) {
     const version = ++switchVersion;
@@ -141,9 +157,12 @@ export function useLaw(lawParam, articleParam) {
         selectedArticleNumber.value = String(articles.value[0].number);
       }
     } catch (e) {
+      if (version !== switchVersion) return; // stale, discard
       error.value = e;
     } finally {
-      loading.value = false;
+      if (version === switchVersion) {
+        loading.value = false;
+      }
     }
   }
 
