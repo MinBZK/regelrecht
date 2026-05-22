@@ -80,8 +80,8 @@ fn write_law(corpus_dir: &std::path::Path, name_marker: &str) {
 }
 
 /// Create a traject with one local writable-own source pointing at
-/// `corpus_dir`. Returns the traject id. `owner_id` is added as a
-/// `beheerder` so the membership re-check on reads/writes passes.
+/// `corpus_dir`. Returns the traject id. `owner_id` is added as an
+/// `owner` so the membership re-check on reads/writes passes.
 async fn local_traject(pool: &PgPool, owner_id: Uuid, corpus_dir: &std::path::Path) -> Uuid {
     let (traject_id,): (Uuid,) = sqlx::query_as(
         "INSERT INTO trajects (name, description, scope, created_by)
@@ -93,7 +93,7 @@ async fn local_traject(pool: &PgPool, owner_id: Uuid, corpus_dir: &std::path::Pa
     .unwrap();
     sqlx::query(
         "INSERT INTO traject_members (traject_id, account_id, role)
-         VALUES ($1, $2, 'beheerder')",
+         VALUES ($1, $2, 'owner')",
     )
     .bind(traject_id)
     .bind(owner_id)
@@ -285,7 +285,7 @@ async fn seeded_traject(
     .unwrap();
     sqlx::query(
         "INSERT INTO traject_members (traject_id, account_id, role)
-         VALUES ($1, $2, 'beheerder')",
+         VALUES ($1, $2, 'owner')",
     )
     .bind(traject_id)
     .bind(owner_id)
