@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue';
 import { clearLawCache } from './useLaw.js';
+import { clearNotesCache } from './useNotes.js';
 
 const trajects = ref([]);
 const activeTrajectId = ref(null);
@@ -58,8 +59,9 @@ export async function switchTraject(trajectId) {
   // Page components watch this counter (not activeTrajectId) so the initial null→id settle doesn't trigger a spurious refetch.
   trajectSwitchEpoch.value++;
 
-  // Read scope changed server-side; drop cached law content so the next fetch hits the API. Stay on route — pages watch the epoch and refetch in place.
+  // Read scope changed server-side; drop cached law content and resolved notes so the next fetch hits the API. Stay on route — pages watch the epoch and refetch in place.
   clearLawCache();
+  clearNotesCache();
   return activeTrajectId.value;
 }
 

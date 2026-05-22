@@ -32,7 +32,7 @@ use uuid::Uuid;
 
 use regelrecht_auth::handlers::SESSION_KEY_SUB;
 use regelrecht_editor_api::config::AppConfig;
-use regelrecht_editor_api::corpus_handlers::{save_annotations, SaveResponse};
+use regelrecht_editor_api::corpus_handlers::{get_annotations, save_annotations, SaveResponse};
 use regelrecht_editor_api::state::{AppState, CorpusState};
 use regelrecht_editor_api::traject_corpus::TrajectCorpusCache;
 use regelrecht_editor_api::trajects::SESSION_KEY_ACTIVE_TRAJECT;
@@ -283,4 +283,121 @@ async fn re_saving_an_already_committed_note_is_a_no_op() {
         after_first, after_second,
         "the sidecar must not change on a no-op re-save"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Read path (`get_annotations`)
+// ---------------------------------------------------------------------------
+//
+// These pin the gap #662 documented as out-of-scope: annotation reads used
+// to come from the static `/data` mirror baked into the frontend container
+// at image build time, so an API-saved note was invisible after refresh.
+// The new GET routes through the same backend the write went to.
+
+/// Helper: call `get_annotations` and return the response body. Panics on
+/// any status other than 200.
+async fn read_annotations(state: AppState, session: Session) -> String {
+    let (status, _headers, body) = get_annotations(State(state), session, Path(LAW_ID.to_string()))
+        .await
+        .expect("get_annotations must succeed");
+    assert_eq!(status, StatusCode::OK);
+    body
+}
+
+#[tokio::test]
+async fn saved_note_is_readable_on_the_same_traject() {
+    // Closes the loop the bug report opened: save in traject A, then GET
+    // returns the just-saved sidecar instead of falling back to the
+    // static mirror (which would 404 or serve the pre-baked main copy).
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path());
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+
+    // Save a note.
+    let body = serde_json::to_string(&[note(LAW_ID, "zorgtoeslag")]).unwrap();
+    let _ = save_annotations(
+        State(state.clone()),
+        session_for(&sub, Some(traject_id)).await,
+        Path(LAW_ID.to_string()),
+        body,
+    )
+    .await
+    .expect("save should succeed");
+
+    // GET it back through the new read endpoint.
+    let yaml_text = read_annotations(state, session_for(&sub, Some(traject_id)).await).await;
+    let doc: serde_json::Value = serde_yaml_ng::from_str(&yaml_text).unwrap();
+    let notes = doc["annotations"].as_array().unwrap();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0]["target"]["selector"]["exact"], "zorgtoeslag");
+}
+
+#[tokio::test]
+async fn missing_sidecar_returns_404() {
+    // A law without any notes is the normal case; the frontend's
+    // `useNotes.js` treats 404 as "no notes" rather than an error.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus = tempfile::tempdir().unwrap();
+    write_law(corpus.path());
+    let traject_id = local_traject(&db.pool, owner, corpus.path()).await;
+
+    let err = get_annotations(
+        State(state),
+        session_for(&sub, Some(traject_id)).await,
+        Path(LAW_ID.to_string()),
+    )
+    .await
+    .expect_err("no sidecar yet, expect 404");
+    assert_eq!(err.0, StatusCode::NOT_FOUND, "{}", err.1);
+}
+
+#[tokio::test]
+async fn cross_traject_isolation_on_reads() {
+    // A note saved in traject A must NOT be visible from traject B —
+    // each traject reads from its own writable backend. Without this
+    // isolation the static-mirror replacement would leak in-flight
+    // edits from one traject into another's view.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let corpus_a = tempfile::tempdir().unwrap();
+    write_law(corpus_a.path());
+    let traject_a = local_traject(&db.pool, owner, corpus_a.path()).await;
+
+    let corpus_b = tempfile::tempdir().unwrap();
+    write_law(corpus_b.path());
+    let traject_b = local_traject(&db.pool, owner, corpus_b.path()).await;
+
+    // Save in A only.
+    let body = serde_json::to_string(&[note(LAW_ID, "A-only-note")]).unwrap();
+    let _ = save_annotations(
+        State(state.clone()),
+        session_for(&sub, Some(traject_a)).await,
+        Path(LAW_ID.to_string()),
+        body,
+    )
+    .await
+    .expect("save in A should succeed");
+
+    // A sees its own note.
+    let from_a = read_annotations(state.clone(), session_for(&sub, Some(traject_a)).await).await;
+    assert!(from_a.contains("A-only-note"));
+
+    // B sees nothing — its sidecar does not exist.
+    let err = get_annotations(
+        State(state),
+        session_for(&sub, Some(traject_b)).await,
+        Path(LAW_ID.to_string()),
+    )
+    .await
+    .expect_err("traject B must not see traject A's notes");
+    assert_eq!(err.0, StatusCode::NOT_FOUND, "{}", err.1);
 }

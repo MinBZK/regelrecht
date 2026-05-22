@@ -386,6 +386,64 @@ pub async fn get_scenario(
     ))
 }
 
+/// GET /api/corpus/laws/{law_id}/annotations — return the law's stand-off
+/// notes sidecar.
+///
+/// Routed through the same backend as `save_annotations`: with an active
+/// traject the read hits that traject's writable backend (its branch),
+/// so a note just appended by `save_annotations` is visible on the next
+/// refresh — the gap that #662 left open when it moved law reads to the
+/// API but kept annotation reads on the static `/data` mirror baked into
+/// the frontend container.
+///
+/// Without an active traject the read degrades to the global corpus's
+/// resolved backend for the law (the central source's main view), matching
+/// the static-mirror semantics the frontend used to rely on.
+///
+/// A missing sidecar returns 404 — "law without notes" is the normal
+/// case and `useNotes.js` already treats it as a non-error.
+pub async fn get_annotations(
+    State(state): State<AppState>,
+    session: Session,
+    Path(law_id): Path<String>,
+) -> Result<
+    (
+        StatusCode,
+        [(axum::http::HeaderName, &'static str); 1],
+        String,
+    ),
+    (StatusCode, String),
+> {
+    let scope = resolve_read_corpus(&state, &session).await;
+    let resolved = resolve_backend_for_law(scope.corpus(), &law_id).await?;
+
+    // RFC-018 §1: keyed by law id at the source root, regardless of where
+    // the law file lives. Same path the `save_annotations` write uses.
+    let relative_path = PathBuf::from("annotations")
+        .join(&law_id)
+        .join("annotations.yaml");
+
+    let backend = resolved.backend.lock().await;
+    let content = backend
+        .read_file(&relative_path)
+        .await
+        .map_err(|e| {
+            tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to read annotations".to_string(),
+            )
+        })?
+        .ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?;
+    drop(backend);
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        content,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Scenario write helpers
 // ---------------------------------------------------------------------------

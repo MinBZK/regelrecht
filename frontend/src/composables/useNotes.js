@@ -23,6 +23,21 @@ import { useEngine } from './useEngine.js';
 const cache = new Map();
 
 /**
+ * Drop every cached resolved-notes entry. Called by the traject switcher
+ * after a successful active-traject change so the next read re-fetches
+ * via the API instead of returning a previously cached version from
+ * another traject (or from the no-traject scope).
+ *
+ * Mirrors `clearLawCache` in `useLaw.js`: notes are scoped per traject on
+ * the backend (each traject reads from its own writable branch via
+ * `GET /api/corpus/laws/{id}/annotations`), so the in-memory cache must
+ * invalidate alongside the law cache.
+ */
+export function clearNotesCache() {
+  cache.clear();
+}
+
+/**
  * @param {import('vue').Ref<string>} lawId        reactive law $id
  * @param {import('vue').Ref<object>} selectedArticle reactive current article
  */
@@ -68,8 +83,14 @@ export function useNotes(lawId, selectedArticle) {
     loading.value = true;
     error.value = null;
     try {
+      // Route through editor-api so reads pick up the active traject's
+      // branch content (where `save_annotations` writes). The static
+      // `/data/annotations/` mirror — baked into the frontend container
+      // by `copy-laws.js` — only reflects central main at image-build
+      // time and missed every API-saved note (the gap #662 documented
+      // as out-of-scope).
       const res = await fetch(
-        `/data/annotations/${encodeURIComponent(id)}/annotations.yaml`,
+        `/api/corpus/laws/${encodeURIComponent(id)}/annotations`,
       );
       if (res.status === 404) {
         // A law without a sidecar is normal, not an error.
