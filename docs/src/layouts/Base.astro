@@ -47,47 +47,28 @@ interface NavItem {
   icon?: string;
 }
 
-// Landing home for this language, used as the base for the section anchors.
+// Landing home for this language, used as the base for the section anchors
+// in the in-page jump nav (see the second-layer markup below).
 const landingHome = lang === 'en' ? '/en/' : '/';
-let globalLinks: NavItem[];
-if (isLanding) {
-  // Same menu on the landing and the signup page. On signup the in-page
-  // anchors do not exist, so they point at the landing home's sections
-  // (landingHome + '#...') rather than being dropped entirely.
-  globalLinks = [
-    { text: t.nav.what, href: landingHome + '#what-is-it' },
-    { text: t.nav.how, href: landingHome + '#how-it-works' },
-    { text: t.nav.tools, href: landingHome + '#tools' },
-    { text: t.nav.example, href: landingHome + '#example' },
-    { text: t.nav.faq, href: landingHome + '#faq' },
-    { text: t.nav.signup, href: t.feedback.ctaHref, icon: 'envelope' },
-    { text: t.nav.docs, href: '/guide/what-is-regelrecht', icon: 'books' },
-  ];
-} else {
-  globalLinks = docsNav.map((n) => ({
-    text: n.text,
-    href: n.link,
-    current: n.match ? pathname.startsWith(n.match) : false,
-    icon: n.icon,
-  }));
-}
 
-// Language switch lives on the right (utility) side of the bar. Only the
-// landing is bilingual; docs are English-only so no switch there. On the
-// signup page the switch stays on signup (NL /aanmelden <-> EN /en/signup)
-// instead of jumping back to the home.
-const langToggle: NavItem | null = isLanding
-  ? {
-      text: lang === 'en' ? 'Nederlands' : 'English',
-      href: showSignup
-        ? lang === 'en'
-          ? '/aanmelden'
-          : '/en/signup'
-        : lang === 'en'
-          ? '/'
-          : '/en/',
-    }
-  : null;
+// The top bar is identical everywhere: the two primary destinations. The
+// switching content (landing anchors, docs sections) lives in a second layer
+// below the bar, not in the bar itself — that is what kept it feeling like
+// two separate sites. Documentation always points at the (English-only) docs
+// entry; Aanmelden follows the current language.
+const signupHref = lang === 'en' ? '/en/signup' : '/aanmelden';
+const homeLabel = lang === 'en' ? 'Home' : 'Home';
+const globalLinks: NavItem[] = [
+  { text: homeLabel, href: home, icon: 'home' },
+  { text: t.nav.docs, href: '/guide/what-is-regelrecht', icon: 'books' },
+  { text: t.nav.signup, href: signupHref, icon: 'envelope' },
+];
+
+// The "go home" destination. SSR can't read the remembered language, so it
+// renders a sensible default (EN for docs, the page's own language for the
+// landing); a client script patches logo/brand hrefs to the remembered
+// landing language after load (see the language-memory script below).
+const moreLabel = lang === 'en' ? 'More' : 'Meer';
 
 const searchLabel = lang === 'en' ? 'Search' : 'Zoeken';
 const searchPlaceholder =
@@ -158,6 +139,28 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
         }
         applyTheme();
         document.addEventListener('astro:after-swap', applyTheme);
+
+        // Language memory. The landing is bilingual (path-driven: /en/ = EN,
+        // otherwise NL); the docs are English-only. Remember which landing
+        // language the visitor is on so the "go home" link out of the docs
+        // returns to that language instead of always jumping to /en/. This
+        // block only records the choice (before paint and after each swap);
+        // the DOM patch happens on astro:page-load once the bar has upgraded.
+        function rememberLandingLang() {
+          var p = location.pathname;
+          // Only the landing/signup pages define a language; on docs pages we
+          // leave the remembered value untouched.
+          var isEn = p === '/en' || p.indexOf('/en/') === 0;
+          var isNl = p === '/' || p === '/aanmelden';
+          if (!isEn && !isNl) return;
+          var l = isEn ? 'en' : 'nl';
+          window.__rrLang = l;
+          try {
+            localStorage.setItem('rr-lang', l);
+          } catch (e) {}
+        }
+        rememberLandingLang();
+        document.addEventListener('astro:after-swap', rememberLandingLang);
       })();
     </script>
   </head>
@@ -167,6 +170,7 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
     <div class="rr-shell">
       <header class="rr-topbar">
         <nldd-top-navigation-bar
+          id="rr-topnav"
           logo-title="RegelRecht"
           logo-subtitle={brandSubtitle}
           logo-href={home}
@@ -179,7 +183,7 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
                 href={item.href}
                 text={item.text}
                 icon={item.icon || undefined}
-                current={item.current || undefined}
+                data-rr-home={item.icon === 'home' ? '' : undefined}
               />
             ))
           }
@@ -191,28 +195,56 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
           ></nldd-menu-bar-item>
           <nldd-menu-bar-item
             slot="utility"
-            id="rr-theme-toggle"
-            text={themeLabelLight}
-            data-label-light={themeLabelLight}
-            data-label-dark={themeLabelDark}
-            icon="moon"
-          ></nldd-menu-bar-item>
-          {
-            langToggle && (
-              <nldd-menu-bar-item
-                slot="utility"
-                text={langToggle.text}
-                href={langToggle.href}
-              />
-            )
-          }
-          <nldd-menu-bar-item
-            slot="utility"
             text="GitHub"
             href="https://github.com/MinBZK/regelrecht"
             icon="code"
           ></nldd-menu-bar-item>
+          {/* Kebab: the language and theme switches moved out of the bar into
+              this overflow menu (rendered as a sibling below). */}
+          <nldd-icon-button
+            slot="utility"
+            id="rr-kebab-trigger"
+            icon="ellipsis"
+            expandable
+            popup-type="menu"
+            text={moreLabel}
+            accessible-label={moreLabel}
+            variant="neutral-transparent"
+          ></nldd-icon-button>
         </nldd-top-navigation-bar>
+
+        {/* Overflow menu. nldd-menu resolves its anchor via getElementById and
+            wires the Popover API itself, so it lives as a sibling of the bar,
+            not inside a slot. nldd-menu-item has no href: the language items
+            are buttons whose `select` event navigates (see script below). */}
+        <nldd-menu id="rr-kebab-menu" anchor="rr-kebab-trigger" placement="bottom-end">
+          {/* Checkbox: unchecked = light = action "go dark" (themeLabelLight).
+              The label/icon/selected state are synced client-side after the
+              persisted scheme is known. */}
+          <nldd-menu-item
+            id="rr-theme-toggle"
+            type="checkbox"
+            text={themeLabelLight}
+            data-label-light={themeLabelLight}
+            data-label-dark={themeLabelDark}
+            icon="moon"
+          ></nldd-menu-item>
+          <nldd-menu-divider></nldd-menu-divider>
+          <nldd-menu-item
+            class="rr-lang-item"
+            type="button"
+            value="nl"
+            text="Nederlands"
+            selected={lang === 'nl' || undefined}
+          ></nldd-menu-item>
+          <nldd-menu-item
+            class="rr-lang-item"
+            type="button"
+            value="en"
+            text="English"
+            selected={lang === 'en' || undefined}
+          ></nldd-menu-item>
+        </nldd-menu>
 
         {/* Semantic fallback: real <a> links rendered server-side, so the
             site is navigable without JS / before @nldd upgrades. Hidden
@@ -223,28 +255,80 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
             {
               globalLinks.map((item) => (
                 <li>
-                  <a
-                    href={item.href}
-                    aria-current={item.current ? 'page' : undefined}
-                  >
-                    {item.text}
-                  </a>
+                  <a href={item.href}>{item.text}</a>
                 </li>
               ))
-            }
-            {
-              langToggle && (
-                <li>
-                  <a href={langToggle.href}>{langToggle.text}</a>
-                </li>
-              )
             }
             <li>
               <a href="https://github.com/MinBZK/regelrecht">GitHub</a>
             </li>
+            {/* Without JS there is no kebab, so the language switch degrades
+                to a real link. Only the landing is bilingual. */}
+            {
+              isLanding && (
+                <li>
+                  <a href={lang === 'en' ? '/' : '/en/'}>
+                    {lang === 'en' ? 'Nederlands' : 'English'}
+                  </a>
+                </li>
+              )
+            }
           </ul>
         </nav>
       </header>
+
+      {/* Second navigation layer, below the (identical-everywhere) top bar.
+          It only appears where it is relevant: in-page anchors on the landing,
+          section tabs in the docs. nldd-top-navigation-bar has no sub-nav slot,
+          so this is a sibling of <header>, driven by `kind`. It sits outside
+          #rr-main so the skip link jumps over it straight to the content. */}
+      {/* In-page jump nav. Plain anchors, not an nldd-tab-bar: the tab bar
+          centers its items and paints an active-tab pill, neither of which
+          fits a same-page anchor nav (there is no "current" section). */}
+      {
+        isLanding && !isNotFound && !showSignup && (
+          <nav
+            class="rr-jumpnav"
+            aria-label={lang === 'en' ? 'On this page' : 'Op deze pagina'}
+          >
+            <ul>
+              <li><a href={landingHome + '#what-is-it'}>{t.nav.what}</a></li>
+              <li><a href={landingHome + '#how-it-works'}>{t.nav.how}</a></li>
+              <li><a href={landingHome + '#tools'}>{t.nav.tools}</a></li>
+              <li><a href={landingHome + '#example'}>{t.nav.example}</a></li>
+              <li><a href={landingHome + '#faq'}>{t.nav.faq}</a></li>
+            </ul>
+          </nav>
+        )
+      }
+
+      {/* Docs section nav. Plain anchors (not nldd-tab-bar, which centers its
+          items and can't be left-aligned from outside the shadow DOM). Styled
+          with NLDD tokens; the active section is marked with aria-current and
+          an underline. */}
+      {
+        kind === 'docs' && (
+          <nav class="rr-subnav" aria-label="Documentation sections">
+            <ul>
+              {docsNav
+                .filter((n) => n.match !== '/en/')
+                .map((n) => {
+                  const active = n.match && pathname.startsWith(n.match);
+                  return (
+                    <li>
+                      <a
+                        href={n.link}
+                        aria-current={active ? 'page' : undefined}
+                      >
+                        {n.text}
+                      </a>
+                    </li>
+                  );
+                })}
+            </ul>
+          </nav>
+        )
+      }
 
       {/*
         Landing and 404 keep a plain <div id="rr-main"> rather than <main>.
@@ -316,41 +400,98 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
     </script>
 
     <script>
-      // Theme toggle: NLDD reads data-scheme; the ported landing/chrome CSS
-      // keys off the `.dark` class. Toggle both, persist to localStorage.
-      // The toggle element is replaced on each ClientRouter navigation, so
-      // (re)bind on astro:page-load (which also fires on the first load).
-      function wireThemeToggle() {
-        const themeBtn = document.getElementById('rr-theme-toggle');
-        if (!themeBtn) return;
-        themeBtn.addEventListener('click', () => {
-          const root = document.documentElement;
-          const dark = root.getAttribute('data-scheme') !== 'dark';
-          root.setAttribute('data-scheme', dark ? 'dark' : 'light');
-          root.style.colorScheme = dark ? 'dark' : 'light';
-          root.classList.toggle('dark', dark);
-          // Persist to localStorage when available, and always to the in-memory
-          // fallback so the choice sticks across ClientRouter navigations even
-          // if storage is blocked.
-          window.__rrTheme = dark ? 'dark' : 'light';
-          try {
-            localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
-          } catch (e) {}
-          themeBtn.setAttribute(
-            'text',
-            dark
-              ? themeBtn.dataset.labelDark || 'Light mode'
-              : themeBtn.dataset.labelLight || 'Dark mode'
-          );
-          themeBtn.setAttribute('icon', dark ? 'sun' : 'moon');
+      // The theme toggle and the language switch both live in the kebab menu
+      // now. Both are nldd-menu-items, which fire `select` (not click) and have
+      // no href, so a single delegated `select` handler on the menu drives
+      // them. The menu is replaced on each ClientRouter navigation, so (re)bind
+      // on astro:page-load (which also fires on the first load).
+      function readLang() {
+        try {
+          const v = localStorage.getItem('rr-lang');
+          if (v) return v;
+        } catch (e) {}
+        return window.__rrLang || null;
+      }
+
+      // The other-language counterpart of the current page. Landing <-> landing,
+      // signup <-> signup; mirrors the old server-side langToggle logic.
+      function langTargetFor(lang, path) {
+        const onSignup = path === '/aanmelden' || path === '/en/signup';
+        if (onSignup) return lang === 'en' ? '/en/signup' : '/aanmelden';
+        return lang === 'en' ? '/en/' : '/';
+      }
+
+      function wireKebab() {
+        const menu = document.getElementById('rr-kebab-menu');
+        if (!menu) return;
+        menu.addEventListener('select', (e) => {
+          const item =
+            e.target && e.target.closest
+              ? e.target.closest('nldd-menu-item')
+              : null;
+          if (!item) return;
+          if (item.id === 'rr-theme-toggle') {
+            const root = document.documentElement;
+            const dark = root.getAttribute('data-scheme') !== 'dark';
+            root.setAttribute('data-scheme', dark ? 'dark' : 'light');
+            root.style.colorScheme = dark ? 'dark' : 'light';
+            root.classList.toggle('dark', dark);
+            // Persist to localStorage when available, and always to the
+            // in-memory fallback so the choice sticks across navigations.
+            window.__rrTheme = dark ? 'dark' : 'light';
+            try {
+              localStorage.setItem('rr-theme', dark ? 'dark' : 'light');
+            } catch (err) {}
+            item.toggleAttribute('selected', dark);
+            item.setAttribute(
+              'text',
+              dark ? item.dataset.labelDark : item.dataset.labelLight
+            );
+            item.setAttribute('icon', dark ? 'sun' : 'moon');
+          } else if (item.classList.contains('rr-lang-item')) {
+            const lang = item.getAttribute('value');
+            window.__rrLang = lang;
+            try {
+              localStorage.setItem('rr-lang', lang);
+            } catch (err) {}
+            const target = langTargetFor(lang, location.pathname);
+            if (target) location.assign(target);
+          }
         });
-        // Reflect the current scheme onto the freshly-rendered toggle.
-        if (document.documentElement.getAttribute('data-scheme') === 'dark') {
-          themeBtn.setAttribute('text', themeBtn.dataset.labelDark || 'Light mode');
-          themeBtn.setAttribute('icon', 'sun');
+        // Reflect the current scheme onto the freshly-rendered checkbox item.
+        const themeItem = document.getElementById('rr-theme-toggle');
+        if (
+          themeItem &&
+          document.documentElement.getAttribute('data-scheme') === 'dark'
+        ) {
+          themeItem.toggleAttribute('selected', true);
+          themeItem.setAttribute('text', themeItem.dataset.labelDark);
+          themeItem.setAttribute('icon', 'sun');
         }
       }
-      document.addEventListener('astro:page-load', wireThemeToggle);
+
+      // SSR can't know the remembered language, so the bar renders a default
+      // home href (/en/ for docs). Patch the logo/brand "go home" links to the
+      // remembered landing language after the bar has upgraded. The docs link
+      // itself is left alone — it deliberately points at the English docs.
+      function patchHomeLinks() {
+        const lang = readLang() || 'en';
+        const homeHref = lang === 'nl' ? '/' : '/en/';
+        const nav = document.getElementById('rr-topnav');
+        if (nav) {
+          nav.setAttribute('logo-href', homeHref);
+          nav.setAttribute('website-href', homeHref);
+        }
+        const homeItem = document.querySelector('[data-rr-home]');
+        if (homeItem) homeItem.setAttribute('href', homeHref);
+        const brand = document.querySelector('.rr-nav-fallback-brand');
+        if (brand) brand.setAttribute('href', homeHref);
+      }
+
+      document.addEventListener('astro:page-load', () => {
+        wireKebab();
+        patchHomeLinks();
+      });
     </script>
 
     <script
@@ -648,6 +789,51 @@ const themeLabelDark = lang === 'en' ? 'Light mode' : 'Lichte modus';
       }
       .rr-topbar nldd-top-navigation-bar:defined ~ .rr-nav-fallback {
         display: none;
+      }
+
+      /* Second navigation layer, directly below the top bar and visually part
+         of it: same background, no gap, left-aligned with the bar's items, a
+         hairline separating it from the content. Plain anchors styled with
+         NLDD tokens — the NLDD tab bar centers its items and can't be
+         left-aligned from outside its shadow DOM. The landing variant
+         (.rr-jumpnav) is in-page anchors with no active state; the docs
+         variant (.rr-subnav) marks the active section with an underline. */
+      .rr-jumpnav,
+      .rr-subnav {
+        background: var(--vp-nav-bg-color);
+        border-bottom: 1px solid var(--vp-c-divider, rgba(0, 0, 0, 0.1));
+      }
+      .rr-jumpnav ul,
+      .rr-subnav ul {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0 1.5rem;
+        margin: 0;
+        /* Line up with the top bar's menu items. The NLDD bar insets its
+           content by the page-section margin token, so the second layer uses
+           the same token instead of a hard-coded value — they stay aligned
+           across NLDD's responsive breakpoints. */
+        padding-inline: var(--semantics-page-sections-lg-margin-inline, 48px);
+        padding-block: 0;
+        list-style: none;
+      }
+      .rr-jumpnav a,
+      .rr-subnav a {
+        display: inline-block;
+        padding: 0.65rem 0;
+        color: var(--vp-c-text-2);
+        text-decoration: none;
+        font-size: 0.95rem;
+        border-bottom: 2px solid transparent;
+      }
+      .rr-jumpnav a:hover,
+      .rr-subnav a:hover {
+        color: var(--vp-c-brand-1);
+      }
+      .rr-subnav a[aria-current='page'] {
+        color: var(--vp-c-brand-1);
+        font-weight: 600;
+        border-bottom-color: var(--vp-c-brand-1);
       }
 
       /* Visible focus indicator across the whole shell (WCAG 2.2
