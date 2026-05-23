@@ -11,82 +11,10 @@
  * Imported by Base.astro.
  */
 
-/* Fenced code blocks. Shiki sets the background inline on the <pre> via the
-   high-contrast theme; the light bg is white, so a border sets the block off
-   against the page. Scoped under nldd-rich-text so it survives the prose
-   reset. The inner <code> keeps Shiki's token colors, no extra bg/padding. */
-.rr-docs-content nldd-rich-text pre,
-.vp-doc pre {
-  margin: 1.25rem 0;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--vp-c-divider, #e2e8f0);
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
-.rr-docs-content nldd-rich-text pre code,
-.vp-doc pre code {
-  background: none;
-  padding: 0;
-  font-size: inherit;
-}
-/* Dark mode: Shiki emits dual-theme output — the light colors are inline
-   `color`/`background-color`, the dark ones are `--shiki-dark`/`--shiki-dark-bg`
-   custom properties. Astro does not switch them itself, so apply the dark
-   variants under our `.dark` class (set by the theme toggle) on the <pre> and
-   every highlighted token. */
-.dark .astro-code {
-  background-color: var(--shiki-dark-bg) !important;
-  color: var(--shiki-dark) !important;
-}
-.dark .astro-code span {
-  color: var(--shiki-dark) !important;
-  font-style: var(--shiki-dark-font-style) !important;
-  font-weight: var(--shiki-dark-font-weight) !important;
-  text-decoration: var(--shiki-dark-text-decoration) !important;
+.rr-docs-content nldd-rich-text > h1:first-of-type {
+  display: none;
 }
 
-/* Data tables (e.g. the RFC index) — no nldd-table component exists.
-   rehypeTableScroll (and RfcIndexTable by hand) wraps each table in
-   <div class="rr-table-scroll" tabindex="0">; the wrapper owns the horizontal
-   overflow so the focusable element is what scrolls (WCAG 2.1.1), not the bare
-   table. No role/aria-label — the axe rule only needs keyboard reach, and a
-   named region per narrow table is screen-reader noise. The table itself stays
-   a normal table so headers/cells lay out correctly. */
-.rr-table-scroll {
-  overflow-x: auto;
-  margin: 1.5rem 0;
-}
-.rr-table-scroll:focus-visible {
-  outline: 3px solid var(--vp-c-brand-1);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-.rr-docs-content table,
-.vp-doc table {
-  width: 100%;
-  border-collapse: collapse;
-  /* Tables not wrapped (none today, but defensive) keep their own margin. */
-  margin: 1.5rem 0;
-}
-.rr-table-scroll table {
-  margin: 0;
-}
-.rr-docs-content th,
-.rr-docs-content td,
-.vp-doc th,
-.vp-doc td {
-  text-align: left;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--vp-c-divider, #e2e8f0);
-  vertical-align: top;
-}
-.rr-docs-content th,
-.vp-doc th {
-  font-weight: 600;
-  background: var(--vp-c-bg-soft, #f8fafc);
-}
 
 .rr-docs-content img,
 .vp-doc img {

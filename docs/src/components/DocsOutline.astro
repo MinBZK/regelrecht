@@ -1,8 +1,9 @@
 ---
 /*
- * Ported from the relanding RrDocOutline.vue. Built from the headings
- * Astro returns from entry.render() ({ depth, slug, text }); the Vue
- * source flattened page.headers and kept level <= 3, same here.
+ * Table of contents for the article page's left column. Built from the
+ * headings Astro returns from entry.render() ({ depth, slug, text }), kept to
+ * depth 2-3. Rendered as a boxed navigation list; depth-3 entries get an extra
+ * leading spacer-cell for indentation.
  */
 interface Heading {
   depth: number;
@@ -19,67 +20,13 @@ const flat = headings.filter((h) => h.depth >= 2 && h.depth <= 3);
 
 {
   flat.length > 0 && (
-    <aside class="rr-doc-outline" aria-label="On this page">
-      <p class="rr-doc-outline-title">On this page</p>
-      <ul>
-        {flat.map((h) => (
-          <li class:list={[{ 'is-sub': h.depth === 3 }]}>
-            <a href={`#${h.slug}`}>{h.text}</a>
-          </li>
-        ))}
-      </ul>
-    </aside>
+    <nldd-list type="navigation" variant="simple" aria-label="On this page">
+      {flat.map((h) => (
+        <nldd-list-item href={`#${h.slug}`}>
+          {h.depth === 3 && <nldd-spacer-cell />}
+          <nldd-text-cell text={h.text} />
+        </nldd-list-item>
+      ))}
+    </nldd-list>
   )
 }
-
-<style>
-  .rr-doc-outline {
-    font-size: 0.85rem;
-    position: sticky;
-    top: 1.5rem;
-    align-self: start;
-    max-height: calc(100vh - 6rem);
-    overflow-y: auto;
-  }
-  /* Hide below 1100px (the grid drops the outline column there). Must be scoped
-     here in the component: Astro stamps every selector in a component's <style>
-     with that component's data-cid, so a rule written in Base.astro targeting
-     .rr-doc-outline would be stamped with Base's cid and never match this
-     element. */
-  @media (max-width: 1100px) {
-    .rr-doc-outline {
-      display: none;
-    }
-  }
-  .rr-doc-outline-title {
-    font-weight: 700;
-    margin: 0 0 0.5rem;
-    color: var(--vp-c-text-1);
-  }
-  .rr-doc-outline ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    border-left: 1px solid var(--vp-c-divider);
-  }
-  .rr-doc-outline li {
-    margin: 0.25rem 0;
-  }
-  .rr-doc-outline li.is-sub {
-    padding-left: 0.75rem;
-  }
-  .rr-doc-outline a {
-    color: var(--vp-c-text-2);
-    text-decoration: none;
-    display: block;
-    /* padding-block gives each link ~28px height so adjacent targets clear the
-       WCAG 2.5.8 (Target Size, Minimum) 24px spacing without overlap. */
-    padding: 0.35rem 0 0.35rem 0.75rem;
-    margin-left: -1px;
-    border-left: 2px solid transparent;
-  }
-  .rr-doc-outline a:hover {
-    color: var(--vp-c-brand-1);
-    border-left-color: var(--vp-c-brand-1);
-  }
-</style>

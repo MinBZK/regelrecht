@@ -1,11 +1,10 @@
 ---
 import Base from '~/layouts/Base.astro';
 import LandingSections from '~/components/LandingSections.astro';
-import Footer from '~/components/Footer.astro';
 import { content } from '~/lib/landing-content';
 
 const t = content.nl;
-const title = `${t.nav.signup} — RegelRecht`;
+const title = `${t.nav.signup} · RegelRecht`;
 const description = t.signup.lede;
 ---
 
@@ -17,5 +16,4 @@ const description = t.signup.lede;
   description={description}
 >
   <LandingSections lang="nl" showSignup={true} />
-  <Footer lang="nl" />
 </Base>

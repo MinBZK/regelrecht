@@ -113,7 +113,7 @@
 html {
   font-family: var(--vp-font-family-base);
   color: var(--vp-c-text-1);
-  background: var(--vp-c-bg);
+  background: var(--semantics-surfaces-background-color);
 }
 
 /* Home page hero button styling */

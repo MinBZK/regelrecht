@@ -1,0 +1,54 @@
+---
+import Base from '~/layouts/Base.astro';
+import { content } from '~/lib/landing-content';
+
+const lang = 'en';
+const t = content[lang];
+const s = t.signup;
+const home = '/en/';
+const signupPath = '/en/signup';
+const EMAIL = 'regelrecht@minbzk.nl';
+const title = `${s.successTitle} · RegelRecht`;
+---
+
+<Base
+  lang={lang}
+  kind="landing"
+  pathname="/en/signup/thanks"
+  title={title}
+  description={s.successBody}
+>
+  <nldd-simple-section>
+    <nldd-inline-dialog
+      variant="success"
+      text={s.successTitle}
+      supporting-text={s.successBody}
+      heading-level="1"
+    >
+    <nldd-button
+      slot="actions"
+      variant="primary"
+      href={home}
+      text="Back to home"
+    >
+      <a slot="fallback" href={home}>Back to home</a>
+    </nldd-button>
+    <nldd-button
+      slot="actions"
+      variant="secondary"
+      href={signupPath}
+      text={s.successReset}
+    >
+      <a slot="fallback" href={signupPath}>{s.successReset}</a>
+    </nldd-button>
+    <nldd-button
+      slot="actions"
+      variant="secondary"
+      href={`mailto:${EMAIL}`}
+      text="Send an email"
+    >
+      <a slot="fallback" href={`mailto:${EMAIL}`}>Send an email</a>
+    </nldd-button>
+    </nldd-inline-dialog>
+  </nldd-simple-section>
+</Base>

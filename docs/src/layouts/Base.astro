@@ -5,7 +5,8 @@ import '~/styles/landing.css';
 import '~/styles/docs.css';
 import { ClientRouter } from 'astro:transitions';
 import { content } from '~/lib/landing-content';
-import { docsNav } from '~/lib/navLinks';
+import { categoryForPath } from '~/lib/sidebar';
+import Footer from '~/components/Footer.astro';
 
 interface Props {
   lang: 'nl' | 'en';
@@ -30,6 +31,8 @@ const {
 
 const isLanding = kind === 'landing';
 const isNotFound = kind === 'notfound';
+// Page-type styling hook, now on the nldd-page host instead of a wrapper div.
+const mainClass = isLanding ? 'rr-landing' : undefined;
 
 const t = content[lang];
 // Landing is bilingual (path-driven); docs are English-only.
@@ -39,6 +42,11 @@ const home = isLanding ? (lang === 'en' ? '/en/' : '/') : '/en/';
 const brandSubtitle = t.nav.brandTagline;
 // The signup variant of the landing has no in-page anchor nav.
 const showSignup = isLanding && /\/aanmelden|\/en\/signup/.test(pathname);
+// Status pages (the thank-you page and error pages like 404) present an
+// inline-dialog whose own actions offer all the navigation, so they show no
+// global menu and no back button.
+const isSuccessPage = /\/aanmelden\/bedankt$|\/en\/signup\/thanks$/.test(pathname);
+const isStatusPage = isNotFound || isSuccessPage;
 
 interface NavItem {
   text: string;
@@ -50,26 +58,42 @@ interface NavItem {
 // Landing home for this language, used as the base for the section anchors.
 const landingHome = lang === 'en' ? '/en/' : '/';
 let globalLinks: NavItem[];
-if (isLanding) {
-  // Same menu on the landing and the signup page. On signup the in-page
-  // anchors do not exist, so they point at the landing home's sections
-  // (landingHome + '#...') rather than being dropped entirely.
-  globalLinks = [
-    { text: t.nav.home, href: landingHome, current: !showSignup },
-    { text: t.nav.what, href: landingHome + '#what-is-it' },
-    { text: t.nav.how, href: landingHome + '#how-it-works' },
-    { text: t.nav.tools, href: landingHome + '#tools' },
-    { text: t.nav.example, href: landingHome + '#example' },
-    { text: t.nav.faq, href: landingHome + '#faq' },
-    { text: t.nav.docs, href: '/guide/what-is-regelrecht', icon: 'books' },
-  ];
+// Docs pages use the top-navigation-bar's dedicated back button instead of
+// global menu items: it points at the parent category (or Home from a category
+// page). The landing keeps its own global links and no back button.
+let backHref = '';
+let backText = '';
+if (isStatusPage) {
+  // No global menu and no back button — the inline-dialog's actions navigate.
+  globalLinks = [];
+} else if (showSignup) {
+  // The signup page replaces the global menu with a back button to Home so the
+  // page stays focused on the form.
+  globalLinks = [];
+  backHref = landingHome;
+  backText = t.nav.home;
+} else if (isLanding) {
+  // No global menu: the logo is Home and the documentation link lives in the
+  // hero, so the top-nav keeps only the utility menu.
+  globalLinks = [];
 } else {
-  globalLinks = docsNav.map((n) => ({
-    text: n.text,
-    href: n.link,
-    current: n.match ? pathname.startsWith(n.match) : false,
-    icon: n.icon,
-  }));
+  globalLinks = [];
+  const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
+  const cat = categoryForPath(pathname);
+  const onCategoryPage = cat !== null && pathname === cat.prefix;
+  if (isDocsRoot) {
+    // The documentation root goes up to the site home.
+    backHref = '/en/';
+    backText = 'Home';
+  } else if (cat && !onCategoryPage) {
+    // An article goes up to its category.
+    backHref = cat.prefix;
+    backText = cat.title;
+  } else {
+    // Category (overview) pages and stray docs pages go up to the docs root.
+    backHref = '/docs/';
+    backText = 'Documentation';
+  }
 }
 
 // Language switch lives on the right (utility) side of the bar as an
@@ -81,10 +105,20 @@ interface LangOption {
   label: string;
   href: string;
 }
+const nlHref = isSuccessPage
+  ? '/aanmelden/bedankt'
+  : showSignup
+    ? '/aanmelden'
+    : '/';
+const enHref = isSuccessPage
+  ? '/en/signup/thanks'
+  : showSignup
+    ? '/en/signup'
+    : '/en/';
 const langOptions: LangOption[] | null = isLanding
   ? [
-      { code: 'nl', label: 'Nederlands', href: showSignup ? '/aanmelden' : '/' },
-      { code: 'en', label: 'English', href: showSignup ? '/en/signup' : '/en/' },
+      { code: 'nl', label: 'Nederlands', href: nlHref },
+      { code: 'en', label: 'English', href: enHref },
     ]
   : null;
 // The non-current language, for the no-JS fallback link.
@@ -194,15 +228,18 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
     </script>
   </head>
   <body>
-    <a class="rr-skip-link" href="#rr-main">{skipText}</a>
-
-    <div class="rr-shell">
-      <header class="rr-topbar">
-        <nldd-top-navigation-bar
+    <nldd-page class={mainClass} lang={lang}>
+      {/* nldd-skip-link wraps the nav: its skip control sits before the nav and
+          focuses the next sibling (the first main-content element) — no anchor
+          id needed, so there is no separate skip target div. */}
+      <nldd-skip-link slot="header" text={skipText}>
+      <nldd-top-navigation-bar
           logo-title="RegelRecht"
           logo-subtitle={brandSubtitle}
           logo-href={home}
           website-href={home}
+          back-href={backHref || undefined}
+          back-text={backText || undefined}
         >
           <nldd-menu-bar slot="global">
             {
@@ -293,46 +330,25 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
             </li>
           </ul>
         </nav>
-      </header>
+      </nldd-skip-link>
 
       {/*
-        Landing and 404 keep a plain <div id="rr-main"> rather than <main>.
-        Their slot includes the page <footer aria-label="…">, and a <footer>
-        is only a contentinfo landmark when it has no sectioning ancestor — wrap
-        the slot in <main> and the footer stops being contentinfo, which also
-        makes its aria-label a prohibited attribute (axe aria-prohibited-attr).
-        The div keeps the footer as a valid top-level contentinfo; the skip-link
-        still targets #rr-main. (Docs pages use a real <main>, see below — there
-        the footer is a deliberate in-content sub-footer, not contentinfo.)
+        nldd-page renders the <main> (page__main) and <footer> (page__footer,
+        contentinfo) landmarks itself; page-type styling + lang live on the
+        nldd-page host. Skipping the nav is handled by nldd-skip-link above
+        (it focuses this content as its next sibling), so there is no separate
+        skip-target div.
       */}
-      {
-        isNotFound && (
-          <div id="rr-main" tabindex="-1" lang={lang}>
-            <slot />
-          </div>
-        )
-      }
+      <slot />
 
-      {
-        isLanding && !isNotFound && (
-          <div id="rr-main" tabindex="-1" class="rr-landing" lang={lang}>
-            <slot />
-          </div>
-        )
-      }
-
-      {
-        kind === 'docs' && (
-          <div
-            id="rr-main"
-            tabindex="-1"
-            class:list={['rr-docs', { 'has-sidebar': hasSidebar }]}
-          >
-            <slot />
-          </div>
-        )
-      }
-    </div>
+      {/* The default site footer on every page (landing, docs and the error
+          page). Wrapped in a native element because Astro consumes `slot` on a
+          component instance instead of forwarding it to the rendered root, so
+          the slot attribute must live on a real DOM child of nldd-page. */}
+      <div slot="footer">
+        <Footer lang={lang} />
+      </div>
+    </nldd-page>
 
     {/* Search modal host. Pagefind does the search logic (indexing, ranking,
         highlighting, sub-results) via its HEADLESS API; the presentation is
@@ -601,6 +617,11 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
           runQuery(fieldValue());
         });
         trigger?.addEventListener('click', openSearch);
+        // Any element opting in (e.g. the 404 page's "Search" action) opens
+        // the same dialog.
+        document
+          .querySelectorAll('[data-search-trigger]')
+          .forEach((el) => el.addEventListener('click', openSearch));
 
         // Keyboard a11y within the modal: arrows move through the focusable
         // <a> result list, Enter follows the active one, Escape closes (native
@@ -637,27 +658,22 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
     </script>
 
     <style>
-      /* No nldd-app-view / nldd-page: those impose an internal scroll model
-         that fights the document scroll. The document scrolls normally —
-         one scrollbar. nldd-top-navigation-bar only needs WIDTH for its
-         container-query layout, which a plain full-width bar provides. */
+      /* nldd-page owns the scroll: it is the scroll container (height: 100%,
+         overflow-y: auto) and also provides the layout-container so page
+         sections size to it via container queries. */
       html {
         /* Reserve the scrollbar's space permanently so opening the search
-           modal (which sets overflow:hidden on body) does not shift the
-           viewport ~15px and jump content. */
+           modal does not shift the viewport ~15px and jump content. */
         scrollbar-gutter: stable;
       }
       html,
       body {
         margin: 0;
+        /* nldd-page is the scroll container (height: 100%); give it a full
+           viewport box to fill. */
+        height: 100%;
       }
-      .rr-shell {
-        min-height: 100vh;
-      }
-      .rr-topbar {
-        background: var(--vp-nav-bg-color);
-      }
-      .rr-topbar nldd-top-navigation-bar {
+      nldd-top-navigation-bar {
         display: block;
         width: 100%;
       }
@@ -700,61 +716,28 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
         color: var(--vp-c-brand-1);
         font-weight: 600;
       }
-      .rr-topbar nldd-top-navigation-bar:not(:defined) {
+      nldd-top-navigation-bar:not(:defined) {
         display: none;
       }
-      .rr-topbar nldd-top-navigation-bar:defined ~ .rr-nav-fallback {
+      nldd-top-navigation-bar:defined ~ .rr-nav-fallback {
         display: none;
       }
 
-      /* Visible focus indicator across the whole shell (WCAG 2.2
+      /* Visible focus indicator across the whole page (WCAG 2.2
          SC 2.4.13). */
-      .rr-shell a:focus-visible,
-      .rr-shell button:focus-visible,
-      .rr-shell summary:focus-visible,
-      .rr-shell [tabindex]:focus-visible {
+      body a:focus-visible,
+      body button:focus-visible,
+      body summary:focus-visible,
+      body [tabindex]:focus-visible {
         outline: 3px solid var(--vp-c-brand-1);
         outline-offset: 2px;
         border-radius: 2px;
       }
-      /* #rr-main is only a programmatic skip-link target; no visible ring. */
-      #rr-main:focus,
-      #rr-main:focus-visible {
-        outline: none;
-      }
 
-      .rr-docs.has-sidebar {
-        display: grid;
-        grid-template-columns: 272px minmax(0, 1fr) 240px;
-        gap: 2rem;
-        max-width: 1440px;
-        margin-inline: auto;
-        padding: 1.5rem 1.5rem 4rem;
-      }
-      .rr-docs:not(.has-sidebar) {
-        max-width: 960px;
-        margin-inline: auto;
-        padding: 1.5rem 1.5rem 4rem;
-      }
-      .rr-docs-body {
-        min-width: 0;
-      }
+      /* The page supplies its own nldd-one-third-two-thirds-section, which
+         owns the 1/3-2/3 layout, max-width and responsive padding. */
       .rr-docs-content {
         min-width: 0;
-      }
-      /* Column changes only. The matching outline/sidebar hides live in those
-         components' own <style> — a cross-component selector here would be
-         stamped with Base's data-cid and never match (see DocsOutline.astro /
-         DocsSidebar.astro). */
-      @media (max-width: 1100px) {
-        .rr-docs.has-sidebar {
-          grid-template-columns: 240px minmax(0, 1fr);
-        }
-      }
-      @media (max-width: 768px) {
-        .rr-docs.has-sidebar {
-          grid-template-columns: minmax(0, 1fr);
-        }
       }
 
       /* Custom NLDD search modal. The visible trigger is the nav "Search"

@@ -1,0 +1,57 @@
+---
+import Base from '~/layouts/Base.astro';
+import { docsCategories, sidebarForPath } from '~/lib/sidebar';
+
+export function getStaticPaths() {
+  // /rfcs/ has its own hand-built index page; skip it here.
+  return docsCategories
+    .filter((c) => c.prefix !== '/rfcs/')
+    .map((c) => ({
+      // '/guide/' -> param 'guide' -> URL '/guide/'.
+      params: { category: c.prefix.replace(/^\/|\/$/g, '') },
+      props: { category: c },
+    }));
+}
+
+const { category } = Astro.props;
+const groups = sidebarForPath(category.prefix) ?? [];
+const title = category.title + ' · RegelRecht';
+---
+
+<Base lang="en" kind="docs" pathname={category.prefix} title={title}>
+  <nldd-one-third-two-thirds-section>
+    <div slot="left">
+      <nldd-title size="2">
+        <h1>{category.title}</h1>
+      </nldd-title>
+    </div>
+    <div slot="right">
+      {
+        groups.map((group, i) => (
+          <Fragment>
+            {i > 0 && <nldd-spacer size="24" />}
+            {group.text && (
+              <Fragment>
+                <nldd-title size="5">
+                  <h2>{group.text}</h2>
+                </nldd-title>
+                <nldd-spacer size="8" />
+              </Fragment>
+            )}
+            <nldd-list type="navigation" variant="box">
+              {group.items
+                .filter((it) => it.link)
+                .map((it) => (
+                  <nldd-list-item href={it.link}>
+                    <nldd-text-cell text={it.text} width="full" />
+                    <nldd-spacer-cell />
+                    <nldd-icon-cell icon="chevron-right" />
+                  </nldd-list-item>
+                ))}
+            </nldd-list>
+          </Fragment>
+        ))
+      }
+    </div>
+  </nldd-one-third-two-thirds-section>
+</Base>

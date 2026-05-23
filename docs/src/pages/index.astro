@@ -1,7 +1,6 @@
 ---
 import Base from '~/layouts/Base.astro';
 import LandingSections from '~/components/LandingSections.astro';
-import Footer from '~/components/Footer.astro';
 import { content } from '~/lib/landing-content';
 
 const t = content.nl;
@@ -15,5 +14,4 @@ const t = content.nl;
   description={t.meta.description}
 >
   <LandingSections lang="nl" showSignup={false} />
-  <Footer lang="nl" />
 </Base>
