@@ -131,8 +131,16 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
     <slot name="head" />
     {/* View transitions keep the DOM/CSS/fonts live between navigations, so
         the NLDD Lit components do not re-upgrade on every page change — that
-        re-upgrade was the flicker on full page loads. */}
+        re-upgrade was the flicker on full page loads. The default cross-fade
+        animation is disabled below: we want the persistence benefit, not the
+        fade. */}
     <ClientRouter />
+    <style is:global>
+      ::view-transition-old(root),
+      ::view-transition-new(root) {
+        animation: none;
+      }
+    </style>
     <script is:inline>
       // Three-state theme: 'system' | 'light' | 'dark' (default 'system').
       // NLDD colours resolve via data-scheme; the landing/chrome CSS uses the
