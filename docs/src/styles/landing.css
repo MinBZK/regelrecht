@@ -8,22 +8,6 @@
  * single source of truth for colour and type and no FOUC.
  */
 
-/* --- Skip link (a11y: first focusable element) --- */
-.rr-skip-link {
-  position: absolute;
-  left: -9999px;
-  top: 0;
-  z-index: 1000;
-  padding: 0.75rem 1.25rem;
-  background: var(--vp-c-brand-1);
-  color: #fff;
-  font-weight: 600;
-  border-radius: 0 0 6px 0;
-}
-.rr-skip-link:focus {
-  left: 0;
-}
-
 /* --- Visible focus indicator everywhere (WCAG 2.2 SC 2.4.11/2.4.13) --- */
 .rr-landing a:focus-visible,
 .rr-landing button:focus-visible,
@@ -57,13 +41,9 @@
 /* --- Page shell --- */
 .rr-landing {
   color: var(--vp-c-text-1);
-  background: var(--vp-c-bg);
+  background: var(--semantics-surfaces-background-color);
   font-family: var(--vp-font-family-base);
   -webkit-font-smoothing: antialiased;
-}
-.rr-landing :where(h1, h2, h3, h4) {
-  color: var(--vp-c-text-1);
-  line-height: 1.2;
 }
 .rr-section {
   padding: clamp(3rem, 8vw, 6rem) 1.5rem;
@@ -145,12 +125,6 @@
 }
 .rr-btn-wc:defined ~ .rr-btn-fallback {
   display: none;
-}
-.rr-cta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 2rem;
 }
 
 /* --- Hero --- */
@@ -483,10 +457,6 @@ nldd-card.rr-card:defined .rr-card-inner {
   grid-template-columns: 1fr 1fr;
   gap: 2.5rem;
   align-items: center;
-  margin-bottom: 3rem;
-}
-.rr-example:last-child {
-  margin-bottom: 0;
 }
 .rr-example--reverse > figure {
   order: 2;
@@ -507,26 +477,12 @@ nldd-card.rr-card:defined .rr-card-inner {
   width: 100%;
   height: auto;
   border-radius: 10px;
-  border: 1px solid var(--vp-c-divider);
   display: block;
 }
 .rr-example figcaption {
   margin-top: 0.6rem;
   font-size: 0.85rem;
   color: var(--vp-c-text-2);
-}
-.rr-example h3 {
-  margin: 0 0 0.75rem;
-  font-size: 1.4rem;
-}
-.rr-example p {
-  color: var(--vp-c-text-2);
-  line-height: 1.6;
-}
-.rr-example ul {
-  color: var(--vp-c-text-2);
-  line-height: 1.7;
-  padding-left: 1.25rem;
 }
 
 /* --- References --- */
@@ -596,106 +552,14 @@ nldd-card.rr-card:defined .rr-card-inner {
   line-height: 1.65;
 }
 
-/* --- Feedback --- */
-.rr-feedback {
-  text-align: center;
-}
-/* Centre every block (heading, the rich-text body, the CTA) on the same
-   axis so they line up. nldd-rich-text/nldd-title are light-DOM-slotted
-   so these selectors still reach their content. */
-.rr-feedback .rr-container > * {
-  margin-inline: auto;
-}
-.rr-feedback nldd-rich-text {
-  display: block;
-  max-width: 60ch;
-}
-.rr-feedback nldd-rich-text p {
-  color: var(--vp-c-text-2);
-  line-height: 1.7;
-}
-.rr-feedback .rr-cta {
-  justify-content: center;
-}
-
 /* --- Footer --- */
-.rr-footer {
-  background: var(--vp-c-bg-soft);
-  border-top: 1px solid var(--vp-c-divider);
-  padding: 3rem 1.5rem 2rem;
-}
 .rr-footer-grid {
-  max-width: 1100px;
-  margin-inline: auto;
   display: grid;
   gap: 2rem;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
-.rr-footer h3 {
-  margin: 0 0 0.75rem;
-}
-.rr-footer h4 {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
-}
-.rr-footer p,
-.rr-footer li {
-  color: var(--vp-c-text-2);
-  line-height: 1.6;
-}
-.rr-footer ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.rr-footer a {
-  color: var(--vp-c-brand-1);
-  text-decoration: none;
-}
-.dark .rr-footer a {
-  color: var(--vp-c-brand-2);
-}
-.rr-footer a:hover {
-  text-decoration: underline;
-}
-.rr-footer-bottom {
-  max-width: 1100px;
-  margin: 2rem auto 0;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--vp-c-divider);
-  color: var(--vp-c-text-2);
-  font-size: 0.85rem;
-}
 
 /* --- Signup form --- */
-.rr-form {
-  max-width: 640px;
-}
-.rr-field {
-  margin-bottom: 1.5rem;
-}
-.rr-field label.rr-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 0.4rem;
-}
-.rr-field input[type='email'],
-.rr-field input[type='text'] {
-  width: 100%;
-  padding: 0.7rem 0.85rem;
-  border: 2px solid var(--vp-c-divider);
-  border-radius: 6px;
-  font-size: 1rem;
-  font-family: inherit;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-}
-.rr-field input[aria-invalid='true'] {
-  border-color: #b00020;
-}
-.dark .rr-field input[aria-invalid='true'] {
-  border-color: #ff8a93;
-}
 .rr-required {
   color: #b00020;
   font-weight: 700;

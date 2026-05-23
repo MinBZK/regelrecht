@@ -9,43 +9,67 @@ const { lang } = Astro.props;
 const f = content[lang].footer;
 ---
 
-<footer
-  class="rr-footer"
-  aria-label={lang === 'en' ? 'Site footer' : 'Sitevoettekst'}
+<nldd-simple-section
+  background="tinted"
+  scheme="dark"
+  sm-padding-top="32"
+  md-padding-top="64"
+  lg-padding-top="96"
 >
   <div class="rr-footer-grid">
     <div>
-      <h3>RegelRecht</h3>
-      <p>{f.blurb}</p>
+      <nldd-title size="5"><h5>RegelRecht</h5></nldd-title>
+      <nldd-spacer size="12" />
+      <nldd-rich-text><p>{f.blurb}</p></nldd-rich-text>
     </div>
     <div>
-      <h4>{f.linksTitle}</h4>
-      <ul>
-        {
-          f.links.map((l) => (
-            <li>
-              <a href={l.href}>{l.label}</a>
-            </li>
-          ))
-        }
-      </ul>
+      <nldd-title size="5"><h5>{f.linksTitle}</h5></nldd-title>
+      <nldd-spacer size="12" />
+      <nldd-rich-text>
+        <p>
+          {
+            f.links.map((l, i) => (
+              <Fragment>
+                {i > 0 && <br />}
+                <a href={l.href}>{l.label}</a>
+              </Fragment>
+            ))
+          }
+        </p>
+      </nldd-rich-text>
     </div>
     <div>
-      <h4>{f.contactTitle}</h4>
-      <ul>
-        <li>
+      <nldd-title size="5"><h5>{f.contactTitle}</h5></nldd-title>
+      <nldd-spacer size="12" />
+      <nldd-rich-text>
+        <p>
           <a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a>
-        </li>
-      </ul>
+        </p>
+      </nldd-rich-text>
     </div>
     <div>
-      <h4>{f.partOfTitle}</h4>
-      <ul>
-        {f.partOf.map((o) => <li>{o}</li>)}
-      </ul>
+      <nldd-title size="5"><h5>{f.partOfTitle}</h5></nldd-title>
+      <nldd-spacer size="12" />
+      <nldd-rich-text>
+        <p>
+          {
+            f.partOf.map((o, i) => (
+              <Fragment>
+                {i > 0 && <br />}
+                {o}
+              </Fragment>
+            ))
+          }
+        </p>
+      </nldd-rich-text>
     </div>
   </div>
+  <nldd-spacer size="24" />
+  <nldd-divider></nldd-divider>
+  <nldd-spacer size="24" />
   <div class="rr-footer-bottom">
-    <p>{f.copyright}</p>
+    <nldd-rich-text>
+      <small>{f.copyright}</small>
+    </nldd-rich-text>
   </div>
-</footer>
+</nldd-simple-section>
