@@ -1,29 +1,18 @@
 ---
 /*
- * Doc page footer wrapper, ported from the relanding RrDocFooter.vue
- * outer <footer class="rr-doc-footer">: edit-on-GitHub link above the
- * prev/next pager, separated from the body by a top border.
+ * Doc page footer: divider + prev/next pager. The component is placed
+ * directly after <nldd-rich-text> by the doc page layouts; the spacer +
+ * divider + spacer here separates the toolbar from the article body.
  */
-import EditLink from './EditLink.astro';
 import DocsPrevNext from './DocsPrevNext.astro';
 
 interface Props {
-  entryId: string;
-  collection: 'docs' | 'rfcs';
   pathname: string;
 }
-const { entryId, collection, pathname } = Astro.props;
+const { pathname } = Astro.props;
 ---
 
-<footer class="rr-doc-footer">
-  <EditLink entryId={entryId} collection={collection} />
-  <DocsPrevNext pathname={pathname} />
-</footer>
-
-<style>
-  .rr-doc-footer {
-    margin-top: 3rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--vp-c-divider);
-  }
-</style>
+<nldd-spacer size="24" />
+<nldd-divider></nldd-divider>
+<nldd-spacer size="24" />
+<DocsPrevNext pathname={pathname} />

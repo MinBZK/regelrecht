@@ -21,25 +21,4 @@ const base =
 const editUrl = base + entryId;
 ---
 
-<p class="rr-doc-edit">
-  <a href={editUrl} target="_blank" rel="noreferrer">
-    Edit this page on GitHub
-  </a>
-</p>
-
-<style>
-  .rr-doc-edit {
-    margin: 0 0 1.5rem;
-    font-size: 0.9rem;
-  }
-  .rr-doc-edit a {
-    color: var(--vp-c-brand-1);
-    text-decoration: none;
-  }
-  :global(.dark) .rr-doc-edit a {
-    color: var(--vp-c-brand-2);
-  }
-  .rr-doc-edit a:hover {
-    text-decoration: underline;
-  }
-</style>
+<nldd-link size="sm" href={editUrl} target="_blank" text="Edit page on GitHub" />
