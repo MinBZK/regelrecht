@@ -1,449 +1,35 @@
 /*
- * Landing page styles.
+ * Landing + page-shell styles.
  *
- * Layout-critical and SSR-safe: the landing must render meaningfully without
- * JS, so nothing here depends on the client-only @nldd/design-system import.
+ * Layout-critical and SSR-safe: nothing here depends on the client-only
+ * @nldd/design-system import.
  *
- * Typography (colour, font, line-height, etc.) is intentionally owned by the
- * design-system primitives + nldd-* components. The .rr-* rules below carry
- * only layout, background and border concerns.
+ * Typography, focus appearance and surface backgrounds are owned by the
+ * design-system primitives + nldd-* components (focus falls back to native
+ * for non-NLDD elements; html owns the canvas background via tokens.css).
+ * The .rr-* rules below carry only the layout/SSR-fallback concerns that
+ * are not covered by the design system.
  */
 
-/* --- Visible focus indicator everywhere (WCAG 2.2 SC 2.4.11/2.4.13) --- */
-.rr-landing a:focus-visible,
-.rr-landing button:focus-visible,
-.rr-landing summary:focus-visible,
-.rr-landing input:focus-visible,
-.rr-landing [tabindex]:focus-visible {
-  outline: 3px solid var(--vp-c-brand-1);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-.dark .rr-landing a:focus-visible,
-.dark .rr-landing button:focus-visible,
-.dark .rr-landing summary:focus-visible,
-.dark .rr-landing input:focus-visible {
-  outline-color: var(--vp-c-brand-2);
-}
-
-/* --- Visually hidden helper (kept in the a11y tree) --- */
-.rr-visually-hidden {
-  position: absolute !important;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-/* --- Page shell --- */
-.rr-landing {
-  background: var(--semantics-surfaces-background-color);
-}
-.rr-section {
-  padding: clamp(3rem, 8vw, 6rem) 1.5rem;
-}
-.rr-section--alt {
-  background: var(--vp-c-bg-soft);
-}
-.rr-container {
-  max-width: 1100px;
-  margin-inline: auto;
-}
-/* The NLDD wrappers (nldd-title, nldd-rich-text, the card grid) each
-   manage their own internal margins, which don't compose into outer
-   rhythm. Own the vertical spacing here, on the direct children of the
-   section container, so heading -> lede -> grid always has air. */
-.rr-container > * + * {
-  margin-top: 2rem;
-}
-.rr-container > nldd-title + nldd-rich-text {
-  margin-top: 1rem;
-}
-.rr-section-title {
-  margin: 0;
-}
-.rr-lede {
-  max-width: 60ch;
-  margin: 0;
-}
-
-/* --- Buttons --- */
-.rr-btn {
-  display: inline-block;
-  padding: 0.8rem 1.6rem;
-  border-radius: 6px;
-  border: 2px solid transparent;
-  cursor: pointer;
-}
-.rr-btn--primary {
-  /* donkerblauw-500 is scheme-stable (rgb(37,124,177) in both modes) and
-     clears 4.5:1 with white text in light AND dark. Stays in the NLDD
-     palette; no hex. */
-  background: var(--primitives-color-donkerblauw-500);
-}
-.rr-btn--primary:hover {
-  filter: brightness(0.9);
-}
-.rr-btn--ghost {
-  background: transparent;
-  border-color: var(--vp-c-brand-1);
-}
-.dark .rr-btn--ghost {
-  border-color: var(--vp-c-brand-2);
-}
-.rr-btn--ghost:hover {
-  background: var(--vp-c-brand-soft);
-}
-
-/* nldd-button ships its text in a `text=` attribute (shadow DOM), so it
-   is invisible without JS. Each button renders an <nldd-button> followed
-   by a real <a class="rr-btn-fallback">. Show exactly one: the semantic
-   <a> until the component upgrades, then the component. The component
-   comes first in the DOM so a plain ~ combinator works everywhere. */
-.rr-btn-wc:not(:defined) {
-  display: none;
-}
-.rr-btn-wc:defined ~ .rr-btn-fallback {
-  display: none;
-}
-
-/* --- Hero --- */
-.rr-hero {
-  padding: clamp(3.5rem, 10vw, 7rem) 1.5rem;
-  /* Hero fill comes from the NLDD donkerblauw scale. The donkerblauw
-     tokens are light-dark() pairs, so for a hero that must stay deep
-     blue in BOTH modes we pick the stop by scheme. The solid
-     background-color is the contrast floor a gradient-unaware renderer
-     falls back to; the gradient is decoration on top. */
-  background-color: var(--primitives-color-donkerblauw-900);
-  background-image: linear-gradient(
-    135deg,
-    var(--primitives-color-donkerblauw-800) 0%,
-    var(--primitives-color-donkerblauw-900) 100%
-  );
-}
-.dark .rr-hero {
-  /* Mirror stops: in dark mode 200/100 resolve to the same deep-blue rgb
-     the 800/900 pair gives in light mode, so the hero stays dark in both
-     schemes while staying on the NLDD palette. */
-  background-color: var(--primitives-color-donkerblauw-100);
-  background-image: linear-gradient(
-    135deg,
-    var(--primitives-color-donkerblauw-200) 0%,
-    var(--primitives-color-donkerblauw-100) 100%
-  );
-}
-.rr-hero .rr-container {
-  max-width: 820px;
-}
-.rr-hero h1 {
-  margin: 0 0 1rem;
-}
-.rr-hero h1 small {
-  display: block;
-  opacity: 0.95;
-  margin-top: 0.25rem;
-}
-.rr-hero p {
-  margin: 0 0 2rem;
-}
-/* Hero-knop semantische fallback (zichtbaar pre-JS / no-JS). Zelfde
-   NLDD-palettonen als de nldd-button-override hierboven, zodat fallback
-   en component identiek ogen. coolgray flipt mee per scheme. */
-.rr-hero .rr-btn--primary {
-  background: var(--primitives-color-coolgray-25);
-}
-.rr-hero .rr-btn--primary:hover {
-  background: var(--primitives-color-coolgray-50);
-}
-.dark .rr-hero .rr-btn--primary {
-  background: var(--primitives-color-coolgray-950);
-}
-.dark .rr-hero .rr-btn--primary:hover {
-  background: var(--primitives-color-coolgray-900);
-}
-
-/* nldd-button variant="primary" is accent-blue — designed for light
-   backgrounds; on the dark-blue hero it fails contrast (measured 2.4:1).
-   NLDD has no on-dark button variant, and every NLDD neutral flips with
-   data-scheme, so no single soft token works on the dark hero in both
-   modes. We therefore set TWO explicit soft NLDD tones, one per scheme,
-   each measured >=4.5:1 on its hero background — soft (not pure
-   black/white), still inside the NLDD palette, scoped to the hero. */
-.rr-hero .rr-btn-wc {
-  /* light mode: soft off-white surface, dark text (~12:1 on hero) */
-  --semantics-buttons-accent-filled-background-color: var(
-    --primitives-color-coolgray-25
-  );
-  --semantics-buttons-accent-filled-content-color: var(
-    --primitives-color-coolgray-900
-  );
-  --semantics-buttons-accent-filled-is-hovered-background-color: var(
-    --primitives-color-coolgray-50
-  );
-  --semantics-buttons-accent-filled-is-hovered-content-color: var(
-    --primitives-color-coolgray-900
-  );
-  --semantics-buttons-accent-filled-is-active-background-color: var(
-    --primitives-color-coolgray-50
-  );
-  --semantics-buttons-accent-filled-is-active-content-color: var(
-    --primitives-color-coolgray-900
-  );
-}
-.dark .rr-hero .rr-btn-wc {
-  --semantics-buttons-accent-filled-background-color: var(
-    --primitives-color-coolgray-950
-  );
-  --semantics-buttons-accent-filled-content-color: var(
-    --primitives-color-coolgray-50
-  );
-  --semantics-buttons-accent-filled-is-hovered-background-color: var(
-    --primitives-color-coolgray-900
-  );
-  --semantics-buttons-accent-filled-is-hovered-content-color: var(
-    --primitives-color-coolgray-50
-  );
-  --semantics-buttons-accent-filled-is-active-background-color: var(
-    --primitives-color-coolgray-900
-  );
-  --semantics-buttons-accent-filled-is-active-content-color: var(
-    --primitives-color-coolgray-50
-  );
-}
-
-/* --- Partners --- */
-.rr-partners p {
-  margin: 0 0 1rem;
-}
-.rr-partners ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem 2.5rem;
-  justify-content: center;
-}
-
-/* --- Card grids ---
-   The grid is now an <nldd-collection layout="grid">. It builds the
-   responsive grid INSIDE its shadow DOM. The host must NOT impose its
-   own layout — just give it full width and feed the collection's own
-   NLDD gap token. */
-.rr-grid {
-  display: block;
-  width: 100%;
-  --components-collection-sm-gap: 1.5rem;
-  --components-collection-md-gap: 1.5rem;
-  --components-collection-lg-gap: 2rem;
-}
-/* Card box chrome. For plain .rr-card (no web component) this is the look.
-   For <nldd-card> it is the no-JS / not-yet-upgraded fallback: once the
-   component is :defined it draws its own elevated frame, so we drop our
-   border/background/padding to avoid a double frame. */
-.rr-card,
-nldd-card.rr-card:not(:defined) {
-  display: block;
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 10px;
-  padding: 1.75rem;
-}
-nldd-card.rr-card:defined {
-  display: block;
-  background: none;
-  border: 0;
-  padding: 0;
-}
-/* nldd-card leaves inner padding to a nested container (per its API).
-   The inner wrapper supplies it only once the component is upgraded; in
-   the fallback the outer .rr-card padding already covers it. */
-nldd-card.rr-card:defined .rr-card-inner {
-  padding: 1.75rem;
-}
-.rr-card h3 {
-  margin: 0 0 0.6rem;
-}
-.rr-card p {
-  margin: 0;
-}
-.rr-card-meta {
-  display: inline-block;
-  margin-bottom: 0.5rem;
-  background: var(--vp-c-bg-mute);
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-}
-.rr-card-link {
-  display: inline-block;
-  margin-bottom: 0.5rem;
-}
-/* NLDD components carry no margins of their own (whitespace is meant to come
-   from <nldd-spacer>, which only exists once JS upgrades the element). This
-   site renders without JS, so the gap between a tag and the heading below it
-   is set here instead. Covers both the cards (.rr-card-inner) and the
-   problem/solution pairs (.rr-ps-*). */
-.rr-card-inner nldd-tag,
-.rr-ps-problem nldd-tag,
-.rr-ps-solution nldd-tag {
-  display: inline-block;
-  margin-bottom: 0.75rem;
-}
-
-/* --- Problem / solution pairs --- */
-.rr-ps-list {
-  display: grid;
-  gap: 1.5rem;
-}
-.rr-ps {
-  display: grid;
-  gap: 1.5rem;
-  grid-template-columns: 1fr 1fr;
-}
-@media (max-width: 720px) {
-  .rr-ps {
-    grid-template-columns: 1fr;
-  }
-}
-.rr-ps > div {
-  border-radius: 10px;
-  padding: 1.5rem;
-  border: 1px solid var(--vp-c-divider);
-}
-.rr-ps .rr-ps-problem {
-  background: var(--vp-c-bg-soft);
-}
-.rr-ps .rr-ps-solution {
-  background: var(--vp-c-brand-soft);
-}
-.rr-ps-tag {
-  display: block;
-  margin-bottom: 0.35rem;
-}
-.rr-ps h3 {
-  margin: 0 0 0.5rem;
-}
-.rr-ps p {
-  margin: 0;
-}
-
-/* --- Steps (ordered list) --- */
-.rr-steps {
-  list-style: none;
-  counter-reset: rr-step;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 1.25rem;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-.rr-steps li {
-  counter-increment: rr-step;
-  position: relative;
-  padding: 1.5rem 1.5rem 1.5rem 4rem;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 10px;
-  background: var(--vp-c-bg);
-}
-.rr-steps li::before {
-  content: counter(rr-step);
-  position: absolute;
-  left: 1.25rem;
-  top: 1.5rem;
-  width: 2rem;
-  height: 2rem;
-  display: grid;
-  place-items: center;
-  background: var(--vp-c-brand-1);
-  border-radius: 50%;
-}
-.rr-steps li h3 {
-  margin: 0 0 0.5rem;
-}
-.rr-steps li p {
-  margin: 0;
-}
-
-/* --- Examples (figure + text) --- */
+/* --- Examples (figure + text, side-by-side on desktop) --- */
 .rr-example {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: 2.5rem;
   align-items: center;
 }
-.rr-example--reverse > figure {
-  order: 2;
+.rr-example > * {
+  flex-grow: 1;
+  flex-shrink: 1;
+  flex-basis: 0;
+}
+.rr-example--reverse {
+  flex-direction: row-reverse;
 }
 @media (max-width: 860px) {
   .rr-example,
   .rr-example--reverse {
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
-  .rr-example--reverse > figure {
-    order: 0;
-  }
-}
-.rr-example figure {
-  margin: 0;
-}
-.rr-example img {
-  width: 100%;
-  height: auto;
-  border-radius: 10px;
-  display: block;
-}
-.rr-example figcaption {
-  margin-top: 0.6rem;
-}
-
-/* --- References --- */
-.rr-refs {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 1.25rem;
-}
-.rr-refs li {
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 10px;
-  padding: 1.5rem;
-  background: var(--vp-c-bg);
-}
-.rr-refs h3 {
-  margin: 0 0 0.25rem;
-}
-.rr-refs .rr-ref-meta {
-  margin: 0 0 0.6rem;
-}
-.rr-refs p {
-  margin: 0 0 0.75rem;
-}
-
-/* --- FAQ (native details/summary) --- */
-.rr-faq {
-  display: grid;
-  gap: 0.75rem;
-  max-width: 800px;
-}
-.rr-faq details {
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  background: var(--vp-c-bg);
-}
-.rr-faq summary {
-  cursor: pointer;
-  padding: 1rem 1.25rem;
-  list-style-position: inside;
-}
-.rr-faq details p {
-  margin: 0;
-  padding: 0 1.25rem 1.25rem;
 }
 
 /* --- Footer --- */
@@ -454,30 +40,6 @@ nldd-card.rr-card:defined .rr-card-inner {
 }
 
 /* --- Signup form --- */
-.rr-error-text {
-  margin: 0.4rem 0 0;
-}
-.rr-error-text::before {
-  content: '⚠ ';
-}
-.rr-fieldset {
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin: 0 0 1.5rem;
-}
-.rr-fieldset legend {
-  padding: 0 0.4rem;
-}
-.rr-choice {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  margin: 0.5rem 0;
-}
-.rr-choice input {
-  margin-top: 0.2rem;
-}
 .rr-honeypot {
   position: absolute;
   left: -9999px;
@@ -492,9 +54,6 @@ nldd-card.rr-card:defined .rr-card-inner {
   border-radius: 8px;
   padding: 1.5rem;
   border: 1px solid var(--vp-c-divider);
-}
-.rr-status-box--ok {
-  background: var(--vp-c-brand-soft);
 }
 .rr-status-box--err {
   background: var(--vp-c-bg-soft);
@@ -511,21 +70,5 @@ nldd-card.rr-card:defined .rr-card-inner {
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
-  }
-  .rr-fade {
-    animation: rr-fade-in 0.6s ease both;
-  }
-}
-.rr-landing :where(section)[id] {
-  scroll-margin-top: 5rem;
-}
-@keyframes rr-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
   }
 }
