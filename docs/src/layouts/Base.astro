@@ -313,30 +313,34 @@ const legalLinks = [
                   icon="languages"
                   expandable
                 >
-                  {langOptions.map((opt) => (
-                    <nldd-menu-item
-                      data-menu="lang"
-                      type="radio"
-                      value={opt.href}
-                      text={opt.label}
-                      selected={opt.code === lang || undefined}
-                    />
-                  ))}
+                  <nldd-menu>
+                    {langOptions.map((opt) => (
+                      <nldd-menu-item
+                        data-menu="lang"
+                        type="radio"
+                        value={opt.href}
+                        text={opt.label}
+                        selected={opt.code === lang || undefined}
+                      />
+                    ))}
+                  </nldd-menu>
                 </nldd-menu-bar-item>
               )
             }
             <nldd-menu-bar-item id="rr-theme-menu" text={themeMenuLabel} expandable>
-              {
-                themeOptions.map((opt) => (
-                  <nldd-menu-item
-                    data-menu="theme"
-                    type="radio"
-                    value={opt.value}
-                    text={opt.label}
-                    selected={opt.value === 'system' || undefined}
-                  />
-                ))
-              }
+              <nldd-menu>
+                {
+                  themeOptions.map((opt) => (
+                    <nldd-menu-item
+                      data-menu="theme"
+                      type="radio"
+                      value={opt.value}
+                      text={opt.label}
+                      selected={opt.value === 'system' || undefined}
+                    />
+                  ))
+                }
+              </nldd-menu>
             </nldd-menu-bar-item>
             <nldd-menu-bar-item
               text="GitHub"
@@ -502,17 +506,13 @@ const legalLinks = [
     </script>
 
     <script>
-      // Theme + language live in expandable <nldd-menu-bar-item> popovers.
-      // The popover clones its slotted <nldd-menu-item>s (cloneNode drops JS
-      // listeners), so selection is handled via event delegation on the
-      // document: the `select` event bubbles and is composed. It carries no
-      // detail, so composedPath() identifies the firing item and the owning
-      // menu. Theme persists + re-applies; language navigates.
-      // The popover is portalled to <body> (top layer), so the cloned item's
-      // composedPath does NOT include #rr-theme-menu — identify the menu by the
-      // item's own data-menu attribute (cloned with the node) instead. Update
-      // ALL matching items (source + live clones) so the radio reflects the
-      // current choice whether the popover is open or freshly re-cloned.
+      // Theme + language live in expandable <nldd-menu-bar-item> popovers
+      // (each wraps its items in <nldd-menu>). Selection is handled via event
+      // delegation on the document: the `select` event bubbles and is composed.
+      // It carries no detail, so we identify the firing item by its data-menu
+      // attribute and (for language) navigate to its value, (for theme) persist
+      // and re-apply. Selected state is reflected onto matching items by
+      // data-menu attribute on every page-load + preference change.
       function syncThemeRadios() {
         const pref =
           (window.__rrReadThemePref && window.__rrReadThemePref()) || 'system';
@@ -618,10 +618,11 @@ const legalLinks = [
           setState(searchNoResults, 'empty');
           return;
         }
-        // Build a list-item per result (and sub-result). The text-cell takes
-        // the title via `text=` and the Pagefind excerpt — which is already
-        // sanitized HTML with <mark> wrapping the matched terms — via the
-        // `supporting-text` slot so the highlight survives.
+        // Build a list-item per result (and sub-result). Wrap in a generic
+        // nldd-cell with nldd-title (semantic heading) + nldd-rich-text (for
+        // the Pagefind excerpt — sanitized HTML with <mark> on the matched
+        // terms). nldd-text-cell escapes its supporting-text slot's HTML in
+        // some flows; nldd-rich-text preserves <mark> reliably.
         function makeListItem(href, titleText, excerptHtml, isSubresult) {
           const item = document.createElement('nldd-list-item');
           item.setAttribute('href', href);
@@ -629,18 +630,25 @@ const legalLinks = [
           item.tabIndex = -1;
 
           if (isSubresult) {
-            const spacer = document.createElement('nldd-spacer-cell');
-            item.appendChild(spacer);
+            item.appendChild(document.createElement('nldd-spacer-cell'));
           }
 
-          const cell = document.createElement('nldd-text-cell');
-          cell.setAttribute('text', titleText);
+          const cell = document.createElement('nldd-cell');
+          cell.setAttribute('width', 'full');
+
+          const title = document.createElement('nldd-title');
+          title.setAttribute('size', '5');
+          const heading = document.createElement('h3');
+          heading.textContent = titleText;
+          title.appendChild(heading);
+          cell.appendChild(title);
 
           if (excerptHtml) {
-            const slot = document.createElement('span');
-            slot.setAttribute('slot', 'supporting-text');
-            slot.innerHTML = excerptHtml;
-            cell.appendChild(slot);
+            const rich = document.createElement('nldd-rich-text');
+            const p = document.createElement('p');
+            p.innerHTML = excerptHtml;
+            rich.appendChild(p);
+            cell.appendChild(rich);
           }
 
           item.appendChild(cell);

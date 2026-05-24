@@ -137,11 +137,3 @@ svg[id^='mermaid-'] .labelBkg {
   background: transparent !important;
 }
 
-/* Pagefind wraps the matched terms in <mark> inside the result's
-   supporting-text slot of nldd-text-cell. The list-item itself is styled by
-   the design system; we only need to keep the match highlight visible. */
-#rr-search-results mark {
-  background: var(--vp-c-brand-soft);
-  padding: 0 0.1em;
-  border-radius: 3px;
-}
