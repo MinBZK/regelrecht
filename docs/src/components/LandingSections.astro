@@ -332,10 +332,12 @@ const toc = [
                   { 'rr-example--reverse': ex.reverse },
                 ]}
               >
-                <figure>
-                  <img src={ex.img} alt={ex.alt} />
-                  <figcaption>{ex.caption}</figcaption>
-                </figure>
+                <nldd-rich-text>
+                  <figure>
+                    <img src={ex.img} alt={ex.alt} />
+                    <figcaption>{ex.caption}</figcaption>
+                  </figure>
+                </nldd-rich-text>
                 <nldd-rich-text>
                   <h3>{ex.h}</h3>
                   <p>{ex.p}</p>

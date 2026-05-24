@@ -31,8 +31,6 @@ const {
 
 const isLanding = kind === 'landing';
 const isNotFound = kind === 'notfound';
-// Page-type styling hook, now on the nldd-page host instead of a wrapper div.
-const mainClass = isLanding ? 'rr-landing' : undefined;
 
 const t = content[lang];
 // Landing is bilingual (path-driven); docs are English-only.
@@ -126,13 +124,9 @@ const langOther = langOptions?.find((o) => o.code !== lang) ?? null;
 
 const searchLabel = lang === 'en' ? 'Search' : 'Zoeken';
 const searchPlaceholder =
-  lang === 'en' ? 'Search documentation' : 'Doorzoek de documentatie';
+  lang === 'en' ? 'Search documentation' : 'Documentatie doorzoeken';
 const searchResultsLabel =
   lang === 'en' ? 'Search results' : 'Zoekresultaten';
-const searchHint =
-  lang === 'en'
-    ? 'Type to search the documentation.'
-    : 'Typ om de documentatie te doorzoeken.';
 const searchNoResults =
   lang === 'en' ? 'No results found.' : 'Geen resultaten gevonden.';
 const searchDevHint =
@@ -228,7 +222,7 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
     </script>
   </head>
   <body>
-    <nldd-page class={mainClass} lang={lang}>
+    <nldd-page background={isLanding ? 'base' : undefined}>
       {/* nldd-skip-link wraps the nav: its skip control sits before the nav and
           focuses the next sibling (the first main-content element) — no anchor
           id needed, so there is no separate skip target div. */}
@@ -354,27 +348,37 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
         highlighting, sub-results) via its HEADLESS API; the presentation is
         custom NLDD. Pagefind only indexes after `astro build`, so the headless
         module is absent in `astro dev` (guarded in the script below). */}
-    <dialog
+    <nldd-window
       id="rr-search-dialog"
-      class="rr-search-dialog"
-      aria-label={searchLabel}
+      accessible-label={searchLabel}
+      centered
+      top="15vh"
+      width="min(40rem, 92vw)"
     >
-      <div class="rr-search-panel">
+      <nldd-container padding="16">
         <nldd-search-field
           id="rr-search-input"
           placeholder={searchPlaceholder}
           accessible-label={searchPlaceholder}
         ></nldd-search-field>
-        <div
-          id="rr-search-results"
-          class="rr-search-results"
-          role="listbox"
-          aria-label={searchResultsLabel}
-        >
-          <p class="rr-search-state" data-state="hint">{searchHint}</p>
-        </div>
-      </div>
-    </dialog>
+      </nldd-container>
+      <nldd-container
+        id="rr-search-results"
+        padding="16"
+        padding-top="0"
+        hidden
+      >
+        <nldd-list role="listbox" aria-label={searchResultsLabel}></nldd-list>
+      </nldd-container>
+      <nldd-container
+        id="rr-search-status"
+        padding="16"
+        padding-top="0"
+        hidden
+      >
+        <nldd-inline-dialog id="rr-search-state"></nldd-inline-dialog>
+      </nldd-container>
+    </nldd-window>
 
     <script>
       import '@nldd/design-system';
@@ -428,7 +432,6 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
 
     <script
       define:vars={{
-        searchHint,
         searchNoResults,
         searchDevHint,
       }}
@@ -443,7 +446,10 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
       let dialog = null;
       let trigger = null;
       let field = null;
-      let resultsEl = null;
+      let resultsEl = null;     // container that wraps nldd-list (hidden when no items)
+      let listEl = null;        // the nldd-list itself (where list-items go)
+      let statusEl = null;      // container that wraps the state inline-dialog
+      let stateEl = null;       // the nldd-inline-dialog whose text reflects the current state
 
       // Pagefind instance (loaded lazily on first open). `null` until loaded,
       // `false` once an import attempt has failed (e.g. in `astro dev`).
@@ -455,14 +461,13 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
       let activeIndex = -1; // currently highlighted result, -1 = none
 
       function setState(stateText, kind) {
-        if (!resultsEl) return;
+        if (!stateEl || !statusEl || !resultsEl || !listEl) return;
         activeIndex = -1;
-        resultsEl.innerHTML = '';
-        const p = document.createElement('p');
-        p.className = 'rr-search-state';
-        p.dataset.state = kind;
-        p.textContent = stateText;
-        resultsEl.appendChild(p);
+        stateEl.setAttribute('text', stateText);
+        if (kind) stateEl.dataset.state = kind;
+        statusEl.hidden = false;
+        resultsEl.hidden = true;
+        listEl.innerHTML = '';
       }
 
       async function ensurePagefind() {
@@ -489,66 +494,63 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
 
       // Render a list of resolved Pagefind result records as NLDD-styled links.
       function renderResults(records) {
-        if (!resultsEl) return;
+        if (!listEl || !resultsEl || !statusEl) return;
         activeIndex = -1;
-        resultsEl.innerHTML = '';
+        listEl.innerHTML = '';
         if (!records.length) {
           setState(searchNoResults, 'empty');
           return;
         }
-        const frag = document.createDocumentFragment();
-        for (const rec of records) {
-          const item = document.createElement('a');
-          item.className = 'rr-search-result';
-          item.href = rec.url;
+        // Build a list-item per result (and sub-result). The text-cell takes
+        // the title via `text=` and the Pagefind excerpt — which is already
+        // sanitized HTML with <mark> wrapping the matched terms — via the
+        // `supporting-text` slot so the highlight survives.
+        function makeListItem(href, titleText, excerptHtml, isSubresult) {
+          const item = document.createElement('nldd-list-item');
+          item.setAttribute('href', href);
           item.setAttribute('role', 'option');
           item.tabIndex = -1;
 
-          const title = document.createElement('span');
-          title.className = 'rr-search-result-title';
-          title.textContent = (rec.meta && rec.meta.title) || rec.url;
-          item.appendChild(title);
+          if (isSubresult) {
+            const spacer = document.createElement('nldd-spacer-cell');
+            item.appendChild(spacer);
+          }
 
-          const excerpt = document.createElement('span');
-          excerpt.className = 'rr-search-result-excerpt';
-          // Pagefind's excerpt is its own sanitized output with <mark> wrapping
-          // the matched terms — safe to inject as HTML.
-          excerpt.innerHTML = rec.excerpt;
-          item.appendChild(excerpt);
+          const cell = document.createElement('nldd-text-cell');
+          cell.setAttribute('text', titleText);
 
-          frag.appendChild(item);
+          if (excerptHtml) {
+            const slot = document.createElement('span');
+            slot.setAttribute('slot', 'supporting-text');
+            slot.innerHTML = excerptHtml;
+            cell.appendChild(slot);
+          }
+
+          item.appendChild(cell);
+          return item;
+        }
+
+        const frag = document.createDocumentFragment();
+        for (const rec of records) {
+          const title = (rec.meta && rec.meta.title) || rec.url;
+          frag.appendChild(makeListItem(rec.url, title, rec.excerpt, false));
 
           // Sub-results (deep links into the same page, e.g. headings).
           const subs = (rec.sub_results || []).slice(0, 3);
           for (const sub of subs) {
             // The top result of sub_results usually duplicates the page itself.
             if (sub.url === rec.url) continue;
-            const subItem = document.createElement('a');
-            subItem.className = 'rr-search-result rr-search-subresult';
-            subItem.href = sub.url;
-            subItem.setAttribute('role', 'option');
-            subItem.tabIndex = -1;
-
-            const subTitle = document.createElement('span');
-            subTitle.className = 'rr-search-result-title';
-            subTitle.textContent = sub.title;
-            subItem.appendChild(subTitle);
-
-            if (sub.excerpt) {
-              const subExcerpt = document.createElement('span');
-              subExcerpt.className = 'rr-search-result-excerpt';
-              subExcerpt.innerHTML = sub.excerpt;
-              subItem.appendChild(subExcerpt);
-            }
-            frag.appendChild(subItem);
+            frag.appendChild(makeListItem(sub.url, sub.title, sub.excerpt, true));
           }
         }
-        resultsEl.appendChild(frag);
+        listEl.appendChild(frag);
+        statusEl.hidden = true;
+        resultsEl.hidden = false;
       }
 
       function resultLinks() {
-        return resultsEl
-          ? Array.from(resultsEl.querySelectorAll('a.rr-search-result'))
+        return listEl
+          ? Array.from(listEl.querySelectorAll('nldd-list-item'))
           : [];
       }
 
@@ -558,7 +560,7 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
         activeIndex = (index + links.length) % links.length;
         links.forEach((a, i) => {
           const on = i === activeIndex;
-          a.classList.toggle('is-active', on);
+          a.toggleAttribute('selected', on);
           if (on) {
             a.focus();
             a.scrollIntoView({ block: 'nearest' });
@@ -566,10 +568,18 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
         });
       }
 
+      function clearState() {
+        // Empty query — no message, no list, just both panes hidden.
+        activeIndex = -1;
+        if (listEl) listEl.innerHTML = '';
+        if (resultsEl) resultsEl.hidden = true;
+        if (statusEl) statusEl.hidden = true;
+      }
+
       async function runQuery(query) {
         const q = String(query ?? '').trim();
         if (!q) {
-          setState(searchHint, 'hint');
+          clearState();
           return;
         }
         await ensurePagefind();
@@ -597,7 +607,7 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
       function openSearch() {
         if (!dialog) return;
         ensurePagefind();
-        if (!dialog.open) dialog.showModal();
+        dialog.show();
         field?.focus();
       }
 
@@ -610,6 +620,9 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
         trigger = document.getElementById('rr-search-trigger');
         field = document.getElementById('rr-search-input');
         resultsEl = document.getElementById('rr-search-results');
+        listEl = resultsEl?.querySelector('nldd-list') ?? null;
+        statusEl = document.getElementById('rr-search-status');
+        stateEl = document.getElementById('rr-search-state');
 
         field?.addEventListener('input', () => onInput(fieldValue()));
         field?.addEventListener('search', () => {
@@ -624,8 +637,8 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
           .forEach((el) => el.addEventListener('click', openSearch));
 
         // Keyboard a11y within the modal: arrows move through the focusable
-        // <a> result list, Enter follows the active one, Escape closes (native
-        // <dialog>). Backdrop click closes.
+        // list result list, Enter follows the active one. Escape close and
+        // backdrop-click close are handled by nldd-window itself.
         dialog?.addEventListener('keydown', (e) => {
           if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -640,9 +653,6 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
               links[activeIndex].click();
             }
           }
-        });
-        dialog?.addEventListener('click', (e) => {
-          if (e.target === dialog) dialog.close();
         });
       }
       document.addEventListener('astro:page-load', wireSearch);
@@ -682,40 +692,6 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
          SSR-rendered, always-functional navigation. Once @nldd loads and
          the web component upgrades (:defined), show the rich nav and hide
          the fallback. Without JS the fallback simply stays. */
-      .rr-nav-fallback {
-        max-width: 1440px;
-        margin-inline: auto;
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 1rem 1.5rem;
-        padding: 0.75rem 1.5rem;
-      }
-      .rr-nav-fallback-brand {
-        font-weight: 700;
-        font-size: 1.1rem;
-        color: var(--vp-c-text-1);
-        text-decoration: none;
-      }
-      .rr-nav-fallback ul {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem 1.25rem;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-      .rr-nav-fallback a {
-        color: var(--vp-c-text-2);
-        text-decoration: none;
-      }
-      .rr-nav-fallback a:hover {
-        color: var(--vp-c-brand-1);
-      }
-      .rr-nav-fallback a[aria-current='page'] {
-        color: var(--vp-c-brand-1);
-        font-weight: 600;
-      }
       nldd-top-navigation-bar:not(:defined) {
         display: none;
       }
@@ -734,49 +710,15 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
         border-radius: 2px;
       }
 
-      /* The page supplies its own nldd-one-third-two-thirds-section, which
-         owns the 1/3-2/3 layout, max-width and responsive padding. */
-      .rr-docs-content {
-        min-width: 0;
-      }
-
-      /* Custom NLDD search modal. The visible trigger is the nav "Search"
-         item; the search logic is Pagefind's headless API. */
-      .rr-search-dialog {
-        border: none;
-        border-radius: 10px;
-        padding: 1.25rem;
-        width: min(40rem, 92vw);
-        max-height: 80vh;
-        background: var(--vp-c-bg);
-        color: var(--vp-c-text-1);
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-      }
-      .rr-search-dialog::backdrop {
-        background: rgba(0, 0, 0, 0.45);
-      }
-      .rr-search-panel {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-      }
-      .rr-search-results {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
+/* nldd-window provides the modal chrome (border, radius, background,
+         box-shadow, backdrop). The internal layout is split into three
+         nldd-containers (search field / results / state); only the results
+         container needs a max-height so a long result list scrolls inside
+         the window instead of pushing it off-screen. */
+      #rr-search-results {
         max-height: 60vh;
         overflow-y: auto;
       }
-      .rr-search-state {
-        margin: 0;
-        padding: 0.75rem 0.25rem;
-        color: var(--vp-c-text-2);
-        font-size: 0.9rem;
-      }
-      /* The search RESULT items are generated by JS (createElement) and so
-         do not carry Astro's scoped data-cid attribute — their styles must
-         be global. They live in docs.css. The field/panel/results-container
-         chrome below is server-rendered, so it can stay scoped here. */
     </style>
   </body>
 </html>

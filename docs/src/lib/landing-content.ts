@@ -128,7 +128,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
     },
     nav: {
-      brandTagline: 'Een verkenning van het Ministerie van BZK',
+      brandTagline: 'Verkenning van Ministerie van BZK',
       home: 'Home',
       what: 'Wat',
       how: 'Hoe',
@@ -510,7 +510,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
     },
     nav: {
-      brandTagline: 'An exploration by the Dutch Ministry of the Interior',
+      brandTagline: 'Exploration by the Dutch Ministry of the Interior',
       home: 'Home',
       what: 'What',
       how: 'How',
