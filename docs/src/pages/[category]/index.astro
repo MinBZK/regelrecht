@@ -19,7 +19,11 @@ const title = category.title + ' · RegelRecht';
 ---
 
 <Base lang="en" kind="docs" pathname={category.prefix} title={title}>
-  <nldd-one-third-two-thirds-section>
+  <nldd-one-third-two-thirds-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
     <div slot="left">
       <nldd-title size="2">
         <h1>{category.title}</h1>

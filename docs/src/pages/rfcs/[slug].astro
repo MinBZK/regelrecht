@@ -18,7 +18,14 @@ const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 
 const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
-const pageTitle = headings.find((h) => h.depth === 1)?.text ?? entry.id;
+// Frontmatter strings may use `&shy;` as a readable marker for U+00AD
+// (soft hyphen); the browser only renders the hyphen when the word needs
+// to break.
+const shy = (s: string | undefined) => s?.replace(/&shy;/g, '\u00AD');
+const pageTitle =
+  shy(entry.data.title) ??
+  headings.find((h) => h.depth === 1)?.text ??
+  entry.id;
 const title = pageTitle + ' · RegelRecht';
 ---
 
@@ -36,7 +43,7 @@ const title = pageTitle + ' · RegelRecht';
       <nldd-spacer size="24" sm-size="16" />
       <EditLink entryId={entry.id} collection="rfcs" />
     </div>
-    <div slot="right" class="rr-docs-content vp-doc">
+    <div slot="right" style="min-width: 0">
       <nldd-rich-text>
         <Content />
       </nldd-rich-text>

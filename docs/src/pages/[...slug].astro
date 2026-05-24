@@ -19,10 +19,17 @@ const { Content, headings } = await render(entry);
 
 const pathname = '/' + entry.id.replace(/\.mdx?$/, '');
 
+// Frontmatter strings may use `&shy;` as a readable marker for U+00AD
+// (soft hyphen); the browser only renders the hyphen when the word needs
+// to break. Translate the entity to the actual character at render time so
+// authors can write a visible marker in the source.
+const shy = (s: string | undefined) => s?.replace(/&shy;/g, '\u00AD');
 const pageTitle =
-  entry.data.title ?? headings.find((h) => h.depth === 1)?.text ?? entry.id;
+  shy(entry.data.title) ??
+  headings.find((h) => h.depth === 1)?.text ??
+  entry.id;
 const title = pageTitle + ' · RegelRecht';
-const description = entry.data.description;
+const description = shy(entry.data.description);
 ---
 
 <Base
@@ -47,9 +54,9 @@ const description = entry.data.description;
       <EditLink entryId={entry.id} collection="docs" />
     </div>
     {/* The markdown body stays light-DOM (SSR/no-JS safe) inside nldd-rich-text
-        for NLDD prose typography; .rr-docs-content carries the docs-only prose
-        styling (tables, code, mermaid). */}
-    <div slot="right" class="rr-docs-content vp-doc">
+        for NLDD prose typography. min-width:0 prevents long content (wide
+        tables, code blocks) from forcing the 2/3 column wider than its share. */}
+    <div slot="right" style="min-width: 0">
       <nldd-rich-text>
         <Content />
       </nldd-rich-text>
