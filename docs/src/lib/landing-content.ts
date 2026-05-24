@@ -461,8 +461,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
         { label: 'Op de hoogte blijven', href: SIGNUP_NL_PATH },
-        { label: 'Documentatie (Engels)', href: GUIDE_PATH },
-        { label: 'Toegankelijkheid', href: '/reference/toegankelijkheid' },
+        { label: 'Documentatie (Engels)', href: '/docs/' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -843,8 +842,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },
         { label: 'Stay informed', href: SIGNUP_EN_PATH },
-        { label: 'Documentation', href: GUIDE_PATH },
-        { label: 'Accessibility', href: '/reference/accessibility' },
+        { label: 'Documentation', href: '/docs/' },
       ],
       partOf: [
         'Bureau Architectuur',
