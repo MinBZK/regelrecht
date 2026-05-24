@@ -6,7 +6,12 @@ import '~/styles/docs.css';
 import { ClientRouter } from 'astro:transitions';
 import { content } from '~/lib/landing-content';
 import { categoryForPath } from '~/lib/sidebar';
-import Footer from '~/components/Footer.astro';
+
+interface BreadcrumbCrumb {
+  text: string;
+  href?: string;
+  current?: boolean;
+}
 
 interface Props {
   lang: 'nl' | 'en';
@@ -142,6 +147,52 @@ const themeOptions = [
   { value: 'dark', label: lang === 'en' ? 'Dark' : 'Donker' },
 ];
 const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
+
+// Page-footer breadcrumb trail. Landing pages get no breadcrumbs. Docs pages
+// get Home → Documentation → Category → Current page.
+//
+// `title` is the HTML <title> with the " · RegelRecht" suffix consumers add;
+// strip it for the breadcrumb so the trail reads as the CMS page title only.
+const homeHref = lang === 'en' ? '/en/' : '/';
+const homeText = 'Home';
+const docsHref = '/docs/';
+const docsText = 'Documentation';
+const pageTitle = title.replace(/\s·\sRegelRecht$/, '');
+let breadcrumbs: BreadcrumbCrumb[] = [];
+if (!isLanding && !isNotFound) {
+  const isDocsRoot = pathname === '/docs/' || pathname === '/docs';
+  breadcrumbs.push({ text: homeText, href: homeHref });
+  breadcrumbs.push({
+    text: docsText,
+    href: docsHref,
+    current: isDocsRoot,
+  });
+  if (!isDocsRoot) {
+    const cat = categoryForPath(pathname);
+    const onCategoryPage = cat !== null && pathname === cat.prefix;
+    if (cat) {
+      breadcrumbs.push({
+        text: cat.title,
+        href: cat.prefix,
+        current: onCategoryPage,
+      });
+      if (!onCategoryPage) {
+        breadcrumbs.push({ text: pageTitle, current: true });
+      }
+    } else {
+      breadcrumbs.push({ text: pageTitle, current: true });
+    }
+  }
+}
+
+const legalLabel = lang === 'en' ? 'Legal links' : 'Juridische links';
+const copyrightText = t.footer.copyright;
+const legalLinks = [
+  {
+    text: lang === 'en' ? 'Accessibility' : 'Toegankelijkheid',
+    href: lang === 'en' ? '/reference/accessibility' : '/reference/toegankelijkheid',
+  },
+];
 ---
 
 <!doctype html>
@@ -340,7 +391,73 @@ const langMenuLabel = lang === 'en' ? 'Language' : 'Taal';
           component instance instead of forwarding it to the rendered root, so
           the slot attribute must live on a real DOM child of nldd-page. */}
       <div slot="footer">
-        <Footer lang={lang} />
+        <nldd-page-footer>
+          {breadcrumbs.length > 0 && (
+            <nldd-breadcrumbs slot="breadcrumbs" accessible-label="Breadcrumb">
+              {breadcrumbs.map((crumb) => (
+                <nldd-breadcrumbs-item
+                  text={crumb.text}
+                  href={crumb.href}
+                  current={crumb.current || undefined}
+                />
+              ))}
+            </nldd-breadcrumbs>
+          )}
+          {!showSignup && !isSuccessPage && (
+            <div class="rr-footer-grid">
+              <div>
+                <nldd-title size="5"><h5>RegelRecht</h5></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text><p>{t.footer.blurb}</p></nldd-rich-text>
+              </div>
+              <div>
+                <nldd-title size="5"><h5>{t.footer.linksTitle}</h5></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text>
+                  <p>
+                    {t.footer.links.map((l, i) => (
+                      <Fragment>
+                        {i > 0 && <br />}
+                        <a href={l.href}>{l.label}</a>
+                      </Fragment>
+                    ))}
+                  </p>
+                </nldd-rich-text>
+              </div>
+              <div>
+                <nldd-title size="5"><h5>{t.footer.contactTitle}</h5></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text>
+                  <p><a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a></p>
+                </nldd-rich-text>
+              </div>
+              <div>
+                <nldd-title size="5"><h5>{t.footer.partOfTitle}</h5></nldd-title>
+                <nldd-spacer size="8" />
+                <nldd-rich-text>
+                  <p>
+                    {t.footer.partOf.map((o, i) => (
+                      <Fragment>
+                        {i > 0 && <br />}
+                        {o}
+                      </Fragment>
+                    ))}
+                  </p>
+                </nldd-rich-text>
+              </div>
+            </div>
+          )}
+          <nldd-page-footer-legal-bar slot="legal-bar" accessible-label={legalLabel}>
+            <nldd-page-footer-legal-bar-item slot="start" text={copyrightText} />
+            {legalLinks.map((link) => (
+              <nldd-page-footer-legal-bar-item
+                slot="end"
+                text={link.text}
+                href={link.href}
+              />
+            ))}
+          </nldd-page-footer-legal-bar>
+        </nldd-page-footer>
       </div>
     </nldd-page>
 
