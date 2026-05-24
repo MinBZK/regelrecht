@@ -1,4 +1,6 @@
-# Pipeline
+---
+title: "Pipeline"
+---
 
 The pipeline is a PostgreSQL-backed job queue and law status tracking system that orchestrates the law processing workflow.
 

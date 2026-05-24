@@ -1,4 +1,6 @@
-# Grafana Monitoring
+---
+title: "Grafana Monitoring"
+---
 
 Grafana provides monitoring dashboards and alerting for the regelrecht platform.
 

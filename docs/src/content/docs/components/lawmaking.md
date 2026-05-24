@@ -1,4 +1,6 @@
-# Lawmaking Frontend
+---
+title: "Lawmaking Frontend"
+---
 
 The lawmaking frontend visualizes the Dutch legislative process as an interactive flow diagram.
 

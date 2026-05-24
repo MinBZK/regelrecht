@@ -1,4 +1,6 @@
-# Editor API
+---
+title: "Editor API"
+---
 
 The editor API is a lightweight HTTP server that backs the law editor frontend. It serves the compiled frontend and provides REST endpoints for corpus access.
 

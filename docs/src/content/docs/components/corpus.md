@@ -1,4 +1,6 @@
-# Corpus Library
+---
+title: "Corpus Library"
+---
 
 The corpus library is a shared Rust crate for loading and managing the regulation corpus. It abstracts over multiple source types (local filesystem and GitHub repositories) and handles YAML parsing, registry management, and schema validation.
 

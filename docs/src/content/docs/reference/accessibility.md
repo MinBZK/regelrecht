@@ -1,10 +1,8 @@
 ---
-title: Accessibility
+title: Accessibility statement
 description: Accessibility statement for RegelRecht (WCAG 2.1 AA, draft).
 lang: en
 ---
-
-# Accessibility statement
 
 This is an English translation, provided for readers of the English
 documentation. The [Dutch version](/reference/toegankelijkheid) is the binding

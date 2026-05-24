@@ -1,10 +1,8 @@
 ---
-title: Toegankelijkheid
-description: Toegankelijkheidsverklaring voor RegelRecht (WCAG 2.1 AA, concept).
+title: Toegankelijkheids&shy;verklaring
+description: Toegankelijkheids&shy;verklaring voor RegelRecht (WCAG 2.1 AA, concept).
 lang: nl
 ---
-
-# Toegankelijkheidsverklaring
 
 Deze verklaring is in het Nederlands en geldt als de bindende versie. Er is ook
 een [Engelse vertaling](/reference/accessibility) voor lezers van de

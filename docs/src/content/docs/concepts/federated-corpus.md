@@ -1,4 +1,6 @@
-# Federated Corpus
+---
+title: "Federated Corpus"
+---
 
 Dutch legislation is produced by many authorities: Parliament, ministers, 342 municipalities, 12 provinces, 21 water boards. Maintaining all regulations in a single repository does not match this reality.
 

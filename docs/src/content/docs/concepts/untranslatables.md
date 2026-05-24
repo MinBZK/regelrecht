@@ -1,4 +1,6 @@
-# Untranslatables
+---
+title: "Untranslatables"
+---
 
 The engine's operation set is deliberately small: arithmetic, comparison, conditional logic, date operations. Dutch law regularly uses constructs that fall outside this set. When a legal construct cannot be faithfully expressed with available operations, it is an **untranslatable**.
 

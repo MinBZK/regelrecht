@@ -1,4 +1,6 @@
-# Inversion of Control
+---
+title: "Inversion of Control"
+---
 
 Dutch law has a hierarchy. Parliament passes a *wet* (formal law), which often delegates specifics to a minister or municipality. The Healthcare Allowance Act says the minister sets the standard premium. The Participation Act says municipalities set sanctions policy.
 

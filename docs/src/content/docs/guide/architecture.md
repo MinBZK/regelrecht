@@ -1,4 +1,6 @@
-# System Overview
+---
+title: "System Overview"
+---
 
 RegelRecht is built on two pillars: the **Corpus Juris** (a git-versioned body of all Dutch law) and the **Execution Engine** (a runtime that evaluates laws deterministically).
 

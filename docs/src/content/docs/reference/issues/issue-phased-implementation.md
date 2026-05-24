@@ -1,4 +1,6 @@
-# Issue #2: Phased Implementation (Gefaseerde Inwerkingtreding)
+---
+title: "Issue #2: Phased Implementation (Gefaseerde Inwerkingtreding)"
+---
 
 ## Problem Summary
 

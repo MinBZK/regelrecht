@@ -1,4 +1,6 @@
-# Hooks and Reactive Execution
+---
+title: "Hooks and Reactive Execution"
+---
 
 Some laws apply to every government decision without being called explicitly. The General Administrative Law Act (Algemene wet bestuursrecht, AWB) is the main example: whenever any government body issues a formal decision (*beschikking*), AWB rules about reasoning requirements, objection periods, and notification deadlines kick in automatically.
 

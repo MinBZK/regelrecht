@@ -1,4 +1,6 @@
-# Cross-Law References
+---
+title: "Cross-Law References"
+---
 
 Dutch laws reference each other constantly. The Healthcare Allowance Act (*Zorgtoeslagwet*) needs your income, which is defined by the AWIR. It needs your insurance status, which comes from the Zorgverzekeringswet. It needs your age, which comes from the BRP.
 
