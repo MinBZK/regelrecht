@@ -10,15 +10,15 @@ function textContent(node: any): string {
 
 /**
  * Replace fenced code blocks (<pre><code class="language-X">…) with
- * <nldd-code language="X">…</nldd-code> so the design-system code component
+ * <nldd-code-viewer language="X">…</nldd-code-viewer> so the design-system code component
  * owns the styling and (Prism) highlighting.
  *
  * Mermaid blocks are skipped — rehype-mermaid has already turned them into an
- * <svg> by the time this runs. Languages nldd-code doesn't (yet) support
+ * <svg> by the time this runs. Languages nldd-code-viewer doesn't (yet) support
  * render as plain code; the real language is still passed so highlighting
  * starts working automatically once the grammar is added upstream.
  */
-export function rehypeNlddCode() {
+export function rehypeNlddCodeViewer() {
   return (tree: any) => {
     visit(tree, 'element', (node: any, index: number | undefined, parent: any) => {
       if (node.tagName !== 'pre' || !parent || index === undefined) return;
@@ -40,7 +40,7 @@ export function rehypeNlddCode() {
 
       parent.children[index] = {
         type: 'element',
-        tagName: 'nldd-code',
+        tagName: 'nldd-code-viewer',
         properties: language ? { language } : {},
         children: [{ type: 'text', value: raw }],
       };
@@ -48,4 +48,4 @@ export function rehypeNlddCode() {
   };
 }
 
-export default rehypeNlddCode;
+export default rehypeNlddCodeViewer;

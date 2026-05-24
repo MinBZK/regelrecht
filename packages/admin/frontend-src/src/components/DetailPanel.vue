@@ -96,7 +96,7 @@ function onSheetClose() {
             <nldd-spacer size="16" />
             <nldd-title size="6"><h3>{{ section.title }}</h3></nldd-title>
             <nldd-spacer size="4" />
-            <nldd-code :wrap="section.wrap || undefined" :language="section.language || undefined">{{ section.code }}</nldd-code>
+            <nldd-code-viewer :wrap="section.wrap || undefined" :language="section.language || undefined">{{ section.code }}</nldd-code-viewer>
           </template>
         </nldd-simple-section>
       </nldd-page>
