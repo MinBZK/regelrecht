@@ -824,17 +824,6 @@ const legalLinks = [
         display: none;
       }
 
-      /* Visible focus indicator across the whole page (WCAG 2.2
-         SC 2.4.13). */
-      body a:focus-visible,
-      body button:focus-visible,
-      body summary:focus-visible,
-      body [tabindex]:focus-visible {
-        outline: 3px solid var(--vp-c-brand-1);
-        outline-offset: 2px;
-        border-radius: 2px;
-      }
-
 /* nldd-window provides the modal chrome (border, radius, background,
          box-shadow, backdrop). The internal layout is split into three
          nldd-containers (search field / results / state); only the results
