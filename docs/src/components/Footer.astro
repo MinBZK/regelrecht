@@ -16,13 +16,13 @@ const f = content[lang].footer;
   md-padding-top="64"
   lg-padding-top="96"
 >
-  <div class="rr-footer-grid">
-    <div>
+  <nldd-container layout="grid" column-count="4" md-column-count="2" sm-column-count="1" gap="32">
+    <nldd-container>
       <nldd-title size="5"><h5>RegelRecht</h5></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text><p>{f.blurb}</p></nldd-rich-text>
-    </div>
-    <div>
+    </nldd-container>
+    <nldd-container>
       <nldd-title size="5"><h5>{f.linksTitle}</h5></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text>
@@ -37,8 +37,8 @@ const f = content[lang].footer;
           }
         </p>
       </nldd-rich-text>
-    </div>
-    <div>
+    </nldd-container>
+    <nldd-container>
       <nldd-title size="5"><h5>{f.contactTitle}</h5></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text>
@@ -46,8 +46,8 @@ const f = content[lang].footer;
           <a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a>
         </p>
       </nldd-rich-text>
-    </div>
-    <div>
+    </nldd-container>
+    <nldd-container>
       <nldd-title size="5"><h5>{f.partOfTitle}</h5></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text>
@@ -62,8 +62,8 @@ const f = content[lang].footer;
           }
         </p>
       </nldd-rich-text>
-    </div>
-  </div>
+    </nldd-container>
+  </nldd-container>
   <nldd-spacer size="24" />
   <nldd-divider></nldd-divider>
   <nldd-spacer size="24" />

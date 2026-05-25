@@ -408,13 +408,13 @@ const legalLinks = [
             </nldd-breadcrumbs>
           )}
           {!showSignup && !isSuccessPage && (
-            <div class="rr-footer-grid">
-              <div>
+            <nldd-container layout="grid" column-count="4" md-column-count="2" sm-column-count="1" gap="32">
+              <nldd-container>
                 <nldd-title size="5"><h5>RegelRecht</h5></nldd-title>
                 <nldd-spacer size="8" />
                 <nldd-rich-text><p>{t.footer.blurb}</p></nldd-rich-text>
-              </div>
-              <div>
+              </nldd-container>
+              <nldd-container>
                 <nldd-title size="5"><h5>{t.footer.linksTitle}</h5></nldd-title>
                 <nldd-spacer size="8" />
                 <nldd-rich-text>
@@ -427,15 +427,15 @@ const legalLinks = [
                     ))}
                   </p>
                 </nldd-rich-text>
-              </div>
-              <div>
+              </nldd-container>
+              <nldd-container>
                 <nldd-title size="5"><h5>{t.footer.contactTitle}</h5></nldd-title>
                 <nldd-spacer size="8" />
                 <nldd-rich-text>
                   <p><a href="mailto:regelrecht@minbzk.nl">regelrecht@minbzk.nl</a></p>
                 </nldd-rich-text>
-              </div>
-              <div>
+              </nldd-container>
+              <nldd-container>
                 <nldd-title size="5"><h5>{t.footer.partOfTitle}</h5></nldd-title>
                 <nldd-spacer size="8" />
                 <nldd-rich-text>
@@ -448,8 +448,8 @@ const legalLinks = [
                     ))}
                   </p>
                 </nldd-rich-text>
-              </div>
-            </div>
+              </nldd-container>
+            </nldd-container>
           )}
           <nldd-page-footer-legal-bar slot="legal-bar" accessible-label={legalLabel}>
             <nldd-page-footer-legal-bar-item slot="start" text={copyrightText} />

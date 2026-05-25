@@ -11,34 +11,6 @@
  * are not covered by the design system.
  */
 
-/* --- Examples (figure + text, side-by-side on desktop) --- */
-.rr-example {
-  display: flex;
-  gap: 2.5rem;
-  align-items: center;
-}
-.rr-example > * {
-  flex-grow: 1;
-  flex-shrink: 1;
-  flex-basis: 0;
-}
-.rr-example--reverse {
-  flex-direction: row-reverse;
-}
-@media (max-width: 860px) {
-  .rr-example,
-  .rr-example--reverse {
-    flex-direction: column;
-  }
-}
-
-/* --- Footer --- */
-.rr-footer-grid {
-  display: grid;
-  gap: 2rem;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-}
-
 /* --- Signup form --- */
 .rr-honeypot {
   position: absolute;
