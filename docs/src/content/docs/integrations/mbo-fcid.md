@@ -79,7 +79,7 @@ When the cell emits an FCID event from a decretogram:
 | `zaakkenmerk` | the cell's existing zaaknummer-systematiek; otherwise deterministic hash of `(cell.id, beschikking_id)` |
 | `gebeurtenis_kenmerk` | UUID v7 generated at emission time |
 | `bedrag` | currency-typed output × 100 (FCID requires centen as integer) |
-| `bezwaar_route` | derived from `produces.bezwaarbaar` (this carries rechtsbescherming-information to the MBO surface; see [RFC-022 §7](/rfcs/rfc-022)) |
+| `bezwaar_route` | derived from `produces.bezwaarbaar` (this carries rechtsbescherming-information to the MBO surface; see [RFC-022 §3.3](/rfcs/rfc-022)) |
 | `signature` | the cell's FSC signing key (RFC-009 §5) |
 | `trace_id` | W3C Trace Context `trace_id` from the decretogram's execution trace |
 
