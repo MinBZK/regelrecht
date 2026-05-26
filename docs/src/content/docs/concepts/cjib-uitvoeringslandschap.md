@@ -94,19 +94,19 @@ CJIB's own statutory base (Wahv, Sv 257a, Sr 36e/36f, Wet USB, Awb 4.4) and the 
 
 The current `produces.decision_type` enum has nine values: TOEKENNING, AFWIJZING, GOEDKEURING, GEEN_BESLUIT, ALGEMEEN_VERBINDEND_VOORSCHRIFT, BELEIDSREGEL, VOORBEREIDINGSBESLUIT, ANDERE_HANDELING, AANSLAG. None describe the financial-enforcement domain.
 
-[RFC-019 §2](/rfcs/rfc-019) adds three values, each a distinct type of besluit:
+[RFC-019 §1.2](/rfcs/rfc-019) adds three values, each a distinct type of besluit:
 
 - `BETALINGSVERPLICHTING` — generic financial obligation imposed by a bestuursorgaan
 - `STRAFBESCHIKKING` — criminal-law settlement under Sv 257a
 - `BESTUURLIJKE_BOETE` — sectoral administrative fine
 
-Intrekkingen of an earlier beschikking are not a separate type: they are the same `decision_type` with `modality.is_intrekking_van: <id>` (RFC-019 §2.1). This matches Awb practice: an intrekking is a handeling on an existing besluit, not a new besluit-type.
+Intrekkingen of an earlier beschikking are not a separate type: they are the same `decision_type` with `modality.is_intrekking_van: <id>` (RFC-019 §3.1). This matches Awb practice: an intrekking is a handeling on an existing besluit, not a new besluit-type.
 
 `legal_character: BESCHIKKING` already covers all of these.
 
 ### Executogrammen (factual events)
 
-These do not belong in `produces` at all. A payment received, a kwijtschelding executed, a deurwaarder triggered: these are not regulation outputs. RFC-019 §3 introduces `chronicles/` as a separate top-level directory (parallel to `corpus/`, not inside it) for chronicle-stream files. The most natural CJIB chronicle-stream entries are:
+These do not belong in `produces` at all. A payment received, a kwijtschelding executed, a deurwaarder triggered: these are not regulation outputs. RFC-019 §1.3 introduces `chronicles/` as a separate top-level directory (parallel to `corpus/`, not inside it) for chronicle-stream files. The most natural CJIB chronicle-stream entries are:
 
 - `payment_received` — maps to FCID `BetalingVerwerkt`
 - `kwijtschelding_verleend` — maps to FCID `BetalingsverplichtingIngetrokken` with a reden veld
@@ -116,7 +116,7 @@ Each of these is a registratie, not an interpretatie. Putting them under `corpus
 
 ## Mapping onto MBO / FCID
 
-The full mapping from decretograms and executograms to [FCID](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) events lives in the [MBO/FCID integration document](/integrations/mbo-fcid). In short: each FCID `event_type` corresponds to either a decretogram (the three `*Opgelegd` and the `*Ingetrokken`) or an executogram (`BetalingVerwerkt`). Categories (Algemeen, Administratiekosten, Verhoging, Rente) are orthogonal to the chronolex-type and encoded via the `extensions.mbo_fcid` namespace that RFC-019 §5 adds for integration use. Activation of the integration lives in the cell-config, not in the lexogram: a gemeente that runs the same Wahv as CJIB but does not connect to MBO simply does not activate `mbo_fcid` in its own cell.
+The full mapping from decretograms and executograms to [FCID](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) events lives in the [MBO/FCID integration document](/integrations/mbo-fcid). In short: each FCID `event_type` corresponds to either a decretogram (the three `*Opgelegd` and the `*Ingetrokken`) or an executogram (`BetalingVerwerkt`). Categories (Algemeen, Administratiekosten, Verhoging, Rente) are orthogonal to the chronolex-type and encoded via the `extensions.mbo_fcid` namespace that RFC-019 §3.2 adds for integration use. Activation of the integration lives in the cell-config, not in the lexogram: a gemeente that runs the same Wahv as CJIB but does not connect to MBO simply does not activate `mbo_fcid` in its own cell.
 
 ## Open questions and data gaps
 
@@ -129,5 +129,5 @@ The following items could not be verified from public sources and need input fro
 5. **Bilateral convenants** that are not published in Staatscourant: there may be additional opdrachtgevers not surfaced through public sources.
 6. **DNA-V cost recovery grondslag**. BWBR0017212 does not directly couple cost recovery to CJIB; this likely runs via beleidsregels that need verification.
 7. **Per-opdrachtgever BWB-IDs** marked `[onzeker]` in the table.
-8. **Bezwaar-routing**. Each CJIB-emitted FCID event carries a `bezwaar_route` derived from the producing rule's `bezwaarbaar` block ([RFC-019 §7](/rfcs/rfc-019)). For decretograms that CJIB itself produces (Wahv-sanctie), the bezwaar-route is CJIB's eigen bezwaar-intake. For decretograms that CJIB carries on behalf of another cell (a CAK-besluit, an OM-strafbeschikking), the bezwaar-route is that other cell's. The mechanics of this in the wettelijke routing per regulation need validation per case.
+8. **Bezwaar-routing**. Each CJIB-emitted FCID event carries a `bezwaar_route` derived from the producing rule's `bezwaarbaar` block ([RFC-019 §3.3](/rfcs/rfc-019)). For decretograms that CJIB itself produces (Wahv-sanctie), the bezwaar-route is CJIB's eigen bezwaar-intake. For decretograms that CJIB carries on behalf of another cell (a CAK-besluit, an OM-strafbeschikking), the bezwaar-route is that other cell's. The mechanics of this in the wettelijke routing per regulation need validation per case.
 9. **Wet gegevensboekhouding interaction**. Nieuwland §7.3.2 sketches a Wet gegevensboekhouding that would put the executogram-side recording on a statutory footing. CJIB's current grondslag is implicit in Awb 4.4 + sectoral acts; an explicit statute would change the picture.
