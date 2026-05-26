@@ -48,6 +48,37 @@ Voor één pilotwet (voorkeur: Wahv) leveren we drie samenhangende artefacten op
 
 **Een werkende emit-pad.** Een RegelRecht-engine draait binnen de CJIB-cel (in eerste instantie ontwikkel-/pilot-omgeving) met de Wahv-lexogram en de chronicle-stream geladen. De cel-configuratie activeert `mbo_fcid`. Wanneer een Wahv-beschikking door de AWB-lifecycle (RFC-008) bij de BEKENDMAKING-stage aankomt, emit de cel een FCID-event naar het MBO-pilot-endpoint, getekend met de CJIB-FSC-key, inclusief `bezwaar_route` die door AWB-6:7/6:8-hooks op dat moment is berekend (inclusief feitelijke einddatum). Op een betaling die binnenkomt vanuit het surrounding incasso-systeem doet de cel hetzelfde voor `BetalingVerwerkt`. Aan citizen-zijde: een Wahv-vordering in MBO bevat een directe link naar het artikel, een referentie naar de executie-trace, een bezwaarknop met de juiste route en de werkelijke einddatum, en, na betaling, een gekoppeld BetalingVerwerkt-event onder hetzelfde zaakkenmerk.
 
+Het Wahv-artikel ziet er in YAML ongeveer zo uit:
+
+```yaml
+# Primaire sanctie
+execution:
+  produces:
+    legal_character: BESCHIKKING
+    decision_type: BETALINGSVERPLICHTING
+    procedure_id: beschikking            # RFC-008 default
+    extensions:
+      mbo_fcid:
+        category: ALGEMEEN
+        emit_at_stage: BEKENDMAKING
+
+# Intrekking (bv. na succesvol bezwaar of administratieve correctie):
+# een nieuwe BESCHIKKING met dezelfde decision_type, plus modality.
+execution:
+  produces:
+    legal_character: BESCHIKKING
+    decision_type: BETALINGSVERPLICHTING
+    procedure_id: beschikking
+    modality:
+      is_intrekking_van: $oorspronkelijke_beschikking_id
+    extensions:
+      mbo_fcid:
+        category: ALGEMEEN
+        emit_at_stage: BEKENDMAKING
+```
+
+De integratie ziet de `modality.is_intrekking_van` en stuurt voor de intrekking-instance een `BetalingsverplichtingIngetrokken`-event in plaats van een `BetalingsverplichtingOpgelegd`. Beide events delen het `zaakkenmerk` met de oorspronkelijke beschikking, zodat MBO ze in één tijdlijn presenteert.
+
 ## Wat de pilot CJIB oplevert
 
 Eén bron voor norm, besluit en feit. Het lexogram zit in het corpus; het besluit komt uit de engine; het feit komt uit de chronicle-stream. Wijzigt de wet, dan beweegt het FCID-event mee zonder aparte release in een tweede systeem.
@@ -72,7 +103,7 @@ Vijf dingen, geen open einde.
 
 ## Volgende stap
 
-Een werksessie van een dagdeel met CJIB, het VORIJK/MBO-team, Eelco en mij. Agenda: het uitvoeringslandschap valideren, de pilotwet vastpinnen, de cel-topologie schetsen, de bezwaar-routing per type vordering uitwerken, knelpunten benoemen. Daarna kan RFC-022 in de RegelRecht-repo van Proposed naar Accepted, kan de schema-bump landen, en kunnen we beginnen met de Wahv-lexogram en de eerste chronicle-stream.
+Een werksessie van een dagdeel met CJIB, het VORIJK/MBO-team, Eelco en mij. Agenda: het uitvoeringslandschap valideren, de pilotwet vastpinnen, de cel-topologie schetsen, de bezwaar-routing per type vordering uitwerken, knelpunten benoemen. Daarna kan RFC-022 van Proposed naar Accepted, kan de schema-bump v0.5.2 → v0.6.0 landen, en kunnen we beginnen met de Wahv-lexogram en de eerste chronicle-stream.
 
 Doel: binnen één maand na de werksessie een werkende emit-pad in een pilot-omgeving, met één Wahv-beschikking die als FCID-event in MBO-pilot belandt, een bezwaarknop bevat met de juiste route en termijn, en die teruggetraceerd kan worden naar het wetsartikel.
 
