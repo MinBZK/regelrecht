@@ -148,7 +148,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       label: 'Een initiatief van',
       items: [
         {
-          label: 'Ministerie van Binnenlandse Zaken en Koninkrijksrelaties',
+          label: 'Ministerie van BZK',
           href: 'https://www.rijksoverheid.nl/ministeries/ministerie-van-binnenlandse-zaken-en-koninkrijksrelaties',
         },
         { label: 'Bureau Architectuur', href: 'https://minbzk.github.io/BASE/' },

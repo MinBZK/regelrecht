@@ -71,7 +71,9 @@ const toc = [
           <div slot="left">
             <nldd-title size="1">
               <h1>RegelRecht</h1>
-              <p slot="subtitle">{t.hero.titleSmall}</p>
+            </nldd-title>
+            <nldd-title size="4">
+              <p>{t.hero.titleSmall}</p>
             </nldd-title>
             <nldd-spacer size="24" />
             <nldd-rich-text>
@@ -273,8 +275,7 @@ const toc = [
                     <Fragment>
                       <nldd-spacer size="8" />
                       <nldd-container
-                        direction="row"
-                        wrap
+                        layout="wrap"
                         gap="6"
                         horizontal-alignment="left"
                       >
@@ -328,8 +329,8 @@ const toc = [
               {i > 0 && <nldd-spacer size="48" />}
               <nldd-container
                 layout="grid"
-                md-reverse={ex.reverse || undefined}
-                lg-reverse={ex.reverse || undefined}
+                sm-column-count="1"
+                md-column-count="1"
                 sm-gap="16"
                 md-gap="24"
                 lg-gap="32"
@@ -341,7 +342,9 @@ const toc = [
                     <figcaption>{ex.caption}</figcaption>
                   </figure>
                 </nldd-rich-text>
-                <nldd-rich-text>
+                <nldd-rich-text
+                  lg-order={ex.reverse ? '-1' : undefined}
+                >
                   <h3>{ex.h}</h3>
                   <p>{ex.p}</p>
                   <ul>
