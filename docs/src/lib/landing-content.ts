@@ -493,7 +493,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       errName: 'Vul je volledige naam in.',
       successTitle: 'Bedankt voor je aanmelding!',
       successBody:
-        'We hebben je gegevens verstuurd. Je ontvangt bevestiging per e-mail zodra je aanmelding is verwerkt. Klopt er iets niet? Mail dan naar regelrecht@minbzk.nl.',
+        'We hebben je gegevens verstuurd. Je ontvangt bevestiging per e-mail zodra je aanmelding is verwerkt. Klopt er iets niet? Mail ons.',
       successReset: 'Nog iemand aanmelden',
       errorTitle: 'Er ging iets mis',
       errorBody:

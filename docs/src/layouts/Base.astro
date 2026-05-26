@@ -336,6 +336,14 @@ const legalLinks = [
                       type="radio"
                       value={opt.value}
                       text={opt.label}
+                      /* SSR-default: always render 'system' as selected. The
+                         stored preference (localStorage.theme) is only
+                         readable on the client, so any other default would
+                         flash an incorrect selection until the JS-side
+                         `syncThemeRadios()` runs on `astro:page-load` and
+                         corrects it. JS-disabled users see "system" — which
+                         is also the effective default for them since the
+                         theme-flip script wouldn't run either. */
                       selected={opt.value === 'system' || undefined}
                     />
                   ))
