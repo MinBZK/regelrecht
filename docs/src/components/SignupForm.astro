@@ -164,6 +164,7 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
     */}
     <nldd-form-actions>
       <nldd-button
+        id="rr-submit-btn"
         variant="primary"
         type="submit"
         width="full"
@@ -258,7 +259,7 @@ const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
     // nldd-button host: `disabled` is an attribute, the label is the `text`
     // property. It is not form-associated, so a click does not submit on its
     // own — we bridge it to form.requestSubmit() below.
-    const submitBtn = form.querySelector('nldd-button') as HTMLElement & {
+    const submitBtn = form.querySelector('#rr-submit-btn') as HTMLElement & {
       disabled: boolean;
       text: string;
     };
