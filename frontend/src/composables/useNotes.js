@@ -127,6 +127,22 @@ export function useNotes(lawId, selectedArticle) {
   watch(lawId, load, { immediate: true });
 
   /**
+   * Force a fresh fetch for the current law: drop its cache entry first
+   * so `load()` can't shortcut to the previously-resolved value, then
+   * run `load`. Used after `saveToRepo` so a just-committed note shows
+   * up immediately instead of waiting for a navigation away and back.
+   *
+   * `load()` alone won't do — it returns the cached `[]` from the
+   * first pre-save fetch and silently leaves the user looking at an
+   * empty notes pane right after they hit "Opslaan".
+   */
+  async function reload() {
+    const id = lawId.value;
+    if (id) cache.delete(id);
+    await load();
+  }
+
+  /**
    * Notes whose match falls in the currently-selected article, each with the
    * resolved span(s) for that article. Notes that are orphaned, ambiguous, or
    * failed to parse are surfaced separately via `issues` so the UI can show
@@ -167,7 +183,7 @@ export function useNotes(lawId, selectedArticle) {
       })),
   );
 
-  return { notesForArticle, issues, loading, error, reload: load };
+  return { notesForArticle, issues, loading, error, reload };
 }
 
 /**
