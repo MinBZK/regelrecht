@@ -20,7 +20,8 @@ In the consumer direction, a regulation can ask MBO for a citizen's openstaande 
 A cell decides whether it participates. Activation lives in cell-config, not in any regulation:
 
 ```yaml
-# cell-config (sketch; full cell-config format is for a future RFC)
+# cell-config (sketch; full cell-config format is defined in a future RFC,
+# see RFC-019 §1.3 note)
 integrations:
   mbo_fcid:
     enabled: true
@@ -28,7 +29,7 @@ integrations:
     fcid_version: 4.2.0
 ```
 
-A gemeente that runs the Wahv lexogram but does not connect to MBO simply omits the `mbo_fcid` block in its cell-config. The same regulation YAML works in both cells.
+The shape above is provisional and may evolve. What is fixed is the principle: activation of the `mbo_fcid` integration is a cell-side decision, not part of any regulation. A gemeente that runs the Wahv lexogram but does not connect to MBO simply omits the `mbo_fcid` block in its cell-config. The same regulation YAML works in both cells.
 
 ## FCID event types
 
@@ -38,7 +39,7 @@ FCID defines four event types. Each maps to exactly one chronolexogram type.
 |---|---|---|
 | `FinancieleVerplichtingOpgelegd` | decretogram | engine output, `decision_type: STRAFBESCHIKKING` (totaalbedrag) |
 | `BetalingsverplichtingOpgelegd` | decretogram | engine output, `decision_type: BETALINGSVERPLICHTING` / `BESTUURLIJKE_BOETE` |
-| `BetalingsverplichtingIngetrokken` | decretogram (intrekking) | engine output with `produces.modality.is_intrekking_van` set |
+| `BetalingsverplichtingIngetrokken` | decretogram (intrekking-modaliteit) | engine output, same `decision_type` as the original, with `produces.modality.is_intrekking_van` set |
 | `BetalingVerwerkt` | executogram | chronicle-stream event, triggered by intake from incasso system |
 
 An intrekking is itself a fresh BESCHIKKING with its own AWB lifecycle (per RFC-008's resolved Open Question 5). The integration recognises it as an intrekking through `produces.modality.is_intrekking_van: <original-id>` and maps it to `BetalingsverplichtingIngetrokken`. The intrekking and the original share neither a single decretogram nor a single lifecycle; they share a `zaakkenmerk` so a downstream consumer can tie them together.
