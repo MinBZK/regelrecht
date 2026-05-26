@@ -1,10 +1,13 @@
 import { visit } from 'unist-util-visit';
+import type { Root, Element, RootContent } from 'hast';
 
 /* Collect raw text from a hast node. With Astro's syntaxHighlight disabled,
  * a fenced code block's <code> children are plain text nodes. */
-function textContent(node: any): string {
-  if (node.type === 'text') return node.value as string;
-  if (node.children) return node.children.map(textContent).join('');
+function textContent(node: RootContent): string {
+  if (node.type === 'text') return node.value;
+  if ('children' in node) {
+    return (node.children as RootContent[]).map(textContent).join('');
+  }
   return '';
 }
 
@@ -19,11 +22,11 @@ function textContent(node: any): string {
  * starts working automatically once the grammar is added upstream.
  */
 export function rehypeNlddCodeViewer() {
-  return (tree: any) => {
-    visit(tree, 'element', (node: any, index: number | undefined, parent: any) => {
+  return (tree: Root) => {
+    visit(tree, 'element', (node: Element, index: number | undefined, parent: Root | Element | null) => {
       if (node.tagName !== 'pre' || !parent || index === undefined) return;
       const code = node.children.find(
-        (c: any) => c.type === 'element' && c.tagName === 'code',
+        (c): c is Element => c.type === 'element' && c.tagName === 'code',
       );
       if (!code) return;
 
