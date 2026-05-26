@@ -113,13 +113,13 @@ const overallStatus = computed(() => {
     <template v-if="result && traceText">
       <nldd-title size="5" class="etv-section-title"><span>Execution trace</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code>{{ traceText }}</nldd-code>
+      <nldd-code-viewer>{{ traceText }}</nldd-code-viewer>
     </template>
 
     <template v-if="error && traceText && !result">
       <nldd-title size="5" class="etv-section-title"><span>Partial trace (tot fout)</span></nldd-title>
       <nldd-spacer size="8"></nldd-spacer>
-      <nldd-code>{{ traceText }}</nldd-code>
+      <nldd-code-viewer>{{ traceText }}</nldd-code-viewer>
       <template v-if="canReload">
         <nldd-spacer size="12"></nldd-spacer>
         <nldd-button size="md" text="Opnieuw uitvoeren" @click="emit('reload')"></nldd-button>

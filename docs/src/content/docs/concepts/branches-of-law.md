@@ -1,4 +1,6 @@
-# Branches of Law
+---
+title: "Branches of Law"
+---
 
 RegelRecht makes Dutch law machine-readable and executable. Some branches of law lend themselves to this better than others. This page surveys the major branches, how well they map to rule-based execution, and what research questions they raise.
 

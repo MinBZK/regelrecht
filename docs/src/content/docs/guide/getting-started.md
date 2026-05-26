@@ -1,4 +1,6 @@
-# Getting Started
+---
+title: "Getting Started"
+---
 
 ## Prerequisites
 

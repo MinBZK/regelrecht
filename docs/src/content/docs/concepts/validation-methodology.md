@@ -1,4 +1,6 @@
-# RegelRecht Validation: From Analysis-First to Execution-First
+---
+title: "RegelRecht Validation: From Analysis-First to Execution-First"
+---
 
 ## Problem statement
 

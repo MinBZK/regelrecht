@@ -8,7 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@nldd/design-system": "^0.8.44",
+    "@nldd/design-system": "^0.8.49",
     "vue": "^3.5.34",
     "vue-router": "^5.0.7"
   },

@@ -11,88 +11,6 @@
  * Imported by Base.astro.
  */
 
-/* Fenced code blocks. Shiki sets the background inline on the <pre> via the
-   high-contrast theme; the light bg is white, so a border sets the block off
-   against the page. Scoped under nldd-rich-text so it survives the prose
-   reset. The inner <code> keeps Shiki's token colors, no extra bg/padding. */
-.rr-docs-content nldd-rich-text pre,
-.vp-doc pre {
-  margin: 1.25rem 0;
-  padding: 1rem 1.25rem;
-  border: 1px solid var(--vp-c-divider, #e2e8f0);
-  border-radius: 6px;
-  overflow-x: auto;
-  font-size: 0.875rem;
-  line-height: 1.6;
-}
-.rr-docs-content nldd-rich-text pre code,
-.vp-doc pre code {
-  background: none;
-  padding: 0;
-  font-size: inherit;
-}
-/* Dark mode: Shiki emits dual-theme output — the light colors are inline
-   `color`/`background-color`, the dark ones are `--shiki-dark`/`--shiki-dark-bg`
-   custom properties. Astro does not switch them itself, so apply the dark
-   variants under our `.dark` class (set by the theme toggle) on the <pre> and
-   every highlighted token. */
-.dark .astro-code {
-  background-color: var(--shiki-dark-bg) !important;
-  color: var(--shiki-dark) !important;
-}
-.dark .astro-code span {
-  color: var(--shiki-dark) !important;
-  font-style: var(--shiki-dark-font-style) !important;
-  font-weight: var(--shiki-dark-font-weight) !important;
-  text-decoration: var(--shiki-dark-text-decoration) !important;
-}
-
-/* Data tables (e.g. the RFC index) — no nldd-table component exists.
-   rehypeTableScroll (and RfcIndexTable by hand) wraps each table in
-   <div class="rr-table-scroll" tabindex="0">; the wrapper owns the horizontal
-   overflow so the focusable element is what scrolls (WCAG 2.1.1), not the bare
-   table. No role/aria-label — the axe rule only needs keyboard reach, and a
-   named region per narrow table is screen-reader noise. The table itself stays
-   a normal table so headers/cells lay out correctly. */
-.rr-table-scroll {
-  overflow-x: auto;
-  margin: 1.5rem 0;
-}
-.rr-table-scroll:focus-visible {
-  outline: 3px solid var(--vp-c-brand-1);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-.rr-docs-content table,
-.vp-doc table {
-  width: 100%;
-  border-collapse: collapse;
-  /* Tables not wrapped (none today, but defensive) keep their own margin. */
-  margin: 1.5rem 0;
-}
-.rr-table-scroll table {
-  margin: 0;
-}
-.rr-docs-content th,
-.rr-docs-content td,
-.vp-doc th,
-.vp-doc td {
-  text-align: left;
-  padding: 0.6rem 0.9rem;
-  border: 1px solid var(--vp-c-divider, #e2e8f0);
-  vertical-align: top;
-}
-.rr-docs-content th,
-.vp-doc th {
-  font-weight: 600;
-  background: var(--vp-c-bg-soft, #f8fafc);
-}
-
-.rr-docs-content img,
-.vp-doc img {
-  max-width: 100%;
-  height: auto;
-}
 
 /* Mermaid diagrams (inline-svg). Mermaid's `base` theme writes its colours
    into a scoped <style> inside each <svg id="mermaid-N">, so these overrides
@@ -108,8 +26,8 @@
    Contrast (light mode, white text on the fill): donkerblauw-900 text on
    lichtblauw-50 fill = 13.4:1; donkerblauw-500 node stroke on that fill =
    3.9:1 (past the 3:1 non-text bar). Dark mode flips via the tokens. */
-.rr-docs-content svg.flowchart,
-.rr-docs-content svg[id^='mermaid-'] {
+svg.flowchart,
+svg[id^='mermaid-'] {
   --rr-mm-node-fill: var(--primitives-color-lichtblauw-50);
   --rr-mm-node-stroke: var(--primitives-color-donkerblauw-500);
   --rr-mm-text: var(--primitives-color-donkerblauw-900);
@@ -123,37 +41,37 @@
    sequence-diagram actor/note boxes (.actor rect, rect.note). The sequence
    classes ship with a pale-yellow base-theme fill that our token rules below
    would otherwise leave untouched. */
-.rr-docs-content svg[id^='mermaid-'] .node rect,
-.rr-docs-content svg[id^='mermaid-'] .node polygon,
-.rr-docs-content svg[id^='mermaid-'] .node circle,
-.rr-docs-content svg[id^='mermaid-'] .node path,
-.rr-docs-content svg[id^='mermaid-'] .statediagram-state > rect,
-.rr-docs-content svg[id^='mermaid-'] .statediagram-state > polygon,
-.rr-docs-content svg[id^='mermaid-'] .statediagram-state > circle,
-.rr-docs-content svg[id^='mermaid-'] rect.actor,
-.rr-docs-content svg[id^='mermaid-'] .actor > rect,
-.rr-docs-content svg[id^='mermaid-'] rect.note {
+svg[id^='mermaid-'] .node rect,
+svg[id^='mermaid-'] .node polygon,
+svg[id^='mermaid-'] .node circle,
+svg[id^='mermaid-'] .node path,
+svg[id^='mermaid-'] .statediagram-state > rect,
+svg[id^='mermaid-'] .statediagram-state > polygon,
+svg[id^='mermaid-'] .statediagram-state > circle,
+svg[id^='mermaid-'] rect.actor,
+svg[id^='mermaid-'] .actor > rect,
+svg[id^='mermaid-'] rect.note {
   fill: var(--rr-mm-node-fill) !important;
   stroke: var(--rr-mm-node-stroke) !important;
 }
 /* Sequence-diagram lifelines and the loop/alt/opt frame borders. */
-.rr-docs-content svg[id^='mermaid-'] line.actor-line,
-.rr-docs-content svg[id^='mermaid-'] .actor-line,
-.rr-docs-content svg[id^='mermaid-'] .loopLine,
-.rr-docs-content svg[id^='mermaid-'] line.loopLine {
+svg[id^='mermaid-'] line.actor-line,
+svg[id^='mermaid-'] .actor-line,
+svg[id^='mermaid-'] .loopLine,
+svg[id^='mermaid-'] line.loopLine {
   stroke: var(--rr-mm-edge) !important;
 }
 /* Cluster / composite-state (subgraph) boxes. */
-.rr-docs-content svg[id^='mermaid-'] .cluster rect,
-.rr-docs-content svg[id^='mermaid-'] .statediagram-cluster rect,
-.rr-docs-content svg[id^='mermaid-'] .statediagram-cluster > rect {
+svg[id^='mermaid-'] .cluster rect,
+svg[id^='mermaid-'] .statediagram-cluster rect,
+svg[id^='mermaid-'] .statediagram-cluster > rect {
   fill: var(--rr-mm-cluster-fill) !important;
   stroke: var(--rr-mm-cluster-stroke) !important;
 }
 /* The small start/end state dots inherit the node stroke as their fill. */
-.rr-docs-content svg[id^='mermaid-'] .statediagram-state .state-start,
-.rr-docs-content svg[id^='mermaid-'] circle.state-start,
-.rr-docs-content svg[id^='mermaid-'] .statediagram-state circle[class*='end'] {
+svg[id^='mermaid-'] .statediagram-state .state-start,
+svg[id^='mermaid-'] circle.state-start,
+svg[id^='mermaid-'] .statediagram-state circle[class*='end'] {
   fill: var(--rr-mm-node-stroke) !important;
   stroke: var(--rr-mm-node-stroke) !important;
 }
@@ -163,16 +81,16 @@
    therefore excluded here — but see the C4-specific rule below: its DESCRIPTION
    sublabels ship as dark grey (#444) on those same dark boxes (≈ 2.3:1), which
    is a real failure we do fix. */
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) .nodeLabel,
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) .edgeLabel,
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) .cluster-label,
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) span,
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) p,
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) text,
+svg[id^='mermaid-']:not([aria-roledescription='c4']) .nodeLabel,
+svg[id^='mermaid-']:not([aria-roledescription='c4']) .edgeLabel,
+svg[id^='mermaid-']:not([aria-roledescription='c4']) .cluster-label,
+svg[id^='mermaid-']:not([aria-roledescription='c4']) span,
+svg[id^='mermaid-']:not([aria-roledescription='c4']) p,
+svg[id^='mermaid-']:not([aria-roledescription='c4']) text,
 /* Sequence-diagram actor/note labels render their text in a <tspan> that
    carries its own fill (#333 from the base theme); the parent <text> fill does
    not cascade to it, so without this the labels stay dark-on-dark in dark mode. */
-.rr-docs-content svg[id^='mermaid-']:not([aria-roledescription='c4']) text tspan {
+svg[id^='mermaid-']:not([aria-roledescription='c4']) text tspan {
   color: var(--rr-mm-text) !important;
   fill: var(--rr-mm-text) !important;
   background: transparent !important;
@@ -181,8 +99,8 @@
    fill="#444444") on the dark-blue boxes — unreadable (≈ 2.3:1). The titles are
    white and stay white; only the grey descriptions are lifted to white so they
    match the titles and clear the box (white on #08427B ≈ 10:1). */
-.rr-docs-content svg[id^='mermaid-'][aria-roledescription='c4'] text[fill='#444444'],
-.rr-docs-content svg[id^='mermaid-'][aria-roledescription='c4'] text[fill='#444'] {
+svg[id^='mermaid-'][aria-roledescription='c4'] text[fill='#444444'],
+svg[id^='mermaid-'][aria-roledescription='c4'] text[fill='#444'] {
   fill: #fff !important;
 }
 /* C4 diagram title sits on the page background (not a box) as a class-less
@@ -190,88 +108,31 @@
    dark page. Box labels always carry an inline fill (#FFFFFF / #444444), so
    `text:not([fill])` targets the title and other on-page chrome only, and gives
    it the scheme-following token (dark in light mode, light in dark). */
-.rr-docs-content svg[id^='mermaid-'][aria-roledescription='c4'] text:not([fill]) {
+svg[id^='mermaid-'][aria-roledescription='c4'] text:not([fill]) {
   fill: var(--rr-mm-text) !important;
 }
 /* Edges (lines) — flowchart (.edgePath/.flowchart-link), state-diagram
    (.transition) and sequence-diagram message arrows (.messageLine0/1). The
    state-diagram transitions default to a transparent stroke, so this is what
    makes their arrows visible. */
-.rr-docs-content svg[id^='mermaid-'] .edgePath .path,
-.rr-docs-content svg[id^='mermaid-'] .flowchart-link,
-.rr-docs-content svg[id^='mermaid-'] path.transition,
-.rr-docs-content svg[id^='mermaid-'] .transition,
-.rr-docs-content svg[id^='mermaid-'] .messageLine0,
-.rr-docs-content svg[id^='mermaid-'] .messageLine1 {
+svg[id^='mermaid-'] .edgePath .path,
+svg[id^='mermaid-'] .flowchart-link,
+svg[id^='mermaid-'] path.transition,
+svg[id^='mermaid-'] .transition,
+svg[id^='mermaid-'] .messageLine0,
+svg[id^='mermaid-'] .messageLine1 {
   stroke: var(--rr-mm-edge) !important;
   fill: none !important;
 }
 /* Arrowheads. */
-.rr-docs-content svg[id^='mermaid-'] .arrowMarkerPath,
-.rr-docs-content svg[id^='mermaid-'] marker path {
+svg[id^='mermaid-'] .arrowMarkerPath,
+svg[id^='mermaid-'] marker path {
   fill: var(--rr-mm-edge) !important;
   stroke: var(--rr-mm-edge) !important;
 }
 /* The edge-label background chip mermaid draws behind link text. */
-.rr-docs-content svg[id^='mermaid-'] .edgeLabel rect,
-.rr-docs-content svg[id^='mermaid-'] .labelBkg {
+svg[id^='mermaid-'] .edgeLabel rect,
+svg[id^='mermaid-'] .labelBkg {
   fill: transparent !important;
   background: transparent !important;
-}
-
-.rr-docs-content hr,
-.vp-doc hr {
-  border: none;
-  border-top: 1px solid var(--vp-c-divider, #e2e8f0);
-  margin: 2rem 0;
-}
-
-/* Search result items. Generated by JS (createElement) in Base.astro's
-   search script, so they lack Astro's scoped data-cid — these rules must be
-   global, not scoped in the component <style>. The field/panel/dialog chrome
-   is server-rendered and stays scoped in Base.astro. */
-.rr-search-result {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.65rem 0.75rem;
-  border-radius: 8px;
-  text-decoration: none;
-  color: var(--vp-c-text-1, #1a1a1a);
-  border: 1px solid transparent;
-}
-.rr-search-result:hover,
-.rr-search-result.is-active,
-.rr-search-result:focus-visible {
-  background: var(--vp-c-bg-soft, #f8fafc);
-  border-color: var(--vp-c-divider, #e2e8f0);
-  outline: none;
-}
-.rr-search-subresult {
-  margin-left: 1rem;
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
-}
-.rr-search-result-title {
-  display: block;
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--vp-c-text-1, #1a1a1a);
-}
-.rr-search-subresult .rr-search-result-title {
-  font-weight: 500;
-  font-size: 0.9rem;
-  color: var(--vp-c-brand-1, #154273);
-}
-.rr-search-result-excerpt {
-  display: block;
-  font-size: 0.85rem;
-  line-height: 1.4;
-  color: var(--vp-c-text-2, #475569);
-}
-.rr-search-result-excerpt mark {
-  background: var(--vp-c-brand-soft, #dbeafe);
-  color: var(--vp-c-text-1, #1a1a1a);
-  padding: 0 0.1em;
-  border-radius: 3px;
 }

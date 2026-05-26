@@ -1,4 +1,6 @@
-# RFCs (Requests for Comments)
+---
+title: "RFCs (Requests for Comments)"
+---
 
 Design decisions in RegelRecht are documented through RFCs. Each RFC captures the problem, considered alternatives, and the chosen approach.
 

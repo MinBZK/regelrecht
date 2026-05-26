@@ -1,4 +1,6 @@
-# Testing
+---
+title: "Testing"
+---
 
 RegelRecht uses multiple testing strategies to ensure correctness.
 

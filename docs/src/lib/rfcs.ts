@@ -37,14 +37,16 @@ function resolveRfcsDir(): string {
 const RFCS_DIR = resolveRfcsDir()
 
 const RFC_FILE = /^rfc-(\d+)\.md$/
-const H1 = /^#\s*RFC-(\d+):\s*(.+?)\s*$/m
+const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
+const TITLE = /^title:\s*"([^"]+)"/m
 const STATUS = /^\*\*Status:\*\*\s*(.+?)\s*$/m
 const SHORT_TITLE = /^\*\*Short title:\*\*\s*(.+?)\s*$/m
 
 /**
- * Scan docs/rfcs for rfc-NNN.md files and parse number, title, status and
- * optional short title from each. Throws if an RFC file lacks a parseable H1,
- * so a broken RFC fails the build loudly instead of silently disappearing.
+ * Scan docs/rfcs for rfc-NNN.md files and parse number (from filename),
+ * title (from frontmatter), status and optional short title (both from the
+ * body preamble). Throws if a file lacks a parseable frontmatter title, so a
+ * broken RFC fails the build loudly instead of silently disappearing.
  */
 export function getRfcs(): RfcEntry[] {
   const entries: RfcEntry[] = []
@@ -52,18 +54,10 @@ export function getRfcs(): RfcEntry[] {
 
   for (const filename of readdirSync(RFCS_DIR)) {
     // This filter excludes index.md and template.md by construction.
-    if (!RFC_FILE.test(filename)) continue
+    const fileMatch = filename.match(RFC_FILE)
+    if (!fileMatch) continue
+    const num = parseInt(fileMatch[1], 10)
 
-    const content = readFileSync(`${RFCS_DIR}/${filename}`, 'utf-8')
-
-    const h1 = content.match(H1)
-    if (!h1) {
-      throw new Error(
-        `docs/rfcs/${filename}: no parseable "# RFC-NNN: Title" heading found`,
-      )
-    }
-
-    const num = parseInt(h1[1], 10)
     const existing = seen.get(num)
     if (existing) {
       throw new Error(
@@ -73,7 +67,24 @@ export function getRfcs(): RfcEntry[] {
     }
     seen.set(num, filename)
 
-    const title = h1[2]
+    const content = readFileSync(`${RFCS_DIR}/${filename}`, 'utf-8')
+
+    const fm = content.match(FRONTMATTER)
+    if (!fm) {
+      throw new Error(
+        `docs/rfcs/${filename}: no frontmatter — expected at least a "title" field`,
+      )
+    }
+    const titleMatch = fm[1].match(TITLE)
+    if (!titleMatch) {
+      throw new Error(
+        `docs/rfcs/${filename}: no parseable 'title: "…"' in frontmatter`,
+      )
+    }
+    // Strip a leading "RFC-NNN: " prefix if the migration left one in
+    // place — the sidebar already prepends the id, so the descriptive
+    // half is what we want stored as `title`.
+    const title = titleMatch[1].replace(/^RFC-\d+:\s*/, '')
     const status = content.match(STATUS)?.[1] ?? 'Unknown'
     const shortTitle = content.match(SHORT_TITLE)?.[1] ?? title
 

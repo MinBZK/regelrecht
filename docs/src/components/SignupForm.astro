@@ -57,12 +57,11 @@ function parts(text: string) {
   return { before: text.slice(0, i), after: text.slice(i + EMAIL.length) };
 }
 const errorParts = parts(s.errorBody);
-const successParts = parts(s.successBody);
 
-// Screen-reader accessible labels include the "(required)" hint so the SR name
-// matches the original markup (visible label + visually-hidden requiredSr span).
-const emailA11yLabel = `${s.emailLabel} ${s.requiredSr}`;
-const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
+const optionalLabel = lang === 'en' ? 'Optional' : 'Optioneel';
+// On success the form navigates to a dedicated thank-you page (a real URL,
+// shareable and refreshable) instead of toggling an in-page panel.
+const successUrl = lang === 'en' ? '/en/signup/thanks' : '/aanmelden/bedankt';
 ---
 
 <div
@@ -72,10 +71,10 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
   data-err-name={s.errName}
   data-submitting={s.submitting}
   data-submit={s.submit}
+  data-success-url={successUrl}
 >
-  <nldd-form novalidate>
+  <nldd-form novalidate label-alignment="top">
   <form
-    class="rr-form"
     novalidate
     data-state="idle"
   >
@@ -90,23 +89,23 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
       />
     </div>
 
-    <nldd-form-field class="rr-field" label={s.legend}>
+    <nldd-form-field label={s.legend}>
       <nldd-radio-button-group name="bijdragen" data-field="bijdragen">
         <nldd-radio-button-field value="Ja" label={s.radioYes} checked />
         <nldd-radio-button-field value="Nee" label={s.radioNo} />
       </nldd-radio-button-group>
     </nldd-form-field>
 
-    <div class="rr-field">
+    <nldd-form-field>
       <nldd-checkbox-field
         name="opDeHoogte"
         label={s.updates}
         data-field="opDeHoogte"
         checked
       ></nldd-checkbox-field>
-    </div>
+    </nldd-form-field>
 
-    <nldd-form-field class="rr-field" label={emailA11yLabel}>
+    <nldd-form-field label={s.emailLabel}>
       <nldd-text-field
         data-field="email"
         type="email"
@@ -118,7 +117,7 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
       <nldd-form-field-error-text id="rr-email-error"></nldd-form-field-error-text>
     </nldd-form-field>
 
-    <nldd-form-field class="rr-field" label={nameA11yLabel}>
+    <nldd-form-field label={s.nameLabel}>
       <nldd-text-field
         data-field="naam"
         type="text"
@@ -130,23 +129,23 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
       <nldd-form-field-error-text id="rr-naam-error"></nldd-form-field-error-text>
     </nldd-form-field>
 
-    <nldd-form-field class="rr-field" label={s.orgLabel}>
+    <nldd-form-field label={s.orgLabel} optional optional-label={optionalLabel}>
+      <nldd-form-field-help-text>{s.orgPlaceholder}</nldd-form-field-help-text>
       <nldd-text-field
         data-field="organisatie"
         type="text"
         name="organisatie"
         data-autocomplete="organization"
-        placeholder={s.orgPlaceholder}
       ></nldd-text-field>
     </nldd-form-field>
 
-    <nldd-form-field class="rr-field" label={s.roleLabel}>
+    <nldd-form-field label={s.roleLabel} optional optional-label={optionalLabel}>
+      <nldd-form-field-help-text>{s.rolePlaceholder}</nldd-form-field-help-text>
       <nldd-text-field
         data-field="functie"
         type="text"
         name="functie"
         data-autocomplete="organization-title"
-        placeholder={s.rolePlaceholder}
       ></nldd-text-field>
     </nldd-form-field>
 
@@ -155,49 +154,27 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
     </p>
 
     {/*
-      Submit: same nldd-button + light-DOM fallback pattern as the rest of the
-      site (.rr-btn-wc upgrades, .rr-btn-fallback shows until it does), with two
-      twists specific to a form control:
-       - the fallback is a native <button type="submit">, not an <a>, so it is
-         a real submit control. It is the keyboard Enter-to-submit default and
-         the no-JS submit path, and it keeps htmlcs from flagging WCAG H32.2
-         (the nldd-button's <button> is in shadow DOM, invisible to the runner).
-       - nldd-button is not form-associated, so a click on it never fires the
-         form's submit. The inline script bridges it to form.requestSubmit().
+      The visible submit is the nldd-button; the inline script bridges its click
+      to form.requestSubmit() (nldd-button is not form-associated). The native
+      <button type="submit"> is nested with slot="fallback" — a slot the button
+      doesn't define — so it renders only while the element is undefined (no JS),
+      and is unassigned (hidden) once nldd-button upgrades. It's the no-JS submit
+      and the real light-DOM submit control (Enter-to-submit + the pa11y H32.2
+      gate, since the nldd-button's own <button> lives in shadow DOM).
     */}
     <nldd-form-actions>
       <nldd-button
-        class="rr-submit rr-btn-wc"
+        id="rr-submit-btn"
         variant="primary"
         type="submit"
+        width="full"
         text={s.submit}
-      ></nldd-button>
-      <button type="submit" class="rr-btn rr-btn--primary rr-btn-fallback">
-        {s.submit}
-      </button>
+      >
+        <button slot="fallback" type="submit">{s.submit}</button>
+      </nldd-button>
     </nldd-form-actions>
   </form>
   </nldd-form>
-
-  <div
-    class="rr-status-box rr-status-box--ok"
-    role="status"
-    aria-live="polite"
-    hidden
-  >
-    <h3 tabindex="-1">{s.successTitle}</h3>
-    <p>
-      {successParts.before}<a href={`mailto:${EMAIL}`}>{EMAIL}</a>{
-        successParts.after
-      }
-    </p>
-    <nldd-button
-      class="rr-reset"
-      variant="secondary"
-      type="button"
-      text={s.successReset}
-    ></nldd-button>
-  </div>
 
   <div
     class="rr-status-box rr-status-box--err"
@@ -212,7 +189,6 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
       }
     </p>
     <nldd-button
-      class="rr-reset"
       variant="secondary"
       type="button"
       text={s.errorReset}
@@ -240,7 +216,7 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
   }
 
   document.querySelectorAll<HTMLElement>('.rr-signup-root').forEach((root) => {
-    const form = root.querySelector('form.rr-form') as HTMLFormElement | null;
+    const form = root.querySelector('form') as HTMLFormElement | null;
     if (!form) return;
 
     const labels = {
@@ -283,7 +259,7 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
     // nldd-button host: `disabled` is an attribute, the label is the `text`
     // property. It is not form-associated, so a click does not submit on its
     // own — we bridge it to form.requestSubmit() below.
-    const submitBtn = form.querySelector('.rr-submit') as HTMLElement & {
+    const submitBtn = form.querySelector('#rr-submit-btn') as HTMLElement & {
       disabled: boolean;
       text: string;
     };
@@ -298,10 +274,7 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
       if (hint) field.autocomplete = hint;
     });
 
-    const boxes = root.querySelectorAll<HTMLElement>('.rr-status-box');
-    const successBox = root.querySelector(
-      '.rr-status-box--ok'
-    ) as HTMLElement;
+    const successUrl = root.dataset.successUrl || '';
     const errorBox = root.querySelector(
       '.rr-status-box--err'
     ) as HTMLElement;
@@ -331,22 +304,14 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
       return !emailMsg && !naamMsg;
     }
 
-    function showState(state: 'idle' | 'submitting' | 'success' | 'error') {
-      if (state === 'success' || state === 'error') {
-        form.hidden = true;
-        const box = state === 'success' ? successBox : errorBox;
-        boxes.forEach((b) => (b.hidden = b !== box));
-        const h = box.querySelector('h3') as HTMLElement;
-        h.focus();
-      } else {
-        form.hidden = false;
-        boxes.forEach((b) => (b.hidden = true));
-        const busy = state === 'submitting';
-        form.setAttribute('aria-busy', busy ? 'true' : 'false');
-        submitting.hidden = !busy;
-        submitBtn.disabled = busy;
-        submitBtn.text = busy ? labels.submitting : labels.submit;
-      }
+    // Success navigates to a dedicated page; this only drives the in-form busy
+    // state. The error case is handled inline (errorBox) so the user keeps their
+    // input and can retry.
+    function setBusy(busy: boolean) {
+      form.setAttribute('aria-busy', busy ? 'true' : 'false');
+      submitting.hidden = !busy;
+      submitBtn.disabled = busy;
+      submitBtn.text = busy ? labels.submitting : labels.submit;
     }
 
     // nldd-button is not form-associated: clicking it never fires the form's
@@ -370,7 +335,8 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
         return;
       }
 
-      showState('submitting');
+      errorBox.hidden = true;
+      setBusy(true);
 
       const bijdragen =
         radioFields.find((f) => f.checked)?.value || 'Ja';
@@ -392,31 +358,22 @@ const nameA11yLabel = `${s.nameLabel} ${s.requiredSr}`;
           mode: 'no-cors',
           body: JSON.stringify({ text }),
         });
-        showState('success');
+        // Go to the dedicated thank-you page.
+        window.location.assign(successUrl);
       } catch {
-        showState('error');
+        // Network failure: surface the inline error and let the user retry with
+        // their input intact.
+        setBusy(false);
+        errorBox.hidden = false;
+        (errorBox.querySelector('h3') as HTMLElement)?.focus();
       }
     });
 
-    root.querySelectorAll<HTMLElement>('.rr-reset').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        emailField.value = '';
-        naamField.value = '';
-        orgField.value = '';
-        functieField.value = '';
-        radioFields.forEach((f) => (f.checked = f.value === 'Ja'));
-        opDeHoogte.checked = true;
-        setFieldError(emailField, emailErr, '');
-        setFieldError(naamField, naamErr, '');
-        showState('idle');
-        // nldd-radio-button-field has no delegated focus; reach the inner
-        // native <input> through the shadow chain (field > radio-button > input),
-        // mirroring the group's own keyboard navigation.
-        const firstRadioInput = radioFields[0]?.shadowRoot
-          ?.querySelector('nldd-radio-button')
-          ?.shadowRoot?.querySelector('input');
-        firstRadioInput?.focus();
-      });
+    // "Try again" simply dismisses the inline error so the user can resubmit.
+    const errorReset = errorBox.querySelector('nldd-button');
+    errorReset?.addEventListener('click', () => {
+      errorBox.hidden = true;
+      emailField.focus();
     });
   });
 </script>

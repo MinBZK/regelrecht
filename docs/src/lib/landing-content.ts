@@ -15,6 +15,7 @@ export interface LandingContent {
   meta: { title: string; description: string }
   nav: {
     brandTagline: string
+    home: string
     what: string
     how: string
     tools: string
@@ -122,12 +123,13 @@ const GITHUB = 'https://github.com/MinBZK/regelrecht'
 export const content: Record<'nl' | 'en', LandingContent> = {
   nl: {
     meta: {
-      title: 'RegelRecht — van wet naar digitale werking',
+      title: 'RegelRecht · van wet naar digitale werking',
       description:
         'Een verkenning van het Ministerie van BZK naar transparante, machine-uitvoerbare wetgeving.',
     },
     nav: {
-      brandTagline: 'Een verkenning van het Ministerie van BZK',
+      brandTagline: 'Verkenning van Ministerie van BZK',
+      home: 'Home',
       what: 'Wat',
       how: 'Hoe',
       tools: 'Ecosysteem',
@@ -146,7 +148,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       label: 'Een initiatief van',
       items: [
         {
-          label: 'Ministerie van Binnenlandse Zaken en Koninkrijksrelaties',
+          label: 'Ministerie van BZK',
           href: 'https://www.rijksoverheid.nl/ministeries/ministerie-van-binnenlandse-zaken-en-koninkrijksrelaties',
         },
         { label: 'Bureau Architectuur', href: 'https://minbzk.github.io/BASE/' },
@@ -346,7 +348,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'Prof. Corien Prins (WRR) & Prof. Johan Wolswinkel (Tilburg University) • 23 januari 2025',
           text: 'Deze WRR-factsheet identificeert vijf aandachtspunten en toetsvragen voor parlementaire controle op digitale uitvoering van wetgeving. Het RegelRecht-project valt binnen het domein van deze factsheet en kan worden beoordeeld aan de hand van de voorgestelde criteria voor transparantie, traceerbaarheid en democratische controle.',
           href: 'https://www.wrr.nl/actueel/nieuws/2025/01/23/factsheet-digitale-uitvoering-van-wetgeving',
-          linkLabel: 'WRR',
+          linkLabel: 'WRR-factsheet',
         },
         {
           title:
@@ -361,28 +363,28 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'Arre Zuurmond (Regeringscommissaris) • 1 mei 2023',
           text: 'Zuurmond signaleert dat de huidige informatiehuishouding een bureaucratische, reactieve overheid ondersteunt die te sterk gebaseerd is op wantrouwen jegens burgers. Hij pleit voor een responsieve overheid met betere informatievoorziening.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2023/05/01/rapportage-regeringscommissaris-informatiehuishouding',
-          linkLabel: 'Rapport',
+          linkLabel: 'rapport',
         },
         {
           title: 'Algoritmes getoetst',
           meta: 'Algemene Rekenkamer • 18 mei 2022',
           text: "De Rekenkamer testte 9 algoritmes bij verschillende overheidsorganisaties en constateerde dat 6 daarvan risico's hadden op het gebied van prestatiebeheer, bias, datalekken of onbevoegde toegang. Het rapport benadrukt de noodzaak van continue monitoring.",
           href: 'https://www.rekenkamer.nl/publicaties/rapporten/2022/05/18/algoritmes-getoetst',
-          linkLabel: 'Rapport',
+          linkLabel: 'rapport',
         },
         {
           title: 'Aandacht voor algoritmes',
           meta: 'Algemene Rekenkamer • 26 januari 2021',
           text: 'Dit eerste systematische onderzoek naar algoritmegebruik bij de Nederlandse overheid constateerde dat algoritmes zich vooral richten op overheidsbehoeften, met beperkte aandacht voor ethische aspecten en burgerinzicht.',
           href: 'https://www.rekenkamer.nl/publicaties/rapporten/2021/01/26/aandacht-voor-algoritmes',
-          linkLabel: 'Rapport',
+          linkLabel: 'rapport',
         },
         {
           title: 'Aanbevelingen wetgevingsproces en wetgevingskwaliteit',
           meta: 'Raad van State (Afdeling advisering) • 19 april 2021',
           text: 'De Raad van State benadrukt het belang van uitvoeringstoetsen en samenwerking tussen beleidsmakers, wetgevingsjuristen en uitvoeringsorganisaties in multidisciplinaire teams, en pleit voor betere toetsing op uitvoerbaarheid en doenvermogen.',
           href: 'https://www.raadvanstate.nl/actueel/nieuws/@125178/aanbevelingen-wetgevingsproces',
-          linkLabel: 'Aanbevelingen',
+          linkLabel: 'aanbevelingen',
         },
         {
           title:
@@ -390,21 +392,21 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'Staatscommissie o.v.v. Richard van Zwol • 15 januari 2024',
           text: 'De staatscommissie signaleert dat demografische ontwikkelingen leiden tot druk op toegankelijkheid van overheidsdiensten zoals onderwijs, zorg en huisvesting.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2024/01/15/gematigde-groei-rapport-van-de-staatscommissie-demografische-ontwikkleingen-2050',
-          linkLabel: 'Rapport',
+          linkLabel: 'rapport',
         },
         {
           title: 'Maak waar! — De digitale overheid',
           meta: 'Studiegroep Informatiesamenleving en Overheid (o.v.v. Richard van Zwol) • 18 april 2017',
           text: 'De studiegroep concludeert dat digitalisering van de overheid een radicale mentaliteitsverandering vereist en dat digitale dienstverlening tot de kern van het primaire proces hoort.',
           href: 'https://kennisopenbaarbestuur.nl/documenten/rapporten/2017/04/18/maak-waar',
-          linkLabel: 'Rapport',
+          linkLabel: 'rapport',
         },
         {
           title: 'Werk aan Uitvoering — Fase 2: Handelingsperspectieven',
           meta: 'Interdepartementaal (BZK, Financiën, OCW, SZW) • 3 juli 2020',
           text: 'Dit rapport analyseert problemen bij uitvoeringsorganisaties zoals de Belastingdienst, DUO en UWV: continuïteitsrisico’s, beperkte wendbaarheid bij beleidswijzigingen, en ontbrekende mogelijkheden voor maatwerk.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2020/07/03/werk-aan-uitvoering-fase-2-handelingsperspectieven-en-samenvatting-analyse',
-          linkLabel: 'Rapport',
+          linkLabel: 'rapport',
         },
         {
           title:
@@ -459,8 +461,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'GitHub-repository', href: GITHUB },
         { label: 'Hoe het werkt', href: '/#how-it-works' },
         { label: 'Op de hoogte blijven', href: SIGNUP_NL_PATH },
-        { label: 'Documentatie (Engels)', href: GUIDE_PATH },
-        { label: 'Toegankelijkheid', href: '/reference/toegankelijkheid' },
+        { label: 'Documentatie (Engels)', href: '/docs/' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -472,17 +473,15 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'Laat je gegevens achter als je updates wilt ontvangen of wilt meedenken over de (juridische) validatie van RegelRecht.',
       noscript:
         'Dit formulier heeft JavaScript nodig. Stuur in plaats daarvan een e-mail naar regelrecht@minbzk.nl.',
-      legend:
-        'Wil je bijdragen aan de (juridische) validatie van RegelRecht?',
+      legend: 'Wil je bijdragen?',
       radioYes: 'Ja, ik wil bijdragen aan de validatie van RegelRecht',
       radioNo: 'Nee, ik wil niet bijdragen',
-      updates:
-        'Ik wil updates ontvangen over de ontwikkelingen van RegelRecht',
+      updates: 'Updates ontvangen over de ontwikkelingen van RegelRecht',
       emailLabel: 'E-mailadres',
       nameLabel: 'Volledige naam',
-      orgLabel: 'Organisatie (optioneel)',
+      orgLabel: 'Organisatie',
       orgPlaceholder: 'Bijv. Ministerie van BZK, Gemeente Amsterdam',
-      roleLabel: 'Functie (optioneel)',
+      roleLabel: 'Functie',
       rolePlaceholder: 'Bijv. jurist, beleidsmedewerker, wetgevingsjurist',
       required: '*',
       requiredSr: '(verplicht)',
@@ -494,7 +493,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       errName: 'Vul je volledige naam in.',
       successTitle: 'Bedankt voor je aanmelding!',
       successBody:
-        'We hebben je gegevens verstuurd. Je ontvangt bevestiging per e-mail zodra je aanmelding is verwerkt. Klopt er iets niet? Mail dan naar regelrecht@minbzk.nl.',
+        'We hebben je gegevens verstuurd. Je ontvangt bevestiging per e-mail zodra je aanmelding is verwerkt. Klopt er iets niet? Mail ons.',
       successReset: 'Nog iemand aanmelden',
       errorTitle: 'Er ging iets mis',
       errorBody:
@@ -505,12 +504,13 @@ export const content: Record<'nl' | 'en', LandingContent> = {
 
   en: {
     meta: {
-      title: 'RegelRecht — from statute to digital execution',
+      title: 'RegelRecht · from statute to digital execution',
       description:
         'An exploration by the Dutch Ministry of the Interior into transparent, machine-executable legislation.',
     },
     nav: {
-      brandTagline: 'An exploration by the Dutch Ministry of the Interior',
+      brandTagline: 'Exploration by the Dutch Ministry of the Interior',
+      home: 'Home',
       what: 'What',
       how: 'How',
       tools: 'Ecosystem',
@@ -729,7 +729,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'Prof. Corien Prins (WRR) & Prof. Johan Wolswinkel (Tilburg University) • 23 January 2025',
           text: 'This WRR factsheet identifies five points of attention and review questions for parliamentary oversight of the digital execution of legislation. The RegelRecht project falls within the scope of this factsheet and can be assessed against the proposed criteria for transparency, traceability and democratic control.',
           href: 'https://www.wrr.nl/actueel/nieuws/2025/01/23/factsheet-digitale-uitvoering-van-wetgeving',
-          linkLabel: 'WRR',
+          linkLabel: 'WRR factsheet',
         },
         {
           title:
@@ -744,28 +744,28 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'Arre Zuurmond (Government Commissioner) • 1 May 2023',
           text: 'Zuurmond observes that current information management supports a bureaucratic, reactive government too strongly based on distrust of citizens. He argues for a responsive government with better information provision.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2023/05/01/rapportage-regeringscommissaris-informatiehuishouding',
-          linkLabel: 'Report',
+          linkLabel: 'report',
         },
         {
           title: 'Algorithms tested',
           meta: 'Netherlands Court of Audit • 18 May 2022',
           text: 'The Court of Audit tested 9 algorithms at various government organisations and found that 6 of them carried risks around performance management, bias, data leaks or unauthorised access. The report stresses the need for continuous monitoring.',
           href: 'https://www.rekenkamer.nl/publicaties/rapporten/2022/05/18/algoritmes-getoetst',
-          linkLabel: 'Report',
+          linkLabel: 'report',
         },
         {
           title: 'Attention to algorithms',
           meta: 'Netherlands Court of Audit • 26 January 2021',
           text: 'This first systematic study of algorithm use by the Dutch government found that algorithms focus mainly on government needs, with limited attention to ethical aspects and citizen insight.',
           href: 'https://www.rekenkamer.nl/publicaties/rapporten/2021/01/26/aandacht-voor-algoritmes',
-          linkLabel: 'Report',
+          linkLabel: 'report',
         },
         {
           title: 'Recommendations on the legislative process and quality',
           meta: 'Council of State (Advisory Division) • 19 April 2021',
           text: 'The Council of State stresses the importance of implementation assessments and collaboration between policy makers, legislative lawyers and implementing organisations in multidisciplinary teams, and argues for better testing of workability and citizens’ ability to act.',
           href: 'https://www.raadvanstate.nl/actueel/nieuws/@125178/aanbevelingen-wetgevingsproces',
-          linkLabel: 'Recommendations',
+          linkLabel: 'recommendations',
         },
         {
           title:
@@ -773,21 +773,21 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           meta: 'State Commission chaired by Richard van Zwol • 15 January 2024',
           text: 'The State Commission observes that demographic developments put pressure on the accessibility of government services such as education, healthcare and housing.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2024/01/15/gematigde-groei-rapport-van-de-staatscommissie-demografische-ontwikkleingen-2050',
-          linkLabel: 'Report',
+          linkLabel: 'report',
         },
         {
           title: 'Make it happen! — The digital government',
           meta: 'Study Group on the Information Society and Government (chaired by Richard van Zwol) • 18 April 2017',
           text: 'The study group concludes that digitising government requires a radical change of mindset and that digital service delivery belongs at the core of the primary process.',
           href: 'https://kennisopenbaarbestuur.nl/documenten/rapporten/2017/04/18/maak-waar',
-          linkLabel: 'Report',
+          linkLabel: 'report',
         },
         {
           title: 'Work on Implementation — Phase 2: Courses of action',
           meta: 'Interdepartmental (BZK, Finance, OCW, SZW) • 3 July 2020',
           text: 'This report analyses problems at implementing organisations such as the Tax Administration, DUO and UWV: continuity risks, limited agility when policy changes, and missing options for tailored solutions.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2020/07/03/werk-aan-uitvoering-fase-2-handelingsperspectieven-en-samenvatting-analyse',
-          linkLabel: 'Report',
+          linkLabel: 'report',
         },
         {
           title:
@@ -842,8 +842,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         { label: 'GitHub repository', href: GITHUB },
         { label: 'How it works', href: '/en/#how-it-works' },
         { label: 'Stay informed', href: SIGNUP_EN_PATH },
-        { label: 'Documentation', href: GUIDE_PATH },
-        { label: 'Accessibility', href: '/reference/accessibility' },
+        { label: 'Documentation', href: '/docs/' },
       ],
       partOf: [
         'Bureau Architectuur',
@@ -855,15 +854,15 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       lede: 'Leave your details if you want to receive updates or help think about the (legal) validation of RegelRecht.',
       noscript:
         'This form needs JavaScript. Please send an email to regelrecht@minbzk.nl instead.',
-      legend: 'Would you like to contribute to the (legal) validation of RegelRecht?',
+      legend: 'Want to contribute?',
       radioYes: 'Yes, I want to contribute to the validation of RegelRecht',
       radioNo: 'No, I do not want to contribute',
-      updates: 'I want to receive updates about the development of RegelRecht',
+      updates: 'Receive updates about the development of RegelRecht',
       emailLabel: 'Email address',
       nameLabel: 'Full name',
-      orgLabel: 'Organisation (optional)',
+      orgLabel: 'Organisation',
       orgPlaceholder: 'E.g. Ministry of the Interior, City of Amsterdam',
-      roleLabel: 'Role (optional)',
+      roleLabel: 'Role',
       rolePlaceholder: 'E.g. lawyer, policy officer, legislative lawyer',
       required: '*',
       requiredSr: '(required)',
@@ -875,7 +874,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       errName: 'Enter your full name.',
       successTitle: 'Thank you for signing up!',
       successBody:
-        'We have sent your details. You will receive confirmation by email once your registration is processed. Something not right? Email regelrecht@minbzk.nl.',
+        'We have sent your details. You will receive confirmation by email once your registration is processed. Something not right? Email us.',
       successReset: 'Sign up someone else',
       errorTitle: 'Something went wrong',
       errorBody:

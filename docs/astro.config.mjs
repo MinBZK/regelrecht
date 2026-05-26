@@ -3,7 +3,7 @@ import mdx from '@astrojs/mdx';
 import pagefind from 'astro-pagefind';
 import rehypeMermaid from 'rehype-mermaid';
 import { rehypeMermaidAlt } from './src/lib/rehype-mermaid-alt.ts';
-import { rehypeTableScroll } from './src/lib/rehype-table-scroll.ts';
+import { rehypeNlddCodeViewer } from './src/lib/rehype-nldd-code-viewer.ts';
 
 export default defineConfig({
   site: 'https://docs.regelrecht.rijks.app',
@@ -30,19 +30,11 @@ export default defineConfig({
     pagefind({ indexConfig: { forceLanguage: 'en' } }),
   ],
   markdown: {
-    // Exclude `mermaid` from Shiki so the fenced block reaches
-    // rehype-mermaid as a real <pre><code class="language-mermaid">
-    // instead of being pre-highlighted into styled spans.
-    syntaxHighlight: {
-      type: 'shiki',
-      excludeLangs: ['mermaid'],
-    },
-    shikiConfig: {
-      themes: {
-        light: 'github-light-high-contrast',
-        dark: 'github-dark-high-contrast',
-      },
-    },
+    // No Shiki: rehype-nldd-code-viewer turns every fenced block into <nldd-code-viewer>,
+    // which owns styling + (Prism) highlighting. Disabling Shiki also leaves
+    // ```mermaid blocks as real <pre><code class="language-mermaid"> for
+    // rehype-mermaid (it skips them via the language check).
+    syntaxHighlight: false,
     // inline-svg renders the diagram as an inline <svg> in the DOM (not an
     // <img>), so its colours can be themed with CSS and follow the .dark
     // toggle. Mermaid's `base` theme with neutral themeVariables hands the
@@ -65,7 +57,7 @@ export default defineConfig({
         },
       ],
       rehypeMermaidAlt,
-      rehypeTableScroll,
+      rehypeNlddCodeViewer,
     ],
   },
   vite: {

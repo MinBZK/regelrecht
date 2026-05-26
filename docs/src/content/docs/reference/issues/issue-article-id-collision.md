@@ -1,4 +1,6 @@
-# Issue: Article ID Collision (420bis.1)
+---
+title: "Issue: Article ID Collision (420bis.1)"
+---
 
 **Status**: Open
 **Priority**: High

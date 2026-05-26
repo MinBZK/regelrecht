@@ -5,6 +5,7 @@
  * the RFC list cannot drift from the actual rfc-*.md files.
  */
 import { rfcSidebarItems } from './rfcs';
+import { docsNav } from './navLinks';
 
 export interface SidebarItem {
   text: string;
@@ -168,4 +169,31 @@ export function flatSidebar(pathname: string): { text: string; link: string }[] 
   };
   for (const g of groups) walk(g.items);
   return out;
+}
+
+export interface DocsCategory {
+  /** Section prefix, e.g. '/guide/'. Also the category page URL. */
+  prefix: string;
+  /** Display title, from the matching docsNav item. */
+  title: string;
+}
+
+/**
+ * All documentation categories (used for the back button + the docs overview).
+ * The `[category]` route generates an overview page for each, except `/rfcs/`,
+ * which has its own hand-built index page under src/pages/rfcs/.
+ */
+export const docsCategories: DocsCategory[] = Object.keys(sidebar).map(
+  (prefix) => ({
+    prefix,
+    title: docsNav.find((n) => n.match === prefix)?.text ?? prefix,
+  }),
+);
+
+/** The category that owns a pathname (article or category page), or null. */
+export function categoryForPath(pathname: string): DocsCategory | null {
+  for (const c of docsCategories) {
+    if (pathname.startsWith(c.prefix)) return c;
+  }
+  return null;
 }

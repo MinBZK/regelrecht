@@ -1,4 +1,6 @@
-# How RegelRecht Works
+---
+title: "How RegelRecht Works"
+---
 
 RegelRecht turns Dutch legislation into structured files that a computer can execute. This page explains the core ideas.
 

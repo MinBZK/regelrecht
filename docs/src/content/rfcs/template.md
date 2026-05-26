@@ -1,4 +1,6 @@
-# RFC-NNN: Title
+---
+title: "RFC-NNN: Title"
+---
 
 **Status:** Proposed
 **Date:** YYYY-MM-DD

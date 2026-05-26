@@ -1,4 +1,6 @@
-# Harvester
+---
+title: "Harvester"
+---
 
 The harvester downloads Dutch legislation from the BWB (Basiswettenbestand) repository and converts it to the RegelRecht YAML format.
 

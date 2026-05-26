@@ -14,7 +14,7 @@ export interface DocsNavItem {
 }
 
 export const docsNav: DocsNavItem[] = [
-  { text: 'Home', link: '/en/', match: '/en/', icon: 'home' },
+  { text: 'Home', link: '/en/', match: '/en/' },
   { text: 'Guide', link: '/guide/what-is-regelrecht', match: '/guide/' },
   { text: 'Concepts', link: '/concepts/how-it-works', match: '/concepts/' },
   { text: 'Components', link: '/components/engine', match: '/components/' },

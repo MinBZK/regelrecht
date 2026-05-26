@@ -1,4 +1,6 @@
-# Translation Examples
+---
+title: "Translation Examples"
+---
 
 This page shows how Dutch law is translated into machine-readable YAML, with detailed reasoning about why specific patterns are chosen.
 

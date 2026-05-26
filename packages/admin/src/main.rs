@@ -224,7 +224,11 @@ async fn main() {
             ServeDir::new(&static_dir).fallback(ServeFile::new(index_path))
         });
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8000));
+    let port: u16 = env::var("ADMIN_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8000);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(addr)

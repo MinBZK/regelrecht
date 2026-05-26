@@ -1,4 +1,6 @@
-# Terminal UI (TUI)
+---
+title: "Terminal UI (TUI)"
+---
 
 The TUI is an interactive terminal dashboard for developers working with the regulation corpus and engine.
 

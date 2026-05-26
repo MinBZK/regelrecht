@@ -1,4 +1,6 @@
-# Contributing
+---
+title: "Contributing"
+---
 
 RegelRecht is open source and welcomes contributions. This page covers the workflow.
 

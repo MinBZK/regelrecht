@@ -1,17 +1,22 @@
 ---
 /*
- * RFC overview. Prose ported from the relanding rfcs/index.md; the
- * <RfcIndexTable /> mechanism is preserved (it now calls getRfcs()
- * directly at build time instead of via a data loader).
+ * RFC overview — a category page (like /guide/, /concepts/, …). The RFCs are
+ * listed as a boxed navigation list; getRfcs() runs at build time.
  */
 import Base from '~/layouts/Base.astro';
-import DocsSidebar from '~/components/DocsSidebar.astro';
-import DocsFooter from '~/components/DocsFooter.astro';
-import RfcIndexTable from '~/components/RfcIndexTable.astro';
-import { sidebarForPath } from '~/lib/sidebar';
+import { getRfcs } from '~/lib/rfcs';
 
 const pathname = '/rfcs/';
-const groups = sidebarForPath(pathname);
+const rfcs = getRfcs();
+
+const statusColor = (s: string) => {
+  const k = (s ?? '').toLowerCase();
+  if (k.includes('accept')) return 'success';
+  if (k.includes('propos')) return 'accent';
+  if (k.includes('reject')) return 'critical';
+  if (k.includes('supersed')) return 'warning';
+  return 'neutral';
+};
 ---
 
 <Base
@@ -21,39 +26,45 @@ const groups = sidebarForPath(pathname);
   title="RFCs · RegelRecht"
   description="Design decisions in RegelRecht, documented through RFCs."
 >
-  {groups && <DocsSidebar groups={groups} pathname={pathname} />}
-  <div class="rr-docs-body">
-    <main class="vp-doc rr-docs-content">
-      {/* NLDD prose typography (light DOM) for the page copy; the RFC table
-          stays a bare <table> between the two rich-text blocks. */}
+  <nldd-one-third-two-thirds-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <div slot="left">
+      <nldd-title size="2">
+        <h1>RFCs</h1>
+      </nldd-title>
+      <nldd-spacer />
       <nldd-rich-text>
-        <h1>RFCs (Requests for Comments)</h1>
         <p>
           Design decisions in RegelRecht are documented through RFCs. Each RFC
-          captures the problem, considered alternatives, and the chosen
+          captures the problem, the considered alternatives, and the chosen
           approach.
         </p>
-        <h2>Index</h2>
-      </nldd-rich-text>
-      <RfcIndexTable />
-      <nldd-rich-text>
-        <h2>Writing an RFC</h2>
         <p>
-          See <a href="/rfcs/rfc-000">RFC-000</a> for the process. RFCs are
-          warranted for:
-        </p>
-        <ul>
-          <li>Law representation format changes</li>
-          <li>Execution engine architecture changes</li>
-          <li>Cross-cutting design patterns</li>
-          <li>Integration patterns between components</li>
-        </ul>
-        <p>
-          The template is at <code>docs/src/content/rfcs/template.md</code> in
-          the repository.
+          See <a href="/rfcs/rfc-000">RFC-000</a> for the process and template.
         </p>
       </nldd-rich-text>
-      <DocsFooter entryId="index.md" collection="rfcs" pathname={pathname} />
-    </main>
-  </div>
+    </div>
+    <div slot="right">
+      <nldd-list type="navigation" variant="box">
+        {
+          rfcs.map((r) => (
+            <nldd-list-item href={r.link}>
+              <nldd-text-cell overline={r.id} text={r.title} width="full" />
+              <nldd-spacer-cell />
+              <nldd-cell>
+                <nldd-tag color={statusColor(r.status)} size="md">
+                  {r.status}
+                </nldd-tag>
+              </nldd-cell>
+              <nldd-spacer-cell />
+              <nldd-icon-cell icon="chevron-right" />
+            </nldd-list-item>
+          ))
+        }
+      </nldd-list>
+    </div>
+  </nldd-one-third-two-thirds-section>
 </Base>

@@ -1,4 +1,6 @@
-# Multi-Organization Execution
+---
+title: "Multi-Organization Execution"
+---
 
 In practice, different government organizations handle different parts of the law chain. The Tax Authority determines your income. The Allowances Service determines your healthcare allowance. A municipality determines your social assistance.
 

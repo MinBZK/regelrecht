@@ -1,10 +1,9 @@
 ---
 import { getCollection, render } from 'astro:content';
 import Base from '~/layouts/Base.astro';
-import DocsSidebar from '~/components/DocsSidebar.astro';
 import DocsOutline from '~/components/DocsOutline.astro';
+import EditLink from '~/components/EditLink.astro';
 import DocsFooter from '~/components/DocsFooter.astro';
-import { sidebarForPath } from '~/lib/sidebar';
 
 export async function getStaticPaths() {
   const rfcs = await getCollection('rfcs');
@@ -19,31 +18,36 @@ const { entry } = Astro.props;
 const { Content, headings } = await render(entry);
 
 const pathname = '/rfcs/' + entry.id.replace(/\.md$/, '');
-const groups = sidebarForPath('/rfcs/');
-
-const title =
-  (headings.find((h) => h.depth === 1)?.text ?? entry.id) + ' · RegelRecht';
+// Frontmatter strings may use `&shy;` as a readable marker for U+00AD
+// (soft hyphen); the browser only renders the hyphen when the word needs
+// to break.
+const shy = (s: string | undefined) => s?.replace(/&shy;/g, '\u00AD');
+const pageTitle =
+  shy(entry.data.title) ??
+  headings.find((h) => h.depth === 1)?.text ??
+  entry.id;
+const title = pageTitle + ' · RegelRecht';
 ---
 
-<Base
-  lang="en"
-  kind="docs"
-  pathname={pathname}
-  title={title}
->
-  {groups && <DocsSidebar groups={groups} pathname={pathname} />}
-  <div class="rr-docs-body">
-    <main class="vp-doc rr-docs-content">
-      {/* Light-DOM NLDD prose typography for the RFC body (SSR/no-JS safe). */}
+<Base lang="en" kind="docs" pathname={pathname} title={title}>
+  <nldd-one-third-two-thirds-section
+    sm-padding-bottom="32"
+    md-padding-bottom="64"
+    lg-padding-bottom="96"
+  >
+    <nldd-title slot="header" size="1">
+      <h1>{pageTitle}</h1>
+    </nldd-title>
+    <div slot="left">
+      <DocsOutline headings={headings} />
+      <nldd-spacer size="24" sm-size="16" />
+      <EditLink entryId={entry.id} collection="rfcs" />
+    </div>
+    <div slot="right" style="min-width: 0">
       <nldd-rich-text>
         <Content />
       </nldd-rich-text>
-      <DocsFooter
-        entryId={entry.id}
-        collection="rfcs"
-        pathname={pathname}
-      />
-    </main>
-  </div>
-  <DocsOutline headings={headings} />
+      <DocsFooter pathname={pathname} />
+    </div>
+  </nldd-one-third-two-thirds-section>
 </Base>

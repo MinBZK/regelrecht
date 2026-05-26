@@ -1,4 +1,6 @@
-# Validation Methodology
+---
+title: "Validation Methodology"
+---
 
 RegelRecht uses an **execution-first** approach to validate machine-readable law interpretations.
 

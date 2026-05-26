@@ -1,4 +1,6 @@
-# Development Environment
+---
+title: "Development Environment"
+---
 
 ## Architecture
 

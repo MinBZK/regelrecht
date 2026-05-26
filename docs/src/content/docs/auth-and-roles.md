@@ -1,4 +1,6 @@
-# Authentication & Roles
+---
+title: "Authentication & Roles"
+---
 
 This page describes the role model that gates the editor and harvester-admin
 services, how the roles are wired up in Keycloak, and the per-deployment
