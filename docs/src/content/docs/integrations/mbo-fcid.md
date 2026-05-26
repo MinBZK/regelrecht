@@ -1,6 +1,6 @@
 # Integration: Mijn Betaaloverzicht (FCID)
 
-This page specifies how a cell that runs a RegelRecht engine integrates with [Mijn Betaaloverzicht (MBO)](https://www.eenoverheidsincasso.nl/onze-dienstverlening/vorderingenoverzicht-rijk) using the [Financial Claims Information Document (FCID)](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) standard. It uses the chronolexogram types, the `extensions` mechanism, and the `source.kind: lexostatus_query` construct from [RFC-019](/rfcs/rfc-019). It uses the federation model and signing mechanics from [RFC-009](/rfcs/rfc-009).
+This page specifies how a cell that runs a RegelRecht engine integrates with [Mijn Betaaloverzicht (MBO)](https://www.eenoverheidsincasso.nl/onze-dienstverlening/vorderingenoverzicht-rijk) using the [Financial Claims Information Document (FCID)](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) standard. It uses the chronolexogram types, the `extensions` mechanism, and the `source.kind: lexostatus_query` construct from [RFC-019](/rfcs/rfc-019), the AWB lifecycle from [RFC-008](/rfcs/rfc-008), and the federation/signing mechanics from [RFC-009](/rfcs/rfc-009).
 
 The specification targets FCID v4.x (v4.2.0 as of mei 2026) and tracks upstream as the standard evolves. This document is intended to be updated when FCID minor versions are published, without requiring a new RFC.
 
@@ -10,7 +10,7 @@ For background on the Dutch claim-collection landscape this integration sits in,
 
 A cell that runs a RegelRecht engine and activates the `mbo_fcid` integration emits two streams of events to MBO endpoints:
 
-- **Decretogram-derived FCID events**, when a regulation produces a `BESCHIKKING` with a financial-enforcement `decision_type` and its `extensions.mbo_fcid` block declares the FCID category.
+- **Decretogram-derived FCID events**, when a regulation produces a `BESCHIKKING` with a financial-enforcement `decision_type` and its `extensions.mbo_fcid` block declares the FCID category. Emission happens at a specific AWB lifecycle stage (RFC-008), typically `BEKENDMAKING`.
 - **Executogram-derived FCID events**, when an event in a chronicle-stream file (under `chronicles/`) declares an `extensions.mbo_fcid` block and the surrounding intake fires.
 
 In the consumer direction, a regulation can ask MBO for a citizen's openstaande vorderingen via `source.kind: lexostatus_query`. The query reaches the CJIB cell through RFC-009's ACCEPT path; no wrapper-regulation needed.
@@ -41,7 +41,7 @@ FCID defines four event types. Each maps to exactly one chronolexogram type.
 | `BetalingsverplichtingIngetrokken` | decretogram (intrekking) | engine output with `produces.modality.is_intrekking_van` set |
 | `BetalingVerwerkt` | executogram | chronicle-stream event, triggered by intake from incasso system |
 
-A primary BESCHIKKING that imposes a financial obligation and an intrekking of that same BESCHIKKING share `decision_type` (for example both `BETALINGSVERPLICHTING`); the intrekking carries `modality.is_intrekking_van: <id>`. The FCID mapping reads the modality and emits `BetalingsverplichtingIngetrokken` for the intrekking instance.
+An intrekking is itself a fresh BESCHIKKING with its own AWB lifecycle (per RFC-008's resolved Open Question 5). The integration recognises it as an intrekking through `produces.modality.is_intrekking_van: <original-id>` and maps it to `BetalingsverplichtingIngetrokken`. The intrekking and the original share neither a single decretogram nor a single lifecycle; they share a `zaakkenmerk` so a downstream consumer can tie them together.
 
 ## Producer side: decretogram-derived FCID
 
@@ -52,23 +52,30 @@ execution:
   produces:
     legal_character: BESCHIKKING
     decision_type: BETALINGSVERPLICHTING
-    bezwaarbaar:
-      door: belanghebbende
-      via: cell.cjib.bezwaar
-      termijn_dagen: 42
-      grondslag: "Awb 7:1"
+    procedure_id: beschikking         # RFC-008 procedure selection
     extensions:
       mbo_fcid:
         category: ALGEMEEN
+        emit_at_stage: BEKENDMAKING   # default; can be overridden
 ```
 
 The presence of the `extensions.mbo_fcid` block is a hint: "if your cell activates `mbo_fcid`, this rule's BESCHIKKING participates, with category X". The actual emission happens only when the cell activates the integration.
 
 `category` is one of `ALGEMEEN`, `ADMINISTRATIEKOSTEN`, `VERHOGING`, `RENTE`. A regulation that produces multiple FCID lines from one beschikking (principal + administratiekosten + verhoging) declares those as separate articles or separate `produces` blocks, each with its own `extensions.mbo_fcid.category`.
 
+`emit_at_stage` selects the RFC-008 lifecycle stage at which emission fires. Default is `BEKENDMAKING`: an obligation that has not been bekendgemaakt has no juridical existence to display in MBO. Other stages are allowed (an integration may want a placeholder at BESLUIT for internal-overview surfaces) but for citizen-facing MBO the default is correct.
+
+### Stage-binding: why BEKENDMAKING and not BESLUIT
+
+RFC-008 models the AWB lifecycle as discrete stages: AANVRAAG, BEHANDELING, BESLUIT, BEKENDMAKING, BEZWAARTERMIJN, BEZWAAR. The bezwaartermijn (AWB 6:7, six weeks) starts the day after bekendmaking (AWB 6:8 lid 1). The `bezwaartermijn_einddatum` is therefore a value that does not exist at BESLUIT-time and is computed by RFC-008 hooks (AWB 6:7, AWB 6:8, Termijnenwet) at the BEKENDMAKING stage.
+
+FCID emission at BESLUIT would therefore carry an incomplete `bezwaar_route`: no einddatum, only a hint. Emission at BEKENDMAKING carries the actual einddatum, computed correctly per the AWB lifecycle. The integration accepts the RFC-008 timing rather than reinventing it.
+
+For UOV procedures (RFC-008 §A.8) the regular bezwaar is excluded (AWB 7:1 lid 1 sub d). The integration emits at the UOV's BEKENDMAKING stage with `beroep_route` instead of `bezwaar_route`. For BESLUIT_VAN_ALGEMENE_STREKKING (RFC-008 §A.9) neither route applies except for "concretiserend BAS"; the integration omits both fields when neither applies and records a `geen_rechtsbescherming_reden` for transparency.
+
 ### Field derivation
 
-When the cell emits an FCID event from a decretogram:
+When the cell emits an FCID event from a decretogram at its configured stage:
 
 | FCID field | Derivation |
 |---|---|
@@ -79,13 +86,26 @@ When the cell emits an FCID event from a decretogram:
 | `zaakkenmerk` | the cell's existing zaaknummer-systematiek; otherwise deterministic hash of `(cell.id, beschikking_id)` |
 | `gebeurtenis_kenmerk` | UUID v7 generated at emission time |
 | `bedrag` | currency-typed output × 100 (FCID requires centen as integer) |
-| `bezwaar_route` | derived from `produces.bezwaarbaar` (this carries rechtsbescherming-information to the MBO surface; see [RFC-019 §3.3](/rfcs/rfc-019)) |
+| `bezwaar_route` | derived from the decretogram's RFC-008 procedure-stage outputs at the emission stage; see below |
 | `signature` | the cell's FSC signing key (RFC-009 §5) |
 | `trace_id` | W3C Trace Context `trace_id` from the decretogram's execution trace |
 
 The `trace_id` lets a downstream surface (citizen portal, oversight tool, another cell) follow back to the execution trace that produced the beschikking. The trace stays in the cell; only the `trace_id` reference travels with the event.
 
-The `bezwaar_route` field is included so that a citizen-facing surface can show, alongside the obligation, how and within what term to object. This is the §7 of RFC-019 carried through: rechtsbescherming travels with the event, not as a separate channel that must be discovered.
+### `bezwaar_route` derivation from RFC-008
+
+The integration does not read a `bezwaarbaar` field from `produces`. Instead, at emission time, it queries the decretogram's RFC-008 procedure state for the bezwaar-stage outputs:
+
+| `bezwaar_route` field | Derived from |
+|---|---|
+| `intake` | the cell's bezwaar-intake URL for the rule's `procedure_id` (cell-config) |
+| `termijn_grondslag` | the AWB article (or lex specialis override) that determined the termijn, e.g. `"Awb 6:7"` or `"Vw 2000 art. 69"` |
+| `termijn_einddatum` | `bezwaartermijn_einddatum` output of the BEKENDMAKING-stage hooks (AWB 6:8 + Termijnenwet) |
+| `direct_beroep_mogelijk` | true when AWB 7:1a applies; absent otherwise |
+
+If the procedure has no bezwaar-stage (UOV, AVV-without-direct-beroep), `bezwaar_route` is absent and either `beroep_route` (UOV, concretiserend BAS) or `geen_rechtsbescherming_reden` (AVV, beleidsregel) is present.
+
+This is the operationalisation of [RFC-019 §3.3](/rfcs/rfc-019): rechtsbescherming travels with the event, derived from RFC-008's lifecycle outputs, not declared per-rule. A citizen-facing surface (MBO portal, MijnOverheid) can render the objection-trigger inline with the obligation, with the correct einddatum that the AWB-hooks computed at the right moment.
 
 ## Producer side: executogram-derived FCID
 
@@ -103,8 +123,6 @@ events:
       case_reference: $external.zaakkenmerk
       amount_cents: $external.bedrag_centen
       received_at: $external.received_at
-    bezwaarbaar: niet_van_toepassing
-    bezwaarbaar_reden: "Geen besluit; feitelijke registratie van ontvangen betaling."
     extensions:
       mbo_fcid:
         event_type: BetalingVerwerkt
@@ -125,7 +143,25 @@ A chronicle-stream event that has no `extensions.mbo_fcid` block is still record
 | `gebeurtenis_datetime` | from the event's `received_at` field |
 | `signature` | the cell's FSC signing key |
 
-Whether `BetalingVerwerkt` carries a `bezwaar_route` is currently `niet_van_toepassing`: a received payment is a fact, not a besluit, and objecting to a fact is not what bezwaar is for. If a downstream besluit follows (such as "betaling toegerekend aan vordering X" being itself a decretogram), that decretogram carries its own `bezwaarbaar`.
+### Rechtsbescherming on executograms
+
+Most executograms carry no `bezwaar_route`. A received payment is a fact, not a besluit; objecting to a fact is not what bezwaar is for.
+
+A small class of executograms does carry one: events that *implicitly reference a nested besluit*. A `kwijtschelding_verleend` event is the outward face of a kwijtschelding-decretogram (which has its own AWB lifecycle). The chronicle-stream declares the link:
+
+```yaml
+- name: kwijtschelding_verleend
+  references_decision: $external.kwijtschelding_decision_id
+  fields:
+    case_reference: $external.zaakkenmerk
+    reden: $external.reden
+  extensions:
+    mbo_fcid:
+      event_type: BetalingsverplichtingIngetrokken
+      category: ALGEMEEN
+```
+
+When `references_decision` is present, the integration looks up that decision's RFC-008 procedure state and derives `bezwaar_route` from it (same mechanism as for decretograms). The chronicle-stream itself does not duplicate the route.
 
 ## Consumer side: querying MBO
 
@@ -144,21 +180,11 @@ input:
 
 The engine resolves through RFC-009's EXECUTE/ACCEPT decision tree on `source.kind: lexostatus_query`. A non-CJIB engine hits ACCEPT and calls the CJIB cell via FSC. A CJIB engine answers locally from its own chronicle. Either way the consumer sees a list of vordering records suitable as downstream input.
 
-The CJIB cell internally performs a chronolexoreductie: it filters its chronicles for the BSN, combines outstanding decretograms with their executograms (payments, kwijtscheldingen), and returns a lexostatus. RegelRecht consumers do not see the chronicle entries; they see the result.
+The CJIB cell internally performs a chronolexoreductie: it filters its chronicles for the BSN, combines outstanding decretograms with their executograms (payments, kwijtscheldingen), and returns a lexostatus. RegelRecht consumers do not see the chronicle entries; they see the result. Each vordering in the returned lexostatus carries the same `bezwaar_route` as the corresponding FCID event would.
 
 ## Trust and signing
 
 Trust mechanics are inherited from [RFC-009 §5](/rfcs/rfc-009) without modification. The cell signs both decretogram-derived and executogram-derived events with its FSC key. The receiver verifies against the FSC Directory's Trust Anchor. The `event_type` distinguishes the two on the wire; the signing key does not.
-
-## Bezwaar and rechtsbescherming
-
-The `bezwaar_route` field in emitted FCID events is the integration's contribution to Nieuwland §7.2.1. Concretely:
-
-- For decretograms: every emitted event carries the `bezwaarbaar` block of the producing rule. MBO can render the objection-trigger inline with the obligation.
-- For executograms: most events carry `bezwaarbaar: niet_van_toepassing` (a fact is not a besluit). Executograms that do have legal consequences (a kwijtschelding granted, a verrekening applied) carry their own `bezwaarbaar`.
-- Citizens can therefore exercise bezwaar from the MBO surface against the rule that produced the obligation, not against MBO itself or against CJIB-as-collector.
-
-The receiving cell at the bezwaar intake is identified by `bezwaar_route.via`; routing is the receiving cell's responsibility.
 
 ## Out of scope
 
@@ -166,13 +192,15 @@ The receiving cell at the bezwaar intake is identified by `bezwaar_route.via`; r
 - **Payment processing** (iDEAL, automatic incasso, reconciliation) is upstream of this integration.
 - **The Financial Claim Request API and Session API** that surround FCID are not yet integrated. This document covers FCID-event emission and the lexostatus-query consumer only.
 - **The legal basis** for each specific exchange (which cell may send which event to which receiver) is per-case and per the relevant statutory provisions.
+- **The AWB lifecycle internals**. All bezwaar-mechanics, nested besluit op bezwaar, termijn-berekening live in RFC-008. This integration reads RFC-008's outputs.
 
 ## Implementation references
 
 - Schema vendoring: vendor FCID v4.x JSON schemas under `schema/external/vorijk/` with a README documenting upstream URL and snapshot date.
-- Engine module: `packages/engine/src/integrations/mbo_fcid.rs` (pure mapping from decretogram/executogram to FCID-shape JSON, including `bezwaar_route` derivation).
+- Engine module: `packages/engine/src/integrations/mbo_fcid.rs` (pure mapping from decretogram/executogram to FCID-shape JSON, including `bezwaar_route` derivation from RFC-008 procedure state).
+- Stage-hook wiring: the integration registers itself as a RFC-008 stage hook for `BEKENDMAKING` (or whichever stage `emit_at_stage` selects).
 - Cell-config: a small `cells/<cell-id>/config.yaml` (sketch) that activates `mbo_fcid` with endpoint and version.
-- Snapshot tests: a fixture beschikking and a fixture chronicle-event, validated against the vendored FCID schema.
+- Snapshot tests: a fixture beschikking driven through its AWB lifecycle to BEKENDMAKING and a fixture chronicle-event, both validated against the vendored FCID schema.
 - Service registry stub: a CJIB cell entry in the development `service-registry.yaml` for end-to-end testing of the lexostatus-query path.
 
 ## Pilot
@@ -182,6 +210,7 @@ The first concrete adoption is a Wahv pilot at CJIB. See [proposals/cjib-mbo-bri
 ## References
 
 - [RFC-019: Chronolexogram types in the schema and the cell model](/rfcs/rfc-019)
+- [RFC-008: AWB Administrative Procedures](/rfcs/rfc-008)
 - [RFC-009: Multi-Organisation Execution](/rfcs/rfc-009)
 - [RFC-013: Execution Provenance](/rfcs/rfc-013)
 - [CJIB-uitvoeringslandschap](/concepts/cjib-uitvoeringslandschap)
