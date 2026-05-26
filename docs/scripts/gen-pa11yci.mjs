@@ -57,6 +57,19 @@ const config = {
     timeout: 30000,
     wait: 500,
     chromeLaunchConfig: { args: ['--no-sandbox'] },
+    // axe reports two flavours of finding: confirmed `violations` and
+    // `incomplete` (a.k.a. `needsFurtherReview`) where it could not measure
+    // the rule reliably and is asking for manual review. Pa11y promotes both
+    // to errors by default, which fails CI on the latter category — for
+    // color-contrast that mostly happens on slotted content inside design-
+    // system custom elements whose effective background axe can't sample
+    // through the shadow boundary (e.g. nldd-rich-text inside an
+    // nldd-*-section: the same paragraph type passes on some pages and
+    // "fails" on others depending on stacking context). Capping incomplete
+    // items at `warning` keeps real violations as errors while letting
+    // axe-can't-tell items show up as non-blocking warnings (visible via
+    // `pa11y --include-warnings` for spot checks).
+    levelCapWhenNeedsReview: 'warning',
     // hideElements removes these subtrees from BOTH runners' evaluation.
     //  - .pagefind-ui: search UI is injected client-side and is the design
     //    system's concern, not this site's markup.
