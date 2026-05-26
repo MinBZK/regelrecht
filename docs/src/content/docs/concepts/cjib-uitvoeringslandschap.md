@@ -1,6 +1,6 @@
 # CJIB-uitvoeringslandschap
 
-This page surveys what the Centraal Justitieel Incassobureau (CJIB) actually does: which regulations it executes itself, which it executes on behalf of other organizations, and the policy framework that governs both. It is background material for [RFC-009 (Multi-Organisation Execution)](/rfcs/rfc-009) and [RFC-019 (RegelRecht in de chronolexosfeer)](/rfcs/rfc-019). It is not normative.
+This page surveys what the Centraal Justitieel Incassobureau (CJIB) actually does: which regulations it executes itself, which it executes on behalf of other organizations, and the policy framework that governs both. It is background material for [RFC-009 (Multi-Organisation Execution)](/rfcs/rfc-009), [RFC-019 (Chronolexogram types)](/rfcs/rfc-019), and the concrete [MBO/FCID integration](/integrations/mbo-fcid). It is not normative.
 
 The page uses the conceptual vocabulary from the [Chronolexografie](https://chronolexografie.nl/) position paper and the wider [Nieuwland](https://achterkantvandeoverheid.nl/) program. Where relevant, regulations are tagged with the chronolexogram types they involve: **lexogram** for the regulation itself, **decretogram** for a beschikking imposing an obligation, **executogram** for the factual handling (payment received, levering, kwijtschelding).
 
@@ -92,7 +92,7 @@ CJIB's own statutory base (Wahv, Sv 257a, Sr 36e/36f, Wet USB, Awb 4.4) and the 
 
 The current `produces.decision_type` enum has nine values: TOEKENNING, AFWIJZING, GOEDKEURING, GEEN_BESLUIT, ALGEMEEN_VERBINDEND_VOORSCHRIFT, BELEIDSREGEL, VOORBEREIDINGSBESLUIT, ANDERE_HANDELING, AANSLAG. None describe the financial-enforcement domain.
 
-[RFC-019 §5.1](/rfcs/rfc-019) proposes the following additions for the CJIB landscape:
+[RFC-019 §2](/rfcs/rfc-019) proposes the following additions, which cover the CJIB landscape:
 
 - `BETALINGSVERPLICHTING` — generic financial obligation imposed by a bestuursorgaan
 - `STRAFBESCHIKKING` — criminal-law settlement under Sv 257a
@@ -104,28 +104,17 @@ The current `produces.decision_type` enum has nine values: TOEKENNING, AFWIJZING
 
 ### Executogrammen (factual events)
 
-These do not belong in `produces` at all. A payment received, a kwijtschelding executed, a deurwaarder triggered: these are not regulation outputs. RFC-019 §5.3 introduces `corpus/executogram/` as a separate top-level corpus directory for executogram-stream definitions. The most natural CJIB executograms are:
+These do not belong in `produces` at all. A payment received, a kwijtschelding executed, a deurwaarder triggered: these are not regulation outputs. RFC-019 §1 introduces `corpus/executogram/` as a separate top-level corpus directory for executogram-stream definitions. The most natural CJIB executograms are:
 
 - `betaling_ontvangen` — maps to FCID `BetalingVerwerkt`
 - `kwijtschelding_verleend` — maps to FCID `BetalingsverplichtingIngetrokken` with a kwijtschelding-reden
 - `deurwaardertraject_gestart` — maps to FCID `BetalingsverplichtingOpgelegd` if it creates a separate verplichting for kosten; or is recorded internally without FCID emission if it is procedural
 
-Each of these is a registratie, not an interpretatie. Conflating them with decretograms (the way the first draft of RFC-019 did with `BETALING_VERWERKT` in `decision_type`) would have erased a juridically meaningful distinction.
+Each of these is a registratie, not an interpretatie. Putting them under `decision_type` would conflate registratie with besluit and erase a juridically meaningful distinction.
 
 ## Mapping onto MBO / FCID
 
-[Mijn Betaaloverzicht](https://www.eenoverheidsincasso.nl/onze-dienstverlening/vorderingenoverzicht-rijk) uses the [Financial Claims Information Document (FCID)](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) standard, currently at v4.2.0 (mei 2026). FCID is event-sourced.
-
-Event types and their chronolexogram-fit:
-
-| FCID `event_type` | Chronolex-type | Source in RegelRecht |
-|---|---|---|
-| `FinancieleVerplichtingOpgelegd` | decretogram | engine output, `decision_type: STRAFBESCHIKKING` (totaal-bedrag) |
-| `BetalingsverplichtingOpgelegd` | decretogram | engine output, `decision_type: BETALINGSVERPLICHTING`/`BESTUURLIJKE_BOETE`/`INCASSO_BESCHIKKING` |
-| `BetalingsverplichtingIngetrokken` | decretogram (intrekking) | engine output, `decision_type: INTREKKING_BESCHIKKING`, often via [RFC-007](/rfcs/rfc-007) override |
-| `BetalingVerwerkt` | executogram | executogram-stream entry from incasso system |
-
-Categories (Algemeen / Administratiekosten / Verhoging / Rente) are orthogonal to the chronolex-type. They are encoded via `fcid_category` on the producing rule (for decretograms) or in the executogram-stream entry.
+The full mapping from RegelRecht decretograms and executograms to [FCID](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) events lives in the [MBO/FCID integration document](/integrations/mbo-fcid). In short: each FCID `event_type` corresponds to either a decretogram (the three `*Opgelegd` and `*Ingetrokken` types) or an executogram (`BetalingVerwerkt`). Categories (Algemeen, Administratiekosten, Verhoging, Rente) are orthogonal to the chronolex-type and encoded via the `outbound_category` field that RFC-019 §3 adds for integration use.
 
 ## Open questions and data gaps
 
