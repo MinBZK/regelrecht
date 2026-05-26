@@ -425,10 +425,16 @@ fn resolve_annotation_read_backend(
                 .get(&law.source_id)
                 .cloned()
                 .unwrap_or_else(|| law.source_id.clone());
-            let entry = traject.corpus.backends.get(&target_source_id).ok_or((
-                StatusCode::SERVICE_UNAVAILABLE,
-                "Writable backend not initialised".to_string(),
-            ))?;
+            let entry = traject
+                .corpus
+                .backends
+                .get(&target_source_id)
+                .ok_or_else(|| {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Writable backend not initialised".to_string(),
+                    )
+                })?;
             Ok(entry.backend.clone())
         }
         ReadScope::Global(corpus) => {

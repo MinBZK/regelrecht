@@ -358,6 +358,35 @@ async fn missing_sidecar_returns_404() {
     assert_eq!(err.0, StatusCode::NOT_FOUND, "{}", err.1);
 }
 
+#[tokio::test]
+async fn read_with_no_active_traject_uses_global_corpus() {
+    // Pin the `ReadScope::Global` branch of `resolve_annotation_read_backend`:
+    // anonymous-browsing reads (no active traject in the session) must
+    // route through the global corpus's law-own backend, NOT the per-
+    // traject writable_own. With `CorpusState::empty()` there is no
+    // backend at all for any law, so a GET resolves to NOT_FOUND from
+    // the inner `get_law` lookup — the contract is "no 403, no
+    // 500-on-missing-traject; a clean 404 just like the old static
+    // mirror".
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (_owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+    // Session has a subject but no active traject — same shape as the
+    // anonymous-after-logout case that the `useNotes.js` 404→[] handler
+    // already supports.
+    let session = session_for(&sub, None).await;
+
+    let err = get_annotations(State(state), session, Path(LAW_ID.to_string()))
+        .await
+        .expect_err("global corpus is empty so the law isn't found");
+    assert_eq!(
+        err.0,
+        StatusCode::NOT_FOUND,
+        "no-traject read must degrade to 404, not 403 or 500; got: {}",
+        err.1
+    );
+}
+
 /// Provision a traject with TWO local sources, mirroring the production
 /// federated layout:
 ///   - a read-only `seed` source (carrying the law file, no auth token)
