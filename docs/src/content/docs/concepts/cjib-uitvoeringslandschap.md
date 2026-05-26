@@ -6,7 +6,7 @@ The page uses the conceptual vocabulary from the [Chronolexografie](https://chro
 
 ## Why CJIB matters for RegelRecht
 
-CJIB is a zelfstandig bestuursorgaan (ZBO) under the Ministry of Justice and Security. It is the central financial-enforcement hub of the Dutch government: the place where almost every administrative-law and criminal-law financial obligation eventually lands when a citizen does not pay voluntarily. As of 2026 it executes for at least 15 opdrachtgevers, ranging from the OM to a sectoral inspectorate like NEa.
+CJIB is a *zelfstandig bestuursorgaan* (ZBO) under the Ministry of Justice and Security. It is the central financial-enforcement hub of the Dutch government: the place where almost every administrative-law and criminal-law financial obligation eventually lands when a citizen does not pay voluntarily. As of 2026 it executes for at least 15 *opdrachtgevers*, ranging from the OM to a sectoral inspectorate like NEa.
 
 RegelRecht's conceptual coverage spans fiscal, social, administrative, electoral and procedural domains today, with regulations added opportunistically as cells need them. The financial-enforcement domain is not yet represented: no current `decision_type` describes a `BETALINGSVERPLICHTING` or a `STRAFBESCHIKKING`, and the corpus contains no Wahv-style or boete-style regulations. Bridging RegelRecht to the CJIB world is the precondition for two things: making incasso-domain laws executable when a cell needs them, and connecting RegelRecht cells to [Mijn Betaaloverzicht (MBO, formerly Vorderingenoverzicht Rijk)](https://www.eenoverheidsincasso.nl/onze-dienstverlening/vorderingenoverzicht-rijk) so a citizen sees both the obligation and its juridical provenance.
 
@@ -15,10 +15,10 @@ RegelRecht's conceptual coverage spans fiscal, social, administrative, electoral
 Chronolexografie distinguishes three types of vastlegging. The distinction matters here because the CJIB landscape touches all three.
 
 - **Lexogram**: vastlegging van een (mogelijke, toekomstige) wijziging in wet- of regelgeving. Example in this landscape: the Wahv itself (BWBR0004581), as a versioned text on wetten.overheid.nl. A RegelRecht corpus entry for the Wahv would be a lexogram.
-- **Decretogram**: vastlegging van een concreet besluit. Example: a specific Wahv-sanctie of €X imposed on a specific kentekenhouder for a specific feit on a specific date.
-- **Executogram**: vastlegging van daadwerkelijke levering of afhandeling. Example: a payment of €X arriving in CJIB's bank account against zaakkenmerk Y on date Z. Or a kwijtschelding granted because of payment incapacity.
+- **Decretogram**: *vastlegging van een concreet besluit*. Example: a specific Wahv-*sanctie* of €X imposed on a specific *kentekenhouder* for a specific *feit* on a specific date.
+- **Executogram**: *vastlegging van daadwerkelijke levering of afhandeling*. Example: a payment of €X arriving in CJIB's bank account against *zaakkenmerk* Y on date Z. Or a *kwijtschelding* granted because of payment incapacity.
 
-In addition, Chronolexografie introduces the **chronolexocell**: the juridical and organisational domain that holds chronicles, owns signing keys, and is the competent authority that other cells contract with. CJIB is a cell. So are OM, NVWA, DUO, CAK, UWV, RVO, NEa, and each gemeente. A cell may contain one RegelRecht engine, several engines, an engine plus a legacy system, or none at all; the engine is a component within the cell, not the cell itself.
+In addition, Chronolexografie introduces the **chronolexocell**: the juridical and organisational domain that holds chronicles, owns signing keys, and is the competent authority that other cells contract with. CJIB is a cell. So are OM, NVWA, DUO, CAK, UWV, RVO, NEa, and each *gemeente*. A cell may contain one RegelRecht engine, several engines, an engine plus a legacy system, or none at all; the engine is a component within the cell, not the cell itself.
 
 CJIB's daily work spans all three recording-types. It executes lexogrammen (the wetten and beleidsregels under which it works), produces decretogrammen (Wahv-sancties, OM-strafbeschikkingen-uitvoering), and records executogrammen (betalingen, kwijtscheldingen, deurwaardertrajecten). RFC-022 puts each of these in its proper place in the repository layout: lexograms in `corpus/regulation/`, chronicle-stream definitions (which declare which executograms a cell records) in `chronicles/`.
 
@@ -41,7 +41,7 @@ These are regulations where CJIB itself is the executing cell, either directly o
 
 CJIB collects for at least 15 opdrachtgevers. The legal basis is per-case: some are sectoral acts that designate the Minister of JenV or directly CJIB; others are mandate constructions under the Algemene wet bestuursrecht. The Clustering Rijksincasso (CRI) program, formalized via [eenoverheidsincasso.nl](https://www.eenoverheidsincasso.nl/onze-partners), structures this collaboration.
 
-In Chronolexografie terms, the opdrachtgever's cell produces the primary decretogram (the inhoudelijke beschikking) and CJIB's cell records the executograms (betaling, kwijtschelding) on behalf of the opdrachtgever. Whether CJIB also produces a follow-on decretogram of its own (for example a dwangbevel under Awb 4:114) depends on the regulation and the convenant.
+In Chronolexografie terms, the *opdrachtgever*'s cell produces the primary decretogram (the *inhoudelijke beschikking*) and CJIB's cell records the executograms (*betaling*, *kwijtschelding*) on behalf of the *opdrachtgever*. Whether CJIB also produces a follow-on decretogram of its own (for example a *dwangbevel* under Awb 4:114) depends on the regulation and the *convenant*.
 
 | Opdrachtgever | Type vordering | Grondslag (best available) | Decretogram-cel | Executogram-cel (collection) | Maps to RegelRecht schema? |
 |---|---|---|---|---|---|
@@ -65,10 +65,10 @@ The eight original CRI rijksorganisaties are: Belastingdienst, Dienst Toeslagen,
 
 This is worth stating because lezers often misattribute. CJIB does **not** collect:
 
-- **Gemeentelijke parkeerboetes**. These are municipal fiscal sanctions under the Wet Mulder regime; gemeenten collect via Cocensus, Belastingsamenwerkingen, or in-house.
-- **Fiscale aanslagen** (income tax, BTW, etc.). The Belastingdienst executes its own invordering via the Invorderingswet 1990.
+- ***Gemeentelijke parkeerboetes***. These are municipal fiscal sanctions under the Wet Mulder regime; *gemeenten* collect via Cocensus, Belastingsamenwerkingen, or in-house.
+- ***Fiscale aanslagen*** (income tax, BTW, etc.). The Belastingdienst executes its own *invordering* via the Invorderingswet 1990.
 - **Gemeentelijke leges** and lokale heffingen, same reason as parkeerboetes.
-- **Civielrechtelijke vorderingen** between private parties. Those go through gerechtsdeurwaarders.
+- ***Civielrechtelijke vorderingen*** between private parties. Those go through *gerechtsdeurwaarders*.
 - **Deurwaardersbeslag** in private-law disputes.
 
 The line is roughly: CJIB does state-imposed financial obligations under public law (criminal, administrative, or specific civil-law victim measures), specifically when collection is centralized at Rijksniveau.
@@ -94,33 +94,33 @@ CJIB's own statutory base (Wahv, Sv 257a, Sr 36e/36f, Wet USB, Awb 4.4) and the 
 
 The current `produces.decision_type` enum has nine values: TOEKENNING, AFWIJZING, GOEDKEURING, GEEN_BESLUIT, ALGEMEEN_VERBINDEND_VOORSCHRIFT, BELEIDSREGEL, VOORBEREIDINGSBESLUIT, ANDERE_HANDELING, AANSLAG. None describe the financial-enforcement domain.
 
-[RFC-022 §1.2](/rfcs/rfc-022) adds three values, each a distinct type of besluit:
+[RFC-022 §1.2](/rfcs/rfc-022) adds three values, each a distinct type of *besluit*:
 
-- `BETALINGSVERPLICHTING` — generic financial obligation imposed by a bestuursorgaan
+- `BETALINGSVERPLICHTING` — generic financial obligation imposed by a *bestuursorgaan*
 - `STRAFBESCHIKKING` — criminal-law settlement under Sv 257a
 - `BESTUURLIJKE_BOETE` — sectoral administrative fine
 
-Intrekkingen of an earlier beschikking are not a separate type: they are the same `decision_type` with `modality.is_intrekking_van: <id>` (RFC-022 §3.1). This matches Awb practice: an intrekking is a handeling on an existing besluit, not a new besluit-type.
+*Intrekkingen* of an earlier *beschikking* are not a separate type: they are the same `decision_type` with `modality.is_intrekking_van: <id>` (RFC-022 §3.1). This matches Awb practice: an *intrekking* is a *handeling* on an existing *besluit*, not a new *besluit*-type.
 
 `legal_character: BESCHIKKING` already covers all of these.
 
 ### Executogrammen (factual events)
 
-These do not belong in `produces` at all. A payment received, a kwijtschelding executed, a deurwaarder triggered: these are not regulation outputs. RFC-022 §1.3 introduces `chronicles/` as a separate top-level directory (parallel to `corpus/`, not inside it) for chronicle-stream files. The most natural CJIB chronicle-stream entries are:
+These do not belong in `produces` at all. A payment received, a *kwijtschelding* executed, a *deurwaarder* triggered: these are not regulation outputs. RFC-022 §1.3 introduces `chronicles/` as a separate top-level directory (parallel to `corpus/`, not inside it) for chronicle-stream files. The most natural CJIB chronicle-stream entries are:
 
 - `payment_received` — maps to FCID `BetalingVerwerkt`
 - `kwijtschelding_verleend` — maps to FCID `BetalingsverplichtingIngetrokken` with a reden veld
-- `deurwaardertraject_gestart` — maps to FCID `BetalingsverplichtingOpgelegd` if it creates a separate verplichting for kosten; or is recorded internally without FCID emission if it is procedural
+- `deurwaardertraject_gestart` — maps to FCID `BetalingsverplichtingOpgelegd` if it creates a separate *verplichting* for *kosten*; or is recorded internally without FCID emission if it is procedural
 
-Each of these is a registratie, not an interpretatie. Putting them under `corpus/` (alongside regulations) would conflate norm and fact at the filesystem level; RFC-022 keeps them apart.
+Each of these is a *registratie*, not an *interpretatie*. Putting them under `corpus/` (alongside regulations) would conflate norm and fact at the filesystem level; RFC-022 keeps them apart.
 
 ## Mapping onto MBO / FCID
 
-The full mapping from decretograms and executograms to [FCID](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) events lives in the [MBO/FCID integration document](/integrations/mbo-fcid). In short: each FCID `event_type` corresponds to either a decretogram (the three `*Opgelegd` and the `*Ingetrokken`) or an executogram (`BetalingVerwerkt`). Categories (Algemeen, Administratiekosten, Verhoging, Rente) are orthogonal to the chronolex-type and encoded via the `extensions.mbo_fcid` namespace that RFC-022 §3.2 adds for integration use. Activation of the integration lives in the cell-config, not in the lexogram: a gemeente that runs the same Wahv as CJIB but does not connect to MBO simply does not activate `mbo_fcid` in its own cell.
+The full mapping from decretograms and executograms to [FCID](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) events lives in the [MBO/FCID integration document](/integrations/mbo-fcid). In short: each FCID `event_type` corresponds to either a decretogram (the three `*Opgelegd` and the `*Ingetrokken`) or an executogram (`BetalingVerwerkt`). Categories (Algemeen, Administratiekosten, Verhoging, Rente) are orthogonal to the chronolex-type and encoded via the `extensions.mbo_fcid` namespace that RFC-022 §3.2 adds for integration use. Activation of the integration lives in the cell-config, not in the lexogram: a *gemeente* that runs the same Wahv as CJIB but does not connect to MBO simply does not activate `mbo_fcid` in its own cell.
 
 ## Open questions and data gaps
 
-The following items could not be verified from public sources and need input from CJIB or its opdrachtgevers:
+The following items could not be verified from public sources and need input from CJIB or its *opdrachtgevers*:
 
 1. **Complete CJIB portfolio**. Internal USB lists exist but are not publicly indexed.
 2. **CJIB-side FCID adoption status**. Which regulations already emit FCID (in pilot or production), and which version?
