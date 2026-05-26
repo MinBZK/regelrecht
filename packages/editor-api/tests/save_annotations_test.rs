@@ -358,6 +358,136 @@ async fn missing_sidecar_returns_404() {
     assert_eq!(err.0, StatusCode::NOT_FOUND, "{}", err.1);
 }
 
+/// Provision a traject with TWO local sources, mirroring the production
+/// federated layout:
+///   - a read-only `seed` source (carrying the law file, no auth token)
+///   - a writable-own source at priority 0 (the traject's own "branch",
+///     starts empty)
+///
+/// This is the shape that production uses (central GitHub seed + a
+/// writable_own pointing at the same repo's traject branch). It exposes
+/// any read-path that assumes the writable_own ALSO contains the law
+/// file at a verifiable path — a check that holds for scenarios (which
+/// live under the law's own directory) but breaks for annotations
+/// (separate `annotations/{law_id}/...` tree).
+async fn seeded_traject(
+    pool: &PgPool,
+    owner_id: Uuid,
+    seed_dir: &std::path::Path,
+    writable_own_dir: &std::path::Path,
+) -> Uuid {
+    let (traject_id,): (Uuid,) = sqlx::query_as(
+        "INSERT INTO trajects (name, description, scope, created_by)
+         VALUES ('Test', '', '', $1) RETURNING id",
+    )
+    .bind(owner_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO traject_members (traject_id, account_id, role)
+         VALUES ($1, $2, 'owner')",
+    )
+    .bind(traject_id)
+    .bind(owner_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    // Seed source — carries the law file.
+    sqlx::query(
+        "INSERT INTO traject_corpus_sources
+         (traject_id, source_id, name, source_type, local_path,
+          priority, scopes, is_writable_own)
+         VALUES ($1, 'seed', 'Seed', 'local'::corpus_source_type, $2,
+                 5, '[]'::jsonb, FALSE)",
+    )
+    .bind(traject_id)
+    .bind(seed_dir.to_string_lossy().to_string())
+    .execute(pool)
+    .await
+    .unwrap();
+    // Writable-own at priority 0. Starts empty; first save lands here.
+    sqlx::query(
+        "INSERT INTO traject_corpus_sources
+         (traject_id, source_id, name, source_type, local_path,
+          priority, scopes, is_writable_own)
+         VALUES ($1, 'writable_own', 'Writable Own',
+                 'local'::corpus_source_type, $2,
+                 0, '[]'::jsonb, TRUE)",
+    )
+    .bind(traject_id)
+    .bind(writable_own_dir.to_string_lossy().to_string())
+    .execute(pool)
+    .await
+    .unwrap();
+    traject_id
+}
+
+#[tokio::test]
+async fn saved_note_is_readable_with_seeded_traject() {
+    // Regression: in production the writable_own backend is a separate
+    // source from the seed that owns the law file. `save_annotations`
+    // routes through `write_target_for_source` and lands on the
+    // writable_own, but the read path went through the scenarios'
+    // `resolve_backend_for_law` helper, which verifies the candidate
+    // writable backend by trying to read the LAW FILE from it. The
+    // writable_own starts with only the saved annotation and no law
+    // file (annotations live under a separate `annotations/{law_id}/`
+    // tree), so the verification fell through and the read landed on
+    // the read-only seed instead — which had no annotation either,
+    // hence the 404 the user saw after refresh.
+    //
+    // The single-writable-source tests above mask this because the
+    // law's own source IS the writable_own, so the verification step
+    // is skipped entirely.
+    let db = TestDb::new().await;
+    let state = empty_state(db.pool.clone());
+    let (owner, sub) = seed_account(&db.pool, "alice@test.local").await;
+
+    let seed = tempfile::tempdir().unwrap();
+    let writable_own = tempfile::tempdir().unwrap();
+    // Seed has the law; writable_own starts empty (mirrors fresh
+    // traject branch before any law edits).
+    write_law(seed.path());
+    let traject_id = seeded_traject(&db.pool, owner, seed.path(), writable_own.path()).await;
+
+    // Save a note via the actual handler.
+    let body = serde_json::to_string(&[note(LAW_ID, "zorgtoeslag")]).unwrap();
+    let _ = save_annotations(
+        State(state.clone()),
+        session_for(&sub, Some(traject_id)).await,
+        Path(LAW_ID.to_string()),
+        body,
+    )
+    .await
+    .expect("save should succeed");
+
+    // Sanity check: the save landed on the writable_own backend, not
+    // the seed. (Mirror of `save_on_seed_loaded_law_lands_on_writable_own_backend`
+    // in `traject_reads_test.rs`.)
+    let writable_own_sidecar = writable_own
+        .path()
+        .join("annotations")
+        .join(LAW_ID)
+        .join("annotations.yaml");
+    assert!(
+        writable_own_sidecar.exists(),
+        "save must land on writable_own, not seed"
+    );
+
+    // The read must return the just-saved note — same backend as the
+    // write, not the seed.
+    let yaml_text = read_annotations(state, session_for(&sub, Some(traject_id)).await).await;
+    let doc: serde_json::Value = serde_yaml_ng::from_str(&yaml_text).unwrap();
+    let notes = doc["annotations"].as_array().unwrap();
+    assert_eq!(
+        notes.len(),
+        1,
+        "expected the freshly-saved note; got {doc:?}"
+    );
+    assert_eq!(notes[0]["target"]["selector"]["exact"], "zorgtoeslag");
+}
+
 #[tokio::test]
 async fn cross_traject_isolation_on_reads() {
     // A note saved in traject A must NOT be visible from traject B —
