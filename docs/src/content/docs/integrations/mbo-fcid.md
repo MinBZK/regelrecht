@@ -1,6 +1,6 @@
 # Integration: Mijn Betaaloverzicht (FCID)
 
-This page specifies how a cell that runs a RegelRecht engine integrates with [Mijn Betaaloverzicht (MBO)](https://www.eenoverheidsincasso.nl/onze-dienstverlening/vorderingenoverzicht-rijk) using the [Financial Claims Information Document (FCID)](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) standard. It uses the chronolexogram types, the `extensions` mechanism, and the `source.kind: lexostatus_query` construct from [RFC-019](/rfcs/rfc-019), the AWB lifecycle from [RFC-008](/rfcs/rfc-008), and the federation/signing mechanics from [RFC-009](/rfcs/rfc-009).
+This page specifies how a cell that runs a RegelRecht engine integrates with [Mijn Betaaloverzicht (MBO)](https://www.eenoverheidsincasso.nl/onze-dienstverlening/vorderingenoverzicht-rijk) using the [Financial Claims Information Document (FCID)](https://vorijk.nl/docs/financiele-verplichtingen/document_types/financial_claims_information_document/) standard. It uses the chronolexogram types, the `extensions` mechanism, and the registry-resolved `source` block from [RFC-019](/rfcs/rfc-019), the AWB lifecycle from [RFC-008](/rfcs/rfc-008), and the federation/signing mechanics from [RFC-009](/rfcs/rfc-009).
 
 The specification targets FCID v4.x (v4.2.0 as of mei 2026) and tracks upstream as the standard evolves. This document is intended to be updated when FCID minor versions are published, without requiring a new RFC.
 
@@ -13,7 +13,7 @@ A cell that runs a RegelRecht engine and activates the `mbo_fcid` integration em
 - **Decretogram-derived FCID events**, when a regulation produces a `BESCHIKKING` with a financial-enforcement `decision_type` and its `extensions.mbo_fcid` block declares the FCID category. Emission happens at a specific AWB lifecycle stage (RFC-008), typically `BEKENDMAKING`.
 - **Executogram-derived FCID events**, when an event in a chronicle-stream file (under `chronicles/`) declares an `extensions.mbo_fcid` block and the surrounding intake fires.
 
-In the consumer direction, a regulation can ask MBO for a citizen's *openstaande vorderingen* via `source.kind: lexostatus_query`. The query reaches the CJIB cell through RFC-009's ACCEPT path; no wrapper-regulation needed.
+In the consumer direction, a regulation can ask MBO for a citizen's *openstaande vorderingen* by naming the CJIB cell in a normal `source` block (RFC-019 §4). The query reaches the CJIB cell through RFC-009's ACCEPT path; no wrapper-regulation, no new schema fields.
 
 ## Activation
 
@@ -166,22 +166,21 @@ When `references_decision` is present, the integration looks up that decision's 
 
 ## Consumer side: querying MBO
 
-A regulation that needs the citizen's *openstaande vorderingen* declares a lexostatus-query source, not a fake regulation reference:
+A regulation that needs the citizen's *openstaande vorderingen* uses the normal `source` block (RFC-007), naming the CJIB cell instead of a regulation. The CJIB cell exposes `openstaande_vorderingen` as one of its lexostatus outputs:
 
 ```yaml
 input:
   - name: openstaande_vorderingen
     source:
-      kind: lexostatus_query
-      cell: cjib
-      lexostatus: openstaande_vorderingen
+      regulation: cjib                      # cell-id in the FSC service registry
+      output: openstaande_vorderingen       # the lexostatus the cell exposes
       parameters:
         bsn: $bsn
 ```
 
-The engine resolves through RFC-009's EXECUTE/ACCEPT decision tree on `source.kind: lexostatus_query`. A non-CJIB engine hits ACCEPT and calls the CJIB cell via FSC. A CJIB engine answers locally from its own chronicle. Either way the consumer sees a list of vordering records suitable as downstream input.
+The engine's resolver looks up `cjib` in the FSC service registry. Because it resolves to a cell (not a regulation in the loaded corpus), the resolver follows the RFC-009 ACCEPT path: a federated query to the CJIB cell. A CJIB engine itself answers locally from its own chronicle. Either way the consumer sees a list of vordering records suitable as downstream input.
 
-The CJIB cell internally performs a chronolexoreductie: it filters its chronicles for the BSN, combines outstanding decretograms with their executograms (payments, kwijtscheldingen), and returns a lexostatus. RegelRecht consumers do not see the chronicle entries; they see the result. Each vordering in the returned lexostatus carries the same `bezwaar_route` as the corresponding FCID event would.
+The CJIB cell internally performs a chronolexoreductie: it filters its chronicles for the BSN, combines outstanding decretograms with their executograms (payments, *kwijtscheldingen*), and returns a lexostatus. RegelRecht consumers do not see the chronicle entries; they see the result. Each vordering in the returned lexostatus carries the same `bezwaar_route` as the corresponding FCID event would.
 
 ## Trust and signing
 
