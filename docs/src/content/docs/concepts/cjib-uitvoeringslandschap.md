@@ -1,6 +1,6 @@
 # CJIB-uitvoeringslandschap
 
-This page surveys what the Centraal Justitieel Incassobureau (CJIB) actually does — which regulations it executes itself, which it executes on behalf of other organizations, and the policy framework that governs all of it. It is background material for [RFC-009 (Multi-Organisation Execution)](/rfcs/rfc-009) and RFC-019 (RegelRecht × MBO). It is not normative.
+This page surveys what the Centraal Justitieel Incassobureau (CJIB) actually does: which regulations it executes itself, which it executes on behalf of other organizations, and the policy framework that governs both. It is background material for [RFC-009 (Multi-Organisation Execution)](/rfcs/rfc-009) and [RFC-019 (RegelRecht × MBO)](/rfcs/rfc-019). It is not normative.
 
 CJIB is a zelfstandig bestuursorgaan (ZBO) under the Ministry of Justice and Security. It is the central financial-enforcement hub of the Dutch government: the place where almost every administrative-law and criminal-law financial obligation eventually lands when a citizen does not pay voluntarily. As of 2026 it executes for at least 15 opdrachtgevers, ranging from the OM to a sectoral inspectorate like NEa.
 
