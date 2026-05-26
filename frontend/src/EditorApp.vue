@@ -194,6 +194,7 @@ const {
   issues: noteIssues,
   loading: notesLoading,
   error: notesError,
+  reload: reloadNotes,
 } = useNotes(lawId, selectedArticle);
 
 // Notes are a layer over the Tekst pane, not a separate pane. This toggle is
@@ -358,6 +359,12 @@ async function saveNotesToRepo() {
     } else {
       notesSaveStatus.value = 'Notities opgeslagen.';
     }
+    // After save, drafts are cleared but useNotes still serves the
+    // pre-save cached resolution (typically []). Force a refetch so
+    // the just-committed notes show up immediately instead of only
+    // after the user navigates away and back. NoChange also refetches
+    // — it's cheap and keeps the post-save state consistent.
+    await reloadNotes();
   } catch (e) {
     notesSaveError.value = e?.message || 'Opslaan mislukt';
   } finally {

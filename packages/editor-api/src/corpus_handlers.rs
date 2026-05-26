@@ -386,6 +386,148 @@ pub async fn get_scenario(
     ))
 }
 
+/// Shared backend handle: a clone of the entry's `Arc<Mutex<...>>` from
+/// the corpus state. The `Mutex` is held only across a single read/write
+/// to keep contention scoped to one I/O call. Aliased here because the
+/// fully-spelled type trips `clippy::type_complexity` on function
+/// signatures.
+type SharedBackend = Arc<Mutex<Box<dyn RepoBackend>>>;
+
+/// Resolve the backend a `get_annotations` read should hit for `law_id`,
+/// mirroring the write-path routing in `resolve_traject_law_write`.
+///
+/// With an active traject this returns the writable backend that
+/// `save_annotations` writes to (its branch), so a note just appended is
+/// visible on the next refresh. Without an active traject this falls
+/// back to the law's own source backend in the global corpus — matches
+/// the static-mirror semantics the frontend used to rely on (central
+/// main's annotations for anonymous browsing).
+///
+/// Synchronous: only does `HashMap` lookups against the resolved
+/// `ReadScope`. No DB hit (the membership check already happened in
+/// `resolve_read_corpus`).
+fn resolve_annotation_read_backend(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<SharedBackend, (StatusCode, String)> {
+    match scope {
+        ReadScope::Traject(traject) => {
+            let law =
+                traject.corpus.source_map.get_law(law_id).ok_or_else(|| {
+                    (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id))
+                })?;
+            // Mirror `resolve_traject_law_write`: a law from a
+            // non-writable_own source is routed to the writable_own
+            // backend via `write_target_for_source`; a law from a
+            // writable source goes to its own.
+            let target_source_id = traject
+                .write_target_for_source
+                .get(&law.source_id)
+                .cloned()
+                .unwrap_or_else(|| law.source_id.clone());
+            let entry = traject
+                .corpus
+                .backends
+                .get(&target_source_id)
+                .ok_or_else(|| {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Writable backend not initialised".to_string(),
+                    )
+                })?;
+            Ok(entry.backend.clone())
+        }
+        ReadScope::Global(corpus) => {
+            // No traject: read from the law's own source. There is no
+            // per-traject branch involved, so the seed/central source
+            // is the right target — matches the old static-mirror
+            // surface for anonymous browsing.
+            let law = corpus
+                .source_map
+                .get_law(law_id)
+                .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
+            let entry = corpus.backends.get(&law.source_id).ok_or_else(|| {
+                (
+                    StatusCode::NOT_FOUND,
+                    format!("No backend registered for source '{}'", law.source_id),
+                )
+            })?;
+            Ok(entry.backend.clone())
+        }
+    }
+}
+
+/// GET /api/corpus/laws/{law_id}/annotations — return the law's stand-off
+/// notes sidecar.
+///
+/// Routed through the same backend as `save_annotations`: with an active
+/// traject the read hits that traject's writable backend (its branch),
+/// so a note just appended by `save_annotations` is visible on the next
+/// refresh — the gap that #662 left open when it moved law reads to the
+/// API but kept annotation reads on the static `/data` mirror baked into
+/// the frontend container.
+///
+/// Without an active traject the read degrades to the global corpus's
+/// resolved backend for the law (the central source's main view), matching
+/// the static-mirror semantics the frontend used to rely on.
+///
+/// A missing sidecar returns 404 — "law without notes" is the normal
+/// case and `useNotes.js` already treats it as a non-error.
+///
+/// Why not reuse `resolve_backend_for_law` (which `get_scenario` uses)?
+/// That helper verifies a candidate writable backend by reading the
+/// *law file* from it. Scenarios live under the law's own directory so
+/// the check is a reliable proxy for "this backend has this law's
+/// content". Annotations live under a *separate* `annotations/{law_id}/`
+/// tree, and a freshly-created traject branch can carry a saved
+/// annotation without ever having received a law-content edit — the
+/// verification then falls through to the read-only seed and the
+/// just-saved note silently disappears on refresh. The annotation read
+/// instead mirrors the write path's routing
+/// (`write_target_for_source`), which is the single source of truth
+/// for "which backend owns this law's writes in this traject".
+pub async fn get_annotations(
+    State(state): State<AppState>,
+    session: Session,
+    Path(law_id): Path<String>,
+) -> Result<
+    (
+        StatusCode,
+        [(axum::http::HeaderName, &'static str); 1],
+        String,
+    ),
+    (StatusCode, String),
+> {
+    let scope = resolve_read_corpus(&state, &session).await;
+    let backend = resolve_annotation_read_backend(&scope, &law_id)?;
+
+    // RFC-018 §1: keyed by law id at the source root, regardless of where
+    // the law file lives. Same path the `save_annotations` write uses.
+    let relative_path = PathBuf::from("annotations")
+        .join(&law_id)
+        .join("annotations.yaml");
+
+    let backend = backend.lock().await;
+    let content = backend
+        .read_file(&relative_path)
+        .await
+        .map_err(|e| {
+            tracing::warn!(law_id = %law_id, error = %e, "get_annotations backend read failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to read annotations".to_string(),
+            )
+        })?
+        .ok_or((StatusCode::NOT_FOUND, "Annotations not found".to_string()))?;
+    drop(backend);
+
+    Ok((
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/yaml; charset=utf-8")],
+        content,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Scenario write helpers
 // ---------------------------------------------------------------------------

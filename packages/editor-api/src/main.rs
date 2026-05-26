@@ -145,6 +145,10 @@ async fn main() {
             "/api/corpus/laws/{law_id}/scenarios/{filename}",
             get(corpus_handlers::get_scenario),
         )
+        .route(
+            "/api/corpus/laws/{law_id}/annotations",
+            get(corpus_handlers::get_annotations),
+        )
         .route("/api/feature-flags", get(feature_flags::list_feature_flags))
         // Harvest status — forwarded to pipeline-api. Read-only DB lookup,
         // safe to expose unauthenticated. (The search endpoint lives behind
