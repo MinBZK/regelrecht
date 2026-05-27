@@ -103,6 +103,18 @@ function fallbackName(lawId) {
  *   traject reference. Without it the global view is used.
  */
 export function useCorpusLaws(trajectRef) {
+  // A plain string passed here gets silently wrapped in a static
+  // `ref(value)` that never reacts to the caller's scope changes —
+  // which would look like "the corpus list is stuck" without any
+  // error. All current callers pass a `Ref` (via `toRef(props, ...)`
+  // or `computed`); a dev-mode warning catches future misuses before
+  // they ship as a silent regression.
+  if (trajectRef !== undefined && trajectRef !== null && !('value' in trajectRef)) {
+    console.warn(
+      'useCorpusLaws: trajectRef should be a Ref, got plain value — list will not react to scope changes',
+      trajectRef,
+    );
+  }
   const refSource = trajectRef && 'value' in trajectRef
     ? trajectRef
     : ref(trajectRef ?? null);

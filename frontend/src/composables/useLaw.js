@@ -1,7 +1,7 @@
 import { computed, ref, shallowRef } from 'vue';
 import yaml from 'js-yaml';
 import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
-import { lawUrl, requireTraject } from './corpusUrls.js';
+import { lawUrl } from './corpusUrls.js';
 
 // Shared law cache, keyed by `${trajectRef || ''}::${lawId}` so a law
 // opened in traject A and in traject B (or globally) returns the
@@ -221,7 +221,6 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     saving.value = true;
     saveError.value = null;
     try {
-      requireTraject(savedTrajectRef, 'law save');
       const res = await fetch(lawUrl(savedTrajectRef, savedLawId), {
         method: 'PUT',
         headers: {
