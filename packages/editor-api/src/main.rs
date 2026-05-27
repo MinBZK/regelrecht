@@ -286,6 +286,14 @@ async fn main() {
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios/{filename}",
+            // `DefaultBodyLimit` on a `MethodRouter` applies to every
+            // method on that route — including the GET handler. The
+            // GET is a no-op for body-reading so the limit is
+            // effectively a no-op there; the cap is the relevant
+            // guard for the PUT/DELETE handlers below. Restructuring
+            // to a per-method layer would require splitting the GET
+            // off into a separate `.route()` call, which we'd rather
+            // not do for one shared path.
             get(corpus_handlers::get_traject_scenario)
                 .put(corpus_handlers::save_scenario)
                 .delete(corpus_handlers::delete_scenario)
@@ -293,6 +301,9 @@ async fn main() {
         )
         .route(
             "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
+            // Same shape as the scenarios route above: the body limit
+            // covers the whole MethodRouter; only the PUT actually
+            // reads a body.
             get(corpus_handlers::get_traject_annotations)
                 .put(corpus_handlers::save_annotations)
                 .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),

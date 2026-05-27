@@ -62,8 +62,13 @@ export function useTrajects() {
   ensureTrajectsReady();
   const route = useRoute();
   const activeTrajectRef = computed(() => route.params.trajectRef || null);
+  // Guard against `t.ref` being null/undefined: the backend serialises
+  // it as `null` when a `TrajectSummary` is built without calling
+  // `fill_ref()` (defensive contract — see editor-api/trajects.rs).
+  // Skip those rather than risk a `null === null` match against a
+  // missing `activeTrajectRef`.
   const activeTraject = computed(
-    () => trajects.value.find((t) => t.ref === activeTrajectRef.value) || null,
+    () => trajects.value.find((t) => t.ref && t.ref === activeTrajectRef.value) || null,
   );
   return {
     trajects,

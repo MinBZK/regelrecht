@@ -115,6 +115,16 @@ async function selectNoTraject() {
 }
 
 async function selectTraject(t) {
+  // `t.ref` is a server-supplied `Option<String>` and serialises to
+  // `null` when a `TrajectSummary` is built without calling
+  // `fill_ref()`. Refuse to navigate — silently routing to
+  // `/editor/null/...` would just bounce off the trajectRef regex
+  // and confuse the user. Treat as a programming error on the
+  // backend side, log and bail.
+  if (!t.ref) {
+    console.warn('TrajectMenu: traject has no ref', t);
+    return;
+  }
   if (t.ref === activeTrajectRef.value) return;
   await goToTraject(t.ref);
   emit('switched', t.ref);

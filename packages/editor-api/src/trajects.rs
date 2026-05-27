@@ -27,9 +27,16 @@ pub struct TrajectSummary {
     /// and `id`; the slug part is cosmetic, the trailing 8 hex chars of
     /// the uuid are the actual lookup key (see `resolve_traject_ref`).
     /// Populated post-fetch — sqlx::FromRow doesn't see it in the SELECT.
+    ///
+    /// `Option<String>` (not `String` with a default of `""`) so a future
+    /// code path that fetches a `TrajectSummary` and forgets to call
+    /// `fill_ref()` serializes to `"ref": null` instead of `"ref": ""`.
+    /// The frontend's `t.ref === activeTrajectRef.value` comparison then
+    /// fails loudly (never matches) instead of silently equating two
+    /// empty strings against a missing trajectRef.
     #[serde(rename = "ref")]
     #[sqlx(default)]
-    pub traject_ref: String,
+    pub traject_ref: Option<String>,
 }
 
 impl TrajectSummary {
@@ -37,7 +44,7 @@ impl TrajectSummary {
     /// right after a sqlx fetch and after any in-memory mutation that
     /// might change the slug.
     pub fn fill_ref(&mut self) {
-        self.traject_ref = traject_ref(&self.name, self.id);
+        self.traject_ref = Some(traject_ref(&self.name, self.id));
     }
 }
 
@@ -623,7 +630,7 @@ pub async fn create(
         scope: req.scope,
         status: "bezig".to_string(),
         role: "owner".to_string(),
-        traject_ref: String::new(),
+        traject_ref: None,
     };
     summary.fill_ref();
     Ok((StatusCode::CREATED, Json(summary)))
