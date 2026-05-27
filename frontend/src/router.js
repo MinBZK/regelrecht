@@ -3,6 +3,14 @@ import LibraryApp from './LibraryApp.vue';
 import { ensureAuthReady, useAuth } from './composables/useAuth.js';
 import { recordLastVisited } from './composables/useLastVisitedRoute.js';
 
+// Traject ref shape: `{slug}-{8hex}` where the trailing 8 hex chars are
+// the lookup key against the trajects table (slug is cosmetic — see
+// `resolve_traject_ref` in editor-api). Loose enough to accept the
+// runtime-generated slug, strict enough to disambiguate from a bare
+// law-id slug so an old-shape `/editor/{lawId}` bookmark falls through
+// to the legacy redirect below.
+const TRAJECT_REF_RE = /^[a-z0-9-]+-[0-9a-f]{8}$/i;
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -14,15 +22,36 @@ const router = createRouter({
       meta: { title: 'Bibliotheek' },
     },
     {
-      path: '/editor/:lawId?/:articleNumber?',
+      // Per-tab active traject lives in the URL: each open tab carries
+      // its own `trajectRef`, so a switch in one tab no longer leaks
+      // into another tab's saves. The matching API routes hang under
+      // `/api/trajects/{trajectRef}/corpus/...` (see editor-api main.rs).
+      path: '/editor/:trajectRef/:lawId?/:articleNumber?',
       name: 'editor',
       component: () => import('./EditorApp.vue'),
       meta: { title: 'Editor', requiresAuth: true },
+      beforeEnter: (to) => {
+        // Legacy bookmark `/editor/{lawId}` (no traject) — interpret
+        // `trajectRef` as the law id and redirect to the global library
+        // view. Users can re-open in a traject via the menu.
+        if (!TRAJECT_REF_RE.test(to.params.trajectRef)) {
+          return {
+            name: 'library',
+            params: {
+              lawId: to.params.trajectRef,
+              articleNumber: to.params.lawId,
+            },
+          };
+        }
+      },
     },
     {
       path: '/editor.html',
+      // Legacy query-string entry point — without a traject we can't
+      // land in the editor, so route to the library view of the
+      // requested law instead.
       redirect: (to) => ({
-        name: 'editor',
+        name: 'library',
         params: {
           lawId: to.query.law || undefined,
           articleNumber: to.query.article || undefined,

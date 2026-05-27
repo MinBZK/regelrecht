@@ -1,16 +1,15 @@
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
+import { lawsListUrl } from './corpusUrls.js';
 
 /**
- * Shared corpus-laws list. The `/api/corpus/laws` payload is small (~kb) and
- * stable per page-load, so we fetch once and reuse across components that
- * need to resolve a law_id to its human name (Bron-regelgeving combo-box,
- * MachineReadable input rows, etc.).
+ * Shared corpus-laws list, scoped by the active traject. Each distinct
+ * traject (and the global view) gets its own cached payload — switching
+ * trajects routes through the corresponding `/api/trajects/{ref}/corpus/laws`
+ * endpoint without losing the previous traject's data on rebound.
  *
- * Module-level state — every consumer sees the same list/promise.
+ * Module-level state — every consumer for the same `trajectRef` shares
+ * the same list/promise.
  */
-
-const laws = ref([]);
-let fetchPromise = null;
 
 // Backend hard-caps `?limit` at 1000 (see editor-api/corpus_handlers.rs
 // MAX_LIMIT). With the current curated Test Corpus this is far above
@@ -20,34 +19,41 @@ let fetchPromise = null;
 // so the gap is visible rather than silently broken.
 const FETCH_LIMIT = 1000;
 
-function ensureFetched() {
-  if (fetchPromise) return fetchPromise;
-  fetchPromise = fetch(`/api/corpus/laws?limit=${FETCH_LIMIT}`)
+const lawsByScope = new Map(); // scopeKey -> Ref<Array>
+const fetchByScope = new Map(); // scopeKey -> Promise
+
+function scopeKey(trajectRef) {
+  return trajectRef || '';
+}
+
+function ensureFetched(trajectRef) {
+  const key = scopeKey(trajectRef);
+  if (fetchByScope.has(key)) return fetchByScope.get(key);
+  if (!lawsByScope.has(key)) lawsByScope.set(key, ref([]));
+  const lawsRef = lawsByScope.get(key);
+  const p = fetch(lawsListUrl(trajectRef, `limit=${FETCH_LIMIT}`))
     .then(r => {
-      // Throw on non-ok so the catch below resets fetchPromise — otherwise
-      // a transient 500/404 at first call would lock us into the empty-list
-      // fallback for the rest of the session, since later useCorpusLaws()
-      // calls would see the (already-resolved) promise and skip refetch.
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     })
     .then(list => {
-      laws.value = Array.isArray(list) ? list : [];
-      if (laws.value.length >= FETCH_LIMIT) {
+      lawsRef.value = Array.isArray(list) ? list : [];
+      if (lawsRef.value.length >= FETCH_LIMIT) {
         console.warn(
           `useCorpusLaws: hit the ${FETCH_LIMIT}-law cap — laws beyond this won't resolve to display names. ` +
           `Pagination needs to be added if the corpus has grown past ${FETCH_LIMIT} entries.`,
         );
       }
-      return laws.value;
+      return lawsRef.value;
     })
     .catch(() => {
-      laws.value = [];
+      lawsRef.value = [];
       // Reset so the next consumer mount triggers a fresh fetch.
-      fetchPromise = null;
+      fetchByScope.delete(key);
       return [];
     });
-  return fetchPromise;
+  fetchByScope.set(key, p);
+  return p;
 }
 
 /**
@@ -59,8 +65,37 @@ function fallbackName(lawId) {
   return lawId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-export function useCorpusLaws() {
-  ensureFetched();
+/**
+ * @param {import('vue').Ref<string|null>=} trajectRef Optional active
+ *   traject reference. Without it the global view is used.
+ */
+export function useCorpusLaws(trajectRef) {
+  const refSource = trajectRef && 'value' in trajectRef
+    ? trajectRef
+    : ref(trajectRef ?? null);
+  const laws = ref([]);
+
+  watch(
+    refSource,
+    (current) => {
+      const key = scopeKey(current);
+      ensureFetched(current);
+      laws.value = lawsByScope.get(key)?.value ?? [];
+      // Re-sync once the in-flight promise resolves: the initial
+      // assignment above only sees the cached value (empty on a miss).
+      const p = fetchByScope.get(key);
+      if (p) {
+        p.then(() => {
+          // Only commit if this is still the active scope by the time
+          // the fetch resolves — avoids a cross-scope late write.
+          if (scopeKey(refSource.value) === key) {
+            laws.value = lawsByScope.get(key)?.value ?? [];
+          }
+        });
+      }
+    },
+    { immediate: true },
+  );
 
   const lawsById = computed(() => {
     const map = new Map();

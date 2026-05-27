@@ -1,12 +1,9 @@
 import { computed, ref } from 'vue';
-import { clearLawCache } from './useLaw.js';
-import { clearNotesCache } from './useNotes.js';
+import { useRoute } from 'vue-router';
 
 const trajects = ref([]);
-const activeTrajectId = ref(null);
 const loading = ref(true);
 const error = ref(null);
-const trajectSwitchEpoch = ref(0);
 
 let readyPromise = null;
 
@@ -17,16 +14,9 @@ async function loadTrajects() {
   // for the duration of the round-trip.
   loading.value = true;
   try {
-    const [listResp, activeResp] = await Promise.all([
-      fetch('/api/trajects'),
-      fetch('/api/session/active-traject'),
-    ]);
-    if (listResp.ok) {
-      trajects.value = await listResp.json();
-    }
-    if (activeResp.ok) {
-      const body = await activeResp.json();
-      activeTrajectId.value = body.traject_id || null;
+    const resp = await fetch('/api/trajects');
+    if (resp.ok) {
+      trajects.value = await resp.json();
     }
   } catch (e) {
     error.value = e;
@@ -47,24 +37,6 @@ export async function refreshTrajects() {
   return readyPromise;
 }
 
-export async function switchTraject(trajectId) {
-  const resp = await fetch('/api/session/active-traject', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ traject_id: trajectId }),
-  });
-  if (!resp.ok) throw new Error(`Failed to switch traject: ${resp.status}`);
-  const body = await resp.json();
-  activeTrajectId.value = body.traject_id || null;
-  // Page components watch this counter (not activeTrajectId) so the initial null→id settle doesn't trigger a spurious refetch.
-  trajectSwitchEpoch.value++;
-
-  // Read scope changed server-side; drop cached law content and resolved notes so the next fetch hits the API. Stay on route — pages watch the epoch and refetch in place.
-  clearLawCache();
-  clearNotesCache();
-  return activeTrajectId.value;
-}
-
 export async function createTraject(payload) {
   const resp = await fetch('/api/trajects', {
     method: 'POST',
@@ -77,23 +49,28 @@ export async function createTraject(payload) {
   }
   const created = await resp.json();
   await refreshTrajects();
-  await switchTraject(created.id);
   return created;
 }
 
+// Active traject lives in `route.params.trajectRef` (per-tab state),
+// derived here so consumers do not each repeat the lookup. Returns
+// `null` for any route without a traject param — that's the "global
+// browse" mode where edits are not available. The ref is the URL form
+// `{slug}-{8hex}` returned on `t.ref`; the backend resolver looks up
+// the matching traject by the trailing 8 hex chars of its UUID.
 export function useTrajects() {
   ensureTrajectsReady();
-  const activeTraject = computed(() =>
-    trajects.value.find((t) => t.id === activeTrajectId.value) || null,
+  const route = useRoute();
+  const activeTrajectRef = computed(() => route.params.trajectRef || null);
+  const activeTraject = computed(
+    () => trajects.value.find((t) => t.ref === activeTrajectRef.value) || null,
   );
   return {
     trajects,
-    activeTrajectId,
+    activeTrajectRef,
     activeTraject,
     loading,
     error,
-    trajectSwitchEpoch,
-    switchTraject,
     createTraject,
     refreshTrajects,
   };

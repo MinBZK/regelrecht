@@ -9,7 +9,6 @@ import ActionSheet from './components/ActionSheet.vue';
 import SearchPopover from './components/SearchPopover.vue';
 import TrajectMenu from './components/TrajectMenu.vue';
 import { useAuth } from './composables/useAuth.js';
-import { useTrajects } from './composables/useTrajects.js';
 import { lawFetchError } from './composables/useLaw.js';
 import { useFeatureFlags } from './composables/useFeatureFlags.js';
 import { useColorScheme } from './composables/useColorScheme.js';
@@ -462,19 +461,10 @@ if (route.params.lawId) {
 }
 loadIndex();
 
-// On user-driven traject switch (epoch bump): refetch corpus index and the open law.
-const { trajectSwitchEpoch } = useTrajects();
-watch(trajectSwitchEpoch, () => {
-  // Reset error so the loading-gate kicks in before any new 404
-  // (e.g. when the open law isn't part of the new traject's corpus).
-  lawError.value = null;
-  indexError.value = null;
-  loading.value = true;
-  loadIndex();
-  if (selectedLawId.value) {
-    loadLaw(selectedLawId.value);
-  }
-});
+// LibraryApp is the global, no-traject view: it always reads through
+// `/api/corpus/...`. Switching trajects in the TrajectMenu is a route
+// change to `/editor/{ref}/...`, which leaves LibraryApp behind — no
+// in-place refetch needed here.
 </script>
 
 <template>

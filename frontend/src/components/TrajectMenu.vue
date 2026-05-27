@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
 
@@ -13,12 +14,40 @@ const emit = defineEmits(['switched']);
 
 const {
   trajects,
-  activeTrajectId,
+  activeTrajectRef,
   activeTraject,
   loading,
-  switchTraject,
   createTraject,
 } = useTrajects();
+const route = useRoute();
+const router = useRouter();
+
+/**
+ * Navigate to a traject — push the user into `/editor/{ref}/{lawId?}`
+ * preserving whichever law they were viewing. Per-tab state: a switch
+ * here only affects this tab, never other open editors.
+ */
+async function goToTraject(trajectRef) {
+  const lawId = route.params.lawId || undefined;
+  const articleNumber = route.params.articleNumber || undefined;
+  await router.push({
+    name: 'editor',
+    params: { trajectRef, lawId, articleNumber },
+  });
+}
+
+/**
+ * Leave traject scope — go to the global library. Keeps the open law
+ * in the URL so the user lands on the same law (read-only).
+ */
+async function goToLibrary() {
+  const lawId = route.params.lawId || undefined;
+  const articleNumber = route.params.articleNumber || undefined;
+  await router.push({
+    name: 'library',
+    params: { lawId, articleNumber },
+  });
+}
 
 const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);
 const menuId = computed(() => `traject-menu-${props.idSuffix}`);
@@ -78,14 +107,14 @@ function closeCreate() {
 }
 
 async function selectNoTraject() {
-  await switchTraject(null);
+  await goToLibrary();
   emit('switched', null);
 }
 
-async function selectTraject(id) {
-  if (id === activeTrajectId.value) return;
-  await switchTraject(id);
-  emit('switched', id);
+async function selectTraject(t) {
+  if (t.ref === activeTrajectRef.value) return;
+  await goToTraject(t.ref);
+  emit('switched', t.ref);
 }
 
 async function submitCreate() {
@@ -102,7 +131,10 @@ async function submitCreate() {
       scope: form.value.scope,
     });
     showCreate.value = false;
-    emit('switched', created.id);
+    // Jump straight into the new traject — same per-tab navigation as
+    // selecting from the dropdown.
+    await goToTraject(created.ref);
+    emit('switched', created.ref);
   } catch (e) {
     createError.value = e.message || 'Aanmaken mislukt';
   } finally {
@@ -131,7 +163,7 @@ function bind(field) {
   <nldd-menu :id="menuId" :anchor="menuBtnId">
     <nldd-menu-item
       type="radio"
-      :selected="activeTrajectId === null || undefined"
+      :selected="activeTrajectRef === null || undefined"
       text="Geen traject"
       @select="selectNoTraject"
     ></nldd-menu-item>
@@ -140,9 +172,9 @@ function bind(field) {
       v-for="t in trajects"
       :key="t.id"
       type="radio"
-      :selected="t.id === activeTrajectId || undefined"
+      :selected="t.ref === activeTrajectRef || undefined"
       :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
-      @select="selectTraject(t.id)"
+      @select="selectTraject(t)"
     ></nldd-menu-item>
     <nldd-menu-divider></nldd-menu-divider>
     <nldd-menu-item

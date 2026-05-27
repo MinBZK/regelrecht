@@ -7,7 +7,6 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tower_sessions::Session;
-use uuid::Uuid;
 
 use regelrecht_auth::handlers::{SESSION_KEY_EMAIL, SESSION_KEY_NAME, SESSION_KEY_SUB};
 use regelrecht_corpus::annotation_schema::{
@@ -23,7 +22,7 @@ use regelrecht_corpus::CorpusError;
 
 use crate::state::{AppState, CorpusState};
 use crate::traject_corpus::{TrajectCorpus, TrajectCorpusError};
-use crate::trajects::read_active_from_session;
+use crate::trajects::resolve_traject_ref;
 
 /// Response body for a successful save.
 ///
@@ -82,17 +81,12 @@ pub struct LawOutputEntry {
 }
 
 /// Read-time scope for the corpus endpoints. Either the per-traject
-/// corpus (when an active traject and a valid membership are both
-/// present), or the global corpus state under a read lock (anonymous /
-/// no-traject browsing). Both variants expose a `&CorpusState` view so
-/// the handlers stay agnostic.
-///
-/// Membership re-check and DB lookups for an active traject can fail
-/// (revoked member, deleted traject, transient DB error). In contrast
-/// with the write path (which 403s on any failure to protect the
-/// branch), the read path **degrades gracefully** to the global corpus
-/// so a user can still browse — saves will still be denied by the
-/// stricter `require_traject_corpus` guard on the write handlers.
+/// corpus (membership-checked) or the global corpus state under a read
+/// lock (anonymous / no-traject browsing). The variant is determined by
+/// the route — `/api/corpus/...` always lands in `Global`,
+/// `/api/trajects/{tid}/corpus/...` always lands in `Traject` — so a
+/// single handler body can serve both via the route-specific extractor
+/// that produced the scope.
 enum ReadScope {
     Traject(Arc<TrajectCorpus>),
     Global(tokio::sync::OwnedRwLockReadGuard<CorpusState>),
@@ -119,97 +113,79 @@ impl ReadScope {
     }
 }
 
-async fn resolve_read_corpus(state: &AppState, session: &Session) -> ReadScope {
-    // No active traject → straight to global (no DB hit).
-    let traject_id = match read_active_from_session(session).await {
-        Ok(Some(id)) => id,
-        _ => return ReadScope::Global(state.corpus.clone().read_owned().await),
-    };
-    let pool = match state.pool.as_ref() {
-        Some(p) => p,
-        None => return ReadScope::Global(state.corpus.clone().read_owned().await),
-    };
-
-    // Membership re-check. Same shape as `require_traject_corpus` but
-    // log-and-fall-back rather than 403 on any failure, so a stale
-    // session can't lock the user out of read access entirely.
-    let sub: Option<String> = session.get(SESSION_KEY_SUB).await.ok().flatten();
-    let Some(sub) = sub else {
-        return ReadScope::Global(state.corpus.clone().read_owned().await);
-    };
-    let membership: Result<(bool,), _> = sqlx::query_as(
-        "SELECT EXISTS(
-             SELECT 1 FROM accounts a
-             JOIN traject_members m ON m.account_id = a.id
-             WHERE a.person_sub = $1 AND m.traject_id = $2
-         )",
-    )
-    .bind(&sub)
-    .bind(traject_id)
-    .fetch_one(pool)
-    .await;
-    let is_member = match membership {
-        Ok((b,)) => b,
-        Err(e) => {
-            tracing::warn!(error = %e, "membership check failed in resolve_read_corpus; falling back to global");
-            return ReadScope::Global(state.corpus.clone().read_owned().await);
-        }
-    };
-    if !is_member {
-        // Drop the stale pointer so the next switch from the menu rebinds
-        // cleanly. Matches the same clear in `require_traject_corpus`.
-        let _: Option<Uuid> = session
-            .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
-            .await
-            .unwrap_or(None);
-        return ReadScope::Global(state.corpus.clone().read_owned().await);
-    }
-
-    let auth_file = {
-        let corpus = state.corpus.read().await;
-        corpus.auth_file.clone()
-    };
-    match state
-        .trajects
-        .get_or_build(pool, traject_id, auth_file, &state.favorites)
-        .await
-    {
-        Ok(traject) => ReadScope::Traject(traject),
-        Err(e) => {
-            // A traject_corpus build failure (DB row missing, source
-            // misconfigured, …) shouldn't fail an anonymous-looking GET.
-            // Log and serve the global view instead; the user's next
-            // write would surface the real error via the stricter
-            // `require_traject_corpus`.
-            tracing::warn!(error = %e, "traject corpus build failed in read path; falling back to global");
-            ReadScope::Global(state.corpus.clone().read_owned().await)
-        }
-    }
+/// Global read scope: no traject, no overlay. Used by every public
+/// `/api/corpus/...` GET — no membership check, no DB hit.
+async fn global_scope(state: &AppState) -> ReadScope {
+    ReadScope::Global(state.corpus.clone().read_owned().await)
 }
 
-/// GET /api/sources — list all registered corpus sources with law counts.
+/// Traject read scope: looks up the per-traject corpus, verifying the
+/// caller's membership against `traject_members`. Used by both
+/// `/api/trajects/{ref}/corpus/...` reads and the write handlers (writes
+/// also need the membership check before touching the branch).
+///
+/// The `traject_ref` is the URL form `{slug}-{8hex}` — resolved to a
+/// UUID before the membership query (see `resolve_traject_ref`). Returns
+/// 403 when the caller is not a member, 404 when the ref doesn't match
+/// any known traject, 400 when the ref is malformed.
+async fn require_traject_scope(
+    state: &AppState,
+    session: &Session,
+    traject_ref: &str,
+) -> Result<ReadScope, (StatusCode, String)> {
+    let traject = require_traject_corpus_from_ref(state, session, traject_ref).await?;
+    Ok(ReadScope::Traject(traject))
+}
+
+/// GET /api/sources — list all registered corpus sources (global).
 pub async fn list_sources(
     State(state): State<AppState>,
-    session: Session,
 ) -> Result<Json<Vec<SourceSummary>>, (StatusCode, String)> {
-    let scope = resolve_read_corpus(&state, &session).await;
-    let corpus = scope.corpus();
-    Ok(Json(build_source_summaries(
-        &corpus.registry,
-        &corpus.source_map,
-    )))
+    let scope = global_scope(&state).await;
+    Ok(Json(list_sources_in_scope(&scope)))
 }
 
-/// GET /api/corpus/laws — list loaded laws with source metadata.
+/// GET /api/trajects/{traject_id}/sources — same shape as `/api/sources`,
+/// but routed through the traject's per-source backends.
+pub async fn list_traject_sources(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+) -> Result<Json<Vec<SourceSummary>>, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    Ok(Json(list_sources_in_scope(&scope)))
+}
+
+fn list_sources_in_scope(scope: &ReadScope) -> Vec<SourceSummary> {
+    let corpus = scope.corpus();
+    build_source_summaries(&corpus.registry, &corpus.source_map)
+}
+
+/// GET /api/corpus/laws — list loaded laws with source metadata (global view).
 ///
 /// Supports pagination via `?offset=0&limit=100`. Default limit is 100,
 /// maximum is 1000.
 pub async fn list_corpus_laws(
     State(state): State<AppState>,
-    session: Session,
     Query(params): Query<PaginationParams>,
 ) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
-    let scope = resolve_read_corpus(&state, &session).await;
+    let scope = global_scope(&state).await;
+    Ok(Json(list_corpus_laws_in_scope(&scope, params)))
+}
+
+/// GET /api/trajects/{traject_id}/corpus/laws — same as `/api/corpus/laws`
+/// but the source_map comes from the traject's per-source backends.
+pub async fn list_traject_corpus_laws(
+    State(state): State<AppState>,
+    session: Session,
+    Path(traject_ref): Path<String>,
+    Query(params): Query<PaginationParams>,
+) -> Result<Json<Vec<CorpusLawEntry>>, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    Ok(Json(list_corpus_laws_in_scope(&scope, params)))
+}
+
+fn list_corpus_laws_in_scope(scope: &ReadScope, params: PaginationParams) -> Vec<CorpusLawEntry> {
     let corpus = scope.corpus();
     let limit = params.effective_limit();
 
@@ -230,31 +206,45 @@ pub async fn list_corpus_laws(
 
     entries.sort_by(|a, b| a.law_id.cmp(&b.law_id));
 
-    let paginated: Vec<CorpusLawEntry> = entries
+    entries
         .into_iter()
         .skip(params.offset)
         .take(limit)
-        .collect();
-
-    Ok(Json(paginated))
+        .collect()
 }
 
-/// GET /api/corpus/laws/{law_id} — return raw YAML content for a specific law.
+type YamlResponse = (
+    StatusCode,
+    [(axum::http::HeaderName, &'static str); 1],
+    String,
+);
+
+/// GET /api/corpus/laws/{law_id} — return raw YAML content for a specific law (global view).
 pub async fn get_corpus_law(
     State(state): State<AppState>,
-    session: Session,
     Path(law_id): Path<String>,
-) -> Result<
-    (
-        StatusCode,
-        [(axum::http::HeaderName, &'static str); 1],
-        String,
-    ),
-    (StatusCode, String),
-> {
-    let scope = resolve_read_corpus(&state, &session).await;
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let scope = global_scope(&state).await;
+    get_corpus_law_in_scope(&scope, &law_id).await
+}
+
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id} — same as the
+/// global GET but with the traject's read-your-writes overlay applied.
+pub async fn get_traject_corpus_law(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    get_corpus_law_in_scope(&scope, &law_id).await
+}
+
+async fn get_corpus_law_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<YamlResponse, (StatusCode, String)> {
     let yaml = scope
-        .law_yaml(&law_id)
+        .law_yaml(law_id)
         .await
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
     Ok((
@@ -264,15 +254,32 @@ pub async fn get_corpus_law(
     ))
 }
 
-/// GET /api/corpus/laws/{law_id}/outputs — list all outputs declared across articles.
+/// GET /api/corpus/laws/{law_id}/outputs — list all outputs declared across articles (global view).
 pub async fn list_law_outputs(
     State(state): State<AppState>,
-    session: Session,
     Path(law_id): Path<String>,
 ) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
-    let scope = resolve_read_corpus(&state, &session).await;
+    let scope = global_scope(&state).await;
+    list_law_outputs_in_scope(&scope, &law_id).await
+}
+
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id}/outputs — same as
+/// global but with the traject overlay.
+pub async fn list_traject_law_outputs(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    list_law_outputs_in_scope(&scope, &law_id).await
+}
+
+async fn list_law_outputs_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<Json<Vec<LawOutputEntry>>, (StatusCode, String)> {
     let yaml = scope
-        .law_yaml(&law_id)
+        .law_yaml(law_id)
         .await
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Law '{}' not found", law_id)))?;
 
@@ -299,18 +306,32 @@ pub struct ScenarioEntry {
     pub filename: String,
 }
 
-/// GET /api/corpus/laws/{law_id}/scenarios — list available scenario files.
+/// GET /api/corpus/laws/{law_id}/scenarios — list available scenario files (global view).
 pub async fn list_scenarios(
     State(state): State<AppState>,
-    session: Session,
     Path(law_id): Path<String>,
 ) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
-    // Route through the active traject's backends when one is selected;
-    // otherwise fall back to the global corpus state. Saves still land
-    // on the traject branch, so the same scope serves read-your-writes
-    // and cross-traject isolation in one go.
-    let scope = resolve_read_corpus(&state, &session).await;
-    let resolved = resolve_backend_for_law(scope.corpus(), &law_id).await?;
+    let scope = global_scope(&state).await;
+    list_scenarios_in_scope(&scope, &law_id).await
+}
+
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios — same as
+/// global but routed through the traject's backends, so a freshly saved
+/// scenario is visible without a corpus reload.
+pub async fn list_traject_scenarios(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    list_scenarios_in_scope(&scope, &law_id).await
+}
+
+async fn list_scenarios_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<Json<Vec<ScenarioEntry>>, (StatusCode, String)> {
+    let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
 
     let scenarios_dir = match law_relative_dir(&resolved.law) {
         Ok(dir) => dir.join("scenarios"),
@@ -342,26 +363,37 @@ pub async fn list_scenarios(
     Ok(Json(out))
 }
 
-/// GET /api/corpus/laws/{law_id}/scenarios/{filename} — return raw .feature content.
+/// GET /api/corpus/laws/{law_id}/scenarios/{filename} — return raw .feature content (global view).
 pub async fn get_scenario(
     State(state): State<AppState>,
-    session: Session,
     Path((law_id, filename)): Path<(String, String)>,
-) -> Result<
-    (
-        StatusCode,
-        [(axum::http::HeaderName, &'static str); 1],
-        String,
-    ),
-    (StatusCode, String),
-> {
-    validate_scenario_filename(&filename)?;
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let scope = global_scope(&state).await;
+    get_scenario_in_scope(&scope, &law_id, &filename).await
+}
 
-    let scope = resolve_read_corpus(&state, &session).await;
-    let resolved = resolve_backend_for_law(scope.corpus(), &law_id).await?;
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios/{filename}
+/// — traject-scoped scenario read.
+pub async fn get_traject_scenario(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    get_scenario_in_scope(&scope, &law_id, &filename).await
+}
+
+async fn get_scenario_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+    filename: &str,
+) -> Result<YamlResponse, (StatusCode, String)> {
+    validate_scenario_filename(filename)?;
+
+    let resolved = resolve_backend_for_law(scope.corpus(), law_id).await?;
 
     let scenarios_dir = law_relative_dir(&resolved.law)?.join("scenarios");
-    let relative_path = scenarios_dir.join(&filename);
+    let relative_path = scenarios_dir.join(filename);
 
     let backend = resolved.backend.lock().await;
     let content = backend
@@ -488,23 +520,35 @@ fn resolve_annotation_read_backend(
 /// for "which backend owns this law's writes in this traject".
 pub async fn get_annotations(
     State(state): State<AppState>,
-    session: Session,
     Path(law_id): Path<String>,
-) -> Result<
-    (
-        StatusCode,
-        [(axum::http::HeaderName, &'static str); 1],
-        String,
-    ),
-    (StatusCode, String),
-> {
-    let scope = resolve_read_corpus(&state, &session).await;
-    let backend = resolve_annotation_read_backend(&scope, &law_id)?;
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let scope = global_scope(&state).await;
+    get_annotations_in_scope(&scope, &law_id).await
+}
+
+/// GET /api/trajects/{traject_id}/corpus/laws/{law_id}/annotations — same
+/// as the global GET but reads the sidecar from the traject's writable
+/// backend, matching the write path. A note just appended via
+/// `save_annotations` is therefore visible on the next refresh.
+pub async fn get_traject_annotations(
+    State(state): State<AppState>,
+    session: Session,
+    Path((traject_ref, law_id)): Path<(String, String)>,
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let scope = require_traject_scope(&state, &session, &traject_ref).await?;
+    get_annotations_in_scope(&scope, &law_id).await
+}
+
+async fn get_annotations_in_scope(
+    scope: &ReadScope,
+    law_id: &str,
+) -> Result<YamlResponse, (StatusCode, String)> {
+    let backend = resolve_annotation_read_backend(scope, law_id)?;
 
     // RFC-018 §1: keyed by law id at the source root, regardless of where
     // the law file lives. Same path the `save_annotations` write uses.
     let relative_path = PathBuf::from("annotations")
-        .join(&law_id)
+        .join(law_id)
         .join("annotations.yaml");
 
     let backend = backend.lock().await;
@@ -738,42 +782,39 @@ struct EditorWriteTarget {
     backend: tokio::sync::OwnedMutexGuard<Box<dyn RepoBackend>>,
 }
 
-/// Resolve the per-traject corpus from session state, returning 403 when
-/// no traject is active. Bumps the cache on a miss; calls
-/// `ensure_ready` (i.e. `git clone`) for every source in the traject's
-/// federated config on first use.
+/// Resolve the per-traject corpus from the URL ref, re-checking the
+/// caller's membership on every call. Bumps the traject corpus cache on
+/// a miss; calls `ensure_ready` (i.e. `git clone`) for every source in
+/// the traject's federated config on first use.
 ///
-/// Re-verifies the caller's membership against `traject_members` on every
-/// call — `set_active` only checks once at the time the active id is
-/// stored, so without a re-check a member who has been removed (or whose
-/// traject has been deleted) since picking it active could keep writing
-/// to that traject's branch through their stale session.
-async fn require_traject_corpus(
+/// The `traject_ref` is the URL form `{slug}-{8hex}`. The slug part is
+/// cosmetic — `resolve_traject_ref` looks up the traject by the trailing
+/// 8 hex chars of the UUID. A renamed traject keeps working under the
+/// old URL because the suffix never changes.
+///
+/// The membership re-check catches drift since the SPA loaded the
+/// `/editor/{ref}/…` route — a member removed (or their traject deleted)
+/// mid-session must immediately stop being able to write to the branch
+/// instead of keeping a stale handle through their open tabs.
+async fn require_traject_corpus_from_ref(
     state: &AppState,
     session: &Session,
+    traject_ref: &str,
 ) -> Result<Arc<TrajectCorpus>, (StatusCode, String)> {
-    let traject_id = read_active_from_session(session)
-        .await
-        .map_err(|status| (status, "session read failed".to_string()))?
-        .ok_or_else(|| {
-            (
-                StatusCode::FORBIDDEN,
-                "Selecteer eerst een traject om te bewerken".to_string(),
-            )
-        })?;
     let pool = state.pool.as_ref().ok_or((
         StatusCode::SERVICE_UNAVAILABLE,
         "database not configured".to_string(),
     ))?;
+    let traject_id = resolve_traject_ref(pool, traject_ref).await?;
 
     // Membership re-check: a single EXISTS join keeps this on the hot
-    // path while catching session/state drift (membership revoked,
-    // traject deleted, account never linked to a sub).
+    // path while catching state drift (membership revoked, traject
+    // deleted, account never linked to a sub).
     let sub: String = session
         .get(SESSION_KEY_SUB)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "session read sub in require_traject_corpus");
+            tracing::error!(error = %e, "session read sub in require_traject_corpus_from_path");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "session read failed".to_string(),
@@ -802,13 +843,6 @@ async fn require_traject_corpus(
         )
     })?;
     if !is_member {
-        // Clear the stale pointer so the next request from this session
-        // hits the "no active traject" path and the user can rebind via
-        // the menu instead of seeing 403 on every save.
-        let _: Option<Uuid> = session
-            .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
-            .await
-            .unwrap_or(None);
         return Err((
             StatusCode::FORBIDDEN,
             "Je hebt geen toegang meer tot dit traject".to_string(),
@@ -819,27 +853,11 @@ async fn require_traject_corpus(
         let corpus = state.corpus.read().await;
         corpus.auth_file.clone()
     };
-    match state
+    state
         .trajects
         .get_or_build(pool, traject_id, auth_file, &state.favorites)
         .await
-    {
-        Ok(corpus) => Ok(corpus),
-        Err(e) => {
-            // Also clear the session on NotFound so the user isn't stuck
-            // 404-on-every-save after the traject was deleted. The clear
-            // must run inline (NOT via tokio::spawn) so SessionManagerLayer
-            // sees the mutation when it persists the session on the way
-            // out — a detached task wouldn't have run yet at save time.
-            if matches!(e, TrajectCorpusError::NotFound) {
-                let _: Option<Uuid> = session
-                    .remove(crate::trajects::SESSION_KEY_ACTIVE_TRAJECT)
-                    .await
-                    .unwrap_or(None);
-            }
-            Err(traject_corpus_error(e))
-        }
-    }
+        .map_err(traject_corpus_error)
 }
 
 fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
@@ -862,12 +880,11 @@ fn traject_corpus_error(e: TrajectCorpusError) -> (StatusCode, String) {
     }
 }
 
-/// Resolve the writable-own backend within an active traject's corpus.
-/// Returns the looked-up law (for its `relative_path`) and an owned guard
-/// over the traject's writable backend.
+/// Resolve the writable-own backend within a traject's corpus. Returns
+/// the looked-up law (for its `relative_path`) and an owned guard over
+/// the traject's writable backend.
 async fn resolve_traject_law_write(
-    state: &AppState,
-    session: &Session,
+    traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<
     (
@@ -876,7 +893,6 @@ async fn resolve_traject_law_write(
     ),
     (StatusCode, String),
 > {
-    let traject = require_traject_corpus(state, session).await?;
     let law = traject
         .corpus
         .source_map
@@ -911,11 +927,10 @@ async fn resolve_traject_law_write(
 }
 
 async fn resolve_traject_law_target(
-    state: &AppState,
-    session: &Session,
+    traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (law, backend) = resolve_traject_law_write(state, session, law_id).await?;
+    let (law, backend) = resolve_traject_law_write(traject, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from(&law.relative_path),
         backend,
@@ -923,12 +938,11 @@ async fn resolve_traject_law_target(
 }
 
 async fn resolve_traject_scenario_target(
-    state: &AppState,
-    session: &Session,
+    traject: &Arc<TrajectCorpus>,
     law_id: &str,
     filename: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (law, backend) = resolve_traject_law_write(state, session, law_id).await?;
+    let (law, backend) = resolve_traject_law_write(traject, law_id).await?;
     let rel_dir = law_relative_dir(&law)?;
     Ok(EditorWriteTarget {
         relative_path: rel_dir.join("scenarios").join(filename),
@@ -936,21 +950,19 @@ async fn resolve_traject_scenario_target(
     })
 }
 
-/// Resolve the write target for a law's stand-off notes sidecar within the
-/// active traject.
+/// Resolve the write target for a law's stand-off notes sidecar.
 ///
 /// The path is `annotations/{law_id}/annotations.yaml` at the source root,
 /// NOT under the law's own `regulation/...` directory: RFC-018 §1 keys the
-/// sidecar by law id, independent of where the law file lives. Routing,
-/// writability and membership checks all come from `resolve_traject_law_write`
-/// (same backend the law/scenario writes use), so notes land in the same
-/// traject branch/PR as the rest of the edits in the session.
+/// sidecar by law id, independent of where the law file lives. Routing
+/// and writability come from `resolve_traject_law_write` (same backend
+/// the law/scenario writes use), so notes land in the same traject
+/// branch/PR as the rest of the edits in the session.
 async fn resolve_traject_annotation_target(
-    state: &AppState,
-    session: &Session,
+    traject: &Arc<TrajectCorpus>,
     law_id: &str,
 ) -> Result<EditorWriteTarget, (StatusCode, String)> {
-    let (_law, backend) = resolve_traject_law_write(state, session, law_id).await?;
+    let (_law, backend) = resolve_traject_law_write(traject, law_id).await?;
     Ok(EditorWriteTarget {
         relative_path: PathBuf::from("annotations")
             .join(law_id)
@@ -974,21 +986,23 @@ fn save_response_from_traject(outcome: PersistOutcome) -> SaveResponse {
     }
 }
 
-/// PUT /api/corpus/laws/{law_id}/scenarios/{filename} — save a scenario file.
+/// PUT /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios/{filename}
+/// — save a scenario file in the traject's writable-own backend.
 ///
-/// Requires an active traject in the session; the save is routed through
-/// that traject's writable-own source (its branch on the writable repo).
-/// Without an active traject the handler returns 403.
+/// The traject id comes from the URL (per-tab SPA route), and the
+/// caller's membership is re-checked on every request. No traject id =
+/// no route, so this handler is unreachable without one.
 pub async fn save_scenario(
     State(state): State<AppState>,
     session: Session,
-    Path((law_id, filename)): Path<(String, String)>,
+    Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
     let author = editor_user_from_session(&session).await;
 
-    let target = resolve_traject_scenario_target(&state, &session, &law_id, &filename).await?;
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -1020,12 +1034,10 @@ const ANNOTATION_SCHEMA_URL: &str = "https://raw.githubusercontent.com/MinBZK/re
 /// cannot append an unreasonable number of notes in one commit.
 const MAX_NOTES_PER_SAVE: usize = 500;
 
-/// PUT /api/corpus/laws/{law_id}/annotations — append stand-off notes.
-///
-/// Requires an active traject, exactly like `save_law`/`save_scenario`:
-/// the notes land in that traject's writable backend (its branch), so a
-/// note and a law edit made in the same session ride the same PR. Without
-/// an active traject the underlying `resolve_traject_law_write` returns 403.
+/// PUT /api/trajects/{traject_id}/corpus/laws/{law_id}/annotations —
+/// append stand-off notes. The notes land in the traject's writable
+/// backend (its branch), so a note and a law edit made in the same
+/// session ride the same PR.
 ///
 /// The body is a JSON array of *new* notes (drafts). The handler reads the
 /// sidecar as it stands on the traject branch and appends only the new,
@@ -1037,7 +1049,7 @@ const MAX_NOTES_PER_SAVE: usize = 500;
 pub async fn save_annotations(
     State(state): State<AppState>,
     session: Session,
-    Path(law_id): Path<String>,
+    Path((traject_ref, law_id)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     let author = editor_user_from_session(&session).await;
@@ -1058,7 +1070,8 @@ pub async fn save_annotations(
         ));
     }
 
-    let target = resolve_traject_annotation_target(&state, &session, &law_id).await?;
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let target = resolve_traject_annotation_target(&traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -1186,14 +1199,14 @@ pub async fn save_annotations(
     Ok(Json(save_response_from_traject(outcome)))
 }
 
-/// PUT /api/corpus/laws/{law_id} — save edited law YAML content.
-///
-/// Writes the new YAML to the active traject's writable-own backend (its
-/// branch on the writable repo). The save does NOT mirror the new content
-/// into `state.corpus.source_map`: that cache feeds GETs for users outside
-/// the traject, so pushing in-progress traject edits there would leak
-/// across users. Routing GETs through the per-traject corpus is a separate
-/// follow-up.
+/// PUT /api/trajects/{traject_id}/corpus/laws/{law_id} — save edited law
+/// YAML content to the traject's writable-own backend (its branch on the
+/// writable repo). The save does NOT mirror into
+/// `state.corpus.source_map`: that cache feeds GETs against
+/// `/api/corpus/...` (no traject), so pushing in-progress traject edits
+/// there would leak across users. The traject overlay populated below
+/// makes the new content visible to GETs under the same `/api/trajects/{tid}/...`
+/// prefix without a corpus reload.
 ///
 /// The `$id` in the body must match the path parameter: allowing them to
 /// diverge would either create a phantom law (new `$id` lands on an
@@ -1203,7 +1216,7 @@ pub async fn save_annotations(
 pub async fn save_law(
     State(state): State<AppState>,
     session: Session,
-    Path(law_id): Path<String>,
+    Path((traject_ref, law_id)): Path<(String, String)>,
     body: String,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     let author = editor_user_from_session(&session).await;
@@ -1253,8 +1266,8 @@ pub async fn save_law(
     // Resolve the write target AND keep a handle on the per-traject
     // corpus so we can mirror the saved body into its read-your-writes
     // overlay after `persist` succeeds.
-    let traject = require_traject_corpus(&state, &session).await?;
-    let target = resolve_traject_law_target(&state, &session, &law_id).await?;
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let target = resolve_traject_law_target(&traject, &law_id).await?;
     let EditorWriteTarget {
         relative_path,
         backend,
@@ -1287,20 +1300,18 @@ pub async fn save_law(
     Ok(Json(save_response_from_traject(outcome)))
 }
 
-/// DELETE /api/corpus/laws/{law_id}/scenarios/{filename} — delete a scenario file.
-///
-/// Requires an active traject in the session, same as `save_scenario` /
-/// `save_law`: the deletion is routed through the traject's writable-own
-/// backend. Without an active traject the handler returns 403.
+/// DELETE /api/trajects/{traject_id}/corpus/laws/{law_id}/scenarios/{filename}
+/// — delete a scenario file in the traject's writable-own backend.
 pub async fn delete_scenario(
     State(state): State<AppState>,
     session: Session,
-    Path((law_id, filename)): Path<(String, String)>,
+    Path((traject_ref, law_id, filename)): Path<(String, String, String)>,
 ) -> Result<Json<SaveResponse>, (StatusCode, String)> {
     validate_scenario_filename(&filename)?;
     let author = editor_user_from_session(&session).await;
 
-    let target = resolve_traject_scenario_target(&state, &session, &law_id, &filename).await?;
+    let traject = require_traject_corpus_from_ref(&state, &session, &traject_ref).await?;
+    let target = resolve_traject_scenario_target(&traject, &law_id, &filename).await?;
     let EditorWriteTarget {
         relative_path,
         backend,

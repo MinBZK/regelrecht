@@ -4,6 +4,7 @@
  * Provides the engine and helpers for loading laws and dependencies.
  */
 import { ref } from 'vue';
+import { lawUrl } from './corpusUrls.js';
 
 let engineInstance = null;
 let initPromise = null;
@@ -41,13 +42,16 @@ async function initEngine() {
 }
 
 /**
- * Fetch law YAML from the API and load it into the engine.
+ * Fetch law YAML from the API and load it into the engine. When
+ * `trajectRef` is given the read goes through the traject's per-source
+ * backends (read-your-writes for in-progress edits); omit it for the
+ * global view.
  */
-async function loadDependency(lawId) {
+async function loadDependency(lawId, trajectRef = null) {
   const engine = await initEngine();
   if (engine.hasLaw(lawId)) return;
 
-  const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+  const res = await fetch(lawUrl(trajectRef, lawId));
   if (!res.ok) throw new Error(`Failed to fetch law '${lawId}': ${res.status}`);
   const yaml = await res.text();
   engine.loadLaw(yaml);

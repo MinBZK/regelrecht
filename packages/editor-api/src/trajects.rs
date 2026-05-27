@@ -10,16 +10,10 @@ use axum::http::StatusCode;
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tower_sessions::Session;
 use uuid::Uuid;
 
 use crate::accounts::AccountRecord;
 use crate::state::AppState;
-
-/// Session key for the active traject id. The editor stores this in the
-/// user's session so save handlers can resolve the traject without a
-/// round-trip to the frontend.
-pub const SESSION_KEY_ACTIVE_TRAJECT: &str = "active_traject_id";
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
 pub struct TrajectSummary {
@@ -29,6 +23,22 @@ pub struct TrajectSummary {
     pub scope: String,
     pub status: String,
     pub role: String,
+    /// URL-form reference: `{slug}-{8hex}`. Built from current `name`
+    /// and `id`; the slug part is cosmetic, the trailing 8 hex chars of
+    /// the uuid are the actual lookup key (see `resolve_traject_ref`).
+    /// Populated post-fetch — sqlx::FromRow doesn't see it in the SELECT.
+    #[serde(rename = "ref")]
+    #[sqlx(default)]
+    pub traject_ref: String,
+}
+
+impl TrajectSummary {
+    /// Recompute `traject_ref` from the current `name` and `id`. Called
+    /// right after a sqlx fetch and after any in-memory mutation that
+    /// might change the slug.
+    pub fn fill_ref(&mut self) {
+        self.traject_ref = traject_ref(&self.name, self.id);
+    }
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -103,16 +113,6 @@ pub struct UpdateTrajectRequest {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct SetActiveTrajectRequest {
-    pub traject_id: Option<Uuid>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ActiveTrajectResponse {
-    pub traject_id: Option<Uuid>,
-}
-
-#[derive(Debug, Deserialize)]
 pub struct AddMemberRequest {
     /// Email of the user to invite. If an account already exists for
     /// this email the row lands in `traject_members` (active). If not,
@@ -147,16 +147,6 @@ fn get_pool(state: &AppState) -> Result<&PgPool, StatusCode> {
 }
 
 fn db_err<E: std::fmt::Display>(context: &'static str) -> impl FnOnce(E) -> StatusCode {
-    move |e| {
-        tracing::error!(error = %e, "{context}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    }
-}
-
-/// Builds a session-error mapper that logs the underlying error with the
-/// key being read/written so operators can diagnose tower-sessions /
-/// session-store failures from logs instead of seeing a bare 500.
-fn session_err(context: &'static str) -> impl FnOnce(tower_sessions::session::Error) -> StatusCode {
     move |e| {
         tracing::error!(error = %e, "{context}");
         StatusCode::INTERNAL_SERVER_ERROR
@@ -207,6 +197,97 @@ fn derive_branch_name(name: &str, traject_id: Uuid) -> String {
     let slug = slugify(name);
     let short = traject_id.simple().to_string()[..8].to_string();
     format!("traject/{slug}-{short}")
+}
+
+/// First 8 hex characters of a traject UUID — the suffix used in the
+/// URL ref (`{slug}-{short}`). Same length as the branch-name short id so
+/// users see one identifier across URL and branch.
+pub fn short_id(traject_id: Uuid) -> String {
+    traject_id.simple().to_string()[..8].to_string()
+}
+
+/// Build the URL-form ref for a traject from its current name and id.
+/// `{slug}-{8hex}`. The slug part is cosmetic — the resolver only cares
+/// about the trailing 8-hex chunk, so renaming a traject does not break
+/// existing URLs.
+pub fn traject_ref(name: &str, traject_id: Uuid) -> String {
+    format!("{}-{}", slugify(name), short_id(traject_id))
+}
+
+/// Resolve a `{slug}-{8hex}` URL ref to a traject UUID. Returns 400 on
+/// a malformed ref, 404 when no traject has a uuid starting with the
+/// suffix.
+///
+/// The UUID prefix is uniformly distributed across 32 bits — with 1k
+/// trajects the collision probability is ~10^-5; we accept that for the
+/// readability gain and treat any ambiguous prefix as 404 (caller can
+/// pick a different ref). A monitoring counter on the duplicate branch
+/// catches the case in production before it bites a user.
+pub async fn resolve_traject_ref(
+    pool: &PgPool,
+    traject_ref: &str,
+) -> Result<Uuid, (StatusCode, String)> {
+    // 8-hex suffix preceded by a dash. Anything else (bare UUID, raw
+    // slug without suffix, garbage) is a 400 — we don't try to fall
+    // back to a bare-uuid lookup because that path no longer exists in
+    // the URL contract.
+    let suffix_start = traject_ref.len().checked_sub(8).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Malformed traject reference".to_string(),
+        )
+    })?;
+    if suffix_start == 0 || !traject_ref.is_char_boundary(suffix_start - 1) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Malformed traject reference".to_string(),
+        ));
+    }
+    let separator = &traject_ref[suffix_start - 1..suffix_start];
+    let suffix = &traject_ref[suffix_start..];
+    if separator != "-" || !suffix.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Malformed traject reference".to_string(),
+        ));
+    }
+    let suffix_lower = suffix.to_ascii_lowercase();
+
+    // UUID text format starts with the first 8 hex chars (`xxxxxxxx-...`),
+    // so a LIKE on the textual representation matches our short id
+    // exactly. For 1k trajects the sequential scan is irrelevant; an
+    // index on `(left(id::text, 8))` is the obvious next step if the
+    // table grows.
+    let pattern = format!("{suffix_lower}-%");
+    let rows: Vec<(Uuid,)> = sqlx::query_as("SELECT id FROM trajects WHERE id::text LIKE $1")
+        .bind(&pattern)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "resolve traject ref query failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to resolve traject reference".to_string(),
+            )
+        })?;
+    match rows.len() {
+        1 => Ok(rows[0].0),
+        0 => Err((StatusCode::NOT_FOUND, "Traject not found".to_string())),
+        _ => {
+            // Two trajects whose UUIDs share the same first 8 hex
+            // chars — astronomical odds, but if it happens the URL is
+            // ambiguous. Log loudly and refuse rather than guess.
+            tracing::error!(
+                suffix = %suffix_lower,
+                count = rows.len(),
+                "traject ref short id collides; refusing to guess"
+            );
+            Err((
+                StatusCode::CONFLICT,
+                "Traject reference is ambiguous (id-suffix collision); contact support".to_string(),
+            ))
+        }
+    }
 }
 
 /// Look up the role of an account in a traject. Returns `None` when the
@@ -303,7 +384,7 @@ pub async fn list(
     Extension(account): Extension<AccountRecord>,
 ) -> Result<Json<Vec<TrajectSummary>>, StatusCode> {
     let pool = get_pool(&state)?;
-    let rows: Vec<TrajectSummary> = sqlx::query_as(
+    let mut rows: Vec<TrajectSummary> = sqlx::query_as(
         "SELECT t.id, t.name, t.description, t.scope,
                 t.status::text AS status,
                 tm.role::text  AS role
@@ -316,6 +397,9 @@ pub async fn list(
     .fetch_all(pool)
     .await
     .map_err(db_err("list trajects failed"))?;
+    for row in &mut rows {
+        row.fill_ref();
+    }
     Ok(Json(rows))
 }
 
@@ -328,7 +412,7 @@ pub async fn get(
     let pool = get_pool(&state)?;
     let role = require_membership(pool, id, account.id).await?;
 
-    let summary: TrajectSummary = sqlx::query_as(
+    let mut summary: TrajectSummary = sqlx::query_as(
         "SELECT id, name, description, scope,
                 status::text AS status,
                 $2           AS role
@@ -339,6 +423,7 @@ pub async fn get(
     .fetch_one(pool)
     .await
     .map_err(db_err("traject summary fetch failed"))?;
+    summary.fill_ref();
 
     let members: Vec<TrajectMember> = sqlx::query_as(
         "SELECT a.id AS account_id, a.email, a.name, tm.role::text AS role
@@ -510,14 +595,16 @@ pub async fn create(
 
     state.trajects.invalidate(traject_id).await;
 
-    let summary = TrajectSummary {
+    let mut summary = TrajectSummary {
         id: traject_id,
         name: name.to_string(),
         description: req.description,
         scope: req.scope,
         status: "bezig".to_string(),
         role: "owner".to_string(),
+        traject_ref: String::new(),
     };
+    summary.fill_ref();
     Ok((StatusCode::CREATED, Json(summary)))
 }
 
@@ -828,14 +915,12 @@ pub async fn remove_member(
 ///
 /// A `contributor` can always leave. An `owner` cannot leave when they are
 /// the last owner — they must hand over the role or delete the
-/// traject. When the caller leaves the traject they currently have
-/// active in their session, that session pointer is cleared so the
-/// next save handler doesn't try to resolve a traject they no longer
-/// belong to.
+/// traject. The next write request the caller makes against this
+/// traject's URL will 403 on the membership re-check in
+/// `require_traject_corpus_from_path`.
 pub async fn leave(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,
-    session: Session,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, StatusCode> {
     let pool = get_pool(&state)?;
@@ -875,17 +960,6 @@ pub async fn leave(
         return distinguish_member_missing_or_conflict(pool, id, account.id).await;
     }
 
-    let active: Option<Uuid> = session
-        .get(SESSION_KEY_ACTIVE_TRAJECT)
-        .await
-        .map_err(session_err("session read active-traject in leave"))?;
-    if active == Some(id) {
-        let _: Option<Uuid> = session
-            .remove(SESSION_KEY_ACTIVE_TRAJECT)
-            .await
-            .map_err(session_err("session clear active-traject in leave"))?;
-    }
-
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -907,48 +981,6 @@ async fn distinguish_member_missing_or_conflict(
         Err(StatusCode::NOT_FOUND)
     } else {
         Err(StatusCode::CONFLICT)
-    }
-}
-
-/// GET /api/session/active-traject — return the current active traject id
-/// from the session (or `null` when none).
-pub async fn get_active(session: Session) -> Result<Json<ActiveTrajectResponse>, StatusCode> {
-    let traject_id: Option<Uuid> = session
-        .get(SESSION_KEY_ACTIVE_TRAJECT)
-        .await
-        .map_err(session_err("session read active-traject"))?;
-    Ok(Json(ActiveTrajectResponse { traject_id }))
-}
-
-/// PUT /api/session/active-traject — set or clear the active traject for
-/// this session. Membership is verified against `traject_members` before
-/// persisting so a user cannot point themselves at a traject they don't
-/// belong to.
-pub async fn set_active(
-    State(state): State<AppState>,
-    Extension(account): Extension<AccountRecord>,
-    session: Session,
-    Json(req): Json<SetActiveTrajectRequest>,
-) -> Result<Json<ActiveTrajectResponse>, StatusCode> {
-    let pool = get_pool(&state)?;
-    match req.traject_id {
-        Some(id) => {
-            let _role = require_membership(pool, id, account.id).await?;
-            session
-                .insert(SESSION_KEY_ACTIVE_TRAJECT, id)
-                .await
-                .map_err(session_err("session set active-traject"))?;
-            Ok(Json(ActiveTrajectResponse {
-                traject_id: Some(id),
-            }))
-        }
-        None => {
-            let _: Option<Uuid> = session
-                .remove(SESSION_KEY_ACTIVE_TRAJECT)
-                .await
-                .map_err(session_err("session clear active-traject"))?;
-            Ok(Json(ActiveTrajectResponse { traject_id: None }))
-        }
     }
 }
 
@@ -1009,15 +1041,6 @@ impl SeedSource {
             scopes,
         }
     }
-}
-
-/// Read the active traject id from a session — used by save handlers in
-/// `corpus_handlers.rs`. Returns `Ok(None)` when no traject is selected.
-pub async fn read_active_from_session(session: &Session) -> Result<Option<Uuid>, StatusCode> {
-    session
-        .get::<Uuid>(SESSION_KEY_ACTIVE_TRAJECT)
-        .await
-        .map_err(session_err("session read active-traject in save"))
 }
 
 #[cfg(test)]

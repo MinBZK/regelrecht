@@ -1,10 +1,19 @@
 /**
  * useScenarios — fetch, manage, and save scenario files for a law.
+ *
+ * Reads pick the global or traject-scoped URL based on `trajectRef`;
+ * writes only succeed with a traject, matching the backend invariant
+ * that scenario writes live under `/api/trajects/{tid}/corpus/...`.
+ *
+ * @param {import('vue').Ref<string>} lawId
+ * @param {import('vue').Ref<string|null>} trajectRef active traject id,
+ *   `null` for a global read context (no edits possible)
  */
 import { ref, watch } from 'vue';
 import { getEditorSessionId, lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
+import { requireTraject, scenarioFileUrl, scenariosListUrl } from './corpusUrls.js';
 
-export function useScenarios(lawId) {
+export function useScenarios(lawId, trajectRef) {
   const scenarios = ref([]);
   const selectedScenario = ref(null);
   const featureText = ref('');
@@ -27,9 +36,7 @@ export function useScenarios(lawId) {
     saveError.value = null;
 
     try {
-      const res = await fetch(
-        `/api/corpus/laws/${encodeURIComponent(lawId.value)}/scenarios`,
-      );
+      const res = await fetch(scenariosListUrl(trajectRef.value, lawId.value));
       if (!res.ok) {
         scenarios.value = [];
         return;
@@ -53,9 +60,7 @@ export function useScenarios(lawId) {
     saveError.value = null;
 
     try {
-      const res = await fetch(
-        `/api/corpus/laws/${encodeURIComponent(lawId.value)}/scenarios/${encodeURIComponent(filename)}`,
-      );
+      const res = await fetch(scenarioFileUrl(trajectRef.value, lawId.value, filename));
       if (!res.ok) throw new Error(`Failed to fetch scenario: ${res.status}`);
       featureText.value = await res.text();
     } catch (e) {
@@ -73,13 +78,14 @@ export function useScenarios(lawId) {
    */
   async function saveScenario(filename, content) {
     if (!lawId.value) return;
+    requireTraject(trajectRef.value, 'scenario save');
 
     saving.value = true;
     saveError.value = null;
 
     try {
       const res = await fetch(
-        `/api/corpus/laws/${encodeURIComponent(lawId.value)}/scenarios/${encodeURIComponent(filename)}`,
+        scenarioFileUrl(trajectRef.value, lawId.value, filename),
         {
           method: 'PUT',
           headers: {
@@ -111,8 +117,10 @@ export function useScenarios(lawId) {
     }
   }
 
-  // Re-fetch when lawId changes
-  watch(lawId, () => {
+  // Re-fetch when the law id OR active traject changes. Switching
+  // traject (URL change) re-routes reads through the new traject's
+  // backends, so a refresh is needed even if the law id stayed the same.
+  watch([lawId, trajectRef], () => {
     selectedScenario.value = null;
     featureText.value = '';
     fetchScenarios().catch(() => {});
