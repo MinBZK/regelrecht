@@ -6,6 +6,7 @@ import {
   spanToNodeSlices,
   cpToUtf16,
 } from '../composables/useNotesHighlight.js';
+import { planSegments } from '../composables/useNotesSegments.js';
 import { selectionToRawRange } from '../composables/useTextSelection.js';
 import NoteCreator from './NoteCreator.vue';
 
@@ -33,9 +34,16 @@ const html = computed(() => renderArticleHtml(props.article?.text || ''));
 
 const richTextEl = useTemplateRef('richTextEl');
 
-// Index notes so a <mark> can carry data-note-idx and the delegated hover
+// Index notes so a <mark> can carry data-primary-idx and the delegated hover
 // handler can recover the note object without per-mark Vue bindings.
 const noteByIdx = computed(() => props.notesForArticle.map((n) => n.note));
+
+// noteIdx -> all marks whose segment is covered by that note (visible or
+// suppressed by encapsulation). Built fresh by applyHighlights and consumed by
+// the hover handler to "bridge" a hovered note's full span across the marks it
+// is encapsulated within — the inner segment renders the inner note only by
+// default, but hover should still show the outer's extent.
+const hoverBridge = new Map();
 
 function collectTextNodes(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -58,6 +66,21 @@ function motivationClass(note) {
   return 'note-other';
 }
 
+// Same scheme but as a CSS colour — used for the inline layered backgrounds
+// in segments with multiple visible notes. The values mirror the CSS rules
+// below; if either side changes, the other must follow.
+const MOTIVATION_COLOR = {
+  linking: 'rgba(59, 130, 246, 0.28)',
+  commenting: 'rgba(234, 179, 8, 0.28)',
+  questioning: 'rgba(249, 115, 22, 0.3)',
+  tagging: 'rgba(34, 197, 94, 0.28)',
+  other: 'rgba(148, 163, 184, 0.28)',
+};
+function motivationColor(note) {
+  const m = note?.motivation;
+  return MOTIVATION_COLOR[m] ?? MOTIVATION_COLOR.other;
+}
+
 // Authority -> border style. Derived from the creator (RFC-018 Decision 3):
 // a known tool creator => generated (dotted), anything else => default
 // (solid). Advisory (dashed) is reserved for when competent_authority wiring
@@ -70,10 +93,25 @@ function authorityClass(note) {
   return 'note-authoritative';
 }
 
-// Wrap one code-point slice of a text node in a <mark>. Splits the text node
-// so the Range covers exactly the slice, then surrounds it. Returns the
-// created <mark> (or null if the slice is degenerate after splitting).
-function wrapSlice(slice, noteIdx, note) {
+// Wrap one code-point slice of a text node in a <mark> for a planSegments
+// segment. The mark carries three index lists:
+//   - data-note-idx       comma-separated visible note indices (rendered
+//                         backgrounds; one for a single note, several for a
+//                         partial overlap, or just the inner one in an
+//                         encapsulation segment)
+//   - data-cover-idx      comma-separated covering note indices (visible
+//                         plus any encapsulating outer suppressed in this
+//                         segment) — used by the hover-bridge to highlight a
+//                         hovered note across regions where it is suppressed
+//   - data-primary-idx    the single note whose popover opens on hover
+//                         (earliest-start visible note in the segment)
+//
+// In multi-visible segments the motivation CSS class no longer paints the
+// background (multiple notes can't share one class), so an inline
+// background-image stacks one semi-transparent layer per visible note. The
+// authority class for the primary still drives the border style.
+// Returns the created <mark> (or null if the slice is degenerate).
+function wrapSegmentSlice(slice, seg, notes) {
   const textNode = slice.node;
   const full = textNode.textContent;
   const u1 = cpToUtf16(full, slice.startCp);
@@ -82,12 +120,26 @@ function wrapSlice(slice, noteIdx, note) {
   const range = document.createRange();
   range.setStart(textNode, u1);
   range.setEnd(textNode, u2);
+
   const mark = document.createElement('mark');
-  mark.dataset.noteIdx = String(noteIdx);
-  // Class instead of data attribute so the scoped :deep() rules below match;
-  // mirrors the colour/border scheme of the pre-#646 string renderer.
-  mark.className = `${motivationClass(note)} ${authorityClass(note)}`;
-  mark.setAttribute('aria-label', `Notitie: ${note?.motivation ?? ''}`);
+  const primary = notes[seg.primaryIdx]?.note;
+  const multi = seg.visibleIdx.length > 1;
+  // Single-note segments keep the pre-#647 colour-class background. Multi-
+  // note segments switch to `note-multi` (no class background) plus an
+  // inline layered background-image so semi-transparent colours composite.
+  const bgCls = multi ? 'note-multi' : motivationClass(primary);
+  mark.className = `${bgCls} ${authorityClass(primary)}`;
+  mark.dataset.noteIdx = seg.visibleIdx.join(',');
+  mark.dataset.coverIdx = seg.coveringIdx.join(',');
+  mark.dataset.primaryIdx = String(seg.primaryIdx);
+  if (multi) {
+    const layers = seg.visibleIdx
+      .map((i) => motivationColor(notes[i]?.note))
+      .map((c) => `linear-gradient(${c}, ${c})`)
+      .join(', ');
+    mark.style.backgroundImage = layers;
+  }
+  mark.setAttribute('aria-label', `Notitie: ${primary?.motivation ?? ''}`);
   mark.setAttribute('tabindex', '0');
   try {
     range.surroundContents(mark);
@@ -106,13 +158,14 @@ function wrapSlice(slice, noteIdx, note) {
 // unchanged — e.g. once notes become editable) leaves the prior marks in
 // place, so applyHighlights must be idempotent and clean up first.
 function clearHighlights(root) {
-  for (const mark of root.querySelectorAll('mark[data-note-idx]')) {
+  for (const mark of root.querySelectorAll('mark[data-primary-idx]')) {
     const parent = mark.parentNode;
     if (!parent) continue;
     while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
     parent.removeChild(mark);
     parent.normalize(); // re-join the split text nodes so offsets are stable
   }
+  hoverBridge.clear();
 }
 
 // Vue paints the sanitized markdown via v-html, then we layer the marks on
@@ -141,38 +194,39 @@ function applyHighlights() {
     domNodes.map(({ node, text }) => [node, Array.from(text).length]),
   );
 
-  // Flatten to (span, note) and wrap by descending raw start. surroundContents
-  // splits the text node, so processing the rightmost span first keeps every
-  // earlier span's node references and offsets valid. `wrapped` tracks the raw
-  // ranges already marked: a span that overlaps one is dropped, matching the
-  // deterministic drop in markRanges() (RFC-018's overlapping-notes case).
-  const flat = [];
+  // Flatten (idx, span) pairs and ask planSegments for an overlap-aware
+  // partition: every char that any note covers ends up in exactly one
+  // segment, partial overlaps render layered (both colours), and a note that
+  // encapsulates another is suppressed in the inner's segment so the inner
+  // shows cleanly. `coveringIdx` keeps the suppressed outer reachable for
+  // the hover-bridge below.
+  const items = [];
   notes.forEach((entry, idx) => {
-    for (const span of entry.spans) flat.push({ span, idx });
+    for (const span of entry.spans) {
+      items.push({ start: span.start, end: span.end, idx });
+    }
   });
-  // Drop decision must use document order (ascending), so the *earlier* note
-  // wins the overlap, same as markRanges. Wrapping order stays descending.
-  const ascending = [...flat].sort(
-    (a, b) => a.span.start - b.span.start || b.span.end - a.span.end,
-  );
-  const keep = new Set();
-  let cursor = 0;
-  for (const item of ascending) {
-    if (item.span.start < cursor) continue; // overlaps an earlier kept span
-    keep.add(item);
-    cursor = item.span.end;
-  }
+  const segments = planSegments(items);
 
-  const descending = flat
-    .filter((item) => keep.has(item))
-    .sort((a, b) => b.span.start - a.span.start);
+  // Wrap by descending raw start. surroundContents splits the text node, so
+  // processing the rightmost segment first keeps every earlier segment's
+  // node references and offsets valid.
+  const descending = [...segments].sort((a, b) => b.start - a.start);
 
-  for (const { span, idx } of descending) {
-    const note = noteByIdx.value[idx];
-    const slices = spanToNodeSlices(rawToDom, span, domNodeCpLen);
-    // Wrap right-to-left within the span too, same node-stability reason.
+  for (const seg of descending) {
+    const slices = spanToNodeSlices(rawToDom, seg, domNodeCpLen);
+    // Wrap right-to-left within the segment too, same node-stability reason.
     for (let i = slices.length - 1; i >= 0; i--) {
-      wrapSlice(slices[i], idx, note);
+      const mark = wrapSegmentSlice(slices[i], seg, notes);
+      if (!mark) continue;
+      for (const coverIdx of seg.coveringIdx) {
+        let arr = hoverBridge.get(coverIdx);
+        if (!arr) {
+          arr = [];
+          hoverBridge.set(coverIdx, arr);
+        }
+        arr.push(mark);
+      }
     }
   }
 }
@@ -200,20 +254,46 @@ watch(
 const popoverEl = useTemplateRef('popoverEl');
 const activeNote = ref(null);
 let closeTimer = null;
+// Currently hover-bridged note idx, so .note-hovered can be removed cleanly
+// when the cursor leaves the bridged region.
+let hoveredIdx = null;
 
 function markFromEvent(event) {
-  const el = event.target?.closest?.('mark[data-note-idx]');
+  const el = event.target?.closest?.('mark[data-primary-idx]');
   if (!el) return null;
-  const idx = Number(el.dataset.noteIdx);
-  return { el, note: noteByIdx.value[idx] || null };
+  const idx = Number(el.dataset.primaryIdx);
+  return { el, note: noteByIdx.value[idx] || null, idx };
 }
 
-function openFor(el, note) {
+// Add .note-hovered to every mark that covers `idx` (including segments
+// where idx is suppressed by encapsulation), so the hovered note's full
+// extent reads as one continuous span even though it is rendered in
+// multiple <mark> elements. Removing the class is the inverse.
+function applyHoverBridge(idx) {
+  if (hoveredIdx === idx) return;
+  clearHoverBridge();
+  if (idx == null) return;
+  const marks = hoverBridge.get(idx);
+  if (!marks) return;
+  for (const m of marks) m.classList.add('note-hovered');
+  hoveredIdx = idx;
+}
+function clearHoverBridge() {
+  if (hoveredIdx == null) return;
+  const marks = hoverBridge.get(hoveredIdx);
+  if (marks) {
+    for (const m of marks) m.classList.remove('note-hovered');
+  }
+  hoveredIdx = null;
+}
+
+function openFor(el, note, idx) {
   if (closeTimer) {
     clearTimeout(closeTimer);
     closeTimer = null;
   }
   activeNote.value = note;
+  applyHoverBridge(idx);
   const pop = popoverEl.value;
   if (!pop) return;
   pop.anchorElement = el;
@@ -226,14 +306,14 @@ function openFor(el, note) {
 
 function onPointerOver(event) {
   const hit = markFromEvent(event);
-  if (hit?.note) openFor(hit.el, hit.note);
+  if (hit?.note) openFor(hit.el, hit.note, hit.idx);
 }
 function onPointerOut(event) {
   if (markFromEvent(event)) scheduleClose();
 }
 function onFocusIn(event) {
   const hit = markFromEvent(event);
-  if (hit?.note) openFor(hit.el, hit.note);
+  if (hit?.note) openFor(hit.el, hit.note, hit.idx);
 }
 function onFocusOut(event) {
   if (markFromEvent(event)) scheduleClose();
@@ -244,6 +324,7 @@ function scheduleClose() {
   closeTimer = setTimeout(() => {
     popoverEl.value?.hidePopover?.();
     activeNote.value = null;
+    clearHoverBridge();
     closeTimer = null;
   }, 160);
 }
@@ -555,6 +636,22 @@ onBeforeUnmount(() => {
 }
 .annotated-wrap :deep(mark.note-other) {
   background: rgba(148, 163, 184, 0.28);
+}
+/* Multi-visible-note segments (partial overlap, layered backgrounds). The
+   class is a marker only; the inline style on the mark stacks one
+   linear-gradient layer per visible note so two 28%-opaque colours composite
+   into a third — see motivationColor() in the script. The single border-bottom
+   from the primary's authority class stays. */
+.annotated-wrap :deep(mark.note-multi) {
+  background: none;
+}
+/* Hover-bridge: every mark whose coverage includes the hovered note's idx
+   gets this class, so the note's full span reads as one continuous range
+   even when boundary-splitting placed it in multiple <mark> elements (and
+   even where it is suppressed by encapsulation). The signal is a stronger
+   underline that visually carries across the inline marks. */
+.annotated-wrap :deep(mark.note-hovered) {
+  box-shadow: inset 0 -3px 0 currentColor;
 }
 .annotated-wrap :deep(mark:focus-visible) {
   outline: 2px solid currentColor;
