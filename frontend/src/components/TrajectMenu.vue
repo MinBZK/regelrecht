@@ -1,5 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useTrajects } from '../composables/useTrajects.js';
 import TrajectMembersDialog from './TrajectMembersDialog.vue';
 
@@ -13,12 +14,43 @@ const emit = defineEmits(['switched']);
 
 const {
   trajects,
-  activeTrajectId,
+  activeTrajectRef,
   activeTraject,
   loading,
-  switchTraject,
   createTraject,
 } = useTrajects();
+const route = useRoute();
+const router = useRouter();
+
+/**
+ * Navigate to a traject — push the user into the traject-scoped
+ * editor at the same law they were viewing. Per-tab state: a switch
+ * here only affects this tab, never other open editors.
+ */
+async function goToTraject(trajectRef) {
+  const lawId = route.params.lawId || undefined;
+  const articleNumber = route.params.articleNumber || undefined;
+  await router.push({
+    name: 'editor-traject',
+    params: { trajectRef, lawId, articleNumber },
+  });
+}
+
+/**
+ * Leave traject scope. Stays in the editor (read-only view) when the
+ * user is currently editing; goes to the library when they were
+ * browsing. Either way the open law is preserved.
+ */
+async function leaveTraject() {
+  const lawId = route.params.lawId || undefined;
+  const articleNumber = route.params.articleNumber || undefined;
+  const inEditor =
+    route.name === 'editor' || route.name === 'editor-traject';
+  await router.push({
+    name: inEditor ? 'editor' : 'library',
+    params: { lawId, articleNumber },
+  });
+}
 
 const menuBtnId = computed(() => `traject-menu-btn-${props.idSuffix}`);
 const menuId = computed(() => `traject-menu-${props.idSuffix}`);
@@ -78,14 +110,24 @@ function closeCreate() {
 }
 
 async function selectNoTraject() {
-  await switchTraject(null);
+  await leaveTraject();
   emit('switched', null);
 }
 
-async function selectTraject(id) {
-  if (id === activeTrajectId.value) return;
-  await switchTraject(id);
-  emit('switched', id);
+async function selectTraject(t) {
+  // `t.ref` is a server-supplied `Option<String>` and serialises to
+  // `null` when a `TrajectSummary` is built without calling
+  // `fill_ref()`. Refuse to navigate — silently routing to
+  // `/editor/null/...` would just bounce off the trajectRef regex
+  // and confuse the user. Treat as a programming error on the
+  // backend side, log and bail.
+  if (!t.ref) {
+    console.warn('TrajectMenu: traject has no ref', t);
+    return;
+  }
+  if (t.ref === activeTrajectRef.value) return;
+  await goToTraject(t.ref);
+  emit('switched', t.ref);
 }
 
 async function submitCreate() {
@@ -102,7 +144,18 @@ async function submitCreate() {
       scope: form.value.scope,
     });
     showCreate.value = false;
-    emit('switched', created.id);
+    // Jump straight into the new traject — same per-tab navigation as
+    // selecting from the dropdown. Mirror the `selectTraject` guard:
+    // the backend's `create` handler always calls `fill_ref()` so this
+    // shouldn't fire today, but a future refactor that returns a
+    // half-filled `TrajectSummary` would otherwise navigate to
+    // `/editor/undefined/...` and silently no-op.
+    if (!created.ref) {
+      console.warn('TrajectMenu: created traject has no ref', created);
+      return;
+    }
+    await goToTraject(created.ref);
+    emit('switched', created.ref);
   } catch (e) {
     createError.value = e.message || 'Aanmaken mislukt';
   } finally {
@@ -131,7 +184,7 @@ function bind(field) {
   <nldd-menu :id="menuId" :anchor="menuBtnId">
     <nldd-menu-item
       type="radio"
-      :selected="activeTrajectId === null || undefined"
+      :selected="activeTrajectRef === null || undefined"
       text="Geen traject"
       @select="selectNoTraject"
     ></nldd-menu-item>
@@ -140,9 +193,9 @@ function bind(field) {
       v-for="t in trajects"
       :key="t.id"
       type="radio"
-      :selected="t.id === activeTrajectId || undefined"
+      :selected="t.ref === activeTrajectRef || undefined"
       :text="`${t.name}${t.status === 'afgerond' ? ' (afgerond)' : ''}`"
-      @select="selectTraject(t.id)"
+      @select="selectTraject(t)"
     ></nldd-menu-item>
     <nldd-menu-divider></nldd-menu-divider>
     <nldd-menu-item

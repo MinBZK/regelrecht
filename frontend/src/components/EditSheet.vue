@@ -1,10 +1,15 @@
 <script setup>
 import { ref, computed, watch, watchEffect, nextTick } from 'vue';
 import { collectAvailableVariables } from '../utils/operationTree.js';
+import { lawsListUrl } from '../composables/corpusUrls.js';
 
 const props = defineProps({
   item: { type: Object, default: null },
   article: { type: Object, default: null },
+  /** Active traject ref. When set the law search dropdown is scoped to
+   *  the traject's corpus so newly-added laws in this traject can be
+   *  selected as a source. */
+  trajectRef: { type: String, default: null },
 });
 
 const emit = defineEmits(['save', 'close']);
@@ -50,11 +55,19 @@ const paramValueGroups = computed(() => {
 });
 
 // --- Law search / output selection ---
+// Cache scoped per (traject, instance). Resetting on a traject change
+// keeps cross-traject content from leaking when the same sheet is
+// opened again under a different traject.
 let lawsCache = null;
+let lawsCacheTrajectRef = null;
 async function fetchLawsList() {
+  if (lawsCacheTrajectRef !== props.trajectRef) {
+    lawsCache = null;
+    lawsCacheTrajectRef = props.trajectRef;
+  }
   if (lawsCache) return lawsCache;
   try {
-    const res = await fetch('/api/corpus/laws?limit=1000');
+    const res = await fetch(lawsListUrl(props.trajectRef, 'limit=1000'));
     if (!res.ok) return [];
     lawsCache = await res.json();
   } catch {

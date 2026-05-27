@@ -125,7 +125,10 @@ async fn main() {
     // --- Routes ---
     let auth_routes = regelrecht_auth::auth_routes::<AppState>();
 
-    // Public API routes — accessible without authentication
+    // Public API routes — accessible without authentication. The corpus
+    // reads under `/api/corpus/...` here serve the **global** view (no
+    // per-traject overlay). Edits and traject-scoped reads live under
+    // `/api/trajects/{tid}/corpus/...` (writer-tier, see `traject_routes`).
     let public_api_routes = Router::new()
         .route("/api/sources", get(corpus_handlers::list_sources))
         .route("/api/corpus/laws", get(corpus_handlers::list_corpus_laws))
@@ -175,26 +178,13 @@ async fn main() {
             middleware::require_role::<AppState>("editor-reader"),
         ));
 
-    // Writer routes — `editor-writer` covers wet- and scenario-edits plus
-    // user-scoped writes. Harvest POSTs (which trigger outbound requests) sit
-    // here so anonymous callers can never reach them.
+    // Writer routes — `editor-writer` covers user-scoped writes. Corpus
+    // edits live under `/api/trajects/{tid}/corpus/...` in `traject_routes`
+    // (membership + traject path on every request, making "no traject = no
+    // write" an URL-level invariant rather than a runtime check). Harvest
+    // POSTs (which trigger outbound requests) sit here so anonymous callers
+    // can never reach them.
     let writer_routes = Router::new()
-        .route(
-            "/api/corpus/laws/{law_id}/scenarios/{filename}",
-            axum::routing::put(corpus_handlers::save_scenario)
-                .delete(corpus_handlers::delete_scenario)
-                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
-        )
-        .route(
-            "/api/corpus/laws/{law_id}",
-            axum::routing::put(corpus_handlers::save_law)
-                .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
-        )
-        .route(
-            "/api/corpus/laws/{law_id}/annotations",
-            axum::routing::put(corpus_handlers::save_annotations)
-                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
-        )
         .route(
             "/api/favorites/{law_id}",
             axum::routing::put(favorites::add).delete(favorites::remove),
@@ -235,18 +225,77 @@ async fn main() {
             middleware::require_role::<AppState>("editor-admin"),
         ));
 
-    // Traject routes — user-scoped CRUD on shared editing sessions. Handlers
-    // extract `Extension<AccountRecord>`, so `account_middleware` must run
-    // before each request to load the account row from the DB. Writer-tier
+    // Traject routes — user-scoped CRUD on shared editing sessions plus
+    // the traject-scoped corpus endpoints (read + write). Handlers extract
+    // `Extension<AccountRecord>`, so `account_middleware` must run before
+    // each request to load the account row from the DB. Writer-tier
     // because users manage their own trajects; the per-traject membership
     // model handles finer-grained access within each handler.
-    let traject_routes = Router::new()
-        .route("/api/trajects", get(trajects::list).post(trajects::create))
+    //
+    // Why the corpus routes live here too: writes against a traject's
+    // branch require the traject id to be in the URL (per RFC discussion
+    // — the active traject is per-tab via the SPA route, not a server
+    // session). All `/api/trajects/{id}/corpus/...` routes go through the
+    // same membership re-check that `traject_routes` already use.
+    // Traject-scoped reads (editor-reader tier). Listing/viewing the
+    // trajects you're a member of and reading the per-traject corpus
+    // overlay don't require write privilege — a Keycloak `editor-reader`
+    // who has been invited to a traject must be able to see in-progress
+    // edits. Membership is re-checked per request inside the handlers,
+    // so the role here is the broader "is this an authenticated reader
+    // at all" gate. Writes live in `traject_writer_routes` below.
+    let traject_reader_routes = Router::new()
+        .route("/api/trajects", get(trajects::list))
+        .route("/api/trajects/{id}", get(trajects::get))
+        .route(
+            "/api/trajects/{traject_ref}/sources",
+            get(corpus_handlers::list_traject_sources),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws",
+            get(corpus_handlers::list_traject_corpus_laws),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}",
+            get(corpus_handlers::get_traject_corpus_law),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/outputs",
+            get(corpus_handlers::list_traject_law_outputs),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios",
+            get(corpus_handlers::list_traject_scenarios),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios/{filename}",
+            get(corpus_handlers::get_traject_scenario),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
+            get(corpus_handlers::get_traject_annotations),
+        )
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            accounts::account_middleware,
+        ))
+        .route_layer(axum_middleware::from_fn_with_state(
+            app_state.clone(),
+            middleware::require_role::<AppState>("editor-reader"),
+        ));
+
+    // Traject-scoped writes (editor-writer tier). Mutations to traject
+    // metadata + membership AND the traject-branch corpus content all
+    // require write privilege. Axum merges the reader and writer
+    // routers at the same path by method: a PUT against
+    // `/corpus/laws/{lid}/scenarios/{fn}` resolves to the writer
+    // handler, while a GET on the same path resolves to the reader
+    // handler above.
+    let traject_writer_routes = Router::new()
+        .route("/api/trajects", axum::routing::post(trajects::create))
         .route(
             "/api/trajects/{id}",
-            get(trajects::get)
-                .patch(trajects::update)
-                .delete(trajects::delete),
+            axum::routing::patch(trajects::update).delete(trajects::delete),
         )
         .route(
             "/api/trajects/{id}/leave",
@@ -265,8 +314,20 @@ async fn main() {
             axum::routing::delete(trajects::remove_invite),
         )
         .route(
-            "/api/session/active-traject",
-            get(trajects::get_active).put(trajects::set_active),
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/scenarios/{filename}",
+            axum::routing::put(corpus_handlers::save_scenario)
+                .delete(corpus_handlers::delete_scenario)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}/annotations",
+            axum::routing::put(corpus_handlers::save_annotations)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_SCENARIO_BODY)),
+        )
+        .route(
+            "/api/trajects/{traject_ref}/corpus/laws/{law_id}",
+            axum::routing::put(corpus_handlers::save_law)
+                .layer(axum::extract::DefaultBodyLimit::max(MAX_LAW_BODY)),
         )
         .route_layer(axum_middleware::from_fn_with_state(
             app_state.clone(),
@@ -326,7 +387,8 @@ async fn main() {
             .merge(reader_routes)
             .merge(writer_routes)
             .merge(admin_routes)
-            .merge(traject_routes)
+            .merge(traject_reader_routes)
+            .merge(traject_writer_routes)
             .with_state(app_state)
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))
@@ -351,7 +413,8 @@ async fn main() {
             .merge(reader_routes)
             .merge(writer_routes)
             .merge(admin_routes)
-            .merge(traject_routes)
+            .merge(traject_reader_routes)
+            .merge(traject_writer_routes)
             .with_state(app_state)
             .layer(session_layer)
             .layer(axum_middleware::from_fn(middleware::security_headers))

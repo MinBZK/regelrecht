@@ -9,39 +9,33 @@
  */
 import { ref, computed, watch } from 'vue';
 import { useEngine } from './useEngine.js';
+import { annotationsUrl } from './corpusUrls.js';
 
-// Cache resolved notes per lawId for the session. The resolver result only
-// changes when the law text or the sidecar changes.
+// Cache resolved notes per `${trajectRef}::${lawId}` for the session.
+// The resolver result only changes when the law text or the sidecar
+// changes; scoping by trajectRef prevents cross-traject leakage when
+// the user switches between trajects.
 //
-// Caveat (acceptable for the display-only, default-off MVP; revisit in the
-// note-editing phase): the key is `lawId` (`law.$id`) alone, which does not
-// encode the law *version*. RFC-005 notes resolve per version, and a save
-// through the editor changes the text without changing `$id`. This cache is
-// not invalidated on save, so editing a law in-session and reopening its
-// Notities pane could show offsets resolved against the pre-save text. Once
-// notes become editable, key by `$id` + version and invalidate on save.
+// Caveat (acceptable for the display-only, default-off MVP; revisit in
+// the note-editing phase): the lawId key part is `law.$id`, which does
+// not encode the law *version*. A save through the editor changes the
+// text without changing `$id`, so the cache is not invalidated on save
+// — editing a law in-session and reopening its Notities pane could show
+// offsets resolved against the pre-save text. Once notes become
+// editable, key by `$id` + version and invalidate on save.
 const cache = new Map();
 
-/**
- * Drop every cached resolved-notes entry. Called by the traject switcher
- * after a successful active-traject change so the next read re-fetches
- * via the API instead of returning a previously cached version from
- * another traject (or from the no-traject scope).
- *
- * Mirrors `clearLawCache` in `useLaw.js`: notes are scoped per traject on
- * the backend (each traject reads from its own writable branch via
- * `GET /api/corpus/laws/{id}/annotations`), so the in-memory cache must
- * invalidate alongside the law cache.
- */
-export function clearNotesCache() {
-  cache.clear();
+function cacheKey(trajectRef, lawId) {
+  return `${trajectRef || ''}::${lawId}`;
 }
 
 /**
- * @param {import('vue').Ref<string>} lawId        reactive law $id
+ * @param {import('vue').Ref<string>} lawId reactive law $id
  * @param {import('vue').Ref<object>} selectedArticle reactive current article
+ * @param {import('vue').Ref<string|null>} trajectRef reactive traject ref
+ *   (`null` for global / no-traject reads)
  */
-export function useNotes(lawId, selectedArticle) {
+export function useNotes(lawId, selectedArticle, trajectRef) {
   const { initEngine, loadDependency } = useEngine();
   const resolved = ref([]); // [{ note, match, error }]
   const loading = ref(false);
@@ -57,6 +51,7 @@ export function useNotes(lawId, selectedArticle) {
 
   async function load() {
     const id = lawId.value;
+    const tr = trajectRef?.value ?? null;
     const gen = ++generation;
     const isStale = () => gen !== generation;
 
@@ -71,10 +66,11 @@ export function useNotes(lawId, selectedArticle) {
       loading.value = false;
       return;
     }
-    if (cache.has(id)) {
+    const key = cacheKey(tr, id);
+    if (cache.has(key)) {
       // Reset error too: a cached law (e.g. a 404 → []) must not keep showing
       // the previous law's "kon notities niet laden" alert.
-      resolved.value = cache.get(id);
+      resolved.value = cache.get(key);
       error.value = null;
       loading.value = false;
       return;
@@ -83,18 +79,14 @@ export function useNotes(lawId, selectedArticle) {
     loading.value = true;
     error.value = null;
     try {
-      // Route through editor-api so reads pick up the active traject's
-      // branch content (where `save_annotations` writes). The static
-      // `/data/annotations/` mirror — baked into the frontend container
-      // by `copy-laws.js` — only reflects central main at image-build
-      // time and missed every API-saved note (the gap #662 documented
-      // as out-of-scope).
-      const res = await fetch(
-        `/api/corpus/laws/${encodeURIComponent(id)}/annotations`,
-      );
+      // With an active traject the read goes through that traject's
+      // backend (where `save_annotations` writes) so a freshly-appended
+      // note is visible immediately. Without a traject this falls back
+      // to the global annotation route — the central source's main view.
+      const res = await fetch(annotationsUrl(tr, id));
       if (res.status === 404) {
         // A law without a sidecar is normal, not an error.
-        cache.set(id, []);
+        cache.set(key, []);
         if (!isStale()) resolved.value = [];
         return;
       }
@@ -104,14 +96,17 @@ export function useNotes(lawId, selectedArticle) {
       const yamlText = await res.text();
 
       const engine = await initEngine();
-      // The resolver needs the law's articles loaded; mirror how the rest of
-      // the editor pulls a law into the engine.
-      if (!engine.hasLaw(id)) {
-        await loadDependency(id);
-      }
+      // The resolver needs the law's articles loaded; mirror how the
+      // rest of the editor pulls a law into the engine. Call
+      // `loadDependency` unconditionally — it short-circuits when the
+      // engine already has the law under the same scope, and unloads +
+      // refetches when a previous load came from a different traject.
+      // A bare `if (!engine.hasLaw(id))` gate here would skip that scope
+      // check and resolve notes against stale-scope content.
+      await loadDependency(id, tr);
       const result = engine.resolveNotes(id, yamlText);
       const list = Array.isArray(result) ? result : [];
-      cache.set(id, list);
+      cache.set(key, list);
       if (!isStale()) resolved.value = list;
     } catch (e) {
       if (!isStale()) {
@@ -124,7 +119,11 @@ export function useNotes(lawId, selectedArticle) {
     }
   }
 
-  watch(lawId, load, { immediate: true });
+  // Re-load on either the law or the active-traject changing — the
+  // sidecar lives per traject branch, so a switch needs a fresh fetch
+  // even if the law id stayed put.
+  const trackers = trajectRef ? [lawId, trajectRef] : [lawId];
+  watch(trackers, load, { immediate: true });
 
   /**
    * Force a fresh fetch for the current law: drop its cache entry first
@@ -138,7 +137,7 @@ export function useNotes(lawId, selectedArticle) {
    */
   async function reload() {
     const id = lawId.value;
-    if (id) cache.delete(id);
+    if (id) cache.delete(cacheKey(trajectRef?.value ?? null, id));
     await load();
   }
 
@@ -196,8 +195,11 @@ export function useNotes(lawId, selectedArticle) {
  * @param {import('vue').Ref<Array>} draftNotes reactive list of W3C Annotation
  * @param {import('vue').Ref<string>} lawId
  * @param {import('vue').Ref<object>} selectedArticle
+ * @param {import('vue').Ref<string|null>=} trajectRef Active traject ref.
+ *   Routes the dependency load through the matching scope so a draft
+ *   resolves against the same law copy the editor shows.
  */
-export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
+export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajectRef) {
   const { initEngine, loadDependency } = useEngine();
   const resolvedDrafts = ref([]); // [{ note, match }]
 
@@ -212,6 +214,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
   async function resolve() {
     const id = lawId.value;
     const notes = draftNotes.value;
+    const tr = trajectRef?.value ?? null;
     const gen = ++generation;
     const isStale = () => gen !== generation;
     if (!id || !notes || notes.length === 0) {
@@ -220,7 +223,10 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
     }
     try {
       const engine = await initEngine();
-      if (!engine.hasLaw(id)) await loadDependency(id);
+      // Pass the scope so the engine cache can detect a stale copy
+      // from a previous traject and refetch — without this a switch
+      // would keep highlighting drafts against the old law content.
+      await loadDependency(id, tr);
       const out = [];
       for (const note of notes) {
         const selector = note?.target?.selector;
@@ -239,7 +245,8 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
     }
   }
 
-  watch([draftNotes, lawId], resolve, { immediate: true, deep: true });
+  const trackers = trajectRef ? [draftNotes, lawId, trajectRef] : [draftNotes, lawId];
+  watch(trackers, resolve, { immediate: true, deep: true });
 
   const draftNotesForArticle = computed(() => {
     const articleNr = selectedArticle.value?.number;

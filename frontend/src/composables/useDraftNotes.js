@@ -15,6 +15,7 @@
 import { ref, computed, watch } from 'vue';
 import yaml from 'js-yaml';
 import { lastSavedPr, sanitizeSavedPr } from './useEditorSession.js';
+import { annotationsUrl, requireTraject } from './corpusUrls.js';
 
 const STORAGE_PREFIX = 'regelrecht-draft-notes:';
 
@@ -43,8 +44,11 @@ function persist(lawId, list) {
 
 /**
  * @param {import('vue').Ref<string>} lawId reactive law $id
+ * @param {import('vue').Ref<string|null>=} trajectRef active traject
+ *   reference. Required for `saveToRepo`; drafts themselves live in
+ *   localStorage and don't care about the scope.
  */
-export function useDraftNotes(lawId) {
+export function useDraftNotes(lawId, trajectRef) {
   const drafts = ref(loadFor(lawId.value));
 
   // Re-read from storage whenever the law changes. A real watch (not a lazy
@@ -167,11 +171,13 @@ export function useDraftNotes(lawId) {
    */
   async function saveToRepo() {
     const id = lawId.value;
+    const tr = trajectRef?.value ?? null;
+    requireTraject(tr, 'notes save');
     // Snapshot drafts BEFORE any await (watch(lawId) swaps drafts.value on
     // a law switch). Strip the internal __draft marker; the backend gets
     // clean W3C Annotation objects.
     const newNotes = drafts.value.map(stripDraftMarker);
-    const url = `/api/corpus/laws/${encodeURIComponent(id)}/annotations`;
+    const url = annotationsUrl(tr, id);
     const res = await fetch(url, {
       method: 'PUT',
       headers: {

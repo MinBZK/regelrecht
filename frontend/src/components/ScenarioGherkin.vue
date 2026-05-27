@@ -11,9 +11,11 @@ const props = defineProps({
   engine: { type: Object, default: null },
   ready: { type: Boolean, default: false },
   loadDependency: { type: Function, required: true },
+  trajectRef: { type: String, default: null },
 });
 
 const lawIdRef = computed(() => props.lawId);
+const trajectRefRef = computed(() => props.trajectRef);
 
 const {
   scenarios,
@@ -24,7 +26,7 @@ const {
   saveError,
   selectScenario,
   saveScenario,
-} = useScenarios(lawIdRef);
+} = useScenarios(lawIdRef, trajectRefRef);
 
 const results = ref(null);
 const running = ref(false);

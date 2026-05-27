@@ -14,6 +14,33 @@ const router = createRouter({
       meta: { title: 'Bibliotheek' },
     },
     {
+      // Traject-scoped editor: full read + write. Per-tab active
+      // traject lives in the URL; switching in one tab no longer
+      // leaks into another tab's saves. API hangs under
+      // `/api/trajects/{trajectRef}/corpus/...`.
+      //
+      // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
+      // plain law-id slug like `zorgtoeslagwet` does NOT match this
+      // route — it falls through to the no-traject editor below.
+      //
+      // **Invariant**: law `$id` slugs must not match this regex (i.e.
+      // they must not end in `-{8hex}`). Today every harvested $id uses
+      // underscores (e.g. `wet_op_de_zorgtoeslag`) which are excluded
+      // from the character class, so the collision is structurally
+      // impossible. If a future harvester ever emits hyphenated ids, a
+      // schema check (or this regex tightened to require a leading
+      // word from the slug, not just hex chars) must be added.
+      path: '/editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+      name: 'editor-traject',
+      component: () => import('./EditorApp.vue'),
+      meta: { title: 'Editor', requiresAuth: true },
+    },
+    {
+      // Editor without a traject: read-only view. Useful for browsing
+      // a law's editor UI (machine_readable, YAML, scenarios) without
+      // committing to a traject. Save actions are disabled (`canEdit`
+      // gates them); the user picks a traject via the TrajectMenu to
+      // unlock edits, which navigates to `editor-traject`.
       path: '/editor/:lawId?/:articleNumber?',
       name: 'editor',
       component: () => import('./EditorApp.vue'),

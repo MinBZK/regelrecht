@@ -18,6 +18,7 @@ import { useLawGraph, rootOfId } from '../composables/useLawGraph.js';
 import { useTraceStepping } from '../composables/useTraceStepping.js';
 import { useColorScheme } from '../composables/useColorScheme.js';
 import { stepHasHighlights } from '../lib/traceEdges.js';
+import { lawUrl } from '../composables/corpusUrls.js';
 
 const props = defineProps({
   lawId: { type: String, default: null },
@@ -29,10 +30,13 @@ const props = defineProps({
   // matching output leaf on the root law.
   outputName: { type: String, default: null },
   expectations: { type: Object, default: () => ({}) },
+  /** Active traject ref — routes dependency reads through the
+   *  traject's backend so the graph mirrors what the editor pane shows. */
+  trajectRef: { type: String, default: null },
 });
 
 async function fetchLawYaml(lawId) {
-  const res = await fetch(`/api/corpus/laws/${encodeURIComponent(lawId)}`);
+  const res = await fetch(lawUrl(props.trajectRef, lawId));
   if (!res.ok) throw new Error(`Law '${lawId}' niet gevonden (${res.status})`);
   return await res.text();
 }
