@@ -21,6 +21,7 @@ export interface LandingContent {
     tools: string
     example: string
     faq: string
+    jobs: string
     signup: string
     docs: string
   }
@@ -74,6 +75,21 @@ export interface LandingContent {
     }[]
   }
   faq: { title: string; items: { q: string; a: string }[] }
+  jobs: {
+    title: string
+    lede: string
+    vacancyTag: string
+    contactsLabel: string
+    items: {
+      title: string
+      organisation: string
+      pitch: string
+      meta: string[]
+      ctaLabel: string
+      ctaHref: string
+      contacts: { label: string; href: string }[]
+    }[]
+  }
   feedback: { title: string; body: string; cta: string; ctaHref: string }
   footer: {
     blurb: string
@@ -135,6 +151,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       tools: 'Ecosysteem',
       example: 'Voorbeelden',
       faq: 'Vragen',
+      jobs: 'Werken bij',
       signup: 'Aanmelden',
       docs: 'Documentatie',
     },
@@ -443,6 +460,34 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
       ],
     },
+    jobs: {
+      title: 'Werk mee aan RegelRecht',
+      lede: 'Het team rond RegelRecht groeit. Bouw mee aan een open infrastructuur waarin Nederlandse wetgeving machine-uitvoerbaar wordt, en zie je werk landen bij uitvoeringsorganisaties die er dagelijks beslissingen op nemen.',
+      vacancyTag: 'Vacature',
+      contactsLabel: 'Vragen? Neem contact op met',
+      items: [
+        {
+          title: 'Software Engineer',
+          organisation: 'Rijksorganisatie ODI · Ministerie van BZK',
+          pitch:
+            'Werk aan de Rust-engine en de tooling waarmee wetten machine-uitvoerbaar worden. Je adviseert opdrachtgevers binnen het Rijk, ontwerpt en programmeert, en werkt naast juristen die de regels in machineleesbare vorm gieten. Senior rol met directe maatschappelijke impact.',
+          meta: [
+            'Schaal 13',
+            '€5.212 – €7.747',
+            '32 – 36 uur',
+            'Den Haag',
+            'Sluit 11 juni 2026',
+          ],
+          ctaLabel: 'Bekijk de vacature',
+          ctaHref:
+            'https://www.werkenvoornederland.nl/vacatures/software-engineer-BZK-2026-8544',
+          contacts: [
+            { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
+            { label: 'Dian Hoppen (recruiter)', href: 'tel:+31650062738' },
+          ],
+        },
+      ],
+    },
     feedback: {
       title: 'Wat denk jij?',
       body: 'Deze verkenning van machine-uitvoerbare wetgeving roept veel vragen op. Hoe zie jij de toekomst van de digitale overheid? Wat zijn je zorgen en verwachtingen bij deze ontwikkelingen? Jouw input helpt ons deze verkenning verder vorm te geven.',
@@ -516,6 +561,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       tools: 'Ecosystem',
       example: 'Examples',
       faq: 'Questions',
+      jobs: 'Join us',
       signup: 'Sign up',
       docs: 'Documentation',
     },
@@ -821,6 +867,34 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           q: 'How does this contribute to transparency?',
           a: 'By making rules explicit in code, citizens and organisations can see exactly how decisions are reached, instead of relying on opaque systems.',
+        },
+      ],
+    },
+    jobs: {
+      title: 'Join the RegelRecht team',
+      lede: 'The team behind RegelRecht is growing. Help build an open infrastructure that turns Dutch legislation into something computers can execute, and see your work land at the public-sector organisations that act on it every day.',
+      vacancyTag: 'Vacancy',
+      contactsLabel: 'Questions? Get in touch with',
+      items: [
+        {
+          title: 'Software Engineer',
+          organisation: 'Rijksorganisatie ODI · Ministry of the Interior',
+          pitch:
+            'Work on the Rust engine and the tooling that turns Dutch statutes into something computers can run. You advise teams across the Dutch government, design and write code, and work side by side with lawyers who translate rules into machine-readable form. Senior role, in Dutch (fluency required).',
+          meta: [
+            'Scale 13',
+            '€5,212 – €7,747',
+            '32 – 36 hours',
+            'The Hague',
+            'Closes 11 June 2026',
+          ],
+          ctaLabel: 'View the vacancy (Dutch)',
+          ctaHref:
+            'https://www.werkenvoornederland.nl/vacatures/software-engineer-BZK-2026-8544',
+          contacts: [
+            { label: 'Abram Klop (opgavemanager)', href: 'tel:+31650035732' },
+            { label: 'Dian Hoppen (recruiter)', href: 'tel:+31650062738' },
+          ],
         },
       ],
     },
