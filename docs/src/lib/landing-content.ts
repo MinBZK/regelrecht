@@ -259,48 +259,56 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       items: [
         {
           title: 'Regelformaat',
-          link: { label: 'Op GitHub', href: 'https://github.com/MinBZK/NRML' },
-          text: 'Een JSON-gebaseerd uitwisselings- en opslagformaat voor machine-uitvoerbare wetten. Maakt complexe juridische logica toegankelijk, ondersteunt meertalige regels en heeft ingebouwde versioning.',
+          meta: 'YAML + JSON Schema',
+          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          text: 'Wetten als YAML-bestanden met de wettekst en de machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur.',
         },
         {
-          title: 'Execution engines',
-          meta: 'Python • Go • meer komen',
+          title: 'BDD-scenario’s',
+          meta: 'Gherkin + cucumber',
+          text: 'Verwachte uitkomsten worden vastgelegd als leesbare scenario’s. Juristen en programmeurs lezen dezelfde tests, en elke wijziging in de regels wordt direct gevalideerd. Waar mogelijk halen we die scenario’s rechtstreeks uit de memorie van toelichting.',
+        },
+        {
+          title: 'Execution engine',
+          meta: 'Rust + WebAssembly',
           link: { label: 'Documentatie', href: '/docs/components/engine' },
-          text: 'Meerdere execution engines die regelspecificaties uitvoeren. Verschillende talen voor verschillende use cases, met consistent juridisch resultaat.',
+          text: 'Een deterministische execution engine die de YAML-regels uitvoert. Werkt in Rust en compileert naar WebAssembly zodat dezelfde regels in de browser en op de server hetzelfde resultaat geven.',
         },
         {
           title: 'Analoog-recht-converter',
           meta: 'AI-ondersteund',
-          text: 'LLM-gebaseerde tool om bestaand analoog recht om te zetten naar machine-uitvoerbare regels. Automatische transformatie van traditionele wetgeving naar een digitaal rechtsstelsel.',
+          text: 'Een LLM-gebaseerde tool die bestaand analoog recht zou kunnen omzetten naar machine-uitvoerbare regels. We verkennen hoe automatische transformatie eruit zou kunnen zien.',
         },
         {
           title: 'Editor',
+          meta: 'Werk in uitvoering',
           link: { label: 'Documentatie', href: '/docs/components/editor-api' },
           text: 'Een werkomgeving waarin juristen wetten machine-uitvoerbaar kunnen maken. We zijn aan het ontdekken hoe deze editor er precies uit moet zien.',
         },
         {
-          title: 'Dependency mapper',
+          title: 'Wettengraaf',
           meta: 'Relatie-analyse',
-          text: 'Visualiseert complexe relaties tussen verschillende wetten. Toont hoe wijzigingen in één wet doorwerken in het gehele juridische ecosysteem.',
+          text: 'Een visualisatie van de relaties tussen verschillende wetten, die zou kunnen tonen hoe wijzigingen in één wet doorwerken in het hele juridische landschap.',
         },
         {
           title: 'Corpus',
           meta: 'Git-gebaseerd',
           link: { label: 'Documentatie', href: '/docs/components/corpus' },
-          text: 'Volledige versioning van machine-uitvoerbare regels. Track wijzigingen, rollback-mogelijkheden, en branch verschillende wetsvoorstellen.',
+          text: 'De bibliotheek van machine-uitvoerbare regels. Git verzorgt de versiegeschiedenis; een registry verbindt verschillende bronnen tot één geheel.',
         },
         {
           title: 'Simulatieomgeving',
+          meta: 'Wat-als-analyse',
           link: {
             label: 'Live demo',
             href: 'https://ui.lac.apps.digilab.network/simulation',
           },
-          text: 'Test de gevolgen van nieuwe wetgeving vóór implementatie. Model maatschappelijke impact en voorspel onbedoelde effecten.',
+          text: 'Een omgeving waarin de gevolgen van nieuwe wetgeving doorgerekend zouden kunnen worden, voordat ze in werking treden. Bedoeld om maatschappelijke impact en onbedoelde effecten zichtbaar te maken.',
         },
         {
           title: 'Publicatieplatform',
           meta: 'API + web',
-          text: 'Centrale publicatie en distributie van machine-uitvoerbare regels. API-toegang voor alle overheidssystemen en private partijen.',
+          text: 'Een centrale plek voor publicatie en distributie van machine-uitvoerbare regels, met API-toegang voor overheidssystemen en private partijen.',
         },
       ],
     },
@@ -458,7 +466,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Waarom een eigen regelformaat?',
-          a: 'Een ontwikkelaarsvriendelijke JSON-benadering past beter bij moderne overheidssystemen dan complexere XML-standaarden. Het regelformaat dient als gedeeld uitwisselings- en opslagformaat zodat verschillende overheidssystemen dezelfde regelspecificaties kunnen gebruiken, met ingebouwde testscenario’s en versioning.',
+          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
         },
         {
           q: 'Hoe zou dit zich kunnen verhouden tot bestaande systemen?',
@@ -683,48 +691,56 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       items: [
         {
           title: 'Rule format',
-          link: { label: 'On GitHub', href: 'https://github.com/MinBZK/NRML' },
-          text: 'A JSON-based exchange and storage format for machine-executable laws. Makes complex legal logic accessible, supports multilingual rules and has built-in versioning.',
+          meta: 'YAML + JSON Schema',
+          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          text: 'Laws as YAML files, with the legal text and the machine-executable rules side by side. A versioned JSON Schema guards the structure.',
         },
         {
-          title: 'Execution engines',
-          meta: 'Python • Go • more to come',
+          title: 'BDD scenarios',
+          meta: 'Gherkin + cucumber',
+          text: 'Expected outcomes are captured as readable scenarios. Legal experts and programmers read the same tests, and every change to the rules is validated immediately. Where possible we draw those scenarios straight from the explanatory memorandum.',
+        },
+        {
+          title: 'Execution engine',
+          meta: 'Rust + WebAssembly',
           link: { label: 'Documentation', href: '/docs/components/engine' },
-          text: 'Multiple execution engines that run rule specifications. Different languages for different use cases, with a consistent legal result.',
+          text: 'A deterministic execution engine that runs the YAML rules. Written in Rust and compiled to WebAssembly so the same rules give the same result in the browser and on the server.',
         },
         {
           title: 'Analogue-law converter',
           meta: 'AI-assisted',
-          text: 'An LLM-based tool to convert existing analogue law into machine-executable rules. Automatic transformation of traditional legislation into a digital legal system.',
+          text: 'An LLM-based tool that could turn existing analogue law into machine-executable rules. We are exploring what automatic transformation could look like.',
         },
         {
           title: 'Editor',
+          meta: 'Work in progress',
           link: { label: 'Documentation', href: '/docs/components/editor-api' },
           text: 'A working environment for legal experts to make laws machine-executable. We are still discovering what this editor should look like.',
         },
         {
-          title: 'Dependency mapper',
+          title: 'Law graph',
           meta: 'Relationship analysis',
-          text: 'Visualises complex relationships between different laws. Shows how changes to one law propagate through the entire legal ecosystem.',
+          text: 'A visualisation of the relationships between different laws, that could show how changes to one law would ripple through the wider legal landscape.',
         },
         {
           title: 'Corpus',
           meta: 'Git-based',
           link: { label: 'Documentation', href: '/docs/components/corpus' },
-          text: 'Full versioning of machine-executable rules. Track changes, roll back, and branch different legislative proposals.',
+          text: 'The library of machine-executable rules. Git handles the version history; a registry ties different sources into a single whole.',
         },
         {
           title: 'Simulation environment',
+          meta: 'What-if analysis',
           link: {
             label: 'Live demo',
             href: 'https://ui.lac.apps.digilab.network/simulation',
           },
-          text: 'Test the consequences of new legislation before implementation. Model societal impact and predict unintended effects.',
+          text: 'An environment where the consequences of new legislation could be modelled before it takes effect, to surface societal impact and unintended effects.',
         },
         {
           title: 'Publication platform',
           meta: 'API + web',
-          text: 'Central publication and distribution of machine-executable rules. API access for all government systems and private parties.',
+          text: 'A central place for publication and distribution of machine-executable rules, with API access for government systems and private parties.',
         },
       ],
     },
@@ -882,7 +898,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Why a dedicated rule format?',
-          a: 'A developer-friendly JSON approach fits modern government systems better than the heavier XML standards. The rule format acts as a shared exchange and storage format so that different government systems can use the same rule specifications, with built-in test scenarios and versioning.',
+          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
         },
         {
           q: 'How could this relate to existing systems?',
