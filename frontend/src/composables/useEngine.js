@@ -31,6 +31,14 @@ function touchLoadedScopes(lawId) {
   }
   while (loadedScopes.size > LOADED_SCOPES_MAX) {
     const oldest = loadedScopes.keys().next().value;
+    // Drop the WASM-side copy alongside the tracking entry — without
+    // this the engine retains the law in memory even though our
+    // scope-tracking forgot it, defeating the whole "safety net" of
+    // the cap. `hasLaw` guards an unloadLaw call that the engine
+    // would otherwise panic on if the law is already gone.
+    if (engineInstance?.hasLaw(oldest)) {
+      engineInstance.unloadLaw(oldest);
+    }
     loadedScopes.delete(oldest);
   }
 }
