@@ -223,8 +223,7 @@ const toc = [
                                 <a href={c.href}>{c.label}</a>
                               </Fragment>
                             );
-                          })}
-                          .
+                          })}.
                         </p>
                       </nldd-rich-text>
                     </Fragment>
@@ -507,7 +506,7 @@ const toc = [
                     width="full"
                     href={ref.href}
                     text={`${lang === 'en' ? 'Read' : 'Lees'} ${ref.linkLabel}`}
-                    accessible-label={`${lang === 'en' ? 'Read' : 'Lees'} ${ref.linkLabel} — ${ref.title}`}
+                    accessible-label={`${lang === 'en' ? 'Read' : 'Lees'} ${ref.linkLabel}: ${ref.title}`}
                   />
                 </nldd-container>
               </nldd-card>
