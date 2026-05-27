@@ -18,12 +18,15 @@ const f = content[lang].footer;
 >
   <nldd-container layout="grid" column-count="4" md-column-count="2" sm-column-count="1" gap="32">
     <nldd-container>
-      <nldd-title size="5"><h5>RegelRecht</h5></nldd-title>
+      {/* Footer-rubrieken zijn page-level sections (parallel aan de h2's in
+          de main content), dus semantisch h2. nldd-title size kiest alleen
+          de visuele grootte — heading-niveau is onafhankelijk. */}
+      <nldd-title size="5"><h2>RegelRecht</h2></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text><p>{f.blurb}</p></nldd-rich-text>
     </nldd-container>
     <nldd-container>
-      <nldd-title size="5"><h5>{f.linksTitle}</h5></nldd-title>
+      <nldd-title size="5"><h2>{f.linksTitle}</h2></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text>
         <p>
@@ -39,7 +42,7 @@ const f = content[lang].footer;
       </nldd-rich-text>
     </nldd-container>
     <nldd-container>
-      <nldd-title size="5"><h5>{f.contactTitle}</h5></nldd-title>
+      <nldd-title size="5"><h2>{f.contactTitle}</h2></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text>
         <p>
@@ -48,7 +51,7 @@ const f = content[lang].footer;
       </nldd-rich-text>
     </nldd-container>
     <nldd-container>
-      <nldd-title size="5"><h5>{f.partOfTitle}</h5></nldd-title>
+      <nldd-title size="5"><h2>{f.partOfTitle}</h2></nldd-title>
       <nldd-spacer size="12" />
       <nldd-rich-text>
         <p>

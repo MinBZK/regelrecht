@@ -60,9 +60,14 @@ not obscured (minimum and enhanced), focus appearance, dragging movements, targe
 size, consistent help, redundant entry, and accessible authentication (minimum
 and enhanced). Beyond that, hand-tested:
 
-- keyboard-only operation, including the skip link and the focus order;
-- dark mode, for contrast and legibility;
-- rendering at 200% zoom and at 400% reflow.
+- keyboard-only operation, including the skip link ("Direct naar de inhoud")
+  and the focus order;
+- the focus indicator (a visible blue outline on every interactive element);
+- the three themes (System, Light, Dark) via the theme menu, for contrast and
+  legibility;
+- rendering at 200% zoom and at 400% reflow (no horizontal scroll);
+- contrast ratios measured in the browser: headings 11.3–12.4:1, links 5.8–9.4:1,
+  all well above the AA requirement.
 
 ## Known limitations
 
@@ -80,10 +85,6 @@ automated check, with a note in the configuration:
   element; the test mixes the two colour sets and measures a blend that never
   appears on screen. The text that does appear clears the 4.5:1 that AA asks for
   in both modes.
-- **The hero on the landing page.** The title text is white on a dark-blue
-  gradient. axe cannot judge a gradient. The weakest point of the gradient, its
-  lightest stop, gives white-on-dark-blue a ratio of 11.4:1; towards the dark end
-  it rises to 15.5:1.
 
 The accessible name of each diagram (`role="img"` with an `aria-label`) is checked
 separately against the build output in the same gate, apart from the excluded
@@ -94,8 +95,12 @@ contrast measurement.
 - There has been **no independent audit**. Everything above rests on the team's
   own test and review.
 - The interface uses web components from the NLDD design system that render their
-  content in a shadow DOM. Their own focus indication and internal accessibility
-  fall outside the site's control and depend on the design system.
+  content in a shadow DOM. The `<main>` landmark is rendered by `nldd-page`
+  inside that shadow DOM; modern assistive technology supports this, but its
+  accessibility depends on the design system.
+- The `nldd-page-footer-legal-bar-item` (the copyright text at the bottom of
+  the footer) falls just short of AA contrast because of its token colour. That
+  sits with the design system and is being addressed there.
 
 ## Reporting a problem
 
@@ -105,6 +110,6 @@ on which page, and we will pick it up.
 
 ## Drawn up
 
-This draft statement was drawn up on 21 May 2026, based on the test and review of
-that moment. RegelRecht is an exploration and still under development; the
-statement is updated when the site changes or after a formal audit.
+This draft statement was drawn up on 21 May 2026 and updated on 27 May 2026
+after a re-check. RegelRecht is an exploration and still under development;
+the statement is updated when the site changes or after a formal audit.
