@@ -8,10 +8,30 @@ import { lawUrl, requireTraject } from './corpusUrls.js';
 // per-traject view rather than whichever was fetched first. The
 // trajectRef is part of the URL, so per-tab navigation never silently
 // mixes content across trajects.
+//
+// LRU-capped so a long session that hops across many trajects doesn't
+// grow the cache without bound. 50 entries comfortably covers global +
+// a handful of trajects × the laws a session realistically opens;
+// evictions are cheap (the next fetch re-populates from the API).
+// Insertion order on a Map IS the LRU order — `touchLawCache` bumps a
+// key by `delete` + `set`.
+const LAW_CACHE_MAX = 50;
 const lawCache = new Map();
 
 function lawCacheKey(trajectRef, lawId) {
   return `${trajectRef || ''}::${lawId}`;
+}
+
+function touchLawCache(key) {
+  if (lawCache.has(key)) {
+    const v = lawCache.get(key);
+    lawCache.delete(key);
+    lawCache.set(key, v);
+  }
+  while (lawCache.size > LAW_CACHE_MAX) {
+    const oldest = lawCache.keys().next().value;
+    lawCache.delete(oldest);
+  }
 }
 
 export function resolveLawName(law) {
@@ -47,13 +67,17 @@ export function lawFetchError(status) {
  */
 export async function fetchLaw(trajectRef, lawId) {
   const key = lawCacheKey(trajectRef, lawId);
-  if (lawCache.has(key)) return lawCache.get(key);
+  if (lawCache.has(key)) {
+    touchLawCache(key);
+    return lawCache.get(key);
+  }
   const res = await fetch(lawUrl(trajectRef, lawId));
   if (!res.ok) throw lawFetchError(res.status);
   const text = await res.text();
   const law = yaml.load(text);
   const entry = { law, rawYaml: text, lawName: resolveLawName(law) };
   lawCache.set(key, entry);
+  touchLawCache(key);
   return entry;
 }
 
@@ -110,6 +134,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
       if (!lawCache.has(key)) {
         lawCache.set(key, { law: law.value, rawYaml: text, lawName: resolveLawName(law.value) });
       }
+      touchLawCache(key);
       if (articles.value.length > 0 && !selectedArticleNumber.value) {
         if (initialArticle && articles.value.some(a => String(a.number) === initialArticle)) {
           selectedArticleNumber.value = initialArticle;
@@ -240,11 +265,13 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
         law.value = parsed;
       }
       const resolvedId = parsed?.$id || savedLawId;
-      lawCache.set(lawCacheKey(savedTrajectRef, resolvedId), {
+      const savedKey = lawCacheKey(savedTrajectRef, resolvedId);
+      lawCache.set(savedKey, {
         law: parsed,
         rawYaml: yamlText,
         lawName: resolveLawName(parsed),
       });
+      touchLawCache(savedKey);
     } catch (e) {
       if (lawId.value === savedLawId && currentTrajectRef === savedTrajectRef) {
         saveError.value = e;

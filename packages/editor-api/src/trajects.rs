@@ -251,7 +251,14 @@ pub async fn resolve_traject_ref(
             "Malformed traject reference".to_string(),
         )
     })?;
-    if suffix_start == 0 {
+    // Reject empty- and missing-slug refs in one go:
+    //   suffix_start == 0  → ref is exactly 8 hex chars (no dash, no slug)
+    //   suffix_start == 1  → ref is `-{8hex}` (the slug part is empty)
+    // The SPA router regex requires at least one alphanumeric char
+    // before the dash, so the frontend can never produce these; a
+    // direct HTTP request still hits the DB lookup if we don't gate
+    // here. Aligns both layers on the same minimum shape.
+    if suffix_start <= 1 {
         return Err((
             StatusCode::BAD_REQUEST,
             "Malformed traject reference".to_string(),

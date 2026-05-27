@@ -52,7 +52,15 @@ function touchScope(key) {
 
 function ensureFetched(trajectRef) {
   const key = scopeKey(trajectRef);
-  if (fetchByScope.has(key)) return fetchByScope.get(key);
+  if (fetchByScope.has(key)) {
+    // Cache hit: touch so the LRU treats this access as recent.
+    // Without this an often-accessed scope can be evicted before a
+    // genuinely-stale one that happened to be added more recently —
+    // the invariant "most recently used is kept" only holds if the
+    // touch runs on every access, not just on miss.
+    touchScope(key);
+    return fetchByScope.get(key);
+  }
   if (!lawsByScope.has(key)) lawsByScope.set(key, ref([]));
   touchScope(key);
   const lawsRef = lawsByScope.get(key);
