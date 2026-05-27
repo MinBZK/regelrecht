@@ -917,7 +917,7 @@ pub async fn remove_member(
 /// the last owner — they must hand over the role or delete the
 /// traject. The next write request the caller makes against this
 /// traject's URL will 403 on the membership re-check in
-/// `require_traject_corpus_from_path`.
+/// `require_traject_corpus_from_ref`.
 pub async fn leave(
     State(state): State<AppState>,
     Extension(account): Extension<AccountRecord>,

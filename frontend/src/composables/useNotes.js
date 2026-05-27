@@ -193,8 +193,11 @@ export function useNotes(lawId, selectedArticle, trajectRef) {
  * @param {import('vue').Ref<Array>} draftNotes reactive list of W3C Annotation
  * @param {import('vue').Ref<string>} lawId
  * @param {import('vue').Ref<object>} selectedArticle
+ * @param {import('vue').Ref<string|null>=} trajectRef Active traject ref.
+ *   Routes the dependency load through the matching scope so a draft
+ *   resolves against the same law copy the editor shows.
  */
-export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
+export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle, trajectRef) {
   const { initEngine, loadDependency } = useEngine();
   const resolvedDrafts = ref([]); // [{ note, match }]
 
@@ -209,6 +212,7 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
   async function resolve() {
     const id = lawId.value;
     const notes = draftNotes.value;
+    const tr = trajectRef?.value ?? null;
     const gen = ++generation;
     const isStale = () => gen !== generation;
     if (!id || !notes || notes.length === 0) {
@@ -217,7 +221,10 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
     }
     try {
       const engine = await initEngine();
-      if (!engine.hasLaw(id)) await loadDependency(id);
+      // Pass the scope so the engine cache can detect a stale copy
+      // from a previous traject and refetch — without this a switch
+      // would keep highlighting drafts against the old law content.
+      await loadDependency(id, tr);
       const out = [];
       for (const note of notes) {
         const selector = note?.target?.selector;
@@ -236,7 +243,8 @@ export function useResolvedDraftNotes(draftNotes, lawId, selectedArticle) {
     }
   }
 
-  watch([draftNotes, lawId], resolve, { immediate: true, deep: true });
+  const trackers = trajectRef ? [draftNotes, lawId, trajectRef] : [draftNotes, lawId];
+  watch(trackers, resolve, { immediate: true, deep: true });
 
   const draftNotesForArticle = computed(() => {
     const articleNr = selectedArticle.value?.number;

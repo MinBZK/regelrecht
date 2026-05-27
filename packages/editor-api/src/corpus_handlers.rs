@@ -814,7 +814,7 @@ async fn require_traject_corpus_from_ref(
         .get(SESSION_KEY_SUB)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "session read sub in require_traject_corpus_from_path");
+            tracing::error!(error = %e, "session read sub in require_traject_corpus_from_ref");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "session read failed".to_string(),

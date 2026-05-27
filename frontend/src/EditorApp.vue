@@ -186,7 +186,14 @@ const {
 // re-fetch the open law through the new traject's backends. `switchLaw`
 // crosses trajects too via its third argument so the law cache key
 // stays correct.
+//
+// Also flush the WASM engine: it caches loaded laws by id only, so
+// without this a scenario run after a traject switch would evaluate
+// the open law against the *previous* traject's dependencies. The
+// dependency walker re-loads on demand on the next run, so a single
+// `unloadAllLaws` is enough — no per-dep bookkeeping needed.
 watch(activeTrajectRef, (next) => {
+  unloadAllLaws();
   loadCorpusLaws();
   if (lawId.value) {
     switchLaw(lawId.value, selectedArticleNumber.value, next);
@@ -242,6 +249,7 @@ const { draftNotesForArticle } = useResolvedDraftNotes(
   draftNotes,
   lawId,
   selectedArticle,
+  activeTrajectRef,
 );
 const canCreateNotes = computed(
   () => isEnabled('notes.create') && notesActive.value,
@@ -634,7 +642,14 @@ Promise.all(uniqueLawIds.map(async (id) => {
 }));
 
 // --- Engine ---
-const { ready: engineReady, initError: engineInitError, initEngine, getEngine } = useEngine();
+const {
+  ready: engineReady,
+  initError: engineInitError,
+  initEngine,
+  getEngine,
+  loadLawYaml,
+  unloadAllLaws,
+} = useEngine();
 initEngine().catch(() => {});
 
 // The engine-loading watch lives below, next to `currentLawYaml`, so it
@@ -849,18 +864,18 @@ const currentLawYaml = computed(() => {
   }
 });
 
-// Load current law into engine. Reacts to currentLawYaml so in-memory edits
-// are immediately visible to scenarios.
+// Load current law into engine. Reacts to currentLawYaml so in-memory
+// edits are immediately visible to scenarios. Goes through
+// useEngine.loadLawYaml so the engine's scope-tracking map sees this
+// load under the right traject — otherwise a later loadDependency call
+// for the same law id would treat it as already-current and skip the
+// refetch on a traject switch.
 watch(
   [currentLawYaml, engineReady],
-  ([lawYaml, isReady]) => {
+  async ([lawYaml, isReady]) => {
     if (!isReady || !lawYaml) return;
-    const engine = getEngine();
     try {
-      if (engine.hasLaw(lawId.value)) {
-        engine.unloadLaw(lawId.value);
-      }
-      engine.loadLaw(lawYaml);
+      await loadLawYaml(lawYaml, lawId.value, activeTrajectRef.value);
     } catch (e) {
       console.warn(`Failed to load law '${lawId.value}' into engine:`, e);
     }

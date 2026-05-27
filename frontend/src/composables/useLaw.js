@@ -97,7 +97,7 @@ export function useLaw(lawParam, articleParam, trajectRefParam) {
     const version = ++switchVersion;
     try {
       loading.value = true;
-      const url = initialDirectUrl ?? lawUrl(currentTrajectRef,lawParam);
+      const url = initialDirectUrl ?? lawUrl(currentTrajectRef, lawParam);
       const res = await fetch(url);
       if (!res.ok) throw lawFetchError(res.status);
       if (version !== switchVersion) return;

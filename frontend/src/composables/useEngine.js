@@ -9,6 +9,13 @@ import { lawUrl } from './corpusUrls.js';
 let engineInstance = null;
 let initPromise = null;
 
+// Per-law tracking of which traject scope a YAML was loaded under. The
+// WASM engine itself only knows law id, so without this every scope
+// would see whichever copy happened to be loaded first — switching
+// trajects then runs scenarios against a stale dependency. Keyed by
+// `lawId`, value is the `trajectRef || ''` the load used.
+const loadedScopes = new Map();
+
 const ready = ref(false);
 const initError = ref(null);
 
@@ -46,23 +53,70 @@ async function initEngine() {
  * `trajectRef` is given the read goes through the traject's per-source
  * backends (read-your-writes for in-progress edits); omit it for the
  * global view.
+ *
+ * If the law was previously loaded under a *different* scope, unload
+ * the stale copy first — otherwise scenario runs after a traject
+ * switch would evaluate against the previous scope's dependencies.
  */
 async function loadDependency(lawId, trajectRef = null) {
   const engine = await initEngine();
-  if (engine.hasLaw(lawId)) return;
+  const scope = trajectRef || '';
+  if (engine.hasLaw(lawId)) {
+    if (loadedScopes.get(lawId) === scope) return;
+    engine.unloadLaw(lawId);
+  }
 
   const res = await fetch(lawUrl(trajectRef, lawId));
   if (!res.ok) throw new Error(`Failed to fetch law '${lawId}': ${res.status}`);
   const yaml = await res.text();
   engine.loadLaw(yaml);
+  loadedScopes.set(lawId, scope);
 }
 
 /**
- * Load a law YAML string into the engine.
+ * Load a law YAML string into the engine and remember which scope it
+ * came from. Callers that pass a raw YAML body (i.e. an edited law
+ * being saved through the editor) should pass the scope they fetched
+ * it under so a later `loadDependency` call doesn't think a copy from
+ * another scope is still valid.
+ *
+ * Re-loads (same `lawId`) unload the previous copy first so the
+ * engine sees the new YAML — `engine.loadLaw` on a known id is a no-op
+ * in the WASM binding.
  */
-async function loadLawYaml(yaml) {
+async function loadLawYaml(yaml, lawId = null, trajectRef = null) {
   const engine = await initEngine();
-  return engine.loadLaw(yaml);
+  if (lawId && engine.hasLaw(lawId)) engine.unloadLaw(lawId);
+  const result = engine.loadLaw(yaml);
+  if (lawId) loadedScopes.set(lawId, trajectRef || '');
+  return result;
+}
+
+/**
+ * Unload a law from the engine and forget its scope. Used when a
+ * traject switch needs to flush a known dependency so the next
+ * resolver call re-fetches from the new scope.
+ */
+function unloadLaw(lawId) {
+  if (!engineInstance) return;
+  if (engineInstance.hasLaw(lawId)) engineInstance.unloadLaw(lawId);
+  loadedScopes.delete(lawId);
+}
+
+/**
+ * Unload every law the engine has tracked. Cheaper than rebuilding
+ * the engine on every traject switch in the editor, and good enough
+ * because the dependency walker re-loads on demand.
+ */
+function unloadAllLaws() {
+  if (!engineInstance) {
+    loadedScopes.clear();
+    return;
+  }
+  for (const lawId of loadedScopes.keys()) {
+    if (engineInstance.hasLaw(lawId)) engineInstance.unloadLaw(lawId);
+  }
+  loadedScopes.clear();
 }
 
 export function useEngine() {
@@ -77,6 +131,10 @@ export function useEngine() {
     loadDependency,
     /** Load raw YAML into the engine */
     loadLawYaml,
+    /** Unload a single law from the engine */
+    unloadLaw,
+    /** Unload every tracked law — used on traject switch to flush stale deps */
+    unloadAllLaws,
     /** Get the engine instance (must be initialized first) */
     getEngine: () => engineInstance,
   };
