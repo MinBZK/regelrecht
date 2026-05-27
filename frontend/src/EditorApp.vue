@@ -145,12 +145,13 @@ function setPaneView(idx, viewId) {
 }
 
 // All edit operations are gated behind SSO + an active traject. The
-// SPA route shape (`/editor/{trajectRef}/{lawId?}`) puts the traject
-// in the URL, so this component cannot mount without one (the router
-// `beforeEnter` redirects bookmark-shaped `/editor/{lawId}` URLs to
-// the library). `canEdit` is therefore effectively just the auth
-// check, but we keep the explicit `activeTrajectRef` guard so an
-// unexpectedly-empty param surfaces as read-only rather than a 500.
+// editor renders in two shapes:
+//   - `/editor/{lawId?}/{articleNumber?}`         → read-only view,
+//     `canEdit` is false; save buttons disabled.
+//   - `/editor/{trajectRef}/{lawId?}/{article?}`  → full edit mode,
+//     `canEdit` is true; writes land in that traject's branch.
+// Pick a traject in the TrajectMenu to flip from the first shape to
+// the second.
 const { activeTrajectRef } = useTrajects();
 const canEdit = computed(
   () => (!oidcConfigured.value || authenticated.value) && activeTrajectRef.value !== null,
@@ -507,20 +508,35 @@ function saveActiveTab(tab) {
   else localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, JSON.stringify(tab));
 }
 
-// If the user lands on /editor/{trajectRef}/ without a lawId, restore
-// the last tab they had open before the refresh — keeping the same
-// trajectRef they navigated to.
+/**
+ * Build a router target for the editor that preserves the current
+ * traject scope. With a traject in the URL the user stays in
+ * `editor-traject` (full edit mode); without one they stay in `editor`
+ * (read-only). Vue Router requires the route name to match the
+ * presence/absence of the `:trajectRef` param, so a single literal
+ * `name: 'editor'` won't survive a no-traject ↔ with-traject switch.
+ */
+function editorRouteFor(lawIdVal, articleNumber) {
+  const trajectRef = route.params.trajectRef;
+  if (trajectRef) {
+    return {
+      name: 'editor-traject',
+      params: { trajectRef, lawId: lawIdVal, articleNumber },
+    };
+  }
+  return {
+    name: 'editor',
+    params: { lawId: lawIdVal, articleNumber },
+  };
+}
+
+// If the user lands on the editor without a lawId, restore the last
+// tab they had open before the refresh — keeping the same traject
+// scope (or lack of it).
 if (!route.params.lawId) {
   const last = loadSavedActiveTab();
   if (last?.lawId) {
-    router.replace({
-      name: 'editor',
-      params: {
-        trajectRef: route.params.trajectRef,
-        lawId: last.lawId,
-        articleNumber: last.articleNumber || undefined,
-      },
-    });
+    router.replace(editorRouteFor(last.lawId, last.articleNumber || undefined));
   }
 }
 
@@ -582,14 +598,7 @@ async function selectTab(tab) {
   // Sync the URL so deep-linking and browser back/forward stay in step.
   // `replace` (not `push`) keeps history clean — a tab switch isn't
   // navigation the user wants to undo with the back button.
-  router.replace({
-    name: 'editor',
-    params: {
-      trajectRef: route.params.trajectRef,
-      lawId: tab.lawId,
-      articleNumber: tab.articleNumber,
-    },
-  });
+  router.replace(editorRouteFor(tab.lawId, tab.articleNumber));
 }
 
 // Browser back/forward (or any external navigation) — pull state from URL.

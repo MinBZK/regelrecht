@@ -37,12 +37,6 @@ export function annotationsUrl(trajectRef, lawId) {
   return `${lawUrl(trajectRef, lawId)}/annotations`;
 }
 
-export function sourcesUrl(trajectRef) {
-  return trajectRef
-    ? `/api/trajects/${encodeURIComponent(trajectRef)}/sources`
-    : `/api/sources`;
-}
-
 // Writes only exist under the traject prefix. Composables call this at
 // the top of their save function so the call-stack failure is "no
 // traject" instead of a malformed URL.

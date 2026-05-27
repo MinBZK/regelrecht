@@ -23,28 +23,31 @@ const route = useRoute();
 const router = useRouter();
 
 /**
- * Navigate to a traject — push the user into `/editor/{ref}/{lawId?}`
- * preserving whichever law they were viewing. Per-tab state: a switch
+ * Navigate to a traject — push the user into the traject-scoped
+ * editor at the same law they were viewing. Per-tab state: a switch
  * here only affects this tab, never other open editors.
  */
 async function goToTraject(trajectRef) {
   const lawId = route.params.lawId || undefined;
   const articleNumber = route.params.articleNumber || undefined;
   await router.push({
-    name: 'editor',
+    name: 'editor-traject',
     params: { trajectRef, lawId, articleNumber },
   });
 }
 
 /**
- * Leave traject scope — go to the global library. Keeps the open law
- * in the URL so the user lands on the same law (read-only).
+ * Leave traject scope. Stays in the editor (read-only view) when the
+ * user is currently editing; goes to the library when they were
+ * browsing. Either way the open law is preserved.
  */
-async function goToLibrary() {
+async function leaveTraject() {
   const lawId = route.params.lawId || undefined;
   const articleNumber = route.params.articleNumber || undefined;
+  const inEditor =
+    route.name === 'editor' || route.name === 'editor-traject';
   await router.push({
-    name: 'library',
+    name: inEditor ? 'editor' : 'library',
     params: { lawId, articleNumber },
   });
 }
@@ -107,7 +110,7 @@ function closeCreate() {
 }
 
 async function selectNoTraject() {
-  await goToLibrary();
+  await leaveTraject();
   emit('switched', null);
 }
 

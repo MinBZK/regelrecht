@@ -231,13 +231,25 @@ pub async fn resolve_traject_ref(
     // slug without suffix, garbage) is a 400 — we don't try to fall
     // back to a bare-uuid lookup because that path no longer exists in
     // the URL contract.
+    //
+    // Reject non-ASCII up front. Valid refs are slug + 8 hex chars,
+    // both ASCII by construction; without this guard a crafted
+    // multi-byte sequence like `abcé1234567` passes the length check
+    // and then panics on the byte-index slicing below (a multi-byte
+    // char straddling `suffix_start` is a char-boundary mid-slice).
+    if !traject_ref.is_ascii() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Malformed traject reference".to_string(),
+        ));
+    }
     let suffix_start = traject_ref.len().checked_sub(8).ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
             "Malformed traject reference".to_string(),
         )
     })?;
-    if suffix_start == 0 || !traject_ref.is_char_boundary(suffix_start - 1) {
+    if suffix_start == 0 {
         return Err((
             StatusCode::BAD_REQUEST,
             "Malformed traject reference".to_string(),

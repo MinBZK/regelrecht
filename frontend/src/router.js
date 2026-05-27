@@ -3,14 +3,6 @@ import LibraryApp from './LibraryApp.vue';
 import { ensureAuthReady, useAuth } from './composables/useAuth.js';
 import { recordLastVisited } from './composables/useLastVisitedRoute.js';
 
-// Traject ref shape: `{slug}-{8hex}` where the trailing 8 hex chars are
-// the lookup key against the trajects table (slug is cosmetic — see
-// `resolve_traject_ref` in editor-api). Loose enough to accept the
-// runtime-generated slug, strict enough to disambiguate from a bare
-// law-id slug so an old-shape `/editor/{lawId}` bookmark falls through
-// to the legacy redirect below.
-const TRAJECT_REF_RE = /^[a-z0-9-]+-[0-9a-f]{8}$/i;
-
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -22,36 +14,34 @@ const router = createRouter({
       meta: { title: 'Bibliotheek' },
     },
     {
-      // Per-tab active traject lives in the URL: each open tab carries
-      // its own `trajectRef`, so a switch in one tab no longer leaks
-      // into another tab's saves. The matching API routes hang under
-      // `/api/trajects/{trajectRef}/corpus/...` (see editor-api main.rs).
-      path: '/editor/:trajectRef/:lawId?/:articleNumber?',
+      // Traject-scoped editor: full read + write. Per-tab active
+      // traject lives in the URL; switching in one tab no longer
+      // leaks into another tab's saves. API hangs under
+      // `/api/trajects/{trajectRef}/corpus/...`.
+      //
+      // The `:trajectRef` regex pins the param to `{slug}-{8hex}` so a
+      // plain law-id slug like `zorgtoeslagwet` does NOT match this
+      // route — it falls through to the no-traject editor below.
+      path: '/editor/:trajectRef([a-z0-9-]+-[0-9a-f]{8})/:lawId?/:articleNumber?',
+      name: 'editor-traject',
+      component: () => import('./EditorApp.vue'),
+      meta: { title: 'Editor', requiresAuth: true },
+    },
+    {
+      // Editor without a traject: read-only view. Useful for browsing
+      // a law's editor UI (machine_readable, YAML, scenarios) without
+      // committing to a traject. Save actions are disabled (`canEdit`
+      // gates them); the user picks a traject via the TrajectMenu to
+      // unlock edits, which navigates to `editor-traject`.
+      path: '/editor/:lawId?/:articleNumber?',
       name: 'editor',
       component: () => import('./EditorApp.vue'),
       meta: { title: 'Editor', requiresAuth: true },
-      beforeEnter: (to) => {
-        // Legacy bookmark `/editor/{lawId}` (no traject) — interpret
-        // `trajectRef` as the law id and redirect to the global library
-        // view. Users can re-open in a traject via the menu.
-        if (!TRAJECT_REF_RE.test(to.params.trajectRef)) {
-          return {
-            name: 'library',
-            params: {
-              lawId: to.params.trajectRef,
-              articleNumber: to.params.lawId,
-            },
-          };
-        }
-      },
     },
     {
       path: '/editor.html',
-      // Legacy query-string entry point — without a traject we can't
-      // land in the editor, so route to the library view of the
-      // requested law instead.
       redirect: (to) => ({
-        name: 'library',
+        name: 'editor',
         params: {
           lawId: to.query.law || undefined,
           articleNumber: to.query.article || undefined,

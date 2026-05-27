@@ -37,4 +37,10 @@ export function recordLastVisited(routeName, fullPath) {
 }
 
 export const lastLibraryPath = computed(() => _lastVisited.value.library ?? '/library');
-export const lastEditorPath = computed(() => _lastVisited.value.editor ?? '/editor');
+
+// `/editor` (no traject) is the read-only editor. The first visit
+// lands there; subsequent visits restore the last-seen editor URL,
+// which may include `:trajectRef` if the user picked a traject.
+export const lastEditorPath = computed(
+  () => _lastVisited.value.editor ?? _lastVisited.value['editor-traject'] ?? '/editor',
+);
