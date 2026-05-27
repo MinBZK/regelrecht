@@ -54,9 +54,9 @@ const description = shy(entry.data.description);
       <EditLink entryId={entry.id} collection="docs" />
     </div>
     {/* The markdown body stays light-DOM (SSR/no-JS safe) inside nldd-rich-text
-        for NLDD prose typography. min-width:0 prevents long content (wide
+        for NLDD prose typography. .rr-min-width-0 prevents long content (wide
         tables, code blocks) from forcing the 2/3 column wider than its share. */}
-    <div slot="right" style="min-width: 0">
+    <div slot="right" class="rr-min-width-0">
       <nldd-rich-text>
         <Content />
       </nldd-rich-text>

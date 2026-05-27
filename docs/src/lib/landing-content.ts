@@ -91,7 +91,7 @@ export interface LandingContent {
     }[]
   }
   feedback: { title: string; body: string; cta: string; ctaHref: string }
-  compliance: { label: string; alt: string; linkHref: string }
+  compliance: { label: string; alt: string; internetNlUrl: string }
   footer: {
     blurb: string
     linksTitle: string
@@ -521,7 +521,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     compliance: {
       label: '100% score op de Internet.nl websitetest',
       alt: 'Badge: 100% score op de Internet.nl websitetest',
-      linkHref: 'https://internet.nl/',
+      internetNlUrl: 'https://internet.nl/',
     },
     footer: {
       blurb:
@@ -959,7 +959,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     compliance: {
       label: '100% score on the Internet.nl website test',
       alt: 'Badge: 100% score on the Internet.nl website test',
-      linkHref: 'https://internet.nl/',
+      internetNlUrl: 'https://internet.nl/',
     },
     footer: {
       blurb:
