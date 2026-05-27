@@ -66,8 +66,10 @@ authenticatie (minimum en uitgebreid). Daarnaast is met de hand getest:
 - de drie thema's (Systeem, Licht, Donker) via het thema-menu, op contrast en
   leesbaarheid;
 - weergave bij 200% zoom en bij 400% herschaling (zonder horizontale scroll);
-- contrastverhoudingen in de browser gemeten: titels 11,3–12,4:1, links 5,8–9,4:1,
-  alles ruim boven de AA-eis.
+- steekproefsgewijs contrastverhoudingen in de browser gemeten op de
+  landingspagina (donkere en lichte modus): titels 11,3–12,4:1, links 5,8–9,4:1,
+  alles ruim boven de AA-eis. De documentatiepagina's gebruiken hetzelfde
+  NLDD-palet maar zijn niet element-voor-element nagemeten.
 
 ## Bekende beperkingen
 
@@ -97,8 +99,11 @@ contrastmeting.
   toets en controle van het team.
 - De interface gebruikt web-componenten uit het NLDD-designsysteem die hun inhoud
   in een schaduw-DOM tekenen. De `<main>`-landmark wordt door `nldd-page`
-  binnen die schaduw-DOM gerenderd; moderne hulptechnologie ondersteunt dat,
-  maar de toegankelijkheid daarvan hangt af van het designsysteem.
+  binnen die schaduw-DOM gerenderd. Ondersteuning hiervoor verschilt nog per
+  schermlezer (NVDA en JAWS komen er goed mee om, VoiceOver op iOS is
+  inconsistent met landmarks in schaduw-DOM); de toegankelijkheid hangt af
+  van het designsysteem en is door dit team niet apart per schermlezer
+  geverifieerd.
 - Het `nldd-page-footer-legal-bar-item` (de copyright-tekst onderin de footer)
   haalt door zijn token-kleur net geen AA-contrast. Dat ligt bij het
   designsysteem en wordt daar opgepakt.

@@ -66,8 +66,10 @@ and enhanced). Beyond that, hand-tested:
 - the three themes (System, Light, Dark) via the theme menu, for contrast and
   legibility;
 - rendering at 200% zoom and at 400% reflow (no horizontal scroll);
-- contrast ratios measured in the browser: headings 11.3–12.4:1, links 5.8–9.4:1,
-  all well above the AA requirement.
+- spot-checked contrast ratios measured in the browser on the landing page
+  (dark and light modes): headings 11.3–12.4:1, links 5.8–9.4:1, all well
+  above the AA requirement. The documentation pages use the same NLDD
+  palette but were not measured element by element.
 
 ## Known limitations
 
@@ -96,8 +98,10 @@ contrast measurement.
   own test and review.
 - The interface uses web components from the NLDD design system that render their
   content in a shadow DOM. The `<main>` landmark is rendered by `nldd-page`
-  inside that shadow DOM; modern assistive technology supports this, but its
-  accessibility depends on the design system.
+  inside that shadow DOM. Screen reader support for landmarks in shadow DOM
+  still varies (NVDA and JAWS handle it well, VoiceOver on iOS is inconsistent);
+  accessibility there depends on the design system and was not verified per
+  screen reader by this team.
 - The `nldd-page-footer-legal-bar-item` (the copyright text at the bottom of
   the footer) falls just short of AA contrast because of its token colour. That
   sits with the design system and is being addressed there.
