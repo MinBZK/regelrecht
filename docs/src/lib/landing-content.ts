@@ -158,7 +158,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     hero: {
       titleSmall: 'van wet naar digitale werking',
       intro:
-        'RegelRecht verkent hoe we transparante, eenduidige en consistente uitvoering van wetgeving kunnen realiseren. Een verkenning naar digitale mogelijkheden waarbij iedereen kan begrijpen hoe besluiten tot stand komen.',
+        'RegelRecht verkent of wetgeving als uitvoerbare code geschreven kan worden, zodat verschillende organisaties dezelfde wet ook hetzelfde toepassen en burgers kunnen volgen hoe een besluit tot stand komt.',
       cta: 'Verken de mogelijkheden',
     },
     partners: {
@@ -174,7 +174,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     whatIsIt: {
       title: 'Wat is RegelRecht?',
-      lede: 'De uitvoering van wetgeving kent verschillende uitdagingen: verschillende interpretaties, ondoorzichtige systemen en complex programmeerwerk dat vaak ver af staat van de oorspronkelijke wet. RegelRecht verkent of machine-uitvoerbare wetgeving een antwoord kan bieden — wetten die direct als uitvoerbare code geschreven worden, zonder tussenkomst van programmeurs.',
+      lede: 'De uitvoering van wetgeving kent verschillende uitdagingen: verschillende interpretaties, ondoorzichtige systemen en complex programmeerwerk dat vaak ver af staat van de oorspronkelijke wet. RegelRecht verkent of machine-uitvoerbare wetgeving een antwoord kan bieden: wetten die direct als uitvoerbare code geschreven worden, zonder tussenkomst van programmeurs.',
       cards: [
         {
           h: 'Van analoog recht naar code',
@@ -260,12 +260,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'NRML-taal',
           link: { label: 'GitHub', href: 'https://github.com/MinBZK/NRML' },
-          text: 'Normalized Rule Model Language — een JSON-gebaseerd uitwisselings- en opslagformaat voor machine-uitvoerbare wetten. NRML maakt complexe juridische logica toegankelijk, ondersteunt meertalige regels en heeft ingebouwde versioning.',
+          text: 'Normalized Rule Model Language: een JSON-gebaseerd uitwisselings- en opslagformaat voor machine-uitvoerbare wetten. NRML maakt complexe juridische logica toegankelijk, ondersteunt meertalige regels en heeft ingebouwde versioning.',
         },
         {
           title: 'Execution engines',
           meta: 'Python • Go • meer komen',
-          text: 'Meerdere execution engines die NRML-code uitvoeren. Verschillende talen voor verschillende use cases — maar consistent juridisch resultaat.',
+          text: 'Meerdere execution engines die NRML-code uitvoeren. Verschillende talen voor verschillende use cases, met consistent juridisch resultaat.',
         },
         {
           title: 'Analoog-recht-converter',
@@ -314,9 +314,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           h: 'Persoonlijk regeldashboard',
           p: 'Wat als burgers op één plek al hun toeslagen, uitkeringen en verplichtingen zouden kunnen zien? Elke regel zou dan traceerbaar kunnen zijn terug naar de machine-uitvoerbare wetgeving, met volledige transparantie over hoe besluiten tot stand komen.',
           bullets: [
-            'Real-time regeltoepassing — zou directe feedback mogelijk maken?',
-            'Volledige traceerbaarheid — kan een pad van wet naar persoonlijke situatie gelegd worden?',
-            'Proactieve communicatie — kunnen burgers automatisch geïnformeerd worden bij regelwijzigingen?',
+            'Real-time regeltoepassing: zou directe feedback mogelijk maken?',
+            'Volledige traceerbaarheid: kan een pad van wet naar persoonlijke situatie gelegd worden?',
+            'Proactieve communicatie: kunnen burgers automatisch geïnformeerd worden bij regelwijzigingen?',
           ],
         },
         {
@@ -326,10 +326,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           h: 'Wetgeving simulatie & testing',
           p: 'Wat als beleidsmakers de gevolgen van nieuwe wetgeving zouden kunnen testen in een simulatieomgeving voordat deze wordt ingevoerd? Zou dit onbedoelde effecten kunnen voorkomen en de kwaliteit van wetgeving kunnen verbeteren?',
           bullets: [
-            'Impactanalyse — zouden we de gevolgen van nieuwe regelgeving kunnen voorspellen?',
-            'Harmonisatiecontrole — kunnen we conflicten met bestaande wetgeving detecteren?',
-            'Scenariotesting — is het mogelijk verschillende beleidsopties te testen?',
-            'Kwaliteitscontrole — kunnen inconsistenties vóór implementatie worden gedetecteerd?',
+            'Impactanalyse: zouden we de gevolgen van nieuwe regelgeving kunnen voorspellen?',
+            'Harmonisatiecontrole: kunnen we conflicten met bestaande wetgeving detecteren?',
+            'Scenariotesting: is het mogelijk verschillende beleidsopties te testen?',
+            'Kwaliteitscontrole: kunnen inconsistenties vóór implementatie worden gedetecteerd?',
           ],
           reverse: true,
         },
@@ -405,21 +405,21 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           title:
-            'Gematigde groei — Staatscommissie Demografische Ontwikkelingen 2050',
+            'Gematigde groei: Staatscommissie Demografische Ontwikkelingen 2050',
           meta: 'Staatscommissie o.v.v. Richard van Zwol • 15 januari 2024',
           text: 'De staatscommissie signaleert dat demografische ontwikkelingen leiden tot druk op toegankelijkheid van overheidsdiensten zoals onderwijs, zorg en huisvesting.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2024/01/15/gematigde-groei-rapport-van-de-staatscommissie-demografische-ontwikkleingen-2050',
           linkLabel: 'rapport',
         },
         {
-          title: 'Maak waar! — De digitale overheid',
+          title: 'Maak waar! De digitale overheid',
           meta: 'Studiegroep Informatiesamenleving en Overheid (o.v.v. Richard van Zwol) • 18 april 2017',
           text: 'De studiegroep concludeert dat digitalisering van de overheid een radicale mentaliteitsverandering vereist en dat digitale dienstverlening tot de kern van het primaire proces hoort.',
           href: 'https://kennisopenbaarbestuur.nl/documenten/rapporten/2017/04/18/maak-waar',
           linkLabel: 'rapport',
         },
         {
-          title: 'Werk aan Uitvoering — Fase 2: Handelingsperspectieven',
+          title: 'Werk aan Uitvoering, Fase 2: Handelingsperspectieven',
           meta: 'Interdepartementaal (BZK, Financiën, OCW, SZW) • 3 juli 2020',
           text: 'Dit rapport analyseert problemen bij uitvoeringsorganisaties zoals de Belastingdienst, DUO en UWV: continuïteitsrisico’s, beperkte wendbaarheid bij beleidswijzigingen, en ontbrekende mogelijkheden voor maatwerk.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2020/07/03/werk-aan-uitvoering-fase-2-handelingsperspectieven-en-samenvatting-analyse',
@@ -440,7 +440,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       items: [
         {
           q: 'Wat zou een digitaal rechtsstelsel kunnen betekenen?',
-          a: 'Een digitaal rechtsstelsel zou kunnen betekenen dat juridische regels worden geschreven als uitvoerbare code die computers direct zouden kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Maar is dit realiseerbaar? En hoe verhoudt dit zich tot traditioneel analoog recht?',
+          a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
         },
         {
           q: 'Waarom NRML en niet andere regeltalen?',
@@ -448,11 +448,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'Hoe zou dit zich kunnen verhouden tot bestaande systemen?',
-          a: 'Zou RegelRecht bestaande implementaties kunnen valideren en kunnen dienen als referentie voor nieuwe systemen? Het zou bestaande systemen niet direct vervangen, maar zou controle en modernisering mogelijk kunnen maken.',
+          a: 'Kan RegelRecht bestaande implementaties valideren en dienen als referentie voor nieuwe systemen? Bestaande systemen worden niet direct vervangen, maar controle en modernisering komen wel in beeld.',
         },
         {
           q: 'Zou RegelRecht juridisch bindend kunnen zijn?',
-          a: 'RegelRecht zou een technisch hulpmiddel kunnen zijn. De juridische geldigheid zou bij de oorspronkelijke wetgeving blijven. Maar zou het kunnen helpen bij consistente interpretatie en toepassing?',
+          a: 'RegelRecht is een technisch hulpmiddel. De juridische geldigheid blijft bij de oorspronkelijke wetgeving. De vraag is of het kan helpen bij consistente interpretatie en toepassing.',
         },
         {
           q: 'Hoe draagt dit bij aan transparantie?',
@@ -470,7 +470,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           title: 'Software Engineer',
           organisation: 'Rijksorganisatie ODI · Ministerie van BZK',
           pitch:
-            'Werk aan de Rust-engine en de tooling waarmee wetten machine-uitvoerbaar worden. Je adviseert opdrachtgevers binnen het Rijk, ontwerpt en programmeert, en werkt naast juristen die de regels in machineleesbare vorm gieten. Senior rol met directe maatschappelijke impact.',
+            'Werk aan de Rust-engine en de tooling waarmee wetten machine-uitvoerbaar worden. Je adviseert opdrachtgevers binnen het Rijk, ontwerpt en programmeert, en werkt naast juristen die de regels in machineleesbare vorm gieten.',
           meta: [
             'Schaal 13',
             '€5.212 – €7.747',
@@ -568,7 +568,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     hero: {
       titleSmall: 'from statute to digital execution',
       intro:
-        'RegelRecht explores how we can deliver transparent, unambiguous and consistent execution of legislation. An exploration of digital possibilities where everyone can understand how decisions are reached.',
+        'RegelRecht explores whether legislation can be written as executable code, so that different organisations apply the same law the same way and citizens can follow how a decision is reached.',
       cta: 'Explore the possibilities',
     },
     partners: {
@@ -584,7 +584,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
     },
     whatIsIt: {
       title: 'What is RegelRecht?',
-      lede: 'Executing legislation comes with several challenges: differing interpretations, opaque systems, and complex programming work that often sits far from the original law. RegelRecht explores whether machine-executable legislation can offer an answer — laws written directly as executable code, without programmers in between.',
+      lede: 'Executing legislation comes with several challenges: differing interpretations, opaque systems, and complex programming work that often sits far from the original law. RegelRecht explores whether machine-executable legislation can offer an answer: laws written directly as executable code, without programmers in between.',
       cards: [
         {
           h: 'From analogue law to code',
@@ -670,12 +670,12 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         {
           title: 'NRML language',
           link: { label: 'GitHub', href: 'https://github.com/MinBZK/NRML' },
-          text: 'Normalized Rule Model Language — a JSON-based exchange and storage format for machine-executable laws. NRML makes complex legal logic accessible, supports multilingual rules and has built-in versioning.',
+          text: 'Normalized Rule Model Language: a JSON-based exchange and storage format for machine-executable laws. NRML makes complex legal logic accessible, supports multilingual rules and has built-in versioning.',
         },
         {
           title: 'Execution engines',
           meta: 'Python • Go • more to come',
-          text: 'Multiple execution engines that run NRML code. Different languages for different use cases — but a consistent legal result.',
+          text: 'Multiple execution engines that run NRML code. Different languages for different use cases, with a consistent legal result.',
         },
         {
           title: 'Analogue-law converter',
@@ -724,9 +724,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           h: 'Personal rules dashboard',
           p: 'What if citizens could see all their benefits, allowances and obligations in one place? Every rule could then be traceable back to the machine-executable legislation, with full transparency about how decisions are reached.',
           bullets: [
-            'Real-time rule application — could it make immediate feedback possible?',
-            'Full traceability — can a path be drawn from law to personal situation?',
-            'Proactive communication — can citizens be informed automatically when rules change?',
+            'Real-time rule application: could it make immediate feedback possible?',
+            'Full traceability: can a path be drawn from law to personal situation?',
+            'Proactive communication: can citizens be informed automatically when rules change?',
           ],
         },
         {
@@ -736,10 +736,10 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           h: 'Legislative simulation & testing',
           p: 'What if policy makers could test the consequences of new legislation in a simulation environment before it is introduced? Could this prevent unintended effects and improve the quality of legislation?',
           bullets: [
-            'Impact analysis — could we predict the consequences of new regulation?',
-            'Harmonisation check — can we detect conflicts with existing legislation?',
-            'Scenario testing — is it possible to test different policy options?',
-            'Quality control — can inconsistencies be detected before implementation?',
+            'Impact analysis: could we predict the consequences of new regulation?',
+            'Harmonisation check: can we detect conflicts with existing legislation?',
+            'Scenario testing: is it possible to test different policy options?',
+            'Quality control: can inconsistencies be detected before implementation?',
           ],
           reverse: true,
         },
@@ -815,21 +815,21 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           title:
-            'Moderate growth — State Commission on Demographic Developments 2050',
+            'Moderate growth: State Commission on Demographic Developments 2050',
           meta: 'State Commission chaired by Richard van Zwol • 15 January 2024',
           text: 'The State Commission observes that demographic developments put pressure on the accessibility of government services such as education, healthcare and housing.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2024/01/15/gematigde-groei-rapport-van-de-staatscommissie-demografische-ontwikkleingen-2050',
           linkLabel: 'report',
         },
         {
-          title: 'Make it happen! — The digital government',
+          title: 'Make it happen! The digital government',
           meta: 'Study Group on the Information Society and Government (chaired by Richard van Zwol) • 18 April 2017',
           text: 'The study group concludes that digitising government requires a radical change of mindset and that digital service delivery belongs at the core of the primary process.',
           href: 'https://kennisopenbaarbestuur.nl/documenten/rapporten/2017/04/18/maak-waar',
           linkLabel: 'report',
         },
         {
-          title: 'Work on Implementation — Phase 2: Courses of action',
+          title: 'Work on Implementation, Phase 2: Courses of action',
           meta: 'Interdepartmental (BZK, Finance, OCW, SZW) • 3 July 2020',
           text: 'This report analyses problems at implementing organisations such as the Tax Administration, DUO and UWV: continuity risks, limited agility when policy changes, and missing options for tailored solutions.',
           href: 'https://www.rijksoverheid.nl/documenten/rapporten/2020/07/03/werk-aan-uitvoering-fase-2-handelingsperspectieven-en-samenvatting-analyse',
@@ -850,7 +850,7 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       items: [
         {
           q: 'What could a digital legal system mean?',
-          a: 'A digital legal system could mean that legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. But is this achievable? And how does it relate to traditional analogue law?',
+          a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
         },
         {
           q: 'Why NRML and not other rule languages?',
@@ -858,11 +858,11 @@ export const content: Record<'nl' | 'en', LandingContent> = {
         },
         {
           q: 'How could this relate to existing systems?',
-          a: 'Could RegelRecht validate existing implementations and serve as a reference for new systems? It would not replace existing systems directly, but it could make verification and modernisation possible.',
+          a: 'Can RegelRecht validate existing implementations and serve as a reference for new systems? Existing systems are not directly replaced, but verification and modernisation come within reach.',
         },
         {
           q: 'Could RegelRecht be legally binding?',
-          a: 'RegelRecht could be a technical aid. Legal validity would remain with the original legislation. But could it help with consistent interpretation and application?',
+          a: 'RegelRecht is a technical aid. Legal validity remains with the original legislation. The open question is whether it can help with consistent interpretation and application.',
         },
         {
           q: 'How does this contribute to transparency?',
