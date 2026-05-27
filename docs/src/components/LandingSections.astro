@@ -368,15 +368,12 @@ const toc = [
                   <nldd-spacer size="8" />
                   <nldd-rich-text>
                     <p>
-                      {tool.text}{' '}
+                      {tool.text}
                       {tool.link && (
-                        <a href={tool.link.href}>{tool.link.href.includes('github')
-                          ? lang === 'en'
-                            ? 'Check out our code on GitHub.'
-                            : 'Bekijk onze code op GitHub.'
-                          : lang === 'en'
-                            ? 'See the live demo.'
-                            : 'Bekijk de live demo.'}</a>
+                        <Fragment>
+                          {' '}
+                          <a href={tool.link.href}>{tool.link.label}</a>
+                        </Fragment>
                       )}
                     </p>
                   </nldd-rich-text>
