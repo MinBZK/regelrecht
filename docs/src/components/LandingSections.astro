@@ -530,7 +530,15 @@ const toc = [
                   </nldd-title>
                   <nldd-spacer size="12" />
                   <nldd-rich-text>
-                    <p>{item.a}</p>
+                    <p>
+                      {item.a}
+                      {item.link && (
+                        <Fragment>
+                          {' '}
+                          <a href={item.link.href}>{item.link.label}</a>
+                        </Fragment>
+                      )}
+                    </p>
                   </nldd-rich-text>
                 </nldd-container>
               </nldd-card>
