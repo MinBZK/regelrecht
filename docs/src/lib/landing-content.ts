@@ -74,7 +74,7 @@ export interface LandingContent {
       linkLabel: string
     }[]
   }
-  faq: { title: string; items: { q: string; a: string }[] }
+  faq: { title: string; items: { q: string; a: string; link?: NavLink }[] }
   jobs: {
     title: string
     lede: string
@@ -258,53 +258,63 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       title: 'Ecosysteem',
       items: [
         {
-          title: 'NRML-taal',
-          link: { label: 'GitHub', href: 'https://github.com/MinBZK/NRML' },
-          text: 'Normalized Rule Model Language: een JSON-gebaseerd uitwisselings- en opslagformaat voor machine-uitvoerbare wetten. NRML maakt complexe juridische logica toegankelijk, ondersteunt meertalige regels en heeft ingebouwde versioning.',
+          title: 'Regelformaat',
+          meta: 'YAML + JSON Schema',
+          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          text: 'Wetten als YAML-bestanden met de wettekst en de machine-uitvoerbare regels naast elkaar. Een versioned JSON Schema bewaakt de structuur.',
         },
         {
-          title: 'Execution engines',
-          meta: 'Python • Go • meer komen',
-          text: 'Meerdere execution engines die NRML-code uitvoeren. Verschillende talen voor verschillende use cases, met consistent juridisch resultaat.',
+          title: 'BDD-scenario’s',
+          meta: 'Gherkin + cucumber',
+          text: 'Verwachte uitkomsten worden vastgelegd als leesbare scenario’s. Juristen en programmeurs lezen dezelfde tests, en elke wijziging in de regels wordt direct gevalideerd. Waar mogelijk halen we die scenario’s rechtstreeks uit de memorie van toelichting.',
+        },
+        {
+          title: 'Execution engine',
+          meta: 'Rust + WebAssembly',
+          link: { label: 'Documentatie', href: '/docs/components/engine' },
+          text: 'Een deterministische execution engine die de YAML-regels uitvoert. Werkt in Rust en compileert naar WebAssembly zodat dezelfde regels in de browser en op de server hetzelfde resultaat geven.',
         },
         {
           title: 'Analoog-recht-converter',
           meta: 'AI-ondersteund',
-          text: 'LLM-gebaseerde tool om bestaand analoog recht om te zetten naar machine-uitvoerbare NRML. Automatische transformatie van traditionele wetgeving naar een digitaal rechtsstelsel.',
+          text: 'Een LLM-gebaseerde tool die bestaand analoog recht zou kunnen omzetten naar machine-uitvoerbare regels. We verkennen hoe automatische transformatie eruit zou kunnen zien.',
         },
         {
-          title: 'Visual law editor',
-          meta: 'Blockly-gebaseerd',
-          text: 'Intuïtieve drag-and-drop-interface voor juristen om wetten te schrijven zonder programmeerkennis. Van visuele logica naar uitvoerbare code.',
+          title: 'Editor',
+          meta: 'Werk in uitvoering',
+          link: { label: 'Documentatie', href: '/docs/components/editor-api' },
+          text: 'Een werkomgeving waarin juristen wetten machine-uitvoerbaar kunnen maken. We zijn aan het ontdekken hoe deze editor er precies uit moet zien.',
         },
         {
-          title: 'Dependency mapper',
+          title: 'Wettengraaf',
           meta: 'Relatie-analyse',
-          text: 'Visualiseert complexe relaties tussen verschillende wetten. Toont hoe wijzigingen in één wet doorwerken in het gehele juridische ecosysteem.',
+          text: 'Een visualisatie van de relaties tussen verschillende wetten, die zou kunnen tonen hoe wijzigingen in één wet doorwerken in het hele juridische landschap.',
         },
         {
-          title: 'Regelbeheer',
+          title: 'Corpus',
           meta: 'Git-gebaseerd',
-          text: 'Volledige versioning van machine-uitvoerbare wetgeving. Track wijzigingen, rollback-mogelijkheden, en branch verschillende wetsvoorstellen.',
+          link: { label: 'Documentatie', href: '/docs/components/corpus' },
+          text: 'De bibliotheek van machine-uitvoerbare regels. Git verzorgt de versiegeschiedenis; een registry verbindt verschillende bronnen tot één geheel.',
         },
         {
           title: 'Simulatieomgeving',
+          meta: 'Wat-als-analyse',
           link: {
             label: 'Live demo',
             href: 'https://ui.lac.apps.digilab.network/simulation',
           },
-          text: 'Test de gevolgen van nieuwe wetgeving vóór implementatie. Model maatschappelijke impact en voorspel onbedoelde effecten.',
+          text: 'Een omgeving waarin de gevolgen van nieuwe wetgeving doorgerekend zouden kunnen worden, voordat ze in werking treden. Bedoeld om maatschappelijke impact en onbedoelde effecten zichtbaar te maken.',
         },
         {
           title: 'Publicatieplatform',
           meta: 'API + web',
-          text: 'Centrale publicatie en distributie van machine-uitvoerbare wetgeving. API-toegang voor alle overheidssystemen en private partijen.',
+          text: 'Een centrale plek voor publicatie en distributie van machine-uitvoerbare regels, met API-toegang voor overheidssystemen en private partijen.',
         },
       ],
     },
     example: {
       title: 'Hoe zou dit eruit kunnen zien?',
-      lede: 'Wat zouden de mogelijkheden van het RegelRecht-ecosysteem in de praktijk kunnen zijn? We verkennen twee denkrichtingen voor transparante regeltoepassing en wetgevingstesting.',
+      lede: 'Wat zouden de mogelijkheden van het RegelRecht-ecosysteem in de praktijk kunnen zijn? Een paar denkrichtingen voor transparante regeltoepassing, wetgevingstesting en de werkomgeving van de juridische experts zelf.',
       cases: [
         {
           img: '/burger-nl-screenshot.png',
@@ -332,6 +342,18 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Kwaliteitscontrole: kunnen inconsistenties vóór implementatie worden gedetecteerd?',
           ],
           reverse: true,
+        },
+        {
+          img: '/editor-notities-screenshot.png',
+          alt: 'Schermafbeelding van de RegelRecht-editor: de tekst van de Wet op de zorgtoeslag links, machine-leesbare definities en outputs in het midden, en scenario’s met verwachte uitkomsten rechts. Bij een geselecteerd begrip is een notitie-popup geopend.',
+          caption: 'Concept: één werkomgeving waarin tekst, machine-leesbare regels en scenario’s naast elkaar staan.',
+          h: 'Editor met notities en scenario’s',
+          p: 'Wat als juristen, beleidsmakers en programmeurs in dezelfde omgeving aan wetgeving kunnen werken? Notities bij begrippen, machine-leesbare definities en testbare scenario’s, allemaal naast de oorspronkelijke wettekst.',
+          bullets: [
+            'Begrippen-annotatie: kunnen juristen direct toelichting toevoegen bij specifieke termen?',
+            'Live scenario’s: zien we meteen of de regels nog kloppen na een wijziging?',
+            'Meerdere wetten naast elkaar: kunnen we dwarsverbanden tussen wetten zichtbaar maken?',
+          ],
         },
       ],
     },
@@ -443,8 +465,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           a: 'Juridische regels worden dan geschreven als uitvoerbare code die computers direct kunnen draaien en toepassen, zonder tussenkomst van menselijke interpretatie of programmeurs. Is dat realiseerbaar? En hoe verhoudt het zich tot traditioneel analoog recht?',
         },
         {
-          q: 'Waarom NRML en niet andere regeltalen?',
-          a: 'NRML onderscheidt zich door een ontwikkelaarsvriendelijke JSON-benadering in plaats van complexe XML-standaarden. Het dient als standaard uitwisselings- en opslagformaat zodat verschillende overheidssystemen dezelfde regelspecificaties kunnen gebruiken. NRML heeft ingebouwde testscenario’s en versioning.',
+          q: 'Waarom een eigen regelformaat?',
+          a: 'Het formaat is YAML met wettekst en machine-uitvoerbare regels naast elkaar in één bestand. Een versioned JSON Schema bewaakt de structuur, BDD-scenario’s leggen de bedoelde uitkomsten vast. Zo kunnen juristen meelezen, ontwikkelaars meebouwen, en verschillende overheidssystemen dezelfde regels gebruiken.',
+          link: { label: 'Lees RFC-001', href: '/rfcs/rfc-001' },
         },
         {
           q: 'Hoe zou dit zich kunnen verhouden tot bestaande systemen?',
@@ -668,53 +691,63 @@ export const content: Record<'nl' | 'en', LandingContent> = {
       title: 'Ecosystem',
       items: [
         {
-          title: 'NRML language',
-          link: { label: 'GitHub', href: 'https://github.com/MinBZK/NRML' },
-          text: 'Normalized Rule Model Language: a JSON-based exchange and storage format for machine-executable laws. NRML makes complex legal logic accessible, supports multilingual rules and has built-in versioning.',
+          title: 'Rule format',
+          meta: 'YAML + JSON Schema',
+          link: { label: 'RFC-001', href: '/rfcs/rfc-001' },
+          text: 'Laws as YAML files, with the legal text and the machine-executable rules side by side. A versioned JSON Schema guards the structure.',
         },
         {
-          title: 'Execution engines',
-          meta: 'Python • Go • more to come',
-          text: 'Multiple execution engines that run NRML code. Different languages for different use cases, with a consistent legal result.',
+          title: 'BDD scenarios',
+          meta: 'Gherkin + cucumber',
+          text: 'Expected outcomes are captured as readable scenarios. Legal experts and programmers read the same tests, and every change to the rules is validated immediately. Where possible we draw those scenarios straight from the explanatory memorandum.',
+        },
+        {
+          title: 'Execution engine',
+          meta: 'Rust + WebAssembly',
+          link: { label: 'Documentation', href: '/docs/components/engine' },
+          text: 'A deterministic execution engine that runs the YAML rules. Written in Rust and compiled to WebAssembly so the same rules give the same result in the browser and on the server.',
         },
         {
           title: 'Analogue-law converter',
           meta: 'AI-assisted',
-          text: 'An LLM-based tool to convert existing analogue law into machine-executable NRML. Automatic transformation of traditional legislation into a digital legal system.',
+          text: 'An LLM-based tool that could turn existing analogue law into machine-executable rules. We are exploring what automatic transformation could look like.',
         },
         {
-          title: 'Visual law editor',
-          meta: 'Blockly-based',
-          text: 'An intuitive drag-and-drop interface for legal experts to write laws without programming knowledge. From visual logic to executable code.',
+          title: 'Editor',
+          meta: 'Work in progress',
+          link: { label: 'Documentation', href: '/docs/components/editor-api' },
+          text: 'A working environment for legal experts to make laws machine-executable. We are still discovering what this editor should look like.',
         },
         {
-          title: 'Dependency mapper',
+          title: 'Law graph',
           meta: 'Relationship analysis',
-          text: 'Visualises complex relationships between different laws. Shows how changes to one law propagate through the entire legal ecosystem.',
+          text: 'A visualisation of the relationships between different laws, that could show how changes to one law would ripple through the wider legal landscape.',
         },
         {
-          title: 'Rule management',
+          title: 'Corpus',
           meta: 'Git-based',
-          text: 'Full versioning of machine-executable legislation. Track changes, roll back, and branch different legislative proposals.',
+          link: { label: 'Documentation', href: '/docs/components/corpus' },
+          text: 'The library of machine-executable rules. Git handles the version history; a registry ties different sources into a single whole.',
         },
         {
           title: 'Simulation environment',
+          meta: 'What-if analysis',
           link: {
             label: 'Live demo',
             href: 'https://ui.lac.apps.digilab.network/simulation',
           },
-          text: 'Test the consequences of new legislation before implementation. Model societal impact and predict unintended effects.',
+          text: 'An environment where the consequences of new legislation could be modelled before it takes effect, to surface societal impact and unintended effects.',
         },
         {
           title: 'Publication platform',
           meta: 'API + web',
-          text: 'Central publication and distribution of machine-executable legislation. API access for all government systems and private parties.',
+          text: 'A central place for publication and distribution of machine-executable rules, with API access for government systems and private parties.',
         },
       ],
     },
     example: {
       title: 'What could this look like?',
-      lede: 'What could the RegelRecht ecosystem make possible in practice? We explore two directions for transparent rule application and legislative testing.',
+      lede: 'What could the RegelRecht ecosystem make possible in practice? A handful of directions for transparent rule application, legislative testing, and the working environment of the legal experts themselves.',
       cases: [
         {
           img: '/burger-nl-screenshot.png',
@@ -742,6 +775,18 @@ export const content: Record<'nl' | 'en', LandingContent> = {
             'Quality control: can inconsistencies be detected before implementation?',
           ],
           reverse: true,
+        },
+        {
+          img: '/editor-notities-screenshot.png',
+          alt: 'Screenshot of the RegelRecht editor: the text of the Health-Care Allowance Act on the left, machine-readable definitions and outputs in the middle, and scenarios with expected outcomes on the right. A note popup is open on a selected term.',
+          caption: 'Concept: one working environment where text, machine-readable rules and scenarios sit side by side.',
+          h: 'Editor with notes and scenarios',
+          p: 'What if legal experts, policy makers and programmers could work on legislation in the same environment? Notes on terms, machine-readable definitions and runnable scenarios, all alongside the original legal text.',
+          bullets: [
+            'Term-level annotation: can lawyers add explanations directly to specific terms?',
+            'Live scenarios: do we see immediately whether the rules still hold after a change?',
+            'Multiple laws side by side: can we surface cross-references between laws?',
+          ],
         },
       ],
     },
@@ -853,8 +898,9 @@ export const content: Record<'nl' | 'en', LandingContent> = {
           a: 'Legal rules are written as executable code that computers can run and apply directly, without human interpretation or programmers in between. Is that achievable? And how does it relate to traditional analogue law?',
         },
         {
-          q: 'Why NRML and not other rule languages?',
-          a: 'NRML stands out through a developer-friendly JSON approach instead of complex XML standards. It serves as a standard exchange and storage format so that different government systems can use the same rule specifications. NRML has built-in test scenarios and versioning.',
+          q: 'Why a dedicated rule format?',
+          a: 'The format is YAML, with legal text and machine-executable rules side by side in a single file. A versioned JSON Schema guards the structure, and BDD scenarios capture the intended outcomes. Legal experts can read along, developers can contribute, and different government systems can use the same rules.',
+          link: { label: 'Read RFC-001', href: '/rfcs/rfc-001' },
         },
         {
           q: 'How could this relate to existing systems?',
