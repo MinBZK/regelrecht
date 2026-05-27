@@ -209,6 +209,13 @@ fn derive_branch_name(name: &str, traject_id: Uuid) -> String {
 /// First 8 hex characters of a traject UUID — the suffix used in the
 /// URL ref (`{slug}-{short}`). Same length as the branch-name short id so
 /// users see one identifier across URL and branch.
+///
+/// `simple()` emits the 32-char hyphen-less form (`3f4a8b2c…`), and the
+/// canonical hyphenated form (`3f4a8b2c-…`) used by Postgres `id::text`
+/// places its first hyphen at position 8 — so `left(id::text, 8)` in
+/// SQL and `traject_id.simple()[..8]` in Rust produce the SAME first-8
+/// hex chars. `resolve_traject_ref`'s DB lookup
+/// (`WHERE left(id::text, 8) = $1`) relies on this alignment.
 pub fn short_id(traject_id: Uuid) -> String {
     traject_id.simple().to_string()[..8].to_string()
 }
@@ -225,9 +232,10 @@ pub fn traject_ref(name: &str, traject_id: Uuid) -> String {
 /// a malformed ref, 404 when no traject has a uuid starting with the
 /// suffix.
 ///
-/// The UUID prefix is uniformly distributed across 32 bits — with 1k
-/// trajects the collision probability is ~10^-5; we accept that for the
-/// readability gain and surface any ambiguous prefix as 409 Conflict
+/// The UUID prefix is uniformly distributed across 32 bits — for N=1k
+/// trajects the birthday-bound collision probability is
+/// N·(N−1)/(2·2³²) ≈ 1.16×10⁻⁴, which we accept for the readability
+/// gain. Ambiguous prefixes surface as 409 Conflict
 /// (the URL is genuinely ambiguous; we refuse to guess and the caller
 /// must rebuild the ref against a fresh traject). A tracing error on
 /// the duplicate branch catches the case in production before it bites
