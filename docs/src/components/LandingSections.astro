@@ -566,6 +566,28 @@ const toc = [
             href={t.feedback.ctaHref}
             text={t.feedback.cta}
           />
+          <nldd-spacer size="32" />
+          {/* Internet.nl 100% badge. Per the internet.nl badge policy, the SVG
+              is served from our own domain and the badge hyperlinks to
+              https://internet.nl/. The badge is only shown on the landing
+              domain (regelrecht.rijks.app), which is the domain that scores
+              100% on the website test. */}
+          <nldd-rich-text>
+            <p>
+              <a
+                href={t.compliance.linkHref}
+                rel="noopener"
+                aria-label={t.compliance.label}
+              >
+                <img
+                  src="/internet-nl-100-website.svg"
+                  alt={t.compliance.alt}
+                  width="204"
+                  height="38"
+                />
+              </a>
+            </p>
+          </nldd-rich-text>
         </nldd-simple-section>
       </Fragment>
     )
