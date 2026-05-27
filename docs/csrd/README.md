@@ -24,6 +24,8 @@ Eerst scope-bepaling met jurist.
 |---------|------|
 | [stelsel-overview.md](stelsel-overview.md) | **Startpunt** — stelsel-diagram met regulatory_layers + uitvoeringsorganisaties |
 | [scope-bepaling.md](scope-bepaling.md) | Werkblad voor de scope-bepalings-sessie met jurist (wegkruis-tabel + artikel-graph) |
+| [kickoff-sessie-jurist.md](kickoff-sessie-jurist.md) | Regie-document voor de eerste 60-min sessie met de jurist (agenda + demo-script + beslisboom) |
+| [presentatie-sessie.html](presentatie-sessie.html) | Slide-deck voor de kick-off (16 slides, single-file HTML). Open in browser, navigeer met pijltoetsen |
 | [product-positionering.md](product-positionering.md) | 1-pager voor productowner — scope, differentiators, besluitvragen |
 | [jurist-input-2026-05-13.md](jurist-input-2026-05-13.md) | Verbatim juristen-mail die het startpunt vormt |
 

@@ -77,9 +77,13 @@ flowchart LR
 
 ## Wegkruis-tabel
 
-Loop hieronder met de jurist door per node. Beslis: **IN** = blijft in
-scope voor regelrecht-modellering, **UIT** = niet relevant voor deze
-slice, **TBD** = nader bekijken.
+Loop hieronder met de jurist door per node. 
+Beslis: 
+**IN** = blijft in
+scope voor regelrecht-modellering, 
+**UIT** = niet relevant voor deze
+slice, 
+**TBD** = nader bekijken.
 
 ### KERN (niet wegkruisbaar)
 
@@ -112,12 +116,12 @@ slice, **TBD** = nader bekijken.
 
 | Parameter | Type | Wie levert | Beslissing |
 |-----------|------|-------------|------------|
-| `aantal_werknemers` | integer | Werkgever-zelfreport / KVK / jaarrekening | __ |
-| `netto_jaaromzet_euro` | amount | Jaarrekening (boekjaar n−1) | __ |
-| `is_eu_gevestigd` | boolean | KvK-vestigingsadres | __ |
-| `is_moedermaatschappij_geconsolideerd` | boolean | Jaarrekening — heeft geconsolideerde rekening? | __ |
+| `aantal_werknemers` | integer | Werkgever-zelfreport / KVK / jaarrekening | JA |
+| `netto_jaaromzet_euro` | amount | Jaarrekening (boekjaar n−1) | JA |
+| `is_eu_gevestigd` | boolean | KvK-vestigingsadres | UIT (buiten scope) |
+| `is_moedermaatschappij_geconsolideerd` | boolean | Jaarrekening: heeft geconsolideerde rekening? | TBD (niche uitkomst) |
 | `boekjaar_start` | date | Werkgever-zelfreport | __ |
-| `heeft_eu_moedermaatschappij_met_csrd_rapportage` *(TBD na open vraag 6)* | boolean | Werkgever / KVK groepsstructuur | __ |
+| `heeft_eu_moedermaatschappij_met_csrd_rapportage` *(TBD na open vraag 6)* | boolean | Werkgever / KVK groepsstructuur | TBD |
 
 ### Outputs
 
@@ -149,30 +153,32 @@ Voorstellen om in het gesprek te toetsen:
 
 ## Volgende stap
 
-Na de jurist-sessie: de IN-rijen vormen de definitieve `regelrecht`-
-scope voor de eerste CSRD-slice. UIT-rijen mogen weg of als
-`untranslatable` worden gemarkeerd. TBD-rijen krijgen een vervolg-
+De IN-rijen vormen de definitieve `regelrecht`-
+scope voor de eerste CSRD-slice. 
+UIT-rijen mogen weg of als
+`untranslatable` worden gemarkeerd. 
+TBD-rijen krijgen een vervolg-
 vraag — bij voorkeur via mail of een tweede sessie.
 
-## Open vragen voor de jurist
+## Open vragen
 
 1. **Drempelwaarden — "of" of "en"?** De juristen-mail noemt
    ">1000 werknemers" én ">€450M omzet". Moeten **beide** worden
-   gehaald (cumulatief), of is **één** voldoende (alternatief)?
+   gehaald (cumulatief), of is **één** voldoende (alternatief)? 
 2. **Peildatum drempelwaarden** — gemeten over welk boekjaar? Het
    boekjaar dat moet worden gerapporteerd (n), of het voorafgaande
-   boekjaar (n−1)?
+   boekjaar (n−1)? 
 3. **Geconsolideerd vs. individueel — overlap?** Als een
    moederonderneming op geconsolideerde basis onder de thresholds valt,
    maar één van haar dochters individueel ook erover gaat — moet die
    dochter dan óók individueel rapporteren of valt ze onder de
-   geconsolideerde rapportage?
+   geconsolideerde rapportage? 
 4. **Omnibus-traceerbaarheid** — willen we de wijziging-historie van de
    drempelwaarden zichtbaar in regelrecht (apart wijzigings-YAML), of
    volstaat de geconsolideerde versie?
 5. **NL-omzetting prioriteit** — moet de regelhulp uiteindelijk
    verwijzen naar Boek 2 BW (NL-recht) of blijft EU-richtlijn de
-   primaire bron?
+   primaire bron? 
 6. **Exemption door geconsolideerde rapportage moedermaatschappij**
    — bron PowerPoint slide 15 (juristen-bijlage 2026-05-13): scenario
    "EU-based holding" toont een EU HoldCo (Luxemburg, €1,4 bn omzet)

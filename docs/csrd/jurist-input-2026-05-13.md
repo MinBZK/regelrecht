@@ -62,3 +62,18 @@ Hulpbronnen voor scenario-vorming:
 - **RVO CSRD-pagina** — https://www.rvo.nl/onderwerpen/csrd
 - **SER over Omnibus** — https://www.ser.nl/nl/thema/imvo/csrd-omnibus
 - **EU Commission Omnibus-pakket** — https://commission.europa.eu/business-economy-euro/doing-business-eu/sustainability-due-diligence-responsible-business/sustainability-related-reporting_en
+
+## Aantekeningen 20 Mei. 
+Omzetting naar NL is nog niet helemaal rond.
+Kans is groot dat het 1-op-1 wordt overgezet.
+Omnibus amendeert de richtlijn. Ze zijn gelijk aan niveau, het is 1 geintegreerd geheel wat elkaar amendeert.
+Accounting directive zorgt voor de threshholds.
+het staat eigenlijk allemaal gelijk. Accounting directive staat ook gelijk.
+De twee lijntjes: voegt art.19 bis en 29 bis en 29b toe en dat maakt de nieuwe accounting directive.
+Lijntje moet ertussen en de omnibus verbindt het allemaal. Je haalt alles uit alles tegelijk.
+Nicole moeten we ook vragen.
+Hoe het omgezet wordt naar Nederlandse wetgeving.
+Leidraad gepubliceerd.
+Bovenste drie gaan naar wet implementatie CSRD.
+Jaarrekening zijn is NIET juist.
+Valt eronder: ja of nee.

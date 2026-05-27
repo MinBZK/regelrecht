@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RegelRecht voor de CSRD-jurist</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  background: #152a55;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.deck {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6vw 9vw;
+  background: #1c3468;
+  color: #fff;
+}
+
+.slide.active { display: flex; }
+.slide.warn { background: #142244; }
+.slide.cue { background: #244585; }
+
+/* Title slide */
+.title-main {
+  font-size: clamp(56px, 11vw, 140px);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  margin-bottom: 0.35em;
+}
+.title-sub {
+  font-size: clamp(18px, 3vw, 42px);
+  font-weight: 300;
+  font-style: italic;
+  opacity: 0.88;
+}
+.title-footer {
+  position: absolute;
+  bottom: 6%;
+  left: 6%;
+  right: 6%;
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(13px, 1.5vw, 20px);
+}
+.title-footer .right { font-weight: 700; }
+
+/* Content */
+.h {
+  font-size: clamp(24px, 4.2vw, 60px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.65em;
+}
+.p {
+  font-size: clamp(17px, 2.6vw, 38px);
+  font-weight: 300;
+  line-height: 1.7;
+}
+.p b { font-weight: 700; }
+.p.dim {
+  font-size: clamp(13px, 1.7vw, 24px);
+  opacity: 0.72;
+  margin-top: 0.7em;
+  line-height: 1.5;
+}
+.p.cue-action {
+  font-size: clamp(20px, 3.4vw, 48px);
+  font-weight: 700;
+  margin-top: 0.5em;
+  opacity: 0.95;
+}
+code {
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+  background: rgba(0,0,0,0.25);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+/* Grid */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.2vw;
+  width: 100%;
+  margin-top: 0.6em;
+  text-align: left;
+}
+.grid.cols-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.grid.cols-4 {
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+}
+.cell {
+  background: rgba(255,255,255,0.09);
+  border-radius: 10px;
+  padding: 1.6vw 1.8vw;
+}
+.cell.tbd {
+  background: rgba(255,200,100,0.14);
+  border: 1px dashed rgba(255,200,100,0.5);
+}
+.cell.exempt {
+  background: rgba(140,210,255,0.12);
+  border: 1px solid rgba(140,210,255,0.35);
+}
+.cell-label {
+  font-size: clamp(10px, 1vw, 15px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.55;
+  margin-bottom: 0.5em;
+}
+.cell-body {
+  font-size: clamp(13px, 1.6vw, 22px);
+  font-weight: 300;
+  line-height: 1.55;
+}
+.cell-body b { font-weight: 700; }
+.cell-body code {
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 0.88em;
+  background: rgba(0,0,0,0.25);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.cell-body .meta {
+  display: block;
+  margin-top: 0.5em;
+  font-size: clamp(11px, 1.2vw, 16px);
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* Image slide */
+.image-slide {
+  padding: 4vw 4vw 8vw 4vw;
+  justify-content: flex-start;
+}
+.image-slide .h {
+  font-size: clamp(20px, 3.2vw, 44px);
+  margin-bottom: 0.4em;
+}
+.image-slide .image-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+.image-slide img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  background: rgba(255,255,255,0.96);
+  border-radius: 8px;
+  padding: 1.5vw;
+}
+.image-caption {
+  font-size: clamp(12px, 1.5vw, 20px);
+  opacity: 0.65;
+  margin-top: 0.8em;
+  font-style: italic;
+}
+
+/* Comparison strip (before/after Omnibus) */
+.compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 1.5vw;
+  align-items: center;
+  width: 100%;
+  margin-top: 0.6em;
+}
+.compare-cell {
+  background: rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 1.4vw 1.6vw;
+  text-align: center;
+}
+.compare-cell.after {
+  background: rgba(140,210,255,0.14);
+  border: 1px solid rgba(140,210,255,0.3);
+}
+.compare-num {
+  font-size: clamp(20px, 3.4vw, 46px);
+  font-weight: 700;
+  display: block;
+  margin: 0.2em 0;
+}
+.compare-arrow {
+  font-size: clamp(24px, 3.6vw, 52px);
+  opacity: 0.6;
+}
+
+/* Nav */
+#nav {
+  position: fixed;
+  bottom: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  z-index: 99;
+}
+#nav button {
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.22);
+  color: #fff;
+  padding: 7px 18px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+#nav button:hover { background: rgba(255,255,255,0.26); }
+#counter { color: rgba(255,255,255,0.45); font-size: 13px; min-width: 52px; text-align: center; }
+
+#dots {
+  position: fixed;
+  bottom: 4.2%;
+  right: 3%;
+  display: flex;
+  gap: 5px;
+  z-index: 99;
+}
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.22);
+  cursor: pointer;
+}
+.dot.on { background: rgba(255,255,255,0.85); }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+  <!-- 1. Title -->
+  <div class="slide active">
+    <div class="title-main">RegelRecht</div>
+    <div class="title-sub">voor de CSRD-jurist · kick-off</div>
+    <div class="title-footer">
+      <span>mei 2026 · Richtlijn 2013/34/EU + 2022/2464/EU + Omnibus 2026</span>
+      <span class="right">Bureau Architectuur, BZK</span>
+    </div>
+  </div>
+
+  <!-- 2. Vandaag -->
+  <div class="slide">
+    <div class="h">Vandaag</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">10 min · demo</div>
+        <div class="cell-body">RegelRecht demo van een bestaande wet: zorgtoeslag. Wettekst en uitvoerbare regel naast elkaar.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">10 min · CSRD-stelsel</div>
+        <div class="cell-body">Onze lezing van 2013/34 + 2022/2464 + Omnibus + 2023/2772 (ESRS). Bekrachtig of de indeling klopt.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">25 min · scope</div>
+        <div class="cell-body">Samen <code>scope-bepaling.md</code> invullen. Drie open vragen beantwoord: <b>drempels-cumulatief</b>, <b>peildatum</b>, <b>exemption-grondslag</b>.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">10 min · vervolg</div>
+        <div class="cell-body">Concrete commitments. Datum voor sessie twee: review van de eerste machine-readable-versie.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Cue: demo -->
+  <div class="slide cue">
+    <div class="h">Eerst: RegelRecht in actie</div>
+    <div class="p">Zorgtoeslag als demonstratie: geen CSRD-content nog</div>
+    <div class="p cue-action">→ overschakelen naar de editor</div>
+    <div class="p dim">editor.regelrecht.rijks.app · zoek "zorgtoeslag" · open scenario-paneel · execute · toon de execution-trace · wijzig één drempelwaarde · her-execute</div>
+  </div>
+
+  <!-- 4. Drie eigenschappen: vertaald naar CSRD -->
+  <div class="slide">
+    <div class="h">Wat dit voor CSRD betekent</div>
+    <div class="grid cols-3">
+      <div class="cell">
+        <div class="cell-label">Twee leesvormen</div>
+        <div class="cell-body">Voor CSRD: de tekst van art. 1.3, art. 19 bis en art. 29 bis blijft <b>zichtbaar naast</b> de uitvoerbare regel. Jurist en uitvoerder raadplegen dezelfde bron.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Provenance</div>
+        <div class="cell-body">Een bedrijf dat te horen krijgt <i>"valt onder CSRD, geconsolideerd, vanaf boekjaar 2027"</i> ziet <b>waarom</b>: drempel-toets in art. 1.3, geconsolideerde plicht in art. 29 bis, datum in 2022/2464 art. 5.2.b.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Actualiteit</div>
+        <div class="cell-body">De Omnibus 2026 verhoogde de CSRD-drempels. Statische wizards van vóór de Omnibus zitten nog op de oude drempels. RegelRecht: <b>YAML-update, klaar</b>.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Omnibus-voorbeeld concreet -->
+  <div class="slide">
+    <div class="h">De Omnibus-update als ijkpunt</div>
+    <div class="compare">
+      <div class="compare-cell">
+        <div class="cell-label">CSRD origineel (2022/2464)</div>
+        <span class="compare-num">250 fte</span>
+        <span class="compare-num">€ 40M omzet</span>
+      </div>
+      <div class="compare-arrow">→</div>
+      <div class="compare-cell after">
+        <div class="cell-label">na Omnibus 2026</div>
+        <span class="compare-num">1000 fte</span>
+        <span class="compare-num">€ 450M omzet</span>
+      </div>
+    </div>
+    <div class="p dim">Verwerkt in de geconsolideerde versie 2013/34 van 2026-03-18. Een tool die deze update niet één-op-één doorvoert, vertelt bedrijven onjuist dat zij onder CSRD vallen: met als gevolg overbodige voorbereiding. RegelRecht: één wijziging in de drempel-conditie van <code>valt_onder_csrd</code>, alle uitkomsten passen direct aan.</div>
+  </div>
+
+  <!-- 6. Het CSRD-stelsel: cellen -->
+  <div class="slide">
+    <div class="h">Het CSRD-stelsel</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">EU-hoofdregel</div>
+        <div class="cell-body"><b>Richtlijn 2013/34/EU</b>: Accounting Directive. Drempelwaarden in <b>art. 1 lid 3</b>. Rapportageplicht in <b>art. 19 bis</b> (individueel) en <b>art. 29 bis</b> (geconsolideerd).</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">EU-wijzigingen</div>
+        <div class="cell-body"><b>Richtlijn 2022/2464</b> (CSRD) voegt art. 19 bis, 29 bis en 29b toe. <b>Omnibus 2026</b> brengt drempels op 1000 fte en €450M. Beide verwerkt in geconsolideerde versie <b>2026-03-18</b>.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">EU-detail</div>
+        <div class="cell-body"><b>Verordening 2023/2772</b>: ESRS-rapportagestandaarden. ~1000 datapunten over 12 sector-agnostische standaarden. Gedelegeerde Commissie-handeling onder art. 29b. <b>Buiten eerste slice.</b></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">NL-omzetting</div>
+        <div class="cell-body"><b>Boek 2 BW titel 9</b> + <b>Wet implementatie CSRD</b>. Toezicht via AFM (beursgenoteerd), deponering KVK, assurance externe accountant, interpretatie Raad voor de Jaarverslaggeving. <b>Buiten eerste slice.</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Het stelsel in beeld -->
+  <div class="slide image-slide">
+    <div class="h">Het stelsel in beeld</div>
+    <div class="image-wrap">
+      <img src="stelsel-overview.png" alt="Stelsel-diagram CSRD met EU-niveau, NL-omzetting, uitvoering en toezicht">
+    </div>
+    <div class="image-caption">EU-niveau (2013/34, 2022/2464, Omnibus, 2023/2772) → NL-omzetting (Boek 2 BW, Wet impl. CSRD) → uitvoering (AFM, KVK, accountants, RJ)</div>
+  </div>
+
+  <!-- 8. Eerste slice -->
+  <div class="slide">
+    <div class="h">Eerste slice: één output</div>
+    <div class="p"><code style="font-family:'SF Mono',Menlo,monospace; background:rgba(0,0,0,0.25); padding:4px 12px; border-radius:6px; font-size:0.85em;">valt_onder_csrd</code></div>
+    <div class="p">Plus twee afgeleide attributen: <b>rapportage_type</b> en <b>ingangsdatum_eerste_boekjaar</b></div>
+    <div class="p dim">Concreet handwerk de komende 2 weken: handmatige YAML voor art. 1.3, art. 19 bis, art. 29 bis (Richtlijn 2013/34) en art. 5.2.b (Richtlijn 2022/2464). De harvester ondersteunt op dit moment alleen NL-bronnen (wetten.overheid.nl, lokaleregelgeving): EUR-Lex-harvester is later optioneel. De ~1000 ESRS-datapunten komen pas in fase 5 of later.</div>
+  </div>
+
+  <!-- 9. Scope-artikelen in beeld -->
+  <div class="slide image-slide">
+    <div class="h">De vier bron-artikelen</div>
+    <div class="image-wrap">
+      <img src="scope-bepaling.png" alt="Artikel-graph met de vier bron-artikelen die samen valt_onder_csrd opleveren">
+    </div>
+    <div class="image-caption">Rode kern: <code>valt_onder_csrd</code> · oranje: bron-artikelen in 2013/34 en 2022/2464 · grijs gestippeld: bewust uit scope (Boek 2 BW, ESRS, third-country)</div>
+  </div>
+
+  <!-- 10. Beslisboom: cellen -->
+  <div class="slide">
+    <div class="h">Hoe de uitkomst tot stand komt</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Stap 1 · EU-vestiging</div>
+        <div class="cell-body">Niet EU-gevestigd? → <b>third-country thresholds</b> (bewust buiten scope volgens jurist-input).</div>
+      </div>
+      <div class="cell tbd">
+        <div class="cell-label">Stap 2 · Exemption · TBD</div>
+        <div class="cell-body">EU-moeder die CSRD-conform rapporteert en deze entiteit consolideert? → <b>exempt_via_groep</b> + <code>naam_filer</code>. <i>Artikel-grondslag te bekrachtigen: open vraag 6.</i></div>
+      </div>
+      <div class="cell tbd">
+        <div class="cell-label">Stap 3 · Drempels · TBD</div>
+        <div class="cell-body">Werknemers > 1000 <b>EN/OF</b> omzet > €450M? <i>Cumulatief of alternatief: open vraag 1.</i> Onder drempels? → <b>valt_onder_csrd = nee</b>.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Stap 4 · Rapportage-type</div>
+        <div class="cell-body">Moeder met geconsolideerde jaarrekening? → <b>geconsolideerd</b> (art. 29 bis). Anders → <b>individueel</b> (art. 19 bis).</div>
+      </div>
+    </div>
+    <div class="p dim">Naast de uitkomst hangt <code>ingangsdatum_eerste_boekjaar</code> = eerste boekjaar dat op of na 2027-01-01 begint (Richtlijn 2022/2464 art. 5 lid 2.b).</div>
+  </div>
+
+  <!-- 11. Drie blokkerende vragen -->
+  <div class="slide warn">
+    <div class="h">Drie blokkerende vragen</div>
+    <div class="grid cols-3">
+      <div class="cell">
+        <div class="cell-label">Vraag 1 · drempels</div>
+        <div class="cell-body">Werknemers > 1000 <b>én</b> omzet > €450M, of <b>óf</b>? Bepaalt of de drempel-conditie in machine-readable een <code>AND</code> of <code>OR</code> wordt.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Vraag 2 · peildatum</div>
+        <div class="cell-body">Gemeten over <b>boekjaar n</b> (te rapporteren) of <b>boekjaar n−1</b>? Bepaalt de semantiek van de parameter <code>netto_jaaromzet</code>.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Vraag 6 · exemption</div>
+        <div class="cell-body">In welk artikel staat de vrijstelling voor dochters van een EU-moeder die geconsolideerd CSRD-rapporteert? Bepaalt of het vierde voorbeeldbedrijf (EuroTech Subsidiary) bestaat.</div>
+      </div>
+    </div>
+    <div class="p dim">Drie vragen zonder waarvan de eerste machine-readable-versie blijft hangen. Drie nadere vragen (V3 overlap, V4 Omnibus-traceerbaarheid, V5 NL-omzetting-prioriteit) zijn niet blokkerend.</div>
+  </div>
+
+  <!-- 12. Vier voorbeeldbedrijvenn -->
+  <div class="slide">
+    <div class="h">Vier voorbeeldbedrijven die we willen kunnen toetsen</div>
+    <div class="grid cols-4">
+      <div class="cell">
+        <div class="cell-label">NovaCorp BV</div>
+        <div class="cell-body">EU, 1.200 fte, €600M omzet, geen moeder. → <b>valt_onder_csrd = ja</b>, individueel, vanaf boekjaar 2027.<span class="meta">art. 1.3 + art. 19 bis</span></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">MidBV</div>
+        <div class="cell-body">EU, 800 fte, €380M omzet. Beide drempels niet gehaald. → <b>valt_onder_csrd = nee</b>.<span class="meta">art. 1.3 uitsluitend</span></div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">GroupHolding</div>
+        <div class="cell-body">EU-moeder, geconsolideerd 5.000 fte / €2 mrd, eigen jaarrekening. → <b>valt_onder_csrd = ja</b>, <b>geconsolideerd</b>, vanaf boekjaar 2027.<span class="meta">art. 29 bis</span></div>
+      </div>
+      <div class="cell exempt">
+        <div class="cell-label">EuroTech Subsidiary · TBD V6</div>
+        <div class="cell-body">DE-dochter, 5.000 fte, €850M omzet. Moeder = NL EuroTech Group SE die CSRD-conform consolideert. → <b>exempt_via_groep</b>, <code>naam_filer</code> = EuroTech Group SE.<span class="meta">grondslag te bekrachtigen</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 13. Cue: scope-bepaling -->
+  <div class="slide cue">
+    <div class="h">Nu: samen de wegkruis-tabel invullen</div>
+    <div class="p">Bron-artikelen · parameters · outputs · open vragen</div>
+    <div class="p cue-action">→ overschakelen naar scope-bepaling.md</div>
+    <div class="p dim">Per rij: <b>IN</b> (blijft in scope voor regelrecht) / <b>UIT</b> (niet voor deze slice) / <b>TBD</b> (nader bekijken).</div>
+  </div>
+
+  <!-- 14. Wat wel en niet -->
+  <div class="slide">
+    <div class="h">Wat de CSRD-regelhulp wel en niet wordt</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">Wel</div>
+        <div class="cell-body"><b>valt_onder_csrd</b> met uitleg. Rapportage-type (individueel / geconsolideerd / exempt). Ingangsdatum eerste rapportage-boekjaar. Verwijzing naar artikel en EUR-Lex.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Niet</div>
+        <div class="cell-body"><b>ESRS-datapunten invullen</b> (~1000 velden). Double materiality assessment. XBRL-tagging. Assurance-werk. Inhoudelijk duurzaamheidsadvies.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Doelgroep</div>
+        <div class="cell-body">EU-ondernemingen die <b>willen weten</b> of CSRD op hen van toepassing is. Niet de accountants of consultants die vervolgens de rapportage schrijven.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Doorlooptijd</div>
+        <div class="cell-body">3 tot 5 minuten gebruik. Eén concreet antwoord op de meest gestelde CSRD-vraag in NL: gevolgd door doorklik naar RVO of accountant.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 15. Volgende stap -->
+  <div class="slide">
+    <div class="h">Volgende stap</div>
+    <div class="grid">
+      <div class="cell">
+        <div class="cell-label">RegelRecht-team · 2 weken</div>
+        <div class="cell-body">Handmatige YAML voor 2013/34 art. 1.3 + 19 bis + 29 bis en 2022/2464 art. 5.2.b. Machine-readable voor <b>valt_onder_csrd</b>. Drie toetscases (NovaCorp, MidBV, GroupHolding); vierde (EuroTech Subsidiary) afhankelijk van vraag 6.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Jurist · 1 week</div>
+        <div class="cell-body">Artikel-grondslag voor de exemption (vraag 6) opzoeken. Daarna: bevestiging Boek 2 BW prioriteit voor productie (vraag 5).</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Sessie 2</div>
+        <div class="cell-body">Review van de machine-readable-versie tegen de wettekst. Bekrachtig of de logica klopt. Eerste ESRS-scope-discussie.</div>
+      </div>
+      <div class="cell">
+        <div class="cell-label">Eventueel later</div>
+        <div class="cell-body">EUR-Lex-harvester als eigen sprint (~1 sprint werk). Dan zijn EU-richtlijnen even geautomatiseerd up-to-date als BWB-bronnen nu zijn.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 16. Closing -->
+  <div class="slide">
+    <div class="title-main">RegelRecht</div>
+    <div class="title-sub">van CSRD-tekst naar digitale werking</div>
+    <div class="title-footer">
+      <span>regelrecht.rijks.app</span>
+      <span class="right">Bureau Architectuur, BZK</span>
+    </div>
+  </div>
+
+</div>
+
+<div id="nav">
+  <button id="bp">← Vorige</button>
+  <span id="counter">1 / 16</span>
+  <button id="bn">Volgende →</button>
+</div>
+<div id="dots"></div>
+
+<script>
+(function () {
+  var slides = document.querySelectorAll('.slide');
+  var dotsEl = document.getElementById('dots');
+  var counterEl = document.getElementById('counter');
+  var cur = 0;
+  var total = slides.length;
+
+  for (var i = 0; i < total; i++) {
+    var d = document.createElement('div');
+    d.className = i === 0 ? 'dot on' : 'dot';
+    (function(idx){ d.addEventListener('click', function(){ go(idx); }); })(i);
+    dotsEl.appendChild(d);
+  }
+
+  function go(n) {
+    slides[cur].classList.remove('active');
+    dotsEl.children[cur].classList.remove('on');
+    cur = (n % total + total) % total;
+    slides[cur].classList.add('active');
+    dotsEl.children[cur].classList.add('on');
+    counterEl.textContent = (cur + 1) + ' / ' + total;
+  }
+
+  document.getElementById('bn').addEventListener('click', function(){ go(cur + 1); });
+  document.getElementById('bp').addEventListener('click', function(){ go(cur - 1); });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(cur + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(total - 1); }
+  });
+})();
+</script>
+
+</body>
+</html>
