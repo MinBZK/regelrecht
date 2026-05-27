@@ -125,16 +125,22 @@ export function useCorpusLaws(trajectRef) {
     (current) => {
       const key = scopeKey(current);
       ensureFetched(current);
-      laws.value = lawsByScope.get(key)?.value ?? [];
-      // Re-sync once the in-flight promise resolves: the initial
-      // assignment above only sees the cached value (empty on a miss).
+      // Capture the underlying Ref BEFORE attaching the .then. If
+      // the LRU evicts `key` while its fetch is still in flight
+      // (6+ distinct scopes hit during the window), a later
+      // `lawsByScope.get(key)?.value` would return `undefined` and
+      // we'd silently set `laws.value = []` instead of the
+      // fetched list. The closure over `capturedRef` keeps the
+      // populated ref reachable even after the map entry is gone.
+      const capturedRef = lawsByScope.get(key);
+      laws.value = capturedRef?.value ?? [];
       const p = fetchByScope.get(key);
-      if (p) {
+      if (p && capturedRef) {
         p.then(() => {
           // Only commit if this is still the active scope by the time
           // the fetch resolves — avoids a cross-scope late write.
           if (scopeKey(refSource.value) === key) {
-            laws.value = lawsByScope.get(key)?.value ?? [];
+            laws.value = capturedRef.value;
           }
         });
       }
